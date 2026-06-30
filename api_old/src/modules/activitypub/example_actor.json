@@ -1,0 +1,103 @@
+
+{
+    "@context": [
+        "https://www.w3.org/ns/activitystreams",
+        "https://w3id.org/security/v1",
+        {
+            "manuallyApprovesFollowers": "as:manuallyApprovesFollowers",
+            "toot": "http://joinmastodon.org/ns#",
+            "featured": {
+                "@id": "toot:featured",
+                "@type": "@id"
+            },
+            "featuredTags": {
+                "@id": "toot:featuredTags",
+                "@type": "@id"
+            },
+            "alsoKnownAs": {
+                "@id": "as:alsoKnownAs",
+                "@type": "@id"
+            },
+            "movedTo": {
+                "@id": "as:movedTo",
+                "@type": "@id"
+            },
+            "schema": "http://schema.org#",
+            "PropertyValue": "schema:PropertyValue",
+            "value": "schema:value",
+            "discoverable": "toot:discoverable",
+            "suspended": "toot:suspended",
+            "memorial": "toot:memorial",
+            "indexable": "toot:indexable",
+            "attributionDomains": {
+                "@id": "toot:attributionDomains",
+                "@type": "@id"
+            },
+            "focalPoint": {
+                "@container": "@list",
+                "@id": "toot:focalPoint"
+            }
+        }
+    ],
+    "id": "https://gardenstate.social/users/jenn",
+    "type": "Person",
+    "following": "https://gardenstate.social/users/jenn/following",
+    "followers": "https://gardenstate.social/users/jenn/followers",
+    "inbox": "https://gardenstate.social/users/jenn/inbox",
+    "outbox": "https://gardenstate.social/users/jenn/outbox",
+    "featured": "https://gardenstate.social/users/jenn/collections/featured",
+    "featuredTags": "https://gardenstate.social/users/jenn/collections/tags",
+    "preferredUsername": "jenn",
+    "name": "jenn schiffer, normal scary",
+    "summary": "<p>the joker of candle-making (<a href=\"https://bugsrock.online\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">bugsrock.online</span><span class=\"invisible\"></span></a>), one of the greatest minds in web development (<a href=\"https://jennschiffer.com\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">jennschiffer.com</span><span class=\"invisible\"></span></a>) and blogging (<a href=\"https://livelaugh.blog\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">livelaugh.blog</span><span class=\"invisible\"></span></a>), and nyc co-host of robot karaoke (<a href=\"https://robotkaraoke.live\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">robotkaraoke.live</span><span class=\"invisible\"></span></a>), hot and smart and talented</p>",
+    "url": "https://gardenstate.social/@jenn",
+    "manuallyApprovesFollowers": false,
+    "discoverable": false,
+    "indexable": false,
+    "published": "2025-04-05T00:00:00Z",
+    "memorial": false,
+    "alsoKnownAs": [
+        "https://pixel.kitchen/users/jenn"
+    ],
+    "publicKey": {
+        "id": "https://gardenstate.social/users/jenn#main-key",
+        "owner": "https://gardenstate.social/users/jenn",
+        "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvNDR1W7dlQXUF2aRHcqG\nWJ/yk07kud9mzO45w+8NPxDrSN6J1HlKHyXrOauDb33rlmOG/oLb/e6LkNb2P1B4\n3LKQBnbWWPKTJwVFt1XUIEy0Sqa7kgKjaYYZxE7BvMRXaHwXMC9jCtVvJQ2MOyHz\nLgL5LprxoAnfL7zEucI9wgldySogUhbI9RYrMtjZcJnfJb17jdNFefwgGfpy8ND9\n77BJe2rx15+KtOhDKX2dooVxSJEBtpbsIYUTdRHImPY39eJMVbsF0fgQHaa5jAbD\nn16WDKV7soIShbpFo6TR4mmYu5utrcblNmmMQhan1fO09mqk98OB9nJODr8KllnV\nkwIDAQAB\n-----END PUBLIC KEY-----\n"
+    },
+    "tag": [],
+    "attachment": [
+        {
+            "type": "PropertyValue",
+            "name": "web page",
+            "value": "<a href=\"https://jennschiffer.com\" target=\"_blank\" rel=\"nofollow noopener me\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">jennschiffer.com</span><span class=\"invisible\"></span></a>"
+        },
+        {
+            "type": "PropertyValue",
+            "name": "blog",
+            "value": "<a href=\"https://livelaugh.blog\" target=\"_blank\" rel=\"nofollow noopener me\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">livelaugh.blog</span><span class=\"invisible\"></span></a>"
+        },
+        {
+            "type": "PropertyValue",
+            "name": "e-commerce",
+            "value": "<a href=\"https://bugsrock.online\" target=\"_blank\" rel=\"nofollow noopener me\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">bugsrock.online</span><span class=\"invisible\"></span></a>"
+        },
+        {
+            "type": "PropertyValue",
+            "name": "pivot to video",
+            "value": "youtube.com/@jennschiffer"
+        }
+    ],
+    "endpoints": {
+        "sharedInbox": "https://gardenstate.social/inbox"
+    },
+    "icon": {
+        "type": "Image",
+        "mediaType": "image/jpeg",
+        "url": "https://gardenstate.social/system/accounts/avatars/114/287/724/711/312/909/original/084552194c2d0a70.jpeg"
+    },
+    "image": {
+        "type": "Image",
+        "mediaType": "image/png",
+        "url": "https://gardenstate.social/system/accounts/headers/114/287/724/711/312/909/original/ea9ee4f6ff3bb1ee.png"
+    }
+}

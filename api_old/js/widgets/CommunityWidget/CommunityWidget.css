@@ -1,0 +1,19 @@
+
+.community-widget {
+    background-color: #AAA;
+    color: white;
+    padding: 10px;
+    margin: 10px;
+}
+
+.community-widget h3 {
+    text-transform: none;
+}
+
+.community-widget a {
+    color: #FFF;
+}
+
+.community-widget.logged-in {
+    background-color: #1e5f20; /* Green */
+}

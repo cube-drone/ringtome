@@ -1,0 +1,20 @@
+
+.bip-checkbox-group {
+    margin: 5px 5px 5px 0;
+}
+
+.bip-checkbox-group label {
+    color: #666;
+    margin-left: 5px;
+}
+
+.bip-checkbox-group input {
+    width: 25px;
+    height: 25px;
+}
+
+.bip-checkbox-group .bip-checkbox-description {
+    font-size: 0.9em;
+    color: #888;
+    margin: 2px 0 0 30px;
+}

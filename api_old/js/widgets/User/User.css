@@ -1,0 +1,83 @@
+
+.user-card {
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    background-color: #f9f9f9;
+}
+
+.user-card h3, .user-card h4, .user-card h5, .user-card h6 {
+    margin-bottom: 8px;
+}
+
+.user-card .gravatar{
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.user-card-id{
+    text-align: center;
+}
+
+.user-card-me{
+    border: 1px solid #222;
+}
+
+.user-card-thing {
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.user-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.user-card-table td{
+    padding: 12px;
+    border: 1px solid #ddd;
+}
+
+.user-card-slim{
+    padding: 8px !important;
+    margin: 8px 0 !important;
+
+}
+
+.user-card-slim  .user-name {
+    min-width: 150px;
+    text-align: right;
+}
+
+.user-card-slim  .user-email {
+    width: 220px;
+}
+
+.user-card-slim  .user-tags {
+    /* we're in a flex container, but we ALWAYS want the tags to display in a single line */
+    flex-wrap: nowrap;
+    flex-direction: row-reverse;
+    /* right to left */
+}
+
+.user-span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-span a {
+    text-decoration: none;
+}
+
+.user-span .gravatar {
+    max-width: 24px;
+    max-height: 24px;
+    border-radius: 50%;
+    display: inline-block;
+    background-color: #ccc; /* Fallback color */
+}

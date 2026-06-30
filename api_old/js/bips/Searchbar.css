@@ -1,0 +1,20 @@
+
+.bip-searchbar-container {
+    position: relative;
+    width: 100%;
+}
+
+.bip-searchbar {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.bip-searchbar-icon {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #888;
+}

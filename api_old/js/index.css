@@ -1,0 +1,80 @@
+@import "css/animations.css";
+@import "css/colors.css";
+@import "css/fonts.css";
+
+@import "pages/pages.css";
+@import 'widgets/widgets.css';
+@import 'bips/bips.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+    background: linear-gradient(180deg, #5b57e6, #d456e8);
+    background-size: 400% 400%;
+
+    -webkit-animation: GradientDescent 30s ease infinite;
+    -moz-animation: GradientDescent 30s ease infinite;
+    animation: GradientDescent 30s ease infinite;
+}
+
+@-webkit-keyframes GradientDescent {
+    0%{background-position:48% 0%}
+    50%{background-position:53% 100%}
+    100%{background-position:48% 0%}
+}
+@-moz-keyframes GradientDescent {
+    0%{background-position:48% 0%}
+    50%{background-position:53% 100%}
+    100%{background-position:48% 0%}
+}
+@keyframes GradientDescent {
+    0%{background-position:48% 0%}
+    50%{background-position:53% 100%}
+    100%{background-position:48% 0%}
+}
+
+body{
+    margin: 0;
+    padding: 0;
+    background-color: #333;
+    min-width: 400px;
+}
+
+h1, h2, h3, h4, h5, h6{
+    font-weight: bold;
+    text-transform: uppercase;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+}
+
+.app-main{
+    min-width: 400px;
+    max-width: 800px;
+    min-height: 720px;
+    height: 97vh;
+    margin: 0 auto;
+    padding: 10px;
+    color: #111;
+    border-radius: 10px;
+}
+
+@media (max-width: 500px) {
+    .app-main{
+        width: 100%;
+        min-width: 100%;
+        padding-left: 0;
+        padding-right: 0;
+        margin: 0;
+        border-radius: 0;
+    }
+}
+
+@media print {
+    .no-print { display: none !important; }
+}
+@media screen {
+    .only-print { display: none !important; }
+}

@@ -1,0 +1,64 @@
+
+/* define colors for the application */
+:root {
+    /* Button Colors */
+    --primary-bg: lightblue;
+    --primary-text: black;
+    --warning-bg: salmon;
+    --warning-text: black;
+    --success-bg: green;
+    --success-text: black;
+    --disabled-bg: #ccc;
+    --disabled-text: #666;
+    --null-bg: #333;
+    --null-text: #fff;
+}
+
+/* derived colors */
+:root {
+    --primary-bg-light: color-mix(in srgb, var(--primary-bg) 90%, #ffffff);
+    --primary-bg-lighter: color-mix(in srgb, var(--primary-bg) 70%, #ffffff);
+    --primary-bg-lightest: color-mix(in srgb, var(--primary-bg) 50%, #ffffff);
+    --primary-bg-lightestest: color-mix(in srgb, var(--primary-bg) 30%, #ffffff);
+    --primary-bg-dark: color-mix(in srgb, var(--primary-bg) 90%, #000000);
+    --primary-bg-darker: color-mix(in srgb, var(--primary-bg) 70%, #000000);
+    --primary-bg-darkest: color-mix(in srgb, var(--primary-bg) 50%, #000000);
+    --primary-bg-darkestest: color-mix(in srgb, var(--primary-bg) 30%, #000000);
+
+    --warning-bg-light: color-mix(in srgb, var(--warning-bg) 90%, #ffffff);
+    --warning-bg-lighter: color-mix(in srgb, var(--warning-bg) 70%, #ffffff);
+    --warning-bg-lightest: color-mix(in srgb, var(--warning-bg) 50%, #ffffff);
+    --warning-bg-lightestest: color-mix(in srgb, var(--warning-bg) 30%, #ffffff);
+    --warning-bg-dark: color-mix(in srgb, var(--warning-bg) 90%, #000000);
+    --warning-bg-darker: color-mix(in srgb, var(--warning-bg) 70%, #000000);
+    --warning-bg-darkest: color-mix(in srgb, var(--warning-bg) 50%, #000000);
+    --warning-bg-darkestest: color-mix(in srgb, var(--warning-bg) 30%, #000000);
+
+    --disabled-bg-light: color-mix(in srgb, var(--disabled-bg) 90%, #ffffff);
+    --disabled-bg-lighter: color-mix(in srgb, var(--disabled-bg) 70%, #ffffff);
+    --disabled-bg-lightest: color-mix(in srgb, var(--disabled-bg) 50%, #ffffff);
+    --disabled-bg-lightestest: color-mix(in srgb, var(--disabled-bg) 30%, #ffffff);
+    --disabled-bg-dark: color-mix(in srgb, var(--disabled-bg) 90%, #000000);
+    --disabled-bg-darker: color-mix(in srgb, var(--disabled-bg) 70%, #000000);
+    --disabled-bg-darkest: color-mix(in srgb, var(--disabled-bg) 50%, #000000);
+    --disabled-bg-darkestest: color-mix(in srgb, var(--disabled-bg) 30%, #000000);
+
+    --success-bg-light: color-mix(in srgb, var(--success-bg) 90%, #ffffff);
+    --success-bg-lighter: color-mix(in srgb, var(--success-bg) 70%, #ffffff);
+    --success-bg-lightest: color-mix(in srgb, var(--success-bg) 50%, #ffffff);
+    --success-bg-lightestest: color-mix(in srgb, var(--success-bg) 30%, #ffffff);
+    --success-bg-dark: color-mix(in srgb, var(--success-bg) 90%, #000000);
+    --success-bg-darker: color-mix(in srgb, var(--success-bg) 70%, #000000);
+    --success-bg-darkest: color-mix(in srgb, var(--success-bg) 50%, #000000);
+    --success-bg-darkestest: color-mix(in srgb, var(--success-bg) 30%, #000000);
+
+    /* we actually invert the null colors: they get lighter as they get darker */
+    --null-bg-light: color-mix(in srgb, var(--null-bg) 90%, #000000);
+    --null-bg-lighter: color-mix(in srgb, var(--null-bg) 70%, #000000);
+    --null-bg-lightest: color-mix(in srgb, var(--null-bg) 50%, #000000);
+    --null-bg-lightestest: color-mix(in srgb, var(--null-bg) 30%, #000000);
+    --null-bg-dark: color-mix(in srgb, var(--null-bg) 90%, #ffffff);
+    --null-bg-darker: color-mix(in srgb, var(--null-bg) 70%, #ffffff);
+    --null-bg-darkest: color-mix(in srgb, var(--null-bg) 50%, #ffffff);
+    --null-bg-darkestest: color-mix(in srgb, var(--null-bg) 30%, #ffffff);
+}

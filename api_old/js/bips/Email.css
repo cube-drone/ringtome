@@ -1,0 +1,39 @@
+
+.email{
+    padding: 0.5em;
+    background-color: #444;
+    border-radius: 15px;
+    color: white;
+    white-space: nowrap;
+}
+
+.slim .email {
+    padding: 0.2em 0.5em;
+    font-size: 0.9em;
+}
+
+.email a {
+    color: white;
+    text-decoration: none;
+}
+
+.email a:hover {
+    text-decoration: underline;
+}
+
+.email-icon {
+    margin-right: 0.5em;
+}
+
+.email-verified {
+    display: inline-block;
+    color: var(--success-bg-lightest);
+    padding: 0.2em;
+    margin-bottom: -3px;
+}
+.email-unverified {
+    display: inline-block;
+    color: var(--error-bg-lightest);
+    margin-left: 0.5em;
+    margin-bottom: -3px;
+}

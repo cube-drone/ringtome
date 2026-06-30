@@ -1,0 +1,16 @@
+
+.invite-code{
+    background-color: #ddd;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+    text-align: center;
+}
+
+.invite-once{
+    opacity: 0.9
+}
+
+.invite-code-date{
+    font-size: small;
+}

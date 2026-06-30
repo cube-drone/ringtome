@@ -1,0 +1,12 @@
+
+
+.loading-center{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+.loading-margin{
+    margin: 20px;
+}

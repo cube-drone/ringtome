@@ -1,0 +1,33 @@
+
+.message {
+    background-color: #DDD;
+    border-radius: 5px;
+    padding: 1em;
+    margin: 1em;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+}
+
+.message .message-header {
+    font-size: 0.9em;
+    color: #666;
+    margin-bottom: 0.5em;
+    display: flex;
+    justify-content: space-between;
+}
+
+.message .message-content {
+    font-size: 1em;
+    background-color: white;
+    padding: 10px;
+    border-radius: 3px;
+    color: #333;
+}
+
+.message-unseen {
+    border: 2px solid blue;
+}
+
+.message-seen {
+    opacity: 0.8;
+}

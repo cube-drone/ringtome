@@ -1,0 +1,48 @@
+.bip-button-frame {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 1;
+
+    text-align: center;
+    padding: 10px;
+    border: 5px solid var(--border-color, #ccc);
+    border-radius: 5px;
+    width: 100%;
+}
+
+.bip-button-frame > * {
+    align-self: end;
+}
+
+.bip-button-frame-primary {
+    border-color: var(--primary-bg-dark, #666);
+}
+
+.bip-button-frame-warning{
+    border-color: var(--warning-bg-dark, #666);
+}
+
+.bip-button-frame-success{
+    border-color: var(--success-bg-dark, #666);
+}
+
+.bip-button-frame-null{
+    border-color: var(--null-bg-dark, #666);
+}
+
+.bip-button-frame-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.bip-button-frame-description {
+    flex-grow: 1;
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+.bip-button-frame .bip-button {
+    align-self: center;
+    margin-top: auto;
+}

@@ -1,0 +1,40 @@
+{
+  "name": "groovelet",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild index.js --bundle --tree-shaking=true --metafile=target/js/meta.json --outfile=target/js/bundle.js --platform=browser --minify",
+    "build_prod": "esbuild index.js --bundle --tree-shaking=true --metafile=target/js/meta.json --outfile=target/js/bundle.js --platform=browser --minify",
+    "watch": "esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser --watch --sourcemap --keep-names --define:process.env.NODE_ENV=\\\"development\\\" --log-level=info --legal-comments=inline",
+    "css": "esbuild index.css --bundle --outfile=target/css/bundle.css --external:*.woff2 --external:*.woff --external:*.ttf --external:*.png",
+    "css_prod": "esbuild index.css --bundle --outfile=target/css/bundle.css --external:*.woff2 --external:*.woff --external:*.ttf --external:*.png",
+    "csswatch": "esbuild index.css --bundle --outfile=target/css/bundle.css --external:*.woff2 --external:*.woff --external:*.ttf --external:*.png --watch "
+  },
+  "author": "Curtis Lassam",
+  "license": "ISC",
+  "dependencies": {
+    "animejs": "^4.1.2",
+    "dayjs": "^1.11.13",
+    "dexie": "^4.0.11",
+    "dexie-react-hooks": "^1.1.7",
+    "htm": "^3.1.1",
+    "lucide-preact": "^0.525.0",
+    "marked": "^15.0.7",
+    "preact": "^10.26.2",
+    "preact-iso": "^2.9.0",
+    "react-signature-canvas": "^1.1.0-alpha.2",
+    "uuid": "^13.0.0"
+  },
+  "browser": {
+    "react": "preact/compat",
+    "react-dom": "preact/compat"
+  },
+  "devDependencies": {
+    "fetch-cookie": "^3.1.0",
+    "mocha": "^11.1.0",
+    "testytesterson": "^9001.9001.9019",
+    "tough-cookie": "^5.1.2",
+    "ws": "^8.18.3"
+  }
+}

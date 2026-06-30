@@ -1,0 +1,40 @@
+
+.bip-alert {
+    text-align: center;
+    padding: 10px;
+    margin: 10px 0 10px 0;
+    border-radius: 5px;
+    width: 100%;
+    font-size: small;
+    box-sizing: border-box;
+}
+
+.bip-alert-error {
+    background-color: var(--warning-bg-lightest);
+    color: var(--warning-text);
+    border: 1px solid var(--warning-bg-darkest);
+}
+
+.bip-alert-warning {
+    background-color: var(--warning-bg-light);
+    color: var(--warning-text);
+    border: 1px solid var(--warning-bg-dark);
+}
+
+.bip-alert-success {
+    background-color: var(--success-bg-lightest);
+    color: var(--success-text);
+    border: 1px solid var(--success-bg-darkest);
+}
+
+.bip-alert-info {
+    background-color: var(--primary-bg-lightest);
+    color: var(--info-text);
+    border: 1px solid var(--primary-bg-darkest);
+}
+
+.bip-alert-null {
+    background-color: var(--null-bg-lightest);
+    color: var(--null-text);
+    border: 1px solid var(--null-bg-darkest);
+}

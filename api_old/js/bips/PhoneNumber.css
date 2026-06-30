@@ -1,0 +1,40 @@
+
+.phone-number{
+    padding: 0.5em;
+    background-color: #444;
+    border-radius: 15px;
+    color: white;
+    white-space: nowrap;
+}
+
+.slim .phone-number {
+    padding: 0.2em 0.5em;
+    font-size: 0.9em;
+}
+
+.phone-number a {
+    color: white;
+    text-decoration: none;
+}
+
+.phone-number a:hover {
+    text-decoration: underline;
+}
+
+.phone-number-icon {
+    margin-right: 0.5em;
+}
+
+.phone-number-verified {
+    display: inline-block;
+    color: var(--success-bg-lightest);
+    padding: 0.2em;
+    margin-bottom: -3px;
+}
+
+.phone-number-unverified {
+    display: inline-block;
+    color: var(--error-bg-lightest);
+    margin-left: 0.5em;
+    margin-bottom: -3px;
+}

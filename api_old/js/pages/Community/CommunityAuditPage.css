@@ -1,0 +1,24 @@
+
+.audit-table{
+    width: 100%;
+    border-collapse: collapse;
+    overflow-x: auto;
+}
+
+.audit-table th, .audit-table td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    min-width: 150px;
+    white-space: nowrap;
+}
+
+.audit-table .audit-ip {
+    min-width: 50px;
+}
+
+.audit-table .gravatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 5%;
+}

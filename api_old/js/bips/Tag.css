@@ -1,0 +1,31 @@
+.tag {
+    padding: 0.4em;
+    display: inline-flex;
+    background-color: #444;
+    border-radius: 15px;
+    color: white;
+    white-space: nowrap;
+}
+
+.slim .tag {
+    padding: 0.2em 0.5em;
+    font-size: 0.9em;
+}
+
+.slim .tag .tag-link {
+    display: none;
+}
+
+.slim .tag {
+    max-width: 35px;
+    max-height: 25px;
+}
+
+.tag a {
+    color: white;
+    text-decoration: none;
+}
+
+.tag-icon {
+    margin-right: 0.5em;
+}

@@ -1,0 +1,5 @@
+/* here we load all of the individual widget styles */
+
+@import 'CommunityWidget/CommunityWidget.css';
+@import 'User/User.css';
+@import 'Message/Message.css';

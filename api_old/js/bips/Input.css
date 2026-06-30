@@ -1,0 +1,65 @@
+
+.bip-input-group {
+    margin: 5px 0;
+}
+
+.bip-input-group input {
+    padding: 10px;
+    border: 1px solid var(--primary-bg-lightest, #ccc);
+    border-radius: 5px;
+    min-width: 20px;
+    width: 95%;
+    margin: 5px 5px 5px 0;
+}
+
+.bip-input-group .bip-input-error{
+    border-color: var(--warning-bg-darkest);
+    background-color: var(--warning-bg-lightestest);
+    color: var(--warning-text);
+}
+
+.bip-input-group .bip-input-success{
+    border-color: var(--success-bg-darkest);
+    background-color: var(--success-bg-lightestest);
+    color: var(--success-text);
+}
+
+.bip-input-group input.warning {
+    outline: 3px solid var(--warning-bg);
+    outline-offset: 1px;
+}
+
+.bip-input-group input:disabled {
+    background-color: var(--disabled-bg-light);
+    color: var(--disabled-text);
+}
+
+.bip-input-group input:focus {
+    outline: 3px solid var(--primary-bg);
+    outline-offset: 1px;
+}
+
+.bip-input-group .bip-input-error:focus{
+    outline: 3px solid var(--warning-bg-dark);
+    outline-offset: 1px;
+}
+
+.bip-input-group .bip-input-success:focus{
+    outline: 3px solid var(--success-bg-dark);
+    outline-offset: 1px;
+}
+
+.bip-input-help-text {
+    font-size: small;
+    color: gray;
+}
+
+.bip-input-error-text {
+    font-size: small;
+    color: var(--warning-bg-darkest);
+}
+
+.bip-input-success-text {
+    font-size: small;
+    color: var(--success-bg-darkest);
+}
