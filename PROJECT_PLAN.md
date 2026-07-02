@@ -33,7 +33,15 @@ The existing codebase (in `api/`) is a prior-generation Rust+Axum web service or
 
 A connector node is a **trusted agent** for its users — analogous to an email provider. The node serves the web UI, holds encrypted key material, and acts on the user's behalf. Users should only log in to nodes they trust (self-hosted, operated by a friend, community-run, etc.).
 
-A malicious node operator who serves the web UI can exfiltrate key material, just as any website can serve malicious JavaScript. This is an accepted limitation of the web trust model. The system does not attempt to be trustless — it aims to be *federated* with *portable identity*.
+The system is **trust-minimizing, not trustless.** A malicious node operator who serves the web UI can exfiltrate key material — but the architecture deliberately limits what they can capture and makes compromise recoverable:
+
+- A node holds **only one leaf key**, not the root key or any other node's keys.
+- Each node has an **independent password** — compromising one node doesn't reveal credentials for any other.
+- The parent key can **revoke** the compromised leaf, cutting off the attacker's authority.
+- The attacker gains the ability to impersonate **one Identity node**, not the entire Identity.
+- If the mask derivation seed was decrypted on the compromised node, it can be **rotated** (the most serious consequence, but survivable).
+
+This is neither trustless (you do trust each node with its own leaf key and any secrets it has decrypted) nor fully trusting (the node never holds the root key, can be revoked, and cannot compromise other nodes). The key tree architecture exists specifically to make node compromise a **recoverable event** rather than a catastrophic one.
 
 ---
 
@@ -133,7 +141,7 @@ mask_public_key  = corresponding public key
 ```
 
 - The **mask derivation seed** is generated when the Identity is created.
-- The seed is encrypted and synced to all authorized nodes via `iroh-docs`.
+- The seed is encrypted and synced to all authorized nodes via the **Rettro sync protocol** (see Iroh Protocol Mapping below).
 - Any authorized node can independently derive the same Mask keypairs — **no Mask private keys are ever explicitly synced.**
 - Creating a new Mask is trivial: increment the index, derive, done.
 
@@ -182,7 +190,7 @@ If the compromise is severe enough (derivation seed itself leaked), the Identity
 
 ### Temporal Profile State
 
-Each Mask maintains its own `iroh-docs` Document with profile data (name, bio, avatar hash). Since `iroh-docs` entries carry timestamps, the profile has a natural history.
+Each Mask's profile data (name, bio, avatar hash) is synced across nodes via the Rettro sync protocol. Entries carry timestamps, giving the profile a natural history.
 
 When content is created, it references the Mask's public key and includes a timestamp. This enables:
 - **"Who posted that?"** — look up the Mask's public key.
@@ -242,42 +250,59 @@ Each connector node maintains:
 
 ### Replication over Iroh
 
-- User data is synced between nodes using `iroh-docs` (see Iroh Protocol Mapping below), not by replicating raw SQLite files.
-- The per-user SQLite database is the local materialized view of the user's `iroh-docs` Document.
+- User data is synced between nodes using the **Rettro sync protocol** (see Iroh Protocol Mapping below), not by replicating raw SQLite files.
+- The per-user SQLite database is the local materialized view of synced data.
 - Both nodes continue to sync the user's data bidirectionally as long as the user is active on both.
-- When multiple Authors (nodes) write to the same key, `iroh-docs` keeps all entries. Our application layer resolves conflicts using last-writer-wins by timestamp for simple fields (name, bio, etc.).
+- When multiple nodes write to the same key, conflicts are resolved using **last-writer-wins by timestamp** for simple fields (name, bio, etc.). More complex data types can layer a CRDT library on top in the future.
+- **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries from revoked Identity nodes are **rejected at the sync boundary** — they never enter the local store.
 
 ---
 
 ## Iroh Protocol Mapping
 
-Iroh provides three composable protocols on top of its QUIC-based p2p connections, plus a discovery layer. Here's how each maps to Rettro:
+Iroh provides composable protocols on top of its QUIC-based p2p connections, plus a discovery layer. Here's how each maps to Rettro:
 
-### `iroh-docs` → Identity Data & User Content
+### Rettro Sync Protocol → Identity Data & User Content
 
-An `iroh-docs` Document is a **multi-writer key-value store** with efficient peer-to-peer sync. Each document is identified by a `NamespaceId` (a public key) and can have multiple **Authors** (each with their own keypair) writing to it.
+**Why not `iroh-docs`?** `iroh-docs` is a multi-writer key-value store where Authors sign entries with their own keypairs. However, it has **no protocol-level revocation** — once an Author has write access, their entries sync to all replicas forever. Since Rettro's key tree requires that revoked Identity nodes lose all authority, iroh-docs' trust model is fundamentally incompatible. A revoked node could keep writing garbage into the shared document indefinitely, and iroh-docs would happily sync it to every peer.
 
-**Sync mechanism:** `iroh-docs` uses **range-based set reconciliation** — peers recursively compare hash fingerprints of data partitions to efficiently discover what each side is missing. This is not a CRDT; it's a set-union protocol. When multiple Authors write to the same key, **all entries are preserved** (keyed by `(namespace, author, key)`). The application layer decides how to resolve conflicts.
+Instead, Rettro uses a **custom sync protocol** that runs over iroh QUIC bidirectional streams. This gives us control of the sync boundary:
+
+**Architecture:**
+```
+Peer A ──iroh QUIC──► Rettro sync protocol ──validate──► accept/reject ──► local store ──► SQLite
+                      (we control this)      (key tree)   (gate here!)      (clean)        (clean)
+```
+
+**Sync mechanism:** Nodes exchange **version vectors** (latest timestamp per author) to discover what each side is missing, then send individual signed entries. This is simpler than iroh-docs' range-based set reconciliation, but sufficient because the number of writers per user document is small (bounded by nodes in a key tree).
+
+**Key tree sync** is handled as a special case — key tree entries (child authorizations, revocations, heir designations) are **self-authenticating** (each entry is a signed statement verifiable from the signature chain alone). The key tree syncs first and establishes the authority context for all other data.
+
+**Entry validation:** Every incoming content entry is checked against the current key tree state. If the author's Identity node has been revoked, the entry is rejected at the protocol level — it never enters the local store. This is the critical advantage over iroh-docs, where filtering could only happen *after* data was already synced and stored.
 
 For each user identity:
-- The user's identity data (name, bio, avatar hash, key tree) is stored as an `iroh-docs` Document.
-- Each node in the user's key tree is an Author with write access.
-- Any node can update the profile, and changes sync automatically to all other nodes holding a replica.
-- **Conflict resolution is our responsibility.** For simple fields (name, bio), we use **last-writer-wins by timestamp**. For more complex data in the future (e.g., social graphs, collaborative content), we could layer a CRDT library like Automerge on top, using Iroh as the transport.
+- The user's identity data (key tree, profile, content) is synced via the Rettro sync protocol.
+- Each node in the user's key tree signs its own entries.
+- Any non-revoked node can update data, and changes sync to all other nodes holding a replica.
+- **Conflict resolution:** For simple fields (name, bio), we use **last-writer-wins by timestamp** among non-revoked authors. For more complex data in the future (e.g., collaborative content), we could layer a CRDT library like Loro on top.
 
 ### `iroh-blobs` → Large Content
 
 Content-addressed immutable data, referenced by BLAKE3 hash. Used for:
 - Profile pictures and media.
 - Larger content payloads (posts with images, attachments).
-- `iroh-docs` entries store blob hashes as values — the actual data is fetched via `iroh-blobs`.
+- Sync entries store blob hashes as values — the actual data is fetched via `iroh-blobs`.
+
+`iroh-blobs` is unaffected by the revocation model because blobs are immutable and content-addressed — there is no concept of "author" or "write access" at the blob level. A blob is just bytes identified by a hash.
 
 ### `iroh-gossip` → Real-Time Notifications
 
 Epidemic broadcast messaging to topic subscribers (HyParView/PlumTree). Used for:
 - Notifying followers that an identity's profile has changed.
 - Real-time message delivery.
-- Signaling to `iroh-docs` that a sync is needed.
+- Signaling that a sync is needed.
+
+`iroh-gossip` is compatible with the revocation model because gossip is **ephemeral** — messages are broadcast and not persisted. Outbound gossip messages are signed so receivers can validate the author against the key tree and discard messages from revoked nodes. For private topics (e.g., DM signaling), per-topic encryption keys are rotated when a node is revoked.
 
 ### `pkarr` + Mainline DHT → Discovery (Liveness Signal)
 
@@ -298,7 +323,7 @@ Node X encounters public key K0
   → Miss? Query Mainline DHT for K0 via pkarr
   → Get back addresses of nodes currently serving K0's data
   → Connect to one of those nodes via Iroh
-  → Fetch K0's iroh-docs Document (name, bio, avatar, key tree)
+  → Sync K0's identity data via Rettro sync protocol (key tree, profile, content)
   → Cache locally
   → Future lookups are instant cache hits
 ```
@@ -313,7 +338,7 @@ Node X encounters public key K0
 | Web framework | **Axum** | Carried over from old codebase |
 | Async runtime | **Tokio** | Carried over from old codebase |
 | P2P connections | **iroh** | QUIC-based, NAT-traversing p2p connections |
-| Data sync | **iroh-docs** | Multi-writer key-value sync (set reconciliation) |
+| Data sync | **Rettro sync protocol** | Custom protocol over iroh QUIC streams with key-tree validation |
 | Content storage | **iroh-blobs** | Content-addressed blob storage (BLAKE3) |
 | Real-time | **iroh-gossip** | Epidemic broadcast for live notifications |
 | Discovery | **pkarr** / Mainline DHT | Decentralized identity lookup |
@@ -356,8 +381,8 @@ rettro/
 
 ## Open Questions
 
-- [x] ~~**Iroh integration depth:**~~ Resolved — use `iroh-docs` for data sync, `iroh-blobs` for content, `iroh-gossip` for real-time, `pkarr`/DHT for discovery.
-- [x] ~~**Conflict resolution:**~~ Resolved — `iroh-docs` preserves all entries from all Authors; our application layer uses last-writer-wins by timestamp for simple fields. Complex data types can layer CRDTs (e.g., Automerge) on top in the future.
+- [x] ~~**Iroh integration depth:**~~ Resolved — custom Rettro sync protocol for data sync (iroh-docs is incompatible with revocable identity), `iroh-blobs` for content, `iroh-gossip` for real-time, `pkarr`/DHT for discovery.
+- [x] ~~**Conflict resolution:**~~ Resolved — Rettro sync protocol validates entries against the key tree, rejects revoked authors, then applies last-writer-wins by timestamp for simple fields among valid authors. Complex data types can layer CRDTs (e.g., Loro) on top in the future.
 - [ ] **What social features first?** Profiles? Posts/feed? Direct messages? Following?
 - [ ] **Frontend approach:** Keep vanilla JS from old codebase, or adopt a lightweight framework?
 - [ ] **Key tree serialization format:** How is the key tree stored and transmitted? Protobuf? CBOR? Custom?
@@ -387,6 +412,9 @@ rettro/
 - [ ] Basic "ping" protocol between nodes
 
 ### M3: User Data Replication
+- [ ] Rettro sync protocol: version vector exchange over iroh QUIC streams
+- [ ] Key tree sync (self-authenticating entries)
+- [ ] Content sync with key-tree validation at the sync boundary
 - [ ] User connects to a second node
 - [ ] User's database replicates to the new node
 - [ ] Bidirectional sync between nodes
