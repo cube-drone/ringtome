@@ -2,7 +2,31 @@
 
 ## Vision
 
-Rettro is a **federated, distributed social network** built on the [Iroh](https://iroh.computer/) peer-to-peer network. Users connect to **connector nodes** — lightweight Rust servers that provide authenticated access to the p2p network. Each user has a durable, portable cryptographic identity that can roam between nodes.
+Rettro is a **distributed social network** built on the [Iroh](https://iroh.computer/) peer-to-peer network. 
+
+Rettro's aim is to provide a bunch of stupid horseshit from The Old Internet: IRC-style text chat, bulletin-board
+style posting, geocities-style "simple website authoring", webrings, hit counters, webcomics, MIDI files, and
+if we're feeling saucy maybe some mp3s. 
+
+Users connect to **connector nodes** — lightweight Rust servers that provide authenticated access to the p2p network. 
+Each user has a durable, portable cryptographic identity that can roam between nodes.
+
+It's "lightly federated" - in ATProto or Mastodon, the fediverse operators need to build large, resilient monolithic
+systems with uptime guarantees, backups, and a holistic view of their system's relationship with the whole network
+(lest their reputation tank and their system get de-listed). 
+
+The idea is that in Rettro, your identity might live across several nodes at the same time - maybe you're running a node
+on your PC, or a cheap VPS you set up, or a friend's PC. You might set up an emergency node on an old Raspberry PI. So long
+as ANY of these devices are on the network, you're on the network. A public server node offers authenticated access to 
+multiple identities, but a local node might simply protect a single identity behind a PIN code.
+
+Rettro works from a "private by default" nature - the idea is that 99.5% of the network is going to be bots or trolls,
+and instead of trying to moderate them out of a public system in an automated fashion, (increasingly impossible)
+you instead proceed by building out and explicitly modeling trust: you met Eve in person, so you know she's real,
+she met Frank in person and so you're _pretty sure_ Frank is real, but only insofar as you trust Eve, and so on.
+This is why we have a system that allows users to spin up and manage multiple "Mask" public identities - given that
+in a p2p network, you can't trust that anybody isn't a cloud of anonymous bots, it makes it much more _clear_ to users
+that they should not trust anybody if they, too, are empowered to be a cloud of disposable identities.
 
 The existing codebase (in `api/`) is a prior-generation Rust+Axum web service organized around multi-tenant communities. It will be used as a **reference and pattern library** but the new system will be built from scratch to reflect fundamentally different architectural assumptions.
 
@@ -39,9 +63,9 @@ The system is **trust-minimizing, not trustless.** A malicious node operator who
 - Each node has an **independent password** — compromising one node doesn't reveal credentials for any other.
 - The parent key can **revoke** the compromised leaf, cutting off the attacker's authority.
 - The attacker gains the ability to impersonate **one Identity node**, not the entire Identity.
-- If the mask derivation seed was decrypted on the compromised node, it can be **rotated** (the most serious consequence, but survivable).
+- Every node has access to every Mask, but, if the mask derivation seed was decrypted on the compromised node, it can be **rotated** (the most serious consequence, but survivable).
 
-This is neither trustless (you do trust each node with its own leaf key and any secrets it has decrypted) nor fully trusting (the node never holds the root key, can be revoked, and cannot compromise other nodes). The key tree architecture exists specifically to make node compromise a **recoverable event** rather than a catastrophic one.
+This is neither trustless (you do trust each node with its own leaf key and any secrets it has decrypted) nor fully trusting (the node never holds the root key, can be revoked, and cannot compromise other nodes). The key tree architecture exists specifically to make node compromise a **bad, privacy-harming, but recoverable event** rather than a fully catastrophic one.
 
 ---
 
@@ -63,13 +87,13 @@ Root Key (K0) — the user's identity IS this public key
 
 1. **Any key in the tree can authorize new child keys.** This makes it easy to add new devices or nodes.
 2. **Parent always outranks child.** A parent key can revoke any of its children (and their entire subtree).
-3. **Older sibling outranks younger sibling.** Birth order is determined by the *parent-signed creation timestamp*, making it unforgeable.
-4. **If the root disappears, children continue operating.** Any child can act as *a* root — spawning new children, interacting with the network — but cannot claim to *be* the root.
-5. **Conflicts resolve by hierarchy.** In a dispute between siblings, the older sibling wins. In a dispute between parent and child, the parent wins.
+3. **Older sibling outranks younger sibling.** The parent knows birth order and signs it to all children, making it unforgeable. (Child A gets a record with Parent as a listed usurper, Child B gets a signature with "Parent" and "Child A" listed as potential usurpers, Child C gets a signed identity with "Parent",  "Child A" and "Child B" listed as potential usurpers...)
+4. **When a child makes a new node, that node is passed up to parents**: So the root node should be aware of all of its descendants and the order in which they were added: this means that all new nodes should have every possible usurper listed with and impossible to remove from the identity. This means that older cousins also (broadly) outrank younger cousins.
+4. **If the root disappears, children continue operating.** Any child can act as *a* root — spawning new children, interacting with the network.
 
 ### Designated Heir
 
-A parent can sign a **priority statement** that overrides birth-order authority. For example, K0 can declare: *"In the event of my disappearance, K2 is my designated heir, not K1."* This allows a user to create a recovery key later and give it higher authority than older, potentially less-secure device keys.
+A parent can sign a **priority statement** that overrides birth-order authority. This propagates to all (active, live) children: K0 can declare: *"K2 is my designated heir, not K1."* This allows a user to create a recovery node later and give it higher authority than older, potentially less-secure nodes. 
 
 ### Key Storage
 
@@ -84,7 +108,7 @@ A parent can sign a **priority statement** that overrides birth-order authority.
 2. User goes to Node B and initiates a connection.
 3. Node B generates a fresh keypair (K1) locally and presents its **public key**.
 4. The public key is transferred to Node A (QR code, copy-paste, or over Iroh).
-5. On Node A, the user authorizes K1 — K0 signs K1's public key with a creation timestamp.
+5. On Node A, the user authorizes K1 — K0 signs K1's public key with the current family tree (and any designated heirs).
 6. The signed authorization is sent back to Node B.
 7. Node B now holds its own private key + the signed proof that K1 is a child of K0.
 8. User sets a **local password on Node B** (independent of Node A's password) to encrypt K1's private key at rest.
@@ -109,11 +133,11 @@ The Identity (key tree) is a **private management layer** — it handles authent
 
 A **Mask** is a public-facing persona that other people interact with. A single Identity can manage dozens or hundreds of Masks. Masks are cheap by design.
 
-### Identity vs. Mask
+### Login vs. Identity vs. Mask
 
 ```
 Identity (key tree, private, never public)
-  "I am l38f, I log in and manage my nodes"
+  "I Login to butts.node.place, which gives me access to l38f"
   │
   ├── Mask: "Curtis" (public persona, own profile, own content)
   │     └── posts, follows, profile history...
@@ -157,6 +181,8 @@ Mask operations follow the **same authority hierarchy** as the Identity tree. Th
 
 - **Authorize** — create a new Mask, or rotate a Mask to a new key.
 - **Revoke** — retire a Mask.
+
+Every Identity in a user's tree can manage _every Mask that user controls_. 
 
 Any Identity node can perform these operations — there is no root-only restriction. This preserves resilience: if the root key disappears, surviving children can still manage Masks.
 
@@ -232,6 +258,74 @@ Masks are discoverable via the same `pkarr` / Mainline DHT mechanism as any othe
 
 ---
 
+## Trust, Credibility, Interest, and Taste
+
+For every other person in my network, I have "Trust", "Credibility", "Interest", and "Taste" scores.
+
+In short:
+* **Trust** measures my confidence that they are a real person who is who they say they are.
+* **Credibility** measures my confidence in their judgement - both of others, and of news and accuracy in general.
+* **Interest** measures how relevant they, personally, are to my interests.
+* **Taste** measures how relevant their recommendations are to my interests.
+
+### Examples:
+* **My Dad**: 
+ * Trust, medium-high (I've met him in person and can validate easily that Dad is who he says he is, but he uses
+        the same password everywhere and has generally very poor opsec)
+ * Credibility, medium-low (That poor opsec also translates to low "scam-literacy" about what is and is not real)
+ * Interest, very-high (I love my dad and want to see everything he, personally, posts.)
+ * Taste, low (My dad likes a lot of fishing content, which I generally don't want to see)
+* **The Globe and Mail**:
+ * Trust, very-high (Their identity is tied to a public DNS record validating that they are who they say they are.)
+ * Credibility, very-high (Their judgement adheres to journalistic standards vis-a-vis truth verification)
+ * Interest, medium (They produce a lot of content that's kind of interesting to me)
+ * Taste, medium (Kind of N/A, they don't recommend much outside of their own network and I'm not sure how much I care?)
+* **Gullible Gary**: 
+ * Trust, medium-low (I've met them in person but they fall for every scam in the book.)
+ * Credibility, very-low (Their feed is a parade of misinformation they half-remembered from anti-vaccine websites)
+ * Interest, medium (Not a lot of good content coming out of Gullible Gary)
+ * Taste, high (Actually Gullible Gary follows a lot of pretty interesting content)
+* **Auteur X**:
+ * Trust, medium (I've never met them in person, but a lot of people seem to think they're the Author of Property I Like)
+ * Credibility, nil (They seem to know loads of people and I don't trust their judgement at all because I don't know them)
+ * Interest, very high (I love Property I Like, it's great, I want to see it every time they post)
+ * Taste, medium (They like a lot of stuff of kind of variable quantity, I don't want to see all of the sausage)
+
+We might also consider topic tags: I'm highly interested in "#computers" and "#distributedSystems" 
+and not at all interested in "#fishing" and "#portugal" - so we might boost content with tags I like, even from less reliable sources,
+and deprioritize content with tags I don't, even from reliable ones.
+
+This model also creates _trees_ of both trust and interest. I have these scores for everybody I know, but they also have
+these scores for everybody THEY know, and then those people have these scores for everybody THEY know, and so on and
+so forth. At first I had imagined that all trees would be public knowledge - then you could simply calculate your trust in
+any other person by multiplying trust and credibility all the way through the chain and picking the best available chain: 
+
+Finding the _best, available, accessible chain_ for another user: 
+
+* I trust Albert 50% with Credibility 50%, and Albert trusts Weird Dave 5% with Credibility 5%, and Weird Dave trusts Dirty Harry 95%
+ * This creates a chain with trust 0.05% for Dirty Harry
+* I trust Bethany 30% with Credibility 95%, and Bethany trusts Goblin Greg 50% with Credibility 50%, and Goblin Greg trusts Dirty Harry 50%
+ * This creates a chain with trust 3% for Dirty Harry
+
+So in this situation, I inherit the 3% trust for Dirty Harry. 
+
+Interest works largely the same way.
+
+But then I realized that... actually making your entire trust and interest graph fully public is probably not a privacy win, and I think my mom might be hurt
+if she saw my low credibility score for her. 
+
+So, solutions:
+
+1. Lower resolution: people who can see my graph can only see "end scores", not how I calculated those scores or whether or not I've personally added that person to my network.
+2. Lower resolution: end-scores are rounded down to the nearest X% based on access level.
+3. Access levels: "close" users can see my entire graph, at 5% resolution, and can only see things >= 5% resolution.
+4. Access levels: "casual" users can see my entire graph, at 25% resolution, and can only see things >= 25%.
+5. Access levels: "default" users can not see my graph at all. 
+6. Private graph nodes: I can make specific nodes invisible to everyone but me. These nodes are also not included in the graph calculations I share with others.
+7. Public graph nodes: Users can make nodes of their graph globally public: "I trust the Globe and Mail". "I am interested in Chair Anime Author".
+
+---
+
 ## Data Layer
 
 ### SQLite Strategy
@@ -254,7 +348,7 @@ Each connector node maintains:
 - The per-user SQLite database is the local materialized view of synced data.
 - Both nodes continue to sync the user's data bidirectionally as long as the user is active on both.
 - When multiple nodes write to the same key, conflicts are resolved using **last-writer-wins by timestamp** for simple fields (name, bio, etc.). More complex data types can layer a CRDT library on top in the future.
-- **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries from revoked Identity nodes are **rejected at the sync boundary** — they never enter the local store.
+- **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries are stored **signed** so that they can be retroactively revoked if necessary.
 
 ---
 
