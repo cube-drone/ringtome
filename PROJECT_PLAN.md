@@ -24,9 +24,10 @@ Rettro works from a "private by default" nature - the idea is that 99.5% of the 
 and instead of trying to moderate them out of a public system in an automated fashion, (increasingly impossible)
 you instead proceed by building out and explicitly modeling trust: you met Eve in person, so you know she's real,
 she met Frank in person and so you're _pretty sure_ Frank is real, but only insofar as you trust Eve, and so on.
-This is why we have a system that allows users to spin up and manage multiple "Mask" public identities - given that
-in a p2p network, you can't trust that anybody isn't a cloud of anonymous bots, it makes it much more _clear_ to users
-that they should not trust anybody if they, too, are empowered to be a cloud of disposable identities.
+This is why identities are cheap and users are encouraged to run several - a main identity, a pseudonym for the
+webcomic, a burner for the forum argument. Given that in a p2p network you can't trust that anybody isn't a cloud of
+anonymous bots, it makes it much more _clear_ to users that they should not trust anybody if they, too, are empowered
+to be a cloud of disposable identities.
 
 The existing codebase (in `api/`) is a prior-generation Rust+Axum web service organized around multi-tenant communities. It will be used as a **reference and pattern library** but the new system will be built from scratch to reflect fundamentally different architectural assumptions.
 
@@ -59,11 +60,14 @@ A connector node is a **trusted agent** for its users — analogous to an email 
 
 The system is **trust-minimizing, not trustless.** A malicious node operator who serves the web UI can exfiltrate key material — but the architecture deliberately limits what they can capture and makes compromise recoverable:
 
-- A node holds **only one leaf key**, not the root key or any other node's keys.
+- A node holds **only one leaf key per identity it agents**, never a root key or another node's keys.
 - Each node has an **independent password** — compromising one node doesn't reveal credentials for any other.
 - The parent key can **revoke** the compromised leaf, cutting off the attacker's authority.
-- The attacker gains the ability to impersonate **one Identity node**, not the entire Identity.
-- Every node holds every Mask key (v1 policy), so a compromised node burns all Masks: they must all be **rotated**, and the rotation publicly reveals which Masks shared an owner. This is the most serious consequence of node compromise - survivable, but real (see Masks).
+- The attacker gains the ability to impersonate **one node of an identity**, not the entire identity.
+- A node that agents **several of a user's identities** necessarily knows they share an owner. A compromised or
+  malicious node can reveal that linkage - the most serious privacy consequence of node compromise, and unrecoverable
+  once out. Users who want an identity unlinkable even under node compromise should agent it from a separate node
+  account (or separate node).
 
 This is neither trustless (you do trust each node with its own leaf key and any secrets it has decrypted) nor fully trusting (the node never holds the root key, can be revoked, and cannot compromise other nodes). The key tree architecture exists specifically to make node compromise a **bad, privacy-harming, but recoverable event** rather than a fully catastrophic one.
 
@@ -227,142 +231,80 @@ doubles as an eclipse-resistance layer for authority propagation.
 
 ---
 
-## Masks: Public-Facing Personas
+## Running Multiple Identities
 
-The Identity (key tree) is a **private management layer** — it handles authentication, node management, and cross-node access. It never appears in public content.
-
-A **Mask** is a public-facing persona that other people interact with. A single Identity can manage dozens or hundreds of Masks. Masks are cheap by design.
-
-### Login vs. Identity vs. Mask
+There is exactly **one identity primitive** - the key tree. A "persona" is not a protocol concept; it is what a
+client calls one of the several identities it manages. Users are expected and encouraged to run more than one:
 
 ```
-Identity (key tree, private, never public)
-  "I Login to butts.node.place, which gives me access to l38f"
+Node account on butts.node.place (username + password, local to that node)
   │
-  ├── Mask: "Curtis" (public persona, own profile, own content)
+  ├── Identity: "Curtis" (own key tree, own profile, own content, own trust position)
+  │     └── posts, follows, vouches, profile history...
+  │
+  ├── Identity: "Corff Burblepunk" (a completely separate key tree)
   │     └── posts, follows, profile history...
   │
-  ├── Mask: "Corff Burblepunk" (separate public persona)
-  │     └── posts, follows, profile history...
-  │
-  └── Mask: "Hats Ahoy" → later renamed "Hat Fan"
+  └── Identity: "Hats Ahoy" → later renamed "Hat Fan"
         └── post at T1: display name was "Hats Ahoy"
         └── post at T2: display name is now "Hat Fan"
-        └── (same Mask pubkey — linkable to each other, but NOT to the other Masks)
+        └── (same root pubkey — its history is linkable to itself, but not to the other identities)
 ```
 
-- **From the outside, Masks ARE the identities.** Following, messaging, profile lookup — all happen at the Mask level.
-- **The Identity-to-Mask link is private.** There is no public record connecting "Curtis" and "Corff Burblepunk".
-- **Masks know their Identity.** The system can verify authorization internally.
+- **One login, many identities.** A node account (see Authentication) can agent any number of identities: one local
+  password, several leaf keys, a persona switcher in the UI. Creating a new identity is two keygens and a signature
+  (root + recovery key), cheap enough to be disposable.
+- **No linkage exists anywhere.** Two identities share no keys, no records, no cryptographic relationship of any
+  kind. There is nothing connecting "Curtis" and "Corff Burblepunk" - not a hidden record, not a commitment, nothing
+  to leak. The only places the linkage exists are the node accounts that agent both (see Trust Model) and the user's
+  own head.
+- **Each identity carries its own everything.** Its own succession machinery, recovery key, trust position, vouches,
+  and reputation. A pseudonym starts from zero and earns its own name - vouches made for your main identity do not
+  transfer, because a transfer would *be* the link.
+- **Voluntary linkage is a cross-signature.** To prove two identities share an owner, publish a statement signed by
+  both roots ("I am also X"). Nothing needs to be pre-arranged at creation time.
 
-**The promise, stated plainly:** Masks are **pseudonymous from one another, not anonymous.** No casual observer,
-crawler, or platform-level query can connect two Masks. What *can* connect them: determined network observation
-(see Hosting below), a rotation event (which deliberately reveals the owner of the rotated Masks), and the
-old-fashioned channels no protocol controls - writing style, posting schedule, what you talk about. Users should
-hear this up front, not discover it.
-
-### Mask Keys
-
-Each Mask is an **independent, randomly generated ed25519 keypair.** There is no cryptographic relationship between
-any two Masks, or between a Mask and the Identity - the Identity-to-Mask link exists only as a private record in the
-user's synced data. Unlinkability falls out for free: given a Mask's public key, there is nothing to
-reverse-engineer, because no mathematical link exists.
-
-- Creating a Mask is trivial: generate a keypair, record it, sync it.
-- Mask private keys are encrypted and synced to authorized Identity nodes via the **Rettro sync protocol**, the same
-  channel that already carries the user's other secrets and profile data.
-- **V1 policy: all Masks sync to all Identity nodes.** A compromised node therefore burns all Masks (see Compromise
-  Scenario). Per-mask distribution - each node receiving only the Mask keys it needs, bounding what one compromise
-  can leak - is a *later* refinement; independent keypairs make it possible, but the granularity is not worth its
-  bookkeeping in an early build.
-
-### Rotation Authority
-
-The Identity's authority over a Mask is established at creation. The Mask's public record includes a **commitment**:
-`H(identity_root_pubkey || salt)`, with the salt kept in the user's private data. To rotate or revoke the Mask, an
-Identity-tree key publishes the rotation statement and **reveals the salt** - anyone can check the commitment and
-verify that the claiming Identity is the one the Mask was born bound to. The link stays hidden until the moment the
-owner chooses to prove it.
-
-### Operations & Authority
-
-Mask operations follow the **same authority hierarchy** as the Identity tree. There are only two primitives:
-
-- **Authorize** — create a new Mask, or rotate a Mask to a new key.
-- **Revoke** — retire a Mask.
-
-Every Identity in a user's tree can manage _every Mask that user controls_. 
-
-Any Identity node can perform these operations — there is no root-only restriction. This preserves resilience: if the root key disappears, surviving children can still manage Masks.
-
-When two Identity nodes issue conflicting Mask operations, the conflict is resolved by the key tree's rank-path order (see Identity System rules). **"Override" is not an operation** — it's a resolution rule that every node in the network applies independently when it encounters conflicting signed statements.
-
-### Compromise Scenario
-
-```
-K0 (root)
-├── K1 (compromised)
-└── K2 (legitimate)
-
-1. K1 maliciously rotates Mask M to a key it controls
-2. K0 notices suspicious activity
-3. K0 signs: "K1 is revoked"
-4. K0 signs: "Mask M is rotated to new key Y"
-5. Network sees both statements, applies hierarchy:
-   → K0 outranks K1 (parent > child)
-   → K1's rotation is invalid
-   → K0's rotation is canonical
-6. Nodes that temporarily accepted K1's rotation self-correct
-   once K0's statements propagate (eventual consistency)
-```
-
-**Privacy tradeoff:** Rotation **reveals the link** between the Identity and the specific rotated Mask. This is accepted because:
-- Rotation only happens during a compromise — already a crisis.
-- Only the specific compromised Mask is linked; other Masks remain private.
-- The alternative (no rotation authority) is worse.
-
-Under the v1 all-Masks-on-all-nodes policy, a compromised node leaks every Mask key, so the response is to rotate
-**all** Masks - and doing so reveals, through the correlated rotation statements, which Masks shared an owner. This is
-the "burn everything" scenario: a genuine privacy loss, accepted because it is rare (it requires node compromise, already
-a crisis), it is survivable (Masks are cheap; rebuilding is inconvenient, not catastrophic), and the alternative - no
-rotation authority - is worse.
+**The promise, stated plainly:** separate identities are **pseudonymous from one another, not anonymous.** No
+observer, crawler, or platform-level query can connect them from protocol data - there is no protocol data connecting
+them. What *can* connect them: the nodes that agent or front them (below), and the old-fashioned channels no protocol
+controls - writing style, posting schedule, what you talk about. Users should hear this up front, not discover it.
 
 ### Temporal Profile State
 
-Each Mask's profile data (name, bio, avatar hash) is synced across nodes via the Rettro sync protocol. Entries carry timestamps, giving the profile a natural history.
+Each identity's profile data (name, bio, avatar hash) is synced across its nodes via the Rettro sync protocol.
+Entries carry timestamps, giving the profile a natural history.
 
-When content is created, it references the Mask's public key and includes a timestamp. This enables:
-- **"Who posted that?"** — look up the Mask's public key.
-- **"What did they look like when they posted?"** — look up the Mask's profile state at that timestamp.
-- **Name changes are visible:** A Mask that was "Hats Ahoy" at T1 and "Hat Fan" at T2 shows both names on the respective content, but both are clearly the same Mask (same public key).
+When content is created, it references the identity's root public key and includes a timestamp. This enables:
+- **"Who posted that?"** — look up the identity.
+- **"What did they look like when they posted?"** — look up the profile state at that timestamp.
+- **Name changes are visible:** an identity that was "Hats Ahoy" at T1 and "Hat Fan" at T2 shows both names on the
+  respective content, but both are clearly the same identity (same root pubkey).
 
-### Hosting, Discovery, and the Colocation Problem
+### Hosting and the Colocation Problem
 
-Masks are discoverable via `pkarr` / Mainline DHT like any other public key: the Mask's record lists the addresses of
-nodes currently serving it. But those records are public metadata, and they are the main linkability threat to Masks:
-anyone can query a batch of Mask pubkeys and **cluster them by their address sets.** Two Masks consistently served
-from the same addresses are the same person, with high confidence, for free. A Mask's unlinkability is bounded by
-**the crowd of the nodes serving it** - colocation on a node hosting 500 users' Masks says almost nothing; colocation
-on a personal Raspberry Pi with one user says everything.
+pkarr records are public metadata: anyone can query a batch of pubkeys and **cluster identities by their address
+sets.** Two identities consistently served from the same addresses belong to the same person, with high confidence,
+for free. An identity's unlinkability is therefore bounded by **the crowd of the nodes serving it** - colocation on a
+node hosting 500 users says almost nothing; colocation on a personal Raspberry Pi with one user says everything.
 
-The design lever is that **serving requires no keys.** Content is signed by the Mask and blobs are content-addressed,
-so any cooperating node can replicate and serve a Mask's data without any ability to author as it. This splits the
-roles:
+The design lever is that **serving requires no keys.** Content is signed and blobs are content-addressed, so any
+cooperating node can replicate and serve an identity's public data without any ability to author as it. This splits
+the roles:
 
-- **Authoring** happens wherever the Mask's private key lives (the user's Identity nodes).
-- **Serving/fronting** is delegable: the pkarr record points at whichever nodes *serve* the Mask, and those can be
-  large multi-tenant community nodes where the crowd is big. Different Masks can front through different nodes,
-  keeping their address sets disjoint. The personal node authors and pushes over p2p sync; well-populated nodes face
-  the public.
+- **Authoring** happens wherever the identity's leaf keys live.
+- **Serving/fronting** is delegable: the pkarr record points at whichever nodes *serve* the identity, and those can
+  be large multi-tenant community nodes where the crowd is big. Different identities can front through different
+  nodes, keeping their address sets disjoint. The personal node authors and pushes over p2p sync; well-populated
+  nodes face the public.
 
-Guidance to make explicit in the UI: **fronting all your Masks from a single-user personal node publicly links
-them.** Users running the celebrated self-host setup (the PC, the cheap VPS, the emergency Pi) should front Masks
-they want unlinked through community nodes, or accept the linkage.
+Guidance to make explicit in the UI: **fronting all your identities from a single-user personal node publicly links
+them.** Users running the celebrated self-host setup (the PC, the cheap VPS, the emergency Pi) should front
+identities they want unlinked through community nodes, or accept the linkage.
 
-Honest limits: fronting through big nodes defeats address clustering, not everything. Timing correlation (Masks
+Honest limits: fronting through big nodes defeats address clustering, not everything. Timing correlation (identities
 online in the same windows, posting seconds apart) accrues to any patient observer regardless of hosting; the
-fronting nodes themselves learn which Masks one origin pushes to them (they become trusted parties for that link);
-and stylometry needs no network access at all. This is why the Mask promise is pseudonymity, not anonymity.
+fronting nodes themselves learn which identities one origin pushes to them (they become trusted parties for that
+link); and stylometry needs no network access at all. This is why the promise is pseudonymity, not anonymity.
 
 ---
 
@@ -374,6 +316,9 @@ and stylometry needs no network access at all. This is why the Mask promise is p
 - The password is used to encrypt/decrypt the user's key material locally. It is **never transmitted over the p2p network**.
 - Password hashing uses **Argon2**.
 - This is the simplest possible onboarding — no email, no phone, no external dependencies.
+- A node account can agent **multiple identities**: one login decrypts the leaf keys of every identity the user has
+  attached to that account, and the UI offers a switcher. The account-to-identities mapping is local to the node and
+  never leaves it.
 
 ### Phase 2: Passkeys / WebAuthn (Planned)
 
@@ -630,7 +575,7 @@ The vouch graph is the most sensitive dataset in Rettro - a real-world map of wh
 
 - **Content and tags.** Peter posts under `#distributedSystems`; I find Peter by the content, no edge traversal needed. This is the primary channel and it keeps the network lively without exposing anyone's associations.
 - **DNS-anchored identities.** I can find the Globe and Mail (or the Rettro seed account) directly by name, with no vouch path required. This is also how a brand-new user with zero vouches bootstraps a first trust edge.
-- **Seed / directory accounts.** A curated on-ramp account (see cold-start) that follows and lists interesting real humans and masks, giving newcomers somewhere to start.
+- **Seed / directory accounts.** A curated on-ramp account (see cold-start) that follows and lists interesting identities, giving newcomers somewhere to start.
 - **Opt-in discoverable overlay.** A *subset* of vouch edges that their owners deliberately mark discoverable. This is a strictly smaller, volunteered graph - "I trust the Globe and Mail" published on purpose - and it is the only graph strangers may traverse. The full trust graph stays private and still powers each user's own trust computation locally.
 
 Two honest limits to design around:
@@ -737,6 +682,7 @@ rettro/
 
 ### M5: Social Features
 - [ ] User profiles
+- [ ] Multiple identities per node account (identity switcher)
 - [ ] Following / social graph
 - [ ] Posts / feed
 - [ ] Direct messages
