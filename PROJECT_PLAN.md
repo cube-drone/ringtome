@@ -63,7 +63,7 @@ The system is **trust-minimizing, not trustless.** A malicious node operator who
 - Each node has an **independent password** — compromising one node doesn't reveal credentials for any other.
 - The parent key can **revoke** the compromised leaf, cutting off the attacker's authority.
 - The attacker gains the ability to impersonate **one Identity node**, not the entire Identity.
-- Every node has access to every Mask, but, if the mask derivation seed was decrypted on the compromised node, it can be **rotated** (the most serious consequence, but survivable).
+- Every node holds every Mask key (v1 policy), so a compromised node burns all Masks: they must all be **rotated**, and the rotation publicly reveals which Masks shared an owner. This is the most serious consequence of node compromise - survivable, but real (see Masks).
 
 This is neither trustless (you do trust each node with its own leaf key and any secrets it has decrypted) nor fully trusting (the node never holds the root key, can be revoked, and cannot compromise other nodes). The key tree architecture exists specifically to make node compromise a **bad, privacy-harming, but recoverable event** rather than a fully catastrophic one.
 
@@ -252,28 +252,37 @@ Identity (key tree, private, never public)
 ```
 
 - **From the outside, Masks ARE the identities.** Following, messaging, profile lookup — all happen at the Mask level.
-- **The Identity-to-Mask link is private.** Outsiders cannot discover that "Curtis" and "Corff Burblepunk" are the same person.
+- **The Identity-to-Mask link is private.** There is no public record connecting "Curtis" and "Corff Burblepunk".
 - **Masks know their Identity.** The system can verify authorization internally.
 
-### Key Derivation
+**The promise, stated plainly:** Masks are **pseudonymous from one another, not anonymous.** No casual observer,
+crawler, or platform-level query can connect two Masks. What *can* connect them: determined network observation
+(see Hosting below), a rotation event (which deliberately reveals the owner of the rotated Masks), and the
+old-fashioned channels no protocol controls - writing style, posting schedule, what you talk about. Users should
+hear this up front, not discover it.
 
-Mask keypairs are **derived** from a shared **mask derivation seed** using a deterministic key derivation function:
+### Mask Keys
 
-```
-mask_private_key = derive(seed, mask_index)
-mask_public_key  = corresponding public key
-```
+Each Mask is an **independent, randomly generated ed25519 keypair.** There is no cryptographic relationship between
+any two Masks, or between a Mask and the Identity - the Identity-to-Mask link exists only as a private record in the
+user's synced data. Unlinkability falls out for free: given a Mask's public key, there is nothing to
+reverse-engineer, because no mathematical link exists.
 
-- The **mask derivation seed** is generated when the Identity is created.
-- The seed is encrypted and synced to all authorized nodes via the **Rettro sync protocol** (see Iroh Protocol Mapping below).
-- Any authorized node can independently derive the same Mask keypairs — **no Mask private keys are ever explicitly synced.**
-- Creating a new Mask is trivial: increment the index, derive, done.
+- Creating a Mask is trivial: generate a keypair, record it, sync it.
+- Mask private keys are encrypted and synced to authorized Identity nodes via the **Rettro sync protocol**, the same
+  channel that already carries the user's other secrets and profile data.
+- **V1 policy: all Masks sync to all Identity nodes.** A compromised node therefore burns all Masks (see Compromise
+  Scenario). Per-mask distribution - each node receiving only the Mask keys it needs, bounding what one compromise
+  can leak - is a *later* refinement; independent keypairs make it possible, but the granularity is not worth its
+  bookkeeping in an early build.
 
-### Why Derivation Matters
+### Rotation Authority
 
-- **No key sync needed.** All authorized nodes derive the same Mask keys from the shared seed. The seed is a small secret (32 bytes), not a collection of private keys.
-- **Rotation authority.** The Identity root key can mathematically prove it created a given Mask (by demonstrating the derivation). This makes the Identity the **undeniable authority** for Mask rotation and revocation.
-- **Privacy preserved.** Given only a Mask's public key, you cannot reverse-engineer the Identity root key or the derivation seed.
+The Identity's authority over a Mask is established at creation. The Mask's public record includes a **commitment**:
+`H(identity_root_pubkey || salt)`, with the salt kept in the user's private data. To rotate or revoke the Mask, an
+Identity-tree key publishes the rotation statement and **reveals the salt** - anyone can check the commitment and
+verify that the claiming Identity is the one the Mask was born bound to. The link stays hidden until the moment the
+owner chooses to prove it.
 
 ### Operations & Authority
 
@@ -286,7 +295,7 @@ Every Identity in a user's tree can manage _every Mask that user controls_.
 
 Any Identity node can perform these operations — there is no root-only restriction. This preserves resilience: if the root key disappears, surviving children can still manage Masks.
 
-When two Identity nodes issue conflicting Mask operations, the conflict is resolved by the existing hierarchy rules (parent > child, older sibling > younger sibling). **"Override" is not an operation** — it's a resolution rule that every node in the network applies independently when it encounters conflicting signed statements.
+When two Identity nodes issue conflicting Mask operations, the conflict is resolved by the key tree's rank-path order (see Identity System rules). **"Override" is not an operation** — it's a resolution rule that every node in the network applies independently when it encounters conflicting signed statements.
 
 ### Compromise Scenario
 
@@ -312,7 +321,11 @@ K0 (root)
 - Only the specific compromised Mask is linked; other Masks remain private.
 - The alternative (no rotation authority) is worse.
 
-If the compromise is severe enough (derivation seed itself leaked), the Identity generates a **new seed** and rotates all Masks. This is the "burn everything" scenario, but Masks are cheap — rebuilding is inconvenient, not catastrophic.
+Under the v1 all-Masks-on-all-nodes policy, a compromised node leaks every Mask key, so the response is to rotate
+**all** Masks - and doing so reveals, through the correlated rotation statements, which Masks shared an owner. This is
+the "burn everything" scenario: a genuine privacy loss, accepted because it is rare (it requires node compromise, already
+a crisis), it is survivable (Masks are cheap; rebuilding is inconvenient, not catastrophic), and the alternative - no
+rotation authority - is worse.
 
 ### Temporal Profile State
 
@@ -323,9 +336,33 @@ When content is created, it references the Mask's public key and includes a time
 - **"What did they look like when they posted?"** — look up the Mask's profile state at that timestamp.
 - **Name changes are visible:** A Mask that was "Hats Ahoy" at T1 and "Hat Fan" at T2 shows both names on the respective content, but both are clearly the same Mask (same public key).
 
-### Discovery
+### Hosting, Discovery, and the Colocation Problem
 
-Masks are discoverable via the same `pkarr` / Mainline DHT mechanism as any other public key. The Mask's public key is published to the DHT by whichever nodes are hosting it. Lookup works identically to the Identity discovery flow, but at the Mask level.
+Masks are discoverable via `pkarr` / Mainline DHT like any other public key: the Mask's record lists the addresses of
+nodes currently serving it. But those records are public metadata, and they are the main linkability threat to Masks:
+anyone can query a batch of Mask pubkeys and **cluster them by their address sets.** Two Masks consistently served
+from the same addresses are the same person, with high confidence, for free. A Mask's unlinkability is bounded by
+**the crowd of the nodes serving it** - colocation on a node hosting 500 users' Masks says almost nothing; colocation
+on a personal Raspberry Pi with one user says everything.
+
+The design lever is that **serving requires no keys.** Content is signed by the Mask and blobs are content-addressed,
+so any cooperating node can replicate and serve a Mask's data without any ability to author as it. This splits the
+roles:
+
+- **Authoring** happens wherever the Mask's private key lives (the user's Identity nodes).
+- **Serving/fronting** is delegable: the pkarr record points at whichever nodes *serve* the Mask, and those can be
+  large multi-tenant community nodes where the crowd is big. Different Masks can front through different nodes,
+  keeping their address sets disjoint. The personal node authors and pushes over p2p sync; well-populated nodes face
+  the public.
+
+Guidance to make explicit in the UI: **fronting all your Masks from a single-user personal node publicly links
+them.** Users running the celebrated self-host setup (the PC, the cheap VPS, the emergency Pi) should front Masks
+they want unlinked through community nodes, or accept the linkage.
+
+Honest limits: fronting through big nodes defeats address clustering, not everything. Timing correlation (Masks
+online in the same windows, posting seconds apart) accrues to any patient observer regardless of hosting; the
+fronting nodes themselves learn which Masks one origin pushes to them (they become trusted parties for that link);
+and stylometry needs no network access at all. This is why the Mask promise is pseudonymity, not anonymity.
 
 ---
 
