@@ -347,6 +347,32 @@ online in the same windows, posting seconds apart) accrues to any patient observ
 fronting nodes themselves learn which identities one origin pushes to them (they become trusted parties for that
 link); and stylometry needs no network access at all. This is why the promise is pseudonymity, not anonymity.
 
+### Rehosting Policy: Pull, Not Push
+
+Anyone *can* serve any identity's content - but no node is obligated to serve anything. If any identity could walk up
+to any node and say "rehost this for me," attackers distributing CSAM or hate speech would reliably turn the whole
+network into loud, nasty rebroadcasters. So replication is **demand-driven**: a node fronts an identity because
+someone accountable *on that node* asked for it, never because the identity requested it.
+
+The mechanism is the concepts we already have, chained:
+
+- **Trust** gates who gets an account on a node (the operator's admission policy).
+- **Follow** is the demand signal: when a node's own users follow an identity, the node fronts it.
+- **Serving** is allocated only along that demand. Nobody can *push* content onto a node; they can only be *wanted*
+  onto it.
+
+Per-node policy dial: **closed nodes** front only what their users follow. **Open nodes** may accept unsolicited
+fronting as a public service, with per-source quotas so they make poor amplifiers - and can tighten to follow-driven
+mode if burned.
+
+Two consequences worth stating now:
+
+- **A serving-follow is public.** If your follow causes your node to front an identity, that fronting appears in
+  pkarr records. The UI must distinguish "follow quietly" from "follow and help host" or users will leak interest
+  they meant to keep private.
+- **This bounds operator liability.** A node operator's exposure is limited to what their own accountable users
+  pulled in - a defensible position in a way "we rebroadcast whatever arrives" is not.
+
 ---
 
 ## Authentication
@@ -517,14 +543,20 @@ horizon depth, fade curve, the feed/DM floor. It is a bug-finder and a dial, nev
 Each connector node maintains:
 
 - **Node database** (`node.db`): Node configuration, known peers, replication state, network metadata.
-- **Per-user databases** (`users/<pubkey>.db`): Each user's data lives in their own SQLite file. This is the unit of replication — when a user connects to a new node, their entire database syncs over.
+- **Per-user databases** (`users/<pubkey>.db`): Each user's data lives in their own SQLite file — a **local
+  materialized view** of that user's signed sync entries. The SQLite file itself is never transmitted: when a user
+  connects to a new node, the node syncs the user's entries via the Rettro sync protocol (validating each against the
+  key tree as it arrives) and builds its own database from them.
 
 ### Why Per-User Databases?
 
-- **Portability:** A user's identity and data is a single file. Easy to replicate, backup, export.
 - **Isolation:** One user's data can't accidentally leak into another's queries.
-- **Sync granularity:** Iroh replicates at the user level, not the node level. Only sync what's needed.
-- **Offline-friendly:** A user's database is fully self-contained.
+- **Sync granularity:** replication scope is naturally per-user. A node only syncs (and stores) the users it agents
+  or fronts.
+- **Disposability:** because the database is a materialized view, it can be rebuilt at any time from the signed
+  entries — after a schema migration, a corruption, or a Repudiation Revocation that retroactively quarantines
+  entries. The signed entry log is the source of truth; SQLite is a query-shaped cache of it.
+- **Offline-friendly:** a user's database is fully self-contained for serving and authoring while disconnected.
 
 ### Replication over Iroh
 
@@ -712,7 +744,7 @@ rettro/
 - [ ] Key tree sync (self-authenticating entries)
 - [ ] Content sync with key-tree validation at the sync boundary
 - [ ] User connects to a second node
-- [ ] User's database replicates to the new node
+- [ ] User's entries sync to the new node, which materializes its own per-user database
 - [ ] Bidirectional sync between nodes
 
 ### M4: Key Tree Operations
