@@ -536,6 +536,121 @@ horizon depth, fade curve, the feed/DM floor. It is a bug-finder and a dial, nev
 
 ---
 
+## The Identity-Managed Append-Only Log (IM-AOL)
+
+The IM-AOL is the data structure underneath everything: the key tree, revocations, posts, follows, and profile state
+are all entries in signed append-only logs. Retirement's "final sequence number," repudiation's "cut-point,"
+equivocation detection, the sync protocol's version vectors, and the rebuild-the-SQLite-view story all resolve to
+properties of this one structure.
+
+### Chains: One Per Key, Per Service
+
+Every key in an identity's tree maintains its own set of **chains**, one per service:
+
+```
+Key K1 (the leaf on your VPS) maintains:
+  ├── identity-public chain    (key-tree statements: authorizations, revocations)
+  ├── identity-private chain   (encrypted; node-management data, synced only to own nodes)
+  ├── posts chain              (public content)
+  ├── public-follows chain     (serving-follows, vouch publications)
+  ├── private chain            (encrypted: quiet follows, trust edges, settings)
+  └── ...future services get their own chains
+```
+
+- **Single-writer:** a chain is appended to only by its own key. Your phone's key writes to your phone's chains;
+  your VPS's key to the VPS's. No coordination, no consensus, works fully offline.
+- **Identity/content separation:** the identity chains are tiny and security-critical - every relying party fetches
+  them to validate authority, without wading through post history. Content chains are bulky, low-stakes, and fetched
+  only by followers and fronting nodes.
+- **Public/private separation is per-chain, not per-entry:** private entries live on their own encrypted chains
+  rather than encrypted-inline on public ones, so the count and timing of your private activity is not public
+  metadata, and public chain continuity is verifiable without seeing gaps.
+
+### Hash Chaining
+
+Each entry is `{seq, prev_hash, type, timestamp (claimed), payload or blob hash, signature}`. Sequence numbers are
+dense (no gaps); `prev_hash` is the hash of the previous entry; the signature covers everything, `prev_hash`
+included. This buys three properties:
+
+- **The past is welded shut.** Altering any historical entry changes its hash, which breaks the signed `prev_hash`
+  in the next entry, and so on - tampering forces re-forging everything after the point of change, which every
+  holder of any later entry will detect.
+- **The head vouches for the whole history.** Trusting the hash of entry 812 transitively pins every byte back to
+  entry 1. One small commitment seals an entire prefix - this is what makes snapshots and revocation anchors work.
+- **Forks are self-proving.** The only way to rewrite is to sign a *second* entry at the same `(chain, seq)` - and
+  anyone holding both holds portable, checkable proof of equivocation. A fork on any single chain condemns the key
+  (it proves duplication or compromise), feeding the identity layer's equivocation rules.
+
+### Custody vs. Authorship
+
+**Only K1 can append to K1's chains - but everyone can hold them.** Being one of an identity's nodes means
+continuously replicating **all** of that identity's chains; being a follower or fronting node means the same for the
+public chains. Every copy of a signed chain is exactly as authoritative as any other; there is no "original."
+
+This is what makes device loss survivable. Phone in the toilet: the phone's *key* can never sign again, but its
+chains live on every replica. A surviving senior key retires the drowned key (final seqs = the highest any replica
+holds), the chains freeze - permanently valid, permanently served - and the new phone gets a fresh key with fresh
+chains. **The identity's history is the merged view of all its keys' chains**, recomputed by every reader from
+replicas; losing a device costs a keypair, never a history.
+
+**The genuinely fragile window: authored-but-never-replicated entries.** Posts written offline that never synced
+die with the device - irreducible in any offline-first design. Mitigations: **eager push** (a node offers new
+entries to every reachable peer immediately, shrinking the window to seconds-while-connected) and an **unsynced
+indicator** (the authoring device knows which of its entries no peer has acknowledged - surface it like an unsaved
+document). Before retiring a lost key, survivors run a **straggler sweep** - gossip for entries above their known
+frontiers - so retirement does not guillotine entries sitting one hop away.
+
+### The Ordering Contract
+
+1. **Within a chain, order is cryptographic fact** - dense sequence numbers, hash-chained.
+2. **Across chains, order is advisory.** Entries carry claimed wall-clock timestamps used for display interleaving
+   and simple LWW state; timestamps are claims, not facts, and **nothing security-relevant may depend on them.**
+3. **The one exception: hash anchors.** An entry may embed the hash of another chain's entry, which verifiably
+   proves "that entry existed before this one" (you cannot hash what does not exist yet). Anchors are the only
+   trustworthy cross-chain causal facts in the system, and the only ones any mechanism may rely on.
+
+**Concurrent writes never conflict at the log layer.** Two keys writing "simultaneously" write to different chains -
+both entries simply exist. Conflicts exist only at the *semantic* layer, where each data type declares its merge
+rule: authority statements resolve by rank-path (never time); simple state (bio, display name) resolves by LWW on
+claimed timestamps with a deterministic tiebreak, since the stakes are cosmetic and convergence is what matters;
+additive content (two posts) does not conflict at all. Richer future types bring their own merge rules (CRDTs) to the
+same conflict-free substrate.
+
+### Anchored Revocations
+
+A revocation statement (either disposition) carries, for **every chain of the affected key**, a
+`(chain_id, seq, head_hash)` triple. The hash - not just the seq - is load-bearing: it pins the exact entry and,
+transitively, the entire prefix beneath it. A revocation is a **closing seal across the whole bundle of chains**.
+
+- **Retirement:** the key anchors its own true final heads. Everything in the anchored prefixes is honored history;
+  anything claiming to sit beyond an anchored head is invalid, and anything claiming to sit under one but outside
+  the anchored prefix requires a fork - self-proving equivocation.
+- **Repudiation:** the senior anchors the frontier it has seen - a conservative boundary. Everything within the
+  anchored prefixes is trusted; everything beyond or on any fork is quarantined **regardless of claimed timestamp.**
+  The attacker cannot backdate around the seal: inserting an entry "before" the cut means rewriting a hashed prefix
+  (impossible) or forking below the head (self-incriminating). The anchor converts "distrust everything after time
+  T" (unenforceable) into "distrust everything not in this exact hashed prefix" (mechanically checkable) - it is
+  what makes repudiation implementable. The straggler sweep applies here too, as the emergency allows: gossip for
+  missing entries before signing, so legitimate unsynced entries are not needlessly quarantined.
+
+### Open Items
+
+- **Deletability: split headers from content from day one.** Chains store entry headers + blob hashes; content
+  lives in droppable blobs (`iroh-blobs`). "Delete" = tombstone entry + drop the blob: chain integrity survives
+  (headers remain), content is genuinely gone from cooperating nodes. The *fact* of a post at seq 41 is permanent;
+  its content is not. Also keeps chains tiny. Retrofitting this split later is a protocol break, so it is v1.
+- **Blob availability must not gate chain validity.** An entry whose blob is unfetchable (dropped, never shared)
+  still validates as a chain link - validation is signatures and hashes only; fetching is best-effort.
+- **Snapshots.** Replaying years of entries to materialize state is the classic cost of this architecture. Signed
+  "state as of seq N" checkpoints solve it; not needed for v1, but the entry format should reserve room.
+- **Fork aftermath.** After the tiebreaker picks a winning fork (the innocent stale-backup case), the losing fork's
+  entries are invalid. The client should offer to re-sign that content onto the winning chain as new entries, or
+  the recovery silently eats the user's posts. Needs specifying before the recovery UX ships.
+- **Device-attribution metadata.** Chains are per-key and keys are per-device, so a patient observer can see which
+  device authored what. Same honesty class as the timing-correlation caveats in Hosting.
+
+---
+
 ## Data Layer
 
 ### SQLite Strategy
@@ -584,7 +699,7 @@ Peer A ──iroh QUIC──► Rettro sync protocol ──validate──► acc
                       (we control this)      (key tree)   (gate here!)      (clean)        (clean)
 ```
 
-**Sync mechanism:** Nodes exchange **version vectors** (latest timestamp per author) to discover what each side is missing, then send individual signed entries. This is simpler than iroh-docs' range-based set reconciliation, but sufficient because the number of writers per user document is small (bounded by nodes in a key tree).
+**Sync mechanism:** Nodes exchange **version vectors** (highest sequence number per chain, keyed by `(key, chain)` - see IM-AOL) to discover what each side is missing, then send individual signed entries. Dense per-chain sequence numbers make gaps detectable; claimed timestamps are never used for sync state. This is simpler than iroh-docs' range-based set reconciliation, but sufficient because the number of chains per identity is small (bounded by keys in the tree times services).
 
 **Key tree sync** is handled as a special case — key tree entries (child authorizations, revocations) are **self-authenticating** (each entry is a signed statement verifiable from the signature chain alone). The key tree syncs first and establishes the authority context for all other data.
 
@@ -729,10 +844,12 @@ rettro/
 
 ### M1: Local Identity
 - [ ] Ed25519 keypair generation
-- [ ] Key tree data structures (create root, add child, serialize/deserialize)
+- [ ] IM-AOL chain structures: entry format (header + blob hash), hash chaining, dense sequencing, per-(key, chain)
+      namespacing, signature validation, fork detection
+- [ ] Key tree data structures (create root, add child, serialize/deserialize) as identity-chain entries
 - [ ] Username + password registration (Argon2-encrypted key storage)
 - [ ] Login / session management
-- [ ] Per-user SQLite database creation
+- [ ] Per-user SQLite database creation (materialized from local chains)
 
 ### M2: P2P Foundation
 - [ ] Iroh node boots alongside the Axum server
@@ -740,16 +857,18 @@ rettro/
 - [ ] Basic "ping" protocol between nodes
 
 ### M3: User Data Replication
-- [ ] Rettro sync protocol: version vector exchange over iroh QUIC streams
-- [ ] Key tree sync (self-authenticating entries)
-- [ ] Content sync with key-tree validation at the sync boundary
+- [ ] Rettro sync protocol: per-(key, chain) version vector exchange over iroh QUIC streams
+- [ ] Identity chain sync (self-authenticating entries; syncs first, establishes authority context)
+- [ ] Content chain sync with key-tree validation at the sync boundary
+- [ ] Eager push of new entries; unsynced-entry indicator
 - [ ] User connects to a second node
 - [ ] User's entries sync to the new node, which materializes its own per-user database
 - [ ] Bidirectional sync between nodes
 
 ### M4: Key Tree Operations
 - [ ] Child key authorization (cross-node)
-- [ ] Key revocation (senior revokes junior; retirement and repudiation dispositions)
+- [ ] Key revocation (senior revokes junior; retirement and repudiation dispositions; anchored to chain heads)
+- [ ] Straggler sweep before retirement of a lost key
 - [ ] Sibling authority resolution
 - [ ] Recovery key generation at identity creation (early senior child, downloadable)
 
