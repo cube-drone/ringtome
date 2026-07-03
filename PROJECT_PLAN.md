@@ -85,15 +85,82 @@ Root Key (K0) — the user's identity IS this public key
 
 ### Rules
 
+The goal is a **total order on authority that any node can compute from local data alone** - no global view, no
+synchronized clock, no online coordinator. This is what makes succession tolerant of partition and eclipse: two
+conflicting statements can be ranked using only the statements themselves.
+
 1. **Any key in the tree can authorize new child keys.** This makes it easy to add new devices or nodes.
 2. **Parent always outranks child.** A parent key can revoke any of its children (and their entire subtree).
-3. **Older sibling outranks younger sibling.** The parent knows birth order and signs it to all children, making it unforgeable. (Child A gets a record with Parent as a listed usurper, Child B gets a signature with "Parent" and "Child A" listed as potential usurpers, Child C gets a signed identity with "Parent",  "Child A" and "Child B" listed as potential usurpers...)
-4. **When a child makes a new node, that node is passed up to parents**: So the root node should be aware of all of its descendants and the order in which they were added: this means that all new nodes should have every possible usurper listed with and impossible to remove from the identity. This means that older cousins also (broadly) outrank younger cousins.
-4. **If the root disappears, children continue operating.** Any child can act as *a* root — spawning new children, interacting with the network.
+3. **Each key carries a signed usurper list.** When a parent signs a child, it stamps the child with a
+   **cumulative, append-only** list: the parent's own usurper list, plus the parent itself, plus every sibling the
+   parent has *already* signed. So a parent signing children in sequence produces `A1: [R]`, then `B1: [R, A1]`, then
+   `C1: [R, A1, B1]`. Entries can **never** be removed. A senior sibling never needs to know a junior one exists; the
+   junior always carries the signed acknowledgment that it is junior.
+4. **Authority is a key's full signed chain to the root, or it is nothing.** A statement presented without the
+   complete chain of parent-signed authorizations backing every usurper entry is **invalid** - not low-priority,
+   invalid. This blocks the obvious forgery: truncating your own lineage to hide a senior usurper sitting above you.
+5. **Order is the rank-path, not wall-clock time.** To compare two keys, walk both up to their lowest common
+   ancestor; they diverge into two of that ancestor's children; whichever child is senior (per rule 3's lists), that
+   entire branch wins. Formally this is lexicographic order on the sequence of sibling-ranks from root to key. A
+   brand-new child of the senior branch outranks a long-established child of the junior branch - that is correct and
+   deliberate; birth *time* is not derivable under partition, branch seniority is.
+6. **If the root disappears, children continue operating.** Any key can act as a root for its own subtree - spawning
+   children, interacting with the network - and the rank-path order still totally ranks everyone without the root
+   present.
 
-### Designated Heir
+**Consequence:** an honestly-built tree is *always* totally ordered, at any depth, across any partition, with no
+tiebreaker needed - including cousins, who are ordered by their branches' seniority with zero global coordination.
+(This is why the old "pass every new node up to the root" rule is gone: cross-cousin order is now derivable locally,
+so the synchronization it required - which partition would have broken anyway - is unnecessary.)
 
-A parent can sign a **priority statement** that overrides birth-order authority. This propagates to all (active, live) children: K0 can declare: *"K2 is my designated heir, not K1."* This allows a user to create a recovery node later and give it higher authority than older, potentially less-secure nodes. 
+### When Two Keys Cannot Be Ordered: Equivocation
+
+Two keys are un-orderable **only** when, at their divergence point, neither sibling appears in the other's usurper
+list. A key signing children in sequence always knows its own prior children, so it always orders them. Therefore the
+*only* way un-ordered siblings arise is if **one key signed two children in two histories that were each unaware of
+the other** - i.e., the same key equivocated. This is the sole case that needs a tiebreaker.
+
+Crucially, equivocation is **not always malicious.** The identical graph is produced by an innocent accident:
+
+- User runs `R` on a laptop, creates `A1` on a phone (`R` signs `A1: [R]`).
+- Laptop dies; user **restores `R` from a backup taken before `A1` existed.**
+- The restored `R`, unaware of `A1`, signs a recovery node `B1: [R]`.
+- Now `A1: [R]` and `B1: [R]` exist - two children of `R`, neither acknowledging the other. Un-orderable.
+
+A stale-backup restore (or the same key copied to two machines) is byte-for-byte indistinguishable from a malicious
+equivocation. So the tiebreaker is not an exotic anti-attacker device; it is what stops an ordinary user's botched
+restore from becoming a permanent split-brain.
+
+**Resolution:** when (and only when) two keys are genuinely un-orderable, break the tie with a **fixed, immutable,
+attacker-independent property** every node evaluates identically (e.g. lexicographically smallest pubkey). The goal
+here is **convergence, not fairness**: every relying party must pick the *same* winner, even if it is not the "morally
+correct" one. A split-brain is unrecoverable; agreeing on an arbitrary-but-consistent winner is recoverable, and
+recovery is cheap because impersonation is the worst case (see threat model).
+
+Note the tiebreaker is **grindable** - an attacker who intends to equivocate can pre-mine a vanity pubkey to win the
+tie. This is acceptable: reaching the tiebreaker at all already means key compromise or duplication (a crisis), and
+what the tiebreaker buys is convergence, not a security boundary. Grinding lets an attacker bias *which* branch wins;
+it cannot manufacture a split-brain.
+
+### Recovery Planning
+
+Structural seniority is fixed at signing time and cannot be honestly granted retroactively - a re-issued key with a
+shortened usurper list *is* the equivocation attack, so there is no legitimate way to insert a senior key into an
+existing tree. Identity durability therefore rests on a small amount of planning ahead, and the system should make
+that planning happen by default:
+
+- **Recovery key, minted at identity creation.** When an identity is created, the node generates a **recovery key as
+  an early direct child of the root** and offers it for download (file, QR, printout). Because it is created first,
+  it is structurally senior to every key added afterward - forever, with no propagation dependency. If the root and
+  the daily-driver nodes are all lost or compromised, the recovery key outranks whatever survives.
+- **Root key backup.** Users can export the root key itself (seed phrase, file, QR - see Enhanced Auth). A restored
+  root outranks everything. The known hazard: restoring from a *stale* backup and then signing new children produces
+  innocent equivocation (see above), which the tiebreaker resolves - convergently, though not necessarily the way the
+  user hoped.
+
+Authority statement types are **versioned.** Any future statement type that changes how relying parties rank keys
+would make old and new clients rank differently - split-brain by version skew - so introducing one is a
+protocol-breaking change by definition, gated behind a version bump.
 
 ### Key Storage
 
@@ -108,7 +175,7 @@ A parent can sign a **priority statement** that overrides birth-order authority.
 2. User goes to Node B and initiates a connection.
 3. Node B generates a fresh keypair (K1) locally and presents its **public key**.
 4. The public key is transferred to Node A (QR code, copy-paste, or over Iroh).
-5. On Node A, the user authorizes K1 — K0 signs K1's public key with the current family tree (and any designated heirs).
+5. On Node A, the user authorizes K1 — K0 signs K1's public key with the current family tree (the cumulative usurper list).
 6. The signed authorization is sent back to Node B.
 7. Node B now holds its own private key + the signed proof that K1 is a child of K0.
 8. User sets a **local password on Node B** (independent of Node A's password) to encrypt K1's private key at rest.
@@ -117,13 +184,46 @@ A parent can sign a **priority statement** that overrides birth-order authority.
 
 | Scenario | Outcome |
 |---|---|
-| Root key is online, child is compromised | Parent revokes child. Done. |
-| Root key is gone, oldest child is compromised | Attacker wins by birth-order authority. User creates new identity. |
-| Root key is gone, younger child is compromised | Older legitimate sibling outranks attacker. Safe. |
-| Root key is gone, designated heir exists | Heir outranks all siblings regardless of age. Recovery works. |
-| Node operator is malicious | Operator can exfiltrate decrypted keys. **Only use trusted nodes.** |
+| Root online, child compromised | Root revokes child. Revocation propagates; relying parties converge on the revoked state. |
+| Root gone, senior-branch key compromised | Attacker holds the top of the derivable order; no surviving key outranks it. User must build a new identity. This is the genuine worst case. |
+| Root gone, junior-branch key compromised | A surviving senior-branch key outranks the attacker by rank-path. Attacker cannot win the order, but (root being gone) also cannot *revoke* the attacker - so this is a recoverable tug-of-war, not a clean eviction. |
+| Root gone, recovery key survives | The recovery key, minted as an early child at identity creation, is structurally senior to every later key. The user brings it online and it outranks (and can supersede) whatever survives. |
+| Compromised/duplicated key equivocates | Detected as un-orderable siblings; resolved by the deterministic tiebreaker. All honest relying parties converge on the same winner (safe, not necessarily fair). |
+| Node operator is malicious | Operator can exfiltrate the one leaf key that node holds (and any secret it has decrypted). Bounded to one node; **only use trusted nodes.** |
 
-For a social network, the worst-case consequence of identity compromise is impersonation — annoying but not financially catastrophic. Users can create a new identity and re-establish relationships. This is an acceptable tradeoff for the portability and resilience benefits of the key tree model.
+**Residual risks we do not fully close** (named honestly rather than papered over):
+
+- **First-contact eclipse.** A brand-new relying party with no prior memory of an identity, fed a lie in isolation,
+  has nothing to detect the lie against. Monotonic memory (below) protects *returning* relying parties but not
+  first contact. An attacker who controls a fresh peer's entire view can show it a stale/forged authority state.
+- **Concurrent-cousin resolution is safe, not fair.** The tiebreaker guarantees everyone agrees; it does not
+  guarantee they agree on the key the user would have *wanted*. Grinding can bias which branch wins.
+
+For a social network the worst-case consequence of identity compromise is **impersonation** - annoying, not
+financially catastrophic. Users can build a new identity and re-establish relationships. The design goal is therefore
+**convergence + recoverability**, not prevention: make cheating undeniable and every failure survivable, rather than
+attempting (impossible) partition-and-eclipse-proof election of the "correct" successor.
+
+### Freshness: Monotonic Memory and the Revocation Ceiling
+
+Ranking conflicting statements solves *ordering*; it does not solve *freshness* - "has this key been revoked since I
+last checked?" Absence of a revocation is unprovable in an open network (an eclipser simply withholds it). Two
+primitives blunt this without requiring an always-online authority:
+
+- **Monotonic memory (cheap, always on).** Each relying party remembers the highest-authority statement it has *ever*
+  seen for an identity and never silently accepts a lower one. Eclipse can *delay* new information but cannot make a
+  relying party *forget* a revocation it already saw. This converts eclipse from "grants stale authority" into merely
+  "delays first delivery" - and it is essentially free. (It protects returning parties, not first contact; see
+  residual risks.)
+- **Revocation ceiling (opt-in, per-operation).** For the rare high-stakes operation, a relying party may *require* a
+  recent positive attestation from a superior key rather than trusting "valid until revoked." This flips eclipse to
+  fail-*safe*: withholding the fresh attestation denies the action instead of granting it. The cost is that it needs a
+  superior online, which fights "root can vanish" - so it is a per-operation dial, off by default. Ordinary social
+  actions stay long-lived and fail-open (surviving an offline root); only the few dangerous operations opt in.
+
+Propagating revocations **through the trust graph** (rather than random DHT peers) further raises the bar: eclipsing
+someone across many trust-weighted paths is far harder than across a handful of random peers. The trust substrate
+doubles as an eclipse-resistance layer for authority propagation.
 
 ---
 
@@ -431,7 +531,7 @@ Peer A ──iroh QUIC──► Rettro sync protocol ──validate──► acc
 
 **Sync mechanism:** Nodes exchange **version vectors** (latest timestamp per author) to discover what each side is missing, then send individual signed entries. This is simpler than iroh-docs' range-based set reconciliation, but sufficient because the number of writers per user document is small (bounded by nodes in a key tree).
 
-**Key tree sync** is handled as a special case — key tree entries (child authorizations, revocations, heir designations) are **self-authenticating** (each entry is a signed statement verifiable from the signature chain alone). The key tree syncs first and establishes the authority context for all other data.
+**Key tree sync** is handled as a special case — key tree entries (child authorizations, revocations) are **self-authenticating** (each entry is a signed statement verifiable from the signature chain alone). The key tree syncs first and establishes the authority context for all other data.
 
 **Entry validation:** Every incoming content entry is checked against the current key tree state. If the author's Identity node has been revoked, the entry is rejected at the protocol level — it never enters the local store. This is the critical advantage over iroh-docs, where filtering could only happen *after* data was already synced and stored.
 
@@ -559,7 +659,7 @@ rettro/
 - [ ] **What social features first?** Profiles? Posts/feed? Direct messages? Following?
 - [ ] **Frontend approach:** Keep vanilla JS from old codebase, or adopt a lightweight framework?
 - [ ] **Key tree serialization format:** How is the key tree stored and transmitted? Protobuf? CBOR? Custom?
-- [ ] **Designated heir UX:** How does a user set up a recovery/heir key in a way that's easy to understand?
+- [ ] **Recovery key UX:** How do we present the auto-generated recovery key at identity creation so users actually save it (and understand what it is)?
 
 ---
 
@@ -596,7 +696,7 @@ rettro/
 - [ ] Child key authorization (cross-node)
 - [ ] Key revocation (parent revokes child)
 - [ ] Sibling authority resolution
-- [ ] Designated heir
+- [ ] Recovery key generation at identity creation (early senior child, downloadable)
 
 ### M5: Social Features
 - [ ] User profiles
