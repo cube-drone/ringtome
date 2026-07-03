@@ -1,10 +1,10 @@
-# Rettro — Project Plan
+# Ringtome — Project Plan
 
 ## Vision
 
-Rettro is a **distributed social network** built on the [Iroh](https://iroh.computer/) peer-to-peer network. 
+Ringtome is a **distributed social network** built on the [Iroh](https://iroh.computer/) peer-to-peer network. 
 
-Rettro's aim is to provide a bunch of stupid horseshit from The Old Internet: IRC-style text chat, bulletin-board
+Ringtome's aim is to provide a bunch of stupid horseshit from The Old Internet: IRC-style text chat, bulletin-board
 style posting, geocities-style "simple website authoring", webrings, hit counters, webcomics, MIDI files, and
 if we're feeling saucy maybe some mp3s. 
 
@@ -15,12 +15,12 @@ It's "lightly federated" - in ATProto or Mastodon, the fediverse operators need 
 systems with uptime guarantees, backups, and a holistic view of their system's relationship with the whole network
 (lest their reputation tank and their system get de-listed). 
 
-The idea is that in Rettro, your identity might live across several nodes at the same time - maybe you're running a node
+The idea is that in Ringtome, your identity might live across several nodes at the same time - maybe you're running a node
 on your PC, or a cheap VPS you set up, or a friend's PC. You might set up an emergency node on an old Raspberry PI. So long
 as ANY of these devices are on the network, you're on the network. A public server node offers authenticated access to 
 multiple identities, but a local node might simply protect a single identity behind a PIN code.
 
-Rettro works from a "private by default" nature - the idea is that 99.5% of the network is going to be bots or trolls,
+Ringtome works from a "private by default" nature - the idea is that 99.5% of the network is going to be bots or trolls,
 and instead of trying to moderate them out of a public system in an automated fashion, (increasingly impossible)
 you instead proceed by building out and explicitly modeling trust: you met Eve in person, so you know she's real,
 she met Frank in person and so you're _pretty sure_ Frank is real, but only insofar as you trust Eve, and so on.
@@ -312,7 +312,7 @@ controls - writing style, posting schedule, what you talk about. Users should he
 
 ### Temporal Profile State
 
-Each identity's profile data (name, bio, avatar hash) is synced across its nodes via the Rettro sync protocol.
+Each identity's profile data (name, bio, avatar hash) is synced across its nodes via the Ringtome sync protocol.
 Entries carry timestamps, giving the profile a natural history.
 
 When content is created, it references the identity's root public key and includes a timestamp. This enables:
@@ -457,7 +457,7 @@ Instead we use a **network-flow model** (the Advogato approach):
   no matter how many fakes there are.
 - **Bounded horizon.** I only compute over the slice of the graph within a few hops of me (say 4), with trust fading
   each hop. This keeps the computation local (I never need the global graph, which also serves privacy) and it bounds
-  my *lens*, not the network - Rettro can be millions of people; I just cannot personally vouch-path to all of them.
+  my *lens*, not the network - Ringtome can be millions of people; I just cannot personally vouch-path to all of them.
   Someone past my horizon is not "fake", just "not reachable through my web" - which is what non-web signals like DNS
   verification are for.
 - **Deliberately simple.** Trust does not try to weight a vouch by how good the voucher's judgement is. (That would be
@@ -660,7 +660,7 @@ Each connector node maintains:
 - **Node database** (`node.db`): Node configuration, known peers, replication state, network metadata.
 - **Per-user databases** (`users/<pubkey>.db`): Each user's data lives in their own SQLite file — a **local
   materialized view** of that user's signed sync entries. The SQLite file itself is never transmitted: when a user
-  connects to a new node, the node syncs the user's entries via the Rettro sync protocol (validating each against the
+  connects to a new node, the node syncs the user's entries via the Ringtome sync protocol (validating each against the
   key tree as it arrives) and builds its own database from them.
 
 ### Why Per-User Databases?
@@ -675,7 +675,7 @@ Each connector node maintains:
 
 ### Replication over Iroh
 
-- User data is synced between nodes using the **Rettro sync protocol** (see Iroh Protocol Mapping below), not by replicating raw SQLite files.
+- User data is synced between nodes using the **Ringtome sync protocol** (see Iroh Protocol Mapping below), not by replicating raw SQLite files.
 - The per-user SQLite database is the local materialized view of synced data.
 - Both nodes continue to sync the user's data bidirectionally as long as the user is active on both.
 - When multiple nodes write to the same key, conflicts are resolved using **last-writer-wins by timestamp** for simple fields (name, bio, etc.). More complex data types can layer a CRDT library on top in the future.
@@ -685,17 +685,17 @@ Each connector node maintains:
 
 ## Iroh Protocol Mapping
 
-Iroh provides composable protocols on top of its QUIC-based p2p connections, plus a discovery layer. Here's how each maps to Rettro:
+Iroh provides composable protocols on top of its QUIC-based p2p connections, plus a discovery layer. Here's how each maps to Ringtome:
 
-### Rettro Sync Protocol → Identity Data & User Content
+### Ringtome Sync Protocol → Identity Data & User Content
 
-**Why not `iroh-docs`?** `iroh-docs` is a multi-writer key-value store where Authors sign entries with their own keypairs. However, it has **no protocol-level revocation** — once an Author has write access, their entries sync to all replicas forever. Since Rettro's key tree requires that revoked Identity nodes lose all authority, iroh-docs' trust model is fundamentally incompatible. A revoked node could keep writing garbage into the shared document indefinitely, and iroh-docs would happily sync it to every peer.
+**Why not `iroh-docs`?** `iroh-docs` is a multi-writer key-value store where Authors sign entries with their own keypairs. However, it has **no protocol-level revocation** — once an Author has write access, their entries sync to all replicas forever. Since Ringtome's key tree requires that revoked Identity nodes lose all authority, iroh-docs' trust model is fundamentally incompatible. A revoked node could keep writing garbage into the shared document indefinitely, and iroh-docs would happily sync it to every peer.
 
-Instead, Rettro uses a **custom sync protocol** that runs over iroh QUIC bidirectional streams. This gives us control of the sync boundary:
+Instead, Ringtome uses a **custom sync protocol** that runs over iroh QUIC bidirectional streams. This gives us control of the sync boundary:
 
 **Architecture:**
 ```
-Peer A ──iroh QUIC──► Rettro sync protocol ──validate──► accept/reject ──► local store ──► SQLite
+Peer A ──iroh QUIC──► Ringtome sync protocol ──validate──► accept/reject ──► local store ──► SQLite
                       (we control this)      (key tree)   (gate here!)      (clean)        (clean)
 ```
 
@@ -705,8 +705,86 @@ Peer A ──iroh QUIC──► Rettro sync protocol ──validate──► acc
 
 **Entry validation:** Every incoming content entry is checked against the current key tree state. If the author's Identity node has been revoked, the entry is rejected at the protocol level — it never enters the local store. This is the critical advantage over iroh-docs, where filtering could only happen *after* data was already synced and stored.
 
+### The Identity Tree Is Its Own Peer-Discovery Structure
+
+There is no roster of an identity's nodes, no membership protocol, and no coordinator. Each node's picture of the
+tree is simply **its local frontier of the identity chains**: every key it knows about is an authorization entry it
+has synced. That picture is signed (never wrong), possibly stale (missing the newest branches), and converges through
+sync itself:
+
+- **Who:** the chain frontier is the peer list. **Where:** pkarr resolves keys to current addresses, and its
+  record expiry doubles, unchanged, as the liveness signal for the identity's own nodes.
+- **Juniors sync upward from birth:** a new key's signed ancestry (its usurper list) tells it exactly who its
+  seniors are, and in the common case it was just talking to its parent's node anyway.
+- **Cousins learn of each other through diffusion:** K4's authorization is an entry on K2's identity chain, so it
+  reaches K3 through *any* sync partner who has seen that chain - no direct contact needed. News of new keys
+  spreads epidemically; any connected set of nodes converges completely.
+- **The handshake accepts unknown-but-valid keys.** A key never heard of before may knock, presenting its full
+  chain-to-root - which is self-authenticating (rule 4) and is checked against locally-known revocations
+  (monotonic memory) before anything is trusted. Refusing unknown-but-valid keys would deadlock tree discovery;
+  accepting them is what makes it self-healing.
+- **Partition is latency, not damage.** Two halves of an identity that cannot talk accumulate separate
+  single-writer chains; whenever they reconnect, everything merges with zero conflict. The only thing that makes a
+  partition ugly is the same *key* signing in both halves - equivocation, already handled.
+
+**Sync discipline:** each node syncs with a few peers per interval (k = 3-5), **selected randomly over its full
+known peer set - never a fixed subset.** Anti-entropy between up-to-date peers is a kilobyte frontier exchange, and
+epidemic spread reaches every node in O(log n) rounds, so this keeps traffic linear rather than n^2 even for
+absurdly node-rich identities (the design center is 2-5 nodes). The random selection is not just a traffic rule: it
+keeps the sync graph well-connected so no node ossifies into a chokepoint by habit - the traffic discipline and the
+security property below are one mechanism seen from two sides.
+
+**The adversary in the mesh lies only by omission.** A malicious-but-not-yet-repudiated node cannot forge others'
+entries (signatures), cannot truncate chains undetectably (hash chain + dense seqs), and cannot lie about its own
+ancestry - its credential *is* its parent-signed usurper list, a confession of exactly who outranks it. What it can
+do is withhold: claim ignorance of a branch, or sit on the revocation that targets itself while syncing everything
+else helpfully. Omission only works on victims for whom the withholder is a **cut vertex** - their only path to the
+rest of the identity. Against anyone with a single honest sync partner, the withheld entry arrives by another route
+and monotonic memory makes the arrival permanent. So in steady state this degenerates to the eclipse residual risk
+already named in the threat model.
+
+**The exception is onboarding, and it gets a corroboration ladder.** At the moment a key is created, its recruiting
+parent is naturally its entire view of the identity - a free cut vertex. A malicious recruiter can present a pruned
+universe: no cousins, no inconvenient revocations. The defense is corroboration from **any source independent of the
+recruiter** - rank is not what matters, independence is; chain entries are self-authenticating regardless of who
+serves them, so even a junior cousin or a mere fronting node can reveal a hidden branch or revocation. A newly
+authorized key climbs this ladder:
+
+1. **Reachable seniors** from its own usurper list (a signed, unfakeable contact sheet).
+2. **Anyone serving the identity:** query pkarr from the key's own network position and sync with whatever nodes
+   answer.
+3. **Nothing reachable: proceed uncorroborated, and keep retrying.** The key operates with its worldview flagged
+   unverified; every later sync with any independent party is a corroboration opportunity, and monotonic memory
+   makes late-arriving truth land permanently.
+
+The ladder must not be a hard gate, because the sole-survivor recovery case (root dead, one key rebuilding, recovery
+key cold in a drawer) would deadlock it *forever* - every senior dead, cold, or the recruiter itself. And in the one
+case where corroboration is genuinely impossible *and* the recruiter is malicious, the recruiter is the senior-most
+surviving key, compromised - the threat model's documented worst case, which no onboarding rule can save. A gate
+that only closes when it cannot help should be an attempt, not a gate. A pruned worldview still requires eclipsing
+the child's entire network view rather than merely being its sole informant - and the corroboration attempt doubles
+as tree repair, since it is exactly the anti-entropy that heals whatever partition made seniors unreachable.
+
+### Encountering Your Own Identity in the Wild
+
+Casual browsing doubles as tree-integrity patrol. If a node fetches content signed by a key whose chain terminates
+in **its own user's root** but which it has never seen, the standard handshake applies (verify chain-to-root, check
+local revocations, sync) and the merge routes the stranger-you to existing machinery: a **legitimate lost branch**
+(sync is the repair - you now know your own shape better), a **stale-backup fork** (equivocation, innocent flavor:
+tiebreaker plus fork-aftermath re-signing), or a **hostile branch** (the encounter hands you the proof; a senior key
+repudiates with anchors). The owner is the best-positioned auditor of their own tree, and this makes every read of
+the public network a free audit. **The trigger is root equality, nothing softer** - matching names, avatars, or bios
+must never start this flow, or lookalikes gain a lever to get your node treating them as kin.
+
+Someone using your *name* with a different root is not a protocol event at all - cryptographically it is simply
+another identity, and the trust layer already handles it (your vouchers reach your root, not the costume; strangers
+who trust neither of you were never promised the ability to tell strangers apart). The defense is UI: derive a
+unique **identicon from the root pubkey hash** and show it wherever a display name appears, so Curtis (afe8...) is
+visually distinct from Curtis (ff3e...) at a glance, and flag name/avatar collisions with non-matching roots when
+they cross the user's view.
+
 For each user identity:
-- The user's identity data (key tree, profile, content) is synced via the Rettro sync protocol.
+- The user's identity data (key tree, profile, content) is synced via the Ringtome sync protocol.
 - Each node in the user's key tree signs its own entries.
 - Any non-revoked node can update data, and changes sync to all other nodes holding a replica.
 - **Conflict resolution:** For simple fields (name, bio), we use **last-writer-wins by timestamp** among non-revoked authors. For more complex data in the future (e.g., collaborative content), we could layer a CRDT library like Loro on top.
@@ -748,7 +826,7 @@ Node X encounters public key K0
   → Miss? Query Mainline DHT for K0 via pkarr
   → Get back addresses of nodes currently serving K0's data
   → Connect to one of those nodes via Iroh
-  → Sync K0's identity data via Rettro sync protocol (key tree, profile, content)
+  → Sync K0's identity data via Ringtome sync protocol (key tree, profile, content)
   → Cache locally
   → Future lookups are instant cache hits
 ```
@@ -759,10 +837,10 @@ Note what this flow already assumes: **you must know K0 to look it up.** pkarr r
 
 Discovery is in direct tension with the trust graph's privacy, and the tension is not incidental: **discovering someone through a friend and mapping that friend's relationships are the same operation** (traversing their vouch edges). You cannot offer friend-of-friend discovery while hiding the friend-of-friend graph, because the discovery *is* the enumeration.
 
-The vouch graph is the most sensitive dataset in Rettro - a real-world map of who has met whom - so we do **not** make it globally enumerable to power discovery. Instead, discovery runs on several channels, most of which never touch the graph:
+The vouch graph is the most sensitive dataset in Ringtome - a real-world map of who has met whom - so we do **not** make it globally enumerable to power discovery. Instead, discovery runs on several channels, most of which never touch the graph:
 
 - **Content and tags.** Peter posts under `#distributedSystems`; I find Peter by the content, no edge traversal needed. This is the primary channel and it keeps the network lively without exposing anyone's associations.
-- **DNS-anchored identities.** I can find the Globe and Mail (or the Rettro seed account) directly by name, with no vouch path required. This is also how a brand-new user with zero vouches bootstraps a first trust edge.
+- **DNS-anchored identities.** I can find the Globe and Mail (or the Ringtome seed account) directly by name, with no vouch path required. This is also how a brand-new user with zero vouches bootstraps a first trust edge.
 - **Seed / directory accounts.** A curated on-ramp account (see cold-start) that follows and lists interesting identities, giving newcomers somewhere to start.
 - **Opt-in discoverable overlay.** A *subset* of vouch edges that their owners deliberately mark discoverable. This is a strictly smaller, volunteered graph - "I trust the Globe and Mail" published on purpose - and it is the only graph strangers may traverse. The full trust graph stays private and still powers each user's own trust computation locally.
 
@@ -781,7 +859,7 @@ Two honest limits to design around:
 | Web framework | **Axum** | Carried over from old codebase |
 | Async runtime | **Tokio** | Carried over from old codebase |
 | P2P connections | **iroh** | QUIC-based, NAT-traversing p2p connections |
-| Data sync | **Rettro sync protocol** | Custom protocol over iroh QUIC streams with key-tree validation |
+| Data sync | **Ringtome sync protocol** | Custom protocol over iroh QUIC streams with key-tree validation |
 | Content storage | **iroh-blobs** | Content-addressed blob storage (BLAKE3) |
 | Real-time | **iroh-gossip** | Epidemic broadcast for live notifications |
 | Discovery | **pkarr** / Mainline DHT | Decentralized identity lookup |
@@ -802,7 +880,7 @@ Two honest limits to design around:
 ## Project Structure (Proposed)
 
 ```
-rettro/
+ringtome/
 ├── api/              ← OLD codebase (reference only)
 ├── node/             ← NEW crate: the connector node
 │   ├── Cargo.toml
@@ -824,8 +902,8 @@ rettro/
 
 ## Open Questions
 
-- [x] ~~**Iroh integration depth:**~~ Resolved — custom Rettro sync protocol for data sync (iroh-docs is incompatible with revocable identity), `iroh-blobs` for content, `iroh-gossip` for real-time, `pkarr`/DHT for discovery.
-- [x] ~~**Conflict resolution:**~~ Resolved — Rettro sync protocol validates entries against the key tree, rejects revoked authors, then applies last-writer-wins by timestamp for simple fields among valid authors. Complex data types can layer CRDTs (e.g., Loro) on top in the future.
+- [x] ~~**Iroh integration depth:**~~ Resolved — custom Ringtome sync protocol for data sync (iroh-docs is incompatible with revocable identity), `iroh-blobs` for content, `iroh-gossip` for real-time, `pkarr`/DHT for discovery.
+- [x] ~~**Conflict resolution:**~~ Resolved — Ringtome sync protocol validates entries against the key tree, rejects revoked authors, then applies last-writer-wins by timestamp for simple fields among valid authors. Complex data types can layer CRDTs (e.g., Loro) on top in the future.
 - [ ] **What social features first?** Profiles? Posts/feed? Direct messages? Following?
 - [ ] **Frontend approach:** Keep vanilla JS from old codebase, or adopt a lightweight framework?
 - [ ] **Key tree serialization format:** How is the key tree stored and transmitted? Protobuf? CBOR? Custom?
@@ -857,7 +935,7 @@ rettro/
 - [ ] Basic "ping" protocol between nodes
 
 ### M3: User Data Replication
-- [ ] Rettro sync protocol: per-(key, chain) version vector exchange over iroh QUIC streams
+- [ ] Ringtome sync protocol: per-(key, chain) version vector exchange over iroh QUIC streams
 - [ ] Identity chain sync (self-authenticating entries; syncs first, establishes authority context)
 - [ ] Content chain sync with key-tree validation at the sync boundary
 - [ ] Eager push of new entries; unsynced-entry indicator
@@ -867,6 +945,7 @@ rettro/
 
 ### M4: Key Tree Operations
 - [ ] Child key authorization (cross-node)
+- [ ] Onboarding corroboration ladder: seniors, then pkarr-discovered peers, then proceed-unverified-and-retry
 - [ ] Key revocation (senior revokes junior; retirement and repudiation dispositions; anchored to chain heads)
 - [ ] Straggler sweep before retirement of a lost key
 - [ ] Sibling authority resolution
