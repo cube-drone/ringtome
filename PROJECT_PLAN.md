@@ -260,69 +260,130 @@ Masks are discoverable via the same `pkarr` / Mainline DHT mechanism as any othe
 
 ## Trust, Credibility, Interest, and Taste
 
-For every other person in my network, I have "Trust", "Credibility", "Interest", and "Taste" scores.
+For every other person in my network I keep four scores:
 
-In short:
-* **Trust** measures my confidence that they are a real person who is who they say they are.
-* **Credibility** measures my confidence in their judgement - both of others, and of news and accuracy in general.
-* **Interest** measures how relevant they, personally, are to my interests.
-* **Taste** measures how relevant their recommendations are to my interests.
+* **Trust** - my confidence that they are a real, distinct human, not a disposable bot.
+* **Credibility** - my confidence in their judgement, about people and about accuracy in general.
+* **Interest** - how relevant they, personally, are to me.
+* **Taste** - how relevant their recommendations are to me.
 
-### Examples:
-* **My Dad**: 
- * Trust, medium-high (I've met him in person and can validate easily that Dad is who he says he is, but he uses
-        the same password everywhere and has generally very poor opsec)
- * Credibility, medium-low (That poor opsec also translates to low "scam-literacy" about what is and is not real)
- * Interest, very-high (I love my dad and want to see everything he, personally, posts.)
- * Taste, low (My dad likes a lot of fishing content, which I generally don't want to see)
-* **The Globe and Mail**:
- * Trust, very-high (Their identity is tied to a public DNS record validating that they are who they say they are.)
- * Credibility, very-high (Their judgement adheres to journalistic standards vis-a-vis truth verification)
- * Interest, medium (They produce a lot of content that's kind of interesting to me)
- * Taste, medium (Kind of N/A, they don't recommend much outside of their own network and I'm not sure how much I care?)
-* **Gullible Gary**: 
- * Trust, medium-low (I've met them in person but they fall for every scam in the book.)
- * Credibility, very-low (Their feed is a parade of misinformation they half-remembered from anti-vaccine websites)
- * Interest, medium (Not a lot of good content coming out of Gullible Gary)
- * Taste, high (Actually Gullible Gary follows a lot of pretty interesting content)
-* **Auteur X**:
- * Trust, medium (I've never met them in person, but a lot of people seem to think they're the Author of Property I Like)
- * Credibility, nil (They seem to know loads of people and I don't trust their judgement at all because I don't know them)
- * Interest, very high (I love Property I Like, it's great, I want to see it every time they post)
- * Taste, medium (They like a lot of stuff of kind of variable quantity, I don't want to see all of the sausage)
+The scores are genuinely independent. My dad is high Trust (I know him) but medium Credibility (poor opsec, low scam
+literacy) and low Taste (too much fishing content). The Globe and Mail is high Trust and high Credibility (a
+DNS-verified institution with journalistic standards) but only medium Interest. Gullible Gary is medium Trust (I have
+met him) but very low Credibility (a parade of misinformation) and yet high Taste (he happens to follow good stuff).
+Auteur X is only medium Trust (never met them) but very high Interest (they made something I love). Trust does not
+imply Credibility, and Interest does not imply either.
 
-We might also consider topic tags: I'm highly interested in "#computers" and "#distributedSystems" 
-and not at all interested in "#fishing" and "#portugal" - so we might boost content with tags I like, even from less reliable sources,
-and deprioritize content with tags I don't, even from reliable ones.
+But the four are **not peers.** Trust sits underneath the other three, and understanding why is the point of this
+section.
 
-This model also creates _trees_ of both trust and interest. I have these scores for everybody I know, but they also have
-these scores for everybody THEY know, and then those people have these scores for everybody THEY know, and so on and
-so forth. At first I had imagined that all trees would be public knowledge - then you could simply calculate your trust in
-any other person by multiplying trust and credibility all the way through the chain and picking the best available chain: 
+### Why Trust comes first
 
-Finding the _best, available, accessible chain_ for another user: 
+In a p2p network identities are free: anyone can mint unlimited fake identities and link them however they like (the
+classic **Sybil attack**). So any score that can be inflated by *making more accounts* is meaningless - the attacker
+just manufactures whatever graph maximizes it. The one thing an attacker cannot fake is a vouch from a real human who
+verified someone in the physical world ("I met Eve in person"). Those vouches are scarce.
 
-* I trust Albert 50% with Credibility 50%, and Albert trusts Weird Dave 5% with Credibility 5%, and Weird Dave trusts Dirty Harry 95%
- * This creates a chain with trust 0.05% for Dirty Harry
-* I trust Bethany 30% with Credibility 95%, and Bethany trusts Goblin Greg 50% with Credibility 50%, and Goblin Greg trusts Dirty Harry 50%
- * This creates a chain with trust 3% for Dirty Harry
+Every other score is an aggregate over other people ("how many flagged this as a scam?", "who else liked this?"). The
+moment you aggregate over people, the honest question is *how many real humans*, not *how many accounts* - and without
+Trust that question has no answer. Trust is the denominator that turns a count of accounts into a count of humans. You
+rarely read it directly; it is the weight that keeps every other score from being captured by a bot cloud. Get Trust
+once and the others inherit its Sybil resistance for free.
 
-So in this situation, I inherit the 3% trust for Dirty Harry. 
+### How Trust is computed
 
-Interest works largely the same way.
+The tempting approach - "multiply trust along the best chain of vouches" - is exactly wrong. An attacker sets all the
+edges among their own fakes to 100% (they own both ends, it is free), so a single vouch into their cluster propagates
+undiminished to every fake behind it. Best-path makes each fake *clone* your trust.
 
-But then I realized that... actually making your entire trust and interest graph fully public is probably not a privacy win, and I think my mom might be hurt
-if she saw my low credibility score for her. 
+Instead we use a **network-flow model** (the Advogato approach):
 
-So, solutions:
+- **Vouching budget.** Each person has a fixed budget of trust to spread across people they have personally verified.
+  This budget is the scarce resource an attacker cannot manufacture, and it is the *capacity* of their vouch edges.
+- **Trust as shared flow.** My trust in a stranger is the flow that reaches them through the vouch graph, computed as
+  **one joint flow to everyone at once** - not a separate calculation per person. This is the detail everything hinges
+  on: under a single shared flow, a million fakes behind one vouch must *split* that vouch's capacity and each ends up
+  with a trickle. (Computed per-person instead, each fake would independently receive the full value and the defense
+  evaporates.) The result: the number of fakes I accept is capped by the capacity of the vouches *into* their cluster,
+  no matter how many fakes there are.
+- **Bounded horizon.** I only compute over the slice of the graph within a few hops of me (say 4), with trust fading
+  each hop. This keeps the computation local (I never need the global graph, which also serves privacy) and it bounds
+  my *lens*, not the network - Rettro can be millions of people; I just cannot personally vouch-path to all of them.
+  Someone past my horizon is not "fake", just "not reachable through my web" - which is what non-web signals like DNS
+  verification are for.
+- **Deliberately simple.** Trust does not try to weight a vouch by how good the voucher's judgement is. (That would be
+  Credibility, which is built *on* Trust - the dependency would be circular.) A careless friend who vouches for junk
+  simply leaks their fixed budget into it, split across the junk. Everyone gets the same budget; that is the whole
+  rule. We can refine this later, but Trust's correctness must never depend on the refinement.
 
-1. Lower resolution: people who can see my graph can only see "end scores", not how I calculated those scores or whether or not I've personally added that person to my network.
-2. Lower resolution: end-scores are rounded down to the nearest X% based on access level.
-3. Access levels: "close" users can see my entire graph, at 5% resolution, and can only see things >= 5% resolution.
-4. Access levels: "casual" users can see my entire graph, at 25% resolution, and can only see things >= 25%.
-5. Access levels: "default" users can not see my graph at all. 
-6. Private graph nodes: I can make specific nodes invisible to everyone but me. These nodes are also not included in the graph calculations I share with others.
-7. Public graph nodes: Users can make nodes of their graph globally public: "I trust the Globe and Mail". "I am interested in Chair Anime Author".
+Trust is a continuous number, but we also expose a simple **floor** for coarse gates ("below this, you cannot DM me or
+appear in my feed") so features do not each have to reason about flow.
+
+### The layer boundary: Trust flows down, never up
+
+Credibility, Interest, and Taste all compute *over the Trust-weighted graph*, and the direction is strict:
+
+- **Trust may weight the others (down - allowed).** Content from people I trust can rank higher; trusted follows can
+  be suggested. This is the whole point of the substrate.
+- **The others may never weight Trust (up - forbidden).** This is the rule that keeps Sybil resistance intact, and it
+  is easy to violate by accident. In particular, **a follow is not a vouch.** Following someone is an Interest edge - a
+  content subscription - and grants them zero Trust. All four combinations are normal: follow-and-trust (my dad),
+  follow-but-don't-trust (a fun account I am watching speculatively), trust-but-don't-follow (a real person whose posts
+  bore me), neither (a stranger). If a follow granted even a sliver of Trust, the attack writes itself: post fun
+  content, harvest speculative follows from real people, and each becomes a scarce human vouch. Things that are cheap
+  to elicit must never mint Trust.
+
+**Signals carry the weight of the signaller, not the target.** If I follow `speculative.evil.ru` and Greg trusts that
+*I* am real, then in Greg's feed my follow counts at Greg's-trust-in-me - a real human's worth of interest - even
+though `evil.ru` itself gains no Trust at all. This is what stops "100 trillion lightbulb accounts" from drowning out
+real people's interest signals: weight rides on the vouched-for signaller. Two guardrails make it safe:
+
+- The weight is **bounded by Greg's trust in me and shared across everything I signal** - follow 10,000 things and
+  each carries a ten-thousandth of my weight. One trusted human cannot be turned into a signal-laundering firehose.
+- It is a **spotlight, not a transfer.** My interest illuminates `evil.ru` only for people who trust *me*, only while I
+  keep following, and `evil.ru` still holds zero Trust of its own. It cannot re-spend my weight to reach people who do
+  not trust me.
+
+### The other three scores
+
+- **Credibility** (medium stakes) is partly *earned*, not just vouched: it blends vouched credibility (propagating
+  along trusted edges, and scoped by topic - good judgement about `#distributedSystems` is not good judgement about
+  who is a bot) with an observable track record (did the things they called fake turn out fake?). Gaming it needs
+  either a real track record or trusted edges, both already scarce.
+- **Interest and Taste** (low stakes) are just a **recommender system** - collaborative filtering over the
+  Trust-weighted graph, plus topic tags (boost `#computers`, bury `#fishing`). Worst case of a poisoned score is a
+  boring feed, so these get to stay simple and loose; no Sybil hardening of their own, because they inherit Trust's.
+
+### Privacy of the graph
+
+A fully public trust graph is not actually a privacy win (and my mom might be hurt to see her low Credibility score).
+The bounded horizon already means others only ever see a slice. On top of that, users control resolution and access:
+
+- Viewers see **end scores only**, not how they were derived or who I personally added.
+- Scores are **rounded** by access level - "close" contacts see finer detail (5%), "casual" ones coarser (25%),
+  everyone else sees nothing.
+- **Private nodes:** I can hide specific people entirely, excluded even from the calculations I share.
+- **Public nodes:** I can make specific ones globally visible ("I trust the Globe and Mail").
+
+### What actually makes this safe (and how we will check)
+
+The flow model gives a real guarantee - fakes admitted are capped by the vouches into their cluster, for *any* graph
+shape - but that guarantee is conditional on vouches being scarce, and **real people vouch carelessly all the time.**
+No proof survives a false premise. So the load-bearing safety does not come from the metric being clever; it comes from
+two things that hold even when careless vouches are abundant:
+
+- **Low payoff.** Wire Trust into things where being wrong is cheap and reversible (feed ranking, bot floors), not
+  into high-value irreversible powers. If winning Trust buys only some spam higher in a feed, gaming it is not worth
+  the effort. This mirrors the identity model's stance on impersonation: annoying, not catastrophic.
+- **Recoverability.** You cannot prevent a bad vouch in advance, but you can make its effect bounded, fading, and
+  revocable the moment it is noticed.
+
+Testing cannot prove any of this - Sybil resistance looks perfect until someone attacks, and a friendly beta of real
+friends will never mint 10,000 fakes to show us the failure. So we build an **adversary-simulation harness** early and
+run it hoping it *breaks*: generate an honest graph, inject fakes in the nastiest topology we can, and measure trust
+extracted per attack vouch. It should stay flat as we add fakes; if it climbs, we have a bug (most likely the
+per-person-vs-joint-flow mistake above). The harness also calibrates the knobs the theory is silent on - budget size,
+horizon depth, fade curve, the feed/DM floor. It is a bug-finder and a dial, never our source of confidence.
 
 ---
 
@@ -421,6 +482,24 @@ Node X encounters public key K0
   → Cache locally
   → Future lookups are instant cache hits
 ```
+
+Note what this flow already assumes: **you must know K0 to look it up.** pkarr resolves a key you name into addresses; it does not let you enumerate keys you have never heard of. So the DHT is a *lookup* channel, not an enumeration one - consistent with the graph-privacy model below.
+
+### How people find each other (Discovery Channels)
+
+Discovery is in direct tension with the trust graph's privacy, and the tension is not incidental: **discovering someone through a friend and mapping that friend's relationships are the same operation** (traversing their vouch edges). You cannot offer friend-of-friend discovery while hiding the friend-of-friend graph, because the discovery *is* the enumeration.
+
+The vouch graph is the most sensitive dataset in Rettro - a real-world map of who has met whom - so we do **not** make it globally enumerable to power discovery. Instead, discovery runs on several channels, most of which never touch the graph:
+
+- **Content and tags.** Peter posts under `#distributedSystems`; I find Peter by the content, no edge traversal needed. This is the primary channel and it keeps the network lively without exposing anyone's associations.
+- **DNS-anchored identities.** I can find the Globe and Mail (or the Rettro seed account) directly by name, with no vouch path required. This is also how a brand-new user with zero vouches bootstraps a first trust edge.
+- **Seed / directory accounts.** A curated on-ramp account (see cold-start) that follows and lists interesting real humans and masks, giving newcomers somewhere to start.
+- **Opt-in discoverable overlay.** A *subset* of vouch edges that their owners deliberately mark discoverable. This is a strictly smaller, volunteered graph - "I trust the Globe and Mail" published on purpose - and it is the only graph strangers may traverse. The full trust graph stays private and still powers each user's own trust computation locally.
+
+Two honest limits to design around:
+
+- **Discovery quality tracks opt-in.** If few edges are made discoverable, the overlay is sparse and the network feels like a void. There is real pressure to make the discoverable overlay generous, and every step toward "discoverable by default" re-exposes the association map. This dial needs ongoing tuning, not a one-time setting.
+- **Hidden edges leak through visible ones.** Hiding a few edges in an otherwise-public neighborhood does not hide them well: surrounding public structure often lets an outsider infer the hidden edge by correlation. Per-edge privacy is weakest exactly when most edges are public - which is the state generous discovery pushes toward. Sensitive edges (activist, source, survivor) should be understood as protected only when the *neighborhood* is private, not just the single edge.
 
 ---
 
