@@ -62,7 +62,7 @@ The system is **trust-minimizing, not trustless.** A malicious node operator who
 
 - A node holds **only one leaf key per identity it agents**, never a root key or another node's keys.
 - Each node has an **independent password** — compromising one node doesn't reveal credentials for any other.
-- The parent key can **revoke** the compromised leaf, cutting off the attacker's authority.
+- Any senior key can **revoke** the compromised leaf, cutting off the attacker's authority.
 - The attacker gains the ability to impersonate **one node of an identity**, not the entire identity.
 - A node that agents **several of a user's identities** necessarily knows they share an owner. A compromised or
   malicious node can reveal that linkage - the most serious privacy consequence of node compromise, and unrecoverable
@@ -94,7 +94,12 @@ synchronized clock, no online coordinator. This is what makes succession toleran
 conflicting statements can be ranked using only the statements themselves.
 
 1. **Any key in the tree can authorize new child keys.** This makes it easy to add new devices or nodes.
-2. **Parent always outranks child.** A parent key can revoke any of its children (and their entire subtree).
+2. **Seniority is the entire authority relation: any senior key can revoke any junior key, at any time.**
+   Not just parent-over-child - *any* key that outranks another in the total order (rule 5) can revoke it. Seniority
+   is not a mere tie-breaker for conflicting statements; it is the full descriptor of who-can-revoke-whom. (A parent
+   can revoke its children because it is senior to them, not because parenthood is special.) This is what keeps
+   revocation available when ancestors retire or disappear: as long as *any* key senior to a compromised key
+   survives, the compromised key can be cleanly evicted.
 3. **Each key carries a signed usurper list.** When a parent signs a child, it stamps the child with a
    **cumulative, append-only** list: the parent's own usurper list, plus the parent itself, plus every sibling the
    parent has *already* signed. So a parent signing children in sequence produces `A1: [R]`, then `B1: [R, A1]`, then
@@ -146,6 +151,43 @@ tie. This is acceptable: reaching the tiebreaker at all already means key compro
 what the tiebreaker buys is convergence, not a security boundary. Grinding lets an attacker bias *which* branch wins;
 it cannot manufacture a split-brain.
 
+### Revocation Types: Retirement and Repudiation
+
+A revocation is one statement type carrying a **disposition** that answers the question mechanism alone cannot:
+*what happens to everything the revoked key already signed?* Both dispositions use the same propagation, the same
+seniority rules, the same monotonic memory - a revoked key's server still physically holds the key material, so even
+the friendliest departure must be a network-visible revocation. The dispositions differ only in the treatment of
+history, and in who may assert them.
+
+**Retirement Revocation** - "this key is closed, no prejudice."
+
+- **All signed history is honored**, through a final sequence number in the key's statement chain. Posts, vouches,
+  and - critically - **child authorizations** all stand. The subtree lives: chain validation asks "was the signer
+  valid *when it signed*," so a retired key's descendants keep their full chains forever.
+- **Self-issuable** (or by any senior). A retiring key honestly declares its own final sequence number, and that
+  final word is trustworthy because the key is not adversarial.
+- Backdating is blocked by the existing chain rules: a statement inserted "before" the retirement point means forking
+  the chain, which is equivocation, detected and resolved as such.
+- **Retiring the root works.** The identity born on Server A can leave Server A: the root retires, everything it
+  built stands, and the senior-most surviving child (ideally the recovery key) becomes the effective top of the
+  active tree. Migration off a first server is a routine act, not an identity-ending one.
+
+**Repudiation Revocation** - "this key is hostile, quarantine it."
+
+- **History after a cut-point is distrusted.** A compromised key can backdate signatures, so its own timestamps mean
+  nothing; the repudiating senior asserts a conservative sequence number, and relying parties distrust everything the
+  key signed after it. (Stored entries are already kept signed for exactly this retroactive filtering - see Data
+  Layer.)
+- **The subtree dies.** Child authorizations are signatures like any other and can be backdated, so none issued by
+  the repudiated key can be trusted. Legitimate children caught in the blast are re-authorized from a surviving
+  senior branch.
+- **Issuable only by a senior key** - never self-issued. An attacker holding the key will not sign its own death
+  warrant.
+
+**Conflicts between dispositions** resolve by the ordinary seniority rules, with one note: a self-signed retirement
+and a senior-signed repudiation of the same key can both exist (the "attacker eased out the door quietly" case). The
+senior statement wins, and repudiation is the stricter claim - relying parties apply the quarantine.
+
 ### Recovery Planning
 
 Structural seniority is fixed at signing time and cannot be honestly granted retroactively - a re-issued key with a
@@ -188,10 +230,9 @@ protocol-breaking change by definition, gated behind a version bump.
 
 | Scenario | Outcome |
 |---|---|
-| Root online, child compromised | Root revokes child. Revocation propagates; relying parties converge on the revoked state. |
-| Root gone, senior-branch key compromised | Attacker holds the top of the derivable order; no surviving key outranks it. User must build a new identity. This is the genuine worst case. |
-| Root gone, junior-branch key compromised | A surviving senior-branch key outranks the attacker by rank-path. Attacker cannot win the order, but (root being gone) also cannot *revoke* the attacker - so this is a recoverable tug-of-war, not a clean eviction. |
-| Root gone, recovery key survives | The recovery key, minted as an early child at identity creation, is structurally senior to every later key. The user brings it online and it outranks (and can supersede) whatever survives. |
+| Any senior key survives, junior key compromised | The surviving senior repudiates the compromised key (seniority, not parenthood, grants revocation authority - rule 2). Clean eviction, regardless of whether the root or the attacker's parent is still alive. |
+| Senior-most surviving key compromised | Attacker holds the top of the derivable order; no surviving key outranks it, so nobody can revoke it. User must build a new identity. This is the genuine worst case. |
+| Root gone, recovery key survives | The recovery key, minted as an early child at identity creation, is structurally senior to every later key. The user brings it online and it can repudiate anything junior. |
 | Compromised/duplicated key equivocates | Detected as un-orderable siblings; resolved by the deterministic tiebreaker. All honest relying parties converge on the same winner (safe, not necessarily fair). |
 | Node operator is malicious | Operator can exfiltrate the one leaf key that node holds (and any secret it has decrypted). Bounded to one node; **only use trusted nodes.** |
 
@@ -491,7 +532,7 @@ Each connector node maintains:
 - The per-user SQLite database is the local materialized view of synced data.
 - Both nodes continue to sync the user's data bidirectionally as long as the user is active on both.
 - When multiple nodes write to the same key, conflicts are resolved using **last-writer-wins by timestamp** for simple fields (name, bio, etc.). More complex data types can layer a CRDT library on top in the future.
-- **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries are stored **signed** so that they can be retroactively revoked if necessary.
+- **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries are stored **signed** so that a Repudiation Revocation can retroactively quarantine everything a hostile key signed after its cut-point (see Revocation Types).
 
 ---
 
@@ -676,7 +717,7 @@ rettro/
 
 ### M4: Key Tree Operations
 - [ ] Child key authorization (cross-node)
-- [ ] Key revocation (parent revokes child)
+- [ ] Key revocation (senior revokes junior; retirement and repudiation dispositions)
 - [ ] Sibling authority resolution
 - [ ] Recovery key generation at identity creation (early senior child, downloadable)
 
