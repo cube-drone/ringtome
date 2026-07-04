@@ -321,6 +321,46 @@ When content is created, it references the identity's root public key and includ
 - **Name changes are visible:** an identity that was "Hats Ahoy" at T1 and "Hat Fan" at T2 shows both names on the
   respective content, but both are clearly the same identity (same root pubkey).
 
+### Display Names and Contact Names
+
+Three layers refer to an identity, in decreasing forgeability and increasing personal trust:
+
+- **The identicon** (derived from the root pubkey) is the true, unforgeable identity - it never changes and cannot
+  be copied.
+- **The display name** is a *self-claim*: mutable, unverified, in the public profile, synced to followers. It always
+  shows, because even with zero other data, seeing that an identity claims to be "FART DRAGON" is a useful first
+  hook. Change it and followers see the change on next sync (the profile's LWW history records the old names too).
+- **The contact name** is *your* private annotation - a local label you assign, stored on your private chain,
+  **never synced to anyone.** Like saving someone in your phone under a name that helps *you* remember them. It
+  overrides the display name in your UI.
+
+Render rule: the contact name wins when set, but the self-claim stays visible on expand - `Dave (claims "FART
+DRAGON")` - so you keep the joke, and you can still notice when someone changes their public presentation.
+
+**Contact names are the anti-impersonation tool, because they bind to the root, not the name.** The costume attack
+(someone copies a friend's display name and avatar under a different root) fails outright: an impostor can copy the
+name "Dave," but cannot become *your* "Dave," which points at a specific root. So the UI cue is: an identity you have
+saved renders with a "known contact" marker; an identity merely *claiming* a familiar display name does not. The safe
+path (save the people you actually know) is also the natural one, and the *absence* of the known-contact marker on a
+familiar-looking name is the warning.
+
+Two constraints:
+
+- **Contact names sync within your identity, never outside it.** They live on the private chain, so they replicate
+  across all *your own* nodes (save someone as "Dave" on your phone, they are "Dave" on your laptop) but never cross
+  the inter-identity boundary to followers, fronting nodes, or the public - like everything private, "private" means
+  *which sync boundary*, not *stored in one place*. Consequently, name *suggestions* for a stranger ("who is this?")
+  may be drawn only from aggregated **public display names** across the trust graph ("the roots you trust mostly
+  render this identity as 'Curtis'"), never from anyone's private contact names. A convenience feature must not
+  puncture the private-chain guarantee.
+- **Contact-name collisions are local and yours.** Nothing stops you saving two roots as "Mike"; the client should
+  warn, but there is no global namespace to police - which is precisely why contact names have no squatting or
+  scarcity, unlike index names.
+
+Contact names are adjacent to vouching (both are "I have personally pinned this root as someone specific") but kept
+separate: you can save a public figure you have never met, and vouch for a real human you never bothered to save.
+The UI may offer them together, but they are distinct gestures.
+
 ### Hosting and the Colocation Problem
 
 pkarr records are public metadata: anyone can query a batch of pubkeys and **cluster identities by their address
@@ -648,6 +688,108 @@ transitively, the entire prefix beneath it. A revocation is a **closing seal acr
   the recovery silently eats the user's posts. Needs specifying before the recovery UX ships.
 - **Device-attribution metadata.** Chains are per-key and keys are per-device, so a patient observer can see which
   device authored what. Same honesty class as the timing-correlation caveats in Hosting.
+
+---
+
+## Addressing: `ringtome://` URLs
+
+The IM-AOL is the storage substrate; `ringtome://` URLs are the interface to it. An address names *whose* data and
+*what* within it, and deliberately does **not** name *where* - location is resolved at lookup time via pkarr, because
+identities are multi-homed and roam.
+
+```
+ringtome://<root>[:<nodeID>][(<hint>[:<hint>...])]/[path]
+```
+
+### The three slots, each with one job
+
+- **`root`** — **authority.** The identity's root public key. This is the *only* trusted element in the URL: any
+  data served for this address must present a signature chain terminating at `root`, or it is discarded. The name is
+  self-certifying - given `root`, you can verify content from anyone, with no trusted host.
+- **`nodeID`** (optional) — **provenance and preferred first contact.** The key of the node that minted the URL.
+  Because minting the URL is itself a proof the node was alive at t=0, `nodeID` is the single best liveness bet - so
+  it is contacted *first*. It doubles as durable "signed by" metadata: even after every routing hint has rotted,
+  `nodeID` still records which node authored this URL. (It is implicitly the first hint - never list it again inside
+  the parens.)
+- **`(hints)`** (optional) — **reachability.** An unordered, best-effort set of additional pubkeys, biased toward
+  nodes that were online at production time, offering more pkarr entry points so discovery does not hinge on any one
+  node. Hints are **keys, never addresses** - a key delegates freshness to pkarr (self-healing while its owner is
+  online); an address would freeze a routing snapshot into the string and rot. Hints are never trusted; they are
+  verified against `root` on arrival and discarded on failure.
+
+### Resolution order
+
+Try `nodeID` first (freshest liveness evidence), then hints in parallel, then resolve `root` itself as the
+always-correct backstop. Verify whatever answers against `root`; use it; ignore anything that fails to chain. A stale
+or malicious non-root element costs at worst a wasted connection attempt, never a wrong answer. A new node
+bootstraps identically: resolve any resolvable element, sync, and thereafter learn the rest of the tree through the
+anti-entropy mesh - the URL only has to yield *one* live first contact.
+
+### Graceful degradation
+
+Every shorter form is valid and a consumer that understands the full form handles all of them:
+
+- `ringtome://<root>/path` — minimal, always correct, slowest (root may be cold).
+- `ringtome://<root>:<nodeID>/path` — + provenance; the natural form for a URL that has been sitting around.
+- `ringtome://<root>:<nodeID>(h1:h2)/path` — + fresh reachability; the natural form for a just-minted, immediately-
+  shared URL (chat, QR at a meetup), which commonly resolves in one hop with no DHT round-trip at all.
+
+A full URL whose hints have gone stale simply *becomes* a shorter one in practice - it never breaks, it only gets
+slower. This is the intended failure mode.
+
+### View vs. log, identity vs. resource
+
+- **Bare form** (no path) is the **identity URL** - it names the identity itself (a client typically renders the
+  profile).
+- **Path form** (`/profile`, `/posts/<id>`) names a **resource** within the identity.
+- By default a resource resolves to the node's **reconciled view** (the merged, current-state object). The
+  underlying IM-AOL entry streams are available as an explicit option (e.g. a log/raw modifier), for consumers that
+  want to verify or re-merge themselves rather than trust the server's materialization.
+
+### Costs to keep in mind
+
+- **Verbosity is a privacy dial.** More hints reveal more of which keys belong to one identity (a linkage /
+  enumeration signal). Fine for a public identity being broadcast anyway; a client should **not** auto-populate hints
+  for identities the user treats as pseudonymous - bare-root, or root plus a single fronting-node hint, is the
+  privacy-friendly form.
+- **Length.** ed25519 keys are ~50 chars each in z-base32; a shareable default should stay short (root + nodeID +
+  2-3 liveliest hints), reserving longer hint sets for robustness contexts (QR codes, config files) rather than
+  bios.
+
+### Naming: Human-Readable Names Are Pointers, Never Authority
+
+A `ringtome://` URL is unspeakable by design - a ~50-char root key is the price of a self-certifying, decentralized
+name (this is Zooko's Triangle: secure + decentralized + human-meaningful, pick two; the URL picks the first two).
+Human-readable names are a layer *on top*, and the invariant that keeps them safe is absolute: **a human name only
+answers "which root?"; `root` remains the sole authority; resolution always ends in sync-and-verify-against-root.**
+Whoever answers "which root" can misdirect first contact, but can never forge content, impersonate an established
+root, or deceive people who already know the root - so naming lives entirely outside the security core. The raw URL
+is the infohash-equivalent; names are how you find it.
+
+Three tiers, by technical bar:
+
+- **Indexes (mass-market).** A directory site maps `some-name -> ringtome://root`, exactly like a BitTorrent
+  tracker maps a name to an infohash. Near-zero bar: type a name, register a pointer. Ringtome may run a reference
+  index (`pub.ringtome.ca`); others can run their own; they **compete and are disposable** - an index can go down
+  while the network stays up (thepiratebay vs. BitTorrent), because the protocol never depends on one. An index is
+  **non-authoritative by construction**: it can lie about which root a name points at (bait-and-switch on first
+  contact), but nothing more, so it must present mappings as "this name points here," never "verified to be them."
+- **DNS-anchored domains (power users / institutions).** `curtis.lassam.net` doubles as name and trust anchor, but
+  gates on domain ownership - an enthusiast's tool, not a mass-market one. The binding must be **bidirectional**:
+  the domain publishes the root, *and* the identity's profile DNS-pin claims the domain; a resolver accepts only if
+  both agree (otherwise anyone could publish a record claiming your root).
+- **Contact names (post-first-contact, conversational).** Once you have met an identity, your client files its root
+  under a local name ("Eve") and you never touch the URL again. Secure + meaningful, sacrificing *global* (my "Eve"
+  is not yours). See Display Names and Contact Names for the full model; this is how humans refer to each other
+  anyway.
+
+**The one piece of this that is protocol, not ecosystem:** clients **pin a name -> root mapping on first
+resolution** and treat a later change as an *event to surface*, not a silent redirect (monotonic memory, applied to
+names). This is what stops a compromised index from hijacking an established relationship - the index is for first
+contact only; after that the client remembers the root. Confusable-name attacks ("cvrtis") are further caught by the
+**root-derived identicon** (the name may collide; the image will not) and by showing trust-graph context rather than
+letting the index adjudicate truth. Everything else about indexes is "someone builds a website," and the doc means
+that literally - it is liberating, not hand-waving.
 
 ---
 
