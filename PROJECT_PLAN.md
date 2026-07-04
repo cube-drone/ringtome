@@ -71,6 +71,19 @@ The system is **trust-minimizing, not trustless.** A malicious node operator who
 
 This is neither trustless (you do trust each node with its own leaf key and any secrets it has decrypted) nor fully trusting (the node never holds the root key, can be revoked, and cannot compromise other nodes). The key tree architecture exists specifically to make node compromise a **bad, privacy-harming, but recoverable event** rather than a fully catastrophic one.
 
+**Be blunt about the web-UI boundary: a node that serves your client can *become* your client.** When you log into a
+node's web UI, that node ships the JavaScript that holds your session, prompts for your password, and signs on your
+behalf. A malicious one can therefore steal your password, sign statements as you, hide revocations from you, show
+you fabricated trust state, coax you into publishing a private follow, or reset the monotonic memory that is supposed
+to protect you from eclipse. This is the "trusted agent, like an email provider" model, stated at full strength - it
+is acceptable *for a node you actually trust*, and it is why "only log in to nodes you trust" is a real security
+requirement, not boilerplate. The strong guarantees elsewhere in this document (eclipse resistance via monotonic
+memory, first-contact verification) hold for users on **self-hosted or trusted nodes, or a native/local client** -
+they do **not** protect someone logging into a hostile node's web UI, because there the adversary is the client
+itself. A future "dumb node, smart client" mode (native app, browser-extension signer, or passkey-mediated signing)
+is the path to needing less trust in the node; v1 does not attempt it, and the product must not oversell its
+trust-minimization to web-UI users.
+
 ---
 
 ## Identity System: The Key Tree
@@ -329,7 +342,10 @@ Three layers refer to an identity, in decreasing forgeability and increasing per
   be copied.
 - **The display name** is a *self-claim*: mutable, unverified, in the public profile, synced to followers. It always
   shows, because even with zero other data, seeing that an identity claims to be "FART DRAGON" is a useful first
-  hook. Change it and followers see the change on next sync (the profile's LWW history records the old names too).
+  hook. Change it and followers see the change on next sync. (The name is a **last-writer-wins (LWW)** field: when two
+  of your own nodes set it at different times, the later timestamp wins, so all replicas converge on one value; the
+  chain of past writes doubles as the name history. LWW is used throughout for simple scalar fields where overwriting
+  is the intent - see Data Layer.)
 - **The contact name** is *your* private annotation - a local label you assign, stored on your private chain,
   **never synced to anyone.** Like saving someone in your phone under a name that helps *you* remember them. It
   overrides the display name in your UI.
@@ -691,6 +707,107 @@ transitively, the entire prefix beneath it. A revocation is a **closing seal acr
 
 ---
 
+## Canonical Encoding, Signature Domains, and Versioning
+
+This is foundational, not a late detail: the byte representation of an entry *is* what gets hashed, signed,
+chain-linked, and anchored. If two implementations disagree about how a logical entry becomes bytes, they compute
+different hashes for the "same" entry - and a legitimate entry looks like a forgery, or two nodes "converge" on
+byte-different state that no longer verifies. Changing any of these rules after data exists breaks every prior
+signature and snaps every hash chain, so they are decided now.
+
+### The core rule: hash and store the author's original bytes; never re-serialize
+
+The signed, hashed object is **the exact serialized bytes the author first produced.** Those bytes travel the network
+verbatim; every node hashes and verifies *the bytes it received*, and stores them unchanged. **A node MUST NOT
+re-serialize an entry it intends to hash, forward, or store** - re-encoding is permitted only for ephemeral local use
+(display, indexing) whose output never re-enters the log. This single rule makes serialization determinism a
+non-issue by construction: canonicity only matters when two parties independently encode the same object, and here
+there is only ever one encoding - the author's - which everyone copies. It also makes additive evolution safe: an old
+node that cannot interpret a new field still forwards the *original bytes* intact, so newer nodes see the field and
+the hash still matches.
+
+### Format: canonical CBOR
+
+Entries are encoded as **deterministically-encoded CBOR** (RFC 8949 §4.2: sorted map keys, shortest-form integers,
+no indefinite-length items). CBOR was chosen because it is the one widely-supported, cross-language (IETF standard,
+implementations everywhere, the substrate under COSE/WebAuthn) format that targets *both* schema evolution
+(self-describing, old readers skip unknown fields) *and* specified deterministic encoding. Its determinism is
+defense-in-depth behind the store-original-bytes rule: the rule is the primary guarantee, CBOR's canonical mode is
+the belt to its suspenders if a bug ever causes a re-encode. (postcard was rejected for tying the ecosystem to one
+language's serializer; protobuf for making canonicity an explicit non-goal.)
+
+- **Strings are NFC-normalized** before encoding, so "the same" text is never two different byte sequences.
+- **Unknown types/fields are carried forward** verbatim, never dropped - this is what makes old nodes safe to run
+  against newer data.
+
+### Hash: BLAKE3-256
+
+All hashing - entry hashes, `prev_hash` chain links, revocation anchors - uses **BLAKE3, 256-bit output (32 bytes)**.
+This matches `iroh-blobs`, which is already BLAKE3-content-addressed, so one hash algorithm covers the whole system
+(entry chains and blob refs alike) rather than two side by side. BLAKE3 is fast (parallel/SIMD, faster than SHA-2),
+cryptographically strong, and its native `derive_key` / keyed mode is a clean primitive for the signature-domain
+separation below. The hash is a **versioned parameter** (recorded via the version tag), not a baked-in constant, so a
+future entry version could switch algorithms without making old entries unparseable - crypto agility without betting
+the system on "BLAKE3 is never broken."
+
+### Concrete entry schema (v0 - PROVISIONAL)
+
+This is the literal field layout an implementation hashes and signs. It is deliberately **v0 and expected to
+change** once a real consumer (the first post, the first follow) exercises it - writing it down now is to make M1
+buildable and to flush out any remaining ambiguity, not to freeze it. A chain entry:
+
+```
+Entry {
+  v:          u16          // protocol/schema version tag (also selects hash + sig algorithms)
+  type:       u32          // type-registry id (chain-entry, authorize, revoke, profile-set, post, ...)
+  chain:      ChainId      // which (key, service) chain this belongs to
+  seq:        u64          // dense per-chain sequence number, no gaps
+  prev_hash:  [u8; 32]     // BLAKE3-256 of the previous entry's bytes (zero for seq 0)
+  timestamp:  u64          // author's claimed wall-clock, ms since epoch; ADVISORY - never a security input
+  payload:    Payload      // type-specific body: inline value, or a 32-byte BLAKE3 blob hash for large content
+  sig:        [u8; 64]     // ed25519 signature over the domain-separated preimage (below)
+}
+```
+
+- The **entry hash** = `BLAKE3-256(the exact serialized entry bytes as the author produced them)` - never a
+  re-encoding.
+- `sig` covers everything else in the entry, via the domain-separated preimage in the next section, so `seq`,
+  `prev_hash`, `chain`, and `type` are all authenticated (this is what makes the hash chain and anchoring sound).
+- `payload` is header-vs-blob split (see IM-AOL Open Items): small values inline, large content as a droppable blob
+  hash, so deletion drops the blob while the signed header survives.
+- `timestamp` is present for display ordering and LWW of cosmetic fields only; the schema comment says ADVISORY so
+  no one wires a security decision to it.
+
+### Signature domains
+
+Every signature is computed over a **domain-separated preimage**: a context tag prefixes the bytes, e.g.
+`ringtome-v1/chain-entry`, `ringtome-v1/authorize`, `ringtome-v1/revoke`, `ringtome-v1/pkarr-record`. This makes a
+signature valid in exactly one context - a signature over a chain entry can never be replayed as an authorization,
+and vice versa. Cross-context signature-replay bugs are common and stupid; domain separation eliminates the class.
+
+- **Ringtome identity keys and iroh node keys are distinct key types** even though both are ed25519-shaped; the
+  protocol never treats a signature from one as valid in the other's role.
+
+### Versioning and the type registry
+
+- Every entry carries an explicit **version tag** and a **type** drawn from a registry (`chain-entry`, `authorize`,
+  `revoke`, `profile-set`, `post`, ...). New types and new fields are added additively; old fields are never removed
+  or repurposed.
+- **Protocol version negotiation** happens at connection setup; the version tag on each entry lets a node apply the
+  right validation rules to historical entries written under older versions.
+- Any future change that alters how relying parties *rank* or *validate* entries is a breaking change gated behind a
+  version bump (this is the same rule already noted for authority statements).
+- **Test vectors are mandatory:** the spec publishes "this logical entry MUST produce exactly these bytes and this
+  hash / this signature," so independent implementations stay bit-compatible. These are the conformance boundary.
+
+### A debug tool, not text on the wire
+
+Binary sacrifices human readability, which is recovered cheaply by a `ringtome inspect <entry>` tool that
+pretty-prints the decoded structure. Readability is wanted only when a human is debugging - exactly where a tool
+serves it - not on the wire, where the audience is machines hashing and verifying.
+
+---
+
 ## Addressing: `ringtome://` URLs
 
 The IM-AOL is the storage substrate; `ringtome://` URLs are the interface to it. An address names *whose* data and
@@ -865,7 +982,7 @@ Each connector node maintains:
 - User data is synced between nodes using the **Ringtome sync protocol** (see Iroh Protocol Mapping below), not by replicating raw SQLite files.
 - The per-user SQLite database is the local materialized view of synced data.
 - Both nodes continue to sync the user's data bidirectionally as long as the user is active on both.
-- When multiple nodes write to the same key, conflicts are resolved using **last-writer-wins by timestamp** for simple fields (name, bio, etc.). More complex data types can layer a CRDT library on top in the future.
+- When multiple nodes write to the same field, conflicts are resolved using **last-writer-wins (LWW) by timestamp** for simple scalar fields (name, bio, etc.): the write with the later timestamp wins, so every replica converges on one value without coordination. LWW is only appropriate where overwriting is the intent and a lost write is harmless - it must **never** gate anything security-relevant, because timestamps are attacker-controllable claims (a compromised node can stamp a far-future time and win forever). Collections use set-merge instead (two nodes adding different items both survive), and authority conflicts resolve by rank-path, never by timestamp. More complex data types can layer a CRDT library on top in the future.
 - **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries are stored **signed** so that a Repudiation Revocation can retroactively quarantine everything a hostile key signed after its cut-point (see Revocation Types).
 
 ---
@@ -998,27 +1115,40 @@ Epidemic broadcast messaging to topic subscribers (HyParView/PlumTree). Used for
 
 The BitTorrent Mainline DHT via `pkarr` (Public-Key Addressable Resource Records) provides **decentralized, serverless identity discovery**.
 
-- Each connector node **publishes** a signed record to the DHT for every user it hosts, keyed by the user's root public key.
-- The record contains the node's current addresses (~1000 bytes max).
-- Records **expire after a few hours** if not republished — this is a feature, not a bug. The DHT is a **liveness signal**: it answers "who is currently online and can serve this identity?"
-- Nodes republish on a fixed schedule (hourly) as a background task.
-- If all of a user's nodes go offline, their DHT record naturally expires, which is correct — there's nobody to serve the data.
-- Anyone who has previously cached the user's identity data still has it. The DHT is only needed for first contact.
+**Records are keyed by node keys, not the root.** pkarr records are keyed by *and self-signed by* the pubkey they
+live under - so a node can only publish a record keyed by a key it actually holds. Since nodes never hold the root
+key (and the root may be cold, retired, or gone), records are keyed by each **node's own key**:
+
+- Each online node **publishes a record under its own node key**, containing its current addresses (~1000 bytes),
+  plus the chain proving that node key is authorized to serve the identity (chain-to-root, verified by the resolver).
+- **Discovery is via the node keys in the URL** (`nodeID` / hints), not via the root. The root is the *authority*
+  you verify against; it is not a resolvable address. This is why bare `ringtome://root` alone does not reliably
+  resolve - it needs a hint, a cache hit, or an index to supply a live node key to look up. This is a feature, not a
+  gap: the online nodes are exactly the resolvable ones, and the root need not be online at all.
+- Records **expire after a few hours** if not republished. Each node **republishes its own record on a fixed
+  schedule** (e.g. hourly) as a background task, for as long as it is online. The record is thus a **liveness
+  signal**: it answers "which of this identity's nodes is currently online and reachable?"
+- If all of an identity's nodes go offline, all their records expire, which is correct - there is nobody to serve
+  the data. Anyone who previously cached the identity's data still has it; the DHT is only needed for first contact.
 
 ### Discovery Flow
 
 ```
-Node X encounters public key K0
-  → Check local cache (instant if we've seen this user before)
-  → Miss? Query Mainline DHT for K0 via pkarr
-  → Get back addresses of nodes currently serving K0's data
-  → Connect to one of those nodes via Iroh
-  → Sync K0's identity data via Ringtome sync protocol (key tree, profile, content)
-  → Cache locally
+Node X wants ringtome://<root>:<nodeID>(<hints>)/...
+  → Check local cache (instant if we've seen this identity before)
+  → Miss? Resolve the node keys from the URL (nodeID first, then hints) via pkarr in parallel
+  → Get back the current addresses of whichever of those nodes are online
+  → Connect to one via Iroh; it presents its chain-to-root
+  → Verify that chain terminates at <root>; discard the responder if it does not
+  → Sync the identity's data via Ringtome sync protocol (identity chains first, then content)
+  → Cache locally (including freshly-learned node keys, which widen future resolution)
   → Future lookups are instant cache hits
 ```
 
-Note what this flow already assumes: **you must know K0 to look it up.** pkarr resolves a key you name into addresses; it does not let you enumerate keys you have never heard of. So the DHT is a *lookup* channel, not an enumeration one - consistent with the graph-privacy model below.
+Two things this flow assumes. First, **you must know a node key to look one up** - pkarr resolves a key you name
+into addresses; it does not let you enumerate keys you have never heard of, so the DHT is a *lookup* channel, not an
+enumeration one (consistent with the graph-privacy model). Second, **trust comes from the chain-to-root check, never
+from who answered** - any node may respond; only one presenting a valid chain to `<root>` is believed.
 
 ### How people find each other (Discovery Channels)
 
@@ -1093,60 +1223,6 @@ ringtome/
 - [x] ~~**Conflict resolution:**~~ Resolved — Ringtome sync protocol validates entries against the key tree, rejects revoked authors, then applies last-writer-wins by timestamp for simple fields among valid authors. Complex data types can layer CRDTs (e.g., Loro) on top in the future.
 - [ ] **What social features first?** Profiles? Posts/feed? Direct messages? Following?
 - [ ] **Frontend approach:** Keep vanilla JS from old codebase, or adopt a lightweight framework?
-- [ ] **Key tree serialization format:** How is the key tree stored and transmitted? Protobuf? CBOR? Custom?
+- [x] ~~**Serialization format:**~~ Resolved — deterministically-encoded CBOR, with the hash-and-store-original-bytes rule, domain-separated signatures, version tags, a type registry, and published test vectors (see Canonical Encoding, Signature Domains, and Versioning).
 - [ ] **Recovery key UX:** How do we present the auto-generated recovery key at identity creation so users actually save it (and understand what it is)?
 
----
-
-## Milestones
-
-### M0: Skeleton
-- [ ] New Rust crate (`node/`) with Axum + Tokio
-- [ ] Basic config loading
-- [ ] SQLite connection (node database)
-- [ ] Health check endpoint
-- [ ] Compiles and runs
-
-### M1: Local Identity
-- [ ] Ed25519 keypair generation
-- [ ] IM-AOL chain structures: entry format (header + blob hash), hash chaining, dense sequencing, per-(key, chain)
-      namespacing, signature validation, fork detection
-- [ ] Key tree data structures (create root, add child, serialize/deserialize) as identity-chain entries
-- [ ] Username + password registration (Argon2-encrypted key storage)
-- [ ] Login / session management
-- [ ] Per-user SQLite database creation (materialized from local chains)
-
-### M2: P2P Foundation
-- [ ] Iroh node boots alongside the Axum server
-- [ ] Nodes can discover and connect to each other
-- [ ] Basic "ping" protocol between nodes
-
-### M3: User Data Replication
-- [ ] Ringtome sync protocol: per-(key, chain) version vector exchange over iroh QUIC streams
-- [ ] Identity chain sync (self-authenticating entries; syncs first, establishes authority context)
-- [ ] Content chain sync with key-tree validation at the sync boundary
-- [ ] Eager push of new entries; unsynced-entry indicator
-- [ ] User connects to a second node
-- [ ] User's entries sync to the new node, which materializes its own per-user database
-- [ ] Bidirectional sync between nodes
-
-### M4: Key Tree Operations
-- [ ] Child key authorization (cross-node)
-- [ ] Onboarding corroboration ladder: seniors, then pkarr-discovered peers, then proceed-unverified-and-retry
-- [ ] Key revocation (senior revokes junior; retirement and repudiation dispositions; anchored to chain heads)
-- [ ] Straggler sweep before retirement of a lost key
-- [ ] Sibling authority resolution
-- [ ] Recovery key generation at identity creation (early senior child, downloadable)
-
-### M5: Social Features
-- [ ] User profiles
-- [ ] Multiple identities per node account (identity switcher)
-- [ ] Following / social graph
-- [ ] Posts / feed
-- [ ] Direct messages
-
-### M6: Enhanced Auth
-- [ ] Passkey / WebAuthn support
-- [ ] Optional email verification (pluggable, no AWS dependency)
-- [ ] Seed phrase key backup
-- [ ] Key export/import
