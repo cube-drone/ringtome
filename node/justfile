@@ -1,0 +1,90 @@
+# Ringtome node - common automation.
+# Run `just` with no arguments to list recipes.
+
+# Use bash for all recipes (this repo is developed under Git Bash on Windows).
+set shell := ["bash", "-uc"]
+# Don't let MSYS mangle Windows-style args (e.g. taskkill's -F/-IM).
+set windows-shell := ["bash", "-uc"]
+
+# Paths are relative to this justfile (the `node/` dir); step up for cargo commands.
+workspace := justfile_directory() / ".."
+port := env_var_or_default("RINGTOME_PORT", "5281")
+test_data := "./data/test"
+
+# List available recipes.
+default:
+    @just --list
+
+# --- build / check ---------------------------------------------------------
+
+# Compile the workspace (debug).
+build:
+    cd "{{workspace}}" && cargo build
+
+# Fast type-check without producing a binary.
+check:
+    cd "{{workspace}}" && cargo check
+
+# Clippy lints, warnings-as-errors.
+lint:
+    cd "{{workspace}}" && cargo clippy -- -D warnings
+
+# Format all Rust code.
+fmt:
+    cd "{{workspace}}" && cargo fmt
+
+# Rust unit tests.
+test-unit:
+    cd "{{workspace}}" && cargo test
+
+# --- run -------------------------------------------------------------------
+
+# Run the node in the foreground (Ctrl-C to stop). Uses the default data dir.
+run:
+    cd "{{workspace}}" && cargo run --bin ringtome
+
+# --- integration tests -----------------------------------------------------
+
+# Install the JS integration-test dependencies.
+integration-install:
+    cd "{{justfile_directory()}}/integration" && npm install
+
+# Kill any running ringtome.exe (Windows), ignoring "not found".
+kill:
+    -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
+
+# Boot a throwaway node, wait for health, run the JS integration suite, tear it down.
+integration: build kill
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{workspace}}"
+    rm -rf "{{test_data}}"
+    RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="{{test_data}}" \
+        ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
+    NODE_PID=$!
+    cleanup() {
+        MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_PID" 2>/dev/null || true
+        MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    # Wait up to ~10s for the node to answer /health.
+    for i in $(seq 1 50); do
+        if curl -sf "http://127.0.0.1:{{port}}/health" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.2
+        if [[ $i -eq 50 ]]; then
+            echo "node did not become healthy; log:" >&2
+            cat /tmp/ringtome-integration.log >&2
+            exit 1
+        fi
+    done
+
+    cd "{{justfile_directory()}}/integration"
+    RINGTOME_TEST_HOST="127.0.0.1:{{port}}" npm test
+
+# --- everything ------------------------------------------------------------
+
+# Full local check: format check, lint, unit tests, integration tests.
+ci: check lint test-unit integration
