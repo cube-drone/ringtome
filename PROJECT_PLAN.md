@@ -223,10 +223,49 @@ protocol-breaking change by definition, gated behind a version bump.
 
 ### Key Storage
 
-- Each node generates and stores **only its own private key**, encrypted with the user's password on that node.
+- Each node generates and stores **only its own private key**, never a root key or any other node's key.
 - **No private keys are ever transferred between nodes.** Only public keys and the chain of signatures (proving tree membership) replicate across the network.
-- Each node has its own **independent password**. Nodes have no knowledge of other nodes' passwords. This limits blast radius: a compromised node only captures one password and one leaf key, not the user's credentials for every node.
-- Encryption uses **Argon2** as the KDF to make offline brute-force attacks against the local key expensive.
+- **Encrypt the key, not the database.** The per-user SQLite database is a mostly-public materialized view (public
+  chains are public by definition; private-chain payloads are *already* ciphertext), so full-DB encryption
+  (SQLCipher etc.) is the wrong tool - it taxes a public view to protect one small secret. Instead the leaf private
+  key is stored as a **small, separately-stored, envelope-encrypted key file** (more like `~/.ssh/id_ed25519` than a
+  DB row). Keeping it out of the DB is deliberate: the DB stays safe to back up and replicate freely, and the one
+  genuine secret is handled directly.
+- **The envelope key must be readable unattended on boot** - this is a hard requirement, not a preference. Network
+  resilience demands nodes be **trivially restartable** (a node in a bad environment may reboot several times a day
+  and must come back *signing* with no human present), so **no human secret can be required at boot.** Autonomous
+  restart and password-on-boot are mutually exclusive, and autonomous restart wins for any node meant to stay live.
+  The envelope key therefore comes from **ambient machine state**:
+    - **Default: an env var or `0600` file** the process reads on boot (systemd unit, Docker secret, `.env`) - the
+      same way every always-on service handles at-rest secrets. Reboot, read, decrypt leaf key, resume signing.
+    - **Hardening: OS keychain / DPAPI / Secret Service / TPM** - same unattended-boot behavior, but the envelope
+      key is machine-bound so a *copied disk image or backup* does not carry it. A strict upgrade over the env var
+      against the leaked-artifact threat; identical autonomous-restart behavior.
+- **What this protects, honestly.** Both sources preserve autonomous restart and cover the **separated-artifact**
+  window (leaked `.db` / data-dir backup that does *not* include the env var or keychain entry). Neither protects
+  against an attacker who owns the running machine or grabs a *full* machine image - but that is already the threat
+  model's accepted case ("a malicious node can exfiltrate decrypted keys"), so no claimed guarantee is lost.
+- **Opt-in exception: lockable personal device.** On a device you *deliberately* want inert when you are away (a
+  laptop), the envelope key can be **password-derived (Argon2 KDF)** so the key stays locked until you log in. This
+  trades away autonomous restart *on purpose* - it is only for nodes not trying to stay live, and is never the
+  default.
+- Each node's at-rest protection is **independent** - compromising one node yields one leaf key and, at most, one
+  password or machine secret, never credentials for any other node.
+
+**Node login is a separate concern from key encryption.** Two distinct jobs, easy to conflate:
+
+- **Login (authentication):** a user logs into the node's web UI with username + password to prove they may act as
+  their identity on this node. This uses **Argon2 as a password hash** - store a salted hash, verify on login -
+  exactly like any web app, independent of anything cryptographic. Login establishes a session; the session
+  authorizes the app to use the **envelope key** to decrypt that user's leaf key and sign on their behalf.
+- **Key encryption (at rest):** the leaf key is decrypted by the *application* with the *envelope key* (above),
+  **not** the login password.
+
+So the password gates *access*; the envelope key does the *decryption*. On an **always-on node** (the default) these
+stay fully separate: Argon2 hashes the login password, the machine reads the envelope key unattended on boot, and the
+node signs while no one is logged in. Only on the opt-in **lockable personal device** are they fused - the login
+password doubles as the Argon2 KDF for the envelope key - which is exactly what makes that device unable to restart
+unattended.
 
 ### Adding a New Node
 
@@ -1181,7 +1220,8 @@ Two honest limits to design around:
 | Real-time | **iroh-gossip** | Epidemic broadcast for live notifications |
 | Discovery | **pkarr** / Mainline DHT | Decentralized identity lookup |
 | Local database | **SQLite** via **sqlx** | Per-user local materialized views |
-| Password hashing | **Argon2** | For encrypting local key material |
+| Login auth | **Argon2** | Node-login password hashing (verify user, then grant access to their key) |
+| Key at rest | **envelope-encrypted key file** | Machine keychain (always-on) or Argon2-derived (cold device); DB itself unencrypted - see Key Storage |
 | Cryptography | **ed25519** | Identity keypairs (via Iroh's built-in key types) |
 | Frontend | **Vanilla JS/CSS** | Carried over from old codebase (initially) |
 
@@ -1191,6 +1231,69 @@ Two honest limits to design around:
 - ~~AWS SNS~~ — no mandatory SMS provider
 - ~~Multi-tenant community model~~ — replaced by unified identity
 - ~~Organization-scoped auth tables~~ — replaced by per-user databases
+
+---
+
+## Delivery and Packaging
+
+**One binary, two modes, chosen by config - not two codebases.** The node and the personal-desktop app are the same
+Rust binary with different switches flipped:
+
+| | Node mode (hosted / always-on) | Desktop mode (personal) |
+|---|---|---|
+| Bind | public port | `localhost`, stable default port |
+| Tenancy | multi-tenant (Argon2 login) | single-tenant, auto-login (the OS user *is* the tenant) |
+| Envelope key | env var / file, upgradeable to keychain | OS keychain |
+| Lifecycle | always-on service | tray shell + autostart |
+
+Because these are config seams (bind address, tenancy, auto-login, envelope-key source), they must be **configuration
+from the start**, never hardcoded assumptions - which the config-driven design already gives us. Picking one to ship
+first does not close the door on the other.
+
+### Node-first as the bootstrap
+
+Ship **node mode first** (`testnode-N.ringtome.ca` sample nodes; enthusiasts run their own from the binary). It is
+the path we can walk now, the old codebase's HTTP patterns port directly, and iteration is fast. But name the trap
+honestly: hosted-first is a **decentralized system deployed centrally** - the median early user's keys live on *our*
+nodes, so for them the self-sovereign story is aspirational, not actual (email works this way - most people use
+Gmail). This is an acceptable bootstrap, but it has gravitational pull toward *staying* centralized, because once
+keys live on our nodes, "move to your own machine" is a migration nobody bothers to do. Guard against it: make
+**self-hosting a first-class, documented, easy path from day one**, and ship desktop mode *before* hosted usage
+calcifies - the moment hosted-first feels like it is working is the moment to ship desktop, not later.
+
+### Desktop mode: local server + system browser, NOT Tauri
+
+The app is *already* a full HTTP server, so Tauri's core value (bridging a webview to native Rust) is a bridge we do
+not need - we already have the universal one: HTTP on localhost. Desktop mode is therefore the same server bound to
+localhost, plus a **minimal native shell** (tray icon: status light, log tail, "open in browser", quit - or, at the
+floor, just auto-open the system browser with no GUI at all) that opens the user's real browser at the localhost
+port. This is the Syncthing / Jupyter / Plex model: proven, and it dodges Tauri's worst tax - cross-platform webview
+skew (WebView2 vs WebKitGTK vs WebKit), which is a documented misery. We develop against real browsers and that is
+what ships; the node's JS UI is reused verbatim.
+
+### Always-on nodes are needed either way
+
+Neither model escapes running always-on infrastructure: **p2p social content needs someone awake to serve it** (the
+fronting / rehosting problem; cf. BitTorrent seeders). A desktop app online only while its window is open is a poor
+p2p citizen - its content vanishes when the laptop closes unless an always-on node fronts it. So we run server nodes
+regardless; the only question a packaging choice answers is whether the *user's keys* also live there. Node-mode work
+is therefore never throwaway - those nodes become the seeders/fronts the desktop model also needs.
+
+### Caveats that apply to desktop mode regardless (do not forget these)
+
+These are the irreducible price of shipping a background service to non-terminal users - and note most of them would
+cost the same under Tauri, so they are not arguments for it:
+
+- **Localhost is not automatically safe.** A malicious web page you visit can make requests to `localhost:PORT`, so
+  the local server needs CSRF / origin-checking even though it is "just local" (Syncthing shipped exactly this bug).
+- **Use a stable port, not a floating one.** The browser treats `localhost:3000` and `:3001` as different origins, so
+  a port that shifts between launches silently logs the user out and drops per-origin state. Pick a fixed default,
+  fall back only on collision, and persist the choice.
+- **Autostart is the real work of the tray shell.** The status light is trivial; keeping the node running (ideally
+  launching at login, so the identity stays live) is per-OS fiddliness (launchd / Task Scheduler / XDG autostart) -
+  and it is fiddly in Tauri too.
+- **Code signing does not go away.** Any distributed executable needs Mac notarization / Windows signing or users hit
+  scary warnings - equal cost across all packaging approaches.
 
 ---
 
