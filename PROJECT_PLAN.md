@@ -791,6 +791,51 @@ contact only; after that the client remembers the root. Confusable-name attacks 
 letting the index adjudicate truth. Everything else about indexes is "someone builds a website," and the doc means
 that literally - it is liberating, not hand-waving.
 
+### Resource Namespace and Access Protocol
+
+A path addresses a typed resource, with the public/private axis **first** because it mirrors the sync boundary:
+
+```
+ringtome://<url>/public/name        (LWW-register)
+ringtome://<url>/public/links       (set)
+ringtome://<url>/public/            (index: lists resources and their CRDT types)
+ringtome://<url>/private/config     (map of typed fields; self-only)
+```
+
+- **The prefix is an access namespace, not a folder.** `/public/*` is served across the inter-identity boundary to
+  anyone who can resolve the identity; `/private/*` is **unservable** to non-self requesters as a hard rule - a
+  request for it from anyone outside the identity's own node set returns "not authorized," never the data. Access is
+  legible from the path, not buried in per-field config.
+- **Each leaf declares its CRDT merge type** (LWW-register, set, counter, log-of-entries), and `/public/` itself is
+  a discoverable index so a client can render an unknown identity without hardcoding field names.
+- **Keep it flat.** `/public/name`, `/public/bio`, `/public/links`, `/private/config` is plenty for v1. Deep
+  document trees (`/public/profile/contact/email/...`) are the MongoDB-document trap wearing a URL; resist until a
+  feature demands depth.
+
+**Transport: request/response over QUIC, but not HTTP's assumptions.** Reads are modeled as HTTP-like RPC over iroh
+bidirectional streams (open stream, write request, read response) - familiar and correct for point reads. But four
+HTTP assumptions are false here and each is load-bearing:
+
+- **No origin server.** The URL is locationless; a read is "ask *some* replica (resolved via pkarr), verify its
+  answer against `root`," not "fetch from the authority." Trust comes from the signature chain, not from who answered.
+- **Responses are signed data, not authoritative bytes.** Any replica can answer, so a response is IM-AOL entries
+  (or a reconciled view) the client verifies chain-to-root itself. This is the view-vs-log choice: a trusting client
+  accepts the responder's reconciled view; a paranoid one requests the log and re-merges.
+- **Auth is by key, mutual, at the transport.** iroh authenticates *both* endpoints by node key, so "may this
+  requester read `/private/*`?" is answered by the connection itself - is the peer's node key part of my identity's
+  tree? No cookies or tokens; the transport identity *is* the authorization. (This is a place QUIC is better than
+  HTTP, where the client is normally anonymous.)
+- **The important verb is sync, not fetch.** One-shot request/response fits "show me `/public/name` now," but
+  ongoing replication ("keep me current on this identity's posts") is anti-entropy over long-lived bidirectional
+  streams - a subscribe/stream shape QUIC suits and HTTP is awkward at. There are two interaction styles: read-as-RPC
+  and sync-as-stream; do not force the second into the first.
+
+**Open decision: is there a web gateway?** If `ringtome://` URLs must be dereferenceable by ordinary web browsers, we
+need an HTTPS gateway (`https://pub.ringtome.ca/<root>/public/name` proxying into the p2p layer) - HTTP at the edge,
+QUIC-native inside. If only Ringtome nodes ever dereference them, the native protocol can be whatever shape fits and
+never pretend to be HTTP. This choice affects how public a resource's addressing needs to be, so it should be settled
+before the first content types are designed.
+
 ---
 
 ## Data Layer
