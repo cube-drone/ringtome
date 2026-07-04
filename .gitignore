@@ -9,3 +9,7 @@
 # env / secrets
 .env
 *.env
+
+# node / js integration tests
+node_modules/
+

@@ -1,0 +1,4 @@
+{
+  "spec": "test/**/*.cjs",
+  "timeout": 5000
+}
