@@ -50,7 +50,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(
         version = %config.app_version,
         environment = ?config.environment,
-        tenancy = ?config.tenancy,
         "starting ringtome node"
     );
 
