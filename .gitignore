@@ -1,0 +1,11 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# local node data (per-user databases, key files, materialized views)
+/data
+**/data/
+
+# env / secrets
+.env
+*.env

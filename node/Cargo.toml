@@ -1,0 +1,31 @@
+[package]
+name = "ringtome-node"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ringtome"
+path = "src/main.rs"
+
+[dependencies]
+# web service
+axum = { version = "0.8", features = ["macros"] }
+tower-http = { version = "0.6", features = ["trace"] }
+tokio = { version = "1", features = ["full"] }
+
+# error handling
+anyhow = "1"
+thiserror = "2"
+
+# (de)serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ids
+uuid = { version = "1", features = ["v4", "fast-rng", "serde"] }
