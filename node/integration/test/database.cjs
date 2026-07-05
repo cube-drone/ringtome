@@ -17,6 +17,11 @@ describe("node database", function () {
         assert.ok(boot.app_version, "app_version should be present");
     });
 
+    it("ran its migrations (tracking table is populated)", async function () {
+        const { rows } = await sql("SELECT COUNT(*) AS n FROM _sqlx_migrations");
+        assert.ok(rows[0].n >= 1, "expected at least one applied migration");
+    });
+
     it("supports round-tripping via the raw SQL passthrough", async function () {
         // Prove read+write through the passthrough against a scratch table.
         await sql("CREATE TABLE IF NOT EXISTS _probe (k TEXT, v INTEGER)");

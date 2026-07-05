@@ -12,7 +12,7 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{Column, Row, TypeInfo};
+use sqlx::{Column, Row};
 
 use crate::error::AppError;
 use crate::AppState;
@@ -54,39 +54,31 @@ pub async fn raw_sql(
     }))
 }
 
-/// Convert a SQLite row into a JSON object, decoding each column by its declared type.
+/// Convert a SQLite row into a JSON object.
+///
+/// Decodes each column by *attempting* concrete types in turn rather than trusting the declared
+/// column type - computed expressions like `COUNT(*)` have no declared type, so a
+/// type-name-sniffing approach silently yields null for them. Order matters: integer before float
+/// (so whole numbers stay integers), then string, then null.
 fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> serde_json::Map<String, Value> {
     let mut obj = serde_json::Map::new();
     for col in row.columns() {
-        let name = col.name().to_string();
         let idx = col.ordinal();
-        let type_name = col.type_info().name().to_uppercase();
 
-        let value = if type_name.contains("INT") {
-            row.try_get::<Option<i64>, _>(idx)
-                .ok()
-                .flatten()
-                .map(Value::from)
-                .unwrap_or(Value::Null)
-        } else if type_name.contains("REAL")
-            || type_name.contains("FLOA")
-            || type_name.contains("DOUB")
-        {
-            row.try_get::<Option<f64>, _>(idx)
-                .ok()
-                .flatten()
-                .map(Value::from)
-                .unwrap_or(Value::Null)
+        let value = if let Ok(v) = row.try_get::<Option<i64>, _>(idx) {
+            v.map(Value::from).unwrap_or(Value::Null)
+        } else if let Ok(v) = row.try_get::<Option<f64>, _>(idx) {
+            v.map(Value::from).unwrap_or(Value::Null)
+        } else if let Ok(v) = row.try_get::<Option<String>, _>(idx) {
+            v.map(Value::from).unwrap_or(Value::Null)
+        } else if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(idx) {
+            // Blob: represent as an array of byte values (JSON has no bytes type).
+            v.map(|bytes| Value::from(bytes)).unwrap_or(Value::Null)
         } else {
-            // Text / blob / unknown: fall back to a string, then null.
-            row.try_get::<Option<String>, _>(idx)
-                .ok()
-                .flatten()
-                .map(Value::from)
-                .unwrap_or(Value::Null)
+            Value::Null
         };
 
-        obj.insert(name, value);
+        obj.insert(col.name().to_string(), value);
     }
     obj
 }

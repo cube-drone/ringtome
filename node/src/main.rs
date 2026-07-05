@@ -28,6 +28,8 @@ pub struct AppState {
     pub config: Config,
     /// The node-level database (`node.db`): node config, known peers, replication state.
     pub node_db: SqlitePool,
+    /// Opens/migrates/caches the per-identity databases.
+    pub user_dbs: db::UserDbManager,
 }
 
 #[derive(serde::Serialize)]
@@ -67,14 +69,21 @@ async fn main() -> anyhow::Result<()> {
 
     std::fs::create_dir_all(&config.data_directory)?;
 
-    let node_db_path = config.data_directory.join("node.db");
-    let node_db = db::open_sqlite(&node_db_path).await?;
+    let node_db = db::open_node_db(&config.data_directory).await?;
     db::record_boot(&node_db, &config.app_version).await?;
-    tracing::info!(path = %node_db_path.display(), "opened node database");
+    tracing::info!(data_dir = %config.data_directory.display(), "opened node database");
+
+    // Bound on simultaneously-open per-user DB handles. A placeholder default for now; will move to
+    // config when it matters (many-user nodes tuning against file-handle limits).
+    let user_dbs = db::UserDbManager::new(&config.data_directory, 128);
 
     let bind = format!("{}:{}", config.bind_address, config.port);
     let local_test = config.local_test;
-    let state = AppState { config, node_db };
+    let state = AppState {
+        config,
+        node_db,
+        user_dbs,
+    };
 
     let mut app = Router::new()
         .route("/health", get(health))
