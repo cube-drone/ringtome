@@ -59,7 +59,7 @@ integration: build kill
     set -uo pipefail
     cd "{{workspace}}"
     rm -rf "{{test_data}}"
-    RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="{{test_data}}" \
+    RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="{{test_data}}" RINGTOME_LOCAL_TEST=1 \
         ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
     NODE_PID=$!
     cleanup() {

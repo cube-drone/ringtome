@@ -34,4 +34,18 @@ function makeFetch() {
     return fn;
 }
 
-module.exports = { makeFetch, HOST };
+// Convenience for the LOCAL_TEST-only raw SQL passthrough. Returns the parsed { rows, ... } body,
+// throwing on a non-200 so tests fail loudly if the node wasn't armed with RINGTOME_LOCAL_TEST.
+async function sql(query) {
+    const fetch = makeFetch();
+    const resp = await fetch("test/sql", {
+        method: "POST",
+        body: JSON.stringify({ sql: query }),
+    });
+    if (resp.status !== 200) {
+        throw new Error(`test/sql returned ${resp.status} (is RINGTOME_LOCAL_TEST set?)`);
+    }
+    return resp.json();
+}
+
+module.exports = { makeFetch, sql, HOST };

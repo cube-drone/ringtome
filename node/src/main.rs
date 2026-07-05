@@ -7,22 +7,27 @@
 use std::net::SocketAddr;
 
 use axum::{extract::State, routing::get, Json, Router};
+use sqlx::SqlitePool;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
+mod db;
 mod error;
 mod request_context;
+mod test_endpoints;
 
 use config::{Config, PublicConfig};
 use error::AppError;
 
-/// Shared, cheaply-cloneable application state. Services (identity, db, p2p, ...) will hang off
-/// this as they are built.
+/// Shared, cheaply-cloneable application state. Services (identity, p2p, ...) will hang off this
+/// as they are built.
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
+    /// The node-level database (`node.db`): node config, known peers, replication state.
+    pub node_db: SqlitePool,
 }
 
 #[derive(serde::Serialize)]
@@ -31,11 +36,18 @@ struct Health {
     version: String,
 }
 
-async fn health(State(state): State<AppState>) -> Json<Health> {
-    Json(Health {
+/// Liveness check. Verifies the node database is actually reachable, not just that HTTP responds -
+/// a node whose database is wedged is not healthy.
+async fn health(State(state): State<AppState>) -> Result<Json<Health>, AppError> {
+    sqlx::query("SELECT 1")
+        .execute(&state.node_db)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+    Ok(Json(Health {
         status: "ok",
         version: state.config.app_version.clone(),
-    })
+    }))
 }
 
 async fn get_config(State(state): State<AppState>) -> Result<Json<PublicConfig>, AppError> {
@@ -55,12 +67,30 @@ async fn main() -> anyhow::Result<()> {
 
     std::fs::create_dir_all(&config.data_directory)?;
 
-    let bind = format!("{}:{}", config.bind_address, config.port);
-    let state = AppState { config };
+    let node_db_path = config.data_directory.join("node.db");
+    let node_db = db::open_sqlite(&node_db_path).await?;
+    db::record_boot(&node_db, &config.app_version).await?;
+    tracing::info!(path = %node_db_path.display(), "opened node database");
 
-    let app = Router::new()
+    let bind = format!("{}:{}", config.bind_address, config.port);
+    let local_test = config.local_test;
+    let state = AppState { config, node_db };
+
+    let mut app = Router::new()
         .route("/health", get(health))
-        .route("/api/config", get(get_config))
+        .route("/api/config", get(get_config));
+
+    // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so
+    // there is no path to the SQL executor on a normal node. See test_endpoints.
+    if local_test {
+        tracing::warn!(
+            "RINGTOME_LOCAL_TEST is enabled: mounting raw SQL passthrough at /test/sql. \
+             This is an extreme security hole - use only on a local test node."
+        );
+        app = app.route("/test/sql", axum::routing::post(test_endpoints::raw_sql));
+    }
+
+    let app = app
         .with_state(state)
         .layer(
             TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {

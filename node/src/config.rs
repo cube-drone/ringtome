@@ -25,6 +25,10 @@ pub struct Config {
     /// Where per-user databases, key files, and other node state live.
     pub data_directory: PathBuf,
     pub environment: Environment,
+    /// DANGEROUS. Enables an extremely compromised mode intended ONLY for local integration
+    /// testing: it exposes a raw SQL passthrough endpoint over HTTP. Never enable on a node that
+    /// is reachable by anyone but the developer running its tests.
+    pub local_test: bool,
 }
 
 /// The subset of configuration safe to expose to a browser client.
@@ -55,12 +59,18 @@ impl Config {
             _ => Environment::Dev,
         };
 
+        let local_test = matches!(
+            env::var("RINGTOME_LOCAL_TEST").as_deref(),
+            Ok("1") | Ok("true")
+        );
+
         Self {
             app_version,
             bind_address,
             port,
             data_directory,
             environment,
+            local_test,
         }
     }
 
