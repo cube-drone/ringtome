@@ -25,6 +25,12 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
+/// Full node administrator: may grant/revoke any tag, including `node_admin` itself. The first
+/// account created on a node is made a `node_admin` automatically.
+pub const TAG_NODE_ADMIN: &str = "node_admin";
+/// Administrator: may grant/revoke any tag *except* `node_admin`.
+pub const TAG_ADMIN: &str = "admin";
+
 /// How long a freshly-created session is valid.
 const SESSION_TTL_MS: i64 = 1000 * 60 * 60 * 24 * 30; // 30 days
 /// Session token entropy.
@@ -111,10 +117,17 @@ pub fn normalize_username(input: &str) -> Result<String, AppError> {
 }
 
 /// Register a new account. Fails if the username is taken.
+/// Register a new account.
+///
+/// `skip_admin_bootstrap` disables the "first account becomes node_admin" rule. It is set in
+/// local-test mode, where tests have direct DB access (the SQL passthrough) and set up whatever
+/// tags they need explicitly - the auto-bootstrap would otherwise make a freshly-registered user's
+/// tag state depend on registration order across the shared test node.
 pub async fn register(
     db: &SqlitePool,
     username: &str,
     password: &str,
+    skip_admin_bootstrap: bool,
 ) -> Result<Account, AppError> {
     let username = normalize_username(username)?;
     if password.len() < 8 {
@@ -143,6 +156,22 @@ pub async fn register(
             )));
         }
         return Err(AppError::Internal(anyhow!("creating account: {e}")));
+    }
+
+    // The first account on a node becomes its node_admin. Checked after insert: if this row is the
+    // only account, it was first. (A dead-heat between two first-registrations could in principle
+    // tag both, but node bootstrap is a single-operator action, not an adversarial race.) Skipped
+    // in local-test mode, where tests grant tags explicitly via the SQL passthrough.
+    if !skip_admin_bootstrap {
+        let (account_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
+            .fetch_one(db)
+            .await
+            .context("counting accounts")
+            .map_err(AppError::Internal)?;
+        if account_count == 1 {
+            add_tag(db, &id, TAG_NODE_ADMIN).await?;
+            tracing::info!(username = %username, "first account created; granted node_admin");
+        }
     }
 
     Ok(Account {
@@ -261,6 +290,43 @@ pub async fn remove_tag(db: &SqlitePool, account_id: &Uuid, tag: &str) -> Result
     Ok(())
 }
 
+/// Look up an account by (normalized) username.
+pub async fn account_by_username(
+    db: &SqlitePool,
+    username: &str,
+) -> Result<Option<Account>, AppError> {
+    let lookup = username.trim().to_ascii_lowercase();
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT id, username FROM accounts WHERE username = ?1")
+            .bind(&lookup)
+            .fetch_optional(db)
+            .await
+            .context("looking up account by username")
+            .map_err(AppError::Internal)?;
+
+    match row {
+        Some((id, username)) => {
+            let id = Uuid::parse_str(&id)
+                .map_err(|e| AppError::Internal(anyhow!("corrupt account id: {e}")))?;
+            Ok(Some(Account { id, username }))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Whether an account carries a given tag.
+pub async fn has_tag(db: &SqlitePool, account_id: &Uuid, tag: &str) -> Result<bool, AppError> {
+    let row: Option<(i64,)> =
+        sqlx::query_as("SELECT 1 FROM account_tags WHERE account_id = ?1 AND tag = ?2")
+            .bind(account_id.to_string())
+            .bind(tag)
+            .fetch_optional(db)
+            .await
+            .context("checking account tag")
+            .map_err(AppError::Internal)?;
+    Ok(row.is_some())
+}
+
 /// All tags on an account.
 pub async fn tags_for(db: &SqlitePool, account_id: &Uuid) -> Result<Vec<String>, AppError> {
     let rows: Vec<(String,)> =
@@ -298,28 +364,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tags_round_trip() {
-        // In-memory node DB with migrations applied.
+    async fn first_account_becomes_node_admin() {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         crate::db::node_migrator_for_test(&pool).await;
 
-        let account = register(&pool, "tag_tester", "password123").await.unwrap();
+        let first = register(&pool, "founder", "password123", false)
+            .await
+            .unwrap();
+        let second = register(&pool, "latecomer", "password123", false)
+            .await
+            .unwrap();
+
+        assert!(has_tag(&pool, &first.id, TAG_NODE_ADMIN).await.unwrap());
+        assert!(!has_tag(&pool, &second.id, TAG_NODE_ADMIN).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn tags_round_trip() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::db::node_migrator_for_test(&pool).await;
+
+        // Skip the admin bootstrap so this account starts with a clean tag set.
+        let account = register(&pool, "tag_tester", "password123", true)
+            .await
+            .unwrap();
 
         assert!(tags_for(&pool, &account.id).await.unwrap().is_empty());
 
-        add_tag(&pool, &account.id, "node_admin").await.unwrap();
-        add_tag(&pool, &account.id, "node_admin").await.unwrap(); // idempotent
         add_tag(&pool, &account.id, "beta").await.unwrap();
+        add_tag(&pool, &account.id, "beta").await.unwrap(); // idempotent
+        add_tag(&pool, &account.id, "gamma").await.unwrap();
 
         assert_eq!(
             tags_for(&pool, &account.id).await.unwrap(),
-            vec!["beta".to_string(), "node_admin".to_string()]
+            vec!["beta".to_string(), "gamma".to_string()]
         );
 
         remove_tag(&pool, &account.id, "beta").await.unwrap();
         assert_eq!(
             tags_for(&pool, &account.id).await.unwrap(),
-            vec!["node_admin".to_string()]
+            vec!["gamma".to_string()]
         );
     }
 }

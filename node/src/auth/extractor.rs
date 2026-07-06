@@ -10,7 +10,7 @@ use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum_extra::extract::CookieJar;
 
-use super::{account_for_token, Account};
+use super::{account_for_token, has_tag, Account, TAG_ADMIN, TAG_NODE_ADMIN};
 use crate::config::Tenancy;
 use crate::error::AppError;
 use crate::AppState;
@@ -57,5 +57,58 @@ impl FromRequestParts<AppState> for Session {
             .ok_or_else(|| AppError::Unauthorized("session invalid or expired".into()))?;
 
         Ok(Session { account })
+    }
+}
+
+/// A session belonging to a `node_admin`. Handlers taking this only run for the node's full
+/// administrator(s); everyone else gets 403.
+#[derive(Debug, Clone)]
+pub struct NodeAdminSession {
+    pub account: Account,
+}
+
+impl FromRequestParts<AppState> for NodeAdminSession {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let session = Session::from_request_parts(parts, state).await?;
+        let db = &state.node_db;
+        if has_tag(db, &session.account.id, TAG_NODE_ADMIN).await? {
+            Ok(NodeAdminSession {
+                account: session.account,
+            })
+        } else {
+            Err(AppError::Forbidden("node_admin required".into()))
+        }
+    }
+}
+
+/// A session belonging to an admin. Satisfied by either the `admin` tag or `node_admin` (a
+/// node_admin is a superset of an admin). Handlers taking this run for either; everyone else 403.
+#[derive(Debug, Clone)]
+pub struct AdminSession {
+    pub account: Account,
+}
+
+impl FromRequestParts<AppState> for AdminSession {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let session = Session::from_request_parts(parts, state).await?;
+        let db = &state.node_db;
+        let id = &session.account.id;
+        if has_tag(db, id, TAG_ADMIN).await? || has_tag(db, id, TAG_NODE_ADMIN).await? {
+            Ok(AdminSession {
+                account: session.account,
+            })
+        } else {
+            Err(AppError::Forbidden("admin required".into()))
+        }
     }
 }

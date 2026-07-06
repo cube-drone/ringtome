@@ -6,8 +6,11 @@ use axum::{Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::{Deserialize, Serialize};
 
-use super::extractor::{Session, SESSION_COOKIE};
-use super::{delete_session, is_username_taken, login, register};
+use super::extractor::{AdminSession, NodeAdminSession, Session, SESSION_COOKIE};
+use super::{
+    account_by_username, add_tag, delete_session, has_tag, is_username_taken, login, register,
+    remove_tag, tags_for, TAG_NODE_ADMIN,
+};
 use crate::error::AppError;
 use crate::request_context::RequestContext;
 use crate::AppState;
@@ -23,6 +26,13 @@ pub fn router() -> Router<AppState> {
         .route("/api/auth/logout", post(logout_handler))
         .route("/api/auth/whoami", get(whoami_handler))
         .route("/api/auth/check-username", get(check_username_handler))
+        // Tag administration.
+        .route("/api/admin/grant", post(grant_handler))
+        .route("/api/admin/revoke", post(revoke_handler))
+        .route("/api/admin/tags", get(tags_handler))
+        // Sample gated endpoints - exist purely to test the extractors: 200 iff authorized.
+        .route("/api/admin/ping", get(admin_ping))
+        .route("/api/admin/node/ping", get(node_admin_ping))
 }
 
 #[derive(Deserialize)]
@@ -72,7 +82,13 @@ async fn register_handler(
         )
         .await?;
 
-    let account = register(&state.node_db, &creds.username, &creds.password).await?;
+    let account = register(
+        &state.node_db,
+        &creds.username,
+        &creds.password,
+        state.config.local_test,
+    )
+    .await?;
     Ok(Json(AccountInfo {
         id: account.id.to_string(),
         username: account.username,
@@ -129,4 +145,99 @@ async fn whoami_handler(session: Session) -> Json<AccountInfo> {
         id: session.account.id.to_string(),
         username: session.account.username,
     })
+}
+
+#[derive(Deserialize)]
+struct TagChange {
+    /// Username of the account to grant/revoke the tag on.
+    username: String,
+    tag: String,
+}
+
+/// Grant a tag to an account. Requires admin; granting `node_admin` additionally requires the
+/// actor to be a node_admin (admins cannot mint node_admins).
+async fn grant_handler(
+    admin: AdminSession,
+    State(state): State<AppState>,
+    Json(req): Json<TagChange>,
+) -> Result<Json<AccountInfo>, AppError> {
+    let db = &state.node_db;
+    authorize_tag_change(db, &admin, &req.tag).await?;
+
+    let target = account_by_username(db, &req.username)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("no account \"{}\"", req.username)))?;
+
+    add_tag(db, &target.id, &req.tag).await?;
+    Ok(Json(AccountInfo {
+        id: target.id.to_string(),
+        username: target.username,
+    }))
+}
+
+/// Revoke a tag from an account. Same authorization rule as granting.
+async fn revoke_handler(
+    admin: AdminSession,
+    State(state): State<AppState>,
+    Json(req): Json<TagChange>,
+) -> Result<Json<AccountInfo>, AppError> {
+    let db = &state.node_db;
+    authorize_tag_change(db, &admin, &req.tag).await?;
+
+    let target = account_by_username(db, &req.username)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("no account \"{}\"", req.username)))?;
+
+    remove_tag(db, &target.id, &req.tag).await?;
+    Ok(Json(AccountInfo {
+        id: target.id.to_string(),
+        username: target.username,
+    }))
+}
+
+/// The tag rule: an `AdminSession` may act on any tag *except* `node_admin`, which requires the
+/// actor to actually hold `node_admin`.
+async fn authorize_tag_change(
+    db: &sqlx::SqlitePool,
+    admin: &AdminSession,
+    tag: &str,
+) -> Result<(), AppError> {
+    if tag == TAG_NODE_ADMIN && !has_tag(db, &admin.account.id, TAG_NODE_ADMIN).await? {
+        return Err(AppError::Forbidden(
+            "only a node_admin may grant or revoke node_admin".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct TagsResponse {
+    username: String,
+    tags: Vec<String>,
+}
+
+/// List the tags on an account. Admin-gated (tags are node-management metadata).
+async fn tags_handler(
+    _admin: AdminSession,
+    State(state): State<AppState>,
+    Query(q): Query<UsernameQuery>,
+) -> Result<Json<TagsResponse>, AppError> {
+    let db = &state.node_db;
+    let target = account_by_username(db, &q.username)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("no account \"{}\"", q.username)))?;
+    let tags = tags_for(db, &target.id).await?;
+    Ok(Json(TagsResponse {
+        username: target.username,
+        tags,
+    }))
+}
+
+/// Sample endpoints for testing the extractors: return 200 iff the caller is authorized.
+async fn admin_ping(_admin: AdminSession) -> &'static str {
+    "ok"
+}
+
+async fn node_admin_ping(_admin: NodeAdminSession) -> &'static str {
+    "ok"
 }
