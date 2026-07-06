@@ -60,6 +60,13 @@ pub async fn open_node_db(data_directory: &Path) -> Result<SqlitePool> {
     Ok(pool)
 }
 
+/// Run the node migrations against an already-open pool. For tests that use an in-memory DB rather
+/// than a file opened via [`open_node_db`].
+#[cfg(test)]
+pub async fn node_migrator_for_test(pool: &SqlitePool) {
+    NODE_MIGRATOR.run(pool).await.unwrap();
+}
+
 /// Record a boot in `boot_timestamps` (a local-only diagnostic; never exposed over the network).
 /// The table itself comes from migration `0001`; this is just the insert.
 pub async fn record_boot(pool: &SqlitePool, app_version: &str) -> Result<()> {
@@ -143,7 +150,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("ringtome-test-{}-{}", std::process::id(), nanos));
+        let dir =
+            std::env::temp_dir().join(format!("ringtome-test-{}-{}", std::process::id(), nanos));
         tokio::fs::create_dir_all(&dir).await.unwrap();
         dir
     }

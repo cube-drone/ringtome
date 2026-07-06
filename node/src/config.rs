@@ -15,6 +15,15 @@ pub enum Environment {
     Prod,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tenancy {
+    /// Hosted node: many accounts, each gated behind its own login.
+    Multi,
+    /// Personal desktop app: one implicit account, login is a formality (the OS user is the tenant).
+    Single,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub app_version: String,
@@ -25,6 +34,9 @@ pub struct Config {
     /// Where per-user databases, key files, and other node state live.
     pub data_directory: PathBuf,
     pub environment: Environment,
+    /// Whether this node serves many accounts (hosted) or one (desktop). See the `Session`
+    /// extractor, which branches on it.
+    pub tenancy: Tenancy,
     /// DANGEROUS. Enables an extremely compromised mode intended ONLY for local integration
     /// testing: it exposes a raw SQL passthrough endpoint over HTTP. Never enable on a node that
     /// is reachable by anyone but the developer running its tests.
@@ -59,6 +71,11 @@ impl Config {
             _ => Environment::Dev,
         };
 
+        let tenancy = match env::var("RINGTOME_TENANCY").as_deref() {
+            Ok("single") => Tenancy::Single,
+            _ => Tenancy::Multi,
+        };
+
         let local_test = matches!(
             env::var("RINGTOME_LOCAL_TEST").as_deref(),
             Ok("1") | Ok("true")
@@ -70,6 +87,7 @@ impl Config {
             port,
             data_directory,
             environment,
+            tenancy,
             local_test,
         }
     }

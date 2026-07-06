@@ -12,8 +12,12 @@ path = "src/main.rs"
 [dependencies]
 # web service
 axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
 tower-http = { version = "0.6", features = ["trace"] }
 tokio = { version = "1", features = ["full"] }
+
+# password hashing (node login)
+argon2 = "0.5"
 
 # error handling
 anyhow = "1"
@@ -29,6 +33,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # ids
 uuid = { version = "1", features = ["v4", "fast-rng", "serde"] }
+
+# secure randomness (session tokens)
+rand = "0.8"
 
 # local database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }

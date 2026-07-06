@@ -12,9 +12,11 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod auth;
 mod config;
 mod db;
 mod error;
+mod rate_limit;
 mod request_context;
 mod test_endpoints;
 
@@ -30,6 +32,8 @@ pub struct AppState {
     pub node_db: SqlitePool,
     /// Opens/migrates/caches the per-identity databases.
     pub user_dbs: db::UserDbManager,
+    /// Per-node in-memory rate limiter (disabled in local-test mode).
+    pub rate_limiter: rate_limit::RateLimiter,
 }
 
 #[derive(serde::Serialize)]
@@ -79,15 +83,19 @@ async fn main() -> anyhow::Result<()> {
 
     let bind = format!("{}:{}", config.bind_address, config.port);
     let local_test = config.local_test;
+    // Rate limiting is off in local-test mode so integration tests don't trip it.
+    let rate_limiter = rate_limit::RateLimiter::new(!local_test);
     let state = AppState {
         config,
         node_db,
         user_dbs,
+        rate_limiter,
     };
 
     let mut app = Router::new()
         .route("/health", get(health))
-        .route("/api/config", get(get_config));
+        .route("/api/config", get(get_config))
+        .merge(auth::router());
 
     // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so
     // there is no path to the SQL executor on a normal node. See test_endpoints.
