@@ -38,8 +38,10 @@ pub struct Config {
     /// extractor, which branches on it.
     pub tenancy: Tenancy,
     /// DANGEROUS. Enables an extremely compromised mode intended ONLY for local integration
-    /// testing: it exposes a raw SQL passthrough endpoint over HTTP. Never enable on a node that
-    /// is reachable by anyone but the developer running its tests.
+    /// testing: it exposes a raw SQL passthrough endpoint over HTTP, disables rate limiting,
+    /// skips the first-account admin bootstrap, and hashes passwords with minimal Argon2
+    /// parameters (fast, weak). Never enable on a node that is reachable by anyone but the
+    /// developer running its tests.
     pub local_test: bool,
 }
 

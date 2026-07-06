@@ -18,7 +18,7 @@ use anyhow::{anyhow, Context, Result};
 use argon2::password_hash::{
     rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
 };
-use argon2::Argon2;
+use argon2::{Algorithm, Argon2, Params, Version};
 use rand::RngCore;
 use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -52,9 +52,26 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-fn hash_password(password: &str) -> Result<String> {
+/// The Argon2 instance used to hash new passwords. `fast` selects the weakest parameters the
+/// format permits (8 KiB, t=1, p=1) - microseconds instead of tens of milliseconds - for
+/// local-test mode, where an integration suite that registers and logs in constantly would
+/// otherwise spend nearly all its runtime inside the KDF. Only the work factor changes: salt
+/// generation, PHC encoding, and verification are the identical code path, and the parameters
+/// ride inside the PHC string, so verification always applies whatever parameters a stored hash
+/// was created with (weak and strong hashes coexist freely).
+fn hasher(fast: bool) -> Argon2<'static> {
+    if fast {
+        let params = Params::new(Params::MIN_M_COST, Params::MIN_T_COST, Params::MIN_P_COST, None)
+            .expect("minimal Argon2 params are valid");
+        Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+    } else {
+        Argon2::default()
+    }
+}
+
+fn hash_password(password: &str, fast: bool) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
+    hasher(fast)
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
         .map_err(|e| anyhow!("hashing password: {e}"))
@@ -118,17 +135,19 @@ pub fn normalize_username(input: &str) -> Result<String, AppError> {
 }
 
 /// Register a new account. Fails if the username is taken.
-/// Register a new account.
 ///
-/// `skip_admin_bootstrap` disables the "first account becomes node_admin" rule. It is set in
-/// local-test mode, where tests have direct DB access (the SQL passthrough) and set up whatever
-/// tags they need explicitly - the auto-bootstrap would otherwise make a freshly-registered user's
-/// tag state depend on registration order across the shared test node.
+/// `local_test` adapts registration for the integration-test node in two ways:
+/// - Passwords are hashed with minimal Argon2 parameters (see `hasher`), so test suites aren't
+///   spending nearly all their runtime inside the KDF.
+/// - The "first account becomes node_admin" bootstrap is skipped: tests have direct DB access
+///   (the SQL passthrough) and set up whatever tags they need explicitly - the auto-bootstrap
+///   would otherwise make a freshly-registered user's tag state depend on registration order
+///   across the shared test node.
 pub async fn register(
     db: &SqlitePool,
     username: &str,
     password: &str,
-    skip_admin_bootstrap: bool,
+    local_test: bool,
 ) -> Result<Account, AppError> {
     let username = normalize_username(username)?;
     if password.len() < 8 {
@@ -138,7 +157,7 @@ pub async fn register(
     }
 
     let id = Uuid::new_v4();
-    let phc = hash_password(password).map_err(AppError::Internal)?;
+    let phc = hash_password(password, local_test).map_err(AppError::Internal)?;
 
     let result = sqlx::query(
         "INSERT INTO accounts (id, username, password_hash, created_at_ms) VALUES (?1, ?2, ?3, ?4)",
@@ -163,7 +182,7 @@ pub async fn register(
     // only account, it was first. (A dead-heat between two first-registrations could in principle
     // tag both, but node bootstrap is a single-operator action, not an adversarial race.) Skipped
     // in local-test mode, where tests grant tags explicitly via the SQL passthrough.
-    if !skip_admin_bootstrap {
+    if !local_test {
         let (account_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
             .fetch_one(db)
             .await
@@ -362,6 +381,22 @@ mod tests {
         ] {
             assert!(normalize_username(bad).is_err(), "should reject {bad:?}");
         }
+    }
+
+    #[test]
+    fn fast_hash_verifies_with_the_standard_verifier() {
+        // The local-test fast path must differ only in work factor. The parameters travel in the
+        // PHC string, so the unchanged verifier has to accept a minimal-params hash - this is the
+        // property that lets weak (test) and strong (real) hashes coexist in one table.
+        let phc = hash_password("hunter22hunter22", true).unwrap();
+        assert!(phc.contains("m=8,t=1,p=1"), "expected minimal params in {phc}");
+        assert!(verify_password("hunter22hunter22", &phc));
+        assert!(!verify_password("wrong-password", &phc));
+
+        // And the real path still produces full-strength hashes.
+        let strong = hash_password("hunter22hunter22", false).unwrap();
+        assert!(!strong.contains("m=8,"), "default params should not be minimal: {strong}");
+        assert!(verify_password("hunter22hunter22", &strong));
     }
 
     #[tokio::test]
