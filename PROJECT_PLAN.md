@@ -994,6 +994,54 @@ before the first content types are designed.
 
 ---
 
+## Content Markup: Fanciful, Constrained, Never HTML
+
+User-authored content (pages, posts, profiles) is written in a **custom, deliberately weak markup language** - a
+closed vocabulary in the spirit of BBCode/gemtext, with the clumsy expressiveness of the Old Internet as an explicit
+design goal. Users never author real HTML, and clients never render user bytes as HTML. This is a security decision
+first and an aesthetic one second:
+
+- **User HTML on the node's origin would be the worst vulnerability class this system could have.** The web client's
+  session is what authorizes *signing*. The trust model already concedes "a node that serves your client can become
+  your client" - user-authored HTML served from that origin is strictly worse: any *author you view* could become
+  your client. Script in a viewed page = exfiltrated session = statements signed as the victim, achieved by a
+  stranger posting a page. And "sanitize a safe subset of HTML" is a graveyard - MySpace's Samy worm is the
+  canonical, era-appropriate fable. A sanitizer is a blocklist over an adversary's language; a custom markup is an
+  allowlist over ours.
+- **The render rule:** markup blobs are parsed by a strict grammar into an AST of a closed vocabulary, and clients
+  render by constructing UI themselves (DOM nodes, native controls). User bytes are never passed to anything
+  `innerHTML`-shaped. Enforcement lives **at the renderer, never at submission** - signed blobs from strangers
+  arrive via sync, and nothing upstream can be trusted to have validated them. Every markup blob is hostile input:
+  the same posture the protocol already takes toward every other byte on the network.
+- **Embeds reference blob hashes only, never URLs.** Real HTML means a tracking pixel in a post deanonymizes the IP
+  of every reader - unacceptable for a network promising pseudonymity. Blob-hash-only media means every fetch goes
+  through `iroh-blobs` via the reader's own node; the read-side deanonymization channel is closed structurally, not
+  by policy.
+- **Protocol fit:** `ringtome-markup` is an ordinary versioned type in the type registry. The version tag tells
+  every renderer which dialect it is parsing, new tags arrive additively, and the existing "old readers skip unknown
+  fields" rule supplies forward compatibility.
+- **A small closed vocabulary is what keeps multiple clients affordable.** Rendering all of Ringtome correctly means
+  implementing a renderer for a few dozen tags, not embedding a browser. This is what keeps future native, phone,
+  and game-engine clients feasible for small teams (see The Client Story) - it was never true of "arbitrary HTML,
+  good luck."
+
+**The expressiveness ladder** - ship rungs 1 and 2; rung 3 may never need to exist:
+
+1. **Static markup (v1):** text, headings, links (`ringtome://` and pinned web links), blob-hash images, and the
+   shameless tags - marquee, blink, rainbow text, tiled backgrounds, autoplaying MIDI as a media type. The promise
+   is a sandbox with the clumsy charm of Old HTML.
+2. **Interactivity as platform widgets, never user code.** Hit counters, guestbooks, webring navigators,
+   under-construction banners: each is a *tag* whose behavior is implemented by the client and whose state is
+   implemented by the protocol (a hit counter is a protocol feature wearing a `<counter>` tag). Users compose
+   widgets; they do not script them - the HyperCard move. 90% of the "alive page" feeling at 0% of the
+   code-execution risk. Added one widget at a time, after the v1 core.
+3. **Actual user scripting** (the ActionScript nostalgia rung): a tiny interpreted language - no network access, no
+   ambient UI access, budgeted execution, explicit capabilities only. The Pico-8 lesson says brutal constraints
+   become a community's aesthetic identity, so this could be wonderful - but it is a whole product in itself.
+   Deferred indefinitely, and possibly forever if the widget vocabulary is good.
+
+---
+
 ## Data Layer
 
 ### SQLite Strategy
@@ -1223,7 +1271,7 @@ Two honest limits to design around:
 | Login auth | **Argon2** | Node-login password hashing (verify user, then grant access to their key) |
 | Key at rest | **envelope-encrypted key file** | Machine keychain (always-on) or Argon2-derived (cold device); DB itself unencrypted - see Key Storage |
 | Cryptography | **ed25519** | Identity keypairs (via Iroh's built-in key types) |
-| Frontend | **Vanilla JS/CSS** | Carried over from old codebase (initially) |
+| Frontend | **Preact + htm + esbuild** | The retro-OS web client - v1's only client, and the reference renderer for the content markup (see The Client Story) |
 
 ### Removed Dependencies (vs. old codebase)
 
@@ -1270,6 +1318,50 @@ floor, just auto-open the system browser with no GUI at all) that opens the user
 port. This is the Syncthing / Jupyter / Plex model: proven, and it dodges Tauri's worst tax - cross-platform webview
 skew (WebView2 vs WebKitGTK vs WebKit), which is a documented misery. We develop against real browsers and that is
 what ships; the node's JS UI is reused verbatim.
+
+### The Client Story: one client, carried by the web
+
+**V1 ships exactly one client: the retro-OS web app** - Preact + htm + esbuild (the old codebase's proven
+toolchain), served by the node itself, styled as a cozy fake retro desktop: draggable windows, chunky bevels, dumb
+built-in toys (a paint program, a solitaire clone, a guestbook), and the modem icon behind which you discover the
+other people. The "ship a game, let users discover the network hiding inside it" arc lives *inside* this client -
+a fake OS with games in it needs no game engine. The web carries the whole aesthetic: CRT/scanline effects are a
+canvas/WebGL overlay, "juice" is easing and sound, and the browser's autoplay restriction is played straight as a
+period-authentic "click the speaker icon to enable sound" ritual.
+
+- **The API is strictly client-agnostic.** The web client is the *reference* client, never a privileged one: no
+  web-UI-private endpoints, and the HTTP API is documented and versioned with the same discipline as the protocol
+  surface (test vectors, type registry). This is the cheap, load-bearing rule that keeps every future client
+  possible - including ones we do not build (see Phones).
+- **Game-engine client (Godot): struck from the roadmap.** The temptation is real (native retro effects,
+  unrestricted audio, gamey features), but a social network is a large amount of data-bound, text-heavy, accessible
+  UI - exactly what game-engine UI toolkits are worst at - and a solo project's novelty budget is already fully
+  spent on the protocol layer. The markup AST keeps the door open at near-zero cost (a future client implements a
+  renderer for a few dozen tags, not a browser); a game-engine client is justified only if a genuinely gamey
+  product layer someday demands one, and it is on no path to v1. Webview-in-Godot hybrids are rejected for the same
+  webview-skew reason as Tauri.
+- **Desktop delivery = the tray sidecar opens an app-mode window.** Desktop mode's "minimal native shell" (tray
+  icon, autostart, status light) is the node binary itself; "open Ringtome" launches the system browser in app mode
+  at the stable localhost port. One binary, one installer, one signing identity - the Ollama/Syncthing pattern,
+  which the last few years have made a normal consumer shape, not a nerd shape.
+
+### Phones: deferred, by design
+
+**V1 targets computer desktops.** Early Ringtome lives or dies on *creators* - page authoring, markup, running
+nodes - and creation happens at desks. Phones dominate at the consumption-at-scale phase, which is exactly when
+"native app pointed at a well-populated federated node" becomes the correct architecture anyway: there is no
+background sidecar on iOS, period, so a phone was always going to be a remote client of always-on nodes, not a p2p
+citizen. Three decisions keep the phone door open without walking through it now:
+
+- **PWA stopgap:** the retro-OS web client works in phone browsers from day one, and installed PWAs get web push on
+  modern iOS/Android. "Our phone app is a website" is period-appropriate.
+- **Native apps are designed-for but deferred** - ideally community-built against the documented client-agnostic
+  API (the Mastodon path: the ecosystem's best phone clients were third-party). The small markup vocabulary is what
+  makes a *correct* third-party client a reasonable weekend-project size.
+- **Push notifications are the one structural gap, recorded now and solved later:** APNs/FCM require a server
+  holding push credentials - an awkward fit for p2p. The likely answer is an optional **push-gateway role** that
+  hosted nodes can opt into. Noted here so it does not ambush whoever builds the first phone client; no design work
+  now.
 
 ### Always-on nodes are needed either way
 
@@ -1325,7 +1417,13 @@ ringtome/
 - [x] ~~**Iroh integration depth:**~~ Resolved — custom Ringtome sync protocol for data sync (iroh-docs is incompatible with revocable identity), `iroh-blobs` for content, `iroh-gossip` for real-time, `pkarr`/DHT for discovery.
 - [x] ~~**Conflict resolution:**~~ Resolved — Ringtome sync protocol validates entries against the key tree, rejects revoked authors, then applies last-writer-wins by timestamp for simple fields among valid authors. Complex data types can layer CRDTs (e.g., Loro) on top in the future.
 - [ ] **What social features first?** Profiles? Posts/feed? Direct messages? Following?
-- [ ] **Frontend approach:** Keep vanilla JS from old codebase, or adopt a lightweight framework?
+- [x] ~~**Frontend approach:**~~ Resolved — v1 ships exactly one client: the retro-OS web app (Preact + htm +
+  esbuild), serving as the reference renderer for the content markup. Client-agnostic API as the standing
+  discipline; Godot struck from the roadmap (markup AST keeps that door open); phones deferred to
+  native-app-on-federated-cluster, ideally community-built (see The Client Story / Phones / Content Markup).
+- [ ] **Markup vocabulary v1:** which tags make the static-markup first cut, and which widgets (hit counter,
+  guestbook, webring navigator) come first once the core ships? The renderer's strict grammar and the
+  `ringtome-markup` type-registry entry need specifying alongside the first content types.
 - [x] ~~**Serialization format:**~~ Resolved — deterministically-encoded CBOR, with the hash-and-store-original-bytes rule, domain-separated signatures, version tags, a type registry, and published test vectors (see Canonical Encoding, Signature Domains, and Versioning).
 - [ ] **Recovery key UX:** How do we present the auto-generated recovery key at identity creation so users actually save it (and understand what it is)?
 
