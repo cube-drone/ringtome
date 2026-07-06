@@ -11,6 +11,7 @@
 mod extractor;
 mod routes;
 
+pub use extractor::Session;
 pub use routes::router;
 
 use anyhow::{anyhow, Context, Result};

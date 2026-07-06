@@ -16,6 +16,8 @@ mod auth;
 mod config;
 mod db;
 mod error;
+mod identity;
+mod keystore;
 mod rate_limit;
 mod request_context;
 mod test_endpoints;
@@ -34,6 +36,8 @@ pub struct AppState {
     pub user_dbs: db::UserDbManager,
     /// Per-node in-memory rate limiter (disabled in local-test mode).
     pub rate_limiter: rate_limit::RateLimiter,
+    /// Envelope encryption for private keys at rest.
+    pub keystore: keystore::Keystore,
 }
 
 #[derive(serde::Serialize)]
@@ -85,17 +89,20 @@ async fn main() -> anyhow::Result<()> {
     let local_test = config.local_test;
     // Rate limiting is off in local-test mode so integration tests don't trip it.
     let rate_limiter = rate_limit::RateLimiter::new(!local_test);
+    let keystore = keystore::Keystore::load(&config.data_directory)?;
     let state = AppState {
         config,
         node_db,
         user_dbs,
         rate_limiter,
+        keystore,
     };
 
     let mut app = Router::new()
         .route("/health", get(health))
         .route("/api/config", get(get_config))
-        .merge(auth::router());
+        .merge(auth::router())
+        .merge(identity::router());
 
     // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so
     // there is no path to the SQL executor on a normal node. See test_endpoints.
