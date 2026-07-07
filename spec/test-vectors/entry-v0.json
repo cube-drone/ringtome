@@ -1,0 +1,56 @@
+{
+  "description": "Ringtome entry format v0 conformance vectors. A conformant implementation encoding each logical entry with the given signing key MUST produce exactly envelope_hex, whose BLAKE3-256 is hash_hex and whose signature is sig_hex (ed25519 over domain || body-bytes).",
+  "domain": "ringtome-v0/entry",
+  "signing_key_seed": "0707070707070707070707070707070707070707070707070707070707070707",
+  "author_pubkey": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "vectors": [
+    {
+      "name": "profile-set genesis (ascii)",
+      "entry": {
+        "v": 0,
+        "entry_type": 3,
+        "service": 2,
+        "seq": 0,
+        "prev_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "timestamp_ms": 1700000000000,
+        "payload_kind": "inline",
+        "payload_hex": "a200646e616d650166437572746973"
+      },
+      "envelope_hex": "82586ca70000010302825820ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c0203000458200000000000000000000000000000000000000000000000000000000000000000051b0000018bcfe568000682004fa200646e616d65016643757274697358407e78f9ed41f48eea0a623702363f9ddde2edfc3ca11826b7ebe32b6512746723493632da9a6751af7787c74bc6c9fcffeedfca7d662bb0fb8fe671ccb83a310e",
+      "hash_hex": "e5485990b4934b2e37356144a30896915930a84f754ffd9847c581b55b752ab9",
+      "sig_hex": "7e78f9ed41f48eea0a623702363f9ddde2edfc3ca11826b7ebe32b6512746723493632da9a6751af7787c74bc6c9fcffeedfca7d662bb0fb8fe671ccb83a310e"
+    },
+    {
+      "name": "profile-set chained (unicode nfc)",
+      "entry": {
+        "v": 0,
+        "entry_type": 3,
+        "service": 2,
+        "seq": 1,
+        "prev_hash_hex": "e5485990b4934b2e37356144a30896915930a84f754ffd9847c581b55b752ab9",
+        "timestamp_ms": 1700000060000,
+        "payload_kind": "inline",
+        "payload_hex": "a2006362696f01777acc886fc3ab20e28094204d49444920656e6a6f796572"
+      },
+      "envelope_hex": "82587da70000010302825820ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c020301045820e5485990b4934b2e37356144a30896915930a84f754ffd9847c581b55b752ab9051b0000018bcfe65260068200581fa2006362696f01777acc886fc3ab20e28094204d49444920656e6a6f7965725840a66967b24f22a36f4a31ae11e9957b2d468342bc62aa394c8d5723ac480d1ab2296ba798e2c5faf9bc52a97984b134a9ef12f11936e403f678974e4ad7cd220c",
+      "hash_hex": "391b2e173e5ff625268335db5c6cc4b001fbfc7311afe035e9854527a3f2e0cd",
+      "sig_hex": "a66967b24f22a36f4a31ae11e9957b2d468342bc62aa394c8d5723ac480d1ab2296ba798e2c5faf9bc52a97984b134a9ef12f11936e403f678974e4ad7cd220c"
+    },
+    {
+      "name": "post genesis (blob payload)",
+      "entry": {
+        "v": 0,
+        "entry_type": 4,
+        "service": 3,
+        "seq": 0,
+        "prev_hash_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "timestamp_ms": 1700000120000,
+        "payload_kind": "blob",
+        "payload_hex": "924a379661ad1551d57f6fc06b7d118231d7729d91c40bd56f37f5f2a2b9dc49"
+      },
+      "envelope_hex": "82587ea70000010402825820ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c0303000458200000000000000000000000000000000000000000000000000000000000000000051b0000018bcfe73cc00682015820924a379661ad1551d57f6fc06b7d118231d7729d91c40bd56f37f5f2a2b9dc4958405b03266d9a187d59d229bbd4bc35fdddfba143eafa55f681bda4a7046f8ef1abce90b4cdf8360375173a5a7e22c28eaaeb912c741a0786f71d6aaec7a6c55f07",
+      "hash_hex": "a9d6192392fd61961a4cd6b98290f3023ed6e89b8cdf4a57582d8f2fbbf836c4",
+      "sig_hex": "5b03266d9a187d59d229bbd4bc35fdddfba143eafa55f681bda4a7046f8ef1abce90b4cdf8360375173a5a7e22c28eaaeb912c741a0786f71d6aaec7a6c55f07"
+    }
+  ]
+}

@@ -53,11 +53,7 @@ pub async fn create(
     // 2. Seal the private key to a key file, binding the pubkey as associated data so a key file
     //    can't be swapped for another identity's.
     keystore
-        .store(
-            &pubkey_hex,
-            &signing_key.to_bytes(),
-            pubkey_hex.as_bytes(),
-        )
+        .store(&pubkey_hex, &signing_key.to_bytes(), pubkey_hex.as_bytes())
         .context("sealing identity private key")
         .map_err(AppError::Internal)?;
 
@@ -112,15 +108,13 @@ pub async fn list_for_account(
         .collect())
 }
 
-/// Load an identity's signing key from the keystore (for future signing operations). Verifies the
-/// account owns it first.
-#[allow(dead_code)] // used once identities start signing
-pub async fn load_signing_key(
+/// Verify that `account_id` owns the identity `root_pubkey`, uniformly 404ing otherwise (an
+/// existing-but-not-yours identity is indistinguishable from a nonexistent one).
+pub async fn require_owned(
     node_db: &SqlitePool,
-    keystore: &Keystore,
     account_id: &Uuid,
     root_pubkey: &str,
-) -> Result<SigningKey, AppError> {
+) -> Result<(), AppError> {
     let owned: Option<(i64,)> =
         sqlx::query_as("SELECT 1 FROM identities WHERE root_pubkey = ?1 AND account_id = ?2")
             .bind(root_pubkey)
@@ -132,6 +126,17 @@ pub async fn load_signing_key(
     if owned.is_none() {
         return Err(AppError::NotFound("identity not found".into()));
     }
+    Ok(())
+}
+
+/// Load an identity's signing key from the keystore. Verifies the account owns it first.
+pub async fn load_signing_key(
+    node_db: &SqlitePool,
+    keystore: &Keystore,
+    account_id: &Uuid,
+    root_pubkey: &str,
+) -> Result<SigningKey, AppError> {
+    require_owned(node_db, account_id, root_pubkey).await?;
 
     let bytes = keystore
         .load_key(root_pubkey, root_pubkey.as_bytes())

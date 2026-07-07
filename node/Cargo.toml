@@ -10,6 +10,9 @@ name = "ringtome"
 path = "src/main.rs"
 
 [dependencies]
+# the protocol layer: canonical bytes, hashing, signing, chain validation
+ringtome-proto = { path = "../proto" }
+
 # web service
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.10", features = ["cookie"] }

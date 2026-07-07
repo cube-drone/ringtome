@@ -61,8 +61,13 @@ fn now_ms() -> i64 {
 /// was created with (weak and strong hashes coexist freely).
 fn hasher(fast: bool) -> Argon2<'static> {
     if fast {
-        let params = Params::new(Params::MIN_M_COST, Params::MIN_T_COST, Params::MIN_P_COST, None)
-            .expect("minimal Argon2 params are valid");
+        let params = Params::new(
+            Params::MIN_M_COST,
+            Params::MIN_T_COST,
+            Params::MIN_P_COST,
+            None,
+        )
+        .expect("minimal Argon2 params are valid");
         Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
     } else {
         Argon2::default()
@@ -389,13 +394,19 @@ mod tests {
         // PHC string, so the unchanged verifier has to accept a minimal-params hash - this is the
         // property that lets weak (test) and strong (real) hashes coexist in one table.
         let phc = hash_password("hunter22hunter22", true).unwrap();
-        assert!(phc.contains("m=8,t=1,p=1"), "expected minimal params in {phc}");
+        assert!(
+            phc.contains("m=8,t=1,p=1"),
+            "expected minimal params in {phc}"
+        );
         assert!(verify_password("hunter22hunter22", &phc));
         assert!(!verify_password("wrong-password", &phc));
 
         // And the real path still produces full-strength hashes.
         let strong = hash_password("hunter22hunter22", false).unwrap();
-        assert!(!strong.contains("m=8,"), "default params should not be minimal: {strong}");
+        assert!(
+            !strong.contains("m=8,"),
+            "default params should not be minimal: {strong}"
+        );
         assert!(verify_password("hunter22hunter22", &strong));
     }
 

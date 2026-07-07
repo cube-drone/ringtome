@@ -17,6 +17,8 @@ mod config;
 mod db;
 mod error;
 mod identity;
+mod imaol;
+mod inspect;
 mod keystore;
 mod rate_limit;
 mod request_context;
@@ -66,6 +68,20 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<PublicConfig>,
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Subcommands run and exit before any server machinery boots.
+    let mut args = std::env::args().skip(1);
+    if let Some(cmd) = args.next() {
+        match cmd.as_str() {
+            "inspect" => {
+                let target = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("usage: ringtome inspect <hex-or-file>"))?;
+                return inspect::run(&target);
+            }
+            other => anyhow::bail!("unknown command {other:?} (try: ringtome inspect <entry>)"),
+        }
+    }
+
     let config = Config::from_env();
     init_tracing(&config);
 

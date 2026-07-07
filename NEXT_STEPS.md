@@ -35,8 +35,9 @@ other feature writes to. This is PROJECT_PLAN's entry schema v0 made real.
   (bytes column is the truth; never re-serialize).
 - Domain-separated ed25519 signing (`ringtome-v1/chain-entry` etc.) using the keystore's keys.
 - Per-(key, service) chains: dense seqs, `prev_hash` links, append + full-chain validation.
-- Header/blob split from day one (plan: retrofitting is a protocol break). Blobs are local files
-  for now; `iroh-blobs` arrives in M3.
+- Header/blob split from day one (plan: retrofitting is a protocol break). The *format* carries
+  both payload kinds now; node-side blob storage arrives with its first real consumer
+  (`iroh-blobs`, M3 - nothing in M1 produces a blob worth storing).
 - **First consumer: `profile-set`** (display name, bio) with LWW materialization into the per-user
   DB — chosen because it exercises sign → append → validate → materialize end to end with the
   simplest possible semantics.
@@ -44,11 +45,48 @@ other feature writes to. This is PROJECT_PLAN's entry schema v0 made real.
   signature. These are the conformance boundary; start the habit now.
 - `ringtome inspect <entry>` debug tool (the plan's promised readability escape hatch).
 
-**Exit demo:** set a display name through the API; watch a signed entry land on a chain; delete
-the per-user `.db` file; rebuild it from the chain and get the same state. That rebuild *is* the
-materialized-view promise, proven in miniature.
+**Exit demo:** set a display name through the API; watch a signed entry land on a chain; wipe the
+materialized view tables and rebuild them by replaying the entries log (re-validating every
+signature and hash link as it goes) and get the same state back. The log and the views share the
+per-user `.db` file - the log is the part that replicates in M3; the views are the part that's
+disposable. That rebuild *is* the materialized-view promise, proven in miniature.
+
+**Status: COMPLETE (2026-07-06).** `ringtome-proto` crate (strict canonical CBOR, envelope
+`[body, sig]`, BLAKE3, domain-separated ed25519, chain validation; 30 unit tests), published
+vectors in `spec/test-vectors/entry-v0.json` (bless-pattern guarded), per-user `entries` +
+`profile_view` schema, LWW materialization with `(timestamp, seq, hash)` tiebreak, owner-gated
+profile/rebuild/entries API, `ringtome inspect`. Suite: 44 Rust + 43 integration tests. The exit
+demo runs as the `profile.cjs` "rebuilds an identical profile" test.
 
 **Sizing:** the largest purely-local milestone; fiddly, zero research risk.
+
+**Design notes (settled at implementation start):**
+
+- **The protocol code lives in a separate workspace crate, `proto/` (`ringtome-proto`).** Why a
+  crate and not a module: (1) *compiler-enforced dependency firewall* - its manifest lists blake3,
+  ed25519-dalek, thiserror, unicode-normalization and nothing else (no tokio/sqlx/axum), so the
+  layer that third-party implementations must reproduce bit-for-bit physically cannot grow a
+  dependency on node state; in a module that purity is a convention that erodes one convenient
+  import at a time. (2) *The conformance boundary gets a name*: "the protocol is `ringtome-proto`,
+  the node is one consumer" is the artifact you hand a future client author, and its rustdoc
+  accompanies the test vectors. (3) *The fast test loop lands where the hard tests live* -
+  `cargo test -p ringtome-proto` skips the tokio/sqlx/axum build, and M2's key tree (the most
+  property-test-heavy code in the project) lives in this same crate; it is also where fuzz targets
+  for the strict decoder attach. (4) Cost is ~15 lines of TOML; multi-crate workspaces are the
+  Rust idiom (iroh itself is protocol crates around a node crate), and the root Cargo.toml was
+  already a workspace.
+- **COSE-style envelope instead of sig-as-a-map-field.** The wire object is `[body: bstr,
+  sig: bstr]`; the signature covers `domain-tag || body-bytes`, so verification slices the
+  received bytes and *never re-serializes*. Re-encoding during verification is exactly where
+  canonical-encoding bugs become forgery bugs; this makes the store-original-bytes rule structural
+  rather than disciplinary. (Deviates from the plan's PROVISIONAL v0 field layout, which put `sig`
+  inside the entry map - PROJECT_PLAN.md to be updated when M1 lands.)
+- **Hand-rolled strict canonical CBOR subset, not a serde library.** ~250 lines. The encoder is
+  the spec (test vectors promise exact bytes; a derive macro's choices shouldn't be load-bearing),
+  and - the part libraries don't offer - the *reader rejects non-canonical input*: non-minimal
+  integer heads, indefinite lengths, unsorted map keys, non-NFC text, tags/floats. Entries are
+  hostile network input; one logical value = exactly one accepted byte encoding. v0 subset:
+  uints, byte strings, text, arrays, maps; depth-limited.
 
 ## M2 — The key tree (authority, still single node)
 

@@ -22,8 +22,8 @@ use sqlx::SqlitePool;
 
 /// Migrations for `node.db`, embedded into the binary at compile time.
 static NODE_MIGRATOR: Migrator = sqlx::migrate!("migrations/node");
-/// Migrations for the per-user databases, embedded at compile time. Empty until the chain schema
-/// lands (M1); the plumbing exists now so every per-user DB is migrated consistently.
+/// Migrations for the per-user databases, embedded at compile time: the entries log and its
+/// materialized views (see `imaol`).
 static USER_MIGRATOR: Migrator = sqlx::migrate!("migrations/user");
 
 /// Open (creating if absent) a SQLite database at `path` and return a connection pool.
@@ -65,6 +65,13 @@ pub async fn open_node_db(data_directory: &Path) -> Result<SqlitePool> {
 #[cfg(test)]
 pub async fn node_migrator_for_test(pool: &SqlitePool) {
     NODE_MIGRATOR.run(pool).await.unwrap();
+}
+
+/// Run the per-user migrations against an already-open pool. For tests that use an in-memory DB
+/// rather than going through [`UserDbManager`].
+#[cfg(test)]
+pub async fn user_migrator_for_test(pool: &SqlitePool) {
+    USER_MIGRATOR.run(pool).await.unwrap();
 }
 
 /// Record a boot in `boot_timestamps` (a local-only diagnostic; never exposed over the network).

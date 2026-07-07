@@ -76,7 +76,10 @@ impl Keystore {
             .cipher()
             .encrypt(
                 &nonce,
-                chacha20poly1305::aead::Payload { msg: plaintext, aad },
+                chacha20poly1305::aead::Payload {
+                    msg: plaintext,
+                    aad,
+                },
             )
             .map_err(|_| anyhow!("sealing key"))?;
 
@@ -175,7 +178,8 @@ mod tests {
     #[test]
     fn wrong_aad_fails_to_open() {
         let (ks, dir) = temp_keystore();
-        ks.store("identity_a", b"secret bytes", b"identity_a").unwrap();
+        ks.store("identity_a", b"secret bytes", b"identity_a")
+            .unwrap();
 
         // Opening with a different AAD (as if the file were swapped for another identity's) fails.
         assert!(ks.load_key("identity_a", b"identity_b").is_err());
@@ -186,7 +190,8 @@ mod tests {
     #[test]
     fn tampered_file_fails_to_open() {
         let (ks, dir) = temp_keystore();
-        ks.store("identity_a", b"secret bytes", b"identity_a").unwrap();
+        ks.store("identity_a", b"secret bytes", b"identity_a")
+            .unwrap();
 
         // Flip a byte in the ciphertext region and confirm authentication rejects it.
         let path = ks.key_path("identity_a");

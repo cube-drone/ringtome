@@ -789,38 +789,53 @@ separation below. The hash is a **versioned parameter** (recorded via the versio
 future entry version could switch algorithms without making old entries unparseable - crypto agility without betting
 the system on "BLAKE3 is never broken."
 
-### Concrete entry schema (v0 - PROVISIONAL)
+### Concrete entry schema (v0 - IMPLEMENTED in `ringtome-proto`)
 
-This is the literal field layout an implementation hashes and signs. It is deliberately **v0 and expected to
-change** once a real consumer (the first post, the first follow) exercises it - writing it down now is to make M1
-buildable and to flush out any remaining ambiguity, not to freeze it. A chain entry:
+The implementation of record is the `ringtome-proto` crate; the byte-level authority is
+`spec/test-vectors/entry-v0.json` ("this logical entry MUST produce exactly these bytes, this hash, this
+signature"). The shape below deviated deliberately from the earlier provisional sketch in one way: `sig` is not a
+field *inside* the entry map, because that would force verifiers to re-serialize.
+
+An entry on the wire is a two-element CBOR array - the **envelope**:
 
 ```
-Entry {
-  v:          u16          // protocol/schema version tag (also selects hash + sig algorithms)
-  type:       u32          // type-registry id (chain-entry, authorize, revoke, profile-set, post, ...)
-  chain:      ChainId      // which (key, service) chain this belongs to
-  seq:        u64          // dense per-chain sequence number, no gaps
-  prev_hash:  [u8; 32]     // BLAKE3-256 of the previous entry's bytes (zero for seq 0)
-  timestamp:  u64          // author's claimed wall-clock, ms since epoch; ADVISORY - never a security input
-  payload:    Payload      // type-specific body: inline value, or a 32-byte BLAKE3 blob hash for large content
-  sig:        [u8; 64]     // ed25519 signature over the domain-separated preimage (below)
-}
+Envelope = [ body: bstr, sig: bstr(64) ]     // sig = ed25519("ringtome-v0/entry" || body-bytes)
 ```
 
-- The **entry hash** = `BLAKE3-256(the exact serialized entry bytes as the author produced them)` - never a
-  re-encoding.
-- `sig` covers everything else in the entry, via the domain-separated preimage in the next section, so `seq`,
-  `prev_hash`, `chain`, and `type` are all authenticated (this is what makes the hash chain and anchoring sound).
-- `payload` is header-vs-blob split (see IM-AOL Open Items): small values inline, large content as a droppable blob
-  hash, so deletion drops the blob while the signed header survives.
-- `timestamp` is present for display ordering and LWW of cosmetic fields only; the schema comment says ADVISORY so
-  no one wires a security decision to it.
+The body is itself canonical CBOR (an integer-keyed map), but it travels, hashes, and verifies **as bytes**: a
+verifier slices the received envelope and never re-encodes anything (the COSE trick). This makes the
+store-original-bytes rule structural - re-encoding during verification is exactly where canonicity bugs become
+forgery bugs. Body fields (keys ascending; unknown keys above 6 are skipped and carried through, which is the
+additive-evolution mechanism):
+
+```
+0  v:          uint (= 0)   // version tag; selects layout + hash + sig algorithms
+1  type:       uint         // type-registry id (authorize, revoke, profile-set, post, ...)
+2  chain:      [bstr(32) author-pubkey, uint service-id]
+3  seq:        uint         // dense per-chain sequence number, no gaps
+4  prev_hash:  bstr(32)     // BLAKE3-256 of the previous envelope's bytes (zero for seq 0)
+5  timestamp:  uint         // author's claimed wall-clock, ms since epoch; ADVISORY - never a security input
+6  payload:    [0, bstr inline-cbor] | [1, bstr(32) blob-hash]
+```
+
+- The **entry hash** = `BLAKE3-256(the exact envelope bytes as the author produced them)` - never a re-encoding.
+  This is what `prev_hash` links and revocation anchors pin.
+- `sig` covers the whole body via the domain-separated preimage, so `seq`, `prev_hash`, `chain`, and `type` are all
+  authenticated (this is what makes the hash chain and anchoring sound).
+- `payload` is header-vs-blob split (see IM-AOL Open Items): small values inline (hard cap 8 KiB; whole envelope
+  capped at 16 KiB), large content as a droppable blob hash, so deletion drops the blob while the signed header
+  survives.
+- `timestamp` is present for display ordering and LWW of cosmetic fields only; ADVISORY so no one wires a security
+  decision to it.
+- Decoding is **strict**: non-minimal integer heads, indefinite lengths, out-of-order map keys, non-NFC text, and
+  tags/floats are rejected outright. One logical value has exactly one accepted byte encoding; entries are hostile
+  network input and lenient parsers are how "the same" entry grows two hashes.
 
 ### Signature domains
 
-Every signature is computed over a **domain-separated preimage**: a context tag prefixes the bytes, e.g.
-`ringtome-v1/chain-entry`, `ringtome-v1/authorize`, `ringtome-v1/revoke`, `ringtome-v1/pkarr-record`. This makes a
+Every signature is computed over a **domain-separated preimage**: a context tag prefixes the bytes - implemented
+today as `ringtome-v0/entry` for chain entries, with future contexts like `ringtome-v0/pkarr-record` following the
+same pattern. This makes a
 signature valid in exactly one context - a signature over a chain entry can never be replayed as an authorization,
 and vice versa. Cross-context signature-replay bugs are common and stupid; domain separation eliminates the class.
 
