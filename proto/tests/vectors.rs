@@ -16,7 +16,10 @@ use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 
 use ringtome_proto::registry::{entry_type, service};
-use ringtome_proto::{ChainId, Entry, Payload, ProfileSet, SignedEntry, ENTRY_VERSION, ZERO_HASH};
+use ringtome_proto::{
+    Anchor, Authorize, ChainId, Disposition, Entry, Payload, ProfileSet, Revoke, SignedEntry,
+    ENTRY_VERSION, ZERO_HASH,
+};
 
 const VECTORS_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -150,6 +153,47 @@ fn build_vectors() -> VectorFile {
         ZERO_HASH,
         1_700_000_120_000,
         Payload::Blob(blob_hash),
+    );
+
+    // Vector 4: the identity chain's genesis - authorizing a recovery key as the root's first
+    // child, stamped with the usurper list [root].
+    let recovery = SigningKey::from_bytes(&[8u8; 32]);
+    let az = Authorize {
+        child: recovery.verifying_key().to_bytes(),
+        usurpers: vec![author],
+    }
+    .encode()
+    .unwrap();
+    let i0 = make(
+        "authorize genesis (recovery key)",
+        entry_type::AUTHORIZE,
+        service::IDENTITY_PUBLIC,
+        0,
+        ZERO_HASH,
+        1_700_000_180_000,
+        Payload::Inline(az),
+    );
+
+    // Vector 5: a chained retirement revocation with one anchor.
+    let rv = Revoke {
+        target: recovery.verifying_key().to_bytes(),
+        disposition: Disposition::Retirement,
+        anchors: vec![Anchor {
+            service: service::IDENTITY_PUBLIC,
+            seq: 0,
+            head_hash: *blake3::hash(b"ringtome test-vector anchor head").as_bytes(),
+        }],
+    }
+    .encode()
+    .unwrap();
+    let _i1 = make(
+        "revoke chained (retirement, one anchor)",
+        entry_type::REVOKE,
+        service::IDENTITY_PUBLIC,
+        1,
+        *i0.hash(),
+        1_700_000_240_000,
+        Payload::Inline(rv),
     );
 
     VectorFile {

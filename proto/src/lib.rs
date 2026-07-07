@@ -15,6 +15,7 @@ mod cbor;
 mod chain;
 mod entry;
 mod error;
+pub mod keytree;
 pub mod registry;
 
 pub use chain::validate_next;
@@ -23,7 +24,8 @@ pub use entry::{
     MAX_INLINE_PAYLOAD, SIG_LEN, ZERO_HASH,
 };
 pub use error::ProtoError;
-pub use registry::ProfileSet;
+pub use keytree::{Ceiling, KeyStatus, KeyTree};
+pub use registry::{Anchor, Authorize, Disposition, ProfileSet, Revoke};
 
 // Re-export the key types the public API takes, so consumers use the exact same ed25519-dalek
 // the signatures were made with.

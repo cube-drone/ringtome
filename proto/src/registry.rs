@@ -47,6 +47,197 @@ pub mod entry_type {
     }
 }
 
+/// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key
+/// tree, stamping it with the cumulative **usurper list** - everyone senior to the child at
+/// signing time: the parent's own usurpers, the parent, and the parent's previously-signed
+/// children, in that order (PROJECT_PLAN, key-tree rule 3). The stamp is the child's portable,
+/// self-incriminating credential; validators independently recompute the expected list from the
+/// parent's chain history and reject a mismatch, so a truncated-lineage forgery cannot validate.
+///
+/// Encoding: integer-keyed map `{0: bstr(32) child, 1: array<bstr(32)> usurpers}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Authorize {
+    pub child: [u8; 32],
+    pub usurpers: Vec<[u8; 32]>,
+}
+
+impl Authorize {
+    /// Ceiling on tree depth-times-breadth a single stamp may claim. Honest trees are tiny
+    /// (design center: 2-5 keys); a thousand-entry usurper list is an attack or a bug.
+    pub const MAX_USURPERS: usize = 256;
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        if self.usurpers.len() > Self::MAX_USURPERS {
+            return Err(ProtoError::BadEntry("usurper list too long"));
+        }
+        let mut w = Writer::new();
+        w.map(2);
+        w.uint(0);
+        w.bytes(&self.child);
+        w.uint(1);
+        w.array(self.usurpers.len() as u64);
+        for u in &self.usurpers {
+            w.bytes(u);
+        }
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let n = r.map()?;
+        let mut last_key: Option<u64> = None;
+        let mut child: Option<[u8; 32]> = None;
+        let mut usurpers: Option<Vec<[u8; 32]>> = None;
+        for _ in 0..n {
+            let key = r.uint()?;
+            if let Some(prev) = last_key {
+                if key <= prev {
+                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
+                }
+            }
+            last_key = Some(key);
+            match key {
+                0 => child = Some(r.bytes_fixed::<32>()?),
+                1 => {
+                    let len = r.array()?;
+                    if len > Self::MAX_USURPERS as u64 {
+                        return Err(ProtoError::BadEntry("usurper list too long"));
+                    }
+                    let mut list = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        list.push(r.bytes_fixed::<32>()?);
+                    }
+                    usurpers = Some(list);
+                }
+                _ => r.skip_value()?,
+            }
+        }
+        r.finish()?;
+        Ok(Self {
+            child: child.ok_or(ProtoError::BadEntry("authorize missing child"))?,
+            usurpers: usurpers.ok_or(ProtoError::BadEntry("authorize missing usurper list"))?,
+        })
+    }
+}
+
+/// What a revocation asserts about the revoked key's already-signed history.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Disposition {
+    /// "This key is closed, no prejudice": all history through the anchored heads is honored,
+    /// the subtree lives. Self-issuable (or by any senior).
+    Retirement = 0,
+    /// "This key is hostile, quarantine it": everything beyond the anchored prefixes is
+    /// distrusted and the subtree dies. Issuable only by a strictly senior key.
+    Repudiation = 1,
+}
+
+/// One anchored chain head of the revoked key: `(service, seq, head_hash)`. The hash - not just
+/// the seq - is load-bearing: it pins the exact entry and, transitively, the whole prefix, so an
+/// attacker cannot backdate around the seal (PROJECT_PLAN, Anchored Revocations). The chain's
+/// author is implicitly the revocation's target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Anchor {
+    pub service: u32,
+    pub seq: u64,
+    pub head_hash: [u8; 32],
+}
+
+/// Payload of a `revoke` entry.
+///
+/// Encoding: integer-keyed map
+/// `{0: bstr(32) target, 1: uint disposition, 2: array<[uint service, uint seq, bstr(32) head]>}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Revoke {
+    pub target: [u8; 32],
+    pub disposition: Disposition,
+    pub anchors: Vec<Anchor>,
+}
+
+impl Revoke {
+    /// One anchor per (key, service) chain; the service registry is small.
+    pub const MAX_ANCHORS: usize = 64;
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        if self.anchors.len() > Self::MAX_ANCHORS {
+            return Err(ProtoError::BadEntry("anchor list too long"));
+        }
+        let mut w = Writer::new();
+        w.map(3);
+        w.uint(0);
+        w.bytes(&self.target);
+        w.uint(1);
+        w.uint(self.disposition as u64);
+        w.uint(2);
+        w.array(self.anchors.len() as u64);
+        for a in &self.anchors {
+            w.array(3);
+            w.uint(u64::from(a.service));
+            w.uint(a.seq);
+            w.bytes(&a.head_hash);
+        }
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let n = r.map()?;
+        let mut last_key: Option<u64> = None;
+        let mut target: Option<[u8; 32]> = None;
+        let mut disposition: Option<Disposition> = None;
+        let mut anchors: Option<Vec<Anchor>> = None;
+        for _ in 0..n {
+            let key = r.uint()?;
+            if let Some(prev) = last_key {
+                if key <= prev {
+                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
+                }
+            }
+            last_key = Some(key);
+            match key {
+                0 => target = Some(r.bytes_fixed::<32>()?),
+                1 => {
+                    disposition = Some(match r.uint()? {
+                        0 => Disposition::Retirement,
+                        1 => Disposition::Repudiation,
+                        _ => return Err(ProtoError::BadEntry("unknown revocation disposition")),
+                    })
+                }
+                2 => {
+                    let len = r.array()?;
+                    if len > Self::MAX_ANCHORS as u64 {
+                        return Err(ProtoError::BadEntry("anchor list too long"));
+                    }
+                    let mut list = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        if r.array()? != 3 {
+                            return Err(ProtoError::BadEntry(
+                                "anchor must be [service, seq, head_hash]",
+                            ));
+                        }
+                        let service = u32::try_from(r.uint()?)
+                            .map_err(|_| ProtoError::BadEntry("service id out of range"))?;
+                        let seq = r.uint()?;
+                        let head_hash = r.bytes_fixed::<32>()?;
+                        list.push(Anchor {
+                            service,
+                            seq,
+                            head_hash,
+                        });
+                    }
+                    anchors = Some(list);
+                }
+                _ => r.skip_value()?,
+            }
+        }
+        r.finish()?;
+        Ok(Self {
+            target: target.ok_or(ProtoError::BadEntry("revoke missing target"))?,
+            disposition: disposition.ok_or(ProtoError::BadEntry("revoke missing disposition"))?,
+            anchors: anchors.ok_or(ProtoError::BadEntry("revoke missing anchors"))?,
+        })
+    }
+}
+
 /// Payload of a `profile-set` entry: one field of the identity's public profile, LWW-merged by
 /// claimed timestamp at the materialization layer.
 ///
@@ -163,5 +354,73 @@ mod tests {
         assert_eq!(service::name(service::PROFILE), "profile");
         assert_eq!(entry_type::name(entry_type::PROFILE_SET), "profile-set");
         assert_eq!(service::name(999), "unknown-service");
+    }
+
+    #[test]
+    fn authorize_round_trips() {
+        let a = Authorize {
+            child: [2u8; 32],
+            usurpers: vec![[0u8; 32], [1u8; 32]],
+        };
+        let bytes = a.encode().unwrap();
+        assert_eq!(Authorize::decode(&bytes).unwrap(), a);
+
+        // Empty usurper list (a root's first child carries [root]; but the encoding itself
+        // permits empty - semantics are the tree's job).
+        let b = Authorize {
+            child: [9u8; 32],
+            usurpers: vec![],
+        };
+        assert_eq!(Authorize::decode(&b.encode().unwrap()).unwrap(), b);
+    }
+
+    #[test]
+    fn revoke_round_trips_both_dispositions() {
+        for disposition in [Disposition::Retirement, Disposition::Repudiation] {
+            let r = Revoke {
+                target: [7u8; 32],
+                disposition,
+                anchors: vec![
+                    Anchor {
+                        service: service::IDENTITY_PUBLIC,
+                        seq: 4,
+                        head_hash: [0xaa; 32],
+                    },
+                    Anchor {
+                        service: service::PROFILE,
+                        seq: 17,
+                        head_hash: [0xbb; 32],
+                    },
+                ],
+            };
+            let bytes = r.encode().unwrap();
+            assert_eq!(Revoke::decode(&bytes).unwrap(), r);
+        }
+    }
+
+    #[test]
+    fn revoke_rejects_unknown_disposition() {
+        // Hand-build {0: target, 1: 2, 2: []} - disposition 2 doesn't exist.
+        let mut w = Writer::new();
+        w.map(3);
+        w.uint(0);
+        w.bytes(&[7u8; 32]);
+        w.uint(1);
+        w.uint(2);
+        w.uint(2);
+        w.array(0);
+        assert_eq!(
+            Revoke::decode(&w.into_bytes()),
+            Err(ProtoError::BadEntry("unknown revocation disposition"))
+        );
+    }
+
+    #[test]
+    fn oversized_lists_are_rejected() {
+        let a = Authorize {
+            child: [1u8; 32],
+            usurpers: vec![[0u8; 32]; Authorize::MAX_USURPERS + 1],
+        };
+        assert!(a.encode().is_err());
     }
 }
