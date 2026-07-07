@@ -25,6 +25,15 @@ pub fn router() -> Router<AppState> {
         .route("/api/identity/{root}/rebuild", post(rebuild_handler))
         .route("/api/identity/{root}/entries", get(entries_handler))
         .route("/api/identity/{root}/keys", get(keys_handler))
+        // M3: multi-node.
+        .route("/api/identity/adopt/begin", post(adopt_begin_handler))
+        .route("/api/identity/adopt/complete", post(adopt_complete_handler))
+        .route("/api/identity/{root}/nodes", post(authorize_node_handler))
+        .route("/api/identity/{root}/sync", post(sync_handler))
+        .route(
+            "/api/identity/{root}/keys/{target}/revoke",
+            post(revoke_key_handler),
+        )
 }
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
@@ -194,6 +203,135 @@ async fn entries_handler(
         .await
         .map_err(AppError::Internal)?;
     Ok(Json(imaol::list_entries(&db).await?))
+}
+
+/// Adoption codes travel as opaque strings (JSON today, QR clothing in M4).
+#[derive(Serialize)]
+struct CodeResponse {
+    code: String,
+}
+
+#[derive(Deserialize)]
+struct CodeRequest {
+    code: String,
+}
+
+/// Step 1 (joining node): mint a leaf key, get the request code to carry to the granting node.
+async fn adopt_begin_handler(
+    session: Session,
+    State(state): State<AppState>,
+) -> Result<Json<CodeResponse>, AppError> {
+    let request = super::begin_adoption(&state, &session.account.id).await?;
+    let code = serde_json::to_string(&request)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding request code: {e}")))?;
+    Ok(Json(CodeResponse { code }))
+}
+
+/// Step 2 (granting node): authorize the requesting node's leaf into the tree; returns the
+/// grant code to carry back.
+async fn authorize_node_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<CodeRequest>,
+) -> Result<Json<CodeResponse>, AppError> {
+    let request: super::RequestCode = serde_json::from_str(&req.code)
+        .map_err(|_| AppError::BadRequest("unparseable request code".into()))?;
+    let grant = super::authorize_node(&state, &session.account.id, &root, request).await?;
+    let code = serde_json::to_string(&grant)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding grant code: {e}")))?;
+    Ok(Json(CodeResponse { code }))
+}
+
+/// Step 3 (joining node): sync from the granter, verify our authorization, start agenting.
+async fn adopt_complete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Json(req): Json<CodeRequest>,
+) -> Result<Json<IdentityInfo>, AppError> {
+    let grant: super::GrantCode = serde_json::from_str(&req.code)
+        .map_err(|_| AppError::BadRequest("unparseable grant code".into()))?;
+    let identity = super::complete_adoption(&state, &session.account.id, grant).await?;
+    Ok(Json(identity.into()))
+}
+
+#[derive(Serialize)]
+struct PeerSyncResult {
+    peer: String,
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stats: Option<crate::sync::ExchangeStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// Run a full exchange with every known peer of this identity. Per-peer failures are reported,
+/// not fatal - an unreachable peer is a normal day on a p2p network.
+async fn sync_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<Vec<PeerSyncResult>>, AppError> {
+    super::require_owned(&state.node_db, &session.account.id, &root).await?;
+    let peers = crate::sync::peers_for(&state.node_db, &root)
+        .await
+        .map_err(AppError::Internal)?;
+
+    let mut results = Vec::new();
+    for (peer_id, addr) in peers {
+        match crate::sync::sync_with_peer(&state, &root, addr).await {
+            Ok(stats) => {
+                crate::sync::mark_synced(&state.node_db, &root, &peer_id)
+                    .await
+                    .map_err(AppError::Internal)?;
+                results.push(PeerSyncResult {
+                    peer: peer_id,
+                    ok: true,
+                    stats: Some(stats),
+                    error: None,
+                });
+            }
+            Err(e) => results.push(PeerSyncResult {
+                peer: peer_id,
+                ok: false,
+                stats: None,
+                error: Some(format!("{e:#}")),
+            }),
+        }
+    }
+    Ok(Json(results))
+}
+
+#[derive(Deserialize)]
+struct RevokeRequest {
+    disposition: String,
+}
+
+#[derive(Serialize)]
+struct RevokeResponse {
+    entry_hash: String,
+}
+
+/// Revoke a key in this identity's tree ("retirement" or "repudiation"). The statement lands on
+/// this node's identity chain and reaches other nodes via sync, whose gates enforce it.
+async fn revoke_key_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, target)): Path<(String, String)>,
+    Json(req): Json<RevokeRequest>,
+) -> Result<Json<RevokeResponse>, AppError> {
+    let disposition = match req.disposition.as_str() {
+        "retirement" => ringtome_proto::Disposition::Retirement,
+        "repudiation" => ringtome_proto::Disposition::Repudiation,
+        other => {
+            return Err(AppError::BadRequest(format!(
+                "unknown disposition {other:?} (retirement | repudiation)"
+            )))
+        }
+    };
+    let entry_hash =
+        super::revoke_key(&state, &session.account.id, &root, &target, disposition).await?;
+    Ok(Json(RevokeResponse { entry_hash }))
 }
 
 #[derive(Serialize)]

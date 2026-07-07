@@ -17,6 +17,7 @@ mod entry;
 mod error;
 pub mod keytree;
 pub mod registry;
+pub mod sync;
 
 pub use chain::validate_next;
 pub use entry::{

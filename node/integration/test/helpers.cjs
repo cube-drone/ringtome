@@ -26,12 +26,13 @@ function uniqueUsername(prefix = "user") {
 /*
     Options:
       fetch    - reuse an existing fetch/cookie-jar instead of making a fresh one
+      host     - target a different node (e.g. HOST_B in two-node tests)
       username - override the generated username
       password - override the default password
       prefix   - prefix for the generated username (handy for readable test output)
 */
 async function makeUserFetch(opts = {}) {
-    const fetch = opts.fetch || makeFetch();
+    const fetch = opts.fetch || makeFetch(opts.host);
     const username = opts.username || uniqueUsername(opts.prefix);
     const password = opts.password || "test-password-123";
 

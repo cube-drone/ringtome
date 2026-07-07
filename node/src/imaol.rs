@@ -146,7 +146,10 @@ pub async fn set_profile_field(
 /// has a lost-update window when a rebuild replaying old entries races a live write: both read,
 /// both "win," and the old value can land last. Statement-level atomicity closes it - the row is
 /// monotone in the tuple no matter how appliers interleave.
-async fn apply_profile_set(db: &SqlitePool, signed: &SignedEntry) -> Result<(), AppError> {
+pub(crate) async fn apply_profile_set(
+    db: &SqlitePool,
+    signed: &SignedEntry,
+) -> Result<(), AppError> {
     let Payload::Inline(bytes) = &signed.entry().payload else {
         return Err(AppError::Internal(anyhow!(
             "profile-set payload must be inline"

@@ -93,6 +93,13 @@ impl Keystore {
             .with_context(|| format!("writing key file {name}"))
     }
 
+    /// Whether a key file with this name exists (no decryption attempted). Callers use this to
+    /// distinguish "not yet created" (generate one) from "exists but won't open" (corrupt or
+    /// wrong envelope key - fail loudly, never silently regenerate).
+    pub fn contains(&self, name: &str) -> bool {
+        self.key_path(name).exists()
+    }
+
     /// Read and open the key file named `name`, verifying against `aad`.
     pub fn load_key(&self, name: &str, aad: &[u8]) -> Result<Vec<u8>> {
         let blob = std::fs::read(self.key_path(name))

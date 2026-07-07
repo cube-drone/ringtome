@@ -440,6 +440,12 @@ impl KeyTree {
         self.nodes.get(key).map(|n| n.rank_path.as_slice())
     }
 
+    /// The children of `key` in birth order. Needed by anyone *extending* the tree: the usurper
+    /// stamp for a new child is `usurpers(parent) + parent + children_of(parent)`.
+    pub fn children_of(&self, key: &Pubkey) -> &[Pubkey] {
+        self.children.get(key).map_or(&[], |v| v.as_slice())
+    }
+
     /// Validity ceiling for one of the key's chains, if a revocation has sealed it.
     pub fn ceiling(&self, key: &Pubkey, service_id: u32) -> Option<Ceiling> {
         self.ceilings.get(&(*key, service_id)).copied()

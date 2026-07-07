@@ -20,8 +20,10 @@ mod identity;
 mod imaol;
 mod inspect;
 mod keystore;
+mod p2p;
 mod rate_limit;
 mod request_context;
+mod sync;
 mod test_endpoints;
 
 use config::{Config, PublicConfig};
@@ -40,6 +42,8 @@ pub struct AppState {
     pub rate_limiter: rate_limit::RateLimiter,
     /// Envelope encryption for private keys at rest.
     pub keystore: keystore::Keystore,
+    /// The node's iroh endpoint: transport identity + p2p connections (cheaply cloneable).
+    pub endpoint: iroh::Endpoint,
 }
 
 #[derive(serde::Serialize)]
@@ -64,6 +68,28 @@ async fn health(State(state): State<AppState>) -> Result<Json<Health>, AppError>
 
 async fn get_config(State(state): State<AppState>) -> Result<Json<PublicConfig>, AppError> {
     Ok(Json(state.config.public()))
+}
+
+#[derive(serde::Serialize)]
+struct NodeInfo {
+    /// The node's iroh endpoint id (its transport identity - NOT an identity key).
+    endpoint_id: String,
+    /// Locally bound UDP sockets. With `presets::Minimal` these are the only reachability.
+    bound_sockets: Vec<String>,
+}
+
+/// The node's p2p coordinates, for assembling add-a-node codes. Session-gated: only this node's
+/// own users compose codes.
+async fn node_info(_session: auth::Session, State(state): State<AppState>) -> Json<NodeInfo> {
+    Json(NodeInfo {
+        endpoint_id: state.endpoint.id().to_string(),
+        bound_sockets: state
+            .endpoint
+            .bound_sockets()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect(),
+    })
 }
 
 #[tokio::main]
@@ -106,17 +132,21 @@ async fn main() -> anyhow::Result<()> {
     // Rate limiting is off in local-test mode so integration tests don't trip it.
     let rate_limiter = rate_limit::RateLimiter::new(!local_test);
     let keystore = keystore::Keystore::load(&config.data_directory)?;
+    let endpoint = p2p::build_endpoint(&keystore).await?;
     let state = AppState {
         config,
         node_db,
         user_dbs,
         rate_limiter,
         keystore,
+        endpoint: endpoint.clone(),
     };
+    p2p::spawn_accept_loop(endpoint, state.clone());
 
     let mut app = Router::new()
         .route("/health", get(health))
         .route("/api/config", get(get_config))
+        .route("/api/node", get(node_info))
         .merge(auth::router())
         .merge(identity::router());
 

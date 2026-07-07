@@ -10,13 +10,15 @@ const makeFetchCookie = require("fetch-cookie").default;
 const { CookieJar } = require("tough-cookie");
 
 const HOST = process.env.RINGTOME_TEST_HOST || "localhost:5281";
+// A second node, when the harness boots one (two-node sync tests skip themselves otherwise).
+const HOST_B = process.env.RINGTOME_TEST_HOST_B || null;
 
-function makeFetch() {
+function makeFetch(host = HOST) {
     const jar = new CookieJar();
     const cookieFetch = makeFetchCookie(fetch, jar);
 
     const fn = (path, opts) => {
-        const url = `http://${HOST}/${path.replace(/^\//, "")}`;
+        const url = `http://${host}/${path.replace(/^\//, "")}`;
 
         // If we're sending a JSON body, set the Content-Type unless a file upload said otherwise.
         if (opts && opts.body && !opts.file) {
@@ -48,4 +50,4 @@ async function sql(query) {
     return resp.json();
 }
 
-module.exports = { makeFetch, sql, HOST };
+module.exports = { makeFetch, sql, HOST, HOST_B };

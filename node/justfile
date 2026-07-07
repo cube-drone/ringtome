@@ -9,6 +9,7 @@ set windows-shell := ["bash", "-uc"]
 # Paths are relative to this justfile (the `node/` dir); step up for cargo commands.
 workspace := justfile_directory() / ".."
 port := env_var_or_default("RINGTOME_PORT", "5281")
+port_b := env_var_or_default("RINGTOME_PORT_B", "5282")
 test_data := "./data/test"
 
 # List available recipes.
@@ -53,36 +54,44 @@ integration-install:
 kill:
     -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
 
-# Boot a throwaway node, wait for health, run the JS integration suite, tear it down.
+# Boot TWO throwaway nodes (sync tests need a peer), wait for health, run the JS integration
+# suite, tear both down. Single-node-only tests are unaffected; two-node tests skip themselves
+# if RINGTOME_TEST_HOST_B is absent.
 integration: build kill
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
-    rm -rf "{{test_data}}"
+    rm -rf "{{test_data}}" "{{test_data}}-b"
     RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="{{test_data}}" RINGTOME_LOCAL_TEST=1 \
         ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
     NODE_PID=$!
+    RINGTOME_PORT={{port_b}} RINGTOME_DATA_DIRECTORY="{{test_data}}-b" RINGTOME_LOCAL_TEST=1 \
+        ./target/debug/ringtome > /tmp/ringtome-integration-b.log 2>&1 &
+    NODE_B_PID=$!
     cleanup() {
         MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_PID" 2>/dev/null || true
+        MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_B_PID" 2>/dev/null || true
         MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
     }
     trap cleanup EXIT
 
-    # Wait up to ~10s for the node to answer /health.
-    for i in $(seq 1 50); do
-        if curl -sf "http://127.0.0.1:{{port}}/health" >/dev/null 2>&1; then
-            break
-        fi
-        sleep 0.2
-        if [[ $i -eq 50 ]]; then
-            echo "node did not become healthy; log:" >&2
-            cat /tmp/ringtome-integration.log >&2
-            exit 1
-        fi
+    # Wait up to ~10s for each node to answer /health.
+    for p in {{port}} {{port_b}}; do
+        for i in $(seq 1 50); do
+            if curl -sf "http://127.0.0.1:$p/health" >/dev/null 2>&1; then
+                break
+            fi
+            sleep 0.2
+            if [[ $i -eq 50 ]]; then
+                echo "node on :$p did not become healthy; logs:" >&2
+                cat /tmp/ringtome-integration.log /tmp/ringtome-integration-b.log >&2
+                exit 1
+            fi
+        done
     done
 
     cd "{{justfile_directory()}}/integration"
-    RINGTOME_TEST_HOST="127.0.0.1:{{port}}" npm test
+    RINGTOME_TEST_HOST="127.0.0.1:{{port}}" RINGTOME_TEST_HOST_B="127.0.0.1:{{port_b}}" npm test
 
 # --- everything ------------------------------------------------------------
 

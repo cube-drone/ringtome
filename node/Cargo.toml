@@ -50,3 +50,4 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # bounded cache of open per-user database handles
 moka = { version = "0.12", features = ["future"] }
+iroh = "1.0.2"

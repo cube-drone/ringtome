@@ -156,6 +156,27 @@ already knows how to boot throwaway nodes.)
 **Sizing:** the big one. First milestone with genuine research risk (NAT traversal behavior, pkarr
 liveness in practice). Keep scope brutal: two nodes, one identity, no gossip, no discovery UX.
 
+**Status: COMPLETE (2026-07-07), with two deliberate scope trims and honest residuals.**
+Shipped: iroh 1.0 endpoint per node (persistent node key sealed in the keystore;
+`presets::Minimal` - zero external infrastructure), `proto::sync` wire messages (Hello with
+`[floor..head]` frontiers as committed, Entry, Done; version in the ALPN), the symmetric-exchange
+sync engine with the validation gate ahead of storage (strict decode -> signature -> chain
+contiguity -> key-tree membership -> revocation ceilings; anchored history of retired/repudiated
+keys honored, everything beyond refused), the add-a-node ceremony (request code / grant code, two
+copy-pastes; adopted nodes sign with granted leaf keys), the revocation API, and the full exit
+demo as a two-node integration test: adopt, write-on-B-read-on-A, full-copy resilience, and
+repudiation with A's gate refusing the evicted key's writes ("EVIL TWIN" stays on B).
+*Trims:* iroh-blobs deferred to M4 (no blob producer exists until posts); pkarr deferred (direct
+addressing rides in the adoption codes; `presets::N0` is the one-line path to relays + pkarr when
+a public network exists). *Residuals:* (a) sync is manually triggered (`POST .../sync`) +
+adoption-time - background interval + eager-push land with gossip; (b) v1 grants adoption only
+from the root's node; (c) **fork evidence cannot yet be *stored*** - the entries PK
+`(author, service, seq)` means a conflicting entry arriving over sync is rejected at the gate
+(safe, convergent) but its bytes are dropped rather than kept as equivocation proof, and the
+fork-aftermath re-signing flow remains undesigned. That dragon is still owed; schema room for
+fork evidence should come before or with M4's client, which is where a user would first *see* a
+fork.
+
 ## M4 — Someone can actually use it (first social features + the client)
 
 **Goal:** the answer to the plan's "what social features first?" open question, proposed here as:
