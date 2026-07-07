@@ -94,12 +94,16 @@ describe("profile chains", function () {
         await setField(user, root, "name", "c");
 
         const entries = await (await user(`api/identity/${root}/entries`)).json();
-        assert.equal(entries.length, 3);
+        // 4 entries: the identity chain's genesis (recovery-key authorization, service 0) plus
+        // the three profile-sets (service 2).
+        assert.equal(entries.length, 4);
+        const profileEntries = entries.filter((e) => e.service === 2);
         assert.deepEqual(
-            entries.map((e) => e.seq),
+            profileEntries.map((e) => e.seq),
             [0, 1, 2],
-            "dense sequence numbers"
+            "dense sequence numbers per chain"
         );
+        assert.equal(entries.filter((e) => e.service === 0).length, 1, "identity genesis present");
         for (const e of entries) {
             assert.match(e.bytes_hex, /^[0-9a-f]+$/);
             assert.match(e.hash_hex, /^[0-9a-f]{64}$/);
@@ -120,7 +124,8 @@ describe("profile chains", function () {
         const rebuild = await (
             await user(`api/identity/${root}/rebuild`, { method: "POST" })
         ).json();
-        assert.equal(rebuild.entries_replayed, 3, "every signed entry replays and re-validates");
+        // 3 profile-sets + the identity chain's genesis authorize = 4 replayed and re-validated.
+        assert.equal(rebuild.entries_replayed, 4, "every signed entry replays and re-validates");
 
         const after = await (await user(`api/identity/${root}/profile`)).json();
         assert.deepEqual(after, before, "replaying the log reproduces the exact same view");

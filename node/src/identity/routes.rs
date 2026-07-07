@@ -24,6 +24,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/identity/{root}/rebuild", post(rebuild_handler))
         .route("/api/identity/{root}/entries", get(entries_handler))
+        .route("/api/identity/{root}/keys", get(keys_handler))
 }
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
@@ -44,19 +45,36 @@ impl From<super::Identity> for IdentityInfo {
     }
 }
 
-/// Create a new identity owned by the logged-in account.
+/// Identity creation response. `recovery_secret` appears here and **nowhere else, ever** - the
+/// node does not keep it. The client owns the "put the spare key somewhere safe" ceremony.
+#[derive(Serialize)]
+struct CreatedIdentityInfo {
+    root_pubkey: String,
+    created_at_ms: i64,
+    recovery_pubkey: String,
+    recovery_secret: String,
+    authorize_entry_hash: String,
+}
+
+/// Create a new identity owned by the logged-in account, minting its recovery key.
 async fn create_handler(
     session: Session,
     State(state): State<AppState>,
-) -> Result<Json<IdentityInfo>, AppError> {
-    let identity = super::create(
+) -> Result<Json<CreatedIdentityInfo>, AppError> {
+    let created = super::create(
         &state.node_db,
         &state.keystore,
         &state.user_dbs,
         &session.account.id,
     )
     .await?;
-    Ok(Json(identity.into()))
+    Ok(Json(CreatedIdentityInfo {
+        root_pubkey: created.root_pubkey,
+        created_at_ms: created.created_at_ms,
+        recovery_pubkey: created.recovery_pubkey,
+        recovery_secret: created.recovery_secret,
+        authorize_entry_hash: created.authorize_entry_hash,
+    }))
 }
 
 /// List the identities owned by the logged-in account.
@@ -137,11 +155,22 @@ struct RebuildResponse {
 
 /// Wipe the materialized views and rebuild them from the signed entries log, re-validating every
 /// chain link. The views are caches; this proves it.
+///
+/// Local-test only, like the SQL passthrough: the *operation* has real production triggers
+/// (view-schema migrations, repudiation/fork aftermath, corruption repair), but they all call
+/// `imaol::rebuild_views` internally - this HTTP surface has no production caller until an
+/// operator/admin surface exists, and it is deliberately non-transactional (readers mid-rebuild
+/// see partial views; a failed rebuild leaves them wiped - loud by design for a debug tool).
+/// When it returns as an admin action, it returns transactional.
 async fn rebuild_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<RebuildResponse>, AppError> {
+    if !state.config.local_test {
+        // Uniform 404: on a production node this endpoint does not exist.
+        return Err(AppError::NotFound("not found".into()));
+    }
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let db = state
         .user_dbs
@@ -165,4 +194,49 @@ async fn entries_handler(
         .await
         .map_err(AppError::Internal)?;
     Ok(Json(imaol::list_entries(&db).await?))
+}
+
+#[derive(Serialize)]
+struct KeyInfo {
+    pubkey: String,
+    status: &'static str,
+    rank_path: Vec<u64>,
+}
+
+#[derive(Serialize)]
+struct KeyTreeResponse {
+    root_pubkey: String,
+    keys: Vec<KeyInfo>,
+    forks: usize,
+}
+
+/// The identity's resolved key tree: every known key with its status and rank path, plus a fork
+/// count (any nonzero value is evidence of key duplication or compromise).
+async fn keys_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<KeyTreeResponse>, AppError> {
+    super::require_owned(&state.node_db, &session.account.id, &root).await?;
+    let db = state
+        .user_dbs
+        .get(&root)
+        .await
+        .map_err(AppError::Internal)?;
+    let tree = imaol::load_key_tree(&db, &root).await?;
+
+    let keys = tree
+        .members()
+        .map(|(pk, status)| KeyInfo {
+            pubkey: hex::encode(pk),
+            status: status.name(),
+            rank_path: tree.rank_path(pk).unwrap_or_default().to_vec(),
+        })
+        .collect();
+
+    Ok(Json(KeyTreeResponse {
+        root_pubkey: root,
+        keys,
+        forks: tree.forks().len(),
+    }))
 }

@@ -209,7 +209,8 @@ existing tree. Identity durability therefore rests on a small amount of planning
 that planning happen by default:
 
 - **Recovery key, minted at identity creation.** When an identity is created, the node generates a **recovery key as
-  an early direct child of the root** and offers it for download (file, QR, printout). Because it is created first,
+  an early direct child of the root** and hands it to the user via the photo ceremony (a labeled QR photographed to
+  the phone's camera roll - see The Cozyweb Surface, ceremony 1; file download as fallback). Because it is created first,
   it is structurally senior to every key added afterward - forever, with no propagation dependency. If the root and
   the daily-driver nodes are all lost or compromised, the recovery key outranks whatever survives.
 - **Root key backup.** Users can export the root key itself (seed phrase, file, QR - see Enhanced Auth). A restored
@@ -220,6 +221,59 @@ that planning happen by default:
 Authority statement types are **versioned.** Any future statement type that changes how relying parties rank keys
 would make old and new clients rank differently - split-brain by version skew - so introducing one is a
 protocol-breaking change by definition, gated behind a version bump.
+
+### Recovery Flows: Passwords vs. Keys
+
+Two failure modes wear the same "I'm locked out" face and must never share machinery. **Forgetting the node
+password loses nothing cryptographic** - on an always-on node the leaf keys are sealed under the envelope key, not
+the login password (see Key Storage), so the node still holds perfectly healthy keys and the user has only lost the
+ability to prove themselves to *this node's web app*. That is a web-app problem. Actual key loss (dead node, lost
+devices, compromise) is the rare case, and it alone runs the key-tree machinery.
+
+**Flow A - forgot password (common): zero chain entries, zero new keys.** The recovery photo serves as the reset
+*authentication factor*: scan the QR, the node derives the pubkey, confirms it is the identity's **designated
+recovery key**, and resets the account password. The key signs a login challenge, never a statement; the tree is
+untouched.
+
+- **Only the recovery key is reset-eligible - this is load-bearing, not convenience.** The invariant: *presenting
+  key K may grant at most K's own authority.* Access to a node is access to the keys that node holds, so
+  any-tree-key-resets would let an attacker holding one compromised junior leaf walk up to the root-holding node,
+  pass an "is this an Active member?" check, reset the password, and wield the root - converting a bounded leaf
+  compromise into total takeover through the login layer, and turning revocation into a race the attacker wins.
+  Authentication channels must respect the authority lattice or the lattice is decorative. An ordinary leaf is
+  never reset-eligible, anywhere.
+- **Even recovery-key reset is an escalation channel - the one deliberate one** (the root outranks the recovery
+  key, and reset on the root's node wields the root). Every recovery credential in every system is definitionally
+  an escalation channel; the design response is that the exception is singular, designated, and guarded by
+  **node-local policy**: a cooling-off window ("reset completes in 24h; any logged-in session can cancel"), rate
+  limits, and notification to the identity's other devices once gossip exists. Note the layering: the *protocol*
+  forbids clocks because relying parties cannot share one, but a node's own login policy is node-local - the
+  time-boxed override that the no-clock principle exiles from the key tree is perfectly legal here.
+- **Per-identity scoping.** A node account may agent several identities; proof of one identity's recovery key
+  grants access to *that identity only* (the reset re-homes the proven identity into a fresh or proven-only
+  account), or a stolen photo for one pseudonym would breach the authority and linkage boundaries of its siblings.
+- Phase 3's optional email tokens are a later *convenience* for this same flow; the photo-as-factor means Phase 1
+  ships password reset with no email infrastructure at all.
+
+**Flow B - actual key loss (rare): the tree machinery, ending in photo rotation.** At a fresh node: scan the QR;
+the recovery key authorizes **its successor recovery key first** (see designation, below), then the new device
+key; repudiate whatever was lost or hostile; the old recovery key **self-retires** with anchors at its final head.
+Retirement seals the old photo into a souvenir - everything it legitimately did (including authorizing the new
+branch) stands; anything signed beyond its anchors is invalid - which matters because the scan just exposed its
+seed to the scanning device. Each recovery consumes and reissues the artifact ("Your spare key worked! Here's a
+fresh one - take a picture. The old photo won't work anymore."), shrinking the skeleton-key window to
+until-first-use. **Recovery never mints a new identity**: the identity *is* the root pubkey; a "fresh start" would
+orphan every follow, vouch, and page. New keys in the same tree, always.
+
+**Designating "the" recovery key.** v1 rule: the **leftmost spine** - the recovery key is the root's first child
+by construction (rank `[0]`), and because a retiring recovery key authorizes its successor *first*, the current
+recovery key is always the unique Active key on the all-zeros path (`[0]`, `[0,0]`, ...). Derivable from pure tree
+structure, zero new format; fragile only in that Flow B's mint order is a convention that must be kept loudly.
+Graduation path: an additive `role` attribute on `authorize` (passes the ignorability test - an old reader treats
+the key as ordinary and *fails closed* on reset eligibility; ranking is untouched), natural to add when Flow B is
+implemented. A future relaxation exists if ever needed - "reset with any key strictly senior to everything the
+node holds" is escalation-free by the invariant - but "only the spare-key photo unlocks you" is the v1 story a
+user can hold in one sentence.
 
 ### Key Storage
 
@@ -481,6 +535,8 @@ Two consequences worth stating now:
 - A node account can agent **multiple identities**: one login decrypts the leaf keys of every identity the user has
   attached to that account, and the UI offers a switcher. The account-to-identities mapping is local to the node and
   never leaves it.
+- **Password reset** is the recovery photo used as an authentication factor - recovery-key-only, per-identity
+  scoped, cooling-off window; see Recovery Flows: Passwords vs. Keys in the Identity System section.
 
 ### Phase 2: Passkeys / WebAuthn (Planned)
 
@@ -1087,9 +1143,30 @@ surfaces only at one designed moment, wearing clothes.)
 
 ### The three ceremonies (the only places cryptography may surface)
 
-1. **The recovery key, at identity creation** - framed as *"put the spare key somewhere safe"*: a drawer, a printed
-   page, a file on a USB stick. Never "back up your seed," never "ed25519." (See the open Recovery-key UX question;
-   the ceremony's *language* is settled here, the concrete flow is not.)
+1. **The recovery key, at identity creation: the photo ceremony.** The spare key is presented as a **QR code and
+   the user is asked to photograph it with their phone** - because the camera roll is the most durable archive
+   normal people possess (cloud-synced, searchable, survives every device death, never "cleaned up" like a
+   Downloads folder), and because users photograph backup codes anyway; designing the ceremony *as* the inevitable
+   behavior is harm reduction. Specifics:
+   - **Payload is versioned and self-describing** (`ringtome-recovery:v0:<root-pubkey>:<recovery-seed>`), so a
+     future scanner knows what it is and which identity it recovers. Protocol surface: gets a spec line and a test
+     vector when the first scanner is built.
+   - **A labeled artifact, not a bare code:** the QR is framed with the identity's identicon and display name -
+     "Spare key for **Curtis** - keep this photo safe" - so the photo explains itself years later. Lean into the
+     aesthetic: a charming SUPER OFFICIAL SPARE KEY certificate is a photo people keep.
+   - **Creation blocks until the user confirms capture** ("Take a picture of this with your phone. I'll wait."),
+     with file download as the fallback for printer people. Display-once stands: the node never persists the
+     secret (the M2 API contract).
+   - **Emergency framing, never routine login.** Reusable across crises (new machine, dead node, locked out), not
+     a sign-in method: every scan exposes the seed to the scanning device, and devices authorized by the recovery
+     key join the senior-most branch (correct in a real recovery, surprising if habitual).
+   - **Priced caveats:** the camera roll is a leak surface (shared albums, screen-shares, cloud compromise) -
+     acceptable at "casual online identity" stakes, where cloud compromise already means email compromise and the
+     loss of every recovery scheme. While the root lives, a leaked photo is recoverable (root repudiates the
+     recovery key and mints a replacement - which is, note, junior to keys born in between; original supremacy
+     cannot be re-granted). After root retirement the photo is the identity's unrevocable skeleton key, which is
+     why the artifact says "keep this photo safe" in human words.
+   Never "back up your seed," never "ed25519."
 2. **Adding a device or node** - framed as *"invite this computer to be you"*: a QR handshake between something you
    are already holding and something new. The key tree underneath is engine-room.
 3. **Vouching** - framed as *"I know this person for real."* A statement about the physical world, not a
@@ -1537,8 +1614,9 @@ ringtome/
   guestbook, webring navigator) come first once the core ships? The renderer's strict grammar and the
   `ringtome-markup` type-registry entry need specifying alongside the first content types.
 - [x] ~~**Serialization format:**~~ Resolved — deterministically-encoded CBOR, with the hash-and-store-original-bytes rule, domain-separated signatures, version tags, a type registry, and published test vectors (see Canonical Encoding, Signature Domains, and Versioning).
-- [ ] **Recovery key UX:** How do we present the auto-generated recovery key at identity creation so users actually
-  save it (and understand what it is)? The ceremony's *language* is now settled (see The Cozyweb Surface: "put the
-  spare key somewhere safe," never seed/key vocabulary); the concrete flow - download vs. print vs. QR, whether
-  creation blocks on confirmation - remains open for M2.
+- [x] ~~**Recovery key UX:**~~ Resolved — the **photo ceremony**: the recovery key is a labeled QR the user
+  photographs with their phone, creation blocks until capture is confirmed, file download as fallback, emergency
+  framing throughout. Full design (payload scheme, artifact, caveats) in The Cozyweb Surface, ceremony 1. Node-side
+  API contract shipped in M2 (secret returned exactly once, never persisted); the ceremony UI lands with the first
+  client (M4).
 

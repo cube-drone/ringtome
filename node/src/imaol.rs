@@ -140,6 +140,12 @@ pub async fn set_profile_field(
 /// convergence is what matters), seq breaks same-chain timestamp ties in true authoring order,
 /// and the hash makes the comparison a total order so every replica lands on the same value
 /// regardless of replay order.
+///
+/// The comparison lives *inside* the upsert's WHERE clause, so compare-and-write is one atomic
+/// statement. A check-then-act version of this (SELECT the tuple, compare in Rust, then write)
+/// has a lost-update window when a rebuild replaying old entries races a live write: both read,
+/// both "win," and the old value can land last. Statement-level atomicity closes it - the row is
+/// monotone in the tuple no matter how appliers interleave.
 async fn apply_profile_set(db: &SqlitePool, signed: &SignedEntry) -> Result<(), AppError> {
     let Payload::Inline(bytes) = &signed.entry().payload else {
         return Err(AppError::Internal(anyhow!(
@@ -149,42 +155,26 @@ async fn apply_profile_set(db: &SqlitePool, signed: &SignedEntry) -> Result<(), 
     let ps = ProfileSet::decode(bytes)
         .map_err(|e| AppError::Internal(anyhow!("undecodable profile-set payload: {e}")))?;
 
-    let ts = signed.entry().timestamp_ms as i64;
-    let seq = signed.entry().seq as i64;
-    let hash = signed.hash().as_slice();
-
-    let existing: Option<(i64, i64, Vec<u8>)> =
-        sqlx::query_as("SELECT updated_at_ms, seq, entry_hash FROM profile_view WHERE field = ?1")
-            .bind(&ps.field)
-            .fetch_optional(db)
-            .await
-            .context("reading profile view")
-            .map_err(AppError::Internal)?;
-
-    let wins = match &existing {
-        None => true,
-        Some((e_ts, e_seq, e_hash)) => (ts, seq, hash) > (*e_ts, *e_seq, e_hash.as_slice()),
-    };
-    if wins {
-        sqlx::query(
-            "INSERT INTO profile_view (field, value, updated_at_ms, seq, entry_hash)
-             VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(field) DO UPDATE SET
-               value = excluded.value,
-               updated_at_ms = excluded.updated_at_ms,
-               seq = excluded.seq,
-               entry_hash = excluded.entry_hash",
-        )
-        .bind(&ps.field)
-        .bind(&ps.value)
-        .bind(ts)
-        .bind(seq)
-        .bind(hash)
-        .execute(db)
-        .await
-        .context("updating profile view")
-        .map_err(AppError::Internal)?;
-    }
+    sqlx::query(
+        "INSERT INTO profile_view (field, value, updated_at_ms, seq, entry_hash)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(field) DO UPDATE SET
+           value = excluded.value,
+           updated_at_ms = excluded.updated_at_ms,
+           seq = excluded.seq,
+           entry_hash = excluded.entry_hash
+         WHERE (excluded.updated_at_ms, excluded.seq, excluded.entry_hash)
+             > (profile_view.updated_at_ms, profile_view.seq, profile_view.entry_hash)",
+    )
+    .bind(&ps.field)
+    .bind(&ps.value)
+    .bind(signed.entry().timestamp_ms as i64)
+    .bind(signed.entry().seq as i64)
+    .bind(signed.hash().as_slice())
+    .execute(db)
+    .await
+    .context("updating profile view")
+    .map_err(AppError::Internal)?;
     Ok(())
 }
 
@@ -270,6 +260,35 @@ pub struct StoredEntry {
     pub timestamp_ms: i64,
     pub hash_hex: String,
     pub bytes_hex: String,
+}
+
+/// Load and resolve the identity's key tree from its stored identity-public chains. The tree is
+/// tiny (design center: 2-5 keys), so recomputing on demand beats maintaining a view.
+pub async fn load_key_tree(
+    db: &SqlitePool,
+    root_hex: &str,
+) -> Result<ringtome_proto::KeyTree, AppError> {
+    let root: [u8; 32] = hex::decode(root_hex)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| AppError::BadRequest("root pubkey must be 64 hex chars".into()))?;
+
+    let rows: Vec<(Vec<u8>,)> =
+        sqlx::query_as("SELECT bytes FROM entries WHERE service = ?1 ORDER BY author_pubkey, seq")
+            .bind(i64::from(service::IDENTITY_PUBLIC))
+            .fetch_all(db)
+            .await
+            .context("reading identity chains")
+            .map_err(AppError::Internal)?;
+
+    let entries = rows
+        .into_iter()
+        .map(|(bytes,)| SignedEntry::decode(&bytes))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::Internal(anyhow!("stored identity entry fails decode: {e}")))?;
+
+    ringtome_proto::KeyTree::build(root, &entries)
+        .map_err(|e| AppError::Internal(anyhow!("key tree resolution failed: {e}")))
 }
 
 /// Row shape of the raw-log query: (service, seq, entry_type, timestamp_ms, entry_hash, bytes).

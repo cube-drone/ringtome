@@ -54,6 +54,18 @@ pub enum KeyStatus {
     Unknown,
 }
 
+impl KeyStatus {
+    pub fn name(self) -> &'static str {
+        match self {
+            KeyStatus::Active => "active",
+            KeyStatus::Retired => "retired",
+            KeyStatus::Repudiated => "repudiated",
+            KeyStatus::Invalid => "invalid",
+            KeyStatus::Unknown => "unknown",
+        }
+    }
+}
+
 /// Per-(key, service) validity ceiling established by a revocation's anchors: entries with
 /// `seq <= final_seq` stand; anything beyond is invalid (retirement) or actively distrusted
 /// (repudiation).

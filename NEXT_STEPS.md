@@ -112,6 +112,22 @@ most deserves it.
 **Sizing:** medium; high subtlety, low plumbing. Resolve the plan's open **recovery-key UX**
 question here (minimally: download-or-you-can't-continue?).
 
+**Status: COMPLETE (2026-07-06).** `proto::keytree` (chain linearization with deterministic fork
+resolution + evidence, usurper-stamp cross-check, rank-path total order, seniority-sorted
+retirement/repudiation with anchored ceilings; 11 scenario tests + a 25-seed property test
+covering totality/antisymmetry/transitivity, recovery-position-outranks-all, and shuffled-arrival
+convergence). `Authorize`/`Revoke` codecs with two new appended test vectors. Node side: identity
+creation mints the recovery key and writes the identity chain's genesis authorize; the recovery
+secret is returned exactly once and never persisted; `GET /api/identity/{root}/keys` exposes the
+resolved tree; `ringtome inspect` decodes authorize/revoke payloads. Notes: (a) monotonic memory
+needs no mechanism for *own* identities in a single-node world - the append-only entries table is
+it; it becomes a real component at M3's sync boundary for *remote* identities. (b) The
+recovery-key UX question is half-resolved: the API contract (secret appears once, in the creation
+response) is settled; the human ceremony (download-or-blocked, print, QR) lands with the first
+client in M4. (c) Design review flagged two dragons for later milestones: fork-aftermath re-signing
+(promoted to an M3-adjacent design obligation) and the recovery-key-as-permanent-skeleton-key UX
+weight (the Cozyweb ceremony must carry it).
+
 ## M3 — Two nodes, one identity (iroh + sync)
 
 **Goal:** the network exists. The plan's custom sync protocol, first contact with iroh.

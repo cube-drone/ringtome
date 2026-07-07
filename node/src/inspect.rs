@@ -6,7 +6,7 @@
 
 use anyhow::{bail, Context, Result};
 use ringtome_proto::registry::{entry_type, service};
-use ringtome_proto::{Payload, ProfileSet, SignedEntry};
+use ringtome_proto::{Authorize, Payload, ProfileSet, Revoke, SignedEntry};
 
 pub fn run(arg: &str) -> Result<()> {
     let bytes = load_bytes(arg)?;
@@ -35,13 +35,41 @@ pub fn run(arg: &str) -> Result<()> {
     match &e.payload {
         Payload::Inline(b) => {
             println!("  payload:   inline ({} bytes)", b.len());
-            if e.entry_type == entry_type::PROFILE_SET {
-                match ProfileSet::decode(b) {
+            match e.entry_type {
+                entry_type::PROFILE_SET => match ProfileSet::decode(b) {
                     Ok(ps) => println!("             profile-set {:?} = {:?}", ps.field, ps.value),
                     Err(err) => {
                         println!("             (profile-set payload fails to decode: {err})")
                     }
-                }
+                },
+                entry_type::AUTHORIZE => match Authorize::decode(b) {
+                    Ok(az) => {
+                        println!("             authorize child {}", hex::encode(az.child));
+                        for (i, u) in az.usurpers.iter().enumerate() {
+                            println!("             usurper[{i}]  {}", hex::encode(u));
+                        }
+                    }
+                    Err(err) => println!("             (authorize payload fails to decode: {err})"),
+                },
+                entry_type::REVOKE => match Revoke::decode(b) {
+                    Ok(rv) => {
+                        println!(
+                            "             revoke {} ({:?})",
+                            hex::encode(rv.target),
+                            rv.disposition
+                        );
+                        for a in &rv.anchors {
+                            println!(
+                                "             anchor     {} seq {} head {}",
+                                service::name(a.service),
+                                a.seq,
+                                hex::encode(a.head_hash)
+                            );
+                        }
+                    }
+                    Err(err) => println!("             (revoke payload fails to decode: {err})"),
+                },
+                _ => {}
             }
         }
         Payload::Blob(h) => println!("  payload:   blob {}", hex::encode(h)),
