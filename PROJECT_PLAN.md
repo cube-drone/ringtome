@@ -1057,6 +1057,59 @@ first and an aesthetic one second:
 
 ---
 
+## The Cozyweb Surface: Language, Ceremony, and Who Gets Summoned
+
+A system's onboarding friction is a filter, and the *flavor* of the friction selects the flavor of the survivors.
+SSB's frictions (pubs, key discipline, day-long syncs, terminal-adjacent tooling) selected for people whose hobby is
+infrastructure, and its culture calcified around them; founding populations are sticky and do not re-roll. Ringtome's
+technical design should therefore be treated as a recruiting instrument, and its user-facing surface as the thing
+that decides who stays. Several existing design decisions are load-bearing here and must be protected as such:
+
+- **The pitch leads with aesthetics, never infrastructure.** Webrings, geocities pages, MIDI files recruit people
+  who miss *making things* - a founding population that produces culture rather than infrastructure discourse. The
+  moment the public pitch leads with "distributed" or "cryptographic," the filter flips.
+- **The single-player floor is cold-start armor.** The cozy-OS client must be fun before the network has people in
+  it (decorate a page, play the toys). Week one should reward decorating, not configuring.
+- **Vouch-driven growth shapes culture.** Growth along in-person trust edges expands through real social graphs, not
+  ideological affinity. The trust graph doubles as the founding-population curation tool.
+- **No global timeline is the structural repellent.** Private-by-default + trust-gated visibility + demand-driven
+  fronting means the megaphone does not exist. The audience-seeking crowd (the free-speech-absolutist attractor
+  every censorship-resistant p2p system summons) bounces off a network that offers strangers no audience - no
+  moderation fight required. Protect this property when designing any "discovery" or "public square" feature.
+
+### The language budget
+
+Users are taught **at most two or three novel concepts, ever**, each wearing a domestic name. Protocol vocabulary is
+**banned from the UI permanently**: node, key, keypair, chain, entry, sync, sign, hash, pubkey, revoke, repudiate.
+If a concept cannot earn one of the two-or-three teaching slots, it must be invisible instead. (Signal is the
+existence proof: millions of users carry keypairs and safety numbers with zero awareness, because the crypto
+surfaces only at one designed moment, wearing clothes.)
+
+### The three ceremonies (the only places cryptography may surface)
+
+1. **The recovery key, at identity creation** - framed as *"put the spare key somewhere safe"*: a drawer, a printed
+   page, a file on a USB stick. Never "back up your seed," never "ed25519." (See the open Recovery-key UX question;
+   the ceremony's *language* is settled here, the concrete flow is not.)
+2. **Adding a device or node** - framed as *"invite this computer to be you"*: a QR handshake between something you
+   are already holding and something new. The key tree underneath is engine-room.
+3. **Vouching** - framed as *"I know this person for real."* A statement about the physical world, not a
+   cryptographic act; its gravity should feel social ("don't say it if you don't mean it"), not technical.
+
+Everything else - identity keys, chains, sync state, revocation mechanics - stays engine-room forever. The
+identicon/contact-name design already carries the hardest disguise: the key becomes a picture you recognize, never a
+string you read.
+
+### Culture seeding (the handoff)
+
+The first wave will be node-running nerds regardless - for a while, running a node is the only door in, and that is
+fine *if the handoff is planned*: nerds as hosts and janitors, artists as the culture (the itch.io shape - invisible
+infrastructure people behind a front page that celebrates weird art). The product surface must celebrate **pages,
+comics, and MIDI crimes**, never uptime, node counts, or replication topology. Watch what the "front page"
+equivalent celebrates in every era of the network; that is the filter for wave two, and wave two - not wave one -
+decides what Ringtome is.
+
+---
+
 ## Data Layer
 
 ### SQLite Strategy
@@ -1105,11 +1158,55 @@ Peer A ──iroh QUIC──► Ringtome sync protocol ──validate──► a
                       (we control this)      (key tree)   (gate here!)      (clean)        (clean)
 ```
 
-**Sync mechanism:** Nodes exchange **version vectors** (highest sequence number per chain, keyed by `(key, chain)` - see IM-AOL) to discover what each side is missing, then send individual signed entries. Dense per-chain sequence numbers make gaps detectable; claimed timestamps are never used for sync state. This is simpler than iroh-docs' range-based set reconciliation, but sufficient because the number of chains per identity is small (bounded by keys in the tree times services).
+**Sync mechanism:** Nodes exchange **version vectors** - per-chain *held ranges* `[floor..head]`, keyed by
+`(key, chain)` (see IM-AOL) - to discover what each side is missing, then send individual signed entries. Dense
+per-chain sequence numbers make gaps detectable; claimed timestamps are never used for sync state. The frontier is a
+range, not a single high-water mark, because content chains may be held shallow (below). This is simpler than
+iroh-docs' range-based set reconciliation, but sufficient because the number of chains per identity is small
+(bounded by keys in the tree times services).
 
 **Key tree sync** is handled as a special case — key tree entries (child authorizations, revocations) are **self-authenticating** (each entry is a signed statement verifiable from the signature chain alone). The key tree syncs first and establishes the authority context for all other data.
 
 **Entry validation:** Every incoming content entry is checked against the current key tree state. If the author's Identity node has been revoked, the entry is rejected at the protocol level — it never enters the local store. This is the critical advantage over iroh-docs, where filtering could only happen *after* data was already synced and stored.
+
+### Shallow Sync and the Day-Long-Sync Problem
+
+SSB's onboarding pain deserves precise blame, because it is easily mis-remembered. It did *not* sync the whole
+network to everyone: replication was scoped to your follow graph within 2-3 hops, and post-initial syncs were cheap
+deltas. What actually hurt: (1) **pubs poisoned the hops math** - a pub followed thousands, so "2 hops from me"
+transitively became most of the active network; (2) **every feed in your slice replicated whole, from genesis,
+mandatorily** - validation and indexing both required complete chains, and nothing could ever be deleted, so the
+entry fee grew monotonically forever; (3) **the infamous "indexing..." screen was local** - clients rebuilt their
+databases by replaying the entire on-disk log, on first run and on app updates. Notably, SSB *already had*
+lazily-fetched content-addressed blobs - a header/blob split alone does not prevent any of this. Ringtome's real
+escape hatches are: no transitive hops-amplification (fronting is direct demand - your node fetches who *you*
+follow, not who they follow), incremental materialized views (per-entry updates; full replay is an optional
+integrity ritual, never a startup cost), and - the piece that needs a protocol commitment - **suffix-capable
+chains**. "Chains replicate whole" as a default would still recreate SSB's tail (follow a posts-every-minute bot
+with a decade of history and you owe five million entries and verifications; a fronting node multiplies that by its
+user count). The fix is cheap because **the hash chain already permits it - this is a git shallow clone.** If a node holds the *suffix* of a chain, the oldest held entry's signed
+`prev_hash` commits to the entire missing prefix: everything held verifies as authored, and any later backfill must
+hash-match the commitment already in hand or be rejected. `prev_hash` never required *possessing* the prefix - only
+that any prefix ever accepted be *the* prefix. Better still, **LWW fields are correct (not just plausible) from a
+suffix**: an unseen older entry loses LWW by definition. What shallow holding forgoes is fork detection inside the
+unfetched prefix and complete history display - both acceptable to acquire lazily. Policy:
+
+1. **Identity chains: always full, always first.** Tiny, security-critical, they are the authority context - never
+   shallow.
+2. **Content chains: suffix-first, backfill lazy.** Follow = head plus a small recent window; older history streams
+   on demand (scrollback) or idle time. This is why the frontier is a `[floor..head]` range - designed into sync v1,
+   because a protocol that assumes dense-from-zero storage bakes that assumption into every peer forever.
+3. **Render at first entry, never at completion.** SSB's sin was as much UI as protocol: the app blocked on
+   replication. Progressive display is a standing rule for every client.
+4. **Fronting depth is a dial.** Fronting an identity promises its *availability*, not its infinite history:
+   per-identity depth/size budgets, so a node fronting 500 users is not archiving 500 lifetimes.
+5. **Snapshots stay reserved, with a named trigger.** Signed "state as of seq N" checkpoints become necessary only
+   when suffix + LWW stops sufficing (set-types with removals, counters). The entry format reserves room; not v1.
+
+The honest trade, named: shallow-held chains mean a node can serve recent content while deep history is only
+*provably-committed-to*, not present. Archival completeness becomes a **role**, not a universal guarantee - an
+identity's own nodes hold its own chains whole (agenting stays full-fat), and anyone may volunteer as a deep
+archive. That is the same trade git made, and the right one.
 
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
@@ -1440,5 +1537,8 @@ ringtome/
   guestbook, webring navigator) come first once the core ships? The renderer's strict grammar and the
   `ringtome-markup` type-registry entry need specifying alongside the first content types.
 - [x] ~~**Serialization format:**~~ Resolved — deterministically-encoded CBOR, with the hash-and-store-original-bytes rule, domain-separated signatures, version tags, a type registry, and published test vectors (see Canonical Encoding, Signature Domains, and Versioning).
-- [ ] **Recovery key UX:** How do we present the auto-generated recovery key at identity creation so users actually save it (and understand what it is)?
+- [ ] **Recovery key UX:** How do we present the auto-generated recovery key at identity creation so users actually
+  save it (and understand what it is)? The ceremony's *language* is now settled (see The Cozyweb Surface: "put the
+  spare key somewhere safe," never seed/key vocabulary); the concrete flow - download vs. print vs. QR, whether
+  creation blocks on confirmation - remains open for M2.
 

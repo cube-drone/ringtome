@@ -121,6 +121,10 @@ question here (minimally: download-or-you-can't-continue?).
 - Sync protocol v1 over iroh bidi streams: version-vector/frontier exchange, entry transfer,
   **validation gate at the protocol boundary** (identity chains first, then content; revoked
   authors rejected before storage).
+- **Frontiers are `[floor..head]` ranges from day one** (PROJECT_PLAN: Shallow Sync). Identity
+  chains always sync full; content chains suffix-first with lazy backfill. Even if M3's two-node
+  demo always syncs full chains in practice, the *protocol messages* must express held ranges -
+  retrofitting shallowness into a dense-from-zero wire format is a protocol break.
 - The "Adding a New Node" flow end to end: Node B generates a keypair, its pubkey travels to Node
   A (copy-paste is fine for now), A's key signs the authorization, B receives its chain and starts
   syncing.
