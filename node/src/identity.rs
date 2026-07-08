@@ -163,6 +163,29 @@ pub async fn list_for_account(
         .collect())
 }
 
+/// Whether this node agents the identity at all (any account). The sync server consults this -
+/// per the data-access convention, `identities` SQL lives only in this module.
+pub async fn is_agented(node_db: &SqlitePool, root_pubkey: &str) -> Result<bool, AppError> {
+    let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM identities WHERE root_pubkey = ?1")
+        .bind(root_pubkey)
+        .fetch_optional(node_db)
+        .await
+        .context("checking identity")
+        .map_err(AppError::Internal)?;
+    Ok(row.is_some())
+}
+
+/// Roots of every identity marked served - the republish loop's worklist.
+pub async fn served_roots(node_db: &SqlitePool) -> Result<Vec<String>, AppError> {
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL")
+            .fetch_all(node_db)
+            .await
+            .context("listing served identities")
+            .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 /// Verify that `account_id` owns the identity `root_pubkey`, uniformly 404ing otherwise (an
 /// existing-but-not-yours identity is indistinguishable from a nonexistent one).
 pub async fn require_owned(
@@ -556,31 +579,17 @@ pub async fn revoke_key(
         ));
     }
 
-    // Anchors: our stored head of every chain the target has written.
-    let heads: Vec<(i64, i64, Vec<u8>)> = sqlx::query_as(
-        "SELECT service, seq, entry_hash FROM entries e
-         WHERE author_pubkey = ?1
-           AND seq = (SELECT MAX(seq) FROM entries
-                      WHERE author_pubkey = e.author_pubkey AND service = e.service)",
-    )
-    .bind(target_hex)
-    .fetch_all(&db)
-    .await
-    .context("reading target chain heads")
-    .map_err(AppError::Internal)?;
-    let anchors = heads
+    // Anchors: our stored head of every chain the target has written (via imaol - the entries
+    // table's owner).
+    let anchors: Vec<Anchor> = crate::imaol::chain_heads_for_author(&db, target_hex)
+        .await?
         .into_iter()
-        .map(|(svc, seq, hash)| {
-            let head_hash: [u8; 32] = hash
-                .try_into()
-                .map_err(|_| AppError::Internal(anyhow!("corrupt entry hash")))?;
-            Ok(Anchor {
-                service: svc as u32,
-                seq: seq as u64,
-                head_hash,
-            })
+        .map(|(service, seq, head_hash)| Anchor {
+            service,
+            seq,
+            head_hash,
         })
-        .collect::<Result<Vec<_>, AppError>>()?;
+        .collect();
 
     let payload = Revoke {
         target,

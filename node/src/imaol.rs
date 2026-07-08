@@ -294,6 +294,34 @@ pub async fn load_key_tree(
         .map_err(|e| AppError::Internal(anyhow!("key tree resolution failed: {e}")))
 }
 
+/// The stored head of every chain a key has written: `(service, seq, head_hash)` triples -
+/// exactly the shape revocation anchors want.
+pub async fn chain_heads_for_author(
+    db: &SqlitePool,
+    author_hex: &str,
+) -> Result<Vec<(u32, u64, [u8; 32])>, AppError> {
+    let rows: Vec<(i64, i64, Vec<u8>)> = sqlx::query_as(
+        "SELECT service, seq, entry_hash FROM entries e
+         WHERE author_pubkey = ?1
+           AND seq = (SELECT MAX(seq) FROM entries
+                      WHERE author_pubkey = e.author_pubkey AND service = e.service)",
+    )
+    .bind(author_hex)
+    .fetch_all(db)
+    .await
+    .context("reading chain heads")
+    .map_err(AppError::Internal)?;
+
+    rows.into_iter()
+        .map(|(svc, seq, hash)| {
+            let head_hash: [u8; 32] = hash
+                .try_into()
+                .map_err(|_| AppError::Internal(anyhow!("corrupt entry hash")))?;
+            Ok((svc as u32, seq as u64, head_hash))
+        })
+        .collect()
+}
+
 /// Row shape of the raw-log query: (service, seq, entry_type, timestamp_ms, entry_hash, bytes).
 type EntryRow = (i64, i64, i64, i64, Vec<u8>, Vec<u8>);
 

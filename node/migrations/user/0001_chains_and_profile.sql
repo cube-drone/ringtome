@@ -1,5 +1,6 @@
 -- The local copy of this identity's signed IM-AOL chains, plus the materialized views built from
--- them. The `entries` table is the source of truth: the author's exact envelope bytes, one row
+-- them. (MIGRATION POLICY: squash-into-0001 until a deployment matters, then append-only forever
+-- - see migrations/node/0001_schema.sql.) The `entries` table is the source of truth: the author's exact envelope bytes, one row
 -- per entry, keyed by (author, service, seq). Every `*_view` table is a disposable, query-shaped
 -- cache - rebuildable at any time by replaying and re-validating the log. In M3, `entries` is
 -- also exactly what replicates between nodes.

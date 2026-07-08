@@ -66,19 +66,14 @@ fn spawn_republish_loop(state: AppState) {
                 tracing::debug!("endpoint record republish skipped: {e:#}");
             }
 
-            let served: Vec<(String,)> = match sqlx::query_as(
-                "SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL",
-            )
-            .fetch_all(&state.node_db)
-            .await
-            {
-                Ok(rows) => rows,
+            let served = match identity::served_roots(&state.node_db).await {
+                Ok(roots) => roots,
                 Err(e) => {
                     tracing::warn!("republish loop: listing served identities failed: {e}");
                     continue;
                 }
             };
-            for (root,) in served {
+            for root in served {
                 if let Err(e) = identity::publish_serving_record(&state, &root).await {
                     tracing::warn!(root = %root, "serving record republish failed: {e:#}");
                 }

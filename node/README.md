@@ -41,6 +41,11 @@ data/
 Everything in `users/*.db` outside the `entries` table is a disposable projection, rebuildable by
 replaying the log. `node.db` and the key files are the only things that aren't.
 
+**Migration policy:** until a database exists that can't be casually deleted (first testnode, a
+friend's node, your daily driver), schema changes squash into `0001` and dev data dirs get
+deleted (`rm -rf ./data`). The moment any deployment matters, migrations freeze and become
+append-only forever.
+
 ## Testing
 
 ```sh
@@ -53,6 +58,13 @@ just ci                       # check + clippy + unit + integration
 
 The integration suite talks to real nodes over real HTTP (and real iroh QUIC for the two-node
 sync tests). Two-node tests skip themselves if `RINGTOME_TEST_HOST_B` is absent.
+
+## Code conventions
+
+**Data access:** cross-module reads/writes go through the owning module's public functions; raw
+SQL naming a table lives only in that table's owner (enforced by `tests/conventions.rs` - the
+architecture cop). The `entries` table is protocol law: rows appear only via `imaol::append`
+(local authorship) or the sync gate (validated arrival).
 
 ## HTTP surface (unstable, pre-4C)
 

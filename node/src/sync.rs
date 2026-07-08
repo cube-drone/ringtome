@@ -394,12 +394,10 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 
     // Serve only identities this node actually agents; anything else gets a polite empty
     // exchange (uniform behavior - we don't confirm what we do or don't hold).
-    let known: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM identities WHERE root_pubkey = ?1")
-        .bind(&root_hex)
-        .fetch_optional(&state.node_db)
+    let agented = crate::identity::is_agented(&state.node_db, &root_hex)
         .await
-        .context("checking identity")?;
-    if known.is_none() {
+        .map_err(|e| anyhow!("checking identity: {e}"))?;
+    if !agented {
         write_frame(
             &mut send,
             &SyncMessage::Hello {
