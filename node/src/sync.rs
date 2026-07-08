@@ -302,8 +302,9 @@ async fn stored_chain_head(
 async fn store_entry(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
     sqlx::query(
         "INSERT INTO entries
-           (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms, bytes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+           (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
+            received_at_ms, bytes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
     )
     .bind(hex::encode(e.entry().chain.author))
     .bind(i64::from(e.entry().chain.service))
@@ -312,6 +313,7 @@ async fn store_entry(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
     .bind(e.entry().prev_hash.as_slice())
     .bind(i64::from(e.entry().entry_type))
     .bind(e.entry().timestamp_ms)
+    .bind(now_ms())
     .bind(e.bytes())
     .execute(db)
     .await

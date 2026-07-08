@@ -1073,6 +1073,29 @@ claimed timestamps with a deterministic tiebreak, since the stakes are cosmetic 
 additive content (two posts) does not conflict at all. Richer future types bring their own merge rules (CRDTs) to the
 same conflict-free substrate.
 
+### Displayed Time vs. Claimed Time
+
+Timestamps carry no security weight, but they carry plenty of *UI* weight - "posted May 2, 2031, 3:35 PM" is an
+important detail a human reads as fact, and individual machines' clocks are reliably unreliable (VMs, localization,
+user preference; ask anyone who has shipped a networked client). The rule for handling that tension: **there is no
+network time synchronization, ever, and admissibility never consults a clock** - a sync-to-peers scheme hands your
+eclipse attacker your watch, and a gate that rejects "future" entries makes admission depend on the local clock,
+forking honest nodes' views. Instead, each trust boundary handles time defensively at its own edge:
+
+- **Authoring clamp (implemented).** A node signs `max(now, own chain head's claim)` - a key's own chain never goes
+  backwards in claimed time. This closes a real LWW footgun: one write from a fast clock would otherwise beat every
+  later, correctly-stamped write until reality catches up. (Equal-stamp ties fall through to seq, true authoring
+  order.)
+- **Receipt bound (implemented).** Each replica records `received_at_ms` per entry - a local, unsigned,
+  never-synced fact. An entry cannot have been authored after it arrived, so display logic gets a per-node upper
+  bound: render `min(claimed, received)` or hedge ("claims the future").
+- **Client renders against its node's clock (with 4C).** The browser is the least trustworthy clock in the system,
+  and the node is already its trusted agent: the node ships its `now` in API responses, the client computes a
+  display offset. Lightweight client-local time sync, one hop, entirely inside an existing trust boundary.
+- **Cross-device skew is surfaced, not corrected.** If your own identity's other node signs claims well past
+  `received_at`, that's a UI notification ("your Pi thinks it's Thursday"), never a silent rewrite - the claims are
+  signed, and other people's confusion is their signed assertion to own.
+
 ### Anchored Revocations
 
 A revocation statement (either disposition) carries, for **every chain of the affected key**, a

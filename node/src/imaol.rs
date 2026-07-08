@@ -17,14 +17,14 @@ use sqlx::SqlitePool;
 use crate::error::AppError;
 use crate::pubkey;
 
-/// The stored head of one chain: highest seq and that entry's hash.
+/// The stored head of one chain: highest seq, that entry's hash, and its claimed timestamp.
 async fn chain_head(
     db: &SqlitePool,
     author_hex: &str,
     service_id: u32,
-) -> Result<Option<(u64, [u8; 32])>, AppError> {
-    let row: Option<(i64, Vec<u8>)> = sqlx::query_as(
-        "SELECT seq, entry_hash FROM entries
+) -> Result<Option<(u64, [u8; 32], i64)>, AppError> {
+    let row: Option<(i64, Vec<u8>, i64)> = sqlx::query_as(
+        "SELECT seq, entry_hash, timestamp_ms FROM entries
          WHERE author_pubkey = ?1 AND service = ?2
          ORDER BY seq DESC LIMIT 1",
     )
@@ -37,11 +37,11 @@ async fn chain_head(
 
     match row {
         None => Ok(None),
-        Some((seq, hash)) => {
+        Some((seq, hash, timestamp_ms)) => {
             let hash: [u8; 32] = hash
                 .try_into()
                 .map_err(|_| AppError::Internal(anyhow!("corrupt entry_hash at chain head")))?;
-            Ok(Some((seq as u64, hash)))
+            Ok(Some((seq as u64, hash, timestamp_ms)))
         }
     }
 }
@@ -58,9 +58,9 @@ pub async fn append(
     let author = key.verifying_key().to_bytes();
     let author_hex = hex::encode(author);
 
-    let (seq, prev_hash) = match chain_head(db, &author_hex, service_id).await? {
-        Some((head_seq, head_hash)) => (head_seq + 1, head_hash),
-        None => (0, ZERO_HASH),
+    let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id).await? {
+        Some((head_seq, head_hash, head_ts)) => (head_seq + 1, head_hash, head_ts),
+        None => (0, ZERO_HASH, 0),
     };
 
     let entry = Entry {
@@ -72,7 +72,11 @@ pub async fn append(
         },
         seq,
         prev_hash,
-        timestamp_ms: crate::clock::now_ms(),
+        // The authoring clamp: our own chain's claimed time never goes backwards, so one write
+        // from a fast clock can't out-LWW every later, correctly-stamped write - equal stamps
+        // fall through to seq, which is true authoring order (PROJECT_PLAN, Displayed Time vs.
+        // Claimed Time).
+        timestamp_ms: crate::clock::now_ms().max(head_claim_ms),
         payload,
     };
     let signed = SignedEntry::create(&entry, key)
@@ -82,8 +86,9 @@ pub async fn append(
     // primary key makes the loser fail loudly instead of forking the chain.
     sqlx::query(
         "INSERT INTO entries
-           (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms, bytes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+           (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
+            received_at_ms, bytes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
     )
     .bind(&author_hex)
     .bind(i64::from(service_id))
@@ -92,6 +97,7 @@ pub async fn append(
     .bind(signed.entry().prev_hash.as_slice())
     .bind(i64::from(type_id))
     .bind(signed.entry().timestamp_ms)
+    .bind(crate::clock::now_ms())
     .bind(signed.bytes())
     .execute(db)
     .await
@@ -254,6 +260,8 @@ pub struct StoredEntry {
     pub seq: u64,
     pub entry_type: u32,
     pub timestamp_ms: i64,
+    /// When this replica first stored the entry - the local upper bound on when it was authored.
+    pub received_at_ms: i64,
     pub hash_hex: String,
     pub bytes_hex: String,
 }
@@ -339,13 +347,14 @@ pub async fn chain_heads_for_author(
         .collect()
 }
 
-/// Row shape of the raw-log query: (service, seq, entry_type, timestamp_ms, entry_hash, bytes).
-type EntryRow = (i64, i64, i64, i64, Vec<u8>, Vec<u8>);
+/// Row shape of the raw-log query:
+/// (service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes).
+type EntryRow = (i64, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
 
 /// The raw log, hex-encoded - the debug/inspect surface (pipe an entry into `ringtome inspect`).
 pub async fn list_entries(db: &SqlitePool) -> Result<Vec<StoredEntry>, AppError> {
     let rows: Vec<EntryRow> = sqlx::query_as(
-        "SELECT service, seq, entry_type, timestamp_ms, entry_hash, bytes
+        "SELECT service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes
          FROM entries ORDER BY service, seq",
     )
     .fetch_all(db)
@@ -355,11 +364,12 @@ pub async fn list_entries(db: &SqlitePool) -> Result<Vec<StoredEntry>, AppError>
 
     Ok(rows
         .into_iter()
-        .map(|(svc, seq, ty, ts, hash, bytes)| StoredEntry {
+        .map(|(svc, seq, ty, ts, received, hash, bytes)| StoredEntry {
             service: svc as u32,
             seq: seq as u64,
             entry_type: ty as u32,
             timestamp_ms: ts,
+            received_at_ms: received,
             hash_hex: hex::encode(hash),
             bytes_hex: hex::encode(bytes),
         })
@@ -415,6 +425,63 @@ mod tests {
         // Same-chain writes tie-break on seq, so the rename wins even if both landed in the same
         // clock millisecond (which, at test speed, they usually do).
         assert_eq!(profile[0].value, "Hat Fan");
+    }
+
+    #[tokio::test]
+    async fn a_fast_clock_cannot_wedge_the_lww_register() {
+        // The footgun the authoring clamp exists for: an entry stamped by a fast clock (here,
+        // a year ahead) would out-LWW every later, correctly-stamped write until reality caught
+        // up. The clamp stamps successors at max(now, chain head's claim), so the tie falls
+        // through to seq - true authoring order - and the rename wins immediately.
+        let db = test_db().await;
+        let key = test_key();
+
+        set_profile_field(&db, &key, "name", "Hats Ahoy")
+            .await
+            .unwrap();
+        let year_ahead = crate::clock::now_ms() + 365 * 24 * 60 * 60 * 1000;
+        sqlx::query("UPDATE entries SET timestamp_ms = ?1")
+            .bind(year_ahead)
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE profile_view SET updated_at_ms = ?1")
+            .bind(year_ahead)
+            .execute(&db)
+            .await
+            .unwrap();
+
+        let renamed = set_profile_field(&db, &key, "name", "Hat Fan")
+            .await
+            .unwrap();
+        assert_eq!(
+            renamed.entry().timestamp_ms,
+            year_ahead,
+            "the successor is clamped up to the head's claim, never below it"
+        );
+        let profile = get_profile(&db).await.unwrap();
+        assert_eq!(
+            profile[0].value, "Hat Fan",
+            "the later write wins despite the fast clock"
+        );
+    }
+
+    #[tokio::test]
+    async fn entries_carry_a_local_receipt_time() {
+        let db = test_db().await;
+        let key = test_key();
+
+        let before = crate::clock::now_ms();
+        set_profile_field(&db, &key, "name", "Hats Ahoy")
+            .await
+            .unwrap();
+        let after = crate::clock::now_ms();
+
+        let entries = list_entries(&db).await.unwrap();
+        assert!(
+            (before..=after).contains(&entries[0].received_at_ms),
+            "received_at_ms is this replica's own storage moment"
+        );
     }
 
     #[tokio::test]

@@ -13,6 +13,9 @@ CREATE TABLE entries (
     prev_hash     BLOB    NOT NULL,  -- predecessor's entry_hash (zero for seq 0)
     entry_type    INTEGER NOT NULL,  -- entry-type id from the proto type registry
     timestamp_ms  INTEGER NOT NULL,  -- author's claimed wall-clock; ADVISORY, display/LWW only
+    received_at_ms INTEGER NOT NULL, -- when THIS replica first stored the entry: a local fact,
+                                     --   never signed or synced; the display-layer upper bound
+                                     --   on authorship (PROJECT_PLAN, Displayed vs. Claimed Time)
     bytes         BLOB    NOT NULL,  -- the author's exact envelope bytes, never re-encoded
     PRIMARY KEY (author_pubkey, service, seq)
 );
