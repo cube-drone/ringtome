@@ -89,10 +89,16 @@ weeks; every rule here is a defense against that prison of context.
 ## Abstraction and pragmatism
 
 - **Build the specific, concrete product. No inner platforms.** No generalized frameworks for
-  theoretical futures; do the first thing that works and keep it shippable. Boilerplate is fine —
+  *imagined* futures; do the first thing that works and keep it shippable. Boilerplate is fine —
   often good, because it signposts a clear modular structure; four similar-but-honest decode
   functions beat one parameterized decode engine.
-- The one earned exception: **abstraction that makes a required check structural rather than
+- **YAGNI applies to speculation, not to the plan.** With the build plan in hand (NEXT_STEPS is
+  one), laying an abstraction slightly ahead of its consumers is thinking ahead, not sinning —
+  the store layer may precede the features that will land on it. The test is **nameability**:
+  every capability the abstraction carries must name a planned consumer (a tier, a track, a
+  ledger item), never "someone might want." Shape it against its first real consumer; add
+  breadth when the second one actually arrives.
+- The other earned exception: **abstraction that makes a required check structural rather than
   disciplinary** (the COSE-style envelope that makes re-serialization impossible; a map reader
   that makes canonicality unforgettable). Security invariants may buy machinery; convenience may
   not.
