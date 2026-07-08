@@ -34,5 +34,9 @@ cargo run --bin ringtome    # run a node (see node/README.md for configuration)
   reports) and the unordered tiers ahead.
 - [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
   language mapping.
+- [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and
+  the pragmatism rules; the patterns every new file is expected to hold.
+- [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups, checked off as
+  they land (tech debt is a mortgage; this is the statement).
 - [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
   cautionary tales.
