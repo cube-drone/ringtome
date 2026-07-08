@@ -1,8 +1,8 @@
 //! Ringtome connector node - entry point.
 //!
-//! M0 skeleton: an Axum HTTP server that boots, logs, serves a health check and its public
-//! config, and binds to the configured address. Everything below the HTTP layer (identity, the
-//! IM-AOL, iroh p2p) arrives in later milestones.
+//! The composition root: load config, open the databases and keystore, bind the iroh endpoint,
+//! pick the discovery directory, mount the HTTP routers, and start the background loops. The
+//! systems live in their own modules; this file's job is wiring them together.
 
 use std::net::SocketAddr;
 
@@ -13,6 +13,7 @@ use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
+mod clock;
 mod config;
 mod db;
 mod discovery;
@@ -23,6 +24,7 @@ mod inspect;
 mod keystore;
 mod p2p;
 mod private;
+mod pubkey;
 mod rate_limit;
 mod request_context;
 mod seal;

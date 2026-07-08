@@ -13,7 +13,6 @@
 //! busy node cannot keep every user's file open at once.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use sqlx::migrate::Migrator;
@@ -77,13 +76,8 @@ pub async fn user_migrator_for_test(pool: &SqlitePool) {
 /// Record a boot in `boot_timestamps` (a local-only diagnostic; never exposed over the network).
 /// The table itself comes from migration `0001`; this is just the insert.
 pub async fn record_boot(pool: &SqlitePool, app_version: &str) -> Result<()> {
-    let now_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0);
-
     sqlx::query("INSERT INTO boot_timestamps (booted_at_ms, app_version) VALUES (?1, ?2)")
-        .bind(now_ms)
+        .bind(crate::clock::now_ms())
         .bind(app_version)
         .execute(pool)
         .await
@@ -149,6 +143,7 @@ impl UserDbManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     async fn temp_dir() -> PathBuf {
         // A unique-ish scratch dir under the OS temp location, avoiding Date/rand (unavailable in

@@ -9,9 +9,14 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
+use ringtome_proto::{PrivateKind, PrivatePlain, SigningKey};
+use sqlx::SqlitePool;
+use uuid::Uuid;
+
 use crate::auth::Session;
 use crate::error::AppError;
 use crate::imaol;
+use crate::private;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -422,27 +427,31 @@ async fn keys_handler(
 // ---------------------------------------------------------------------------------------------
 // Private chains: the member-only KV + set store.
 
-/// Everything a private-store operation needs: the per-user DB, this node's signing key, and the
-/// epoch keys it can unseal. Owner-gated like every other identity route.
-async fn private_context(
+/// Everything a private-store operation needs: the per-user DB, this node's signing key, and
+/// the epoch keys it can unseal.
+struct PrivateStore {
+    db: SqlitePool,
+    signer: SigningKey,
+    epoch_keys: private::EpochKeys,
+}
+
+/// Assemble the [`PrivateStore`] for one identity. Owner-gated like every other identity route.
+async fn open_private_store(
     state: &AppState,
-    account_id: &uuid::Uuid,
+    account_id: &Uuid,
     root: &str,
-) -> Result<
-    (
-        sqlx::SqlitePool,
-        ringtome_proto::SigningKey,
-        crate::private::EpochKeys,
-    ),
-    AppError,
-> {
+) -> Result<PrivateStore, AppError> {
     let signer = super::load_signing_key(&state.node_db, &state.keystore, account_id, root).await?;
     let leaf = signer.verifying_key().to_bytes();
-    let enc = crate::private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
+    let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
         .map_err(AppError::Internal)?;
     let db = state.user_dbs.get(root).await.map_err(AppError::Internal)?;
-    let keys = crate::private::unseal_epoch_keys(&db, &leaf, &enc).await?;
-    Ok((db, signer, keys))
+    let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
+    Ok(PrivateStore {
+        db,
+        signer,
+        epoch_keys,
+    })
 }
 
 #[derive(Deserialize)]
@@ -463,14 +472,14 @@ async fn private_kv_put_handler(
     Path((root, collection, key)): Path<(String, String, String)>,
     Json(req): Json<PrivateKvPut>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
-    let (db, signer, keys) = private_context(&state, &session.account.id, &root).await?;
-    let plain = ringtome_proto::PrivatePlain {
-        kind: ringtome_proto::PrivateKind::Register,
+    let store = open_private_store(&state, &session.account.id, &root).await?;
+    let plain = PrivatePlain {
+        kind: PrivateKind::Register,
         collection,
         key,
         value: Some(req.value),
     };
-    let signed = crate::private::write_record(&db, &signer, &keys, &plain).await?;
+    let signed = private::write_record(&store.db, &store.signer, &store.epoch_keys, &plain).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -479,7 +488,7 @@ async fn private_kv_put_handler(
 
 #[derive(Serialize)]
 struct PrivateKvListResponse {
-    values: Vec<crate::private::RegisterValue>,
+    values: Vec<private::RegisterValue>,
     /// Records on this node's chains that none of our epoch keys open. Nonzero is worth showing
     /// a user: it means history from outside this key's membership era.
     undecryptable: u64,
@@ -491,8 +500,8 @@ async fn private_kv_list_handler(
     State(state): State<AppState>,
     Path((root, collection)): Path<(String, String)>,
 ) -> Result<Json<PrivateKvListResponse>, AppError> {
-    let (db, _signer, keys) = private_context(&state, &session.account.id, &root).await?;
-    let view = crate::private::materialize(&db, &keys).await?;
+    let store = open_private_store(&state, &session.account.id, &root).await?;
+    let view = private::materialize(&store.db, &store.epoch_keys).await?;
     Ok(Json(PrivateKvListResponse {
         values: view.registers_in(&collection),
         undecryptable: view.undecryptable,
@@ -513,14 +522,14 @@ async fn private_set_add_handler(
     Path((root, collection)): Path<(String, String)>,
     Json(req): Json<PrivateSetAdd>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
-    let (db, signer, keys) = private_context(&state, &session.account.id, &root).await?;
-    let plain = ringtome_proto::PrivatePlain {
-        kind: ringtome_proto::PrivateKind::SetAdd,
+    let store = open_private_store(&state, &session.account.id, &root).await?;
+    let plain = PrivatePlain {
+        kind: PrivateKind::SetAdd,
         collection,
         key: req.element,
         value: req.value,
     };
-    let signed = crate::private::write_record(&db, &signer, &keys, &plain).await?;
+    let signed = private::write_record(&store.db, &store.signer, &store.epoch_keys, &plain).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -533,14 +542,14 @@ async fn private_set_remove_handler(
     State(state): State<AppState>,
     Path((root, collection, element)): Path<(String, String, String)>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
-    let (db, signer, keys) = private_context(&state, &session.account.id, &root).await?;
-    let plain = ringtome_proto::PrivatePlain {
-        kind: ringtome_proto::PrivateKind::SetRemove,
+    let store = open_private_store(&state, &session.account.id, &root).await?;
+    let plain = PrivatePlain {
+        kind: PrivateKind::SetRemove,
         collection,
         key: element,
         value: None,
     };
-    let signed = crate::private::write_record(&db, &signer, &keys, &plain).await?;
+    let signed = private::write_record(&store.db, &store.signer, &store.epoch_keys, &plain).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -549,7 +558,7 @@ async fn private_set_remove_handler(
 
 #[derive(Serialize)]
 struct PrivateSetListResponse {
-    elements: Vec<crate::private::SetElement>,
+    elements: Vec<private::SetElement>,
     undecryptable: u64,
 }
 
@@ -559,8 +568,8 @@ async fn private_set_list_handler(
     State(state): State<AppState>,
     Path((root, collection)): Path<(String, String)>,
 ) -> Result<Json<PrivateSetListResponse>, AppError> {
-    let (db, _signer, keys) = private_context(&state, &session.account.id, &root).await?;
-    let view = crate::private::materialize(&db, &keys).await?;
+    let store = open_private_store(&state, &session.account.id, &root).await?;
+    let view = private::materialize(&store.db, &store.epoch_keys).await?;
     Ok(Json(PrivateSetListResponse {
         elements: view.set_elements(&collection),
         undecryptable: view.undecryptable,

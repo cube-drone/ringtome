@@ -10,8 +10,8 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::clock::now_ms;
 use crate::error::AppError;
 
 #[derive(Clone)]
@@ -29,25 +29,21 @@ impl RateLimiter {
         }
     }
 
-    /// Allow at most `limit` `action`s per `identifier` per `window_secs`. Returns
+    /// Allow at most `limit` `action`s per `identifier` per `window_ms`. Returns
     /// `TooManyRequests` once the limit is exceeded within the current window.
     pub async fn check(
         &self,
         action: &str,
         identifier: &str,
         limit: u32,
-        window_secs: u64,
+        window_ms: i64,
     ) -> Result<(), AppError> {
         if !self.enabled {
             return Ok(());
         }
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let bucket = now / window_secs.max(1);
-        let key = format!("{action}:{identifier}:{window_secs}:{bucket}");
+        let bucket = now_ms() / window_ms.max(1);
+        let key = format!("{action}:{identifier}:{window_ms}:{bucket}");
 
         let counter = self
             .counters

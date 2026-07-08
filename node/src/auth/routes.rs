@@ -17,7 +17,7 @@ use crate::AppState;
 
 /// New accounts allowed per IP per hour (when the caller's IP is visible). Deliberately low.
 const REGISTER_LIMIT: u32 = 2;
-const HOUR_SECS: u64 = 3600;
+const HOUR_MS: i64 = 60 * 60 * 1000;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -78,7 +78,7 @@ async fn register_handler(
             "register",
             &ctx.rate_limit_identifier(),
             REGISTER_LIMIT,
-            HOUR_SECS,
+            HOUR_MS,
         )
         .await?;
 

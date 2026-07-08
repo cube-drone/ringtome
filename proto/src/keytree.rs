@@ -522,7 +522,7 @@ mod tests {
                 },
                 seq: self.seq,
                 prev_hash: self.prev,
-                timestamp_ms: 1_700_000_000_000 + self.seq,
+                timestamp_ms: 1_700_000_000_000 + self.seq as i64,
                 payload: Payload::Inline(payload),
             };
             let signed = SignedEntry::create(&entry, &self.sk).unwrap();

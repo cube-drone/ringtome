@@ -56,7 +56,7 @@ struct LogicalEntry {
     service: u32,
     seq: u64,
     prev_hash_hex: String,
-    timestamp_ms: u64,
+    timestamp_ms: i64,
     payload_kind: String,
     payload_hex: String,
 }
@@ -71,7 +71,7 @@ fn build_vectors() -> VectorFile {
                     service_id: u32,
                     seq: u64,
                     prev_hash: [u8; 32],
-                    timestamp_ms: u64,
+                    timestamp_ms: i64,
                     payload: Payload| {
         let entry = Entry {
             v: ENTRY_VERSION,

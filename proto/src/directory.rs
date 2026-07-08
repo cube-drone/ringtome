@@ -43,8 +43,8 @@ pub struct ServingRecord {
     pub endpoint_id: [u8; 32],
     /// Publication time, ms since epoch. Replacement/freshness hint only - never a security
     /// input. (pkarr's own packet timestamps govern DHT replacement; this survives transports
-    /// that lack one.)
-    pub timestamp_ms: u64,
+    /// that lack one.) `i64` like every clock in the system; wire range is `0..=i64::MAX`.
+    pub timestamp_ms: i64,
 }
 
 /// A serving record plus its exact signed bytes - what gets published and what gets verified.
@@ -66,7 +66,7 @@ fn encode_body(r: &ServingRecord) -> Vec<u8> {
     w.uint(3);
     w.bytes(&r.endpoint_id);
     w.uint(4);
-    w.uint(r.timestamp_ms);
+    w.uint(r.timestamp_ms as u64); // non-negative: checked in `create`
     w.into_bytes()
 }
 
@@ -88,7 +88,12 @@ fn decode_body(body: &[u8]) -> Result<ServingRecord, ProtoError> {
             1 => root = Some(r.bytes_fixed::<32>()?),
             2 => node_key = Some(r.bytes_fixed::<32>()?),
             3 => endpoint_id = Some(r.bytes_fixed::<32>()?),
-            4 => ts = Some(r.uint()?),
+            4 => {
+                ts = Some(
+                    i64::try_from(r.uint()?)
+                        .map_err(|_| ProtoError::BadEntry("timestamp out of range"))?,
+                )
+            }
             _ => r.skip_value()?,
         }
     }
@@ -117,6 +122,9 @@ impl SignedServingRecord {
             return Err(ProtoError::BadEntry(
                 "signing key does not match record node_key",
             ));
+        }
+        if record.timestamp_ms < 0 {
+            return Err(ProtoError::BadEntry("negative timestamp"));
         }
         let body = encode_body(record);
         let mut preimage = DOMAIN_SERVING_RECORD.to_vec();
@@ -227,7 +235,7 @@ mod tests {
         w.uint(3);
         w.bytes(&record.endpoint_id);
         w.uint(4);
-        w.uint(record.timestamp_ms);
+        w.uint(record.timestamp_ms as u64);
         w.uint(5);
         w.text("future");
         let body = w.into_bytes();

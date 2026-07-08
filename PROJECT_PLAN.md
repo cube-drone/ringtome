@@ -1214,7 +1214,7 @@ additive-evolution mechanism):
 2  chain:      [bstr(32) author-pubkey, uint service-id]
 3  seq:        uint         // dense per-chain sequence number, no gaps
 4  prev_hash:  bstr(32)     // BLAKE3-256 of the previous envelope's bytes (zero for seq 0)
-5  timestamp:  uint         // author's claimed wall-clock, ms since epoch; ADVISORY - never a security input
+5  timestamp:  uint <= i64::MAX  // author's claimed wall-clock, ms since epoch; ADVISORY - never a security input
 6  payload:    [0, bstr inline-cbor] | [1, bstr(32) blob-hash]
 ```
 
@@ -1226,7 +1226,10 @@ additive-evolution mechanism):
   capped at 16 KiB), large content as a droppable blob hash, so deletion drops the blob while the signed header
   survives.
 - `timestamp` is present for display ordering and LWW of cosmetic fields only; ADVISORY so no one wires a security
-  decision to it.
+  decision to it. Though the wire type is a CBOR uint, a conforming reader MUST reject values above `i64::MAX`
+  (and a writer never produces them): every clock in the system is signed 64-bit milliseconds, and admitting the
+  astronomical upper half would only hand implementations a wrapping-cast footgun for zero representable dates
+  anyone will live to claim.
 - Decoding is **strict**: non-minimal integer heads, indefinite lengths, out-of-order map keys, non-NFC text, and
   tags/floats are rejected outright. One logical value has exactly one accepted byte encoding; entries are hostile
   network input and lenient parsers are how "the same" entry grows two hashes.

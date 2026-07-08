@@ -4,9 +4,9 @@
 //! server-side token stored in `node.db`; the cookie carries only the random token, this table is
 //! the source of truth, and logout is a row delete (instant, authoritative revocation).
 //!
-//! Deliberately thin: right now a session authenticates you as *an account* and nothing more. The
-//! account -> identity link (which identities an account may act as, and unlocking that identity's
-//! key for signing) attaches later, when the identity layer exists. See the TODO seam below.
+//! Deliberately thin: a session authenticates you as *an account* and nothing more. The
+//! account -> identity link (which identities an account may act as) lives in the identity
+//! module, keyed by `identities.account_id`; auth stays identity-agnostic.
 
 mod extractor;
 mod routes;
@@ -21,9 +21,9 @@ use argon2::password_hash::{
 use argon2::{Algorithm, Argon2, Params, Version};
 use rand::RngCore;
 use sqlx::SqlitePool;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+use crate::clock::now_ms;
 use crate::error::AppError;
 
 /// Full node administrator: may grant/revoke any tag, including `node_admin` itself. The first
@@ -43,13 +43,6 @@ const TOKEN_BYTES: usize = 32;
 pub struct Account {
     pub id: Uuid,
     pub username: String,
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 /// The Argon2 instance used to hash new passwords. `fast` selects the weakest parameters the

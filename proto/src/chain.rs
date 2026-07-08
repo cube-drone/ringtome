@@ -63,7 +63,7 @@ mod tests {
             },
             seq,
             prev_hash,
-            timestamp_ms: 1_700_000_000_000 + seq,
+            timestamp_ms: 1_700_000_000_000 + seq as i64,
             payload: Payload::Inline(vec![0xa0]),
         };
         SignedEntry::create(&entry, k).unwrap()

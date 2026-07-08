@@ -26,7 +26,9 @@ use ringtome_proto::sync::{Frontier, MemberProof, SyncMessage};
 use ringtome_proto::{validate_next, KeyTree, SignedEntry};
 use sqlx::SqlitePool;
 
+use crate::clock::now_ms;
 use crate::p2p::{read_frame, write_frame};
+use crate::pubkey;
 use crate::AppState;
 
 /// Outcome of one exchange, for logs and API responses.
@@ -35,14 +37,6 @@ pub struct ExchangeStats {
     pub received: u64,
     pub rejected: u64,
     pub sent: u64,
-}
-
-fn now_ms() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 /// Services that never cross the identity boundary: synced only between an identity's own
@@ -67,9 +61,7 @@ pub async fn local_frontiers(db: &SqlitePool, include_private: bool) -> Result<V
     rows.into_iter()
         .filter(|(_, svc, _, _)| include_private || !is_private_service(*svc as u32))
         .map(|(author_hex, svc, floor, head)| {
-            let author: [u8; 32] = hex::decode(&author_hex)
-                .ok()
-                .and_then(|b| b.try_into().ok())
+            let author = pubkey::decode(&author_hex)
                 .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
             Ok(Frontier {
                 author,
@@ -107,9 +99,7 @@ async fn send_missing(
         if !include_private && is_private_service(svc as u32) {
             continue;
         }
-        let author: [u8; 32] = hex::decode(&author_hex)
-            .ok()
-            .and_then(|b| b.try_into().ok())
+        let author = pubkey::decode(&author_hex)
             .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
         let start = peer
             .get(&(author, svc as u32))
@@ -321,7 +311,7 @@ async fn store_entry(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
     .bind(e.hash().as_slice())
     .bind(e.entry().prev_hash.as_slice())
     .bind(i64::from(e.entry().entry_type))
-    .bind(e.entry().timestamp_ms as i64)
+    .bind(e.entry().timestamp_ms)
     .bind(e.bytes())
     .execute(db)
     .await
@@ -409,10 +399,7 @@ pub async fn sync_with_peer(
     root_hex: &str,
     addr: EndpointAddr,
 ) -> Result<ExchangeStats> {
-    let root: [u8; 32] = hex::decode(root_hex)
-        .ok()
-        .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| anyhow!("bad root pubkey"))?;
+    let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
     let db = state.user_dbs.get(root_hex).await?;
 
     let conn = state

@@ -15,14 +15,7 @@ use ringtome_proto::{
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
-
-fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
+use crate::pubkey;
 
 /// The stored head of one chain: highest seq and that entry's hash.
 async fn chain_head(
@@ -79,7 +72,7 @@ pub async fn append(
         },
         seq,
         prev_hash,
-        timestamp_ms: now_ms(),
+        timestamp_ms: crate::clock::now_ms(),
         payload,
     };
     let signed = SignedEntry::create(&entry, key)
@@ -98,7 +91,7 @@ pub async fn append(
     .bind(signed.hash().as_slice())
     .bind(signed.entry().prev_hash.as_slice())
     .bind(i64::from(type_id))
-    .bind(signed.entry().timestamp_ms as i64)
+    .bind(signed.entry().timestamp_ms)
     .bind(signed.bytes())
     .execute(db)
     .await
@@ -171,7 +164,7 @@ pub(crate) async fn apply_profile_set(
     )
     .bind(&ps.field)
     .bind(&ps.value)
-    .bind(signed.entry().timestamp_ms as i64)
+    .bind(signed.entry().timestamp_ms)
     .bind(signed.entry().seq as i64)
     .bind(signed.hash().as_slice())
     .execute(db)
@@ -271,10 +264,7 @@ pub async fn load_key_tree(
     db: &SqlitePool,
     root_hex: &str,
 ) -> Result<ringtome_proto::KeyTree, AppError> {
-    let root: [u8; 32] = hex::decode(root_hex)
-        .ok()
-        .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| AppError::BadRequest("root pubkey must be 64 hex chars".into()))?;
+    let root = pubkey::require(root_hex, "root pubkey")?;
 
     let rows: Vec<(Vec<u8>,)> =
         sqlx::query_as("SELECT bytes FROM entries WHERE service = ?1 ORDER BY author_pubkey, seq")

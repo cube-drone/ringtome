@@ -21,7 +21,7 @@
 //! | 2   | chain       | [bstr(32) author pubkey, uint service id]             |
 //! | 3   | seq         | uint, dense per chain                                 |
 //! | 4   | prev_hash   | bstr(32); BLAKE3 of prior envelope, zero for seq 0    |
-//! | 5   | timestamp   | uint, claimed ms since epoch; ADVISORY, never security|
+//! | 5   | timestamp   | uint ≤ i64::MAX, claimed ms since epoch; ADVISORY     |
 //! | 6   | payload     | [0, bstr inline] or [1, bstr(32) blob hash]           |
 //!
 //! The **entry hash** - what `prev_hash` links and revocation anchors pin - is BLAKE3-256 over
@@ -86,8 +86,10 @@ pub struct Entry {
     pub seq: u64,
     pub prev_hash: [u8; HASH_LEN],
     /// Author's claimed wall-clock, ms since epoch. ADVISORY: display interleaving and LWW of
-    /// cosmetic fields only - never a security input.
-    pub timestamp_ms: u64,
+    /// cosmetic fields only - never a security input. `i64` (like every clock in the system);
+    /// the wire encoding is a CBOR uint, so the representable range is `0..=i64::MAX` - the
+    /// writer refuses negatives and the reader refuses the astronomical upper half.
+    pub timestamp_ms: i64,
     pub payload: Payload,
 }
 
@@ -107,7 +109,7 @@ fn encode_body(entry: &Entry) -> Vec<u8> {
     w.uint(K_PREV_HASH);
     w.bytes(&entry.prev_hash);
     w.uint(K_TIMESTAMP);
-    w.uint(entry.timestamp_ms);
+    w.uint(entry.timestamp_ms as u64); // non-negative: checked in `create`
     w.uint(K_PAYLOAD);
     match &entry.payload {
         Payload::Inline(b) => {
@@ -134,7 +136,7 @@ fn decode_body(body: &[u8]) -> Result<Entry, ProtoError> {
     let mut chain: Option<ChainId> = None;
     let mut seq: Option<u64> = None;
     let mut prev_hash: Option<[u8; HASH_LEN]> = None;
-    let mut timestamp_ms: Option<u64> = None;
+    let mut timestamp_ms: Option<i64> = None;
     let mut payload: Option<Payload> = None;
 
     for _ in 0..n {
@@ -160,7 +162,12 @@ fn decode_body(body: &[u8]) -> Result<Entry, ProtoError> {
             }
             K_SEQ => seq = Some(r.uint()?),
             K_PREV_HASH => prev_hash = Some(r.bytes_fixed::<HASH_LEN>()?),
-            K_TIMESTAMP => timestamp_ms = Some(r.uint()?),
+            K_TIMESTAMP => {
+                timestamp_ms = Some(
+                    i64::try_from(r.uint()?)
+                        .map_err(|_| ProtoError::BadEntry("timestamp out of range"))?,
+                )
+            }
             K_PAYLOAD => {
                 if r.array()? != 2 {
                     return Err(ProtoError::BadEntry("payload must be [kind, value]"));
@@ -236,6 +243,9 @@ impl SignedEntry {
             return Err(ProtoError::BadEntry(
                 "signing key does not match chain author",
             ));
+        }
+        if entry.timestamp_ms < 0 {
+            return Err(ProtoError::BadEntry("negative timestamp"));
         }
         if let Payload::Inline(b) = &entry.payload {
             if b.len() > MAX_INLINE_PAYLOAD {
@@ -427,7 +437,7 @@ mod tests {
         w.uint(4);
         w.bytes(&entry.prev_hash);
         w.uint(5);
-        w.uint(entry.timestamp_ms);
+        w.uint(entry.timestamp_ms as u64);
         w.uint(6);
         w.array(2);
         w.uint(0);
@@ -497,6 +507,55 @@ mod tests {
             SignedEntry::create(&entry, &key),
             Err(ProtoError::BadEntry(_))
         ));
+    }
+
+    #[test]
+    fn absurd_timestamps_are_rejected_on_decode() {
+        // Hand-encode a body whose timestamp needs the full u64: the wire allows it, the entry
+        // layer does not (every clock in the system is i64 ms - see the field doc).
+        let key = test_key();
+        let entry = test_entry(&key);
+        let mut w = Writer::new();
+        w.map(7);
+        w.uint(0);
+        w.uint(u64::from(entry.v));
+        w.uint(1);
+        w.uint(u64::from(entry.entry_type));
+        w.uint(2);
+        w.array(2);
+        w.bytes(&entry.chain.author);
+        w.uint(u64::from(entry.chain.service));
+        w.uint(3);
+        w.uint(entry.seq);
+        w.uint(4);
+        w.bytes(&entry.prev_hash);
+        w.uint(5);
+        w.uint(u64::MAX); // December 4, 292'277'026'596 is not a real deadline
+        w.uint(6);
+        w.array(2);
+        w.uint(0);
+        w.bytes(&[0xa0]);
+        let body = w.into_bytes();
+
+        let mut wenv = Writer::new();
+        wenv.array(2);
+        wenv.bytes(&body);
+        wenv.bytes(&[0u8; SIG_LEN]);
+        assert_eq!(
+            SignedEntry::decode(&wenv.into_bytes()),
+            Err(ProtoError::BadEntry("timestamp out of range"))
+        );
+    }
+
+    #[test]
+    fn negative_timestamps_are_unsignable() {
+        let key = test_key();
+        let mut entry = test_entry(&key);
+        entry.timestamp_ms = -1;
+        assert_eq!(
+            SignedEntry::create(&entry, &key),
+            Err(ProtoError::BadEntry("negative timestamp"))
+        );
     }
 
     #[test]

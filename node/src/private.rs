@@ -353,20 +353,20 @@ pub async fn write_record(
 // The in-memory view
 
 /// LWW stamp, same total order the profile view uses: claimed timestamp, then seq, then hash.
-type Stamp = (u64, u64, [u8; 32]);
+type Stamp = (i64, u64, [u8; 32]);
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RegisterValue {
     pub key: String,
     pub value: String,
-    pub updated_at_ms: u64,
+    pub updated_at_ms: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SetElement {
     pub element: String,
     pub value: Option<String>,
-    pub updated_at_ms: u64,
+    pub updated_at_ms: i64,
 }
 
 /// The materialized private state: LWW registers and LWW-element-sets, folded from every record

@@ -15,6 +15,11 @@
 //! arrays (major 4), maps (major 5). Negative integers are tolerated when skipping unknown
 //! fields; tags, floats, and simple values (majors 6-7) are rejected outright. Nesting is
 //! depth-limited because hostile input gets no benefit of the doubt.
+//!
+//! This module is only the byte grammar. The types built on it narrow *value domains* further -
+//! timestamps must fit in `i64`, payloads and lists have size caps - and those rules live with
+//! the consuming type (`entry`, `registry`, ...). A conforming implementation applies both
+//! layers; passing the byte grammar alone does not make an entry acceptable.
 
 use unicode_normalization::{is_nfc, UnicodeNormalization};
 
