@@ -40,10 +40,20 @@ fn load_or_create_node_key(keystore: &Keystore) -> Result<SecretKey> {
     }
 }
 
-/// Bind the node's iroh endpoint with the sync ALPN.
-pub async fn build_endpoint(keystore: &Keystore) -> Result<Endpoint> {
+/// Bind the node's iroh endpoint with the sync ALPN. The discovery mode picks the preset:
+/// mainline gets `N0` (relays + iroh's own pkarr/DNS discovery, so dial-by-id works globally);
+/// everything else gets `Minimal` (no external infrastructure; addresses come from our own
+/// directory or from adoption codes).
+pub async fn build_endpoint(
+    keystore: &Keystore,
+    mode: &crate::discovery::DiscoveryMode,
+) -> Result<Endpoint> {
     let secret = load_or_create_node_key(keystore)?;
-    let endpoint = Endpoint::builder(presets::Minimal)
+    let builder = match mode {
+        crate::discovery::DiscoveryMode::Mainline => Endpoint::builder(presets::N0),
+        _ => Endpoint::builder(presets::Minimal),
+    };
+    let endpoint = builder
         .secret_key(secret)
         .alpns(vec![SYNC_ALPN.to_vec()])
         .bind()
@@ -55,6 +65,28 @@ pub async fn build_endpoint(keystore: &Keystore) -> Result<Endpoint> {
         "iroh endpoint online"
     );
     Ok(endpoint)
+}
+
+/// Connectable addresses for this endpoint: discovered direct addresses, plus bound sockets
+/// with unspecified IPs rewritten to loopback (good enough for same-host use; real discovery
+/// supersedes this).
+pub fn addr_strings(endpoint: &Endpoint) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for ta in &endpoint.addr().addrs {
+        if let iroh::TransportAddr::Ip(sock) = ta {
+            out.push(sock.to_string());
+        }
+    }
+    for mut sock in endpoint.bound_sockets() {
+        if sock.ip().is_unspecified() {
+            sock.set_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+        }
+        let s = sock.to_string();
+        if !out.contains(&s) {
+            out.push(s);
+        }
+    }
+    out
 }
 
 /// Accept loop: one task per incoming connection, each handed to the sync engine's serve path.

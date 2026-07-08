@@ -30,6 +30,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/identity/adopt/complete", post(adopt_complete_handler))
         .route("/api/identity/{root}/nodes", post(authorize_node_handler))
         .route("/api/identity/{root}/sync", post(sync_handler))
+        .route("/api/identity/{root}/serve", post(serve_handler))
         .route(
             "/api/identity/{root}/keys/{target}/revoke",
             post(revoke_key_handler),
@@ -278,8 +279,13 @@ async fn sync_handler(
         .map_err(AppError::Internal)?;
 
     let mut results = Vec::new();
-    for (peer_id, addr) in peers {
-        match crate::sync::sync_with_peer(&state, &root, addr).await {
+    for peer_id in peers {
+        // Resolve at dial time: id -> addresses via the directory (or iroh's own discovery).
+        let attempt = async {
+            let addr = crate::sync::dial_addr(&state, &peer_id).await?;
+            crate::sync::sync_with_peer(&state, &root, addr).await
+        };
+        match attempt.await {
             Ok(stats) => {
                 crate::sync::mark_synced(&state.node_db, &root, &peer_id)
                     .await
@@ -300,6 +306,22 @@ async fn sync_handler(
         }
     }
     Ok(Json(results))
+}
+
+#[derive(Serialize)]
+struct ServeResponse {
+    served: bool,
+}
+
+/// Mark this identity as served by this node and publish its serving record. This is the
+/// publication *act*: until it happens, the identity is dark - no record exists anywhere.
+async fn serve_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<ServeResponse>, AppError> {
+    super::mark_served(&state, &session.account.id, &root).await?;
+    Ok(Json(ServeResponse { served: true }))
 }
 
 #[derive(Deserialize)]

@@ -15,6 +15,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod auth;
 mod config;
 mod db;
+mod discovery;
 mod error;
 mod identity;
 mod imaol;
@@ -44,6 +45,46 @@ pub struct AppState {
     pub keystore: keystore::Keystore,
     /// The node's iroh endpoint: transport identity + p2p connections (cheaply cloneable).
     pub endpoint: iroh::Endpoint,
+    /// Discovery: publish/resolve serving + endpoint records (off / local stub / mainline DHT).
+    pub directory: discovery::Directory,
+}
+
+/// Republish loop: keeps this node's records fresh, on DHT-TTL timescales. Endpoint records
+/// (transport plumbing) republish whenever discovery is on; serving records republish only for
+/// identities explicitly marked served - publication is an act, and this loop never widens it.
+fn spawn_republish_loop(state: AppState) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(15 * 60));
+        loop {
+            tick.tick().await;
+            let addrs = p2p::addr_strings(&state.endpoint);
+            if let Err(e) = state
+                .directory
+                .publish_endpoint(&state.endpoint.id().to_string(), &addrs)
+                .await
+            {
+                tracing::debug!("endpoint record republish skipped: {e:#}");
+            }
+
+            let served: Vec<(String,)> = match sqlx::query_as(
+                "SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL",
+            )
+            .fetch_all(&state.node_db)
+            .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    tracing::warn!("republish loop: listing served identities failed: {e}");
+                    continue;
+                }
+            };
+            for (root,) in served {
+                if let Err(e) = identity::publish_serving_record(&state, &root).await {
+                    tracing::warn!(root = %root, "serving record republish failed: {e:#}");
+                }
+            }
+        }
+    });
 }
 
 #[derive(serde::Serialize)]
@@ -132,7 +173,8 @@ async fn main() -> anyhow::Result<()> {
     // Rate limiting is off in local-test mode so integration tests don't trip it.
     let rate_limiter = rate_limit::RateLimiter::new(!local_test);
     let keystore = keystore::Keystore::load(&config.data_directory)?;
-    let endpoint = p2p::build_endpoint(&keystore).await?;
+    let endpoint = p2p::build_endpoint(&keystore, &config.discovery).await?;
+    let directory = discovery::Directory::build(&config.discovery)?;
     let state = AppState {
         config,
         node_db,
@@ -140,8 +182,10 @@ async fn main() -> anyhow::Result<()> {
         rate_limiter,
         keystore,
         endpoint: endpoint.clone(),
+        directory,
     };
     p2p::spawn_accept_loop(endpoint, state.clone());
+    spawn_republish_loop(state.clone());
 
     let mut app = Router::new()
         .route("/health", get(health))

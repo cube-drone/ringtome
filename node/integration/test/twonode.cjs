@@ -115,6 +115,28 @@ async function profileValue(fetch, root, field) {
         assert.equal(treeA.keys.find((k) => k.pubkey === leaf).status, "repudiated");
     });
 
+    it("serving is an act: no record until marked, a signed record after", async function () {
+        const dhtDir = process.env.RINGTOME_TEST_DISCOVERY_DIR;
+        if (!dhtDir) this.skip();
+        const fs = require("node:fs");
+
+        const user = await makeUserFetch({ prefix: "servemark" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        // Dark at birth: no serving record exists for this identity's leaf (= root on the
+        // creating node).
+        const recordPath = `${dhtDir}/s_${root}.bin`;
+        assert.ok(!fs.existsSync(recordPath), "unpublished identities leave no record");
+
+        const resp = await (
+            await user(`api/identity/${root}/serve`, { method: "POST" })
+        ).json();
+        assert.equal(resp.served, true);
+        assert.ok(fs.existsSync(recordPath), "the publication act writes the signed record");
+        assert.ok(fs.statSync(recordPath).size < 512, "records stay within the pkarr budget");
+    });
+
     it("junior nodes cannot grant adoption in v1", async function () {
         // A second joining node asks *B* (a leaf-holding node) to authorize it: refused.
         const alice = await makeUserFetch({ prefix: "grantalice" });

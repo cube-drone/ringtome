@@ -449,21 +449,15 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 // ---------------------------------------------------------------------------------------------
 // Peer bookkeeping (node.db)
 
-/// Remember a peer for an identity (upsert refreshes the addresses).
-pub async fn add_peer(
-    node_db: &SqlitePool,
-    root_hex: &str,
-    endpoint_id: &str,
-    addrs: &[String],
-) -> Result<()> {
+/// Remember a peer for an identity. Endpoint ids only - addresses are the discovery layer's
+/// problem, resolved at dial time (hints are keys, never addresses).
+pub async fn add_peer(node_db: &SqlitePool, root_hex: &str, endpoint_id: &str) -> Result<()> {
     sqlx::query(
-        "INSERT INTO identity_peers (root_pubkey, endpoint_id, addrs, added_at_ms)
-         VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT(root_pubkey, endpoint_id) DO UPDATE SET addrs = excluded.addrs",
+        "INSERT OR IGNORE INTO identity_peers (root_pubkey, endpoint_id, added_at_ms)
+         VALUES (?1, ?2, ?3)",
     )
     .bind(root_hex)
     .bind(endpoint_id)
-    .bind(serde_json::to_string(addrs)?)
     .bind(now_ms())
     .execute(node_db)
     .await
@@ -471,24 +465,33 @@ pub async fn add_peer(
     Ok(())
 }
 
-/// All known peers for an identity, as connectable addresses.
-pub async fn peers_for(
-    node_db: &SqlitePool,
-    root_hex: &str,
-) -> Result<Vec<(String, EndpointAddr)>> {
-    let rows: Vec<(String, String)> =
-        sqlx::query_as("SELECT endpoint_id, addrs FROM identity_peers WHERE root_pubkey = ?1")
+/// Known peer endpoint ids for an identity.
+pub async fn peers_for(node_db: &SqlitePool, root_hex: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT endpoint_id FROM identity_peers WHERE root_pubkey = ?1")
             .bind(root_hex)
             .fetch_all(node_db)
             .await
             .context("listing peers")?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
 
-    rows.into_iter()
-        .map(|(id, addrs_json)| {
-            let addr = endpoint_addr(&id, &serde_json::from_str::<Vec<String>>(&addrs_json)?)?;
-            Ok((id, addr))
-        })
-        .collect()
+/// Build a dialable address for a peer: the endpoint id, plus whatever addresses the directory
+/// knows. In mainline mode the address set is usually empty and iroh's own discovery fills it
+/// in; in local mode the stub's endpoint record supplies it; in Off mode a bare id only works if
+/// iroh has the peer cached from a previous connection.
+pub async fn dial_addr(state: &AppState, endpoint_id: &str) -> Result<EndpointAddr> {
+    let id: iroh::PublicKey = endpoint_id
+        .parse()
+        .map_err(|_| anyhow!("bad endpoint id"))?;
+    let mut ea = EndpointAddr::new(id);
+    if let Some(addrs) = state.directory.resolve_endpoint(endpoint_id).await? {
+        for a in &addrs {
+            let sock: std::net::SocketAddr = a.parse().context("bad socket address")?;
+            ea = ea.with_ip_addr(sock);
+        }
+    }
+    Ok(ea)
 }
 
 /// Build a connectable address from an endpoint id and socket-address strings.

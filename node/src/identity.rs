@@ -248,26 +248,79 @@ pub struct GrantCode {
     pub addrs: Vec<String>,
 }
 
-/// Connectable addresses for this endpoint: discovered direct addresses, plus bound sockets with
-/// unspecified IPs rewritten to loopback (good enough for same-host tests; pkarr supersedes this
-/// when real discovery lands).
-fn our_addr_strings(endpoint: &iroh::Endpoint) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for ta in &endpoint.addr().addrs {
-        if let iroh::TransportAddr::Ip(sock) = ta {
-            out.push(sock.to_string());
-        }
+/// Publish (or refresh) this node's serving record for an identity: "our leaf serves this root,
+/// reachable at our endpoint." Called when an identity is marked served and by the republish
+/// loop. In mainline mode the pkarr packet is additionally signed by the leaf key itself.
+pub async fn publish_serving_record(
+    state: &crate::AppState,
+    root_hex: &str,
+) -> Result<(), AppError> {
+    use ringtome_proto::directory::{ServingRecord, SignedServingRecord, RECORD_VERSION};
+
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1")
+            .bind(root_hex)
+            .fetch_optional(&state.node_db)
+            .await
+            .context("looking up identity")
+            .map_err(AppError::Internal)?;
+    let Some((leaf,)) = row else {
+        return Err(AppError::NotFound("identity not found".into()));
+    };
+    let key_name = leaf.unwrap_or_else(|| root_hex.to_string());
+
+    let secret = state
+        .keystore
+        .load_key(&key_name, key_name.as_bytes())
+        .map_err(AppError::Internal)?;
+    let secret: [u8; 32] = secret
+        .as_slice()
+        .try_into()
+        .map_err(|_| AppError::Internal(anyhow!("leaf key wrong length")))?;
+    let leaf_key = SigningKey::from_bytes(&secret);
+
+    let root: [u8; 32] = hex::decode(root_hex)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?;
+    let record = ServingRecord {
+        v: RECORD_VERSION,
+        root,
+        node_key: leaf_key.verifying_key().to_bytes(),
+        endpoint_id: *state.endpoint.id().as_bytes(),
+        timestamp_ms: now_ms() as u64,
+    };
+    let signed = SignedServingRecord::create(&record, &leaf_key)
+        .map_err(|e| AppError::Internal(anyhow!("signing serving record: {e}")))?;
+
+    match &state.directory {
+        crate::discovery::Directory::Mainline(m) => m
+            .publish_serving_with_key(&signed, &secret)
+            .await
+            .map_err(AppError::Internal)?,
+        other => other
+            .publish_serving(&signed)
+            .await
+            .map_err(AppError::Internal)?,
     }
-    for mut sock in endpoint.bound_sockets() {
-        if sock.ip().is_unspecified() {
-            sock.set_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
-        }
-        let s = sock.to_string();
-        if !out.contains(&s) {
-            out.push(s);
-        }
-    }
-    out
+    Ok(())
+}
+
+/// Mark an identity as served (publication is an act) and publish its record immediately.
+pub async fn mark_served(
+    state: &crate::AppState,
+    account_id: &Uuid,
+    root_hex: &str,
+) -> Result<(), AppError> {
+    require_owned(&state.node_db, account_id, root_hex).await?;
+    sqlx::query("UPDATE identities SET served_at_ms = ?1 WHERE root_pubkey = ?2")
+        .bind(now_ms())
+        .bind(root_hex)
+        .execute(&state.node_db)
+        .await
+        .context("marking identity served")
+        .map_err(AppError::Internal)?;
+    publish_serving_record(state, root_hex).await
 }
 
 /// Step 1, on the joining node: mint a leaf keypair for a prospective identity and emit the
@@ -300,7 +353,7 @@ pub async fn begin_adoption(
         kind: REQUEST_KIND.to_string(),
         leaf_pubkey: leaf_hex,
         endpoint_id: state.endpoint.id().to_string(),
-        addrs: our_addr_strings(&state.endpoint),
+        addrs: crate::p2p::addr_strings(&state.endpoint),
     })
 }
 
@@ -365,7 +418,7 @@ pub async fn authorize_node(
     .await?;
 
     // Remember the joining node as a peer so future syncs reach it.
-    crate::sync::add_peer(&state.node_db, root_hex, &code.endpoint_id, &code.addrs)
+    crate::sync::add_peer(&state.node_db, root_hex, &code.endpoint_id)
         .await
         .map_err(AppError::Internal)?;
 
@@ -376,7 +429,7 @@ pub async fn authorize_node(
         root_pubkey: root_hex.to_string(),
         leaf_pubkey: code.leaf_pubkey,
         endpoint_id: state.endpoint.id().to_string(),
-        addrs: our_addr_strings(&state.endpoint),
+        addrs: crate::p2p::addr_strings(&state.endpoint),
     })
 }
 
@@ -409,14 +462,12 @@ pub async fn complete_adoption(
         .and_then(|b| b.try_into().ok())
         .ok_or_else(|| AppError::BadRequest("bad leaf pubkey in grant code".into()))?;
 
-    crate::sync::add_peer(
-        &state.node_db,
-        &code.root_pubkey,
-        &code.endpoint_id,
-        &code.addrs,
-    )
-    .await
-    .map_err(AppError::Internal)?;
+    crate::sync::add_peer(&state.node_db, &code.root_pubkey, &code.endpoint_id)
+        .await
+        .map_err(AppError::Internal)?;
+    // Bootstrap dial: the grant code's addresses are ephemeral single-use hints (allowed to be
+    // addresses precisely because they don't live long enough to rot). Later syncs resolve via
+    // the directory.
     let addr = crate::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
         .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
 

@@ -61,11 +61,13 @@ integration: build kill
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
-    rm -rf "{{test_data}}" "{{test_data}}-b"
+    rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-dht"
     RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="{{test_data}}" RINGTOME_LOCAL_TEST=1 \
+        RINGTOME_DISCOVERY="local:{{test_data}}-dht" \
         ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
     NODE_PID=$!
     RINGTOME_PORT={{port_b}} RINGTOME_DATA_DIRECTORY="{{test_data}}-b" RINGTOME_LOCAL_TEST=1 \
+        RINGTOME_DISCOVERY="local:{{test_data}}-dht" \
         ./target/debug/ringtome > /tmp/ringtome-integration-b.log 2>&1 &
     NODE_B_PID=$!
     cleanup() {
@@ -91,7 +93,8 @@ integration: build kill
     done
 
     cd "{{justfile_directory()}}/integration"
-    RINGTOME_TEST_HOST="127.0.0.1:{{port}}" RINGTOME_TEST_HOST_B="127.0.0.1:{{port_b}}" npm test
+    RINGTOME_TEST_HOST="127.0.0.1:{{port}}" RINGTOME_TEST_HOST_B="127.0.0.1:{{port_b}}" \
+        RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/node/{{test_data}}-dht" npm test
 
 # --- everything ------------------------------------------------------------
 

@@ -13,6 +13,7 @@
 
 mod cbor;
 mod chain;
+pub mod directory;
 mod entry;
 mod error;
 pub mod keytree;

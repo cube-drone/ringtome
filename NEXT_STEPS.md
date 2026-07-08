@@ -177,77 +177,146 @@ fork-aftermath re-signing flow remains undesigned. That dragon is still owed; sc
 fork evidence should come before or with M4's client, which is where a user would first *see* a
 fork.
 
-## M4 — Someone can actually use it (first social features + the client)
+## M3.5 — Discovery (added 2026-07-07; pulled forward because M4's `ringtome://` resolution needs it)
 
-**Goal:** the answer to the plan's "what social features first?" open question, proposed here as:
-**profiles, pages, posts, follows** — the geocities-shaped minimum. Plus the client to see them in.
+**Goal:** dial-by-key everywhere; addresses stop being our data. Two layers, one trait, one stub.
 
-- Content types: `post` (markup blob), `page` (markup blob at a stable path), public `follow`.
-- **Markup v1, static rung** (Content Markup section): strict grammar → AST → safe renderer;
-  blob-hash-only embeds; the shameless tags. This is where the open **markup vocabulary v1**
-  question gets settled — spec the tags alongside the types that carry them.
-- `ringtome://` URL resolution (root + nodeID + hints → pkarr → verify-against-root), at least for
-  identities the node can reach.
-- **Retro-OS web client v0** (Preact + htm + esbuild, served by the node): login, persona
-  switcher, profile page, page authoring with the markup, a followed-identities reading view.
-  Identicons from root pubkeys. Cozy comes incrementally; correct comes first.
-- Settle the plan's open **web gateway** decision (it gates how public resource addressing must
-  be — needed before the content types calcify).
+- **Serving records** (proto surface): a signed statement published under an identity **leaf key**
+  - "this leaf serves root R, reachable at endpoint E" - domain `ringtome-v0/serving-record`,
+  canonical CBOR, test-vectored. Trust never comes from the record (chain-to-root verification
+  happens at sync time, per the plan); records are pointers + liveness only, so they fit pkarr's
+  1000-byte budget trivially. Keyed by leaf keys so they never collide with iroh's own
+  per-endpoint pkarr records.
+- **The `Directory` trait** with two implementations: `MainlineDirectory` (pkarr crate, real DHT)
+  and `LocalDirectory` - a shared-folder fake storing the *same signed bytes*, honoring the same
+  one-record-per-key + TTL semantics, spanning the two test-node processes. The stub is also the
+  future attack harness (eclipse, staleness, wrong-key records on demand).
+- **Config seam:** discovery mode selects the iroh preset too - local mode = `presets::Minimal` +
+  `LocalDirectory` (which also simulates iroh's endpoint-address layer via unsigned endpoint
+  records); mainline mode = `presets::N0` (relays + iroh's own discovery) + `MainlineDirectory`.
+- **Publication is an act:** serving records publish only for identities explicitly marked
+  served (a `served_at_ms` flag + API), never as a side effect of creation or adoption. Endpoint
+  records (transport plumbing, not identity-linked) publish whenever networked, like every iroh
+  app.
+- **The `addrs` column dies.** Peers are endpoint ids; addresses come from the directory at dial
+  time. Adoption codes keep carrying bootstrap addresses (ephemeral, single-use - allowed to be
+  addresses precisely because they don't live long enough to rot).
+- Republish task on an interval (pkarr TTL-scale); the two-node suite runs entirely on the stub;
+  live-DHT behavior gets an opt-in test tier later, not a CI dependency.
 
-**Exit demo:** two users on two different nodes follow each other, author pages, and read each
-other's stuff through the fake-OS UI. Screenshot-able. This is the milestone where the project
-becomes showable to a non-nerd.
+**Status: COMPLETE (2026-07-07).** `proto::directory` serving records (signed, `ringtome-v0/serving-record`
+domain, well under the pkarr budget), `discovery::Directory` (Off / Local shared-folder stub with
+TTL-as-liveness + key-binding checks / Mainline via pkarr 5), config seam `RINGTOME_DISCOVERY`
+selecting the iroh preset, dial-by-id throughout (`sync::dial_addr`), the `addrs` column dropped
+(migration 0006), `served_at_ms` + `POST .../serve` as the publication act, and a 15-minute
+republish loop. The M3 exit demo passes entirely on directory-based dialing; a new integration
+test proves dark-at-birth / signed-record-after-serve. *Untested residual:* `Mainline` mode
+compiles against pkarr 5.0.3 but has never touched the real DHT - that's the opt-in live tier /
+first field test, still owed. (pkarr 6 was blocked by an ed25519 release-candidate conflict with
+iroh 1.0; revisit when the ecosystem settles.)
 
-**Sizing:** wide but shallow; mostly product work on top of M1–M3 machinery.
+## The ladder becomes tiers (restructured 2026-07-07)
 
-## M5 — Trust (vouches + the adversary harness)
+M1-M3.5 were genuinely sequential: each rung consumed the previous one's output. What remains is
+not - so from here down, work is grouped into **tiers of unordered tracks**. A tier is done when
+its tracks are; tracks within a tier can be taken in any order, interleaved, or abandoned
+mid-stream for a more motivating one. For a solo project, motivation is the scarcest resource,
+and the structure should let it be spent where it lands. Real cross-track dependencies are listed
+explicitly; everything unlisted is genuinely independent.
 
-**Goal:** the trust substrate, before the network is big enough to need it.
+## Tier 4 — The product (three unordered tracks)
 
-- Vouch statements (private chain), the network-flow trust computation over a bounded horizon,
-  the coarse floor gate; contact names (private chain) with the render rule.
-- **Adversary-simulation harness**: generate honest graphs, inject Sybil clusters in nasty
-  topologies, measure trust extracted per attack vouch. Run it hoping it breaks. (See background
-  tracks — this can and should start earlier; M5 is where it must exist.)
-- Wire trust into something deliberately low-stakes first (feed ordering or a DM floor), per the
-  plan's low-payoff principle.
+**4C — The client shell ("the cozy OS boots").** The retro-OS web client over the *existing* API
+- zero new protocol. Toolchain (Preact + htm + esbuild, versioned asset serving), login, desktop
+shell, identity switcher, profile editor, key/device management in cozy language - and the two
+ceremonies that currently exist as raw JSON: the **recovery-key photo ceremony** (labeled QR,
+blocked-until-captured; retires M2's residual) and the **add-a-node ceremony** (request/grant
+codes as QR). The Cozyweb language budget is enforced from the first screen. *Track demo:* create
+an identity, photograph the spare key, set your name, adopt a second node - all in a browser, no
+JSON visible. *Advisory:* highest motivation-ROI track - it makes all subsequent work visible in
+a UI instead of curl.
 
-## M6 — Ship it (delivery + operations)
+**4M — The markup language ("pages have a language").** The security-critical content boundary,
+given the undivided attention the key tree got. Vocabulary spec (resolving the open question),
+the `page`/`post` payload types, the **strict parser twice** - Rust in proto (validation), JS in
+the client (rendering) - kept honest by published markup test vectors, exactly the discipline
+that guards the entry format. Safe renderer (AST -> DOM construction, never innerHTML),
+blob-hash-only embeds enforced at the grammar. *Track demo:* a page with a tiled background and a
+marquee, parsed by both implementations to identical ASTs.
 
-**Goal:** other people can run this without talking to us.
+**4S — The social layer ("other people exist").** Everything that crosses the inter-identity
+boundary: the **public serving surface** (`/public/*` reads for non-owners - deliberately
+deferred since M1), the `follow` type and serving-follows, **`ringtome://` resolution** (the
+ladder consuming M3.5's directory), identicons + contact names, and the open **web-gateway
+decision** (it is a question *about* the public surface; settle it while building one). *Track
+demo:* curl a stranger's profile off a node that serves them, resolved from a `ringtome://` URL.
 
-- `testnode-N.ringtome.ca`: Dockerfile, deploy story, ops docs; the "some guy running infra in
-  their spare time" path made real.
-- Desktop packaging: tray sidecar (tray icon, autostart, app-mode window), single installer,
-  signing/notarization. The Ollama shape from the plan's Client Story.
-- Self-hosting documentation as a first-class artifact (the plan's explicit guard against
-  hosted-first calcifying).
-- A security pass over the whole HTTP + sync surface before the first public node.
+**Leaf dependencies (land in whichever track finishes last):** page-authoring UI = 4C + 4M;
+reading view/feed = 4C + 4S; rendering a *stranger's* page = all three. **Tier exit demo:** two
+users on two nodes follow each other and read each other's marquee-infested pages through the
+fake OS. The project becomes showable to a non-nerd.
+
+## Tier 5 — Trust (unordered tasks; the tier itself hard-depends on 4S)
+
+You can't trust someone you don't know about: wiring trust into the product needs follows and
+cross-identity visibility. But most of the tier is buildable *before* that, against synthetic
+data:
+
+- **Adversary-simulation harness** (deps: none - pure math, startable today): generate honest
+  graphs, inject Sybil clusters in nasty topologies, measure trust extracted per attack vouch.
+  Run it hoping it breaks; it doubles as the design tool for the budget/horizon/fade knobs.
+- **Flow computation engine** (deps: none - develops against the harness's synthetic graphs):
+  the Advogato-style joint-flow calculation, bounded horizon, as pure crate code.
+- **Private chains** (deps: none; newly surfaced prerequisite): vouches and contact names live on
+  *encrypted* chains synced only among an identity's own nodes - infrastructure no milestone has
+  built yet (encryption scheme, key distribution within the tree, the never-serve-across-the-
+  identity-boundary rule at the sync gate).
+- **Vouch statements + contact names** (deps: private chains): the payload types and their APIs;
+  the "I know this person for real" ceremony belongs to 4C's language budget.
+- **Wiring trust into the product** (deps: 4S + the above): the coarse floor, applied to
+  something deliberately low-stakes first (feed ordering, a DM gate someday) per the plan's
+  low-payoff principle.
+
+## Tier 6 — Ship (unordered tasks; one gate, not an order)
+
+- **Hosted deploy story** (deps: none): Dockerfile, `testnode-N.ringtome.ca`, ops docs - "some
+  guy running infra in their spare time" made real.
+- **Self-hosting documentation** (deps: deploy story): first-class artifact, per the plan's guard
+  against hosted-first calcifying.
+- **Desktop packaging** (deps: 4C, weakly - the tray needs a UI to open): tray sidecar, autostart,
+  app-mode window, single installer, signing/notarization. The Ollama shape.
+- **Mainline field test** (deps: none, startable any weekend): two internet-connected nodes on
+  `RINGTOME_DISCOVERY=mainline` - the first genuinely-distributed run, and the opt-in live test
+  tier it leaves behind.
+- **Security pass** (deps: none to *do*; but it **gates public exposure**): a hostile review of
+  the whole HTTP + sync surface. The one hard rule in this tier: no publicly-reachable node
+  before it happens.
 
 ---
 
-## Background tracks (parallel to everything)
+## Standing disciplines (all tiers)
 
-- **Adversary-sim harness** (pure math, zero dependencies on the node): start whenever the trust
-  design needs thinking-through; it doubles as the design tool for budget/horizon/fade knobs.
-- **Test vectors + spec fragments**: grow with M1/M2; they're what makes third-party clients and
-  future-self debugging possible.
-- **Markup vocabulary spec**: draft during M2/M3 so M4 starts with a reviewed tag list.
-- **Integration suite**: every milestone extends it; two-node scenarios join at M3.
+- **Test vectors + spec fragments** grow with every wire format (entries, records, markup); they
+  are what makes third-party clients and future-self debugging possible.
+- **Integration suite**: every track extends it; the two-node harness is the default proving
+  ground.
+- **Fork-aftermath dragon** (owed since M3): schema room for fork *evidence* plus the re-signing
+  recovery flow - due before or with whatever first shows a fork to a human (4C's key screens are
+  the likely trigger).
 
 ## Deliberately not yet
 
 Passkeys/WebAuthn, recovery helpers (email/social), iroh-gossip real-time + DMs, the scripting
 rung of the markup ladder, Godot anything, phones (PWA rides along for free), the push-gateway
 role, snapshots/checkpoints, ActivityPub bridges. All named in the plan; none on the critical
-path through M6.
+path through Tier 6.
 
 ## Sequencing rationale, in one paragraph
 
-Everything writes entries, so the entry format goes first (M1). Authority statements are entries,
-and sync must validate against the key tree, so the tree precedes the network (M2 before M3).
-Social features are just more entry types once sync works, and the client renders what sync
-delivers (M4). Trust arrives before scale makes it load-bearing (M5), and packaging comes last
-because a delightful installer for a network with no people in it helps nobody (M6). Each
-milestone's demo is the next one's foundation — and every one of them leaves a runnable node
-behind.
+Everything writes entries, so the entry format went first (M1); authority statements are entries
+and sync validates against the tree, so the tree preceded the network (M2 before M3); sync needed
+somewhere to find peers (M3.5). That's where hard sequencing *ends*: the product tier's three
+tracks touch different layers and meet only at their leaves, trust needs the social layer only at
+its final wiring step, and shipping is a checklist with a single gate (the security pass) rather
+than an order. The ladder got us a correct substrate; the tiers spend motivation wherever it
+lands - and every stopping point still leaves a runnable node behind.

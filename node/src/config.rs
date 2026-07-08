@@ -43,6 +43,10 @@ pub struct Config {
     /// parameters (fast, weak). Never enable on a node that is reachable by anyone but the
     /// developer running its tests.
     pub local_test: bool,
+    /// How this node publishes/resolves discovery records (`RINGTOME_DISCOVERY`): `off`
+    /// (default), `local:<path>` (shared-folder simulation), or `mainline` (real DHT + relays).
+    /// Also selects the iroh preset: mainline gets `N0`, everything else `Minimal`.
+    pub discovery: crate::discovery::DiscoveryMode,
 }
 
 /// The subset of configuration safe to expose to a browser client.
@@ -83,6 +87,8 @@ impl Config {
             Ok("1") | Ok("true")
         );
 
+        let discovery = crate::discovery::DiscoveryMode::from_env();
+
         Self {
             app_version,
             bind_address,
@@ -91,6 +97,7 @@ impl Config {
             environment,
             tenancy,
             local_test,
+            discovery,
         }
     }
 
