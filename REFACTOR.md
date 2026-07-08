@@ -44,15 +44,20 @@ The context-comment discipline cuts both ways: a comment that argues design must
   functions that are neither adoption nor revocation. The serving functions moved above it under
   their own banner (also preps the item-3 split).
 
-## 3. Modularity — `identity.rs` is four modules wearing a trenchcoat
+## 3. Modularity — `identity.rs` is four modules wearing a trenchcoat ✅ (2026-07-08)
 
-- [ ] At ~750 lines it holds identity creation/queries, serving-record publication (a discovery
-  concern), the adoption ceremony, and revocation. The directory already exists
-  (`identity/routes.rs`): split into `identity/serving.rs` and `identity/adoption.rs`, core
-  stays. Knock-ons, both healthy: `conventions.rs`'s `owners()` needs the new paths, and the
-  creation→modification→view ordering falls out for free once each concern owns a file.
-- [ ] `spawn_republish_loop` in `main.rs` *implements* instead of composes — it belongs with the
-  serving code, leaving a one-line spawn in `main`.
+- [x] Split into `identity/serving.rs` (records + republish pass) and `identity/adoption.rs`
+  (the ceremony, now owning `pending_adoptions`), core at ~400 lines. The stricter cut on table
+  ownership: **all `identities` SQL stays in core** behind blunt accessors (`record_identity`,
+  `record_served`), so the flow modules orchestrate at altitude and `owners()` stays one line
+  per table.
+- [x] `spawn_republish_loop` left `main.rs` — and grew into a pattern: **`loops.rs`**, one tiny
+  spawner (interval + failure logging + panic containment, written once). Modules export plain
+  one-pass functions (`serving::republish_pass`, `discovery::republish_endpoint_pass` - the two
+  jobs of the old combined loop, now in their proper domains); `main.rs` registers each by name,
+  and that registration block is the complete inventory of the node's background work. Scope
+  fence, on purpose: no dynamic registration, no job framework - a function called N times from
+  main (N=2).
 - [ ] (Someday, not yet earning its churn) `sync.rs`'s peer-bookkeeping tail could split out;
   it's also what `owners()` maps `identity_peers` to.
 

@@ -245,7 +245,7 @@ async fn adopt_begin_handler(
     session: Session,
     State(state): State<AppState>,
 ) -> Result<Json<CodeResponse>, AppError> {
-    let request = super::begin_adoption(&state, &session.account.id).await?;
+    let request = super::adoption::begin(&state, &session.account.id).await?;
     let code = serde_json::to_string(&request)
         .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding request code: {e}")))?;
     Ok(Json(CodeResponse { code }))
@@ -259,9 +259,10 @@ async fn authorize_node_handler(
     Path(root): Path<String>,
     Json(req): Json<CodeRequest>,
 ) -> Result<Json<CodeResponse>, AppError> {
-    let request: super::RequestCode = serde_json::from_str(&req.code)
+    let request: super::adoption::RequestCode = serde_json::from_str(&req.code)
         .map_err(|_| AppError::BadRequest("unparseable request code".into()))?;
-    let grant = super::authorize_node(&state, &session.account.id, &root, request).await?;
+    let grant =
+        super::adoption::authorize_node(&state, &session.account.id, &root, request).await?;
     let code = serde_json::to_string(&grant)
         .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding grant code: {e}")))?;
     Ok(Json(CodeResponse { code }))
@@ -273,9 +274,9 @@ async fn adopt_complete_handler(
     State(state): State<AppState>,
     Json(req): Json<CodeRequest>,
 ) -> Result<Json<IdentityInfo>, AppError> {
-    let grant: super::GrantCode = serde_json::from_str(&req.code)
+    let grant: super::adoption::GrantCode = serde_json::from_str(&req.code)
         .map_err(|_| AppError::BadRequest("unparseable grant code".into()))?;
-    let identity = super::complete_adoption(&state, &session.account.id, grant).await?;
+    let identity = super::adoption::complete(&state, &session.account.id, grant).await?;
     Ok(Json(identity.into()))
 }
 
@@ -343,7 +344,7 @@ async fn serve_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<ServeResponse>, AppError> {
-    super::mark_served(&state, &session.account.id, &root).await?;
+    super::serving::mark_served(&state, &session.account.id, &root).await?;
     Ok(Json(ServeResponse { served: true }))
 }
 

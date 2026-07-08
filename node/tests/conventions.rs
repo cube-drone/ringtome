@@ -21,7 +21,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("sessions", vec!["auth.rs"]),
         ("account_tags", vec!["auth.rs"]),
         ("identities", vec!["identity.rs"]),
-        ("pending_adoptions", vec!["identity.rs"]),
+        ("pending_adoptions", vec!["identity/adoption.rs"]),
         ("identity_peers", vec!["sync.rs"]),
         ("boot_timestamps", vec!["db.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),

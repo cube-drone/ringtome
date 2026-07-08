@@ -22,6 +22,7 @@ mod identity;
 mod imaol;
 mod inspect;
 mod keystore;
+mod loops;
 mod p2p;
 mod private;
 mod pubkey;
@@ -51,39 +52,6 @@ pub struct AppState {
     pub endpoint: iroh::Endpoint,
     /// Discovery: publish/resolve serving + endpoint records (off / local stub / mainline DHT).
     pub directory: discovery::Directory,
-}
-
-/// Republish loop: keeps this node's records fresh, on DHT-TTL timescales. Endpoint records
-/// (transport plumbing) republish whenever discovery is on; serving records republish only for
-/// identities explicitly marked served - publication is an act, and this loop never widens it.
-fn spawn_republish_loop(state: AppState) {
-    tokio::spawn(async move {
-        let mut tick = tokio::time::interval(std::time::Duration::from_secs(15 * 60));
-        loop {
-            tick.tick().await;
-            let addrs = p2p::addr_strings(&state.endpoint);
-            if let Err(e) = state
-                .directory
-                .publish_endpoint(&state.endpoint.id().to_string(), &addrs)
-                .await
-            {
-                tracing::debug!("endpoint record republish skipped: {e:#}");
-            }
-
-            let served = match identity::served_roots(&state.node_db).await {
-                Ok(roots) => roots,
-                Err(e) => {
-                    tracing::warn!("republish loop: listing served identities failed: {e}");
-                    continue;
-                }
-            };
-            for root in served {
-                if let Err(e) = identity::publish_serving_record(&state, &root).await {
-                    tracing::warn!(root = %root, "serving record republish failed: {e:#}");
-                }
-            }
-        }
-    });
 }
 
 #[derive(serde::Serialize)]
@@ -184,7 +152,22 @@ async fn main() -> anyhow::Result<()> {
         directory,
     };
     p2p::spawn_accept_loop(endpoint, state.clone());
-    spawn_republish_loop(state.clone());
+
+    // Background loops: every recurring process in the node, registered here by name. Modules
+    // export one-pass functions; loops.rs owns the ticking, logging, and panic containment.
+    let dht_ttl_pace = std::time::Duration::from_secs(15 * 60);
+    loops::periodic(
+        "republish-endpoint-record",
+        dht_ttl_pace,
+        state.clone(),
+        discovery::republish_endpoint_pass,
+    );
+    loops::periodic(
+        "republish-serving-records",
+        dht_ttl_pace,
+        state.clone(),
+        identity::serving::republish_pass,
+    );
 
     let mut app = Router::new()
         .route("/health", get(health))

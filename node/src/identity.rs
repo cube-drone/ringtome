@@ -6,19 +6,22 @@
 //!
 //! An identity is born fully furnished: creation also writes the chain genesis (the recovery
 //! key - the root's structurally-senior first child - authorized with its encryption pubkey),
-//! mints the root's own encryption keypair, and publishes private-chain epoch 0. The rest of
-//! this module is the identity's node-facing lifecycle - serving records, the add-a-node
-//! adoption ceremony, key revocation - each under its own banner below (and each a candidate
-//! for its own submodule: REFACTOR.md §3).
+//! mints the root's own encryption keypair, and publishes private-chain epoch 0.
+//!
+//! The node-facing lifecycle flows live in child modules - `serving` (records + the republish
+//! pass) and `adoption` (the add-a-node ceremony) - built on what this file owns: the
+//! `identities` table (all of its SQL stays here, behind blunt accessors) and the keystore
+//! loaders. Revocation stays here too: it is key-tree lifecycle, and it is one function.
 
+mod adoption;
 mod routes;
+pub(crate) mod serving;
 
 pub use routes::router;
 
 use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
-use ringtome_proto::keytree::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Anchor, Authorize, Disposition, Payload, Revoke};
 use sqlx::SqlitePool;
@@ -95,17 +98,7 @@ pub async fn create(
     // 4. Record the identity -> account link. On the creating node, the signing key *is* the
     //    root (leaf_pubkey = root_pubkey); nodes added later sign with granted leaf keys.
     let created_at_ms = now_ms();
-    sqlx::query(
-        "INSERT INTO identities (root_pubkey, account_id, created_at_ms, leaf_pubkey)
-         VALUES (?1, ?2, ?3, ?1)",
-    )
-    .bind(&pubkey_hex)
-    .bind(account_id.to_string())
-    .bind(created_at_ms)
-    .execute(node_db)
-    .await
-    .context("recording identity")
-    .map_err(AppError::Internal)?;
+    record_identity(node_db, account_id, &pubkey_hex, &pubkey_hex, created_at_ms).await?;
 
     // 5. Materialize the per-user database (opens + migrates it).
     let user_db = user_dbs
@@ -166,6 +159,30 @@ pub async fn create(
     })
 }
 
+/// Record that this node agents `root_pubkey` for `account_id`, signing with the key named
+/// `leaf_key_name` - the root itself at creation, a granted leaf after adoption.
+pub async fn record_identity(
+    node_db: &SqlitePool,
+    account_id: &Uuid,
+    root_pubkey: &str,
+    leaf_key_name: &str,
+    created_at_ms: i64,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO identities (root_pubkey, account_id, created_at_ms, leaf_pubkey)
+         VALUES (?1, ?2, ?3, ?4)",
+    )
+    .bind(root_pubkey)
+    .bind(account_id.to_string())
+    .bind(created_at_ms)
+    .bind(leaf_key_name)
+    .execute(node_db)
+    .await
+    .context("recording identity")
+    .map_err(AppError::Internal)?;
+    Ok(())
+}
+
 /// List the identities owned by an account.
 pub async fn list_for_account(
     node_db: &SqlitePool,
@@ -210,6 +227,19 @@ pub async fn served_roots(node_db: &SqlitePool) -> Result<Vec<String>, AppError>
             .context("listing served identities")
             .map_err(AppError::Internal)?;
     Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
+/// Stamp an identity as served. The flow around it (ownership check, immediate publication)
+/// lives in `serving`; this is just the identities-table write.
+pub(crate) async fn record_served(node_db: &SqlitePool, root_pubkey: &str) -> Result<(), AppError> {
+    sqlx::query("UPDATE identities SET served_at_ms = ?1 WHERE root_pubkey = ?2")
+        .bind(now_ms())
+        .bind(root_pubkey)
+        .execute(node_db)
+        .await
+        .context("marking identity served")
+        .map_err(AppError::Internal)?;
+    Ok(())
 }
 
 /// Verify that `account_id` owns the identity `root_pubkey`, uniformly 404ing otherwise (an
@@ -291,322 +321,6 @@ pub async fn load_node_leaf_key(
     };
     let key_name = leaf.unwrap_or_else(|| root_pubkey.to_string());
     Ok(Some(signing_key_named(keystore, &key_name)?))
-}
-
-// ---------------------------------------------------------------------------------------------
-// Serving records (PROJECT_PLAN, Hosting and the Colocation Problem): "our leaf serves this
-// root, reachable at our endpoint." Publication is an act - nothing publishes until an identity
-// is explicitly marked served, and the republish loop only refreshes what was marked.
-
-/// Publish (or refresh) this node's serving record for an identity. Called when an identity is
-/// marked served and by the republish loop. In mainline mode the pkarr packet is additionally
-/// signed by the leaf key itself.
-pub async fn publish_serving_record(
-    state: &crate::AppState,
-    root_hex: &str,
-) -> Result<(), AppError> {
-    use ringtome_proto::directory::{ServingRecord, SignedServingRecord, RECORD_VERSION};
-
-    let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1")
-            .bind(root_hex)
-            .fetch_optional(&state.node_db)
-            .await
-            .context("looking up identity")
-            .map_err(AppError::Internal)?;
-    let Some((leaf,)) = row else {
-        return Err(AppError::NotFound("identity not found".into()));
-    };
-    let key_name = leaf.unwrap_or_else(|| root_hex.to_string());
-    let leaf_key = signing_key_named(&state.keystore, &key_name)?;
-
-    let record = ServingRecord {
-        v: RECORD_VERSION,
-        root: pubkey::require(root_hex, "root pubkey")?,
-        node_key: leaf_key.verifying_key().to_bytes(),
-        endpoint_id: *state.endpoint.id().as_bytes(),
-        timestamp_ms: now_ms(),
-    };
-    let signed = SignedServingRecord::create(&record, &leaf_key)
-        .map_err(|e| AppError::Internal(anyhow!("signing serving record: {e}")))?;
-
-    match &state.directory {
-        crate::discovery::Directory::Mainline(m) => m
-            .publish_serving_with_key(&signed, &leaf_key.to_bytes())
-            .await
-            .map_err(AppError::Internal)?,
-        other => other
-            .publish_serving(&signed)
-            .await
-            .map_err(AppError::Internal)?,
-    }
-    Ok(())
-}
-
-/// Mark an identity as served (publication is an act) and publish its record immediately.
-pub async fn mark_served(
-    state: &crate::AppState,
-    account_id: &Uuid,
-    root_hex: &str,
-) -> Result<(), AppError> {
-    require_owned(&state.node_db, account_id, root_hex).await?;
-    sqlx::query("UPDATE identities SET served_at_ms = ?1 WHERE root_pubkey = ?2")
-        .bind(now_ms())
-        .bind(root_hex)
-        .execute(&state.node_db)
-        .await
-        .context("marking identity served")
-        .map_err(AppError::Internal)?;
-    publish_serving_record(state, root_hex).await
-}
-
-// ---------------------------------------------------------------------------------------------
-// The add-a-node ceremony (PROJECT_PLAN, Adding a New Node) and key revocation.
-//
-// Two copy-pastes: the joining node emits a *request code* (its fresh leaf key + how to reach
-// it); the identity's root node turns that into a signed authorization and emits a *grant code*
-// (the root + how to reach the granter); the joining node completes by syncing the identity
-// chains and finding its own authorization there. Codes are JSON - the M4 client dresses them
-// as QR.
-
-const REQUEST_KIND: &str = "ringtome-adopt-request";
-const GRANT_KIND: &str = "ringtome-adopt-grant";
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct RequestCode {
-    pub v: u8,
-    pub kind: String,
-    pub leaf_pubkey: String,
-    /// The leaf's X25519 encryption pubkey - parent-attested in the authorize stamp so epoch
-    /// keys can be sealed to this node from birth.
-    pub enc_pubkey: String,
-    pub endpoint_id: String,
-    pub addrs: Vec<String>,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct GrantCode {
-    pub v: u8,
-    pub kind: String,
-    pub root_pubkey: String,
-    pub leaf_pubkey: String,
-    pub endpoint_id: String,
-    pub addrs: Vec<String>,
-}
-
-/// Step 1, on the joining node: mint a leaf keypair for a prospective identity and emit the
-/// request code. The leaf is sealed immediately; nothing about the identity is known yet.
-pub async fn begin_adoption(
-    state: &crate::AppState,
-    account_id: &Uuid,
-) -> Result<RequestCode, AppError> {
-    let leaf = SigningKey::generate(&mut OsRng);
-    let leaf_hex = hex::encode(leaf.verifying_key().to_bytes());
-
-    state
-        .keystore
-        .store(&leaf_hex, &leaf.to_bytes(), leaf_hex.as_bytes())
-        .context("sealing adoption leaf key")
-        .map_err(AppError::Internal)?;
-    let leaf_enc = crate::seal::EncKeyPair::generate();
-    crate::private::store_enc_keypair(&state.keystore, &leaf_hex, &leaf_enc)
-        .context("sealing adoption encryption key")
-        .map_err(AppError::Internal)?;
-    sqlx::query(
-        "INSERT INTO pending_adoptions (leaf_pubkey, account_id, created_at_ms) VALUES (?1, ?2, ?3)",
-    )
-    .bind(&leaf_hex)
-    .bind(account_id.to_string())
-    .bind(now_ms())
-    .execute(&state.node_db)
-    .await
-    .context("recording pending adoption")
-    .map_err(AppError::Internal)?;
-
-    Ok(RequestCode {
-        v: 0,
-        kind: REQUEST_KIND.to_string(),
-        leaf_pubkey: leaf_hex,
-        enc_pubkey: hex::encode(leaf_enc.public),
-        endpoint_id: state.endpoint.id().to_string(),
-        addrs: crate::p2p::addr_strings(&state.endpoint),
-    })
-}
-
-/// Step 2, on the granting node: the identity's root signs the leaf into the tree and emits the
-/// grant code. v1: only the root's own node may grant (the root is the only key whose stamp we
-/// can compute as a parent here).
-pub async fn authorize_node(
-    state: &crate::AppState,
-    account_id: &Uuid,
-    root_hex: &str,
-    code: RequestCode,
-) -> Result<GrantCode, AppError> {
-    if code.kind != REQUEST_KIND {
-        return Err(AppError::BadRequest("not an adoption request code".into()));
-    }
-    require_owned(&state.node_db, account_id, root_hex).await?;
-
-    let leaf = pubkey::require(&code.leaf_pubkey, "leaf pubkey in request code")?;
-    let leaf_enc = pubkey::require(&code.enc_pubkey, "encryption pubkey in request code")?;
-    let root = pubkey::require(root_hex, "root pubkey")?;
-
-    let signer = load_signing_key(&state.node_db, &state.keystore, account_id, root_hex).await?;
-    if signer.verifying_key().to_bytes() != root {
-        return Err(AppError::Forbidden(
-            "v1: only the identity's root node can authorize new nodes".into(),
-        ));
-    }
-
-    let db = state
-        .user_dbs
-        .get(root_hex)
-        .await
-        .map_err(AppError::Internal)?;
-    let tree = crate::imaol::load_key_tree(&db, root_hex).await?;
-    if tree.status(&leaf) != KeyStatus::Unknown {
-        return Err(AppError::BadRequest(
-            "that key is already in the tree".into(),
-        ));
-    }
-
-    // The stamp: parent's usurpers ([] for the root) + parent + parent's prior children.
-    let mut stamp = vec![root];
-    stamp.extend_from_slice(tree.children_of(&root));
-    let payload = Authorize {
-        child: leaf,
-        usurpers: stamp,
-        enc_pubkey: Some(leaf_enc),
-    }
-    .encode()
-    .map_err(|e| AppError::Internal(anyhow!("encoding authorization: {e}")))?;
-    crate::imaol::append(
-        &db,
-        &signer,
-        service::IDENTITY_PUBLIC,
-        entry_type::AUTHORIZE,
-        Payload::Inline(payload),
-    )
-    .await?;
-
-    // Adoption's private half: re-seal every epoch key this node holds to the newcomer, so its
-    // private view reaches all the way back. A member is a member of the whole history - the
-    // exclusion boundary is revocation's rotation, never adoption.
-    let our_enc = crate::private::load_enc_keypair(&state.keystore, root_hex)
-        .context("loading our encryption key")
-        .map_err(AppError::Internal)?;
-    let epoch_keys = crate::private::unseal_epoch_keys(&db, &root, &our_enc).await?;
-    let resealed =
-        crate::private::reseal_epochs_to(&db, &signer, &leaf, &leaf_enc, &epoch_keys).await?;
-    tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, resealed, "sealed epoch history");
-
-    // Remember the joining node as a peer so future syncs reach it.
-    crate::sync::add_peer(&state.node_db, root_hex, &code.endpoint_id)
-        .await
-        .map_err(AppError::Internal)?;
-
-    tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, "authorized new node");
-    Ok(GrantCode {
-        v: 0,
-        kind: GRANT_KIND.to_string(),
-        root_pubkey: root_hex.to_string(),
-        leaf_pubkey: code.leaf_pubkey,
-        endpoint_id: state.endpoint.id().to_string(),
-        addrs: crate::p2p::addr_strings(&state.endpoint),
-    })
-}
-
-/// Step 3, back on the joining node: sync the identity chains from the granter, verify our leaf
-/// actually landed in the tree, and start agenting the identity.
-pub async fn complete_adoption(
-    state: &crate::AppState,
-    account_id: &Uuid,
-    code: GrantCode,
-) -> Result<Identity, AppError> {
-    if code.kind != GRANT_KIND {
-        return Err(AppError::BadRequest("not an adoption grant code".into()));
-    }
-    // The pending leaf must belong to this account (uniform 404 otherwise).
-    let pending: Option<(String,)> =
-        sqlx::query_as("SELECT account_id FROM pending_adoptions WHERE leaf_pubkey = ?1")
-            .bind(&code.leaf_pubkey)
-            .fetch_optional(&state.node_db)
-            .await
-            .context("checking pending adoption")
-            .map_err(AppError::Internal)?;
-    if pending.map(|(a,)| a) != Some(account_id.to_string()) {
-        return Err(AppError::NotFound(
-            "no pending adoption for that key".into(),
-        ));
-    }
-
-    let leaf = pubkey::require(&code.leaf_pubkey, "leaf pubkey in grant code")?;
-
-    crate::sync::add_peer(&state.node_db, &code.root_pubkey, &code.endpoint_id)
-        .await
-        .map_err(AppError::Internal)?;
-    // Bootstrap dial: the grant code's addresses are ephemeral single-use hints (allowed to be
-    // addresses precisely because they don't live long enough to rot). Later syncs resolve via
-    // the directory.
-    let addr = crate::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
-        .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
-
-    let stats = crate::sync::sync_with_peer(state, &code.root_pubkey, addr)
-        .await
-        .map_err(|e| AppError::Internal(anyhow!("initial sync failed: {e}")))?;
-    tracing::info!(root = %code.root_pubkey, ?stats, "adoption sync complete");
-
-    let db = state
-        .user_dbs
-        .get(&code.root_pubkey)
-        .await
-        .map_err(AppError::Internal)?;
-    let tree = crate::imaol::load_key_tree(&db, &code.root_pubkey).await?;
-    if tree.status(&leaf) != KeyStatus::Active {
-        return Err(AppError::BadRequest(
-            "our key is not (yet) authorized on the identity chain - paste the request code at \
-             the granting node first"
-                .into(),
-        ));
-    }
-
-    let created_at_ms = now_ms();
-    sqlx::query(
-        "INSERT INTO identities (root_pubkey, account_id, created_at_ms, leaf_pubkey)
-         VALUES (?1, ?2, ?3, ?4)",
-    )
-    .bind(&code.root_pubkey)
-    .bind(account_id.to_string())
-    .bind(created_at_ms)
-    .bind(&code.leaf_pubkey)
-    .execute(&state.node_db)
-    .await
-    .context("recording adopted identity")
-    .map_err(AppError::Internal)?;
-    sqlx::query("DELETE FROM pending_adoptions WHERE leaf_pubkey = ?1")
-        .bind(&code.leaf_pubkey)
-        .execute(&state.node_db)
-        .await
-        .context("clearing pending adoption")
-        .map_err(AppError::Internal)?;
-    crate::sync::mark_synced(&state.node_db, &code.root_pubkey, &code.endpoint_id)
-        .await
-        .map_err(AppError::Internal)?;
-
-    // Second pass, now that we agent the identity: the first sync ran proof-less (no identities
-    // row yet), so the granter rightly withheld the private chains. This one carries our member
-    // proof and pulls them - adoption ends with the private state here, not eventually.
-    let addr = crate::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
-        .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
-    let stats = crate::sync::sync_with_peer(state, &code.root_pubkey, addr)
-        .await
-        .map_err(|e| AppError::Internal(anyhow!("private-chain sync failed: {e}")))?;
-    tracing::info!(root = %code.root_pubkey, ?stats, "adoption private sync complete");
-
-    Ok(Identity {
-        root_pubkey: code.root_pubkey,
-        created_at_ms,
-    })
 }
 
 /// Revoke a key in the identity's tree: this node's key signs a `revoke` statement with anchors
