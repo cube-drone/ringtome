@@ -121,6 +121,17 @@ conflicting statements can be ranked using only the statements themselves.
 4. **Authority is a key's full signed chain to the root, or it is nothing.** A statement presented without the
    complete chain of parent-signed authorizations backing every usurper entry is **invalid** - not low-priority,
    invalid. This blocks the obvious forgery: truncating your own lineage to hide a senior usurper sitting above you.
+   Note that "chain to the root" means the compact bundle of authorization entries along the ancestry path - and
+   that two verifier classes consume this rule differently, deliberately. A **full replica** (one of the identity's
+   own nodes, holding every key's complete identity chains) *recomputes* each stamp from the parent's history and
+   rejects mismatches: for it, the stamp is a cross-check. A **compact-proof relying party** (a stranger, follower,
+   or fronting node holding only the chain-to-root bundles it was just handed) cannot recompute anything - it
+   *ranks from the stamps themselves*, comparing two bundles at their divergence point. The stamp is what makes
+   compact proofs **rank-complete**: it is why a first-contact peer can decide which of two keys is senior, and why
+   a stranger can verify that a revocation's signer outranks its target, without anyone shipping full histories.
+   In one line: full replicas verify stamps against history; strangers verify history against stamps. (This is the
+   reason rule 3's lists are not redundant with full-chain validation - they are the provision for verifiers who
+   will never hold full chains.)
 5. **Order is the rank-path, not wall-clock time.** To compare two keys, walk both up to their lowest common
    ancestor; they diverge into two of that ancestor's children; whichever child is senior (per rule 3's lists), that
    entire branch wins. Formally this is lexicographic order on the sequence of sibling-ranks from root to key. A
