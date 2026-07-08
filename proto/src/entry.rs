@@ -128,9 +128,8 @@ fn encode_body(entry: &Entry) -> Vec<u8> {
 
 fn decode_body(body: &[u8]) -> Result<Entry, ProtoError> {
     let mut r = Reader::new(body);
-    let n = r.map()?;
+    let mut map = r.int_map()?;
 
-    let mut last_key: Option<u64> = None;
     let mut v: Option<u64> = None;
     let mut entry_type: Option<u64> = None;
     let mut chain: Option<ChainId> = None;
@@ -139,54 +138,47 @@ fn decode_body(body: &[u8]) -> Result<Entry, ProtoError> {
     let mut timestamp_ms: Option<i64> = None;
     let mut payload: Option<Payload> = None;
 
-    for _ in 0..n {
-        let key = r.uint()?;
-        if let Some(prev) = last_key {
-            if key <= prev {
-                return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-            }
-        }
-        last_key = Some(key);
+    while let Some(key) = map.next_key()? {
         match key {
-            K_VERSION => v = Some(r.uint()?),
-            K_TYPE => entry_type = Some(r.uint()?),
+            K_VERSION => v = Some(map.uint()?),
+            K_TYPE => entry_type = Some(map.uint()?),
             K_CHAIN => {
-                if r.array()? != 2 {
+                if map.array()? != 2 {
                     return Err(ProtoError::BadEntry("chain id must be [author, service]"));
                 }
-                let author = r.bytes_fixed::<32>()?;
-                let service = r.uint()?;
+                let author = map.bytes_fixed::<32>()?;
+                let service = map.uint()?;
                 let service = u32::try_from(service)
                     .map_err(|_| ProtoError::BadEntry("service id out of range"))?;
                 chain = Some(ChainId { author, service });
             }
-            K_SEQ => seq = Some(r.uint()?),
-            K_PREV_HASH => prev_hash = Some(r.bytes_fixed::<HASH_LEN>()?),
+            K_SEQ => seq = Some(map.uint()?),
+            K_PREV_HASH => prev_hash = Some(map.bytes_fixed::<HASH_LEN>()?),
             K_TIMESTAMP => {
                 timestamp_ms = Some(
-                    i64::try_from(r.uint()?)
+                    i64::try_from(map.uint()?)
                         .map_err(|_| ProtoError::BadEntry("timestamp out of range"))?,
                 )
             }
             K_PAYLOAD => {
-                if r.array()? != 2 {
+                if map.array()? != 2 {
                     return Err(ProtoError::BadEntry("payload must be [kind, value]"));
                 }
-                payload = Some(match r.uint()? {
+                payload = Some(match map.uint()? {
                     PAYLOAD_INLINE => {
-                        let b = r.bytes()?;
+                        let b = map.bytes()?;
                         if b.len() > MAX_INLINE_PAYLOAD {
                             return Err(ProtoError::BadEntry("inline payload exceeds size limit"));
                         }
                         Payload::Inline(b.to_vec())
                     }
-                    PAYLOAD_BLOB => Payload::Blob(r.bytes_fixed::<HASH_LEN>()?),
+                    PAYLOAD_BLOB => Payload::Blob(map.bytes_fixed::<HASH_LEN>()?),
                     _ => return Err(ProtoError::BadEntry("unknown payload kind")),
                 });
             }
             // Forward compatibility: a newer dialect's extra fields are skipped (and, because
             // the envelope stores original bytes, carried through intact when forwarded).
-            _ => r.skip_value()?,
+            _ => map.skip_value()?,
         }
     }
     r.finish()?;

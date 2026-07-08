@@ -223,8 +223,21 @@ impl<'a> Reader<'a> {
         self.expect(MAJOR_ARRAY, "expected array")
     }
 
-    pub fn map(&mut self) -> Result<u64, ProtoError> {
+    fn map(&mut self) -> Result<u64, ProtoError> {
         self.expect(MAJOR_MAP, "expected map")
+    }
+
+    /// Begin an integer-keyed map. This is the *only* way to read a map: all iteration goes
+    /// through the returned cursor, whose `next_key` enforces strictly-ascending key order - so
+    /// the deterministic profile's map-key rule is structural, not per-decoder discipline a
+    /// future payload type could forget.
+    pub fn int_map(&mut self) -> Result<MapReader<'_, 'a>, ProtoError> {
+        let declared_entries = self.map()?;
+        Ok(MapReader {
+            reader: self,
+            remaining: declared_entries,
+            last_key: None,
+        })
     }
 
     /// Skip one value of any supported shape - this is what makes unknown-field carry-through
@@ -291,6 +304,53 @@ impl<'a> Reader<'a> {
         } else {
             Err(ProtoError::TrailingBytes)
         }
+    }
+}
+
+/// Cursor over one integer-keyed map: yields keys until the declared count is exhausted,
+/// refusing out-of-order (and therefore duplicate) keys at the source. Value reads go through
+/// the cursor's delegating methods, so mid-map a decoder holds exactly one handle.
+pub struct MapReader<'r, 'a> {
+    reader: &'r mut Reader<'a>,
+    remaining: u64,
+    last_key: Option<u64>,
+}
+
+impl<'a> MapReader<'_, 'a> {
+    /// The next key, or `None` once the map's declared entry count is consumed.
+    pub fn next_key(&mut self) -> Result<Option<u64>, ProtoError> {
+        if self.remaining == 0 {
+            return Ok(None);
+        }
+        self.remaining -= 1;
+        let key = self.reader.uint()?;
+        if let Some(prev) = self.last_key {
+            if key <= prev {
+                return Err(ProtoError::NonCanonical("map keys not in ascending order"));
+            }
+        }
+        self.last_key = Some(key);
+        Ok(Some(key))
+    }
+
+    // Value reads, delegated verbatim to the underlying reader.
+    pub fn uint(&mut self) -> Result<u64, ProtoError> {
+        self.reader.uint()
+    }
+    pub fn bytes(&mut self) -> Result<&'a [u8], ProtoError> {
+        self.reader.bytes()
+    }
+    pub fn bytes_fixed<const N: usize>(&mut self) -> Result<[u8; N], ProtoError> {
+        self.reader.bytes_fixed()
+    }
+    pub fn text(&mut self) -> Result<&'a str, ProtoError> {
+        self.reader.text()
+    }
+    pub fn array(&mut self) -> Result<u64, ProtoError> {
+        self.reader.array()
+    }
+    pub fn skip_value(&mut self) -> Result<(), ProtoError> {
+        self.reader.skip_value()
     }
 }
 
@@ -411,6 +471,51 @@ mod tests {
             r
         };
         assert_eq!(r.finish(), Err(ProtoError::TrailingBytes));
+    }
+
+    #[test]
+    fn int_map_yields_keys_in_order_and_stops_at_the_count() {
+        let mut w = Writer::new();
+        w.map(2);
+        w.uint(0);
+        w.uint(10);
+        w.uint(2);
+        w.uint(30);
+        let bytes = w.into_bytes();
+
+        let mut r = Reader::new(&bytes);
+        let mut map = r.int_map().unwrap();
+        assert_eq!(map.next_key().unwrap(), Some(0));
+        assert_eq!(map.uint().unwrap(), 10);
+        assert_eq!(map.next_key().unwrap(), Some(2));
+        assert_eq!(map.uint().unwrap(), 30);
+        assert_eq!(map.next_key().unwrap(), None);
+        r.finish().unwrap();
+    }
+
+    #[test]
+    fn int_map_refuses_descending_and_duplicate_keys() {
+        // The Writer emits whatever the caller writes, which is exactly what makes it useful
+        // for building non-canonical input.
+        for keys in [[1u64, 0u64], [1, 1]] {
+            let mut w = Writer::new();
+            w.map(2);
+            w.uint(keys[0]);
+            w.uint(0);
+            w.uint(keys[1]);
+            w.uint(0);
+            let bytes = w.into_bytes();
+
+            let mut r = Reader::new(&bytes);
+            let mut map = r.int_map().unwrap();
+            assert_eq!(map.next_key().unwrap(), Some(keys[0]));
+            map.uint().unwrap();
+            assert_eq!(
+                map.next_key(),
+                Err(ProtoError::NonCanonical("map keys not in ascending order")),
+                "keys {keys:?} must be refused at the cursor"
+            );
+        }
     }
 
     #[test]

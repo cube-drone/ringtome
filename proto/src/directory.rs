@@ -72,29 +72,21 @@ fn encode_body(r: &ServingRecord) -> Vec<u8> {
 
 fn decode_body(body: &[u8]) -> Result<ServingRecord, ProtoError> {
     let mut r = Reader::new(body);
-    let n = r.map()?;
-    let mut last_key: Option<u64> = None;
+    let mut map = r.int_map()?;
     let (mut v, mut root, mut node_key, mut endpoint_id, mut ts) = (None, None, None, None, None);
-    for _ in 0..n {
-        let key = r.uint()?;
-        if let Some(prev) = last_key {
-            if key <= prev {
-                return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-            }
-        }
-        last_key = Some(key);
+    while let Some(key) = map.next_key()? {
         match key {
-            0 => v = Some(r.uint()?),
-            1 => root = Some(r.bytes_fixed::<32>()?),
-            2 => node_key = Some(r.bytes_fixed::<32>()?),
-            3 => endpoint_id = Some(r.bytes_fixed::<32>()?),
+            0 => v = Some(map.uint()?),
+            1 => root = Some(map.bytes_fixed::<32>()?),
+            2 => node_key = Some(map.bytes_fixed::<32>()?),
+            3 => endpoint_id = Some(map.bytes_fixed::<32>()?),
             4 => {
                 ts = Some(
-                    i64::try_from(r.uint()?)
+                    i64::try_from(map.uint()?)
                         .map_err(|_| ProtoError::BadEntry("timestamp out of range"))?,
                 )
             }
-            _ => r.skip_value()?,
+            _ => map.skip_value()?,
         }
     }
     r.finish()?;

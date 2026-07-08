@@ -102,34 +102,26 @@ impl Authorize {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
         let mut r = Reader::new(bytes);
-        let n = r.map()?;
-        let mut last_key: Option<u64> = None;
+        let mut map = r.int_map()?;
         let mut child: Option<[u8; 32]> = None;
         let mut usurpers: Option<Vec<[u8; 32]>> = None;
         let mut enc_pubkey: Option<[u8; 32]> = None;
-        for _ in 0..n {
-            let key = r.uint()?;
-            if let Some(prev) = last_key {
-                if key <= prev {
-                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-                }
-            }
-            last_key = Some(key);
+        while let Some(key) = map.next_key()? {
             match key {
-                0 => child = Some(r.bytes_fixed::<32>()?),
+                0 => child = Some(map.bytes_fixed::<32>()?),
                 1 => {
-                    let len = r.array()?;
+                    let len = map.array()?;
                     if len > Self::MAX_USURPERS as u64 {
                         return Err(ProtoError::BadEntry("usurper list too long"));
                     }
                     let mut list = Vec::with_capacity(len as usize);
                     for _ in 0..len {
-                        list.push(r.bytes_fixed::<32>()?);
+                        list.push(map.bytes_fixed::<32>()?);
                     }
                     usurpers = Some(list);
                 }
-                2 => enc_pubkey = Some(r.bytes_fixed::<32>()?),
-                _ => r.skip_value()?,
+                2 => enc_pubkey = Some(map.bytes_fixed::<32>()?),
+                _ => map.skip_value()?,
             }
         }
         r.finish()?;
@@ -188,35 +180,27 @@ impl KeyEpoch {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
         let mut r = Reader::new(bytes);
-        let n = r.map()?;
-        let mut last_key: Option<u64> = None;
+        let mut map = r.int_map()?;
         let mut epoch: Option<u64> = None;
         let mut recipients: Option<Vec<EpochRecipient>> = None;
-        for _ in 0..n {
-            let key = r.uint()?;
-            if let Some(prev) = last_key {
-                if key <= prev {
-                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-                }
-            }
-            last_key = Some(key);
+        while let Some(key) = map.next_key()? {
             match key {
-                0 => epoch = Some(r.uint()?),
+                0 => epoch = Some(map.uint()?),
                 1 => {
-                    let len = r.array()?;
+                    let len = map.array()?;
                     if len > Self::MAX_RECIPIENTS as u64 {
                         return Err(ProtoError::BadEntry("too many epoch recipients"));
                     }
                     let mut list = Vec::with_capacity(len as usize);
                     for _ in 0..len {
-                        if r.array()? != 3 {
+                        if map.array()? != 3 {
                             return Err(ProtoError::BadEntry(
                                 "epoch recipient must be [leaf, enc_pub, box]",
                             ));
                         }
-                        let leaf = r.bytes_fixed::<32>()?;
-                        let enc_pub = r.bytes_fixed::<32>()?;
-                        let sealed = r.bytes()?;
+                        let leaf = map.bytes_fixed::<32>()?;
+                        let enc_pub = map.bytes_fixed::<32>()?;
+                        let sealed = map.bytes()?;
                         if sealed.len() > Self::MAX_BOX_BYTES {
                             return Err(ProtoError::BadEntry("epoch box too large"));
                         }
@@ -224,7 +208,7 @@ impl KeyEpoch {
                     }
                     recipients = Some(list);
                 }
-                _ => r.skip_value()?,
+                _ => map.skip_value()?,
             }
         }
         r.finish()?;
@@ -267,28 +251,20 @@ impl PrivateRecord {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
         let mut r = Reader::new(bytes);
-        let n = r.map()?;
-        let mut last_key: Option<u64> = None;
+        let mut map = r.int_map()?;
         let (mut epoch, mut nonce, mut ciphertext) = (None, None, None);
-        for _ in 0..n {
-            let key = r.uint()?;
-            if let Some(prev) = last_key {
-                if key <= prev {
-                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-                }
-            }
-            last_key = Some(key);
+        while let Some(key) = map.next_key()? {
             match key {
-                0 => epoch = Some(r.uint()?),
-                1 => nonce = Some(r.bytes_fixed::<24>()?),
+                0 => epoch = Some(map.uint()?),
+                1 => nonce = Some(map.bytes_fixed::<24>()?),
                 2 => {
-                    let ct = r.bytes()?;
+                    let ct = map.bytes()?;
                     if ct.len() > Self::MAX_CIPHERTEXT {
                         return Err(ProtoError::BadEntry("private record too large"));
                     }
                     ciphertext = Some(ct.to_vec());
                 }
-                _ => r.skip_value()?,
+                _ => map.skip_value()?,
             }
         }
         r.finish()?;
@@ -359,30 +335,22 @@ impl PrivatePlain {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
         let mut r = Reader::new(bytes);
-        let n = r.map()?;
-        let mut last_key: Option<u64> = None;
+        let mut map = r.int_map()?;
         let (mut kind, mut collection, mut key_f, mut value) = (None, None, None, None);
-        for _ in 0..n {
-            let key = r.uint()?;
-            if let Some(prev) = last_key {
-                if key <= prev {
-                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-                }
-            }
-            last_key = Some(key);
+        while let Some(key) = map.next_key()? {
             match key {
                 0 => {
-                    kind = Some(match r.uint()? {
+                    kind = Some(match map.uint()? {
                         0 => PrivateKind::Register,
                         1 => PrivateKind::SetAdd,
                         2 => PrivateKind::SetRemove,
                         _ => return Err(ProtoError::BadEntry("unknown private record kind")),
                     })
                 }
-                1 => collection = Some(r.text()?.to_string()),
-                2 => key_f = Some(r.text()?.to_string()),
-                3 => value = Some(r.text()?.to_string()),
-                _ => r.skip_value()?,
+                1 => collection = Some(map.text()?.to_string()),
+                2 => key_f = Some(map.text()?.to_string()),
+                3 => value = Some(map.text()?.to_string()),
+                _ => map.skip_value()?,
             }
         }
         r.finish()?;
@@ -470,44 +438,36 @@ impl Revoke {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
         let mut r = Reader::new(bytes);
-        let n = r.map()?;
-        let mut last_key: Option<u64> = None;
+        let mut map = r.int_map()?;
         let mut target: Option<[u8; 32]> = None;
         let mut disposition: Option<Disposition> = None;
         let mut anchors: Option<Vec<Anchor>> = None;
-        for _ in 0..n {
-            let key = r.uint()?;
-            if let Some(prev) = last_key {
-                if key <= prev {
-                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-                }
-            }
-            last_key = Some(key);
+        while let Some(key) = map.next_key()? {
             match key {
-                0 => target = Some(r.bytes_fixed::<32>()?),
+                0 => target = Some(map.bytes_fixed::<32>()?),
                 1 => {
-                    disposition = Some(match r.uint()? {
+                    disposition = Some(match map.uint()? {
                         0 => Disposition::Retirement,
                         1 => Disposition::Repudiation,
                         _ => return Err(ProtoError::BadEntry("unknown revocation disposition")),
                     })
                 }
                 2 => {
-                    let len = r.array()?;
+                    let len = map.array()?;
                     if len > Self::MAX_ANCHORS as u64 {
                         return Err(ProtoError::BadEntry("anchor list too long"));
                     }
                     let mut list = Vec::with_capacity(len as usize);
                     for _ in 0..len {
-                        if r.array()? != 3 {
+                        if map.array()? != 3 {
                             return Err(ProtoError::BadEntry(
                                 "anchor must be [service, seq, head_hash]",
                             ));
                         }
-                        let service = u32::try_from(r.uint()?)
+                        let service = u32::try_from(map.uint()?)
                             .map_err(|_| ProtoError::BadEntry("service id out of range"))?;
-                        let seq = r.uint()?;
-                        let head_hash = r.bytes_fixed::<32>()?;
+                        let seq = map.uint()?;
+                        let head_hash = map.bytes_fixed::<32>()?;
                         list.push(Anchor {
                             service,
                             seq,
@@ -516,7 +476,7 @@ impl Revoke {
                     }
                     anchors = Some(list);
                 }
-                _ => r.skip_value()?,
+                _ => map.skip_value()?,
             }
         }
         r.finish()?;
@@ -563,22 +523,14 @@ impl ProfileSet {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
         let mut r = Reader::new(bytes);
-        let n = r.map()?;
-        let mut last_key: Option<u64> = None;
+        let mut map = r.int_map()?;
         let mut field: Option<String> = None;
         let mut value: Option<String> = None;
-        for _ in 0..n {
-            let key = r.uint()?;
-            if let Some(prev) = last_key {
-                if key <= prev {
-                    return Err(ProtoError::NonCanonical("map keys not in ascending order"));
-                }
-            }
-            last_key = Some(key);
+        while let Some(key) = map.next_key()? {
             match key {
-                0 => field = Some(r.text()?.to_string()),
-                1 => value = Some(r.text()?.to_string()),
-                _ => r.skip_value()?,
+                0 => field = Some(map.text()?.to_string()),
+                1 => value = Some(map.text()?.to_string()),
+                _ => map.skip_value()?,
             }
         }
         r.finish()?;

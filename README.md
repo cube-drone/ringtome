@@ -36,7 +36,7 @@ cargo run --bin ringtome    # run a node (see node/README.md for configuration)
   language mapping.
 - [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and
   the pragmatism rules; the patterns every new file is expected to hold.
-- [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups, checked off as
-  they land (tech debt is a mortgage; this is the statement).
+- [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
+  a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
 - [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
   cautionary tales.
