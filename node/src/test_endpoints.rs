@@ -73,7 +73,7 @@ fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> serde_json::Map<String, Value> 
             v.map(Value::from).unwrap_or(Value::Null)
         } else if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(idx) {
             // Blob: represent as an array of byte values (JSON has no bytes type).
-            v.map(|bytes| Value::from(bytes)).unwrap_or(Value::Null)
+            v.map(Value::from).unwrap_or(Value::Null)
         } else {
             Value::Null
         };

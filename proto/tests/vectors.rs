@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{
-    Anchor, Authorize, ChainId, Disposition, Entry, Payload, ProfileSet, Revoke, SignedEntry,
-    ENTRY_VERSION, ZERO_HASH,
+    Anchor, Authorize, ChainId, Disposition, Entry, KeyEpoch, Payload, PrivateKind, PrivatePlain,
+    PrivateRecord, ProfileSet, Revoke, SignedEntry, ENTRY_VERSION, ZERO_HASH,
 };
 
 const VECTORS_PATH: &str = concat!(
@@ -161,6 +161,7 @@ fn build_vectors() -> VectorFile {
     let az = Authorize {
         child: recovery.verifying_key().to_bytes(),
         usurpers: vec![author],
+        enc_pubkey: None,
     }
     .encode()
     .unwrap();
@@ -194,6 +195,79 @@ fn build_vectors() -> VectorFile {
         *i0.hash(),
         1_700_000_240_000,
         Payload::Inline(rv),
+    );
+
+    // Vector 6: authorize carrying the child's X25519 encryption pubkey (the additive private-
+    // chains field). A second child of the same root, so the stamp is [root, recovery].
+    let laptop = SigningKey::from_bytes(&[9u8; 32]);
+    let az2 = Authorize {
+        child: laptop.verifying_key().to_bytes(),
+        usurpers: vec![author, recovery.verifying_key().to_bytes()],
+        enc_pubkey: Some([0x42u8; 32]),
+    }
+    .encode()
+    .unwrap();
+    let i2 = make(
+        "authorize chained (with enc pubkey)",
+        entry_type::AUTHORIZE,
+        service::IDENTITY_PUBLIC,
+        2,
+        *_i1.hash(),
+        1_700_000_300_000,
+        Payload::Inline(az2),
+    );
+
+    // Vector 7: a key-epoch rotation with two recipients (boxes are fixed placeholder bytes -
+    // the format is what's under test; sealing is a node concern).
+    let ke = KeyEpoch {
+        epoch: 1,
+        recipients: vec![
+            (author, [0x42u8; 32], vec![0xAA; 80]),
+            (
+                recovery.verifying_key().to_bytes(),
+                [0x43u8; 32],
+                vec![0xBB; 80],
+            ),
+        ],
+    }
+    .encode()
+    .unwrap();
+    let _i3 = make(
+        "key-epoch chained (two recipients)",
+        entry_type::KEY_EPOCH,
+        service::IDENTITY_PUBLIC,
+        3,
+        *i2.hash(),
+        1_700_000_360_000,
+        Payload::Inline(ke),
+    );
+
+    // Vector 8: a private record on the private service. Ciphertext here is the canonical
+    // encoding of a PrivatePlain "encrypted" with fixed placeholder bytes XORed in - format
+    // conformance only; real encryption is XChaCha20-Poly1305 at the node layer.
+    let inner = PrivatePlain {
+        kind: PrivateKind::SetAdd,
+        collection: "follows".into(),
+        key: "aabbccdd00112233".into(),
+        value: None,
+    }
+    .encode()
+    .unwrap();
+    let pr = PrivateRecord {
+        epoch: 1,
+        nonce: [0x11u8; 24],
+        ciphertext: inner, // placeholder: format-level vector, not a cryptographic one
+    }
+    .encode()
+    .unwrap();
+    let _v0 = make(
+        "private-record genesis (format only)",
+        entry_type::PRIVATE_RECORD,
+        service::PRIVATE,
+        0,
+        ZERO_HASH,
+        1_700_000_420_000,
+        Payload::Inline(pr),
     );
 
     VectorFile {

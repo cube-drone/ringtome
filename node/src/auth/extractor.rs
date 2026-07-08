@@ -64,6 +64,9 @@ impl FromRequestParts<AppState> for Session {
 /// administrator(s); everyone else gets 403.
 #[derive(Debug, Clone)]
 pub struct NodeAdminSession {
+    /// Unread so far - the only node-admin handler is a ping - but every future admin action
+    /// will want to know who acted.
+    #[allow(dead_code)]
     pub account: Account,
 }
 

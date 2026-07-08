@@ -41,10 +41,12 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// The result of minting an identity. `recovery_secret` is the recovery key's seed, hex-encoded,
-/// present **exactly once, here** - the node never persists it. Losing it after this response is
-/// the user's designed responsibility ("put the spare key somewhere safe"); holding onto it would
-/// defeat its purpose (an offline key the node cannot leak).
+/// The result of minting an identity. `recovery_secret` is the recovery key's **seed**,
+/// hex-encoded, present **exactly once, here** - the node never persists it. The seed derives
+/// both recovery keypairs (signing + encryption, via `seal::derive_recovery`), so the one photo
+/// artifact carries both. Losing it after this response is the user's designed responsibility
+/// ("put the spare key somewhere safe"); holding onto it would defeat its purpose (an offline
+/// key the node cannot leak).
 #[derive(Debug)]
 pub struct CreatedIdentity {
     pub root_pubkey: String,
@@ -70,17 +72,28 @@ pub async fn create(
     let root_pubkey = signing_key.verifying_key().to_bytes();
     let pubkey_hex = hex::encode(root_pubkey);
 
-    // 2. Generate the recovery keypair. Its private key is returned to the caller and NEVER
-    //    written to the keystore, the database, or a log - the whole point is a key this node
-    //    cannot leak.
-    let recovery_key = SigningKey::generate(&mut OsRng);
+    // 2. Generate the recovery *seed* and derive its two keypairs (signing + encryption). The
+    //    seed is returned to the caller and NEVER written to the keystore, the database, or a
+    //    log - the whole point is a key this node cannot leak.
+    let recovery_seed: [u8; 32] = {
+        use rand::RngCore;
+        let mut seed = [0u8; 32];
+        OsRng.fill_bytes(&mut seed);
+        seed
+    };
+    let (recovery_key, recovery_enc) = crate::seal::derive_recovery(&recovery_seed);
     let recovery_pubkey = recovery_key.verifying_key().to_bytes();
 
     // 3. Seal the root's private key to a key file, binding the pubkey as associated data so a
-    //    key file can't be swapped for another identity's.
+    //    key file can't be swapped for another identity's. The root also gets an encryption
+    //    keypair (for opening epoch boxes), stored beside the signing key.
     keystore
         .store(&pubkey_hex, &signing_key.to_bytes(), pubkey_hex.as_bytes())
         .context("sealing identity private key")
+        .map_err(AppError::Internal)?;
+    let root_enc = crate::seal::EncKeyPair::generate();
+    crate::private::store_enc_keypair(keystore, &pubkey_hex, &root_enc)
+        .context("sealing identity encryption key")
         .map_err(AppError::Internal)?;
 
     // 4. Record the identity -> account link. On the creating node, the signing key *is* the
@@ -113,6 +126,7 @@ pub async fn create(
     let stamp = Authorize {
         child: recovery_pubkey,
         usurpers: vec![root_pubkey],
+        enc_pubkey: Some(recovery_enc.public),
     }
     .encode()
     .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding recovery authorization: {e}")))?;
@@ -122,6 +136,22 @@ pub async fn create(
         service::IDENTITY_PUBLIC,
         entry_type::AUTHORIZE,
         Payload::Inline(stamp),
+    )
+    .await?;
+
+    // 7. Epoch 0: the identity's first private-chain key, sealed to the root and the (offline)
+    //    recovery key. Every private record ever written is under some epoch; minting the first
+    //    one here means "has private chains" is an invariant, not a lazy upgrade.
+    let epoch_key = crate::private::fresh_epoch_key();
+    crate::private::mint_epoch(
+        &user_db,
+        &signing_key,
+        0,
+        &epoch_key,
+        &[
+            (root_pubkey, root_enc.public),
+            (recovery_pubkey, recovery_enc.public),
+        ],
     )
     .await?;
 
@@ -135,7 +165,7 @@ pub async fn create(
         root_pubkey: pubkey_hex,
         created_at_ms,
         recovery_pubkey: hex::encode(recovery_pubkey),
-        recovery_secret: hex::encode(recovery_key.to_bytes()),
+        recovery_secret: hex::encode(recovery_seed),
         authorize_entry_hash: hex::encode(genesis.hash()),
     })
 }
@@ -240,6 +270,35 @@ pub async fn load_signing_key(
     Ok(SigningKey::from_bytes(&arr))
 }
 
+/// Load this node's signing key for an identity it agents, regardless of owning account - the
+/// sync engine's loader (a member proof speaks for the node, not for a login session). `None`
+/// when the node doesn't agent the identity.
+pub async fn load_node_leaf_key(
+    node_db: &SqlitePool,
+    keystore: &Keystore,
+    root_pubkey: &str,
+) -> Result<Option<SigningKey>, AppError> {
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1")
+            .bind(root_pubkey)
+            .fetch_optional(node_db)
+            .await
+            .context("looking up identity leaf")
+            .map_err(AppError::Internal)?;
+    let Some((leaf,)) = row else {
+        return Ok(None);
+    };
+    let key_name = leaf.unwrap_or_else(|| root_pubkey.to_string());
+    let bytes = keystore
+        .load_key(&key_name, key_name.as_bytes())
+        .map_err(AppError::Internal)?;
+    let arr: [u8; 32] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| AppError::Internal(anyhow!("private key wrong length")))?;
+    Ok(Some(SigningKey::from_bytes(&arr)))
+}
+
 // ---------------------------------------------------------------------------------------------
 // The add-a-node ceremony (PROJECT_PLAN, Adding a New Node) and key revocation.
 //
@@ -257,6 +316,9 @@ pub struct RequestCode {
     pub v: u8,
     pub kind: String,
     pub leaf_pubkey: String,
+    /// The leaf's X25519 encryption pubkey - parent-attested in the authorize stamp so epoch
+    /// keys can be sealed to this node from birth.
+    pub enc_pubkey: String,
     pub endpoint_id: String,
     pub addrs: Vec<String>,
 }
@@ -360,6 +422,10 @@ pub async fn begin_adoption(
         .store(&leaf_hex, &leaf.to_bytes(), leaf_hex.as_bytes())
         .context("sealing adoption leaf key")
         .map_err(AppError::Internal)?;
+    let leaf_enc = crate::seal::EncKeyPair::generate();
+    crate::private::store_enc_keypair(&state.keystore, &leaf_hex, &leaf_enc)
+        .context("sealing adoption encryption key")
+        .map_err(AppError::Internal)?;
     sqlx::query(
         "INSERT INTO pending_adoptions (leaf_pubkey, account_id, created_at_ms) VALUES (?1, ?2, ?3)",
     )
@@ -375,6 +441,7 @@ pub async fn begin_adoption(
         v: 0,
         kind: REQUEST_KIND.to_string(),
         leaf_pubkey: leaf_hex,
+        enc_pubkey: hex::encode(leaf_enc.public),
         endpoint_id: state.endpoint.id().to_string(),
         addrs: crate::p2p::addr_strings(&state.endpoint),
     })
@@ -398,6 +465,10 @@ pub async fn authorize_node(
         .ok()
         .and_then(|b| b.try_into().ok())
         .ok_or_else(|| AppError::BadRequest("bad leaf pubkey in request code".into()))?;
+    let leaf_enc: [u8; 32] = hex::decode(&code.enc_pubkey)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| AppError::BadRequest("bad encryption pubkey in request code".into()))?;
     let root: [u8; 32] = hex::decode(root_hex)
         .ok()
         .and_then(|b| b.try_into().ok())
@@ -428,6 +499,7 @@ pub async fn authorize_node(
     let payload = Authorize {
         child: leaf,
         usurpers: stamp,
+        enc_pubkey: Some(leaf_enc),
     }
     .encode()
     .map_err(|e| AppError::Internal(anyhow!("encoding authorization: {e}")))?;
@@ -439,6 +511,17 @@ pub async fn authorize_node(
         Payload::Inline(payload),
     )
     .await?;
+
+    // Adoption's private half: re-seal every epoch key this node holds to the newcomer, so its
+    // private view reaches all the way back. A member is a member of the whole history - the
+    // exclusion boundary is revocation's rotation, never adoption.
+    let our_enc = crate::private::load_enc_keypair(&state.keystore, root_hex)
+        .context("loading our encryption key")
+        .map_err(AppError::Internal)?;
+    let epoch_keys = crate::private::unseal_epoch_keys(&db, &root, &our_enc).await?;
+    let resealed =
+        crate::private::reseal_epochs_to(&db, &signer, &leaf, &leaf_enc, &epoch_keys).await?;
+    tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, resealed, "sealed epoch history");
 
     // Remember the joining node as a peer so future syncs reach it.
     crate::sync::add_peer(&state.node_db, root_hex, &code.endpoint_id)
@@ -536,6 +619,16 @@ pub async fn complete_adoption(
         .await
         .map_err(AppError::Internal)?;
 
+    // Second pass, now that we agent the identity: the first sync ran proof-less (no identities
+    // row yet), so the granter rightly withheld the private chains. This one carries our member
+    // proof and pulls them - adoption ends with the private state here, not eventually.
+    let addr = crate::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
+        .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
+    let stats = crate::sync::sync_with_peer(state, &code.root_pubkey, addr)
+        .await
+        .map_err(|e| AppError::Internal(anyhow!("private-chain sync failed: {e}")))?;
+    tracing::info!(root = %code.root_pubkey, ?stats, "adoption private sync complete");
+
     Ok(Identity {
         root_pubkey: code.root_pubkey,
         created_at_ms,
@@ -606,6 +699,20 @@ pub async fn revoke_key(
         Payload::Inline(payload),
     )
     .await?;
+
+    // The forward-secrecy boundary: a revoked key's server still holds its epoch keys, so every
+    // revocation - retirement included, however friendly - rotates to a fresh epoch sealed to
+    // everyone but the departed. It reads its era forever; the future is closed. (Rotation
+    // failing must not unwind the revocation itself: eviction now, re-key ASAP beats neither.)
+    let tree = crate::imaol::load_key_tree(&db, root_hex).await?;
+    match crate::private::rotate_epoch(&db, &signer, &tree, &target).await {
+        Ok(epoch_entry) => tracing::info!(
+            root = %root_hex,
+            entry = %hex::encode(epoch_entry.hash()),
+            "rotated private epoch after revocation"
+        ),
+        Err(e) => tracing::error!(root = %root_hex, "epoch rotation after revocation failed: {e}"),
+    }
 
     tracing::info!(root = %root_hex, target = %target_hex, ?disposition, "revoked key");
     Ok(hex::encode(signed.hash()))

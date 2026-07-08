@@ -27,7 +27,11 @@ pub use entry::{
 };
 pub use error::ProtoError;
 pub use keytree::{Ceiling, KeyStatus, KeyTree};
-pub use registry::{Anchor, Authorize, Disposition, ProfileSet, Revoke};
+pub use registry::{
+    Anchor, Authorize, Disposition, KeyEpoch, PrivateKind, PrivatePlain, PrivateRecord, ProfileSet,
+    Revoke,
+};
+pub use sync::MemberProof;
 
 // Re-export the key types the public API takes, so consumers use the exact same ed25519-dalek
 // the signatures were made with.

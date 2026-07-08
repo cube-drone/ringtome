@@ -22,8 +22,10 @@ mod imaol;
 mod inspect;
 mod keystore;
 mod p2p;
+mod private;
 mod rate_limit;
 mod request_context;
+mod seal;
 mod sync;
 mod test_endpoints;
 

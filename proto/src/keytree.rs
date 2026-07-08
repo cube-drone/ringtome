@@ -541,6 +541,7 @@ mod tests {
             let payload = Authorize {
                 child: child.pk(),
                 usurpers: stamp,
+                enc_pubkey: None,
             }
             .encode()
             .unwrap();
@@ -630,6 +631,7 @@ mod tests {
         let bad_stamp = Authorize {
             child: liar.pk(),
             usurpers: vec![root.pk()],
+            enc_pubkey: None,
         } // missing recovery
         .encode()
         .unwrap();

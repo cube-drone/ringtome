@@ -241,15 +241,23 @@ given the undivided attention the key tree got. Vocabulary spec (resolving the o
 the `page`/`post` payload types, the **strict parser twice** - Rust in proto (validation), JS in
 the client (rendering) - kept honest by published markup test vectors, exactly the discipline
 that guards the entry format. Safe renderer (AST -> DOM construction, never innerHTML),
-blob-hash-only embeds enforced at the grammar. *Track demo:* a page with a tiled background and a
+blob-hash-only embeds enforced at the grammar. Two obligations from the plan's Moderation and
+Operator Liability section: reserve a **labels field** on `page`/`post` payloads (content labels
+are consent machinery; retrofitting label semantics into signed content is a protocol break in
+miniature), and the first blob types pass the **media-type admission test** (strict parse in a
+sandboxed decoder, scanning story, metadata-privacy story - EXIF stripping is an authoring-client,
+pre-sign concern). *Track demo:* a page with a tiled background and a
 marquee, parsed by both implementations to identical ASTs.
 
 **4S — The social layer ("other people exist").** Everything that crosses the inter-identity
 boundary: the **public serving surface** (`/public/*` reads for non-owners - deliberately
 deferred since M1), the `follow` type and serving-follows, **`ringtome://` resolution** (the
-ladder consuming M3.5's directory), identicons + contact names, and the open **web-gateway
-decision** (it is a question *about* the public surface; settle it while building one). *Track
-demo:* curl a stranger's profile off a node that serves them, resolved from a `ringtome://` URL.
+ladder consuming M3.5's directory), identicons + contact names, and the **serving-boundary
+defaults** from the plan's Moderation and Operator Liability section (the web-gateway question is
+now settled - distinct dual-opt-in role, no anonymous HTTP by default; 4S builds the
+member/peer-facing `/public/*` surface accordingly, gateway role deferred past Tier 6's gate).
+*Track demo:* curl a stranger's profile (as an authenticated member of a node that serves them),
+resolved from a `ringtome://` URL.
 
 **Leaf dependencies (land in whichever track finishes last):** page-authoring UI = 4C + 4M;
 reading view/feed = 4C + 4S; rendering a *stranger's* page = all three. **Tier exit demo:** two
@@ -271,6 +279,25 @@ data:
   *encrypted* chains synced only among an identity's own nodes - infrastructure no milestone has
   built yet (encryption scheme, key distribution within the tree, the never-serve-across-the-
   identity-boundary rule at the sync gate).
+
+  **Status: COMPLETE (2026-07-08).** The full scheme is written up in PROJECT_PLAN's new "Private
+  Chains: Epoch Keys and the Membership Boundary" section. Proto: `key-epoch` / `private-record`
+  payloads + `PrivatePlain` (register / set-add / set-remove), `enc_pubkey` on authorize
+  (additive field 2), channel-bound `MemberProof` in the sync Hello - all vectored. Node:
+  `seal.rs` (dryoc sealed boxes + photo-seed recovery derivation, under the crypto byte-boundary
+  policy), `private.rs` (epoch unseal/mint/rotate, XChaCha record crypto, in-memory LWW register
+  + set views), identity creation mints the root enc key + epoch 0 and derives recovery from a
+  seed, adoption re-seals the epoch history + a second member-proven sync pulls the private
+  chains, every revocation rotates the epoch, and the sync gate withholds private entries *and
+  frontiers* from unproven peers in both directions. Owner-gated `/private/kv/*` +
+  `/private/set/*` API. Proven end to end by `private.cjs`: adoption carries private state to the
+  new node, private writes flow both ways, and a revoked node keeps reading its era while the
+  post-rotation record never even reaches it. *Residuals:* (a) concurrent rotations can twin an
+  epoch number - readers try all keys for an epoch and the AEAD tag disambiguates; convergent but
+  unlovely; (b) the epoch boundary is eventual under partition (a not-yet-informed member writes
+  under the old epoch; readable by all, by design); (c) the `identity-private` service is gated
+  but writer-less; (d) requesters re-offer private chains every exchange (duplicate-skip absorbs
+  it) - revisit if private chains ever get big.
 - **Vouch statements + contact names** (deps: private chains): the payload types and their APIs;
   the "I know this person for real" ceremony belongs to 4C's language budget.
 - **Wiring trust into the product** (deps: 4S + the above): the coarse floor, applied to
@@ -288,6 +315,13 @@ data:
 - **Mainline field test** (deps: none, startable any weekend): two internet-connected nodes on
   `RINGTOME_DISCOVERY=mainline` - the first genuinely-distributed run, and the opt-in live test
   tier it leaves behind.
+- **Abuse tooling for public roles** (deps: none to build; **gates open/gateway modes** the same
+  way the security pass gates exposure): the blob-layer scanner trait with the Shield by Project
+  Arachnid backend (PDQ computed locally, hash-only queries, per-operator API keys), the
+  quarantine + preserve + report flow, and hardened blob-serving defaults (validated
+  Content-Type, nosniff, CSP sandbox, separate port). Denunciation statements and trust-weighted
+  subscription land with Tier 5's trust wiring; this bullet is only what public-facing roles may
+  not ship without.
 - **Security pass** (deps: none to *do*; but it **gates public exposure**): a hostile review of
   the whole HTTP + sync surface. The one hard rule in this tier: no publicly-reachable node
   before it happens.

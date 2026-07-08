@@ -294,6 +294,33 @@ pub async fn load_key_tree(
         .map_err(|e| AppError::Internal(anyhow!("key tree resolution failed: {e}")))
 }
 
+/// Every stored entry of one `(service, entry_type)`, decoded, in `(author, seq)` order - the
+/// read path for chain-scanning consumers (the private-chain machinery reads `key-epoch`,
+/// `authorize`, and `private-record` entries through this).
+pub async fn entries_of_type(
+    db: &SqlitePool,
+    service_id: u32,
+    type_id: u32,
+) -> Result<Vec<SignedEntry>, AppError> {
+    let rows: Vec<(Vec<u8>,)> = sqlx::query_as(
+        "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
+         ORDER BY author_pubkey, seq",
+    )
+    .bind(i64::from(service_id))
+    .bind(i64::from(type_id))
+    .fetch_all(db)
+    .await
+    .context("reading entries by type")
+    .map_err(AppError::Internal)?;
+
+    rows.into_iter()
+        .map(|(bytes,)| {
+            SignedEntry::decode(&bytes)
+                .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))
+        })
+        .collect()
+}
+
 /// The stored head of every chain a key has written: `(service, seq, head_hash)` triples -
 /// exactly the shape revocation anchors want.
 pub async fn chain_heads_for_author(

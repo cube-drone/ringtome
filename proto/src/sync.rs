@@ -52,12 +52,72 @@ pub struct Frontier {
     pub head: u64,
 }
 
+/// Domain tag for member proofs.
+pub const DOMAIN_MEMBER_PROOF: &[u8] = b"ringtome-v0/member-proof";
+
+/// Proof that the sender of a Hello is one of the identity's own nodes: its leaf key signs a
+/// statement **channel-bound** to this exact connection (both endpoint ids are in the preimage,
+/// and iroh's transport authenticates them), so the proof cannot be replayed elsewhere. Private
+/// chains are exchanged only with peers whose proof verifies against an Active leaf in the
+/// verifier's own tree - the plan's "the transport identity IS the authorization," implemented.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberProof {
+    pub leaf: [u8; 32],
+    pub sig: [u8; 64],
+}
+
+fn member_proof_preimage(
+    root: &[u8; 32],
+    prover_endpoint: &[u8; 32],
+    verifier_endpoint: &[u8; 32],
+) -> Vec<u8> {
+    let mut p = DOMAIN_MEMBER_PROOF.to_vec();
+    p.extend_from_slice(root);
+    p.extend_from_slice(prover_endpoint);
+    p.extend_from_slice(verifier_endpoint);
+    p
+}
+
+impl MemberProof {
+    pub fn create(
+        root: &[u8; 32],
+        prover_endpoint: &[u8; 32],
+        verifier_endpoint: &[u8; 32],
+        leaf_key: &ed25519_dalek::SigningKey,
+    ) -> Self {
+        use ed25519_dalek::Signer;
+        let preimage = member_proof_preimage(root, prover_endpoint, verifier_endpoint);
+        Self {
+            leaf: leaf_key.verifying_key().to_bytes(),
+            sig: leaf_key.sign(&preimage).to_bytes(),
+        }
+    }
+
+    /// Verify the signature binds (root, this connection). Says nothing about whether `leaf` is
+    /// actually in the tree - the caller checks that against its own KeyTree, which is the part
+    /// that makes it authorization.
+    pub fn verify(
+        &self,
+        root: &[u8; 32],
+        prover_endpoint: &[u8; 32],
+        verifier_endpoint: &[u8; 32],
+    ) -> Result<(), ProtoError> {
+        let vk = ed25519_dalek::VerifyingKey::from_bytes(&self.leaf)
+            .map_err(|_| ProtoError::BadEntry("member proof leaf is not a valid key"))?;
+        let preimage = member_proof_preimage(root, prover_endpoint, verifier_endpoint);
+        vk.verify_strict(&preimage, &ed25519_dalek::Signature::from_bytes(&self.sig))
+            .map_err(|_| ProtoError::BadSignature)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncMessage {
-    /// "Here is the identity I want and what I already hold."
+    /// "Here is the identity I want, what I already hold, and (optionally) proof that I am one
+    /// of its own nodes." Without a valid proof the exchange covers public chains only.
     Hello {
         root: [u8; 32],
         frontiers: Vec<Frontier>,
+        proof: Option<MemberProof>,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -69,11 +129,15 @@ impl SyncMessage {
     pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
         let mut w = Writer::new();
         match self {
-            SyncMessage::Hello { root, frontiers } => {
+            SyncMessage::Hello {
+                root,
+                frontiers,
+                proof,
+            } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
                 }
-                w.array(3);
+                w.array(4);
                 w.uint(TAG_HELLO);
                 w.bytes(root);
                 w.array(frontiers.len() as u64);
@@ -86,6 +150,15 @@ impl SyncMessage {
                     w.uint(u64::from(f.service));
                     w.uint(f.floor);
                     w.uint(f.head);
+                }
+                // Proof slot: empty array = anonymous, [leaf, sig] = member claim.
+                match proof {
+                    None => w.array(0),
+                    Some(p) => {
+                        w.array(2);
+                        w.bytes(&p.leaf);
+                        w.bytes(&p.sig);
+                    }
                 }
             }
             SyncMessage::Entry(bytes) => {
@@ -111,7 +184,7 @@ impl SyncMessage {
         let mut r = Reader::new(bytes);
         let arity = r.array()?;
         let msg = match (r.uint()?, arity) {
-            (TAG_HELLO, 3) => {
+            (TAG_HELLO, 4) => {
                 let root = r.bytes_fixed::<32>()?;
                 let n = r.array()?;
                 if n > MAX_FRONTIERS as u64 {
@@ -139,7 +212,19 @@ impl SyncMessage {
                         head,
                     });
                 }
-                SyncMessage::Hello { root, frontiers }
+                let proof = match r.array()? {
+                    0 => None,
+                    2 => Some(MemberProof {
+                        leaf: r.bytes_fixed::<32>()?,
+                        sig: r.bytes_fixed::<64>()?,
+                    }),
+                    _ => return Err(ProtoError::BadEntry("proof must be [] or [leaf, sig]")),
+                };
+                SyncMessage::Hello {
+                    root,
+                    frontiers,
+                    proof,
+                }
             }
             (TAG_ENTRY, 2) => {
                 let b = r.bytes()?;
@@ -178,11 +263,20 @@ mod tests {
                     head: 17,
                 },
             ],
+            proof: None,
+        };
+        let proven = SyncMessage::Hello {
+            root: [7u8; 32],
+            frontiers: vec![],
+            proof: Some(MemberProof {
+                leaf: [9u8; 32],
+                sig: [1u8; 64],
+            }),
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
 
-        for msg in [hello, entry, done] {
+        for msg in [hello, proven, entry, done] {
             let bytes = msg.encode().unwrap();
             assert_eq!(SyncMessage::decode(&bytes).unwrap(), msg);
         }
@@ -217,12 +311,13 @@ mod tests {
                 floor: 5,
                 head: 2,
             }],
+            proof: None,
         };
         assert!(bad.encode().is_err());
 
         // Hand-encode the same inversion and confirm the reader refuses it too.
         let mut w = Writer::new();
-        w.array(3);
+        w.array(4);
         w.uint(TAG_HELLO);
         w.bytes(&[1u8; 32]);
         w.array(1);
@@ -231,10 +326,26 @@ mod tests {
         w.uint(0);
         w.uint(5);
         w.uint(2);
+        w.array(0); // empty proof slot
         assert_eq!(
             SyncMessage::decode(&w.into_bytes()),
             Err(ProtoError::BadEntry("frontier floor above head"))
         );
+    }
+
+    #[test]
+    fn member_proofs_are_channel_bound() {
+        let leaf = ed25519_dalek::SigningKey::from_bytes(&[4u8; 32]);
+        let (root, us, them) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+
+        let proof = MemberProof::create(&root, &us, &them, &leaf);
+        proof.verify(&root, &us, &them).unwrap();
+
+        // Any element of the binding changing kills the proof: different connection endpoints,
+        // different identity, or swapped roles.
+        assert!(proof.verify(&root, &us, &[9u8; 32]).is_err());
+        assert!(proof.verify(&[9u8; 32], &us, &them).is_err());
+        assert!(proof.verify(&root, &them, &us).is_err());
     }
 
     #[test]

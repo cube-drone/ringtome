@@ -53,3 +53,4 @@ moka = { version = "0.12", features = ["future"] }
 iroh = "1.0.2"
 pkarr = "5"
 base64 = "0.22.1"
+dryoc = "0.8.0"

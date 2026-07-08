@@ -22,7 +22,7 @@ use iroh::endpoint::{Connection, SendStream};
 use iroh::EndpointAddr;
 use ringtome_proto::keytree::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
-use ringtome_proto::sync::{Frontier, SyncMessage};
+use ringtome_proto::sync::{Frontier, MemberProof, SyncMessage};
 use ringtome_proto::{validate_next, KeyTree, SignedEntry};
 use sqlx::SqlitePool;
 
@@ -45,8 +45,17 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// This identity's held ranges, one per stored chain.
-pub async fn local_frontiers(db: &SqlitePool) -> Result<Vec<Frontier>> {
+/// Services that never cross the identity boundary: synced only between an identity's own
+/// (member-proven) nodes. Everything about them is withheld from strangers - the entries, the
+/// frontiers, even the count of chains (the *timing and volume* of private activity is itself
+/// private metadata; PROJECT_PLAN, Chains).
+fn is_private_service(svc: u32) -> bool {
+    svc == service::IDENTITY_PRIVATE || svc == service::PRIVATE
+}
+
+/// This identity's held ranges, one per stored chain. Private chains appear only when the peer
+/// has proven membership.
+pub async fn local_frontiers(db: &SqlitePool, include_private: bool) -> Result<Vec<Frontier>> {
     let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
         "SELECT author_pubkey, service, MIN(seq), MAX(seq) FROM entries
          GROUP BY author_pubkey, service",
@@ -56,6 +65,7 @@ pub async fn local_frontiers(db: &SqlitePool) -> Result<Vec<Frontier>> {
     .context("reading local frontiers")?;
 
     rows.into_iter()
+        .filter(|(_, svc, _, _)| include_private || !is_private_service(*svc as u32))
         .map(|(author_hex, svc, floor, head)| {
             let author: [u8; 32] = hex::decode(&author_hex)
                 .ok()
@@ -73,10 +83,12 @@ pub async fn local_frontiers(db: &SqlitePool) -> Result<Vec<Frontier>> {
 
 /// Stream every stored entry the peer's frontiers say it lacks, identity chains first (service
 /// ascending puts service 0 at the front), each chain in seq order. Returns entries sent.
+/// Private chains are streamed only to member-proven peers.
 async fn send_missing(
     db: &SqlitePool,
     peer_frontiers: &[Frontier],
     send: &mut SendStream,
+    include_private: bool,
 ) -> Result<u64> {
     let peer: HashMap<([u8; 32], u32), u64> = peer_frontiers
         .iter()
@@ -92,6 +104,9 @@ async fn send_missing(
 
     let mut sent = 0u64;
     for (author_hex, svc) in chains {
+        if !include_private && is_private_service(svc as u32) {
+            continue;
+        }
         let author: [u8; 32] = hex::decode(&author_hex)
             .ok()
             .and_then(|b| b.try_into().ok())
@@ -126,7 +141,16 @@ async fn send_missing(
 /// author lands in the resolved key tree; content entries additionally require an Active (or
 /// Retired, within-ceiling) author. Rejections are counted, logged, and never stored - a
 /// rejected entry simply does not exist as far as this node's views are concerned.
-async fn ingest_batch(db: &SqlitePool, root: [u8; 32], raw: Vec<Vec<u8>>) -> Result<(u64, u64)> {
+///
+/// `peer_proven`: whether the sending peer proved membership. Private-chain entries from an
+/// unproven peer are rejected outright - an honest stranger never sends them (we withheld those
+/// frontiers), so their arrival is either a bug or a probe, and either way the answer is no.
+async fn ingest_batch(
+    db: &SqlitePool,
+    root: [u8; 32],
+    raw: Vec<Vec<u8>>,
+    peer_proven: bool,
+) -> Result<(u64, u64)> {
     let mut rejected = 0u64;
 
     // Strict decode + signature check; split identity vs content.
@@ -135,7 +159,9 @@ async fn ingest_batch(db: &SqlitePool, root: [u8; 32], raw: Vec<Vec<u8>>) -> Res
     for bytes in raw {
         match SignedEntry::decode(&bytes) {
             Ok(e) if e.verify().is_ok() => {
-                if e.entry().chain.service == service::IDENTITY_PUBLIC {
+                if !peer_proven && is_private_service(e.entry().chain.service) {
+                    rejected += 1;
+                } else if e.entry().chain.service == service::IDENTITY_PUBLIC {
                     identity_candidates.push(e);
                 } else {
                     content_candidates.push(e);
@@ -316,9 +342,68 @@ async fn apply_content_views(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Membership proofs (the private-chain gate's identity check)
+
+/// Our member proof for this connection, if this node agents the identity: the leaf key signs
+/// (root, our endpoint, their endpoint), so the proof is bound to this exact channel and
+/// worthless anywhere else.
+async fn our_member_proof(
+    state: &AppState,
+    root: [u8; 32],
+    our_endpoint: &[u8; 32],
+    peer_endpoint: &[u8; 32],
+) -> Option<MemberProof> {
+    let root_hex = hex::encode(root);
+    match crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, &root_hex).await {
+        Ok(Some(leaf)) => Some(MemberProof::create(
+            &root,
+            our_endpoint,
+            peer_endpoint,
+            &leaf,
+        )),
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!(root = %root_hex, "could not load leaf key for member proof: {e}");
+            None
+        }
+    }
+}
+
+/// Verify a peer's member proof: channel-bound signature *and* the leaf is Active in our own
+/// resolved tree. The transport authenticates the endpoints; the tree makes it authorization.
+/// Everything fails toward "stranger."
+async fn peer_is_member(
+    db: &SqlitePool,
+    root: [u8; 32],
+    proof: &Option<MemberProof>,
+    prover_endpoint: &[u8; 32],
+    verifier_endpoint: &[u8; 32],
+) -> bool {
+    let Some(p) = proof else {
+        return false;
+    };
+    if p.verify(&root, prover_endpoint, verifier_endpoint).is_err() {
+        return false;
+    }
+    match crate::imaol::load_key_tree(db, &hex::encode(root)).await {
+        Ok(tree) => tree.status(&p.leaf) == KeyStatus::Active,
+        Err(e) => {
+            tracing::warn!("key tree unavailable while checking member proof: {e}");
+            false
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Roles
 
 /// Requester role: connect to a peer and run the full symmetric exchange for one identity.
+///
+/// Verify-then-reveal: our first Hello carries our proof but only *public* frontiers - we cannot
+/// know the responder is a member until its Hello arrives, and frontier metadata (which private
+/// chains exist, how active they are) is itself private. The cost is that a proven responder
+/// re-offers private entries we already hold; ingest's duplicate-skip absorbs that at this
+/// scale.
 pub async fn sync_with_peer(
     state: &AppState,
     root_hex: &str,
@@ -336,26 +421,31 @@ pub async fn sync_with_peer(
         .await
         .map_err(|e| anyhow!("connecting to peer: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening sync stream")?;
+    let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
+    let peer_id: [u8; 32] = *conn.remote_id().as_bytes();
 
     write_frame(
         &mut send,
         &SyncMessage::Hello {
             root,
-            frontiers: local_frontiers(&db).await?,
+            frontiers: local_frontiers(&db, false).await?,
+            proof: our_member_proof(state, root, &our_id, &peer_id).await,
         },
     )
     .await?;
 
     // Responder: Hello, entries we lack, Done.
-    let peer_frontiers = match read_frame(&mut recv).await? {
+    let (peer_frontiers, peer_proven) = match read_frame(&mut recv).await? {
         Some(SyncMessage::Hello {
             root: peer_root,
             frontiers,
+            proof,
         }) => {
             if peer_root != root {
                 bail!("peer answered for a different identity");
             }
-            frontiers
+            let proven = peer_is_member(&db, root, &proof, &peer_id, &our_id).await;
+            (frontiers, proven)
         }
         other => bail!("expected Hello from peer, got {other:?}"),
     };
@@ -367,10 +457,10 @@ pub async fn sync_with_peer(
             Some(other) => bail!("unexpected frame mid-stream: {other:?}"),
         }
     }
-    let (received, rejected) = ingest_batch(&db, root, incoming).await?;
+    let (received, rejected) = ingest_batch(&db, root, incoming, peer_proven).await?;
 
-    // Now send what the peer lacks.
-    let sent = send_missing(&db, &peer_frontiers, &mut send).await?;
+    // Now send what the peer lacks - private chains only to a proven member.
+    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
     write_frame(&mut send, &SyncMessage::Done).await?;
     send.finish().ok();
     conn.closed().await; // responder closes once it has ingested our stream
@@ -385,9 +475,15 @@ pub async fn sync_with_peer(
 /// Responder role: called from the accept loop with an established connection.
 pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     let (mut send, mut recv) = conn.accept_bi().await.context("accepting sync stream")?;
+    let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
+    let peer_id: [u8; 32] = *conn.remote_id().as_bytes();
 
-    let (root, peer_frontiers) = match read_frame(&mut recv).await? {
-        Some(SyncMessage::Hello { root, frontiers }) => (root, frontiers),
+    let (root, peer_frontiers, peer_proof) = match read_frame(&mut recv).await? {
+        Some(SyncMessage::Hello {
+            root,
+            frontiers,
+            proof,
+        }) => (root, frontiers, proof),
         other => bail!("expected Hello, got {other:?}"),
     };
     let root_hex = hex::encode(root);
@@ -403,6 +499,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             &SyncMessage::Hello {
                 root,
                 frontiers: vec![],
+                proof: None,
             },
         )
         .await?;
@@ -413,15 +510,20 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     }
 
     let db = state.user_dbs.get(&root_hex).await?;
+    let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
+
+    // Our Hello carries our own proof (so the requester will send *us* private entries) and our
+    // frontiers - private ones included only for a proven member.
     write_frame(
         &mut send,
         &SyncMessage::Hello {
             root,
-            frontiers: local_frontiers(&db).await?,
+            frontiers: local_frontiers(&db, peer_proven).await?,
+            proof: our_member_proof(&state, root, &our_id, &peer_id).await,
         },
     )
     .await?;
-    let sent = send_missing(&db, &peer_frontiers, &mut send).await?;
+    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
     write_frame(&mut send, &SyncMessage::Done).await?;
 
     // Then ingest the requester's half of the exchange.
@@ -433,10 +535,11 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             Some(other) => bail!("unexpected frame mid-stream: {other:?}"),
         }
     }
-    let (received, rejected) = ingest_batch(&db, root, incoming).await?;
+    let (received, rejected) = ingest_batch(&db, root, incoming, peer_proven).await?;
     tracing::info!(
         root = %root_hex,
         remote = %conn.remote_id(),
+        peer_proven,
         sent, received, rejected,
         "served sync exchange"
     );

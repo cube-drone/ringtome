@@ -50,9 +50,9 @@ run:
 integration-install:
     cd "{{justfile_directory()}}/integration" && npm install
 
-# Kill any running ringtome.exe (Windows), ignoring "not found".
+# Kill any running ringtome (Windows or POSIX), ignoring "not found".
 kill:
-    -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
+    -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || pkill -f 'target/debug/ringtome' 2>/dev/null || true
 
 # Boot TWO throwaway nodes (sync tests need a peer), wait for health, run the JS integration
 # suite, tear both down. Single-node-only tests are unaffected; two-node tests skip themselves
@@ -71,9 +71,13 @@ integration: build kill
         ./target/debug/ringtome > /tmp/ringtome-integration-b.log 2>&1 &
     NODE_B_PID=$!
     cleanup() {
-        MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_PID" 2>/dev/null || true
-        MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_B_PID" 2>/dev/null || true
-        MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
+        if command -v taskkill >/dev/null 2>&1; then
+            MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_PID" 2>/dev/null || true
+            MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_B_PID" 2>/dev/null || true
+            MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
+        else
+            kill "$NODE_PID" "$NODE_B_PID" 2>/dev/null || true
+        fi
     }
     trap cleanup EXIT
 
@@ -94,7 +98,7 @@ integration: build kill
 
     cd "{{justfile_directory()}}/integration"
     RINGTOME_TEST_HOST="127.0.0.1:{{port}}" RINGTOME_TEST_HOST_B="127.0.0.1:{{port_b}}" \
-        RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/node/{{test_data}}-dht" npm test
+        RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" npm test
 
 # --- everything ------------------------------------------------------------
 
