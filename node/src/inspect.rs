@@ -43,22 +43,25 @@ pub fn run(arg: &str) -> Result<()> {
                     }
                 },
                 entry_type::AUTHORIZE => match Authorize::decode(b) {
-                    Ok(az) => {
-                        println!("             authorize child {}", hex::encode(az.child));
-                        for (i, u) in az.usurpers.iter().enumerate() {
+                    Ok(authorization) => {
+                        println!(
+                            "             authorize child {}",
+                            hex::encode(authorization.child)
+                        );
+                        for (i, u) in authorization.usurpers.iter().enumerate() {
                             println!("             usurper[{i}]  {}", hex::encode(u));
                         }
                     }
                     Err(err) => println!("             (authorize payload fails to decode: {err})"),
                 },
                 entry_type::REVOKE => match Revoke::decode(b) {
-                    Ok(rv) => {
+                    Ok(revocation) => {
                         println!(
                             "             revoke {} ({:?})",
-                            hex::encode(rv.target),
-                            rv.disposition
+                            hex::encode(revocation.target),
+                            revocation.disposition
                         );
-                        for a in &rv.anchors {
+                        for a in &revocation.anchors {
                             println!(
                                 "             anchor     {} seq {} head {}",
                                 service::name(a.service),

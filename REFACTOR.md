@@ -70,11 +70,12 @@ The context-comment discipline cuts both ways: a comment that argues design must
   same structural-not-disciplinary argument the COSE envelope already makes. Touches the
   conformance crate, so the published test vectors re-prove it.
 
-## 5. Naming — the two-letter payload abbreviations
+## 5. Naming — the two-letter payload abbreviations ✅ (2026-07-08)
 
-- [ ] `az`, `rv`, `ke` (~18 sites in `keytree.rs`, `registry.rs`, `private.rs`) →
-  `authorize`, `revocation`, `epoch_entry`. Keep `w`/`r` in `cbor.rs` (tight, local codec idiom)
-  and the `e`-for-entry loop variable.
+- [x] `az`, `rv`, `ke` (in `keytree.rs`, `registry.rs`, `private.rs`, `inspect.rs`) →
+  `authorization`, `revocation`, `key_epoch` (decoded-payload variables named for their types).
+  Kept, per the tolerated-shorthand list: `w`/`r` in `cbor.rs` and the `e`-for-entry loop
+  variable.
 
 ## Explicitly fine — reviewed and left alone
 

@@ -141,6 +141,10 @@ impl Authorize {
     }
 }
 
+/// One epoch recipient: (leaf signing pubkey, X25519 enc pubkey, sealed box holding the epoch
+/// key).
+pub type EpochRecipient = ([u8; 32], [u8; 32], Vec<u8>);
+
 /// Payload of a `key-epoch` entry: a fresh private-chain encryption key, sealed to every
 /// remaining member (and always the recovery key). Old members hold old epochs and can read
 /// their era forever; they cannot open the new boxes - that is the whole mechanism of
@@ -149,10 +153,6 @@ impl Authorize {
 /// Encoding: `{0: uint epoch, 1: array<[bstr(32) leaf, bstr(32) enc_pub, bstr box]>}`. The
 /// recipient list carries each member's enc pubkey so future rotators learn the roster from the
 /// chain itself.
-/// One epoch recipient: (leaf signing pubkey, X25519 enc pubkey, sealed box holding the epoch
-/// key).
-pub type EpochRecipient = ([u8; 32], [u8; 32], Vec<u8>);
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyEpoch {
     pub epoch: u64,
@@ -728,15 +728,15 @@ mod tests {
 
     #[test]
     fn key_epoch_round_trips() {
-        let ke = KeyEpoch {
+        let key_epoch = KeyEpoch {
             epoch: 3,
             recipients: vec![
                 ([1u8; 32], [2u8; 32], vec![0xAA; 80]),
                 ([3u8; 32], [4u8; 32], vec![0xBB; 80]),
             ],
         };
-        let bytes = ke.encode().unwrap();
-        assert_eq!(KeyEpoch::decode(&bytes).unwrap(), ke);
+        let bytes = key_epoch.encode().unwrap();
+        assert_eq!(KeyEpoch::decode(&bytes).unwrap(), key_epoch);
     }
 
     #[test]

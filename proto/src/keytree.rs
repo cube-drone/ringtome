@@ -240,14 +240,14 @@ impl KeyTree {
                 self.reject(e, "authorize payload must be inline");
                 continue;
             };
-            let az = match Authorize::decode(payload) {
-                Ok(az) => az,
+            let authorization = match Authorize::decode(payload) {
+                Ok(authorization) => authorization,
                 Err(_) => {
                     self.reject(e, "undecodable authorize payload");
                     continue;
                 }
             };
-            if az.child == self.root || self.nodes.contains_key(&az.child) {
+            if authorization.child == self.root || self.nodes.contains_key(&authorization.child) {
                 self.reject(e, "child key already present in tree");
                 continue;
             }
@@ -256,7 +256,7 @@ impl KeyTree {
             let mut expected = usurpers[author].clone();
             expected.push(*author);
             expected.extend(self.children.get(author).into_iter().flatten().copied());
-            if az.usurpers != expected {
+            if authorization.usurpers != expected {
                 self.reject(e, "usurper stamp does not match parent history");
                 continue;
             }
@@ -266,15 +266,18 @@ impl KeyTree {
             rank_path.push(birth_index);
 
             self.nodes.insert(
-                az.child,
+                authorization.child,
                 Node {
                     parent: Some(*author),
                     rank_path,
                     status: KeyStatus::Active,
                 },
             );
-            self.children.entry(*author).or_default().push(az.child);
-            usurpers.insert(az.child, az.usurpers);
+            self.children
+                .entry(*author)
+                .or_default()
+                .push(authorization.child);
+            usurpers.insert(authorization.child, authorization.usurpers);
         }
     }
 
@@ -301,16 +304,20 @@ impl KeyTree {
                     continue;
                 };
                 match Revoke::decode(payload) {
-                    Ok(rv) => {
-                        revokes.push((signer_rank.clone(), *e.hash(), *signer, e.entry().seq, rv))
-                    }
+                    Ok(revocation) => revokes.push((
+                        signer_rank.clone(),
+                        *e.hash(),
+                        *signer,
+                        e.entry().seq,
+                        revocation,
+                    )),
                     Err(_) => self.reject(e, "undecodable revoke payload"),
                 }
             }
         }
         revokes.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
-        for (signer_rank, entry_hash, signer, entry_seq, rv) in revokes {
+        for (signer_rank, entry_hash, signer, entry_seq, revocation) in revokes {
             // A signer already quarantined (or writing beyond its own retirement seal) has no
             // voice: its statement past the ceiling is exactly what the ceiling distrusts.
             if let Some(c) = self.ceilings.get(&(signer, service::IDENTITY_PUBLIC)) {
@@ -333,7 +340,7 @@ impl KeyTree {
                 continue;
             }
 
-            let Some(target_node) = self.nodes.get(&rv.target) else {
+            let Some(target_node) = self.nodes.get(&revocation.target) else {
                 self.rejected.push(Rejected {
                     entry_hash,
                     reason: "revoke targets an unknown key",
@@ -345,9 +352,9 @@ impl KeyTree {
             // Lexicographic Less on rank paths *is* strict seniority (prefix = ancestor;
             // divergence = senior branch), so no structural check is needed beyond the compare.
             let strictly_senior = signer_rank.as_slice() < target_node.rank_path.as_slice();
-            let authorized = match rv.disposition {
-                Disposition::Retirement => signer == rv.target || strictly_senior,
-                Disposition::Repudiation => signer != rv.target && strictly_senior,
+            let authorized = match revocation.disposition {
+                Disposition::Retirement => signer == revocation.target || strictly_senior,
+                Disposition::Repudiation => signer != revocation.target && strictly_senior,
             };
             if !authorized {
                 self.rejected.push(Rejected {
@@ -359,16 +366,16 @@ impl KeyTree {
 
             // Conflicts: the strictest standing claim wins. Repudiation over retirement;
             // first-applied (most senior, then lowest hash) among equals.
-            let current = self.nodes[&rv.target].status;
+            let current = self.nodes[&revocation.target].status;
             let apply = matches!(
-                (current, rv.disposition),
+                (current, revocation.disposition),
                 (KeyStatus::Active, _) | (KeyStatus::Retired, Disposition::Repudiation)
             );
             if !apply {
                 continue;
             }
 
-            self.nodes.get_mut(&rv.target).unwrap().status = match rv.disposition {
+            self.nodes.get_mut(&revocation.target).unwrap().status = match revocation.disposition {
                 Disposition::Retirement => KeyStatus::Retired,
                 Disposition::Repudiation => KeyStatus::Repudiated,
             };
@@ -376,13 +383,13 @@ impl KeyTree {
                 service: svc,
                 seq,
                 head_hash: _,
-            } in &rv.anchors
+            } in &revocation.anchors
             {
                 self.ceilings.insert(
-                    (rv.target, *svc),
+                    (revocation.target, *svc),
                     Ceiling {
                         final_seq: *seq,
-                        disposition: rv.disposition,
+                        disposition: revocation.disposition,
                     },
                 );
             }
@@ -474,8 +481,8 @@ impl KeyTree {
 fn fork_rank(e: &SignedEntry) -> (u8, [u8; 32]) {
     if e.entry().entry_type == entry_type::AUTHORIZE {
         if let Payload::Inline(p) = &e.entry().payload {
-            if let Ok(az) = Authorize::decode(p) {
-                return (0, az.child);
+            if let Ok(authorization) = Authorize::decode(p) {
+                return (0, authorization.child);
             }
         }
     }

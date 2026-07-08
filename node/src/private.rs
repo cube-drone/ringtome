@@ -105,7 +105,7 @@ async fn load_epoch_entries(db: &SqlitePool) -> Result<Vec<KeyEpoch>, AppError> 
             continue;
         };
         match KeyEpoch::decode(payload) {
-            Ok(ke) => out.push(ke),
+            Ok(key_epoch) => out.push(key_epoch),
             // An undecodable payload from a member is that member's bug; it cannot be allowed to
             // wedge everyone's private store.
             Err(e) => tracing::warn!("skipping undecodable key-epoch payload: {e}"),
@@ -121,18 +121,21 @@ pub async fn unseal_epoch_keys(
     our_enc: &EncKeyPair,
 ) -> Result<EpochKeys, AppError> {
     let mut keys = EpochKeys::default();
-    for ke in load_epoch_entries(db).await? {
-        for (leaf, _enc_pub, sealed) in &ke.recipients {
+    for key_epoch in load_epoch_entries(db).await? {
+        for (leaf, _enc_pub, sealed) in &key_epoch.recipients {
             if leaf != our_leaf {
                 continue;
             }
             match seal::unseal(sealed, our_enc) {
                 Some(plain) => match <[u8; 32]>::try_from(plain.as_slice()) {
-                    Ok(key) => keys.insert(ke.epoch, key),
-                    Err(_) => tracing::warn!(epoch = ke.epoch, "epoch box held a non-key"),
+                    Ok(key) => keys.insert(key_epoch.epoch, key),
+                    Err(_) => tracing::warn!(epoch = key_epoch.epoch, "epoch box held a non-key"),
                 },
                 // Sealed to our leaf id but not our enc key: stale roster data. Fail closed.
-                None => tracing::warn!(epoch = ke.epoch, "epoch box addressed to us won't open"),
+                None => tracing::warn!(
+                    epoch = key_epoch.epoch,
+                    "epoch box addressed to us won't open"
+                ),
             }
         }
     }
@@ -145,7 +148,7 @@ pub async fn max_epoch(db: &SqlitePool) -> Result<Option<u64>, AppError> {
     Ok(load_epoch_entries(db)
         .await?
         .iter()
-        .map(|ke| ke.epoch)
+        .map(|key_epoch| key_epoch.epoch)
         .max())
 }
 
@@ -160,15 +163,15 @@ pub async fn enc_roster(db: &SqlitePool) -> Result<BTreeMap<[u8; 32], [u8; 32]>,
         let Payload::Inline(payload) = &signed.entry().payload else {
             continue;
         };
-        if let Ok(az) = Authorize::decode(payload) {
-            if let Some(enc) = az.enc_pubkey {
-                roster.insert(az.child, enc);
+        if let Ok(authorization) = Authorize::decode(payload) {
+            if let Some(enc) = authorization.enc_pubkey {
+                roster.insert(authorization.child, enc);
             }
         }
     }
 
-    for ke in load_epoch_entries(db).await? {
-        for (leaf, enc_pub, _sealed) in &ke.recipients {
+    for key_epoch in load_epoch_entries(db).await? {
+        for (leaf, enc_pub, _sealed) in &key_epoch.recipients {
             roster.insert(*leaf, *enc_pub);
         }
     }
