@@ -535,6 +535,86 @@ Two consequences worth stating now:
 
 ---
 
+## Follows, Friendship, and Invitation
+
+There is one relationship primitive: the **follow**, an Interest edge (a content subscription). "Friend" is not a
+protocol object - a friend is a **mutual follow**, composed, exactly as a persona is just an identity. The one
+guardrail carried down from the trust layer: the cozy word must never leak trust semantics. A follow (mutual or
+not) ships zero Trust; the vouch stays its own scarce, deliberate act.
+
+### Edge-Endpoint Visibility
+
+Fully public follow graphs are how "Person X follows Guy We All Hate" happens; fully private ones make "do they
+follow me back?" - a thing people legitimately want - impossible. The resolution is a principle worth stating
+generally, because every future relationship edge will face it:
+
+**An edge is visible to its endpoints by default, invisible to everyone else, and any wider publication is a
+separate, explicit act.** The controversy was never the endpoints knowing; it was third parties enumerating.
+
+Mechanically, a follow has **three disclosure tiers**, chosen per-follow:
+
+- **Quiet** - the follow lives on your private chain (synced only among your own nodes); you fetch their public
+  content and tell no one. Exists today.
+- **Tell them** - additionally, a signed "I follow you" statement is delivered **to the target's nodes only**,
+  who store the receipt on their own private chain. This is the member-proof pattern generalized: *prove you are
+  the subject of a datum, receive the datum.* Nobody can ask "who does A follow?" or "does A follow X?"; only
+  "does A follow **me**?", and only by being me. Honest limit: a signed statement proves it was true when signed
+  - unfollow is silent and receipts go stale. That matches the social norm every network's users quietly rely
+  on, and endpoints who have already disclosed to each other can re-ask cheaply for freshness.
+- **Help host** - the serving-follow: necessarily public (fronting appears in pkarr records regardless), per the
+  Rehosting Policy above. The UI must keep this tier visibly distinct or users will leak interest they meant to
+  keep private.
+
+**Friendship forms at the second disclosed follow** - both parties hold receipts, and both UIs may show the badge
+to the two of them. A *publicly visible* friendship is the voluntary-linkage move (Running Multiple Identities):
+a statement cross-signed by both, bilateral consent, separate act.
+
+### The Follow Ceremony Is the Vouch Moment
+
+Following someone is exactly the right time to ask "do you actually know this human?" - so the UI offers the
+vouch (and the contact name - see Display Names) on the same screen. The discipline: this is a **fork in the UI,
+never a coupling in the data**. The follow writes an Interest edge; the vouch, if taken, is its own statement.
+Nothing about taking one implies the other, mechanically - or the follow-mints-Trust attack returns wearing a
+nicer sweater.
+
+### Friend Tokens and the Bootstrap Problem
+
+New users face a circularity: to be vouched for you need an identity; to have an identity without self-hosting
+you need an account on someone's node; to get an account on a well-run (closed) node you need to be trusted -
+which is a vouch. The cut is physical: **a token handed over in person is admission, and the IRL handoff is a
+vouch occasion in artifact form.** (Direct descendant of api_old's invite codes + `invite_chain` - the autopsy's
+"most Ringtome-shaped thing in the old codebase.")
+
+One mechanism, two products, by flags - `{admission, auto_follow, vouch}`:
+
+- **Friend Token**: "join my server; redeeming creates your account, your first identity, a mutual follow
+  between us, and my vouch for you."
+- **Open Server Invite**: the same with the vouch flag off (auto-follow optional) - admission without
+  endorsement.
+
+Design rules settled now, before it is built:
+
+- **A token binds to exactly one identity, chosen at redemption.** The redemption ceremony is one flow: redeem →
+  account → first identity → the token's social payload attaches to *that identity only*. Pseudonyms created
+  later get nothing, or the token becomes a linkage oracle connecting the newcomer's whole future to the
+  inviter.
+- **Asymmetric vouch automation.** The inviter's vouch is automatic - minting a token for a specific human, hand
+  to hand, *is* the deliberate act. The newcomer's vouch back is a one-tap confirmation ("Curtis invited you -
+  do you know Curtis in person?"), because they haven't taken a deliberate act yet, and vouches stay meaningful
+  only if every one is an act. Both retractable.
+- **The forwarded-token hazard** (you hand Dave a token; Dave posts it on a forum; a stranger redeems and
+  inherits your vouch) is bounded, not prevented: single-use, TTL on unredeemed tokens (cheaply-created things
+  expire unless they earn persistence - see api_old Keep #11), and a "someone joined on your token" notification
+  with one-tap vouch retraction. Recoverability over prevention, as usual.
+- **Provenance is kept**: who-invited-whom persists node-locally (the `invite_chain` lineage), seeding the trust
+  graph's audit trail.
+
+Sequencing: tokens + admission are node-local and buildable early (a natural companion to 4C's registration
+screens); the "tell them" disclosure lane needs an inter-identity delivery path (4S, adjacent to the sync
+surface); vouch payloads remain Tier 5 as planned.
+
+---
+
 ## Authentication
 
 ### Phase 1: Username + Password (Local Only)
@@ -548,6 +628,24 @@ Two consequences worth stating now:
   never leaves it.
 - **Password reset** is the recovery photo used as an authentication factor - recovery-key-only, per-identity
   scoped, cooling-off window; see Recovery Flows: Passwords vs. Keys in the Identity System section.
+
+### Registration Modes
+
+Who may create an account is **per-node policy**, a three-position dial:
+
+- **`closed`** - no registration at all (a personal node after its owner is aboard).
+- **`invite`** - **the default**: accounts are created only by redeeming a token (see Follows, Friendship, and
+  Invitation - the invite token is the admission mechanism, and the same artifact carries the friend/vouch payload
+  when those layers are live). The first-account-becomes-`node_admin` bootstrap is unchanged: boot, register once,
+  the node is yours, and you mint tokens from there. A personal node never notices this default.
+- **`open`** - anyone may register. Allowed on purpose - per-node policy is the federation philosophy, and some
+  operators will throw caution to the wind with their eyes open - but it is an **explicit, loudly-named opt-in**,
+  never a default a fresh operator discovers they'd made. An open-registration node is a public-facing role and
+  inherits the public-exposure gates (the security pass, and the abuse tooling that gates open modes - see the
+  ship tier): liability stays a decision someone made on purpose.
+
+Today's rate-limited open registration becomes the `open` setting; the dial itself and tokens are early,
+node-local work (no new protocol).
 
 ### Phase 2: Passkeys / WebAuthn (Planned)
 
@@ -695,6 +793,24 @@ run it hoping it *breaks*: generate an honest graph, inject fakes in the nasties
 extracted per attack vouch. It should stay flat as we add fakes; if it climbs, we have a bug (most likely the
 per-person-vs-joint-flow mistake above). The harness also calibrates the knobs the theory is silent on - budget size,
 horizon depth, fade curve, the feed/DM floor. It is a bug-finder and a dial, never our source of confidence.
+
+### Sequencing: The Graph Grows Before the Features Arrive (settled 2026-07-09)
+
+Trust is the thesis, so it cannot ship *after* the social launch - and, decomposed honestly, it doesn't need to.
+The **vouch payload** is a signed statement (private chains and the store layer already exist to carry it) and the
+**flow computation** is known, decades-old math (Advogato) over a cozy-scale graph - pure crate code,
+property-testable today. What is genuinely research is knob *calibration* and Sybil *validation*, and that is the
+harness's job as an instrument and standing tripwire - **never a launch gate**, because the low-payoff principle
+above already covers shipping ahead of exhaustive validation: v1 trust gates only annoyance-priced, reversible
+surfaces.
+
+The timing insight: **trust graphs need history, so the graph must start growing before the features that read
+it.** Vouch statements go live with the invite tokens (Follows, Friendship, and Invitation) - every IRL token
+handoff quietly writes an edge, and by the time feeds and floors arrive the graph is a living thing, not a cold
+start. The seed crystal, not the retrofit. Consequently the social launch (Tier 4S) includes the trust floor on
+its first low-stakes surfaces: social ships wearing its thesis. Deferred with honest labels, as refinements of a
+running system: credibility (needs track records that don't exist yet), interest/taste recommenders,
+graph-privacy resolution controls, and harness-driven knob refinement.
 
 ---
 

@@ -224,6 +224,15 @@ mid-stream for a more motivating one. For a solo project, motivation is the scar
 and the structure should let it be spent where it lands. Real cross-track dependencies are listed
 explicitly; everything unlisted is genuinely independent.
 
+**Re-prioritized (2026-07-09) — the recommended route through the tiers.** Motivation still
+rules, but the default path is now: **(1) admission modes + invite tokens** (registration
+`closed`/`invite`/`open`, default invite - PROJECT_PLAN, Registration Modes) with the **vouch
+payload live from day one**, so every IRL invite writes a trust edge and the graph grows before
+the features that read it; **(2) 4C with the notes app as flagship** - the single-player
+product ("come for the tool, stay for the network") that makes identity sync *felt*; **(3) 4S +
+the trust floor as one launch** - social ships wearing its thesis. Each stage independently
+shippable; each makes the next one's demo better.
+
 ## Tier 4 — The product (three unordered tracks)
 
 **4C — The client shell ("the cozy OS boots").** The retro-OS web client over the *existing* API
@@ -231,7 +240,13 @@ explicitly; everything unlisted is genuinely independent.
 shell, identity switcher, profile editor, key/device management in cozy language - and the two
 ceremonies that currently exist as raw JSON: the **recovery-key photo ceremony** (labeled QR,
 blocked-until-captured; retires M2's residual) and the **add-a-node ceremony** (request/grant
-codes as QR). The Cozyweb language budget is enforced from the first screen. *Track demo:* create
+codes as QR). Newly in scope (2026-07-09): **friend tokens / open server invites** - the
+admission + redemption ceremony (node-local, no new protocol; PROJECT_PLAN, Friend Tokens and
+the Bootstrap Problem) - and **the notes app**, the shell's flagship: personal, E2E-encrypted,
+multi-device notes on the private store. Immediate single-player value, a daily dogfood loop,
+and the store layer already carries it server-side (one data-map row). Settle `PrivatePlain`'s
+4 KiB value / 6 KiB ciphertext caps before anything real deploys - free now, a compatibility
+question later. The Cozyweb language budget is enforced from the first screen. *Track demo:* create
 an identity, photograph the spare key, set your name, adopt a second node - all in a browser, no
 JSON visible. *Advisory:* highest motivation-ROI track - it makes all subsequent work visible in
 a UI instead of curl.
@@ -251,7 +266,8 @@ marquee, parsed by both implementations to identical ASTs.
 
 **4S — The social layer ("other people exist").** Everything that crosses the inter-identity
 boundary: the **public serving surface** (`/public/*` reads for non-owners - deliberately
-deferred since M1), the `follow` type and serving-follows, **`ringtome://` resolution** (the
+deferred since M1), the `follow` type with its three disclosure tiers (quiet / tell-them / help-host -
+PROJECT_PLAN, Edge-Endpoint Visibility), serving-follows, **`ringtome://` resolution** (the
 ladder consuming M3.5's directory), identicons + contact names, and the **serving-boundary
 defaults** from the plan's Moderation and Operator Liability section (the web-gateway question is
 now settled - distinct dual-opt-in role, no anonymous HTTP by default; 4S builds the
@@ -264,17 +280,28 @@ reading view/feed = 4C + 4S; rendering a *stranger's* page = all three. **Tier e
 users on two nodes follow each other and read each other's marquee-infested pages through the
 fake OS. The project becomes showable to a non-nerd.
 
-## Tier 5 — Trust (unordered tasks; the tier itself hard-depends on 4S)
+## Tier 5 — Trust (re-prioritized 2026-07-09: launch-critical, not post-launch)
 
-You can't trust someone you don't know about: wiring trust into the product needs follows and
-cross-identity visibility. But most of the tier is buildable *before* that, against synthetic
-data:
+Trust is the thesis, not a feature to retrofit - a social launch without at least the floor is
+a different, worse product. The corrected read: only the final *wiring* step depends on 4S; the
+pure core is known math, buildable any time; and the graph should start growing before the
+features that read it exist (PROJECT_PLAN, Trust: "The Graph Grows Before the Features
+Arrive"). What stays later is refinements of a running system, labeled honestly.
 
-- **Adversary-simulation harness** (deps: none - pure math, startable today): generate honest
-  graphs, inject Sybil clusters in nasty topologies, measure trust extracted per attack vouch.
-  Run it hoping it breaks; it doubles as the design tool for the budget/horizon/fade knobs.
+- **Vouch statements** (deps: none; **promoted** - ships with the invite tokens, not after 4S):
+  the signed "I met this human" payload, public v1 (the public-follows chain's first writer),
+  retractable. Friend tokens carry the vouch flag from day one: every IRL invite quietly writes
+  an edge - the seed crystal. Graph-privacy refinements (rounded scores, hidden nodes,
+  resolution by closeness) stay later; they are subtle, the payload is not.
 - **Flow computation engine** (deps: none - develops against the harness's synthetic graphs):
-  the Advogato-style joint-flow calculation, bounded horizon, as pure crate code.
+  the Advogato-style **joint-flow** calculation (never per-person; that detail is the whole
+  Sybil defense), bounded horizon, as pure crate code, property-tested. Known, decades-old
+  math - not research.
+- **Adversary-simulation harness** (deps: none): a **calibration instrument and standing
+  tripwire, never a launch gate**. It sanity-checks the joint-flow property before wiring (a
+  week, not a program), tunes the budget/horizon/fade/floor knobs, then runs forever hoping to
+  break things. Shipping ahead of exhaustive validation is covered by the plan's low-payoff
+  principle: v1 trust gates only annoyance-priced, reversible surfaces.
 - **Private chains** (deps: none; newly surfaced prerequisite): vouches and contact names live on
   *encrypted* chains synced only among an identity's own nodes - infrastructure no milestone has
   built yet (encryption scheme, key distribution within the tree, the never-serve-across-the-
@@ -298,11 +325,15 @@ data:
   under the old epoch; readable by all, by design); (c) the `identity-private` service is gated
   but writer-less; (d) requesters re-offer private chains every exchange (duplicate-skip absorbs
   it) - revisit if private chains ever get big.
-- **Vouch statements + contact names** (deps: private chains): the payload types and their APIs;
-  the "I know this person for real" ceremony belongs to 4C's language budget.
-- **Wiring trust into the product** (deps: 4S + the above): the coarse floor, applied to
-  something deliberately low-stakes first (feed ordering, a DM gate someday) per the plan's
-  low-payoff principle.
+- **Contact names** (deps: private chains - done): the private-register annotation and its UI;
+  the "I know this person for real" ceremony belongs to 4C's language budget, on the same
+  screen as the vouch (fork in the UI, never a coupling in the data).
+- **Wiring trust into the product** (deps: 4S + the above): lands *with* the social launch, not
+  after it - the coarse floor applied to the first low-stakes surfaces (feed ordering, a bot
+  floor) as part of 4S's exit demo.
+- **Deferred with honest labels** (refinements of a running system, not prerequisites renamed):
+  credibility (needs track records that don't exist yet), interest/taste recommenders,
+  graph-privacy resolution controls, harness-driven knob refinement.
 
 ## Tier 6 — Ship (unordered tasks; one gate, not an order)
 
