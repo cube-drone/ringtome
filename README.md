@@ -30,8 +30,10 @@ cargo run --bin ringtome    # run a node (see node/README.md for configuration)
 - [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — the doctrine: architecture, identity model, trust model,
   threat model, every load-bearing design decision with its reasoning. Edited in place; always
   current.
-- [`NEXT_STEPS.md`](NEXT_STEPS.md) — the trajectory: milestones M1–M3.5 (done, with honest status
-  reports) and the unordered tiers ahead.
+- [`NEXT_STEPS.md`](NEXT_STEPS.md) — the trajectory: where the ladder stands, the standing
+  residuals, and the unordered tiers ahead. Forward-looking only.
+- [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status notes and
+  residuals as recorded at the time. Append-only; the past holds still.
 - [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
   language mapping.
 - [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and

@@ -29,7 +29,10 @@ webcomic, a burner for the forum argument. Given that in a p2p network you can't
 anonymous bots, it makes it much more _clear_ to users that they should not trust anybody if they, too, are empowered
 to be a cloud of disposable identities.
 
-The existing codebase (in `api/`) is a prior-generation Rust+Axum web service organized around multi-tenant communities. It will be used as a **reference and pattern library** but the new system will be built from scratch to reflect fundamentally different architectural assumptions.
+The prior-generation codebase (in `api_old/`) is a Rust+Axum web service organized around multi-tenant
+communities; it serves as a **reference and pattern library** (see API_OLD.md for the autopsy). The new system is
+built from scratch to reflect fundamentally different architectural assumptions - substrate through private chains
+is implemented; see NEXT_STEPS.md for where the ladder stands.
 
 ---
 
@@ -54,7 +57,7 @@ The existing codebase (in `api/`) is a prior-generation Rust+Axum web service or
 - **Users** authenticate to a node via the web UI. The node acts as their agent on the p2p network.
 - **Data replication** happens over Iroh between nodes. If a user connects to a second node, their data syncs to it.
 
-### Trust Model
+### The Node-Operator Trust Model
 
 A connector node is a **trusted agent** for its users — analogous to an email provider. The node serves the web UI, holds encrypted key material, and acts on the user's behalf. Users should only log in to nodes they trust (self-hosted, operated by a friend, community-run, etc.).
 
@@ -129,9 +132,7 @@ conflicting statements can be ranked using only the statements themselves.
    *ranks from the stamps themselves*, comparing two bundles at their divergence point. The stamp is what makes
    compact proofs **rank-complete**: it is why a first-contact peer can decide which of two keys is senior, and why
    a stranger can verify that a revocation's signer outranks its target, without anyone shipping full histories.
-   In one line: full replicas verify stamps against history; strangers verify history against stamps. (This is the
-   reason rule 3's lists are not redundant with full-chain validation - they are the provision for verifiers who
-   will never hold full chains.)
+   In one line: full replicas verify stamps against history; strangers verify history against stamps.
 5. **Order is the rank-path, not wall-clock time.** To compare two keys, walk both up to their lowest common
    ancestor; they diverge into two of that ancestor's children; whichever child is senior (per rule 3's lists), that
    entire branch wins. Formally this is lexicographic order on the sequence of sibling-ranks from root to key. A
@@ -143,8 +144,7 @@ conflicting statements can be ranked using only the statements themselves.
 
 **Consequence:** an honestly-built tree is *always* totally ordered, at any depth, across any partition, with no
 tiebreaker needed - including cousins, who are ordered by their branches' seniority with zero global coordination.
-(This is why the old "pass every new node up to the root" rule is gone: cross-cousin order is now derivable locally,
-so the synchronization it required - which partition would have broken anyway - is unnecessary.)
+
 
 ### When Two Keys Cannot Be Ordered: Equivocation
 
@@ -239,7 +239,8 @@ Two failure modes wear the same "I'm locked out" face and must never share machi
 password loses nothing cryptographic** - on an always-on node the leaf keys are sealed under the envelope key, not
 the login password (see Key Storage), so the node still holds perfectly healthy keys and the user has only lost the
 ability to prove themselves to *this node's web app*. That is a web-app problem. Actual key loss (dead node, lost
-devices, compromise) is the rare case, and it alone runs the key-tree machinery.
+devices, compromise) is the rare case, and it alone runs the key-tree machinery. The load-bearing invariant for
+everything below: **presenting key K may grant at most K's own authority.**
 
 **Flow A - forgot password (common): zero chain entries, zero new keys.** The recovery photo serves as the reset
 *authentication factor*: scan the QR, the node derives the pubkey, confirms it is the identity's **designated
@@ -341,7 +342,9 @@ unattended.
 5. On Node A, the user authorizes K1 — K0 signs K1's public key with the current family tree (the cumulative usurper list).
 6. The signed authorization is sent back to Node B.
 7. Node B now holds its own private key + the signed proof that K1 is a child of K0.
-8. User sets a **local password on Node B** (independent of Node A's password) to encrypt K1's private key at rest.
+8. User sets a **local password on Node B** (independent of Node A's password) for login; K1's private key is
+   sealed at rest under Node B's own envelope key (see Key Storage). (The implemented ceremony wraps steps 3-7 in
+   request/grant codes - two copy-pastes; see NEXT_STEPS M3.)
 
 ### Threat Model
 
@@ -446,10 +449,8 @@ Three layers refer to an identity, in decreasing forgeability and increasing per
   be copied.
 - **The display name** is a *self-claim*: mutable, unverified, in the public profile, synced to followers. It always
   shows, because even with zero other data, seeing that an identity claims to be "FART DRAGON" is a useful first
-  hook. Change it and followers see the change on next sync. (The name is a **last-writer-wins (LWW)** field: when two
-  of your own nodes set it at different times, the later timestamp wins, so all replicas converge on one value; the
-  chain of past writes doubles as the name history. LWW is used throughout for simple scalar fields where overwriting
-  is the intent - see Data Layer.)
+  hook. Change it and followers see the change on next sync. (Names are **last-writer-wins** fields; the chain of past
+  writes doubles as the name history. The merge rule's one canonical home is The Ordering Contract.)
 - **The contact name** is *your* private annotation - a local label you assign, stored on your private chain,
   **never synced to anyone.** Like saving someone in your phone under a name that helps *you* remember them. It
   overrides the display name in your UI.
@@ -554,7 +555,7 @@ separate, explicit act.** The controversy was never the endpoints knowing; it wa
 Mechanically, a follow has **three disclosure tiers**, chosen per-follow:
 
 - **Quiet** - the follow lives on your private chain (synced only among your own nodes); you fetch their public
-  content and tell no one. Exists today.
+  content and tell no one. (The private-chain mechanism carrying it is implemented; the follow type itself is 4S.)
 - **Tell them** - additionally, a signed "I follow you" statement is delivered **to the target's nodes only**,
   who store the receipt on their own private chain. This is the member-proof pattern generalized: *prove you are
   the subject of a datum, receive the datum.* Nobody can ask "who does A follow?" or "does A follow X?"; only
@@ -617,11 +618,12 @@ surface); vouch payloads remain Tier 5 as planned.
 
 ## Authentication
 
-### Phase 1: Username + Password (Local Only)
+### Phase 1: Username + Password (Local Only) - IMPLEMENTED (M0)
 
 - Users register with a username and password on a connector node.
-- The password is used to encrypt/decrypt the user's key material locally. It is **never transmitted over the p2p network**.
-- Password hashing uses **Argon2**.
+- The password gates *access* (Argon2-hashed, verified at login); key material at rest is sealed under the node's
+  **envelope key**, not the password - see Key Storage, whose lockable-personal-device mode is the one deliberate
+  exception. Passwords are **never transmitted over the p2p network**.
 - This is the simplest possible onboarding — no email, no phone, no external dependencies.
 - A node account can agent **multiple identities**: one login decrypts the leaf keys of every identity the user has
   attached to that account, and the UI offers a switcher. The account-to-identities mapping is local to the node and
@@ -811,301 +813,6 @@ start. The seed crystal, not the retrofit. Consequently the social launch (Tier 
 its first low-stakes surfaces: social ships wearing its thesis. Deferred with honest labels, as refinements of a
 running system: credibility (needs track records that don't exist yet), interest/taste recommenders,
 graph-privacy resolution controls, and harness-driven knob refinement.
-
----
-
-## Moderation and Operator Liability
-
-Ringtome does not grow a moderation subsystem; it consults machinery it already has at the moments content changes
-hands. Every mechanism in this section reduces to one shape: **an opinion, signed by an identity, weighted by the
-reader's trust in its author, applied as node-local policy at a serving decision.** Admission, peering,
-denunciations, hash lists - all instances of that shape. The section exists because a federated node operator is
-the person legal reality actually visits, and the design owes them a defensible position, not a shrug about p2p.
-
-### Public-Readable Is Not Publicly-Served
-
-"Public" names two properties that must be split:
-
-- **Public-readable:** unencrypted and signed - anyone *holding* the bytes can read and verify them. Public chains
-  are public-readable by definition.
-- **Publicly-served:** fetchable by an anonymous stranger with an HTTP client and no standing in the network.
-
-Nothing in the architecture forces these to coincide, and the default posture is that they do not: **a federated
-node serves public chains to its authenticated members and to peers syncing on follower demand - never to
-anonymous HTTP.** Fetching public content requires knowing the root pubkey, finding a node that serves it, and
-that node agreeing to serve *you* - and no node is obligated to serve anything (see Rehosting Policy). "Public" in
-Ringtome means *unencrypted, attributed, and destined for whoever follows you* - not "on the web." The web is a
-separate, opt-in role (see The Web Gateway, below). This also dissolves the false choice between "no public nodes"
-(hermetic seal) and "auto-moderated exit nodes": a node with 500 users, federating widely, fronting hundreds of
-followed identities, is not hermetic - and has no anonymous public surface either. Growth rides membership and
-vouch edges, which is the growth model anyway; anonymous discoverability was never the engine.
-
-### The Three Funnels: Why Moderation Load Stays Bounded
-
-The nightmare - a reporting pipeline that cannot keep up with gobs of bots - assumes unbounded content inflow.
-Pull-not-push means content lands on a federated node through exactly three funnels, each with an accountable
-human attached:
-
-1. **Your own users author it.** Admission is trust-gated; you inducted them. Kick, delete, done - ordinary
-   hosting-provider remediation.
-2. **Your users follow it in.** Every remote identity a node fronts exists because a specific local account
-   demanded it. Remediation is severing the demand edge and talking to the user who created it - a name, a
-   conversation, a small blast radius.
-3. **Open mode**, if enabled, accepts unsolicited fronting - already opt-in, quota'd per source, and revocable
-   when burned.
-
-Moderation load is therefore proportional to **your community's behavior, not the network's size.** Bots cannot
-push; they must be pulled, and pulling requires an account or a follow from someone who has one. This is the same
-structural insight as "no global timeline is the structural repellent": the megaphone not existing is not just
-culture curation - it is the liability shield. (It is also the third appearance of the design's favorite move: an
-LLM auto-moderator would be a *blocklist over the adversary's content*; demand-driven serving is an *allowlist
-over ours* - the markup-language argument again. A small local model is decent at NSFW flagging, mediocre at
-contextual hate speech, useless for copyright, and forbidden territory for CSAM - and it becomes an adversarial
-target the moment it is load-bearing. LLM as triage for an operator's review queue on public-facing roles: fine.
-LLM as verdict: never. If the design only works when a small model correctly identifies evil, the design does not
-work.)
-
-Field data that bounded ingress is tractable: the fediverse's IFTAS pilot ran hash-scanning for 8 Mastodon servers
-(~30k monthly actives) and found ~4.3 matches per 100,000 media files - real (small operators *do* encounter this
-material via federation; "not my cozy node" is false) but rare enough that quarantine-and-review pipelines keep up
-easily once ingress is bounded.
-
-### Four Abuse Categories, Four Machineries
-
-Collapsing these into one "detect evil and hammer it" pipeline is the design error to refuse. Each category has
-different legal duties and different correct machinery:
-
-- **CSAM** - the only category where "ban the user" is never sufficient and affirmative legal duties exist (in the
-  US, mandatory reporting to NCMEC under 18 U.S.C. §2258A, with preservation duties - so the pipeline on discovery
-  is **quarantine + preserve + report**, emphatically not reflexive deletion). Detection is hash-list scanning
-  (below) - **never a home-built classifier**: possessing or training on the material is strict-liability criminal
-  territory with no self-declared research exception. Note also what the law does *not* demand: §2258A imposes no
-  monitoring duty and the DSA forbids general-monitoring obligations - scanning is something a node *chooses* at
-  its public-facing roles, not a protocol-wide obligation.
-- **Copyright** - proactive detection is neither possible (no local model identifies a movie from blob chunks; no
-  rights database exists to consult) nor required: the safe-harbor model is **notice-and-takedown plus a
-  repeat-infringer policy.** What a node needs is response machinery - fast blob drop, root refusal, and for
-  hosted nodes of size, a registered agent. Speed of removal matters; detection does not. (See also Fidelity Caps:
-  a network that cannot carry high-fidelity media is a bad piracy channel by construction.)
-- **Hate speech** - jurisdiction-dependent, operator-policy territory. Ban + drop locally; optionally publish the
-  denunciation so nodes that trust your judgement inherit it (below).
-- **NSFW** - not a removal problem at all: a **labeling and consent** problem. Self-claimed content labels on
-  post/page payloads, operator-applied label overrides, reader-side filters. Room for a labels field must be
-  reserved when the content types are designed (Tier 4M) - retrofitting label semantics into signed content is a
-  protocol break in miniature.
-
-### Policy Is Never Protocol
-
-The sync gate refuses entries that are cryptographically *invalid* - broken chains, revoked keys. Operator
-moderation is a **second, separate input** to the same gate: *valid, but refused here.* The two must never blur:
-
-- A **denunciation is not a repudiation.** Repudiation is an identity's senior key evicting its own junior - an
-  intra-tree authority act. A denunciation is a stranger's signed opinion about someone else's root. Reusing the
-  key-tree revocation types for moderation would be a category error with teeth: other nodes must never mistake
-  "this operator refuses R" for "R's chains are cryptographically dead."
-- Refusal is **node-local.** A denounced identity's own nodes still serve it; followers who do not subscribe to
-  the denouncer still fetch it. The maximum effect of moderation machinery is *refusal to carry* - never
-  network-wide erasure. (Erasure of specific content is the blob layer's tombstone/drop, an authorial or operator
-  act on cooperating nodes, exactly as the Data Layer designs it.)
-
-### Denunciations: Negative Signal Without Negative Trust
-
-Naive negative trust dies instantly in an open-identity network: minting a denouncer is free, so negative edges
-from the open graph are botnet fuel. The flow model's Sybil guarantee is directional - it protects the supply of
-*positive* signal and says nothing about negative. There is exactly one safe construction: **negative signal is
-only ever an opinion carried over existing positive trust edges.** Not negative edges *in* the graph - negative
-payloads *on top of* it. A botnet's million denunciations weigh zero because none of its authors are
-flow-reachable; eleven flow-reachable friends independently publishing "this account is a stormfront bot" is
-strong, usable signal.
-
-Three rules keep it safe:
-
-1. **Denunciations never touch the Trust computation.** They gate downstream policy (serve/front/admit/rank),
-   never the substrate. Feeding them back into Trust would build the up-flow the layer boundary forbids, and let
-   a clique excommunicate someone from the *graph* rather than from their own nodes.
-2. **Weight-shared like every signal.** The existing guardrail applies verbatim: a denunciation carries the
-   denouncer's weight, split across everything they signal. An account that denounces 10,000 identities is a
-   firehose whose individual denunciations round to zero.
-3. **Refusal-to-carry, not excommunication** (per Policy Is Never Protocol). A clique of real, mutually-trusted
-   humans brigading a victim can make the victim unwelcome in *their* neighborhood - roughly the power human
-   communities have always had - not delete them from the network.
-
-A denunciation is a signed statement on its author's chain (target root, reason class, optionally a blob hash -
-see Hash Lists), revocable by its author, subscribable by anyone. "I trust Rache to moderate on my behalf" needs
-no new primitive: it is **topic-scoped Credibility** - the score the trust layer already defines - where the topic
-is moderation judgement. (Open, for the statement-type design: the reason-class taxonomy, and whether denunciations
-live on the operator's identity chain or a node-key chain.)
-
-### Operator Identity: Bind, Don't Adopt
-
-Nodes already have keys (transport-level node keys, distinct from identity keys). The question is whether a node
-should be welded into its operator's key tree. **No - bind, don't adopt.** Making the node key a child of the
-operator's tree conflates machine compromise with personal-identity compromise, forecloses pseudonymous operation,
-and drags succession machinery where it is not needed (dead node key = mint a new node, re-bind). Instead, reuse
-the voluntary-linkage primitive ("I am also X"): the operator's identity publishes a signed **operator-binding
-statement** - "identity O operates node N" - and trust in O reaches N through ordinary graph mechanics.
-
-What the binding buys:
-
-1. **Admission policy becomes automatable.** "Anyone vouch-reachable within 3 hops of the operator may register"
-   is the difference between a 12-person node and a 500-person node *without* open registration - the scaling
-   mechanism for trust-gated growth.
-2. **Peering by operator trust.** Unsolicited fronting and open-mode sync weighted by trust in the bound operator;
-   anonymous unbound nodes get the strictest quotas or nothing.
-3. **Moderation delegation.** Subscribe to denunciation feeds and hash lists weighted by the author's
-   moderation-Credibility.
-4. **Abuse routing.** Reports and "your user is causing trouble on my node" conversations travel
-   operator-to-operator along trust edges instead of an abuse@ inbox exposed to the anonymous world.
-
-Two caveats, kept loud: **the operator's personal graph is an input to node policy, never identical with it** (a
-personal vouch should not silently auto-admit; personal follows are not the node's subscriptions - node policy
-chooses which levers to pull). And the fediverse's known failure mode applies: **operator trust clusters can
-calcify into de facto blocklist authorities** (the fediblock wars). The structural mitigation is that
-subscriptions are per-node and weighted, not binary and global - but any feature that makes subscribing to one big
-list the path of least resistance is quietly rebuilding the authority this architecture claims not to have.
-
-### Hash Lists and Scanning
-
-Blocklists at blob granularity are denunciations carrying hashes, and they come in two kinds on one list:
-
-- **Exact (BLAKE3).** Nearly useless on the web (any re-encode evades); **unusually strong here**, because blobs
-  propagate *by their hash* - the same bytes get requested and re-served across nodes. One exact-hash denunciation
-  kills that blob among subscribers network-wide; evading it means re-authoring and re-seeding a new blob, not
-  re-sharing a link. Zero-cost to check (the blob store is already keyed by it).
-- **Perceptual (PDQ).** Catches the re-encode. Computed locally at blob ingest - which means *decoding hostile
-  media*, a classic vulnerability class: decoders run sandboxed, the same posture taken toward every other hostile
-  byte.
-
-**Operator-authored lists** are the established pattern, not a hack (StopNCII works exactly this way: victims hash
-their own images locally; platforms block on the hash, and the image never travels). The workflow: report arrives
--> operator reviews -> **hash before dropping** -> the entry goes on the node's signed denunciation chain ->
-trusted subscribers inherit the block. Distribution is trust-gated *on purpose*: a public hash list is an offline
-evasion-testing oracle and (for perceptual hashes) a dictionary-attack risk - "shared along trust edges" is the
-operationally correct model, not just the philosophically tidy one.
-
-**CSAM lists are never distributable and never local.** The clearinghouse ecosystem (NCMEC, IWF, the Canadian
-Centre for Child Protection) keeps hashes server-side and exposes vetted access or query APIs. The shipped default
-backend is **Shield by Project Arachnid** (C3P): free, signup-keyed, accepts **locally-computed PDQ hashes** -
-fingerprints go out, user media never does - returns exact/visual match classifications, and has an official Rust
-SDK (`arachnid-shield`). Each operator signs up for their own key (the accountability chain behind the key is part
-of the point; Ringtome ships no shared credentials). IWF's small-operator offering (Image Intercept) is a second
-supplier to watch. The fediverse's IFTAS experience is the cautionary architecture note: their centralized
-scanning intermediary cost $60k+/year and died of funding within months - so Ringtome's shape is **a scanner trait
-at the blob layer** plus trust-edge republication: the few operators who run scanning publish their own blocking
-*decisions* (their moderation acts - never the clearinghouse's list) as exact-hash denunciations, and the long
-tail inherits protection by subscription, with no intermediary organization to keep funded.
-
-Operational rules:
-
-- **Scanning defaults are keyed to role.** Off/optional for a personal node serving its own author's content;
-  on-by-default - arguably required by the software - for **open mode and gateway mode**, exactly the roles where
-  strangers' media crosses the disk headed for the public.
-- **Gateways fail closed:** if the scanning backend is unreachable, new unscanned media is held, not served.
-- **A perceptual match is a lead, never a verdict** (Apple's NeuralHash collision lesson). Auto-*block* on match:
-  fine - cheap, reversible. Auto-*report a human* on match: never - human review precedes reports.
-- **On a CSAM match: quarantine + preserve + report.** The blob is sealed in a locker, not shredded (preservation
-  is a legal duty where reporting is); the serving path goes dark immediately; the operator gets a "you likely
-  have reporting obligations, here is where" prompt. Cache clean verdicts by exact hash so nothing is scanned
-  twice.
-- **Scope honesty:** scanning covers what a node can see - public chains and fronted blobs. Encrypted
-  private-chain content is structurally unscannable, and the design says so proudly: promising to scan inside the
-  private boundary is the chat-control position. The correct control for private content is the admission/trust
-  layer, not the scanner. Likewise, perceptual hashes stop *casual redistribution* of known material, not a
-  determined adversary with a re-render pipeline: a hygiene layer on the architecture, never the wall.
-
-### The Web Gateway: A Distinct Role, Dual Opt-In
-
-(Resolves the open decision in Resource Namespace and Access Protocol.) Some users genuinely want globally-public,
-identity-attributed content - the webcomic case - and the network should serve them without every federated node
-becoming an exit node. The gateway is therefore a **separate role with dual opt-in**:
-
-- **The author opts in:** a signed gateway-eligibility statement scoping which of their public content may be
-  re-served over HTTP.
-- **The gateway operator allowlists that specific identity.** Nobody can opt themselves onto a gateway.
-
-A gateway's liability is proportional to a **curated, enumerated list** - "we publish these 200 authors we chose"
-is a defensible editorial position in a way "we relay whatever arrives" never will be. Curation is also the value:
-a good gateway is a magazine, and its allowlist is taste made legible. An identity whose whole purpose is
-distributing contraband can flag itself gateway-eligible all day; no operator has to take it, and the ones
-vouch-reachable from operators won't. Gateway mode carries the strictest software posture: mandatory scanning,
-fail-closed, hardened serving headers (below), and a genuinely separate serving domain - the one role where asking
-the operator for real infrastructure is appropriate, because it is the one role that is *publishing*.
-
-### The Media-Type Admission Test
-
-Blob types are a **closed registry** - the same allowlist-over-ours move as the markup vocabulary, applied to
-bytes. A media type earns admission to the network when it has all three:
-
-1. **A strict-parse validation story** - magic bytes and structural parse at ingest (in a sandboxed decoder), a
-   typed renderer at display (never a generic "open this file" path). The declared type is *enforced, never
-   trusted*: the attack is not `badtouch.exe` labeled honestly, it is a blob declared `image/png` whose bytes are
-   a polyglot or script.
-2. **A scanning story**, where its abuse category demands one - PDQ/Shield covers images and video, which are
-   conveniently exactly the CSAM-relevant types.
-3. **A metadata-privacy story** - what the format smuggles, and how it is stripped.
-
-Consequences for the v1 lineup:
-
-- **Bitmap images: yes** - with the EXIF rule. A phone photo carries GPS coordinates: a deanonymization channel
-  worse than most on a pseudonymity-promising network. Because blobs are content-addressed and author-signed, a
-  node cannot strip metadata after the fact without changing the hash - **stripping happens in the authoring
-  client, pre-sign**, with an ingest-side "reject images bearing GPS EXIF" backstop that also covers third-party
-  clients.
-- **SVG: no.** It looks like an image and is actually an XML document that can carry script and external
-  references. Bitmap formats only, until someone wants to build "parse SVG into our own safe subset" as a project.
-- **Video: narrow profiles, not "video."** Container formats are the worst parsers in computing; allowlist
-  specific codec/container pairs (e.g. MP4/H.264+AAC, WebM/VP9) and let the browser's already-sandboxed media
-  stack decode.
-- **Audio: MP3 and - load-bearing aesthetic - MIDI.** ID3 tags can embed arbitrary junk including images: validate
-  or strip at ingest. MIDI renders through a client-side synth, never a native handler.
-- **PDF: no.** JavaScript, launch actions, embedded files, forms - a document *platform*, not a document. Nothing
-  in the geocities-and-webrings aesthetic needs it; the strongest future concession is "rendered exclusively via a
-  sandboxed pdf.js," which is still a concession to resist.
-- **Generic "file attachment": the type to resist hardest.** If the registry is markup/images/av-profiles/audio,
-  there *is no surface* on which an executable arrives - not blocked, nonexistent. A generic attachment type
-  reintroduces the entire executable-content problem as one innocent feature. When someone eventually needs to
-  share a tileset zip, the answer is a new *specific* type with its own validation story.
-
-On plaintext malware (base64 in a post body): unwinnable and therefore out of scope - anyone a filter could stop
-can paste ciphertext instead. The defensible line is that **the network never puts bytes on a path to an
-interpreter**: no execution context, no native-handler handoff, no one-click-open. Weird text a human must
-manually extract and run is outside any threat model a protocol can hold.
-
-**Origin isolation is software defaults, not operator labor.** The isolation never actually came from owning a
-second domain - it comes from how blob bytes are served, and the node ships it: `Content-Type` set from the
-*validated* type (never the declared one), `X-Content-Type-Options: nosniff`,
-`Content-Security-Policy: sandbox` (which gives every blob response a unique opaque origin - works on
-`localhost`, requires zero operator configuration), `Content-Disposition: attachment` for anything not strictly
-renderable, and blob serving bound to a **separate port** from the app UI (a genuinely different origin by
-definition, free even on a Raspberry Pi; the client keeps session credentials where the blob origin can never
-read them). The **separate serving domain** is asked only of the gateway role - the burden lands where the risk
-lands: local operators configure nothing and get isolation from headers; publishers take on publisher
-infrastructure. (Also load-bearing: the client renders blobs through its own typed renderers - decoded bitmaps
-into constructed DOM, media elements for a/v - so blob bytes are never *navigated to* as documents in the first
-place.)
-
-### Fidelity Caps: The Crunch Filter (provisional)
-
-Once photos and video exist, node disk space becomes a design surface. Full storage budgeting (quotas, eviction,
-what a node owes the identities it agents and fronts) is an open question - but one provisional stance is worth
-recording because it serves four goals at once: **media passes through an aggressive, lossy, retro-aesthetic
-re-encode in the authoring client** - palette quantization, dithering, hard dimension caps, brutal video profiles.
-
-- It merges with a pass that must exist anyway: the pre-sign metadata strip (EXIF) is already a mandatory
-  authoring-time re-encode; crunch is the same pass with taste. (And constraint-as-identity is already this
-  document's stated aesthetic bet - the Pico-8 lesson.)
-- It bounds storage and sync cost to 1999 levels: ten thousand tiny GIFs are barely an inconvenience, and the
-  day-long-sync problem stays dead.
-- It is enforceable where it matters: the *aesthetic* is cultural plus default-client, but **size and dimension
-  caps are ingest policy** - a node verifies and refuses oversized blobs regardless of which client authored them.
-- It is quietly a moderation feature: **a network that only carries small, heavily-quantized media is a terrible
-  distribution channel for high-fidelity contraband.** Nobody pirates a movie at 160p in 8 colors; fidelity caps
-  make the piracy-exit-node problem structurally unattractive rather than policed.
-
-One honest tradeoff: heavy quantization is a large visual transform, and perceptual-hash matching against
-clearinghouse databases (built from originals and common re-encodes) degrades with transform distance - crunching
-may cost some scanner recall. Scan at ingest *before* the blob is accepted, and accept that the fidelity cap
-itself does much of the work the scanner would.
 
 ---
 
@@ -1558,10 +1265,9 @@ HTTP assumptions are false here and each is load-bearing:
 
 **Resolved: the web gateway is a role, not a default.** `ringtome://` URLs are dereferenced natively by nodes;
 ordinary web browsers reach content only through an HTTPS gateway (`https://pub.example/<root>/public/name`
-proxying into the p2p layer) run as a **distinct, dual-opt-in role**: authors sign gateway-eligibility, gateway
-operators allowlist specific identities, and the role carries publisher-grade obligations (mandatory scanning,
-fail-closed, separate serving domain). No federated node serves anonymous HTTP as a side effect of federating.
-Full design in Moderation and Operator Liability. Consequence for addressing: resource addressing stays
+proxying into the p2p layer) run as a **distinct, dual-opt-in role** with publisher-grade obligations - full
+design, one canonical home: Moderation and Operator Liability. No federated node serves anonymous HTTP as a side
+effect of federating. Consequence for addressing: resource addressing stays
 native-first; gateway URL shapes are a proxy concern, not a protocol one.
 
 ---
@@ -1727,7 +1433,9 @@ knob. (The identity chains are deliberately not stores: authority is not applica
 - User data is synced between nodes using the **Ringtome sync protocol** (see Iroh Protocol Mapping below), not by replicating raw SQLite files.
 - The per-user SQLite database is the local materialized view of synced data.
 - Both nodes continue to sync the user's data bidirectionally as long as the user is active on both.
-- When multiple nodes write to the same field, conflicts are resolved using **last-writer-wins (LWW) by timestamp** for simple scalar fields (name, bio, etc.): the write with the later timestamp wins, so every replica converges on one value without coordination. LWW is only appropriate where overwriting is the intent and a lost write is harmless - it must **never** gate anything security-relevant, because timestamps are attacker-controllable claims (a compromised node can stamp a far-future time and win forever). Collections use set-merge instead (two nodes adding different items both survive), and authority conflicts resolve by rank-path, never by timestamp. More complex data types can layer a CRDT library on top in the future.
+- Concurrent writes never conflict at the log layer; merge rules live at the semantic layer, stated once in
+  **The Ordering Contract** (LWW for scalar state, set-merge for collections, rank-path - never time - for
+  authority) and implemented node-side by the Store Layer's typed handles.
 - **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries are stored **signed** so that a Repudiation Revocation can retroactively quarantine everything a hostile key signed after its cut-point (see Revocation Types).
 
 ---
@@ -1761,25 +1469,21 @@ iroh-docs' range-based set reconciliation, but sufficient because the number of 
 
 ### Shallow Sync and the Day-Long-Sync Problem
 
-SSB's onboarding pain deserves precise blame, because it is easily mis-remembered. It did *not* sync the whole
-network to everyone: replication was scoped to your follow graph within 2-3 hops, and post-initial syncs were cheap
-deltas. What actually hurt: (1) **pubs poisoned the hops math** - a pub followed thousands, so "2 hops from me"
-transitively became most of the active network; (2) **every feed in your slice replicated whole, from genesis,
-mandatorily** - validation and indexing both required complete chains, and nothing could ever be deleted, so the
-entry fee grew monotonically forever; (3) **the infamous "indexing..." screen was local** - clients rebuilt their
-databases by replaying the entire on-disk log, on first run and on app updates. Notably, SSB *already had*
-lazily-fetched content-addressed blobs - a header/blob split alone does not prevent any of this. Ringtome's real
-escape hatches are: no transitive hops-amplification (fronting is direct demand - your node fetches who *you*
-follow, not who they follow), incremental materialized views (per-entry updates; full replay is an optional
-integrity ritual, never a startup cost), and - the piece that needs a protocol commitment - **suffix-capable
-chains**. "Chains replicate whole" as a default would still recreate SSB's tail (follow a posts-every-minute bot
+SSB's onboarding pain, precisely blamed: pubs transitively inflated the follow-graph hops math, every feed in
+your slice replicated whole-from-genesis mandatorily, and clients rebuilt databases by replaying the entire log on
+first run - and SSB *had* a header/blob split, which prevented none of it. Ringtome's escapes: no transitive
+hops-amplification (fronting is direct demand - your node fetches who *you* follow, not who they follow),
+incremental materialized views (full replay is an optional integrity ritual, never a startup cost), and - the
+piece that needs a protocol commitment - **suffix-capable chains**. "Chains replicate whole" as a default would still recreate SSB's tail (follow a posts-every-minute bot
 with a decade of history and you owe five million entries and verifications; a fronting node multiplies that by its
 user count). The fix is cheap because **the hash chain already permits it - this is a git shallow clone.** If a node holds the *suffix* of a chain, the oldest held entry's signed
 `prev_hash` commits to the entire missing prefix: everything held verifies as authored, and any later backfill must
 hash-match the commitment already in hand or be rejected. `prev_hash` never required *possessing* the prefix - only
-that any prefix ever accepted be *the* prefix. Better still, **LWW fields are correct (not just plausible) from a
-suffix**: an unseen older entry loses LWW by definition. What shallow holding forgoes is fork detection inside the
-unfetched prefix and complete history display - both acceptable to acquire lazily. Policy:
+that any prefix ever accepted be *the* prefix. **Recently-rewritten LWW fields are correct from a
+suffix** (an unseen older entry loses by definition) - but fold-based views are not: a register key or set element
+last touched inside the unfetched prefix is silently *absent*, not stale (the store layer's two-question suffix
+test). Snapshots exist to close exactly that gap. What shallow holding otherwise forgoes is fork detection inside
+the unfetched prefix and complete history display - both acceptable to acquire lazily. Policy:
 
 1. **Identity chains: always full, always first.** Tiny, security-critical, they are the authority context - never
    shallow.
@@ -1790,8 +1494,8 @@ unfetched prefix and complete history display - both acceptable to acquire lazil
    replication. Progressive display is a standing rule for every client.
 4. **Fronting depth is a dial.** Fronting an identity promises its *availability*, not its infinite history:
    per-identity depth/size budgets, so a node fronting 500 users is not archiving 500 lifetimes.
-5. **Snapshots stay reserved, with a named trigger.** Signed "state as of seq N" checkpoints become necessary only
-   when suffix + LWW stops sufficing (set-types with removals, counters). The entry format reserves room; not v1.
+5. **Snapshots close the fold gap.** Fold-based views (multi-key registers, sets) go suffix-safe only behind a
+   signed checkpoint - design settled, build deferred with its trigger named (see IM-AOL Open Items: Snapshots).
 
 The honest trade, named: shallow-held chains mean a node can serve recent content while deep history is only
 *provably-committed-to*, not present. Archival completeness becomes a **role**, not a universal guarantee - an
@@ -1870,17 +1574,9 @@ the public network a free audit. **The trigger is root equality, nothing softer*
 must never start this flow, or lookalikes gain a lever to get your node treating them as kin.
 
 Someone using your *name* with a different root is not a protocol event at all - cryptographically it is simply
-another identity, and the trust layer already handles it (your vouchers reach your root, not the costume; strangers
-who trust neither of you were never promised the ability to tell strangers apart). The defense is UI: derive a
-unique **identicon from the root pubkey hash** and show it wherever a display name appears, so Curtis (afe8...) is
-visually distinct from Curtis (ff3e...) at a glance, and flag name/avatar collisions with non-matching roots when
-they cross the user's view.
-
-For each user identity:
-- The user's identity data (key tree, profile, content) is synced via the Ringtome sync protocol.
-- Each node in the user's key tree signs its own entries.
-- Any non-revoked node can update data, and changes sync to all other nodes holding a replica.
-- **Conflict resolution:** For simple fields (name, bio), we use **last-writer-wins by timestamp** among non-revoked authors. For more complex data in the future (e.g., collaborative content), we could layer a CRDT library like Loro on top.
+another identity, and the costume attack is handled where it belongs, in the UI: contact names bind to roots, and
+the **root-derived identicon** shows wherever a display name does (one canonical treatment: Display Names and
+Contact Names).
 
 ### `iroh-blobs` → Large Content
 
@@ -1954,6 +1650,301 @@ Two honest limits to design around:
 
 - **Discovery quality tracks opt-in.** If few edges are made discoverable, the overlay is sparse and the network feels like a void. There is real pressure to make the discoverable overlay generous, and every step toward "discoverable by default" re-exposes the association map. This dial needs ongoing tuning, not a one-time setting.
 - **Hidden edges leak through visible ones.** Hiding a few edges in an otherwise-public neighborhood does not hide them well: surrounding public structure often lets an outsider infer the hidden edge by correlation. Per-edge privacy is weakest exactly when most edges are public - which is the state generous discovery pushes toward. Sensitive edges (activist, source, survivor) should be understood as protected only when the *neighborhood* is private, not just the single edge.
+
+---
+
+## Moderation and Operator Liability
+
+Ringtome does not grow a moderation subsystem; it consults machinery it already has at the moments content changes
+hands. Every mechanism in this section reduces to one shape: **an opinion, signed by an identity, weighted by the
+reader's trust in its author, applied as node-local policy at a serving decision.** Admission, peering,
+denunciations, hash lists - all instances of that shape. The section exists because a federated node operator is
+the person legal reality actually visits, and the design owes them a defensible position, not a shrug about p2p.
+
+### Public-Readable Is Not Publicly-Served
+
+"Public" names two properties that must be split:
+
+- **Public-readable:** unencrypted and signed - anyone *holding* the bytes can read and verify them. Public chains
+  are public-readable by definition.
+- **Publicly-served:** fetchable by an anonymous stranger with an HTTP client and no standing in the network.
+
+Nothing in the architecture forces these to coincide, and the default posture is that they do not: **a federated
+node serves public chains to its authenticated members and to peers syncing on follower demand - never to
+anonymous HTTP.** Fetching public content requires knowing the root pubkey, finding a node that serves it, and
+that node agreeing to serve *you* - and no node is obligated to serve anything (see Rehosting Policy). "Public" in
+Ringtome means *unencrypted, attributed, and destined for whoever follows you* - not "on the web." The web is a
+separate, opt-in role (see The Web Gateway, below). This also dissolves the false choice between "no public nodes"
+(hermetic seal) and "auto-moderated exit nodes": a node with 500 users, federating widely, fronting hundreds of
+followed identities, is not hermetic - and has no anonymous public surface either. Growth rides membership and
+vouch edges, which is the growth model anyway; anonymous discoverability was never the engine.
+
+### The Three Funnels: Why Moderation Load Stays Bounded
+
+The nightmare - a reporting pipeline that cannot keep up with gobs of bots - assumes unbounded content inflow.
+Pull-not-push means content lands on a federated node through exactly three funnels, each with an accountable
+human attached:
+
+1. **Your own users author it.** Admission is trust-gated; you inducted them. Kick, delete, done - ordinary
+   hosting-provider remediation.
+2. **Your users follow it in.** Every remote identity a node fronts exists because a specific local account
+   demanded it. Remediation is severing the demand edge and talking to the user who created it - a name, a
+   conversation, a small blast radius.
+3. **Open mode**, if enabled, accepts unsolicited fronting - already opt-in, quota'd per source, and revocable
+   when burned.
+
+Moderation load is therefore proportional to **your community's behavior, not the network's size.** Bots cannot
+push; they must be pulled, and pulling requires an account or a follow from someone who has one. This is the same
+structural insight as "no global timeline is the structural repellent": the megaphone not existing is not just
+culture curation - it is the liability shield. (It is also the third appearance of the design's favorite move: an
+LLM auto-moderator would be a *blocklist over the adversary's content*; demand-driven serving is an *allowlist
+over ours* - the markup-language argument again. A small local model is decent at NSFW flagging, mediocre at
+contextual hate speech, useless for copyright, and forbidden territory for CSAM - and it becomes an adversarial
+target the moment it is load-bearing. LLM as triage for an operator's review queue on public-facing roles: fine.
+LLM as verdict: never. If the design only works when a small model correctly identifies evil, the design does not
+work.)
+
+Field data that bounded ingress is tractable: the fediverse's IFTAS pilot ran hash-scanning for 8 Mastodon servers
+(~30k monthly actives) and found ~4.3 matches per 100,000 media files - real (small operators *do* encounter this
+material via federation; "not my cozy node" is false) but rare enough that quarantine-and-review pipelines keep up
+easily once ingress is bounded.
+
+### Four Abuse Categories, Four Machineries
+
+Collapsing these into one "detect evil and hammer it" pipeline is the design error to refuse. Each category has
+different legal duties and different correct machinery:
+
+- **CSAM** - the only category where "ban the user" is never sufficient and affirmative legal duties exist (in the
+  US, mandatory reporting to NCMEC under 18 U.S.C. §2258A, with preservation duties - so the pipeline on discovery
+  is **quarantine + preserve + report**, emphatically not reflexive deletion). Detection is hash-list scanning
+  (below) - **never a home-built classifier**: possessing or training on the material is strict-liability criminal
+  territory with no self-declared research exception. Note also what the law does *not* demand: §2258A imposes no
+  monitoring duty and the DSA forbids general-monitoring obligations - scanning is something a node *chooses* at
+  its public-facing roles, not a protocol-wide obligation.
+- **Copyright** - proactive detection is neither possible (no local model identifies a movie from blob chunks; no
+  rights database exists to consult) nor required: the safe-harbor model is **notice-and-takedown plus a
+  repeat-infringer policy.** What a node needs is response machinery - fast blob drop, root refusal, and for
+  hosted nodes of size, a registered agent. Speed of removal matters; detection does not. (See also Fidelity Caps:
+  a network that cannot carry high-fidelity media is a bad piracy channel by construction.)
+- **Hate speech** - jurisdiction-dependent, operator-policy territory. Ban + drop locally; optionally publish the
+  denunciation so nodes that trust your judgement inherit it (below).
+- **NSFW** - not a removal problem at all: a **labeling and consent** problem. Self-claimed content labels on
+  post/page payloads, operator-applied label overrides, reader-side filters. Room for a labels field must be
+  reserved when the content types are designed (Tier 4M) - retrofitting label semantics into signed content is a
+  protocol break in miniature.
+
+### Policy Is Never Protocol
+
+The sync gate refuses entries that are cryptographically *invalid* - broken chains, revoked keys. Operator
+moderation is a **second, separate input** to the same gate: *valid, but refused here.* The two must never blur:
+
+- A **denunciation is not a repudiation.** Repudiation is an identity's senior key evicting its own junior - an
+  intra-tree authority act. A denunciation is a stranger's signed opinion about someone else's root. Reusing the
+  key-tree revocation types for moderation would be a category error with teeth: other nodes must never mistake
+  "this operator refuses R" for "R's chains are cryptographically dead."
+- Refusal is **node-local.** A denounced identity's own nodes still serve it; followers who do not subscribe to
+  the denouncer still fetch it. The maximum effect of moderation machinery is *refusal to carry* - never
+  network-wide erasure. (Erasure of specific content is the blob layer's tombstone/drop, an authorial or operator
+  act on cooperating nodes, exactly as the Data Layer designs it.)
+
+### Denunciations: Negative Signal Without Negative Trust
+
+Naive negative trust dies instantly in an open-identity network: minting a denouncer is free, so negative edges
+from the open graph are botnet fuel. The flow model's Sybil guarantee is directional - it protects the supply of
+*positive* signal and says nothing about negative. There is exactly one safe construction: **negative signal is
+only ever an opinion carried over existing positive trust edges.** Not negative edges *in* the graph - negative
+payloads *on top of* it. A botnet's million denunciations weigh zero because none of its authors are
+flow-reachable; eleven flow-reachable friends independently publishing "this account is a stormfront bot" is
+strong, usable signal.
+
+Three rules keep it safe:
+
+1. **Denunciations never touch the Trust computation.** They gate downstream policy (serve/front/admit/rank),
+   never the substrate. Feeding them back into Trust would build the up-flow the layer boundary forbids, and let
+   a clique excommunicate someone from the *graph* rather than from their own nodes.
+2. **Weight-shared like every signal.** The existing guardrail applies verbatim: a denunciation carries the
+   denouncer's weight, split across everything they signal. An account that denounces 10,000 identities is a
+   firehose whose individual denunciations round to zero.
+3. **Refusal-to-carry, not excommunication** (per Policy Is Never Protocol). A clique of real, mutually-trusted
+   humans brigading a victim can make the victim unwelcome in *their* neighborhood - roughly the power human
+   communities have always had - not delete them from the network.
+
+A denunciation is a signed statement on its author's chain (target root, reason class, optionally a blob hash -
+see Hash Lists), revocable by its author, subscribable by anyone. "I trust Rache to moderate on my behalf" needs
+no new primitive: it is **topic-scoped Credibility** - the score the trust layer already defines - where the topic
+is moderation judgement. (Open, for the statement-type design: the reason-class taxonomy, and whether denunciations
+live on the operator's identity chain or a node-key chain.)
+
+### Operator Identity: Bind, Don't Adopt
+
+Nodes already have keys (transport-level node keys, distinct from identity keys). The question is whether a node
+should be welded into its operator's key tree. **No - bind, don't adopt.** Making the node key a child of the
+operator's tree conflates machine compromise with personal-identity compromise, forecloses pseudonymous operation,
+and drags succession machinery where it is not needed (dead node key = mint a new node, re-bind). Instead, reuse
+the voluntary-linkage primitive ("I am also X"): the operator's identity publishes a signed **operator-binding
+statement** - "identity O operates node N" - and trust in O reaches N through ordinary graph mechanics.
+
+What the binding buys:
+
+1. **Admission policy becomes automatable.** "Anyone vouch-reachable within 3 hops of the operator may register"
+   is the difference between a 12-person node and a 500-person node *without* open registration - the scaling
+   mechanism for trust-gated growth.
+2. **Peering by operator trust.** Unsolicited fronting and open-mode sync weighted by trust in the bound operator;
+   anonymous unbound nodes get the strictest quotas or nothing.
+3. **Moderation delegation.** Subscribe to denunciation feeds and hash lists weighted by the author's
+   moderation-Credibility.
+4. **Abuse routing.** Reports and "your user is causing trouble on my node" conversations travel
+   operator-to-operator along trust edges instead of an abuse@ inbox exposed to the anonymous world.
+
+Two caveats, kept loud: **the operator's personal graph is an input to node policy, never identical with it** (a
+personal vouch should not silently auto-admit; personal follows are not the node's subscriptions - node policy
+chooses which levers to pull). And the fediverse's known failure mode applies: **operator trust clusters can
+calcify into de facto blocklist authorities** (the fediblock wars). The structural mitigation is that
+subscriptions are per-node and weighted, not binary and global - but any feature that makes subscribing to one big
+list the path of least resistance is quietly rebuilding the authority this architecture claims not to have.
+
+### Hash Lists and Scanning
+
+Blocklists at blob granularity are denunciations carrying hashes, and they come in two kinds on one list:
+
+- **Exact (BLAKE3).** Nearly useless on the web (any re-encode evades); **unusually strong here**, because blobs
+  propagate *by their hash* - the same bytes get requested and re-served across nodes. One exact-hash denunciation
+  kills that blob among subscribers network-wide; evading it means re-authoring and re-seeding a new blob, not
+  re-sharing a link. Zero-cost to check (the blob store is already keyed by it).
+- **Perceptual (PDQ).** Catches the re-encode. Computed locally at blob ingest - which means *decoding hostile
+  media*, a classic vulnerability class: decoders run sandboxed, the same posture taken toward every other hostile
+  byte.
+
+**Operator-authored lists** are the established pattern, not a hack (StopNCII works exactly this way: victims hash
+their own images locally; platforms block on the hash, and the image never travels). The workflow: report arrives
+-> operator reviews -> **hash before dropping** -> the entry goes on the node's signed denunciation chain ->
+trusted subscribers inherit the block. Distribution is trust-gated *on purpose*: a public hash list is an offline
+evasion-testing oracle and (for perceptual hashes) a dictionary-attack risk - "shared along trust edges" is the
+operationally correct model, not just the philosophically tidy one.
+
+**CSAM lists are never distributable and never local.** The clearinghouse ecosystem (NCMEC, IWF, the Canadian
+Centre for Child Protection) keeps hashes server-side and exposes vetted access or query APIs. The shipped default
+backend is **Shield by Project Arachnid** (C3P): free, signup-keyed, accepts **locally-computed PDQ hashes** -
+fingerprints go out, user media never does - returns exact/visual match classifications, and has an official Rust
+SDK (`arachnid-shield`). Each operator signs up for their own key (the accountability chain behind the key is part
+of the point; Ringtome ships no shared credentials). IWF's small-operator offering (Image Intercept) is a second
+supplier to watch. The fediverse's IFTAS experience is the cautionary architecture note: their centralized
+scanning intermediary cost $60k+/year and died of funding within months - so Ringtome's shape is **a scanner trait
+at the blob layer** plus trust-edge republication: the few operators who run scanning publish their own blocking
+*decisions* (their moderation acts - never the clearinghouse's list) as exact-hash denunciations, and the long
+tail inherits protection by subscription, with no intermediary organization to keep funded.
+
+Operational rules:
+
+- **Scanning defaults are keyed to role.** Off/optional for a personal node serving its own author's content;
+  on-by-default - arguably required by the software - for **open mode and gateway mode**, exactly the roles where
+  strangers' media crosses the disk headed for the public.
+- **Gateways fail closed:** if the scanning backend is unreachable, new unscanned media is held, not served.
+- **A perceptual match is a lead, never a verdict** (Apple's NeuralHash collision lesson). Auto-*block* on match:
+  fine - cheap, reversible. Auto-*report a human* on match: never - human review precedes reports.
+- **On a CSAM match: quarantine + preserve + report.** The blob is sealed in a locker, not shredded (preservation
+  is a legal duty where reporting is); the serving path goes dark immediately; the operator gets a "you likely
+  have reporting obligations, here is where" prompt. Cache clean verdicts by exact hash so nothing is scanned
+  twice.
+- **Scope honesty:** scanning covers what a node can see - public chains and fronted blobs. Encrypted
+  private-chain content is structurally unscannable, and the design says so proudly: promising to scan inside the
+  private boundary is the chat-control position. The correct control for private content is the admission/trust
+  layer, not the scanner. Likewise, perceptual hashes stop *casual redistribution* of known material, not a
+  determined adversary with a re-render pipeline: a hygiene layer on the architecture, never the wall.
+
+### The Web Gateway: A Distinct Role, Dual Opt-In
+
+(Resolves the open decision in Resource Namespace and Access Protocol.) Some users genuinely want globally-public,
+identity-attributed content - the webcomic case - and the network should serve them without every federated node
+becoming an exit node. The gateway is therefore a **separate role with dual opt-in**:
+
+- **The author opts in:** a signed gateway-eligibility statement scoping which of their public content may be
+  re-served over HTTP.
+- **The gateway operator allowlists that specific identity.** Nobody can opt themselves onto a gateway.
+
+A gateway's liability is proportional to a **curated, enumerated list** - "we publish these 200 authors we chose"
+is a defensible editorial position in a way "we relay whatever arrives" never will be. Curation is also the value:
+a good gateway is a magazine, and its allowlist is taste made legible. An identity whose whole purpose is
+distributing contraband can flag itself gateway-eligible all day; no operator has to take it, and the ones
+vouch-reachable from operators won't. Gateway mode carries the strictest software posture: mandatory scanning,
+fail-closed, hardened serving headers (below), and a genuinely separate serving domain - the one role where asking
+the operator for real infrastructure is appropriate, because it is the one role that is *publishing*.
+
+### The Media-Type Admission Test
+
+Blob types are a **closed registry** - the same allowlist-over-ours move as the markup vocabulary, applied to
+bytes. A media type earns admission to the network when it has all three:
+
+1. **A strict-parse validation story** - magic bytes and structural parse at ingest (in a sandboxed decoder), a
+   typed renderer at display (never a generic "open this file" path). The declared type is *enforced, never
+   trusted*: the attack is not `badtouch.exe` labeled honestly, it is a blob declared `image/png` whose bytes are
+   a polyglot or script.
+2. **A scanning story**, where its abuse category demands one - PDQ/Shield covers images and video, which are
+   conveniently exactly the CSAM-relevant types.
+3. **A metadata-privacy story** - what the format smuggles, and how it is stripped.
+
+Consequences for the v1 lineup:
+
+- **Bitmap images: yes** - with the EXIF rule. A phone photo carries GPS coordinates: a deanonymization channel
+  worse than most on a pseudonymity-promising network. Because blobs are content-addressed and author-signed, a
+  node cannot strip metadata after the fact without changing the hash - **stripping happens in the authoring
+  client, pre-sign**, with an ingest-side "reject images bearing GPS EXIF" backstop that also covers third-party
+  clients.
+- **SVG: no.** It looks like an image and is actually an XML document that can carry script and external
+  references. Bitmap formats only, until someone wants to build "parse SVG into our own safe subset" as a project.
+- **Video: narrow profiles, not "video."** Container formats are the worst parsers in computing; allowlist
+  specific codec/container pairs (e.g. MP4/H.264+AAC, WebM/VP9) and let the browser's already-sandboxed media
+  stack decode.
+- **Audio: MP3 and - load-bearing aesthetic - MIDI.** ID3 tags can embed arbitrary junk including images: validate
+  or strip at ingest. MIDI renders through a client-side synth, never a native handler.
+- **PDF: no.** JavaScript, launch actions, embedded files, forms - a document *platform*, not a document. Nothing
+  in the geocities-and-webrings aesthetic needs it; the strongest future concession is "rendered exclusively via a
+  sandboxed pdf.js," which is still a concession to resist.
+- **Generic "file attachment": the type to resist hardest.** If the registry is markup/images/av-profiles/audio,
+  there *is no surface* on which an executable arrives - not blocked, nonexistent. A generic attachment type
+  reintroduces the entire executable-content problem as one innocent feature. When someone eventually needs to
+  share a tileset zip, the answer is a new *specific* type with its own validation story.
+
+On plaintext malware (base64 in a post body): unwinnable and therefore out of scope - anyone a filter could stop
+can paste ciphertext instead. The defensible line is that **the network never puts bytes on a path to an
+interpreter**: no execution context, no native-handler handoff, no one-click-open. Weird text a human must
+manually extract and run is outside any threat model a protocol can hold.
+
+**Origin isolation is software defaults, not operator labor.** The isolation never actually came from owning a
+second domain - it comes from how blob bytes are served, and the node ships it: `Content-Type` set from the
+*validated* type (never the declared one), `X-Content-Type-Options: nosniff`,
+`Content-Security-Policy: sandbox` (which gives every blob response a unique opaque origin - works on
+`localhost`, requires zero operator configuration), `Content-Disposition: attachment` for anything not strictly
+renderable, and blob serving bound to a **separate port** from the app UI (a genuinely different origin by
+definition, free even on a Raspberry Pi; the client keeps session credentials where the blob origin can never
+read them). The **separate serving domain** is asked only of the gateway role - the burden lands where the risk
+lands: local operators configure nothing and get isolation from headers; publishers take on publisher
+infrastructure. (Also load-bearing: the client renders blobs through its own typed renderers - decoded bitmaps
+into constructed DOM, media elements for a/v - so blob bytes are never *navigated to* as documents in the first
+place.)
+
+### Fidelity Caps: The Crunch Filter (provisional)
+
+Once photos and video exist, node disk space becomes a design surface. Full storage budgeting (quotas, eviction,
+what a node owes the identities it agents and fronts) is an open question - but one provisional stance is worth
+recording because it serves four goals at once: **media passes through an aggressive, lossy, retro-aesthetic
+re-encode in the authoring client** - palette quantization, dithering, hard dimension caps, brutal video profiles.
+
+- It merges with a pass that must exist anyway: the pre-sign metadata strip (EXIF) is already a mandatory
+  authoring-time re-encode; crunch is the same pass with taste. (And constraint-as-identity is already this
+  document's stated aesthetic bet - the Pico-8 lesson.)
+- It bounds storage and sync cost to 1999 levels: ten thousand tiny GIFs are barely an inconvenience, and the
+  day-long-sync problem stays dead.
+- It is enforceable where it matters: the *aesthetic* is cultural plus default-client, but **size and dimension
+  caps are ingest policy** - a node verifies and refuses oversized blobs regardless of which client authored them.
+- It is quietly a moderation feature: **a network that only carries small, heavily-quantized media is a terrible
+  distribution channel for high-fidelity contraband.** Nobody pirates a movie at 160p in 8 colors; fidelity caps
+  make the piracy-exit-node problem structurally unattractive rather than policed.
+
+One honest tradeoff: heavy quantization is a large visual transform, and perceptual-hash matching against
+clearinghouse databases (built from originals and common re-encodes) degrades with transform distance - crunching
+may cost some scanner recall. Scan at ingest *before* the blob is accepted, and accept that the fidelity cap
+itself does much of the work the scanner would.
 
 ---
 
@@ -2104,51 +2095,33 @@ cost the same under Tauri, so they are not arguments for it:
 
 ---
 
-## Project Structure (Proposed)
+## Project Structure
 
 ```
 ringtome/
-├── api/              ← OLD codebase (reference only)
-├── node/             ← NEW crate: the connector node
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs           ← Entry point, Axum server, Iroh node setup
-│       ├── config.rs         ← Node configuration
-│       ├── identity/         ← Key tree, key management, signing
-│       ├── auth/             ← Username/password, session management
-│       ├── db/               ← SQLite connection management, per-user DB logic
-│       ├── p2p/              ← Iroh networking, replication protocol
-│       ├── api/              ← HTTP route handlers
-│       └── error.rs          ← Error types
-├── proto/            ← Shared protocol types (if needed for multi-crate)
-├── web/              ← Frontend (JS/CSS)
-└── PROJECT_PLAN.md
+├── proto/     ← ringtome-proto: the conformance boundary (canonical bytes, chains, key tree, sync messages)
+├── node/      ← the connector node binary (see node/README.md; store.rs is the application data map)
+├── spec/      ← published test vectors ("this logical value MUST produce exactly these bytes")
+├── api_old/   ← prior-generation codebase, reference only (see API_OLD.md)
+└── *.md       ← the documents (README.md is the map)
 ```
+
+The system as built is best read from the code's own maps: `node/src/main.rs` (composition root + the
+background-loop registry), `node/src/store.rs` (the data map), `node/src/sync.rs` (the trust boundary),
+`proto/src/lib.rs` (the conformance boundary).
 
 ---
 
 ## Open Questions
 
-- [x] ~~**Iroh integration depth:**~~ Resolved — custom Ringtome sync protocol for data sync (iroh-docs is incompatible with revocable identity), `iroh-blobs` for content, `iroh-gossip` for real-time, `pkarr`/DHT for discovery.
-- [x] ~~**Conflict resolution:**~~ Resolved — Ringtome sync protocol validates entries against the key tree, rejects revoked authors, then applies last-writer-wins by timestamp for simple fields among valid authors. Complex data types can layer CRDTs (e.g., Loro) on top in the future.
-- [ ] **What social features first?** Profiles? Posts/feed? Direct messages? Following?
-- [x] ~~**Frontend approach:**~~ Resolved — v1 ships exactly one client: the retro-OS web app (Preact + htm +
-  esbuild), serving as the reference renderer for the content markup. Client-agnostic API as the standing
-  discipline; Godot struck from the roadmap (markup AST keeps that door open); phones deferred to
-  native-app-on-federated-cluster, ideally community-built (see The Client Story / Phones / Content Markup).
+Questions still genuinely open. (Resolved questions are deleted, not archived - each answer lives in its
+owning section, and git remembers the deliberations.)
+
 - [ ] **Markup vocabulary v1:** which tags make the static-markup first cut, and which widgets (hit counter,
   guestbook, webring navigator) come first once the core ships? The renderer's strict grammar and the
   `ringtome-markup` type-registry entry need specifying alongside the first content types.
-- [x] ~~**Serialization format:**~~ Resolved — deterministically-encoded CBOR, with the hash-and-store-original-bytes rule, domain-separated signatures, version tags, a type registry, and published test vectors (see Canonical Encoding, Signature Domains, and Versioning).
-- [x] ~~**Recovery key UX:**~~ Resolved — the **photo ceremony**: the recovery key is a labeled QR the user
-  photographs with their phone, creation blocks until capture is confirmed, file download as fallback, emergency
-  framing throughout. Full design (payload scheme, artifact, caveats) in The Cozyweb Surface, ceremony 1. Node-side
-  API contract shipped in M2 (secret returned exactly once, never persisted); the ceremony UI lands with the first
-  client (M4).
-- [x] ~~**Web gateway:**~~ Resolved — a distinct, dual-opt-in role (author signs gateway-eligibility; operator
-  allowlists specific identities), never a default node behavior. Public content is public-readable by default,
-  publicly-served only by explicit role. See Moderation and Operator Liability.
 - [ ] **Storage budgets:** how much disk a node owes the identities it agents and fronts — quotas, eviction, and
   the crunch filter's enforceable size/dimension caps (see Fidelity Caps) as the likely anchor. Take up when media
-  types land (Tier 4M/4S).
+  types land (Tier 4M/4S). ("What social features first?" resolved 2026-07-09: admission/tokens → notes → social
+  + trust floor - see NEXT_STEPS, the recommended route.)
 
