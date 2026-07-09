@@ -41,8 +41,9 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   relax when a real multi-node household hits it.
 - **Mainline field test** (M3.5 residual; also a Tier 6 item): `RINGTOME_DISCOVERY=mainline`
   has never touched the real DHT.
-- **PrivatePlain size caps** (4 KiB value / 6 KiB ciphertext): settle before anything real
-  deploys - free now, a compatibility question later. The notes app is the forcing function.
+- **PrivatePlain size caps** (4 KiB value / 6 KiB ciphertext): likely resolution - the caps are
+  *correct*, because note/post bodies ride blobs, never inline records (NOTES_APP.md). Confirm
+  and close when the blob lane lands; until then the caps stay unshipped-soft.
 - *Minor, watched:* concurrent epoch rotations can twin an epoch number (readers try all keys;
   convergent but unlovely); requesters re-offer private chains each exchange (duplicate-skip
   absorbs it; revisit if private chains get big).
@@ -61,7 +62,9 @@ rules, but the default path is now: **(1) admission modes + invite tokens** (reg
 `closed`/`invite`/`open`, default invite - PROJECT_PLAN, Registration Modes) with the **vouch
 payload live from day one**, so every IRL invite writes a trust edge and the graph grows before
 the features that read it; **(2) 4C with the notes app as flagship** - the single-player
-product ("come for the tool, stay for the network") that makes identity sync *felt*; **(3) 4S +
+product ("come for the tool, stay for the network") that makes identity sync *felt*, and now a
+hard dependency of posts: drafts are notes, and publication is an explicit crossing of the
+private/public membrane (NOTES_APP.md, Publication); **(3) 4S +
 the trust floor as one launch** - social ships wearing its thesis. Each stage independently
 shippable; each makes the next one's demo better.
 
@@ -74,23 +77,27 @@ ceremonies that currently exist as raw JSON: the **recovery-key photo ceremony**
 blocked-until-captured; retires M2's residual) and the **add-a-node ceremony** (request/grant
 codes as QR). Newly in scope (2026-07-09): **friend tokens / open server invites** - the
 admission + redemption ceremony (node-local, no new protocol; PROJECT_PLAN, Friend Tokens and
-the Bootstrap Problem) - and **the notes app**, the shell's flagship: personal, E2E-encrypted,
-multi-device notes on the private store. Immediate single-player value, a daily dogfood loop,
-and the store layer already carries it server-side (one data-map row). (The
-PrivatePlain size-cap residual is this app's forcing function - see Standing residuals.) The Cozyweb language budget is enforced from the first screen. *Track demo:* create
+the Bootstrap Problem) - and **the notes app**, the shell's flagship (spec: NOTES_APP.md): personal,
+E2E-encrypted, multi-device notes - chain-spine headers + encrypted droppable blobs, version-DAG
+divergence handling ("never silently lose words"). Its prerequisite is the **private blob lane**
+(blob frames on the member-proven sync connection; NOTES_APP.md, Prerequisite), which 4M's media
+reuses. The Cozyweb language budget is enforced from the first screen. *Track demo:* create
 an identity, photograph the spare key, set your name, adopt a second node - all in a browser, no
 JSON visible. *Advisory:* highest motivation-ROI track - it makes all subsequent work visible in
 a UI instead of curl.
 
 **4M — The markup language ("pages have a language").** The security-critical content boundary,
-given the undivided attention the key tree got. Vocabulary spec (resolving the open question),
+given the undivided attention the key tree got. First deployment target: the notes renderer
+(friendly-content debut before the 4S stranger boundary; the plaintext era's real-note corpus
+feeds the vocabulary cut - NOTES_APP.md, Markup). Vocabulary spec (resolving the open question),
 the `page`/`post` payload types, the **strict parser twice** - Rust in proto (validation), JS in
 the client (rendering) - kept honest by published markup test vectors, exactly the discipline
 that guards the entry format. Safe renderer (AST -> DOM construction, never innerHTML),
-blob-hash-only embeds enforced at the grammar. Two obligations from the plan's Moderation and
-Operator Liability section: reserve a **labels field** on `page`/`post` payloads (content labels
-are consent machinery; retrofitting label semantics into signed content is a protocol break in
-miniature), and the first blob types pass the **media-type admission test** (strict parse in a
+blob-hash-only embeds enforced at the grammar. Three payload obligations: a stable **`doc_id`**
+on `page`/`post` (references target identities, never version hashes - NOTES_APP.md, Taxonomy),
+a **labels field** (consent machinery rides the payload because strangers' servers filter on it;
+organizational *tags* deliberately do NOT ride the payload - they are external taxonomy, same
+doc), and no tags field ever, and the first blob types pass the **media-type admission test** (strict parse in a
 sandboxed decoder, scanning story, metadata-privacy story - EXIF stripping is an authoring-client,
 pre-sign concern). *Track demo:* a page with a tiled background and a
 marquee, parsed by both implementations to identical ASTs.

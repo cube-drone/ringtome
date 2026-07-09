@@ -34,6 +34,8 @@ cargo run --bin ringtome    # run a node (see node/README.md for configuration)
   residuals, and the unordered tiers ahead. Forward-looking only.
 - [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status notes and
   residuals as recorded at the time. Append-only; the past holds still.
+- [`NOTES_APP.md`](NOTES_APP.md) — the first application spec: multi-device encrypted notes on
+  the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
 - [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
   language mapping.
 - [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and

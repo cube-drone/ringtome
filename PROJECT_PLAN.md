@@ -1291,10 +1291,21 @@ first and an aesthetic one second:
   `innerHTML`-shaped. Enforcement lives **at the renderer, never at submission** - signed blobs from strangers
   arrive via sync, and nothing upstream can be trusted to have validated them. Every markup blob is hostile input:
   the same posture the protocol already takes toward every other byte on the network.
-- **Embeds reference blob hashes only, never URLs.** Real HTML means a tracking pixel in a post deanonymizes the IP
-  of every reader - unacceptable for a network promising pseudonymity. Blob-hash-only media means every fetch goes
-  through `iroh-blobs` via the reader's own node; the read-side deanonymization channel is closed structurally, not
-  by policy.
+- **The language is [Marquee](../marqueemarkup/SPEC.md)** - a standalone product (Ringtome is its first embedder,
+  not its owner), MPL-2.0 parsers, CC0 spec. Ringtome consumes it through an **embedder profile**: the language
+  defines what a construct *means*; the profile defines what it may *do* here.
+- **Remote media is a fetch-policy dial, not a grammar ban** (amended 2026-07-09; previously "blob hashes only,
+  never URLs"). Marquee's grammar admits regular-web targets - the language must be useful outside Ringtome, and
+  most users genuinely don't care about read-side tracking most of the time. The pseudonymity concern (a tracking
+  pixel deanonymizing every reader's IP) is handled by the profile's **care modes**: default = remote media fetched
+  **via the reader's own node as proxy** (reader IP hidden; the node takes the heat), with user-switchable
+  direct-fetch (convenience) and no-fetch (Security Max / private browsing; placeholders render). `blob:` +
+  `ringtome://` embeds remain the native, always-safe path. What was "closed structurally" is now "safe by default,
+  chosen knowingly otherwise" - the same posture as the serving-follow disclosure tiers. The standing principle:
+  **Ringtome is gated inward, open outward** - serving into the web is restricted (moderation and liability);
+  pointing and embedding *out* to the web is ordinary citizenship of the internet. Cozy is not hermetic. (Marquee's
+  live/pinned duality extends here too: `https:` is the live web; the pinned form of web content is a snapshot
+  frozen into a blob - archive-on-reference, a future affordance against link rot.)
 - **Protocol fit:** `ringtome-markup` is an ordinary versioned type in the type registry. The version tag tells
   every renderer which dialect it is parsing, new tags arrive additively, and the existing "old readers skip unknown
   fields" rule supplies forward compatibility.
@@ -1317,6 +1328,49 @@ first and an aesthetic one second:
    ambient UI access, budgeted execution, explicit capabilities only. The Pico-8 lesson says brutal constraints
    become a community's aesthetic identity, so this could be wonderful - but it is a whole product in itself.
    Deferred indefinitely, and possibly forever if the widget vocabulary is good.
+
+### Starting Posture: Markdown's Hands, RST's Skeleton, Our Own Skin (settled 2026-07-09)
+
+A markup language is three separable organs, and no existing donor has all three healthy - so the language is a
+chimera with deliberate organ selection:
+
+- **Prose surface: markdown-shaped, strictly specified.** Casual users (and their robots) already type markdown;
+  that familiarity is the whole UX budget. But Markdown-the-*specification* is disqualified: CommonMark's
+  every-input-is-valid philosophy resolves ambiguity with rules so baroque that independent implementations
+  legitimately disagree (Babelmark is a whole website demonstrating it) - and with parsers on both sides of the
+  trust boundary, grammar ambiguity is **parser-differential risk**: content that reads as inert prose to the
+  validator and as an active construct to a renderer, the mXSS/sanitizer-bypass genre. It is also simply a cozy
+  failure - "my page looks like my page on every client" is the promise, and quirks-mode divergence breaks it. The core is therefore a **small, unambiguous, markdown-familiar subset** - ATX
+  headings, one list style, fenced code, blockquotes, constrained links/images - in the spirit of **Djot**
+  (CommonMark's own author concluding the fix is a new-but-familiar syntax). Hand-specified and hand-rolled, like
+  the CBOR subset, for the same reason: the vectors promise exact parses.
+- **Extension skeleton: RST's directive model** - the one great idea in RST, taken without its surface syntax
+  (heading underlines and significant indentation fail the casual-writer test outright). Every widget and media
+  embed is a directive block (`:::marquee`, `:::guestbook`, `:::webring`): uniformly parsed, so new constructs are
+  *vocabulary* entries in the type registry, never grammar changes. This is also the correct diagnosis of
+  Markdown's real deficiency - not that it is too lightweight, but that it has **no sanctioned extension point**,
+  which is why every Markdown ecosystem metastasizes incompatible bolt-ons and eventually reaches for embedded
+  HTML: the exact thing banned above. Fix the extension model and the lightness becomes pure virtue. Bonus: the
+  blob-hash-only embed rule becomes a **grammar production** - the image/media target nonterminal accepts only
+  `blob:` and `ringtome://` forms, so hotlinking is unrepresentable rather than filtered.
+- **Presentation: a closed style vocabulary, never CSS-the-language.** CSS is a second parser-twice obligation and
+  an attack surface (exfiltration selectors, layout takeover, fingerprinting). The audience never wrote CSS
+  anyway - Old-Web fancy was *picking from a list*: tiled background, cursor, color scheme. So styling is
+  enumerable attributes on directives (`:::page background=tile:blob:HASH cursor=sparkle`), versioned with the
+  vocabulary, mapped to the renderer's own stylesheet. CSS-the-capability behind a counter.
+
+**Where Markdown's philosophy and ours collide - resolved by splitting the gates.** Markdown never errors; our
+boundary refuses invalid input. The split: the **prose core is total** (any bytes parse as paragraphs;
+unrecognized syntax renders literal - a note never red-underlines its author), while **directives and attributes
+are strict**. The authoring client validates at the **publication act** as accident-prevention for its own user;
+renderers still trust nothing (enforcement lives at the renderer, as above) and refuse strangers' strictly-invalid
+directives fail-closed - a malformed page from sync was authored past a validating client on purpose.
+
+Sequencing: the language debuts in the notes app's renderer (own content, friendly first deployment), informed by
+the plaintext era's corpus; it faces stranger content only at 4S (NOTES_APP.md, Markup). The language now has a
+name and its own repo: **Marquee** (`~/code/marqueemarkup`, spec drafted 2026-07-09) - layout-by-picked-template
+with slots, live/pinned includes for shared nav, client-computed stream navigation, and oneboxes all landed as
+directive vocabulary over the same four mechanisms (prose core, directives, targets, embedder policy).
 
 ---
 
@@ -2118,8 +2172,9 @@ Questions still genuinely open. (Resolved questions are deleted, not archived - 
 owning section, and git remembers the deliberations.)
 
 - [ ] **Markup vocabulary v1:** which tags make the static-markup first cut, and which widgets (hit counter,
-  guestbook, webring navigator) come first once the core ships? The renderer's strict grammar and the
-  `ringtome-markup` type-registry entry need specifying alongside the first content types.
+  guestbook, webring navigator) come first once the core ships? The *frame* is settled (Content Markup: Starting
+  Posture - markdown-shaped strict core, directive skeleton, closed style vocabulary); the vocabulary itself waits
+  on the notes app's plaintext-era corpus.
 - [ ] **Storage budgets:** how much disk a node owes the identities it agents and fronts — quotas, eviction, and
   the crunch filter's enforceable size/dimension caps (see Fidelity Caps) as the likely anchor. Take up when media
   types land (Tier 4M/4S). ("What social features first?" resolved 2026-07-09: admission/tokens → notes → social
