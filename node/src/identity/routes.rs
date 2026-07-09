@@ -9,14 +9,11 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use ringtome_proto::{PrivateKind, PrivatePlain, SigningKey};
-use sqlx::SqlitePool;
-use uuid::Uuid;
-
 use crate::auth::Session;
 use crate::error::AppError;
 use crate::imaol;
 use crate::private;
+use crate::store;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -59,9 +56,6 @@ pub fn router() -> Router<AppState> {
             delete(private_set_remove_handler),
         )
 }
-
-/// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
-const ALLOWED_PROFILE_FIELDS: &[&str] = &["name", "bio"];
 
 #[derive(Serialize)]
 struct IdentityInfo {
@@ -141,23 +135,8 @@ async fn set_profile_handler(
     Path(root): Path<String>,
     Json(req): Json<SetProfileField>,
 ) -> Result<Json<SetProfileResponse>, AppError> {
-    if !ALLOWED_PROFILE_FIELDS.contains(&req.field.as_str()) {
-        return Err(AppError::BadRequest(format!(
-            "unknown profile field {:?} (allowed: {})",
-            req.field,
-            ALLOWED_PROFILE_FIELDS.join(", ")
-        )));
-    }
-
-    let key = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
-        .await?;
-    let db = state
-        .user_dbs
-        .get(&root)
-        .await
-        .map_err(AppError::Internal)?;
-
-    let signed = imaol::set_profile_field(&db, &key, &req.field, &req.value).await?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.profile().set(&req.field, &req.value).await?;
     Ok(Json(SetProfileResponse {
         field: req.field,
         value: req.value,
@@ -172,13 +151,8 @@ async fn get_profile_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<Vec<imaol::ProfileField>>, AppError> {
-    super::require_owned(&state.node_db, &session.account.id, &root).await?;
-    let db = state
-        .user_dbs
-        .get(&root)
-        .await
-        .map_err(AppError::Internal)?;
-    Ok(Json(imaol::get_profile(&db).await?))
+    let data = store::open(&state, &session.account.id, &root).await?;
+    Ok(Json(data.profile().all().await?))
 }
 
 #[derive(Serialize)]
@@ -428,33 +402,6 @@ async fn keys_handler(
 // ---------------------------------------------------------------------------------------------
 // Private chains: the member-only KV + set store.
 
-/// Everything a private-store operation needs: the per-user DB, this node's signing key, and
-/// the epoch keys it can unseal.
-struct PrivateStore {
-    db: SqlitePool,
-    signer: SigningKey,
-    epoch_keys: private::EpochKeys,
-}
-
-/// Assemble the [`PrivateStore`] for one identity. Owner-gated like every other identity route.
-async fn open_private_store(
-    state: &AppState,
-    account_id: &Uuid,
-    root: &str,
-) -> Result<PrivateStore, AppError> {
-    let signer = super::load_signing_key(&state.node_db, &state.keystore, account_id, root).await?;
-    let leaf = signer.verifying_key().to_bytes();
-    let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
-        .map_err(AppError::Internal)?;
-    let db = state.user_dbs.get(root).await.map_err(AppError::Internal)?;
-    let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
-    Ok(PrivateStore {
-        db,
-        signer,
-        epoch_keys,
-    })
-}
-
 #[derive(Deserialize)]
 struct PrivateKvPut {
     value: String,
@@ -473,14 +420,11 @@ async fn private_kv_put_handler(
     Path((root, collection, key)): Path<(String, String, String)>,
     Json(req): Json<PrivateKvPut>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
-    let store = open_private_store(&state, &session.account.id, &root).await?;
-    let plain = PrivatePlain {
-        kind: PrivateKind::Register,
-        collection,
-        key,
-        value: Some(req.value),
-    };
-    let signed = private::write_record(&store.db, &store.signer, &store.epoch_keys, &plain).await?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data
+        .private_registers(&collection)
+        .set(&key, &req.value)
+        .await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -501,11 +445,11 @@ async fn private_kv_list_handler(
     State(state): State<AppState>,
     Path((root, collection)): Path<(String, String)>,
 ) -> Result<Json<PrivateKvListResponse>, AppError> {
-    let store = open_private_store(&state, &session.account.id, &root).await?;
-    let view = private::materialize(&store.db, &store.epoch_keys).await?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let (values, undecryptable) = data.private_registers(&collection).all().await?;
     Ok(Json(PrivateKvListResponse {
-        values: view.registers_in(&collection),
-        undecryptable: view.undecryptable,
+        values,
+        undecryptable,
     }))
 }
 
@@ -523,14 +467,11 @@ async fn private_set_add_handler(
     Path((root, collection)): Path<(String, String)>,
     Json(req): Json<PrivateSetAdd>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
-    let store = open_private_store(&state, &session.account.id, &root).await?;
-    let plain = PrivatePlain {
-        kind: PrivateKind::SetAdd,
-        collection,
-        key: req.element,
-        value: req.value,
-    };
-    let signed = private::write_record(&store.db, &store.signer, &store.epoch_keys, &plain).await?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data
+        .private_set(&collection)
+        .add(&req.element, req.value)
+        .await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -543,14 +484,8 @@ async fn private_set_remove_handler(
     State(state): State<AppState>,
     Path((root, collection, element)): Path<(String, String, String)>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
-    let store = open_private_store(&state, &session.account.id, &root).await?;
-    let plain = PrivatePlain {
-        kind: PrivateKind::SetRemove,
-        collection,
-        key: element,
-        value: None,
-    };
-    let signed = private::write_record(&store.db, &store.signer, &store.epoch_keys, &plain).await?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.private_set(&collection).remove(&element).await?;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -569,10 +504,10 @@ async fn private_set_list_handler(
     State(state): State<AppState>,
     Path((root, collection)): Path<(String, String)>,
 ) -> Result<Json<PrivateSetListResponse>, AppError> {
-    let store = open_private_store(&state, &session.account.id, &root).await?;
-    let view = private::materialize(&store.db, &store.epoch_keys).await?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let (elements, undecryptable) = data.private_set(&collection).elements().await?;
     Ok(Json(PrivateSetListResponse {
-        elements: view.set_elements(&collection),
-        undecryptable: view.undecryptable,
+        elements,
+        undecryptable,
     }))
 }

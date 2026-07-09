@@ -1159,8 +1159,21 @@ instantaneous. The `identity-private` service is reserved and gated but has no w
   its content is not. Also keeps chains tiny. Retrofitting this split later is a protocol break, so it is v1.
 - **Blob availability must not gate chain validity.** An entry whose blob is unfetchable (dropped, never shared)
   still validates as a chain link - validation is signatures and hashes only; fetching is best-effort.
-- **Snapshots.** Replaying years of entries to materialize state is the classic cost of this architecture. Signed
-  "state as of seq N" checkpoints solve it; not needed for v1, but the entry format should reserve room.
+- **Snapshots.** Replaying years of entries to materialize state is the classic cost of this architecture, and
+  signed checkpoints solve it - plus two more problems at the same door: they make fold-based views (registers,
+  sets) **suffix-safe** (fetch snapshot + tail instead of all of history), and they make prefixes **droppable**
+  (a fronting node keeps snapshot + tail and garbage-collects the ancient entries; stacks with the header/blob
+  split). Expect them to matter for performance broadly - even the profile, where history exists but nearly every
+  client just wants the current state fast. The design, settled 2026-07-08: a snapshot is an ordinary signed entry
+  (blob-split - state can be big) written by one of the identity's own nodes, containing the folded state **with
+  its LWW stamps** (`(timestamp, seq, hash)` per key/element, so tail ops merge against it by the same total order
+  as everything else) plus `(chain, seq, head_hash)` **anchors** pinning the exact cross-chain frontier it
+  summarizes. Trust: the author is already the sole authority over its single-writer content, and any full-history
+  replica (the identity's own nodes, at minimum) can replay the chains against the snapshot and hold signed,
+  checkable proof of a contradiction - the same self-incrimination pattern as forks. **Red line: snapshots never
+  cover the identity chains** - a "trust my summary of the key tree" entry would bypass rank-path validation;
+  authority is always recomputed from full chains, only content state gets checkpointed. Not needed until chains
+  are long; the entry format's additive fields mean no protocol prep is required.
 - **Fork aftermath.** After the tiebreaker picks a winning fork (the innocent stale-backup case), the losing fork's
   entries are invalid. The client should offer to re-sign that content onto the winning chain as new entries, or
   the recovery silently eats the user's posts. Needs specifying before the recovery UX ships.
@@ -1580,6 +1593,18 @@ Each connector node maintains:
   entries — after a schema migration, a corruption, or a Repudiation Revocation that retroactively quarantines
   entries. The signed entry log is the source of truth; SQLite is a query-shaped cache of it.
 - **Offline-friendly:** a user's database is fully self-contained for serving and authoring while disconnected.
+
+### The Store Layer (IMPLEMENTED)
+
+Application code never touches chains directly. `node/src/store.rs` is the **data map** - one
+table declaring every application variable's chain, merge rule, visibility, and materialization -
+plus typed handles whose methods are exactly the CRDT's legal operations: an LWW register has
+`set`/`all`, an LWW-element-set has `add`/`remove`/`elements`, an append-only log has
+`append`/`page` and deliberately nothing else. The sync contract is stated once there: writes
+land locally and immediately on this node's chain; reads are the merged view of all the
+identity's chains; replication is per-identity, all chains at once; the only distinction is
+public vs. members-only visibility. New features add a data-map row and a handle - never a sync
+knob. (The identity chains are deliberately not stores: authority is not application data.)
 
 ### Replication over Iroh
 

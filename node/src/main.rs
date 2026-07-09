@@ -29,6 +29,7 @@ mod pubkey;
 mod rate_limit;
 mod request_context;
 mod seal;
+mod store;
 mod sync;
 mod test_endpoints;
 

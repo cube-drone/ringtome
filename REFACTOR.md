@@ -9,6 +9,12 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
+- [ ] **Suffix sync for append-only chains** (consumer: Posts, Tier 4S; PROJECT_PLAN, Shallow
+  Sync). The wire already carries `[floor..head]` frontiers (committed in M3 for exactly this)
+  and the store's `page()` reads tolerate missing prefixes; what remains is the gate: accept a
+  non-genesis chain start for suffix-eligible services, validate backfill downward against the
+  held floor's `prev_hash`, and a fetch policy (how much tail on first contact). Land it with
+  the first real paginated consumer.
 - [ ] **`sync.rs`'s peer-bookkeeping tail** (`add_peer` / `peers_for` / `mark_synced` /
   `dial_addr`) could split into its own module; it's also what `conventions.rs` maps
   `identity_peers` to. Deliberately deferred: not yet earning its churn. Revisit when background

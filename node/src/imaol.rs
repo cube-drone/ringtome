@@ -319,6 +319,54 @@ pub async fn entries_of_type(
         .collect()
 }
 
+/// One page of a service's entries across all authors, newest first by
+/// `(timestamp_ms, seq, entry_hash)` - the same total order the LWW views merge by, so paging
+/// is stable within one device's same-millisecond bursts and across devices. `before` excludes
+/// the cursor and everything after it. Each envelope comes with its local receipt time.
+///
+/// Deliberately tolerant of incomplete history: nothing here assumes seq 0 is present, which is
+/// the read-path posture suffix sync needs (PROJECT_PLAN, Shallow Sync).
+#[allow(dead_code)] // consumer: the store's AppendLog, routed in Tier 4S (plan-in-hand)
+pub async fn entries_page(
+    db: &SqlitePool,
+    service_id: u32,
+    limit: u32,
+    before: Option<(i64, u64, [u8; 32])>,
+) -> Result<Vec<(SignedEntry, i64)>, AppError> {
+    let query = match before {
+        Some((timestamp_ms, seq, hash)) => sqlx::query_as(
+            "SELECT bytes, received_at_ms FROM entries
+             WHERE service = ?1 AND (timestamp_ms, seq, entry_hash) < (?2, ?3, ?4)
+             ORDER BY timestamp_ms DESC, seq DESC, entry_hash DESC LIMIT ?5",
+        )
+        .bind(i64::from(service_id))
+        .bind(timestamp_ms)
+        .bind(seq as i64)
+        .bind(hash.to_vec())
+        .bind(i64::from(limit)),
+        None => sqlx::query_as(
+            "SELECT bytes, received_at_ms FROM entries
+             WHERE service = ?1
+             ORDER BY timestamp_ms DESC, seq DESC, entry_hash DESC LIMIT ?2",
+        )
+        .bind(i64::from(service_id))
+        .bind(i64::from(limit)),
+    };
+    let rows: Vec<(Vec<u8>, i64)> = query
+        .fetch_all(db)
+        .await
+        .context("paging entries")
+        .map_err(AppError::Internal)?;
+
+    rows.into_iter()
+        .map(|(bytes, received_at_ms)| {
+            let signed = SignedEntry::decode(&bytes)
+                .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))?;
+            Ok((signed, received_at_ms))
+        })
+        .collect()
+}
+
 /// The stored head of every chain a key has written: `(service, seq, head_hash)` triples -
 /// exactly the shape revocation anchors want.
 pub async fn chain_heads_for_author(
@@ -496,6 +544,38 @@ mod tests {
         assert_eq!(e0.entry().prev_hash, ZERO_HASH);
         assert_eq!(e1.entry().seq, 1);
         assert_eq!(e1.entry().prev_hash, *e0.hash());
+    }
+
+    #[tokio::test]
+    async fn entries_page_tolerates_a_missing_history_prefix() {
+        // The suffix-sync posture at the read path: a replica holding only the tail of a chain
+        // (a suffix-holding node simply never receives the early entries) pages what it holds.
+        let db = test_db().await;
+        let key = test_key();
+        for n in 0..4u8 {
+            append(
+                &db,
+                &key,
+                service::POSTS,
+                entry_type::POST,
+                Payload::Inline(vec![0xa0, n]),
+            )
+            .await
+            .unwrap();
+        }
+        sqlx::query("DELETE FROM entries WHERE service = ?1 AND seq < 2")
+            .bind(i64::from(service::POSTS))
+            .execute(&db)
+            .await
+            .unwrap();
+
+        let page = entries_page(&db, service::POSTS, 10, None).await.unwrap();
+        let seqs: Vec<u64> = page.iter().map(|(signed, _)| signed.entry().seq).collect();
+        assert_eq!(
+            seqs,
+            vec![3, 2],
+            "newest first, no complaint about the absent prefix"
+        );
     }
 
     #[tokio::test]
