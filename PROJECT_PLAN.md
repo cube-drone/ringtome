@@ -1224,6 +1224,35 @@ contact only; after that the client remembers the root. Confusable-name attacks 
 letting the index adjudicate truth. Everything else about indexes is "someone builds a website," and the doc means
 that literally - it is liberating, not hand-waving.
 
+### Slugs, Views, and the Personal Address Bar (settled 2026-07-09)
+
+Raw addresses are cryptographic and ugly (`ringtome://3f9a.../public/8c2e...`); humans get two
+readability layers, one personal and one author-owned - both pointers, never authority (per
+Naming, above):
+
+- **Personal display names in URLs.** The client renders contact names in the address bar -
+  `ringtome://jeff/public/...` - a personal-only DNS. The load-bearing rule is
+  **canonical-on-share**: aliases are display-only; copying or sharing always serializes the
+  full identity form. Your local "jeff" never leaks into a context where jeff is someone else.
+- **Slugs: an author-owned mutable namespace over immutable content.** A public LWW register
+  maps slug → doc_id, so `ringtome://jeff/public/my-thoughts-on-cheese` resolves through the
+  author's slug register to a document. Because the mapping is a *register*, retargeting is
+  invisible to readers: slug an essay today, repoint it at a taxonomy when it becomes a series
+  tomorrow - inbound links survive reorganization without redirects, something the web never
+  managed. Slugs are author-scoped, so there is no global namespace to squat (same posture as
+  contact names).
+- **Resolution behaviors are author-declared.** A slug pointing at a plain document renders it.
+  A slug pointing at a *taxonomy* consults the taxonomy's own `default_view` field: `index`
+  (the auto-generated directory listing - the cozy Apache move) or `latest` (the blog move) -
+  the author's choice, versioned like everything else. Readers override with **path-segment
+  views**: `.../my-thoughts-on-cheese/latest`, `/earliest`, `/root`, `/index` (path segments,
+  not `:suffixes` - the colon is already spent on identity hints). The view vocabulary is the
+  same family as Marquee's `:::computed` roles: one set of taxonomy-view functions consumed by
+  URLs and page widgets alike.
+- **Liveness composes as expected**: a slug URL is maximally live (register → taxonomy →
+  materialized head, every link mutable by the author); pinning any step means using the id or
+  hash form for that step. The live/pinned duality, end to end.
+
 ### Resource Namespace and Access Protocol
 
 A path addresses a typed resource, with the public/private axis **first** because it mirrors the sync boundary:
@@ -1291,7 +1320,7 @@ first and an aesthetic one second:
   `innerHTML`-shaped. Enforcement lives **at the renderer, never at submission** - signed blobs from strangers
   arrive via sync, and nothing upstream can be trusted to have validated them. Every markup blob is hostile input:
   the same posture the protocol already takes toward every other byte on the network.
-- **The language is [Marquee](../marqueemarkup/SPEC.md)** - a standalone product (Ringtome is its first embedder,
+- **The language is [Marquee](https://github.com/cube-drone/marqueemarkup)** - a standalone product (Ringtome is its first embedder,
   not its owner), MPL-2.0 parsers, CC0 spec. Ringtome consumes it through an **embedder profile**: the language
   defines what a construct *means*; the profile defines what it may *do* here.
 - **Remote media is a fetch-policy dial, not a grammar ban** (amended 2026-07-09; previously "blob hashes only,
@@ -1368,7 +1397,7 @@ directives fail-closed - a malformed page from sync was authored past a validati
 
 Sequencing: the language debuts in the notes app's renderer (own content, friendly first deployment), informed by
 the plaintext era's corpus; it faces stranger content only at 4S (NOTES_APP.md, Markup). The language now has a
-name and its own repo: **Marquee** (`~/code/marqueemarkup`, spec drafted 2026-07-09) - layout-by-picked-template
+name and its own repo: **Marquee** ([github.com/cube-drone/marqueemarkup](https://github.com/cube-drone/marqueemarkup), spec drafted 2026-07-09) - layout-by-picked-template
 with slots, live/pinned includes for shared nav, client-computed stream navigation, and oneboxes all landed as
 directive vocabulary over the same four mechanisms (prose core, directives, targets, embedder policy).
 
@@ -1481,6 +1510,35 @@ land locally and immediately on this node's chain; reads are the merged view of 
 identity's chains; replication is per-identity, all chains at once; the only distinction is
 public vs. members-only visibility. New features add a data-map row and a handle - never a sync
 knob. (The identity chains are deliberately not stores: authority is not application data.)
+
+### Taxonomies: Documents About Documents
+
+Everything that *organizes* documents - tags, streams, folders, knowledge-base trees, reading
+lists - is itself ordinary data, external to what it organizes. (Born in the notes design; see
+NOTES_APP.md for the discovery narrative. Canonical statement here, because addressing, feeds,
+and Marquee's computed widgets all consume it.)
+
+- **Taxonomies live outside documents, never in header data.** Three independently-sufficient
+  proofs: third parties curate (a stranger's reading list over your documents cannot write into
+  your headers); views mix boundaries (a private list interleaving your drafts with your
+  published posts is inexpressible as public header data); and the publication membrane stays
+  clean (organizing metadata never rides the document, so nothing needs stripping at the
+  crossing). One deliberate exception rides the payload: consent **labels** - a stranger's
+  server filters on them without access to anyone's taxonomies. Same-looking strings, opposite
+  transport requirements, permanently separate fields.
+- **Two shapes, chosen by merge semantics.** Unordered membership (tags) is an
+  **LWW-element-set** - concurrent tagging merges automatically. Ordered structure (trees,
+  curated sequences) is a **taxonomy document** - a body of ordered references, inheriting the
+  full document machinery (versioning, divergence handling, the publication moment when a
+  knowledge base goes public). Chronological streams are usually no artifact at all: a
+  derivable view.
+- **References are `(root, doc_id)`** - stable identities, never version hashes (an edit must
+  not shatter every tree pointing at the document). Relative forms elide the root via base-URI
+  resolution (see Addressing); cross-identity references are fully qualified.
+- **Taxonomies answer queries.** A taxonomy document carries an author-declared `default_view`
+  (`index` | `latest` | ...), and the view vocabulary (`latest`, `earliest`, `root`, `index`,
+  `next-in-stream`, ...) is one function family consumed by slug URLs (Addressing) and
+  Marquee's `:::computed` roles alike.
 
 ### Replication over Iroh
 

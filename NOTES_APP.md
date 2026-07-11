@@ -111,6 +111,10 @@ Blob transfer does not exist yet in any form; notes force it into existence, siz
 
 ## Taxonomy: external artifacts, never header data
 
+*(The canonical statement now lives in PROJECT_PLAN, Data Layer: "Taxonomies: Documents About
+Documents" - promoted there because addressing (slugs), feeds, and Marquee's computed widgets
+all consume it. This section keeps the app-level view and the reasoning as discovered.)*
+
 Streams (tags), trees (knowledge bases), and every other document ordering will matter and will
 be load-bearing - and v1 deliberately ships a flat chronological list anyway, because the
 organizing principles are settled:
