@@ -37,6 +37,35 @@ The chain is the spine, not the body bag:
   + prefix-GC machinery (PROJECT_PLAN, Open Items: Snapshots) — the notes register is a
   fold-based view, exactly what snapshots exist to compact.
 
+## Media retention: the deletability doctrine, one level down
+
+Embedded media is baked into local blobs at authoring time (PROJECT_PLAN, *An Embed Is an Ingest*),
+which lands a storage problem squarely on this app: the version DAG reaches back to a document's
+inception, and rollback means old versions must stay *usable*. Read naively, that pins every image
+a note ever referenced, forever - and the Pi with the 8 GB card loses. The escape is a rule this
+spec already states about notes themselves, applied one level down to their pictures:
+
+**The fact of an image is permanent; its bytes are not.**
+
+- **References and provenance are text, and text is free.** Every version keeps its embed
+  references and the origin URL each was baked from - a few dozen bytes apiece, riding in the body
+  like any other markup, forever.
+- **Bytes are retained for live heads.** A media blob referenced by the current version of some
+  document is kept. One that isn't - an image swapped out three revisions ago - is unreferenced and
+  garbage-collectable on exactly the same terms as a superseded body blob. Same refcount GC, no new
+  machinery.
+- **Rollback is exact for text and best-effort for media.** Roll back to an ancient draft and the
+  words return verbatim; an image whose bytes were dropped returns as a placeholder naming where it
+  came from, with a link. That is an honest degradation, and it is better than what version control
+  usually does to large files.
+- **The provenance URL is an epitaph, not a fallback.** The renderer must never quietly hotlink it
+  when the blob is missing - that would resurrect every problem the bake exists to solve. It is what
+  the placeholder *says*, and it is what makes dropping the blob a defensible act rather than a
+  data-loss event.
+
+Content addressing pays a small dividend: two notes embedding the same picture crunch to the same
+bytes and dedupe to one blob for free.
+
 ## The sync model: never silently lose words
 
 **The acceptance scenario, verbatim from life:** start a draft on the phone; continue it on the

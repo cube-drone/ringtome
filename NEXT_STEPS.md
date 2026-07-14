@@ -92,8 +92,9 @@ given the undivided attention the key tree got. First deployment target: the not
 feeds the vocabulary cut - NOTES_APP.md, Markup). Vocabulary spec (resolving the open question),
 the `page`/`post` payload types, the **strict parser twice** - Rust in proto (validation), JS in
 the client (rendering) - kept honest by published markup test vectors, exactly the discipline
-that guards the entry format. Safe renderer (AST -> DOM construction, never innerHTML),
-blob-hash-only embeds enforced at the grammar. Three payload obligations: a stable **`doc_id`**
+that guards the entry format. Safe renderer (AST -> DOM construction, never innerHTML); links out
+left alone, embeds baked into local blobs at authoring time with their origin URL kept as
+provenance (PROJECT_PLAN, An Embed Is an Ingest). Three payload obligations: a stable **`doc_id`**
 on `page`/`post` (references target identities, never version hashes - NOTES_APP.md, Taxonomy),
 a **labels field** (consent machinery rides the payload because strangers' servers filter on it;
 organizational *tags* deliberately do NOT ride the payload - they are external taxonomy, same

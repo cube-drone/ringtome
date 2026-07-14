@@ -1005,6 +1005,180 @@ instantaneous. The `identity-private` service is reserved and gated but has no w
 
 ---
 
+## Groups: Identity-Shaped, and the Complexity That Adds (SKETCH)
+
+**Status: sketch, not doctrine.** Nothing here is committed; it is written down because the exercise turned up
+real defects in machinery that *is* committed (see *The Adult In The Room*, at the end - the honest yield of this
+whole section). Groups are not on any tier and want none of this built yet.
+
+**The shower thought that started it:** a group of thirty people wants exactly what one person's five devices want.
+Members join by invitation, members can be kicked, the kicked stop reading, there is shared private state and a
+public face. That is the key tree, the revocation rules, and the epoch-key membership boundary - already built, all
+three. **A group is an identity, and the machinery is already there.** Almost.
+
+### What maps for free
+
+- **The epoch-key membership boundary already is a group key.** "Sealed separately to every member," members trial-
+  decrypt, and revocation of either disposition "rotates: a fresh epoch sealed to every Active member except the
+  target." Read *member* as *a person* rather than *a device* and it is a group with forward-secure ejection,
+  unmodified.
+- **The member proof already is the group's sync gate.** Unproven peers get neither private entries nor private
+  *frontiers*, so the volume and cadence of a private group's traffic is itself private. That property would have
+  been expensive to design and is simply inherited.
+- **Everything social is inherited.** A group has a profile, a posts chain, followers, slugs, taxonomies,
+  publication-is-an-act. Following a group is following an identity. The notes app's version DAG was built so one
+  person's devices could diverge without losing words; point it at thirty people and it is a collaborative wiki with
+  the same guarantee, no changes.
+- **Governance arrives pre-answered, and the answer is IRC.** Rule 2 makes seniority the entire authority relation
+  and rule 5 makes it a *total order computable from local data*. For thirty people that is a strict pecking order:
+  no peers, the seniormost can eject anyone, and no one can eject them. For a person this is obviously correct
+  (your root outranks your laptop). For a group it is a **monarchy with a publicly computable line of succession** -
+  which is a founder and their ranked ops, which is a sysop and their co-sysops, which is *precisely the Old
+  Internet's governance model*, delivered exactly. Rule 6 even hands over succession: if the root vanishes, "any key
+  can act as a root for its own subtree," so the group outlives its founder. Formation ceremony falls out for free:
+  mint the group root, spawn N ranked co-founder keys, vault or destroy the root.
+
+### The one structural decision: the roster references identities, it does not contain them
+
+The tempting move - the group's tree *contains* its members' identity trees - is not constructible. A root key is
+unparented by definition, and "structural seniority is fixed at signing time and cannot be honestly granted
+retroactively," so no existing identity can be grafted under a group root. Two weaker versions were tried and both
+fail on the same rock:
+
+- **A key per member** (`root -> M_alice`, held by Alice on all her devices, epoch sealed to `M_alice`). Broken:
+  the key is not device-scoped, so a compromised laptop *is* Alice, permanently. Worse, `M_alice` lives in the
+  **group's** tree, so only a group senior can revoke it - Alice cannot remedy her own compromise, and the fix has
+  to travel between trees.
+- **A subtree per member** (`root -> M_alice -> M_alice_laptop, ...`). Fixes the sealing granularity but only moves
+  the problem up a level: `M_alice` must still live on every device to authorize new ones, so a stolen laptop holds
+  it and is thereby senior to Alice's *other* group keys. It also makes Alice mirror her device set into every group
+  she belongs to, by hand, forever.
+
+**The shape that works: the group's roster names member identity *roots*, and members act with their ordinary
+personal keys.** The group holds no per-member keys at all. Alice proves membership with the chain from her leaf to
+her own root (which she already has, for everything else) plus the group's admission entry for that root. The
+group's epoch seals to **each of Alice's Active leaf encryption pubkeys**, read from her identity-public chain -
+where they are parent-attested from birth, so no round-trip is needed.
+
+The distinction that makes it work is the **unit of sealing**. Seal to a *member* and you cannot revoke part of
+one. Seal to a *device* and revocation already works, because devices are exactly what the existing machinery
+revokes. Alice repudiates a laptop: one statement, on her own chain, and every group she belongs to independently
+*observes* it and rotates. One event, N reactions, **no directive crosses a tree boundary** - which is why nothing
+cascades, conflicts, or double-fires.
+
+Consequences worth keeping:
+
+- **A roster entry is a pointer, not a key.** Nobody holds it; there is nothing to steal. The secrets are all leaf
+  keys, already device-scoped and already revocable.
+- **Pseudonymous membership needs no invention**: join under a pseudonym identity. "Identities are cheap and users
+  are encouraged to run several" already shipped that.
+- **Adding a device costs the group nothing.** Alice holds the current epoch and seals it to her own new phone -
+  the existing adoption flow, with Alice as the granting node.
+- **Cost:** the group must sync every member's identity-public chain and recompute recipients from their Active leaf
+  set. And group rotation is now triggered by events on *other people's* chains - a new kind of trigger, but an
+  **observation of a public fact**, never a command.
+
+### The invite tree, and what a repudiation blows up
+
+Alice invited Bob; Bob invited Carla and Dave; Dave invited Edna. The invite edges are authority-conferring
+signatures, so the group's authority structure *is* the invite tree.
+
+Bob repudiates the key that invited Carla. **Carla's membership evaporates with no further act by anyone** -
+repudiation already says history past the cut-point is distrusted and the subtree dies, and an admission is a
+signature like any other. The blast follows the bad **edge**, not the bad **person**: if Dave was invited by a
+*different* Bob key, Dave and Edna are untouched.
+
+Two things this exposes:
+
+- **The doctrine's wording is too narrow.** *Revocation Types* describes the blast in terms of "child
+  authorizations" - a key-tree word. The rule is really that repudiation distrusts **every authority-conferring
+  statement** the key made past the cut-point: child authorizations, group admissions, vouches, trust edges. An
+  implementer reading it literally will kill the subtree in Bob's key tree and leave Carla sitting happily in the
+  group. **This is a defect in shipped doctrine, not a group problem.**
+- **The blast is fail-closed, which is the right way round.** The dangerous default (Carla silently stays, admitted
+  by a key we now believe was in an attacker's hands) costs an action; the safe default is free. What Bob must think
+  about is not "who else do I eject" but **"who do I re-invite"** - the existing "legitimate children are
+  re-authorized from a surviving senior branch" move, and a repudiation should be able to carry those
+  re-affirmations atomically so nobody gets ejected-then-readmitted. The UI owes Bob the blast radius before he
+  presses the button; the group can compute it exactly.
+
+### Validity is computed; secrecy is minted
+
+Carla's *authority* dies instantly and for free - every node derives it from the chain, and from that moment her
+signatures confer nothing. But **Carla still holds the current epoch key**, and no derived fact can take it from
+her. Somebody has to mint a fresh one.
+
+**She is silenced immediately and deafened eventually.** The dangerous powers (speak, invite, vouch) evaporate on
+the instant; the passive one (read) lingers. That is the right way round, but the window is real, and - because the
+repudiation is public - **Carla can watch it open.**
+
+A *direct* revocation can close the window to zero by carrying its replacement epoch. A *derived* ejection cannot:
+Carla's removal is not a statement anyone signed, it is a consequence everyone computed, and consequences cannot
+carry keys. So the repudiator should rotate every group it ejects someone from, in the same act, where it can - and
+where it cannot (the repudiating senior is an offline root with no group state), some remaining member's node must
+notice an **ejection with no matching rotation** and mint one. Honest bound: Carla reads until that lands. The cost
+is small, because she already has all the history; rotation only ever protected the future.
+
+### Supergroups: public composition nests, private composition does not
+
+A supergroup's roster names *group* identity roots, and its epoch seals to those groups' Active leaves - which are
+**the nodes agenting the group**, not the humans inside it. To make a supergroup's private lane readable by members,
+someone must re-encrypt it into each group's private lane; that re-encryption puts the supergroup's secret on every
+member's laptop and makes its forward secrecy hostage to the most careless of hundreds. It also demands a *rekey
+without a revocation*, which nothing in the model can verify.
+
+So the boundary is a mechanism, not a judgment call: **the private lane reaches exactly as far as the epoch seals,
+and no further.** Public composition - federation, shared feeds, co-signed announcements, webrings of groups -
+nests freely and forever, because there is no secret to fan out. This is the same self-selection the epoch machinery
+shows everywhere: it works precisely at the scale where a shared secret is meaningful, and gets expensive precisely
+as it stops being.
+
+### The Adult In The Room (the actual yield)
+
+Groups did not break the epoch model. **Groups made visible that the epoch model was already underspecified**, at
+the identity level, where it is shipped and IMPLEMENTED. Every item below is a live defect today, with one person
+and five devices:
+
+1. **Nobody is named as the minter.** "Revocation - either disposition - rotates" says a rotation happens; it never
+   says *who performs it*. For a senior-issued repudiation the revoker is obviously online and can. For a
+   **self-issued retirement** - which is explicitly allowed - the retiring key cannot, because an epoch you mint is
+   an epoch you know. The one hard rule, and it is not written anywhere: **you may not sign the epoch that excludes
+   you.** Everything else about rotation authority follows from that single line.
+2. **Rotation is a free operation, and trying to gate it is a trap.** The tempting fix - "an epoch is only valid if
+   it rides on a revocation" - buys nothing, because revocations are free to manufacture: rule 1 lets any key mint a
+   throwaway child and rule 2 lets it immediately repudiate that child, yielding a well-formed revocation to hang a
+   self-minted epoch on. And the fear was misconceived anyway: an Active member minting an epoch *they know* has
+   gained nothing, because they already held the current one. **What secures rotation is that the recipient list is
+   derivable, not that the minter is authorized** - every node computes the Active recipient set itself, so a
+   rotation that quietly drops a member, or smuggles in a non-Active key, is malformed and rejected by everyone.
+   Recipients are verified, never asserted. Given that, who mints does not matter, and rotation frequency becomes a
+   *performance* question rather than a security one.
+3. **Rotation liveness has no owner.** If nobody is obliged to mint, the departed read until somebody feels like it.
+   The total order is already a leader election waiting to happen: any Active member may mint, seniority breaks
+   ties, and a **rank-ordered backoff** (seniormost acts immediately, juniors wait and step in only if no senior
+   has) yields one rotation in the common case, harmless duplicates otherwise. Duplicates *are* harmless - both
+   epochs are fresh, neither is known to the target, and the junior one is discarded on convergence.
+4. **Repudiation's blast radius is described in key-tree vocabulary** and must be generalized to every
+   authority-conferring statement (above). Today, a repudiation would leave the wrong people inside things.
+5. **A departing member wants a disposition that does not exist.** Retirement honors history but **the subtree
+   lives** - correct for a root migrating off its first server, and exactly backwards for a person leaving a group,
+   whose devices would remain members after them. Repudiation kills the subtree but quarantines the history and is
+   senior-only. Departure wants *honor the history, kill the subtree, self-issuable* - a third disposition on the
+   same statement type, and cheap. The distinguishing question turns out not to be the disposition at all, but
+   **whether the retiring key is the top of a tree that should continue, or a member of someone else's tree that
+   should not** - and the current text cannot tell those apart.
+6. **"Because the key is not adversarial"** underwrites self-issued retirement. Safe when you hold both ends. Not
+   safe for a person storming out of a community - and the tool for a hostile exit is repudiation, which is
+   correctly senior-only. So friendly departures are self-service and hostile ones need a sysop. That is the right
+   answer; it should be a stated one.
+
+**The verdict:** groups being identity-shaped is real and worth the shower thought - the social layer, the sync
+gate, and the governance model all arrive for free. But the *revocation-and-rotation* half of the identity model is
+carrying more weight than it was specified to carry, and pointing it at thirty people is simply what made that
+audible. **Fix it at the identity level, where it is already load-bearing and already shipped.** Groups can wait.
+
+---
+
 ## Canonical Encoding, Signature Domains, and Versioning
 
 This is foundational, not a late detail: the byte representation of an entry *is* what gets hashed, signed,
@@ -1323,21 +1497,28 @@ first and an aesthetic one second:
 - **The language is [Marquee](https://github.com/cube-drone/marqueemarkup)** - a standalone product (Ringtome is its first embedder,
   not its owner), MPL-2.0 parsers, CC0 spec. Ringtome consumes it through an **embedder profile**: the language
   defines what a construct *means*; the profile defines what it may *do* here.
-- **Remote media is a fetch-policy dial, not a grammar ban** (amended 2026-07-09; previously "blob hashes only,
-  never URLs"). Marquee's grammar admits regular-web targets - the language must be useful outside Ringtome, and
-  most users genuinely don't care about read-side tracking most of the time. The pseudonymity concern (a tracking
-  pixel deanonymizing every reader's IP) is handled by the profile's **care modes**: default = remote media fetched
-  **via the reader's own node as proxy** (reader IP hidden; the node takes the heat), with user-switchable
-  direct-fetch (convenience) and no-fetch (Security Max / private browsing; placeholders render). `blob:` +
-  `ringtome://` embeds remain the native, always-safe path. What was "closed structurally" is now "safe by default,
-  chosen knowingly otherwise" - the same posture as the serving-follow disclosure tiers. The standing principle:
-  **Ringtome is gated inward, open outward** - serving into the web is restricted (moderation and liability);
-  pointing and embedding *out* to the web is ordinary citizenship of the internet. Cozy is not hermetic. (Marquee's
-  live/pinned duality extends here too: `https:` is the live web; the pinned form of web content is a snapshot
-  frozen into a blob - archive-on-reference, a future affordance against link rot.)
-- **Protocol fit:** `ringtome-markup` is an ordinary versioned type in the type registry. The version tag tells
-  every renderer which dialect it is parsing, new tags arrive additively, and the existing "old readers skip unknown
-  fields" rule supplies forward compatibility.
+- **Links out are free; embeds are baked** (amended 2026-07-12; previously "blob hashes only, never URLs", then
+  briefly "a reader-facing fetch-policy dial" - both retired, see *An Embed Is an Ingest* below). Marquee's grammar
+  admits regular-web targets, because a markup language that cannot express a picture on the internet is not one
+  anyone deploys outside Ringtome. Scheme policy is therefore **embedder profile, never grammar**. Ringtome's
+  profile separates the two gestures the web conflates: a **link** is the reader choosing to go somewhere, and is
+  free, always, undialled; an **embed** is the author causing the reader's client to fetch, and is *ingested* into a
+  local blob at authoring time. The standing principle survives unchanged: **Ringtome is gated inward, open
+  outward** - serving into the web is restricted (moderation and liability); pointing *out* to the web is ordinary
+  citizenship of the internet. Cozy is not hermetic.
+- **Protocol fit: the registry names the codec, never the dialect.** The type is `marquee` - unversioned, meaning
+  no more and no less than "hand these bytes to a Marquee parser." The **dialect version travels in band**
+  (Marquee's own `#!marquee N` line, absent meaning 0), and Ringtome never speaks it. This is forced, not stylistic:
+  markup payloads are content-addressed blobs, and a blob's meaning must not depend on which entry referred to it -
+  a version in the envelope would let the same bytes parse two ways from two referrers, which is a
+  parser-differential manufactured by hand, in the one place this document least wants one. It is also the only
+  version the parser actually reads: an unknown dialect is Marquee's single refusal, and a tag no parser consults is
+  dead metadata inside a signed structure, which is worse than none.
+  **The dividend: new vocabulary is not a wire-format change.** Adding a guestbook widget touches no registry, no
+  version, no protocol - unknown vocabulary *shrugs* (renders its children as plain content, grants no capability),
+  and that per-construct degradation is a strictly better forward-compatibility mechanism than a per-document
+  version negotiation. Only a grammar change bumps the dialect, and a grammar change is refused rather than skipped.
+  A second markup, if one ever earns its way in, is a second type id - which is what a codec registry is for.
 - **A small closed vocabulary is what keeps multiple clients affordable.** Rendering all of Ringtome correctly means
   implementing a renderer for a few dozen tags, not embedding a browser. This is what keeps future native, phone,
   and game-engine clients feasible for small teams (see The Client Story) - it was never true of "arbitrary HTML,
@@ -1379,9 +1560,7 @@ chimera with deliberate organ selection:
   *vocabulary* entries in the type registry, never grammar changes. This is also the correct diagnosis of
   Markdown's real deficiency - not that it is too lightweight, but that it has **no sanctioned extension point**,
   which is why every Markdown ecosystem metastasizes incompatible bolt-ons and eventually reaches for embedded
-  HTML: the exact thing banned above. Fix the extension model and the lightness becomes pure virtue. Bonus: the
-  blob-hash-only embed rule becomes a **grammar production** - the image/media target nonterminal accepts only
-  `blob:` and `ringtome://` forms, so hotlinking is unrepresentable rather than filtered.
+  HTML: the exact thing banned above. Fix the extension model and the lightness becomes pure virtue.
 - **Presentation: a closed style vocabulary, never CSS-the-language.** CSS is a second parser-twice obligation and
   an attack surface (exfiltration selectors, layout takeover, fingerprinting). The audience never wrote CSS
   anyway - Old-Web fancy was *picking from a list*: tiled background, cursor, color scheme. So styling is
@@ -1400,6 +1579,58 @@ the plaintext era's corpus; it faces stranger content only at 4S (NOTES_APP.md, 
 name and its own repo: **Marquee** ([github.com/cube-drone/marqueemarkup](https://github.com/cube-drone/marqueemarkup), spec drafted 2026-07-09) - layout-by-picked-template
 with slots, live/pinned includes for shared nav, client-computed stream navigation, and oneboxes all landed as
 directive vocabulary over the same four mechanisms (prose core, directives, targets, embedder policy).
+
+### An Embed Is an Ingest (settled 2026-07-12)
+
+The web conflates two gestures that want opposite treatment. **A link is the reader choosing to go somewhere; an
+embed is the author causing the reader's client to fetch.** Ringtome separates them, and treats the second as what
+it actually is: an upload.
+
+- **Links out are free, always.** No dial, no interstitial, no reveal button. The reader who follows a link chose
+  to. Gated inward, open outward.
+- **Embeds are baked at authoring time.** The moment a draft says `![cat](https://example.org/cat.jpg)`, the node
+  fetches it, runs it through the crunch filter (see Fidelity Caps), stores the result as a blob, and rewrites the
+  target to that local blob. The author sees the crunched image immediately, in their own editor - which is also
+  the only humane place to show someone what the crunch did to their picture. **An embed is an ingest**: pasting an
+  image URL *is* an upload, and the UI should say so plainly, because the storage it consumes and the liability it
+  creates are both real.
+- **Past the size cap it isn't an embed, it's a link.** Ringtome declines to fetch-and-bake beyond a ceiling,
+  exactly as every forum since phpBB has declined oversized uploads. Point at a multi-gigabyte file all you like -
+  it will be a link, and the client will tell you it became one.
+- **The origin URL rides along as provenance, permanently.** Mandatory metadata on every baked embed, not a
+  right-click nicety. It is attribution (you have just copied someone's picture), it is the "go to original"
+  affordance, and - load-bearing - it is what makes the blob *droppable* later (NOTES_APP.md, Media Retention).
+- **Rich players are the honest exception.** A YouTube or Spotify embed is not bytes we may have; it cannot be
+  baked. Those stay live and third-party, and looking at one tells Google you looked. The onebox card is a
+  click-to-play surface by construction, so nothing phones home until the reader presses play - privacy arriving as
+  a side effect of good page-weight design, which is the only kind anyone leaves switched on.
+- **The bake happens twice, because the membrane is real.** In a draft the baked blob is epoch-encrypted and
+  private; at publication it is re-encoded as a *public* blob and signed, exactly as the prose is. Copy-don't-flip,
+  applied to pictures. A published image and its draft original are two distinct blobs, independently droppable,
+  and accidental publication of media is as unrepresentable as accidental publication of text.
+
+**What this retires, and why.** The original rule made web embed targets *unrepresentable in the grammar*
+(hotlinking as a nonterminal that does not exist). Its replacement made them a **reader-facing care-mode dial**
+(proxy / direct / no-fetch). Both are gone. The grammar rule died because Marquee is not Ringtome's to shrink. The
+dial died for two better reasons: it defended a promise this document explicitly declines to make - the promise is
+**pseudonymity, not anonymity**, stated twice already - and on a **self-hosted node it was theater**, because the
+proxy's IP *is* the reader's IP. A privacy feature that does nothing for the flagship user, at the cost of a
+settings screen nobody understands, is worse than one honest sentence. Paranoia up front builds systems that pass
+cryptanalysis review and that nobody enjoys using.
+
+**What the bake buys, none of it sold as privacy.** No reader ever fetches a stranger's server, so no author ever
+learns a reader's IP - and it needs no setting, because nobody opts out of *fast*. Link rot cannot break a
+published page. The scanning machinery can see the bytes, because the node holds them. The crunch filter applies to
+*all* media rather than to whichever subset happened to arrive by upload, so **Everything Always Crunched**
+survives contact with the open web. And the recentralization vector closes on its own: to a network that ingests
+images on sight, an external image host is a **clipboard, not a CDN** - it carries a picture exactly once, and is
+irrelevant forever after. There is no `ringtome-imgur.com` to build.
+
+**The honest costs.** Baking means the node operator *hosts* what their user embedded, so an embed of something
+vile becomes their problem in a way a hotlink was not. That is the correct place for it to land - operator exposure
+is already bounded by their own accountable users - but it is a genuine increase in exposure, and it must not be
+discovered by surprise. And a bake is a copy: the author has taken someone's picture, and provenance is the least
+we owe for that.
 
 ---
 
@@ -2229,6 +2460,14 @@ background-loop registry), `node/src/store.rs` (the data map), `node/src/sync.rs
 Questions still genuinely open. (Resolved questions are deleted, not archived - each answer lives in its
 owning section, and git remembers the deliberations.)
 
+- [ ] **Epoch rotation needs an adult** (raised 2026-07-13, and the highest-priority item here because it is a
+  defect in *shipped, IMPLEMENTED* machinery, not a future feature). "Revocation - either disposition - rotates"
+  never says who mints the epoch, and a self-issued retirement cannot mint its own. Six specific defects, with the
+  reasoning and the proposed fixes, are enumerated in **Groups (SKETCH), The Adult In The Room** - the one-line
+  core being *you may not sign the epoch that excludes you*, plus a derivable-recipient-list rule that makes rotation
+  safe to leave ungated. Also queued there: generalizing repudiation's blast radius beyond "child authorizations,"
+  and a third disposition for *departure* (honor the history, kill the subtree, self-issuable). Take up at the
+  identity level; groups are not the forcing function, they were only the microscope.
 - [ ] **Markup vocabulary v1:** which tags make the static-markup first cut, and which widgets (hit counter,
   guestbook, webring navigator) come first once the core ships? The *frame* is settled (Content Markup: Starting
   Posture - markdown-shaped strict core, directive skeleton, closed style vocabulary); the vocabulary itself waits
