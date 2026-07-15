@@ -22,14 +22,14 @@ Both federation and P2P are rife with problems that we hope to present a compell
 
 #### What Are We Hoping to Fix About P2P?
 
-Peer-to-peer protocols like Secure Scuttlebutt or RetroShare are, and I say this affectionaly as a nerd, 
+Peer-to-peer protocols like Secure Scuttlebutt or RetroShare are, and I say this affectionately as a nerd, 
 _nerd shit_. They tend to assume that their users are extremely willing to learn about nodes and 
-certificates and network topologies and maintain complicated crypographic concepts in their heads.
+certificates and network topologies and maintain complicated cryptographic concepts in their heads.
 
 I assert that public key cryptography, while common knowledge for technologists, is beyond the 
 scope of most consumers' expected understanding of any given system.
 
-Systems like SSB, Matrix, and Signal are object lessons in "the system is crypographically pure enough to
+Systems like SSB, Matrix, and Signal are object lessons in "the system is cryptographically pure enough to
 present at least a good challenge to a state level actor", but as a result they often have to present
 a user interface that is at least a little bit _cryptography shaped_.
 
@@ -156,6 +156,55 @@ we want sticky friction and the idea that this place encourages contribution at 
 
 ---
 
+## Doctrine
+
+The load-bearing laws of the system, each stated once — here — and referenced by name everywhere else. If you
+catch yourself explaining one of these in full for the third time in three different sections, stop: it belongs
+here, and that section gets a pointer.
+
+**No Clocks!** Time is a UI element — "when was this posted?" is a perfectly good thing to show a human — but we
+can never trust it to be correct, so it is never allowed to be load-bearing. Ordering, authority, and freshness are
+settled by *structure* — hash chains, seniority, monotonic memory — never by a timestamp a stranger could lie about.
+
+**The Law of Conservation of Trust** - everything that can be abused sits atop the strata of trust, which is its
+own, fully public network - (not just "the nodes you follow" but everyone you are personally willing to vouch for or against).
+Trust can not be manufactured by any process, ("I have 10,000 kids who say I'm great") 
+it comes exclusively through vouches, is limited, is the system's most precious resource.
+
+**Not Hermetically Sealed** Private doesn't mean "nobody can find you" - in fact, you can and should make quite a lot
+of your content public, and that content can be fetched, rebroadcast, and even surfaced to the broader web. 
+Your output is publicly available, anybody can come along and look at it - what's private is what you pull, your input stream, 
+where you choose who you trust and what you consume.
+
+**You Can't Push Hosting Decisions On Others** You can not say to another person, "rebroadcast this thing" - another
+person can decide "rebroadcast everything from this person I like", but the direction is always pull, never push.
+
+**Pseudonymity, Not Anonymity.** Your separate identities don't link to each other unless *you* link them — that is
+the whole promise. We do not promise anonymity from network observers, and against a state-level adversary we are a
+*terrible* choice. 
+
+**Recoverability Over Prevention.** On a p2p network you cannot prevent every compromise, so we don't pretend to.
+Instead: make every cheat *undeniable* and every failure *survivable*. When two honest parties disagree we converge
+on the same answer even when it isn't the "fair" one — a split-brain is unrecoverable; an arbitrary-but-agreed winner
+is not.
+
+**Allowlist Beats Blocklist** We never filter an adversary's content — no sanitizing their
+HTML, no LLM-guessing their spam. That's a losing game played on their turf. We enumerate what's allowed,
+rather than filtering out what we don't want to accept. 
+
+**Names Are Pointers, Never Authority.** Handles, slugs, contact names — all labels that resolve to a key. The *key*
+is the identity. A name can be wrong, stale, stolen, or reassigned; it never grants anything on its own.
+
+**Every Byte From The Network Is Hostile.** Validation lives at the consumer — the renderer, the verifier — never at
+submission. Signed garbage arrives via sync from strangers, and nothing upstream can be trusted to have checked it.
+A responsible client validates everything itself. Even on data that looks like its own.
+
+**Copy, Don't Flip.** Crossing a membrane — draft to published, private to public — never toggles a bit; it mints a
+*new* artifact. There is no "make public" switch that could be thrown by accident or by a bug, because the only way
+across is a deliberate act that re-signs the content into its new home.
+
+---
+
 ## Architecture Overview
 
 - **Connector Nodes** are Rust servers running this protocol. They join the Iroh p2p network and serve a web UI.
@@ -174,7 +223,7 @@ where their access to the identity is revoked. At that point, they _still have a
 concrete privacy loss at play here: this, again, is _bad_, but what malicious node operator does not have is forward
 access to that users' secrets: once they're revoked, the damage is done but the day is not lost.
 
-This is not end-to-end encryption: the "ends" of the encryption are the identity nodes, and those nodes are distibuted:
+This is not end-to-end encryption: the "ends" of the encryption are the identity nodes, and those nodes are distributed:
 this is a prioritization of your identity's _resilience_ and _ease of operation_ over its _privacy and security_.
 
 Ringtome is, intentionally and up-front, a terrible choice for folks who are looking to maintain perfect secrecy 
@@ -182,7 +231,9 @@ against state-level actors: the most obvious attack is for them to run or subver
 at all of the user's secrets on that node without ever doing anything to seem suspicious. 
 
 Mastodon stores all of your DMs in plain-text on the operator's box. 
-Ringtome doesn't: a leaked backup won't , but it _might as well_.
+Ringtome doesn't — private data is ciphertext at rest, so a stolen backup is useless without the node's keys. But
+against a malicious operator who actively *wants in*? We might as well be plaintext: it's their node, they hold the
+keys, they read it all.
 
 #### The Node Operator Can Serve UI
 
@@ -197,7 +248,7 @@ qualities, not a federated network.
 ## The CROWN Identity
 
 "CROWN" is a backronym, a **Cryptographic Rank of Wandering Names**, describing a user's Identity: a 
-**tree of ed25519 keypairs** with strict heirarchical authority, and succession and usurpation rules that make
+**tree of ed25519 keypairs** with strict hierarchical authority, and succession and usurpation rules that make
 the British peerage look ill-defined. 
 
 ### CROWN Structure
@@ -220,7 +271,7 @@ on its own.
 
 1. **The Bloodline Must Continue! Babies! Babies! Babies!** - any key in the tree can authorize new child keys.
         We encourage new devices and nodes.
-2. **Succession Order Is Meaningful** - succession order is meaningful. K3 carries revocation rights to K2 and K4.
+2. **Succession Order Is Meaningful** - K3 carries revocation rights to K2 and K4.
 3. **Simba Beats Scar** - 
     This isn't just "parent over child" or "earliest date wins" (because there is no date to win), 
     Any child that outranks another child carries revocation power over that child - in our example, K3 has
@@ -231,7 +282,7 @@ on its own.
         Formally this is lexicographic order on the sequence of sibling-ranks from root to key. 
         A brand-new child of the senior branch outranks a long-established child of the junior branch - 
         that is correct and deliberate; birth *time* is not derivable under partition, branch seniority is.
-4. **Don't Go Out Without Your Coat of Arms** - Every key carries it's whole family tree at time of creation, 
+4. **Don't Go Out Without Your Coat of Arms** - Every key carries its whole family tree at time of creation, 
     which is a cumulative, append-only list of _potential usurpers_, a _compact lineage bundle_.  
     * A parent signing children in sequence produces `A1: [R]`, then `B1: [R, A1]`, then
      `C1: [R, A1, B1]`. Entries can **never** be removed. A senior sibling never needs to know a junior one exists; the
@@ -252,9 +303,9 @@ on its own.
     * Prince `000aaa` was born lucky, prince `bbbfff` was not. 
     * Yes, an intentionally evil king can _grind out children until they have a birthmark-winning child_, 
         then forget their oldest. An intentionally evil king can also just revoke their oldest. 
-6. **The King is Dead, Long Live the King** - Any key can act as a root for its own subtree - spawning children,
+7. **The King is Dead, Long Live the King** - Any key can act as a root for its own subtree - spawning children,
     interacting with the network, and the rank-path order still totally ranks everyone without the root present.
-    If two warring brothers retreat to their own network paritions, each could pretend to be the identity _in full_
+    If two warring brothers retreat to their own network partitions, each could pretend to be the identity _in full_
     until any evidence of their brother appears. 
 
 ### Revocation: What Happens When There's a Problem
@@ -286,7 +337,7 @@ to make sure that nobody goes dumpster diving and retrieves a valid identity, bu
 
 A node can **retire**.
 
-This one's a little harder, becuse what stops the dumpster diver from simply minting more, evil children? 
+This one's a little harder, because what stops the dumpster diver from simply minting more, evil children? 
 The answer is determined by the history baked in to the retirement document: new children won't be in that history
 and will be distrusted.
 
@@ -330,8 +381,8 @@ everything below: **presenting key K may grant at most K's own authority.**
 recovery key**, and resets the account password. The key signs a login challenge, never a statement; the tree is
 untouched.
 
-- **Only the recovery key is reset-eligible - this is load-bearing, not convenience.** The invariant: *presenting
-  key K may grant at most K's own authority.* Access to a node is access to the keys that node holds, so
+- **Only the recovery key is reset-eligible - this is load-bearing, not convenience.** Access to a node is access
+  to the keys that node holds, so
   any-tree-key-resets would let an attacker holding one compromised junior leaf walk up to the root-holding node,
   pass an "is this an Active member?" check, reset the password, and wield the root - converting a bounded leaf
   compromise into total takeover through the login layer, and turning revocation into a race the attacker wins.
@@ -343,7 +394,7 @@ untouched.
   **node-local policy**: a cooling-off window ("reset completes in 24h; any logged-in session can cancel"), rate
   limits, and notification to the identity's other devices once gossip exists. Note the layering: the *protocol*
   forbids clocks because relying parties cannot share one, but a node's own login policy is node-local - the
-  time-boxed override that the no-clock principle exiles from the key tree is perfectly legal here.
+  time-boxed override that **No Clocks!** (Doctrine) exiles from the key tree is perfectly legal here.
 - **Per-identity scoping.** A node account may agent several identities; proof of one identity's recovery key
   grants access to *that identity only* (the reset re-homes the proven identity into a fresh or proven-only
   account), or a stolen photo for one pseudonym would breach the authority and linkage boundaries of its siblings.
@@ -401,33 +452,20 @@ user can hold in one sentence.
 - Each node's at-rest protection is **independent** - compromising one node yields one leaf key and, at most, one
   password or machine secret, never credentials for any other node.
 
-**Node login is a separate concern from key encryption.** Two distinct jobs, easy to conflate:
-
-- **Login (authentication):** a user logs into the node's web UI with username + password to prove they may act as
-  their identity on this node. This uses **Argon2 as a password hash** - store a salted hash, verify on login -
-  exactly like any web app, independent of anything cryptographic. Login establishes a session; the session
-  authorizes the app to use the **envelope key** to decrypt that user's leaf key and sign on their behalf.
-- **Key encryption (at rest):** the leaf key is decrypted by the *application* with the *envelope key* (above),
-  **not** the login password.
-
-So the password gates *access*; the envelope key does the *decryption*. On an **always-on node** (the default) these
-stay fully separate: Argon2 hashes the login password, the machine reads the envelope key unattended on boot, and the
-node signs while no one is logged in. Only on the opt-in **lockable personal device** are they fused - the login
-password doubles as the Argon2 KDF for the envelope key - which is exactly what makes that device unable to restart
-unattended.
+**Node login is a separate concern from key encryption** - two jobs that are easy to conflate. **Login** gates
+*access*: username + password, **Argon2-hashed** like any web app, establishing a session that authorizes the app to
+use the envelope key. **Key encryption** at rest is done by that *envelope key*, never the password. On an always-on
+node the two stay fully separate - Argon2 for login, ambient machine state for the envelope key, so the node signs
+while no one is logged in - and only on the opt-in **lockable personal device** are they fused (the login password
+doubles as the envelope KDF), which is exactly what makes that device unable to restart unattended.
 
 ### Adding a New Node
 
-1. User is logged in on Node A (which holds a key that can authorize children — e.g., the root key K0).
-2. User goes to Node B and initiates a connection.
-3. Node B generates a fresh keypair (K1) locally and presents its **public key**.
-4. The public key is transferred to Node A (QR code, copy-paste, or over Iroh).
-5. On Node A, the user authorizes K1 — K0 signs K1's public key with the current family tree (the cumulative usurper list).
-6. The signed authorization is sent back to Node B.
-7. Node B now holds its own private key + the signed proof that K1 is a child of K0.
-8. User sets a **local password on Node B** (independent of Node A's password) for login; K1's private key is
-   sealed at rest under Node B's own envelope key (see Key Storage). (The implemented ceremony wraps steps 3-7 in
-   request/grant codes - two copy-pastes; see NEXT_STEPS M3.)
+Node B mints a fresh keypair and shows its **public key**; that pubkey travels to Node A (QR, paste, or Iroh); Node
+A's authorizing key (e.g. the root) signs it into the tree with the current usurper list; the signed authorization
+travels back. Node B now holds its own private key plus signed proof of membership, and the user sets an independent
+local password (the leaf sealed under B's own envelope key - see Key Storage). **The private key never leaves the
+node that generated it.** The shipped ceremony wraps this in two request/grant copy-pastes (NEXT_STEPS M3).
 
 ### Threat Model
 
@@ -439,7 +477,7 @@ unattended.
 | Compromised/duplicated key equivocates | Detected as un-orderable siblings; resolved by the deterministic tiebreaker. All honest relying parties converge on the same winner (safe, not necessarily fair). |
 | Node operator is malicious | Operator can exfiltrate the one leaf key that node holds (and any secret it has decrypted). Bounded to one node; **only use trusted nodes.** |
 
-**Residual risks we do not fully close** (named honestly rather than papered over):
+**Residual risks we do not fully close:**
 
 - **First-contact eclipse.** A brand-new relying party with no prior memory of an identity, fed a lie in isolation,
   has nothing to detect the lie against. Monotonic memory (below) protects *returning* relying parties but not
@@ -508,9 +546,8 @@ Node account on butts.node.place (username + password, local to that node)
 - **Voluntary linkage is a cross-signature.** To prove two identities share an owner, publish a statement signed by
   both roots ("I am also X"). Nothing needs to be pre-arranged at creation time.
 
-**The promise, stated plainly:** separate identities are **pseudonymous from one another, not anonymous.** No
-observer, crawler, or platform-level query can connect them from protocol data - there is no protocol data connecting
-them. What *can* connect them: the nodes that agent or front them (below), and the old-fashioned channels no protocol
+**Pseudonymity, Not Anonymity** (Doctrine), applied to your own siblings: no observer, crawler, or platform-level
+query can connect two of your identities from protocol data - there is no protocol data connecting them. What *can* connect them: the nodes that agent or front them (below), and the old-fashioned channels no protocol
 controls - writing style, posting schedule, what you talk about. Users should hear this up front, not discover it.
 
 ### Temporal Profile State
@@ -589,7 +626,8 @@ identities they want unlinked through community nodes, or accept the linkage.
 Honest limits: fronting through big nodes defeats address clustering, not everything. Timing correlation (identities
 online in the same windows, posting seconds apart) accrues to any patient observer regardless of hosting; the
 fronting nodes themselves learn which identities one origin pushes to them (they become trusted parties for that
-link); and stylometry needs no network access at all. This is why the promise is pseudonymity, not anonymity.
+link); and stylometry needs no network access at all. This is why the promise is **Pseudonymity, Not Anonymity**
+(Doctrine).
 
 ### Rehosting Policy: Pull, Not Push
 
@@ -609,7 +647,7 @@ Per-node policy dial: **closed nodes** front only what their users follow. **Ope
 fronting as a public service, with per-source quotas so they make poor amplifiers - and can tighten to follow-driven
 mode if burned.
 
-Two consequences worth stating now:
+Two consequences:
 
 - **A serving-follow is public.** If your follow causes your node to front an identity, that fronting appears in
   pkarr records. The UI must distinguish "follow quietly" from "follow and help host" or users will leak interest
@@ -629,8 +667,8 @@ not) ships zero Trust; the vouch stays its own scarce, deliberate act.
 ### Edge-Endpoint Visibility
 
 Fully public follow graphs are how "Person X follows Guy We All Hate" happens; fully private ones make "do they
-follow me back?" - a thing people legitimately want - impossible. The resolution is a principle worth stating
-generally, because every future relationship edge will face it:
+follow me back?" - a thing people legitimately want - impossible. The resolution is a principle every future
+relationship edge will face:
 
 **An edge is visible to its endpoints by default, invisible to everyone else, and any wider publication is a
 separate, explicit act.** The controversy was never the endpoints knowing; it was third parties enumerating.
@@ -983,8 +1021,8 @@ same conflict-free substrate.
 
 Timestamps carry no security weight, but they carry plenty of *UI* weight - "posted May 2, 2031, 3:35 PM" is an
 important detail a human reads as fact, and individual machines' clocks are reliably unreliable (VMs, localization,
-user preference; ask anyone who has shipped a networked client). The rule for handling that tension: **there is no
-network time synchronization, ever, and admissibility never consults a clock** - a sync-to-peers scheme hands your
+user preference; ask anyone who has shipped a networked client). This is **No Clocks!** (Doctrine) made concrete:
+**there is no network time synchronization, ever, and admissibility never consults a clock** - a sync-to-peers scheme hands your
 eclipse attacker your watch, and a gate that rejects "future" entries makes admission depend on the local clock,
 forking honest nodes' views. Instead, each trust boundary handles time defensively at its own edge:
 
@@ -1149,7 +1187,7 @@ revokes. Alice repudiates a laptop: one statement, on her own chain, and every g
 *observes* it and rotates. One event, N reactions, **no directive crosses a tree boundary** - which is why nothing
 cascades, conflicts, or double-fires.
 
-Consequences worth keeping:
+Consequences:
 
 - **A roster entry is a pointer, not a key.** Nobody holds it; there is nothing to steal. The secrets are all leaf
   keys, already device-scoped and already revocable.
@@ -1575,20 +1613,16 @@ first and an aesthetic one second:
 - **The render rule:** markup blobs are parsed by a strict grammar into an AST of a closed vocabulary, and clients
   render by constructing UI themselves (DOM nodes, native controls). User bytes are never passed to anything
   `innerHTML`-shaped. Enforcement lives **at the renderer, never at submission** - signed blobs from strangers
-  arrive via sync, and nothing upstream can be trusted to have validated them. Every markup blob is hostile input:
-  the same posture the protocol already takes toward every other byte on the network.
+  arrive via sync, and nothing upstream can be trusted to have validated them - **Every Byte From The Network Is
+  Hostile** (Doctrine), markup included.
 - **The language is [Marquee](https://github.com/cube-drone/marqueemarkup)** - a standalone product (Ringtome is its first embedder,
   not its owner), MPL-2.0 parsers, CC0 spec. Ringtome consumes it through an **embedder profile**: the language
   defines what a construct *means*; the profile defines what it may *do* here.
-- **Links out are free; embeds are baked** (amended 2026-07-12; previously "blob hashes only, never URLs", then
-  briefly "a reader-facing fetch-policy dial" - both retired, see *An Embed Is an Ingest* below). Marquee's grammar
-  admits regular-web targets, because a markup language that cannot express a picture on the internet is not one
-  anyone deploys outside Ringtome. Scheme policy is therefore **embedder profile, never grammar**. Ringtome's
-  profile separates the two gestures the web conflates: a **link** is the reader choosing to go somewhere, and is
-  free, always, undialled; an **embed** is the author causing the reader's client to fetch, and is *ingested* into a
-  local blob at authoring time. The standing principle survives unchanged: **Ringtome is gated inward, open
-  outward** - serving into the web is restricted (moderation and liability); pointing *out* to the web is ordinary
-  citizenship of the internet. Cozy is not hermetic.
+- **Links out are free; embeds are baked.** Scheme policy is **embedder profile, never grammar** - Marquee admits
+  regular-web targets (a language that can't link a picture is useless outside Ringtome), and Ringtome's profile
+  decides what they *do*. A link is the reader's choice and is free; an embed is *ingested* into a local blob at
+  authoring time. **Not Hermetically Sealed** (Doctrine) at the markup layer. Full mechanism: *An Embed Is an
+  Ingest*, below.
 - **Protocol fit: the registry names the codec, never the dialect.** The type is `marquee` - unversioned, meaning
   no more and no less than "hand these bytes to a Marquee parser." The **dialect version travels in band**
   (Marquee's own `#!marquee N` line, absent meaning 0), and Ringtome never speaks it. This is forced, not stylistic:
@@ -1654,7 +1688,7 @@ chimera with deliberate organ selection:
 boundary refuses invalid input. The split: the **prose core is total** (any bytes parse as paragraphs;
 unrecognized syntax renders literal - a note never red-underlines its author), while **directives and attributes
 are strict**. The authoring client validates at the **publication act** as accident-prevention for its own user;
-renderers still trust nothing (enforcement lives at the renderer, as above) and refuse strangers' strictly-invalid
+renderers still trust nothing (**Every Byte From The Network Is Hostile**, Doctrine) and refuse strangers' strictly-invalid
 directives fail-closed - a malformed page from sync was authored past a validating client on purpose.
 
 Sequencing: the language debuts in the notes app's renderer (own content, friendly first deployment), informed by
@@ -1669,8 +1703,7 @@ The web conflates two gestures that want opposite treatment. **A link is the rea
 embed is the author causing the reader's client to fetch.** Ringtome separates them, and treats the second as what
 it actually is: an upload.
 
-- **Links out are free, always.** No dial, no interstitial, no reveal button. The reader who follows a link chose
-  to. Gated inward, open outward.
+- **Links out are free** - no dial, no interstitial, no reveal button. The reader chose to follow it.
 - **Embeds are baked at authoring time.** The moment a draft says `![cat](https://example.org/cat.jpg)`, the node
   fetches it, runs it through the crunch filter (see Fidelity Caps), stores the result as a blob, and rewrites the
   target to that local blob. The author sees the crunched image immediately, in their own editor - which is also
@@ -1687,33 +1720,23 @@ it actually is: an upload.
   baked. Those stay live and third-party, and looking at one tells Google you looked. The onebox card is a
   click-to-play surface by construction, so nothing phones home until the reader presses play - privacy arriving as
   a side effect of good page-weight design, which is the only kind anyone leaves switched on.
-- **The bake happens twice, because the membrane is real.** In a draft the baked blob is epoch-encrypted and
-  private; at publication it is re-encoded as a *public* blob and signed, exactly as the prose is. Copy-don't-flip,
-  applied to pictures. A published image and its draft original are two distinct blobs, independently droppable,
-  and accidental publication of media is as unrepresentable as accidental publication of text.
+- **The bake happens twice.** In a draft the blob is epoch-encrypted; at publication it is re-encoded as a public
+  blob and signed, exactly as the prose is - **Copy, Don't Flip** (Doctrine), applied to pictures. Draft original
+  and published image are distinct blobs, independently droppable.
 
-**What this retires, and why.** The original rule made web embed targets *unrepresentable in the grammar*
-(hotlinking as a nonterminal that does not exist). Its replacement made them a **reader-facing care-mode dial**
-(proxy / direct / no-fetch). Both are gone. The grammar rule died because Marquee is not Ringtome's to shrink. The
-dial died for two better reasons: it defended a promise this document explicitly declines to make - the promise is
-**pseudonymity, not anonymity**, stated twice already - and on a **self-hosted node it was theater**, because the
-proxy's IP *is* the reader's IP. A privacy feature that does nothing for the flagship user, at the cost of a
-settings screen nobody understands, is worse than one honest sentence. Paranoia up front builds systems that pass
-cryptanalysis review and that nobody enjoys using.
+**What the bake buys** (none of it sold as privacy): no reader ever fetches a stranger's server, and it needs no
+setting because nobody opts out of *fast*; link rot can't break a published page; the scanning machinery can see the
+bytes; the crunch filter applies to *all* media, so **Everything Always Crunched** survives the open web. And
+recentralization closes on its own - to a network that ingests images on sight, an external host is a **clipboard,
+not a CDN**, so there is no `ringtome-imgur.com` to build.
 
-**What the bake buys, none of it sold as privacy.** No reader ever fetches a stranger's server, so no author ever
-learns a reader's IP - and it needs no setting, because nobody opts out of *fast*. Link rot cannot break a
-published page. The scanning machinery can see the bytes, because the node holds them. The crunch filter applies to
-*all* media rather than to whichever subset happened to arrive by upload, so **Everything Always Crunched**
-survives contact with the open web. And the recentralization vector closes on its own: to a network that ingests
-images on sight, an external image host is a **clipboard, not a CDN** - it carries a picture exactly once, and is
-irrelevant forever after. There is no `ringtome-imgur.com` to build.
+**The honest cost:** the operator now *hosts* what their user embedded, so a vile embed becomes their problem in a
+way a hotlink wasn't - the correct place for it to land (operator exposure is already bounded by their accountable
+users), but a real increase, and a bake is a copy, so provenance is the least we owe.
 
-**The honest costs.** Baking means the node operator *hosts* what their user embedded, so an embed of something
-vile becomes their problem in a way a hotlink was not. That is the correct place for it to land - operator exposure
-is already bounded by their own accountable users - but it is a genuine increase in exposure, and it must not be
-discovered by surprise. And a bake is a copy: the author has taken someone's picture, and provenance is the least
-we owe for that.
+*(This retired two earlier rules: embed-targets-unrepresentable-in-grammar, and a reader-facing proxy/direct/no-fetch
+dial. The dial defended a promise the doc declines to make - **Pseudonymity, Not Anonymity** (Doctrine) - and on a
+self-hosted node it was theater, since the proxy's IP is the reader's IP.)*
 
 ---
 
@@ -1998,7 +2021,7 @@ The vouch graph is the most sensitive dataset in Ringtome - a real-world map of 
 - **Seed / directory accounts.** A curated on-ramp account (see cold-start) that follows and lists interesting identities, giving newcomers somewhere to start.
 - **Opt-in discoverable overlay.** A *subset* of vouch edges that their owners deliberately mark discoverable. This is a strictly smaller, volunteered graph - "I trust the Globe and Mail" published on purpose - and it is the only graph strangers may traverse. The full trust graph stays private and still powers each user's own trust computation locally.
 
-Two honest limits to design around:
+Two limits to design around:
 
 - **Discovery quality tracks opt-in.** If few edges are made discoverable, the overlay is sparse and the network feels like a void. There is real pressure to make the discoverable overlay generous, and every step toward "discoverable by default" re-exposes the association map. This dial needs ongoing tuning, not a one-time setting.
 - **Hidden edges leak through visible ones.** Hiding a few edges in an otherwise-public neighborhood does not hide them well: surrounding public structure often lets an outsider infer the hidden edge by correlation. Per-edge privacy is weakest exactly when most edges are public - which is the state generous discovery pushes toward. Sensitive edges (activist, source, survivor) should be understood as protected only when the *neighborhood* is private, not just the single edge.
@@ -2048,9 +2071,9 @@ human attached:
 Moderation load is therefore proportional to **your community's behavior, not the network's size.** Bots cannot
 push; they must be pulled, and pulling requires an account or a follow from someone who has one. This is the same
 structural insight as "no global timeline is the structural repellent": the megaphone not existing is not just
-culture curation - it is the liability shield. (It is also the third appearance of the design's favorite move: an
-LLM auto-moderator would be a *blocklist over the adversary's content*; demand-driven serving is an *allowlist
-over ours* - the markup-language argument again. A small local model is decent at NSFW flagging, mediocre at
+culture curation - it is the liability shield. (This is **Allowlist Beats Blocklist** (Doctrine) once more: an
+LLM auto-moderator is a *blocklist over the adversary's content*; demand-driven serving is an *allowlist over
+ours*. A small local model is decent at NSFW flagging, mediocre at
 contextual hate speech, useless for copyright, and forbidden territory for CSAM - and it becomes an adversarial
 target the moment it is load-bearing. LLM as triage for an operator's review queue on public-facing roles: fine.
 LLM as verdict: never. If the design only works when a small model correctly identifies evil, the design does not
@@ -2114,8 +2137,8 @@ Three rules keep it safe:
 1. **Denunciations never touch the Trust computation.** They gate downstream policy (serve/front/admit/rank),
    never the substrate. Feeding them back into Trust would build the up-flow the layer boundary forbids, and let
    a clique excommunicate someone from the *graph* rather than from their own nodes.
-2. **Weight-shared like every signal.** The existing guardrail applies verbatim: a denunciation carries the
-   denouncer's weight, split across everything they signal. An account that denounces 10,000 identities is a
+2. **Weight-shared like every signal** (per **The Law of Conservation of Trust**, Doctrine). A denunciation carries
+   the denouncer's weight, split across everything they signal, so an account that denounces 10,000 identities is a
    firehose whose individual denunciations round to zero.
 3. **Refusal-to-carry, not excommunication** (per Policy Is Never Protocol). A clique of real, mutually-trusted
    humans brigading a victim can make the victim unwelcome in *their* neighborhood - roughly the power human
@@ -2224,8 +2247,8 @@ the operator for real infrastructure is appropriate, because it is the one role 
 
 ### The Media-Type Admission Test
 
-Blob types are a **closed registry** - the same allowlist-over-ours move as the markup vocabulary, applied to
-bytes. A media type earns admission to the network when it has all three:
+Blob types are a **closed registry** - the same **Allowlist Beats Blocklist** (Doctrine) move as the markup
+vocabulary, applied to bytes. A media type earns admission to the network when it has all three:
 
 1. **A strict-parse validation story** - magic bytes and structural parse at ingest (in a sandboxed decoder), a
    typed renderer at display (never a generic "open this file" path). The declared type is *enforced, never
@@ -2235,27 +2258,16 @@ bytes. A media type earns admission to the network when it has all three:
    conveniently exactly the CSAM-relevant types.
 3. **A metadata-privacy story** - what the format smuggles, and how it is stripped.
 
-Consequences for the v1 lineup:
+The v1 lineup that results:
 
-- **Bitmap images: yes** - with the EXIF rule. A phone photo carries GPS coordinates: a deanonymization channel
-  worse than most on a pseudonymity-promising network. Because blobs are content-addressed and author-signed, a
-  node cannot strip metadata after the fact without changing the hash - **stripping happens in the authoring
-  client, pre-sign**, with an ingest-side "reject images bearing GPS EXIF" backstop that also covers third-party
-  clients.
-- **SVG: no.** It looks like an image and is actually an XML document that can carry script and external
-  references. Bitmap formats only, until someone wants to build "parse SVG into our own safe subset" as a project.
-- **Video: narrow profiles, not "video."** Container formats are the worst parsers in computing; allowlist
-  specific codec/container pairs (e.g. MP4/H.264+AAC, WebM/VP9) and let the browser's already-sandboxed media
-  stack decode.
-- **Audio: MP3 and - load-bearing aesthetic - MIDI.** ID3 tags can embed arbitrary junk including images: validate
-  or strip at ingest. MIDI renders through a client-side synth, never a native handler.
-- **PDF: no.** JavaScript, launch actions, embedded files, forms - a document *platform*, not a document. Nothing
-  in the geocities-and-webrings aesthetic needs it; the strongest future concession is "rendered exclusively via a
-  sandboxed pdf.js," which is still a concession to resist.
-- **Generic "file attachment": the type to resist hardest.** If the registry is markup/images/av-profiles/audio,
-  there *is no surface* on which an executable arrives - not blocked, nonexistent. A generic attachment type
-  reintroduces the entire executable-content problem as one innocent feature. When someone eventually needs to
-  share a tileset zip, the answer is a new *specific* type with its own validation story.
+| Type | Verdict | Why |
+|---|---|---|
+| **Bitmap images** | Yes, with the EXIF rule | Phone photos carry GPS - a deanonymization channel. Content-addressing means a node can't strip metadata post-hoc without changing the hash, so **stripping happens in the authoring client, pre-sign**, with an ingest-side "reject GPS EXIF" backstop for third-party clients. |
+| **SVG** | No | Looks like an image, is actually an XML document carrying script and external references. Bitmaps only, until someone builds "parse SVG into a safe subset" as a project. |
+| **Video** | Narrow profiles only | Container formats are the worst parsers in computing. Allowlist specific codec/container pairs (MP4/H.264+AAC, WebM/VP9) and let the browser's sandboxed media stack decode. |
+| **Audio** | MP3 and - load-bearing aesthetic - MIDI | ID3 tags embed arbitrary junk: validate/strip at ingest. MIDI renders through a client-side synth, never a native handler. |
+| **PDF** | No | JavaScript, launch actions, embedded files, forms - a document *platform*, not a document. Strongest future concession is "sandboxed pdf.js only," still a concession to resist. |
+| **Generic file attachment** | Resist hardest | With the registry closed to markup/images/av/audio, there is *no surface* on which an executable arrives - not blocked, nonexistent. A tileset zip becomes a new *specific* type with its own validation story. |
 
 On plaintext malware (base64 in a post body): unwinnable and therefore out of scope - anyone a filter could stop
 can paste ciphertext instead. The defensible line is that **the network never puts bytes on a path to an
