@@ -162,6 +162,11 @@ The load-bearing laws of the system, each stated once — here — and reference
 catch yourself explaining one of these in full for the third time in three different sections, stop: it belongs
 here, and that section gets a pointer.
 
+**No Central Authority** This feels like a given, but it is kind of the load-bearing assumption of any p2p system.
+There can't be any central trusted system holding the whole thing up because... that's... 
+_what it means for a system to be decentralized_. Everything must always be computable from local, public data
+alone.  
+
 **No Clocks!** Time is a UI element — "when was this posted?" is a perfectly good thing to show a human — but we
 can never trust it to be correct, so it is never allowed to be load-bearing. Ordering, authority, and freshness are
 settled by *structure* — hash chains, seniority, monotonic memory — never by a timestamp a stranger could lie about.
@@ -176,14 +181,16 @@ of your content public, and that content can be fetched, rebroadcast, and even s
 Your output is publicly available, anybody can come along and look at it - what's private is what you pull, your input stream, 
 where you choose who you trust and what you consume.
 
-**You Can't Push Hosting Decisions On Others** You can not say to another person, "rebroadcast this thing" - another
-person can decide "rebroadcast everything from this person I like", but the direction is always pull, never push.
+**You Can't Push Hosting Decisions On Others**, a.k.a. **Bounded Operator Liability** You can not say to another person, 
+"rebroadcast this thing" - another person can decide "rebroadcast everything from this person I like", 
+but the direction is always pull, never push. Any given node's operator's responsibility only extends so far as the
+public-facing taste and judgement of their users (who can be forcefully ejected), and no further. 
 
-**Pseudonymity, Not Anonymity.** Your separate identities don't link to each other unless *you* link them — that is
+**Pseudonymity, Not Anonymity** Your separate identities don't link to each other unless *you* link them — that is
 the whole promise. We do not promise anonymity from network observers, and against a state-level adversary we are a
 *terrible* choice. 
 
-**Recoverability Over Prevention.** On a p2p network you cannot prevent every compromise, so we don't pretend to.
+**Recoverability Over Prevention** On a p2p network you cannot prevent every compromise, so we don't pretend to.
 Instead: make every cheat *undeniable* and every failure *survivable*. When two honest parties disagree we converge
 on the same answer even when it isn't the "fair" one — a split-brain is unrecoverable; an arbitrary-but-agreed winner
 is not.
@@ -192,16 +199,21 @@ is not.
 HTML, no LLM-guessing their spam. That's a losing game played on their turf. We enumerate what's allowed,
 rather than filtering out what we don't want to accept. 
 
-**Names Are Pointers, Never Authority.** Handles, slugs, contact names — all labels that resolve to a key. The *key*
+**Names Are Pointers, Never Authority** Handles, slugs, contact names — all labels that resolve to a key. The *key*
 is the identity. A name can be wrong, stale, stolen, or reassigned; it never grants anything on its own.
 
-**Every Byte From The Network Is Hostile.** Validation lives at the consumer — the renderer, the verifier — never at
+**Every Byte From The Network Is Hostile** Validation lives at the consumer — the renderer, the verifier — never at
 submission. Signed garbage arrives via sync from strangers, and nothing upstream can be trusted to have checked it.
 A responsible client validates everything itself. Even on data that looks like its own.
 
-**Copy, Don't Flip.** Crossing a membrane — draft to published, private to public — never toggles a bit; it mints a
+**Copy, Don't Flip** Crossing a membrane — draft to published, private to public — never toggles a bit; it mints a
 *new* artifact. There is no "make public" switch that could be thrown by accident or by a bug, because the only way
 across is a deliberate act that re-signs the content into its new home.
+
+**Immutable Chains Doesn't Mean Immutable Content**: Just because signed entries are forever doesn't mean that
+content has to be: we can point to content that gets dropped or modified. 
+Retention is enforced by policy, not _the chain_. 
+
 
 ---
 
@@ -266,7 +278,7 @@ Note that, in this order, even though K3 was born _after_ K2, K3 is the rightful
 ### Rules Of Succession
 
 The goal here is to have a **total order on key authority** that **any node can compute using only local, public data**.
-There's no synchronized clocks or coordinators to prevent a civil war, it has to be something the system can calculate
+There's no synchronized clocks or coordinators to prevent a civil war (**No Central Authority**, Doctrine) - it has to be something the system can calculate
 on its own.
 
 1. **The Bloodline Must Continue! Babies! Babies! Babies!** - any key in the tree can authorize new child keys.
@@ -348,24 +360,14 @@ and will be distrusted.
 
 ### Recovery Planning
 
-Structural seniority is fixed at signing time and cannot be honestly granted retroactively - a re-issued key with a
-shortened usurper list *is* the equivocation attack, so there is no legitimate way to insert a senior key into an
-existing tree. Identity durability therefore rests on a small amount of planning ahead, and the system should make
-that planning happen by default:
+Structural seniority is fixed at signing time and cannot be honestly granted retroactively -
+there is no legitimate way to insert a senior key into an existing tree. 
 
-- **Recovery key, minted at identity creation.** When an identity is created, the node generates a **recovery key as
-  an early direct child of the root** and hands it to the user via the photo ceremony (a labeled QR photographed to
-  the phone's camera roll - see The Cozyweb Surface, ceremony 1; file download as fallback). Because it is created first,
-  it is structurally senior to every key added afterward - forever, with no propagation dependency. If the root and
-  the daily-driver nodes are all lost or compromised, the recovery key outranks whatever survives.
-- **Root key backup.** Users can export the root key itself (seed phrase, file, QR - see Enhanced Auth). A restored
-  root outranks everything. The known hazard: restoring from a *stale* backup and then signing new children produces
-  innocent equivocation (see above), which the tiebreaker resolves - convergently, though not necessarily the way the
-  user hoped.
+How do we recover when things go badly wrong?
 
-Authority statement types are **versioned.** Any future statement type that changes how relying parties rank keys
-would make old and new clients rank differently - split-brain by version skew - so introducing one is a
-protocol-breaking change by definition, gated behind a version bump.
+- **Recovery key, minted at identity creation.** When any new identity node is created, the node generates a **recovery key as
+  an early direct child of the root**. The user takes a photo of a QR code, that photo is their golden ticket: 
+  a high-ranking identity stored on their person forever.
 
 ### Recovery Flows: Passwords vs. Keys
 
@@ -376,10 +378,10 @@ ability to prove themselves to *this node's web app*. That is a web-app problem.
 devices, compromise) is the rare case, and it alone runs the key-tree machinery. The load-bearing invariant for
 everything below: **presenting key K may grant at most K's own authority.**
 
-**Flow A - forgot password (common): zero chain entries, zero new keys.** The recovery photo serves as the reset
-*authentication factor*: scan the QR, the node derives the pubkey, confirms it is the identity's **designated
-recovery key**, and resets the account password. The key signs a login challenge, never a statement; the tree is
-untouched.
+**Flow A - forgot password (common): zero chain entries, zero new keys.** The recovery photo (QR code of the
+oldest-child recovery key) serves as the reset *authentication factor*: scan the QR, the node derives the pubkey, 
+confirms it is the identity's **designated recovery key**, and resets the account password. The key signs a login 
+challenge, never a statement; the tree is untouched.
 
 - **Only the recovery key is reset-eligible - this is load-bearing, not convenience.** Access to a node is access
   to the keys that node holds, so
@@ -398,8 +400,8 @@ untouched.
 - **Per-identity scoping.** A node account may agent several identities; proof of one identity's recovery key
   grants access to *that identity only* (the reset re-homes the proven identity into a fresh or proven-only
   account), or a stolen photo for one pseudonym would breach the authority and linkage boundaries of its siblings.
-- Phase 3's optional email tokens are a later *convenience* for this same flow; the photo-as-factor means Phase 1
-  ships password reset with no email infrastructure at all.
+- **The Node Can Do Other Stuff** - there are lots of ways to reset a password, and if the node wants to instead
+  offer email password reset, or password-reset-by-phone: sure! Why not! 
 
 **Flow B - actual key loss (rare): the tree machinery, ending in photo rotation.** At a fresh node: scan the QR;
 the recovery key authorizes **its successor recovery key first** (see designation, below), then the new device
@@ -754,18 +756,23 @@ surface); vouch payloads remain Tier 5 as planned.
 
 ### Registration Modes
 
-Who may create an account is **per-node policy**, a three-position dial:
+Who may create an account is **per-node policy** - the dial that actually bounds a node's exposure (**Bounded
+Operator Liability**, Doctrine: liability lives on the write side, whom you host and can eject, never on hiding
+public reads):
 
-- **`closed`** - no registration at all (a personal node after its owner is aboard).
+- **`closed`** - no registration at all (a personal node after its owner is aboard, or a device that hosts only you).
+- **`trusted`** - accounts only for identities already in the operator's trust graph; no token needed, but it needs
+  the trust layer live.
 - **`invite`** - **the default**: accounts are created only by redeeming a token (see Follows, Friendship, and
   Invitation - the invite token is the admission mechanism, and the same artifact carries the friend/vouch payload
   when those layers are live). The first-account-becomes-`node_admin` bootstrap is unchanged: boot, register once,
   the node is yours, and you mint tokens from there. A personal node never notices this default.
-- **`open`** - anyone may register. Allowed on purpose - per-node policy is the federation philosophy, and some
-  operators will throw caution to the wind with their eyes open - but it is an **explicit, loudly-named opt-in**,
-  never a default a fresh operator discovers they'd made. An open-registration node is a public-facing role and
-  inherits the public-exposure gates (the security pass, and the abuse tooling that gates open modes - see the
-  ship tier): liability stays a decision someone made on purpose.
+- **`open`** - anyone may register, and the node **auto-closes admission once it reaches ~150 open-access users**, so
+  a personal box cannot be accidentally dogpiled into a public utility. Allowed on purpose - some operators will
+  throw caution to the wind with their eyes open - but it is an **explicit, loudly-named opt-in**, never a default a
+  fresh operator discovers they'd made. An open-registration node is a public-facing role and inherits the
+  public-exposure gates (the security pass, and the abuse tooling that gates open modes - see the ship tier):
+  liability stays a decision someone made on purpose.
 
 Today's rate-limited open registration becomes the `open` setting; the dial itself and tokens are early,
 node-local work (no new protocol).
@@ -1097,7 +1104,7 @@ instantaneous. The `identity-private` service is reserved and gated but has no w
 
 ### Open Items
 
-- **Deletability: split headers from content from day one.** Chains store entry headers + blob hashes; content
+- **Deletability: split headers from content from day one** (**Immutable Chains ≠ Immutable Content**, Doctrine). Chains store entry headers + blob hashes; content
   lives in droppable blobs (`iroh-blobs`). "Delete" = tombstone entry + drop the blob: chain integrity survives
   (headers remain), content is genuinely gone from cooperating nodes. The *fact* of a post at seq 41 is permanent;
   its content is not. Also keeps chains tiny. Retrofitting this split later is a protocol break, so it is v1.
@@ -1587,19 +1594,13 @@ HTTP assumptions are false here and each is load-bearing:
   streams - a subscribe/stream shape QUIC suits and HTTP is awkward at. There are two interaction styles: read-as-RPC
   and sync-as-stream; do not force the second into the first.
 
-**Resolved: the web gateway is a role, not a default.** `ringtome://` URLs are dereferenced natively by nodes;
-ordinary web browsers reach content only through an HTTPS gateway (`https://pub.example/<root>/public/name`
-proxying into the p2p layer) run as a **distinct, dual-opt-in role** with publisher-grade obligations - full
-design, one canonical home: Moderation and Operator Liability. No federated node serves anonymous HTTP as a side
-effect of federating. Consequence for addressing: resource addressing stays
-native-first; gateway URL shapes are a proxy concern, not a protocol one.
-
 ---
 
 ## Content Markup: Fanciful, Constrained, Never HTML
 
-User-authored content (pages, posts, profiles) is written in a **custom, deliberately weak markup language** - a
-closed vocabulary in the spirit of BBCode/gemtext, with the clumsy expressiveness of the Old Internet as an explicit
+User-authored content (pages, posts, profiles) is written in a **custom, deliberately weak markup language** - 
+([Marquee](https://github.com/cube-drone/marqueemarkup)) a closed vocabulary in the spirit of BBCode/gemtext, 
+with the clumsy expressiveness of the Old Internet as an explicit
 design goal. Users never author real HTML, and clients never render user bytes as HTML. This is a security decision
 first and an aesthetic one second:
 
@@ -1655,47 +1656,6 @@ first and an aesthetic one second:
    ambient UI access, budgeted execution, explicit capabilities only. The Pico-8 lesson says brutal constraints
    become a community's aesthetic identity, so this could be wonderful - but it is a whole product in itself.
    Deferred indefinitely, and possibly forever if the widget vocabulary is good.
-
-### Starting Posture: Markdown's Hands, RST's Skeleton, Our Own Skin (settled 2026-07-09)
-
-A markup language is three separable organs, and no existing donor has all three healthy - so the language is a
-chimera with deliberate organ selection:
-
-- **Prose surface: markdown-shaped, strictly specified.** Casual users (and their robots) already type markdown;
-  that familiarity is the whole UX budget. But Markdown-the-*specification* is disqualified: CommonMark's
-  every-input-is-valid philosophy resolves ambiguity with rules so baroque that independent implementations
-  legitimately disagree (Babelmark is a whole website demonstrating it) - and with parsers on both sides of the
-  trust boundary, grammar ambiguity is **parser-differential risk**: content that reads as inert prose to the
-  validator and as an active construct to a renderer, the mXSS/sanitizer-bypass genre. It is also simply a cozy
-  failure - "my page looks like my page on every client" is the promise, and quirks-mode divergence breaks it. The core is therefore a **small, unambiguous, markdown-familiar subset** - ATX
-  headings, one list style, fenced code, blockquotes, constrained links/images - in the spirit of **Djot**
-  (CommonMark's own author concluding the fix is a new-but-familiar syntax). Hand-specified and hand-rolled, like
-  the CBOR subset, for the same reason: the vectors promise exact parses.
-- **Extension skeleton: RST's directive model** - the one great idea in RST, taken without its surface syntax
-  (heading underlines and significant indentation fail the casual-writer test outright). Every widget and media
-  embed is a directive block (`:::marquee`, `:::guestbook`, `:::webring`): uniformly parsed, so new constructs are
-  *vocabulary* entries in the type registry, never grammar changes. This is also the correct diagnosis of
-  Markdown's real deficiency - not that it is too lightweight, but that it has **no sanctioned extension point**,
-  which is why every Markdown ecosystem metastasizes incompatible bolt-ons and eventually reaches for embedded
-  HTML: the exact thing banned above. Fix the extension model and the lightness becomes pure virtue.
-- **Presentation: a closed style vocabulary, never CSS-the-language.** CSS is a second parser-twice obligation and
-  an attack surface (exfiltration selectors, layout takeover, fingerprinting). The audience never wrote CSS
-  anyway - Old-Web fancy was *picking from a list*: tiled background, cursor, color scheme. So styling is
-  enumerable attributes on directives (`:::page background=tile:blob:HASH cursor=sparkle`), versioned with the
-  vocabulary, mapped to the renderer's own stylesheet. CSS-the-capability behind a counter.
-
-**Where Markdown's philosophy and ours collide - resolved by splitting the gates.** Markdown never errors; our
-boundary refuses invalid input. The split: the **prose core is total** (any bytes parse as paragraphs;
-unrecognized syntax renders literal - a note never red-underlines its author), while **directives and attributes
-are strict**. The authoring client validates at the **publication act** as accident-prevention for its own user;
-renderers still trust nothing (**Every Byte From The Network Is Hostile**, Doctrine) and refuse strangers' strictly-invalid
-directives fail-closed - a malformed page from sync was authored past a validating client on purpose.
-
-Sequencing: the language debuts in the notes app's renderer (own content, friendly first deployment), informed by
-the plaintext era's corpus; it faces stranger content only at 4S (NOTES_APP.md, Markup). The language now has a
-name and its own repo: **Marquee** ([github.com/cube-drone/marqueemarkup](https://github.com/cube-drone/marqueemarkup), spec drafted 2026-07-09) - layout-by-picked-template
-with slots, live/pinned includes for shared nav, client-computed stream navigation, and oneboxes all landed as
-directive vocabulary over the same four mechanisms (prose core, directives, targets, embedder policy).
 
 ### An Embed Is an Ingest (settled 2026-07-12)
 
@@ -1879,7 +1839,7 @@ archive. That is the same trade git made, and the right one.
 
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
-There is no roster of an identity's nodes, no membership protocol, and no coordinator. Each node's picture of the
+There is no roster of an identity's nodes, no membership protocol, and no coordinator (**No Central Authority**, Doctrine). Each node's picture of the
 tree is simply **its local frontier of the identity chains**: every key it knows about is an authorization entry it
 has synced. That picture is signed (never wrong), possibly stale (missing the newest branches), and converges through
 sync itself:
@@ -2036,23 +1996,34 @@ reader's trust in its author, applied as node-local policy at a serving decision
 denunciations, hash lists - all instances of that shape. The section exists because a federated node operator is
 the person legal reality actually visits, and the design owes them a defensible position, not a shrug about p2p.
 
-### Public-Readable Is Not Publicly-Served
+### Public Means Public
 
-"Public" names two properties that must be split:
+Content is either encrypted or it isn't. Encrypted content is the *pull* side - your private input stream, whom you
+trust, what you consume. Everything else is **public, and public means public**: a reachable node serves it to
+whoever asks, over HTTP and Iroh alike, no standing in the network required.
 
-- **Public-readable:** unencrypted and signed - anyone *holding* the bytes can read and verify them. Public chains
-  are public-readable by definition.
-- **Publicly-served:** fetchable by an anonymous stranger with an HTTP client and no standing in the network.
+The earlier posture here - "public-readable but never served to anonymous HTTP" - is retired. It contradicted
+**Not Hermetically Sealed** (Doctrine), and worse, it protected nothing: public content served to even one follower
+over Iroh can be rebroadcast to the open web by that follower the instant they choose, so withholding it from an
+anonymous HTTP client at your own node buys zero privacy and costs a working web presence. If it is public, it is on
+the web the moment anyone wants it there - own that instead of pretending otherwise.
 
-Nothing in the architecture forces these to coincide, and the default posture is that they do not: **a federated
-node serves public chains to its authenticated members and to peers syncing on follower demand - never to
-anonymous HTTP.** Fetching public content requires knowing the root pubkey, finding a node that serves it, and
-that node agreeing to serve *you* - and no node is obligated to serve anything (see Rehosting Policy). "Public" in
-Ringtome means *unencrypted, attributed, and destined for whoever follows you* - not "on the web." The web is a
-separate, opt-in role (see The Web Gateway, below). This also dissolves the false choice between "no public nodes"
-(hermetic seal) and "auto-moderated exit nodes": a node with 500 users, federating widely, fronting hundreds of
-followed identities, is not hermetic - and has no anonymous public surface either. Growth rides membership and
-vouch edges, which is the growth model anyway; anonymous discoverability was never the engine.
+What varies is never *what a node serves* but *whom it hosts* and *whether it is reachable*:
+
+- **Admission is the real control**, and it is on the write side (**Bounded Operator Liability**, Doctrine). A node
+  dials who may hold an account from `closed` (just you) through `trusted`, `invite`, and auto-capped `open` - see
+  Registration Modes. Overload and liability are bounded by *whom you host and can eject*, never by hiding readable
+  bytes.
+- **Reachability is deployment, not policy.** A home node behind NAT may only ever be reachable by followers over
+  Iroh; a VPS with a domain is a public HTTP endpoint. Serving *other identities'* public content to the web -
+  fronting the broader network - is the further opt-in **Web Gateway** role (below), with its own liability.
+- **No node must answer any particular request.** "Anyone *may* read" is not "every node *must* serve every
+  request": a node still rate-limits, blocks abusers, and refuses to be an amplifier (**You Can't Push Hosting
+  Decisions On Others**, Doctrine).
+
+None of this weakens the moderation story, which was always about *ingress* - what a node hosts - not read access
+(see The Three Funnels, next). And public still is not a megaphone: readable content is a website you can visit if
+you know its address, not a global feed that finds you. Growth rides membership and vouch edges, as it always did.
 
 ### The Three Funnels: Why Moderation Load Stays Bounded
 
@@ -2068,7 +2039,7 @@ human attached:
 3. **Open mode**, if enabled, accepts unsolicited fronting - already opt-in, quota'd per source, and revocable
    when burned.
 
-Moderation load is therefore proportional to **your community's behavior, not the network's size.** Bots cannot
+Moderation load is therefore proportional to **your community's behavior, not the network's size** (**Bounded Operator Liability**, Doctrine). Bots cannot
 push; they must be pulled, and pulling requires an account or a follow from someone who has one. This is the same
 structural insight as "no global timeline is the structural repellent": the megaphone not existing is not just
 culture curation - it is the liability shield. (This is **Allowlist Beats Blocklist** (Doctrine) once more: an
