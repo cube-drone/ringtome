@@ -33,6 +33,10 @@ use crate::seal::{self, EncKeyPair};
 /// and chain position.
 const RECORD_AAD: &[u8] = b"ringtome-v0/private-record";
 
+/// AAD for file-body blobs (the file layer). A distinct domain from records so the two AEAD
+/// contexts can never be confused for one another.
+const FILE_AAD: &[u8] = b"ringtome-v0/file";
+
 // ---------------------------------------------------------------------------------------------
 // Encryption keypairs in the keystore
 
@@ -92,6 +96,14 @@ impl EpochKeys {
         if !keys.contains(&key) {
             keys.push(key);
         }
+    }
+
+    /// Test-only constructor: an `EpochKeys` holding a single known key.
+    #[cfg(test)]
+    pub(crate) fn single(epoch: u64, key: [u8; 32]) -> Self {
+        let mut ek = Self::default();
+        ek.insert(epoch, key);
+        ek
     }
 }
 
@@ -328,6 +340,63 @@ pub fn decrypt_record(record: &PrivateRecord, keys: &EpochKeys) -> Option<Privat
     None
 }
 
+// ---------------------------------------------------------------------------------------------
+// File-body encryption (the file layer).
+//
+// A file body is encrypted into a **self-describing blob**: `epoch (8 bytes, big-endian) ||
+// nonce (24) || ciphertext`. The epoch rides in the clear - epoch numbers are already public on
+// the identity-public chain - so a reader knows which keys to try without a side table. The
+// random nonce is what makes the blob's content-hash unforgeable and unlinkable: no one can
+// precompute a target file's hash or reverse a hash to known content, so iroh-blobs may serve it
+// ungated (NOTES_APP, The file layer). No size cap - file bodies are not register-sized facts.
+
+/// Encrypt a file body under a specific epoch key into a self-describing blob.
+pub fn encrypt_file(epoch: u64, epoch_key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, AppError> {
+    let mut nonce = [0u8; 24];
+    {
+        use rand::RngCore;
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+    }
+    let ciphertext = cipher(epoch_key)
+        .encrypt(
+            XNonce::from_slice(&nonce),
+            chacha20poly1305::aead::Payload {
+                msg: plaintext,
+                aad: FILE_AAD,
+            },
+        )
+        .map_err(|e| AppError::Internal(anyhow!("encrypting file: {e}")))?;
+    let mut blob = Vec::with_capacity(8 + 24 + ciphertext.len());
+    blob.extend_from_slice(&epoch.to_be_bytes());
+    blob.extend_from_slice(&nonce);
+    blob.extend_from_slice(&ciphertext);
+    Ok(blob)
+}
+
+/// Decrypt a self-describing file blob with whichever key of its epoch authenticates. `None`
+/// means the blob is malformed, or we hold no working key for its epoch (a revoked-then-rotated
+/// member, or a newcomer not yet re-sealed into that era).
+pub fn decrypt_file(blob: &[u8], keys: &EpochKeys) -> Option<Vec<u8>> {
+    if blob.len() < 8 + 24 {
+        return None;
+    }
+    let epoch = u64::from_be_bytes(blob[0..8].try_into().ok()?);
+    let nonce = &blob[8..32];
+    let ciphertext = &blob[32..];
+    for key in keys.for_epoch(epoch) {
+        if let Ok(plaintext) = cipher(key).decrypt(
+            XNonce::from_slice(nonce),
+            chacha20poly1305::aead::Payload {
+                msg: ciphertext,
+                aad: FILE_AAD,
+            },
+        ) {
+            return Some(plaintext);
+        }
+    }
+    None
+}
+
 /// Append one private record under the current epoch.
 pub async fn write_record(
     db: &SqlitePool,
@@ -486,6 +555,35 @@ mod tests {
             key: key.into(),
             value: Some(value.into()),
         }
+    }
+
+    #[test]
+    fn file_encrypt_decrypt_round_trip() {
+        let epoch = 7u64;
+        let key = [42u8; 32];
+        let mut keys = EpochKeys::default();
+        keys.insert(epoch, key);
+
+        let plaintext = b"the quick brown note jumped over the lazy epoch".to_vec();
+        let blob = encrypt_file(epoch, &key, &plaintext).unwrap();
+
+        // self-describing: the epoch prefix rides in the clear
+        assert_eq!(&blob[0..8], &epoch.to_be_bytes());
+
+        // random nonce: the same plaintext encrypts differently every time (no dedup, no oracle)
+        let blob2 = encrypt_file(epoch, &key, &plaintext).unwrap();
+        assert_ne!(blob, blob2);
+
+        // round-trips under the right epoch key
+        assert_eq!(decrypt_file(&blob, &keys).unwrap(), plaintext);
+
+        // wrong key for the epoch yields nothing
+        let mut wrong = EpochKeys::default();
+        wrong.insert(epoch, [1u8; 32]);
+        assert!(decrypt_file(&blob, &wrong).is_none());
+
+        // a malformed (too-short) blob is None, never a panic
+        assert!(decrypt_file(&blob[..10], &keys).is_none());
     }
 
     #[tokio::test]

@@ -61,6 +61,48 @@ are ever allowed to meet, and in what costume.
 - **materialized view** — a query-shaped projection of the log (e.g. `profile_view`). Disposable
   by design; **rebuild** wipes views and replays the log, re-validating every link.
 
+## Files & documents
+
+- **file** — content-addressed bytes in the node's blob store (iroh-blobs, BLAKE3): **immutable
+  and nameless by construction**, because the hash *is* the identity — "editing" a file can only
+  mint a different file. Not the thing a user edits (that's a **document**); a file is one frozen
+  body. **Private** files are epoch-encrypted with a random nonce and addressed by *ciphertext*
+  hash; **public** files are plaintext, addressed by plaintext hash (dedup returns exactly where
+  it's safe). The store is content-agnostic and **global per node** — files are identity-agnostic;
+  the per-identity ledger is SQLite's job (`node/src/files.rs`).
+- **file hash** — a file's BLAKE3 name. For private files it is unforgeable and unlinkable: it
+  depends on the secret epoch key *and* a random per-file nonce, so nobody — member or not — can
+  precompute a target's hash or reverse one to known content. Why serving needs no gate.
+- **document** *(planned)* — a stable identity whose versions form a DAG, bodies in the file
+  layer. Format-agnostic: a note is a document with a text body; the same machinery versions
+  anything with rolling states. **A document is a history of files wearing a name**: each version
+  points at the file that is its frozen body; every edit mints a new file and repoints. What the
+  OS colloquially calls "a file" (the mutable, named, editable thing) is our *document*; our
+  *file* is invisible plumbing beneath it. Documenthood is opt-in — an image baked into a note
+  body is a file with no document (no id, no history); the same image *versioned in its own
+  right* is a document.
+- **doc_id** *(planned)* — a document's stable identity across all its versions; what taxonomies
+  and publication reference — never version hashes, or every edit would shatter every reference.
+- **version** *(planned)* — one save: a small CBOR **header** `{doc_id, parents, file_hash,
+  title, format?, refs?}` appended to a chain. A version's identity is its entry hash. Whole-file
+  snapshot, never a diff.
+- **parents** *(planned)* — the DAG edges: entry hashes this version was edited from. A list from
+  day one (git's model): zero at genesis, one for a save, two-plus for a merge. Two saves sharing
+  a parent are **divergence**; keep-both is the universal resolution, auto-merge a per-format
+  capability.
+- **format** *(planned)* — which closed-enum interpretation the body bytes get (plaintext,
+  Marquee, …). Never a free MIME string: the declared type is enforced, never trusted.
+- **refs** *(planned)* — a *derived* index of what a version's body references (file hashes,
+  doc-ids), extracted at save time so GC and backlinks never decrypt every body. The body stays
+  the source of truth.
+- **pin** — retention machinery: `(root, blob hash)`, protecting one blob from GC on behalf of
+  one identity. An identity's pin set always equals the live set computed from its views —
+  reconciled idempotently, rebuildable, prefix-droppable. The IPFS sense of the word;
+  implemented atop iroh-blobs' "tags," but **never called a tag here**, because:
+- **tag** — a user's plural, plain-string organizing labels on documents (taxonomy layer;
+  LWW-element-sets, external to what they organize). Tags organize; pins retain. The two never
+  meet.
+
 ## The network
 
 - **node** — a Rust server running this protocol, agenting identities for its users. Distinct

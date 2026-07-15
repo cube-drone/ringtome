@@ -1,12 +1,18 @@
 # The Notes App — the first application delivered on Ringtome
 
 This is an **application spec**, not protocol doctrine: notes are the first thing *built on*
-Ringtome rather than part of Ringtome itself. The app earns its place three ways: it is the
-single-player product ("come for the tool, stay for the network" — NEXT_STEPS, the recommended
-route), it is the daily dogfood loop that puts the operator inside their own sync machinery, and
-it is the forcing function for the **private blob lane**, infrastructure that posts and media
-(4M) reuse the moment they exist. Notes and posts are mirror reflections — private/mutable vs.
-public/mostly-immutable — sharing one storage shape.
+Ringtome rather than part of Ringtome itself. In fact the app is now a thin skin over three core
+primitives its design forced into existence — designing "private notes" turned out to be designing
+**files**, **versioned documents**, and **taxonomies**, and all three have been promoted to
+PROJECT_PLAN's Data Layer as canonical (The File Layer; Versioned Documents; Taxonomies). What
+remains here is the application: **a note is a private versioned document with a plaintext (later
+`.mq`) body, plus whatever taxonomies the user points at it.**
+
+The app still earns its place three ways: it is the single-player product ("come for the tool,
+stay for the network" — NEXT_STEPS, the recommended route), it is the daily dogfood loop that puts
+the operator inside their own sync machinery, and it was the forcing function for the primitives
+above — posts and media (4M) reuse them the moment they exist. A post is just a published note:
+private/mutable and public/mostly-immutable are mirror reflections sharing one storage shape.
 
 ## What it is
 
@@ -14,28 +20,26 @@ Personal, end-to-end-encrypted, multi-device notes. Write on the laptop, read on
 cloud account, no third party who *can* read them. Plain text in v1 (the 4M markup can be
 adopted later as a rendering layer; the storage model below doesn't care).
 
-## The storage model: mutable documents on an immutable spine
+## The storage model: the primitives, applied
 
-The chain is the spine, not the body bag:
+The general machinery is canonical in PROJECT_PLAN (Data Layer: **Versioned Documents** for the
+header/DAG model, **The File Layer** for encrypted content-addressed bodies). What the notes app
+adds on top:
 
-- **A note on the chain is a small LWW register** in the existing private store: collection
-  `notes`, key = note id, value = an encrypted header `{title, blob_hash, parent, saved_at,
-  format?}` - `format` absent means plaintext, reserved so markup (v2) arrives without
-  archaeology.
-  One save = one ~200-byte chain entry. Bodies never ride the chain, so the private-record size
-  caps are simply not the app's problem (they were always meant for register/set-sized facts).
-- **The body is an encrypted blob**: XChaCha under the current **epoch key**, nonce prepended,
-  content-addressed by ciphertext hash. Membership semantics come free: a newly adopted device
-  (re-sealed epochs) decrypts every note; a revoked device reads its era and nothing after.
-- **Mutation is discharged into droppability.** Each save writes a new blob and repoints the
-  register; superseded blobs become unreferenced and garbage-collectable. Version history is a
-  **retention policy** (keep last N, keep ancestors needed for merge), not chain law. Deleting a
-  note is a register tombstone plus dropping its blobs — the *fact* of the note is permanent,
-  its content is not (the deletability doctrine, applied).
+- **A note is a versioned document on the private `notes` chain** — headers epoch-encrypted like
+  every private record, bodies as private files. Membership semantics come free: a newly adopted
+  device (re-sealed epochs) decrypts every note; a revoked device reads its era and nothing after.
+  `format` absent means plaintext — the v1 state; markup (v2) arrives via this field with zero
+  migration. `refs` is empty in v1 (plaintext bodies reference nothing); its schema follows
+  Marquee's target model when embeds exist.
+- **Version history is a retention policy** (keep last N, keep ancestors needed for merge), not
+  chain law. Deleting a note is a tombstone plus dropping its files — the *fact* of the note is
+  permanent, its content is not (**Immutable Chains ≠ Immutable Content**, Doctrine).
 - **Autosave is debounced at the client** (idle/blur, ~10s), so chain growth is dozens of
-  entries on a heavy day, not keystrokes. The long-run ceiling is the already-designed snapshot
-  + prefix-GC machinery (PROJECT_PLAN, Open Items: Snapshots) — the notes register is a
-  fold-based view, exactly what snapshots exist to compact.
+  entries on a heavy day, not keystrokes — and a save whose body is identical to its parent's
+  writes nothing at all. The long-run ceiling is the already-designed snapshot + prefix-GC
+  machinery (PROJECT_PLAN, Open Items: Snapshots) — the notes view is fold-based, exactly what
+  snapshots exist to compact.
 
 ## Media retention: the deletability doctrine, one level down
 
@@ -63,8 +67,8 @@ spec already states about notes themselves, applied one level down to their pict
   the placeholder *says*, and it is what makes dropping the blob a defensible act rather than a
   data-loss event.
 
-Content addressing pays a small dividend: two notes embedding the same picture crunch to the same
-bytes and dedupe to one blob for free.
+(No dedup softens this for private files — random-nonce encryption means identical bytes store
+twice, deliberately; see PROJECT_PLAN, The File Layer, for the oracle argument.)
 
 ## The sync model: never silently lose words
 
@@ -74,18 +78,16 @@ the stale save carries the newest timestamp and silently destroys the PC afterno
 one hard requirement: **no sequence of saves, syncs, tabs, or crashes may silently discard
 written words.** Prevention where cheap, recoverability always.
 
-The mechanism is causality, not a text CRDT — **a version DAG; git for notes:**
+The mechanism is causality, not a text CRDT — the version DAG (PROJECT_PLAN, Versioned
+Documents: `parents`, fast-forward, detected divergence, keep-both universal). The app-level
+behaviors on top:
 
-- Every save's header carries `parent`: the version hash it was edited from.
-- A save whose parent is the current head is a **fast-forward** — the overwhelmingly common
-  case, conflict-impossible by construction.
-- Two saves sharing a parent are **detected divergence** (the thing Discourse couldn't see).
-  With the common ancestor's blob retained, resolve by three-way merge: **automatic when edits
-  don't overlap** (which is nearly every moved-between-devices draft), **keep-both-with-lineage
-  when they do** — the note shows "diverged on two devices," both versions a tap away, merge UI
-  optional and later. v0 may ship detect-and-keep-both with no auto-merge at all; the
-  requirement is never-lose, not always-merge.
-- Clients check the head before saving: if it moved, rebase (fast-forward the editor onto the
+- **Three-way merge is text's per-format capability**: automatic when edits don't overlap (which
+  is nearly every moved-between-devices draft), keep-both-with-lineage when they do — the note
+  shows "diverged on two devices," both versions a tap away, merge UI optional and later. v0 may
+  ship detect-and-keep-both with no auto-merge at all; the requirement is never-lose, not
+  always-merge.
+- **Clients check the head before saving**: if it moved, rebase (fast-forward the editor onto the
   new head) or fork knowingly — never blind-save. The stale tab becomes a detected sibling, not
   a destroyer.
 - The plan's **unsynced indicator** doctrine applies verbatim: a device knows which of its saves
@@ -123,20 +125,6 @@ shape:
 
 Sequencing consequence: the notes → posts order in NEXT_STEPS' recommended route is now a
 dependency, not just a motivation call — the notes editor *is* the post composer.
-
-## Prerequisite: the private blob lane
-
-Blob transfer does not exist yet in any form; notes force it into existence, sized small:
-
-- Two frame types on the existing member-proven sync connection: `BlobRequest(hash)` /
-  `BlobData` — fetched after entry sync for referenced hashes we lack.
-- The doctrine sentence that makes it general: **a blob inherits the sync boundary of the
-  entries that reference it.** Private blobs are never served to unproven peers — existence,
-  count, and size of your notes are themselves private (ciphertext alone is not the boundary).
-- Node-side: encrypted blob store on disk, refcount GC driven by the materialized notes register
-  (plus the retention policy's ancestor-keeping).
-- iroh-blobs stays reserved for its real consumer — big *public* media in 4M, where
-  serve-by-hash to anyone is the desired behavior.
 
 ## Taxonomy: external artifacts, never header data
 
@@ -207,5 +195,7 @@ the feature waits).
 
 - [ ] Merge UX: what does "diverged on two devices" look like in cozy language?
 - [ ] Retention default: keep-last-N versions — what's N, and is it user-visible?
-- [ ] Blob frame size cap vs. chunking: notes are text and fit single frames; decide the cap now,
-  chunking only when media (4M) actually needs it.
+- [ ] Header encoding: reuse the private-register's string value (hex-encoded `file_hash`/`parent`)
+  or a dedicated CBOR `NoteHeader` payload with binary fields and its own AAD? Leaning dedicated,
+  since byte-level file encryption already exists for bodies. (Chunking is no longer a question -
+  iroh-blobs handles it.)

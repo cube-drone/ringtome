@@ -18,6 +18,7 @@ mod config;
 mod db;
 mod discovery;
 mod error;
+mod files;
 mod identity;
 mod imaol;
 mod inspect;
@@ -53,6 +54,8 @@ pub struct AppState {
     pub endpoint: iroh::Endpoint,
     /// Discovery: publish/resolve serving + endpoint records (off / local stub / mainline DHT).
     pub directory: discovery::Directory,
+    /// The file layer: the node's one global blob store (encrypted bodies, later public media).
+    pub files: std::sync::Arc<files::FileStore>,
 }
 
 #[derive(serde::Serialize)]
@@ -143,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
     let keystore = keystore::Keystore::load(&config.data_directory)?;
     let endpoint = p2p::build_endpoint(&keystore, &config.discovery).await?;
     let directory = discovery::Directory::build(&config.discovery)?;
+    let files = std::sync::Arc::new(files::FileStore::fs(config.data_directory.join("blobs")).await?);
     let state = AppState {
         config,
         node_db,
@@ -151,6 +155,7 @@ async fn main() -> anyhow::Result<()> {
         keystore,
         endpoint: endpoint.clone(),
         directory,
+        files,
     };
     p2p::spawn_accept_loop(endpoint, state.clone());
 

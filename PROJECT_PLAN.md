@@ -1734,6 +1734,95 @@ identity's chains; replication is per-identity, all chains at once; the only dis
 public vs. members-only visibility. New features add a data-map row and a handle - never a sync
 knob. (The identity chains are deliberately not stores: authority is not application data.)
 
+### The File Layer
+
+One **file object** for everything file-shaped in the system - private note bodies, public post
+bodies, media - a content-addressed store of bytes built on **iroh-blobs** (BLAKE3, the same hash
+as everything else). The store is content-agnostic: bytes in, hash out; it cannot tell a note from
+a photo. (Born in the notes design - see NOTES_APP.md for the discovery narrative. Canonical
+statement here; first implementation `node/src/files.rs`.)
+
+- **Private files are encrypted, then stored.** A private file is XChaCha ciphertext under the
+  current epoch key with a **random 24-byte nonce**, laid out self-describing
+  (`epoch ‖ nonce ‖ ciphertext` - epoch numbers are already public, so readers know which keys to
+  try), and content-addressed by the **ciphertext** hash. The random nonce makes every hash
+  unforgeable and unlinkable: nobody - not even a member who knows the plaintext - can precompute a
+  target file's hash or reverse a hash to known content. The deliberate cost: **no dedup for
+  private files** (identical content encrypts differently every time). The alternative, convergent
+  encryption, would dedup but hand out a known-plaintext confirmation oracle - the wrong trade for
+  private data.
+- **Public files are the same substrate with the encryption off.** Plaintext bytes, addressed by
+  plaintext hash - so dedup returns exactly where it's safe (two posts embedding the same image
+  share one blob), and serving is open because the content is public anyway.
+- **Serving is ungated, because the hash is the boundary.** iroh-blobs is *dark by default*: it
+  announces nothing to any DHT or index, has no enumeration primitive, and a fetch needs both the
+  exact hash and a node address. Private hashes exist only inside encrypted headers, so only
+  members ever hold one; an unproven peer has nothing to ask for, and would get useless ciphertext
+  if it did. The one residual is **size** (disclosed to anyone holding a hash - member-bounded,
+  pad-able later, ignorable for text).
+- **No content discovery, ever, on either side.** Discovery is the taxonomy and identity layer's
+  job: a hash never arrives naked - it arrives inside a signed document you synced, with
+  provenance, and you reach its holder through the identity's serving nodes (pkarr). iroh-blobs is
+  **pure point-to-point transfer**; its optional content-discovery layer stays off, private and
+  public alike. Every blob is reachable only through the document that names it.
+- **One global blob store per node** (iroh-blobs' redb-backed store), not per identity. Blobs are
+  identity-agnostic at the storage layer (a request is a hash, carrying no identity to route on),
+  and public dedup only works shared. The granularity is the mirror of SQLite's, on purpose:
+  identity-scoped relational *ledger* → per-identity SQLite, precious, backed up; content-addressed
+  reconstructible *cache* → one node-wide blob store, droppable, re-fetchable from peers and
+  re-verified against its hash.
+- **Retention is pin management.** A **pin** protects one blob from GC on behalf of one identity -
+  the IPFS sense of the word, and *not* a taxonomy tag: tags are the user's plural organizing
+  strings and never touch storage; a pin is singular retention machinery. (Implementation detail,
+  named once: pins are iroh-blobs "tags," its GC-protection primitive.) The scheme: a pin is
+  `(root, blob hash)`, named `<root_hex>/<blob_hash_hex>`, and the **invariant** is that after any
+  retention pass, the pin set under an identity's prefix equals the live-hash set computed from its
+  materialized views (document heads, ancestors kept for merge, and - once `refs` exist - the files
+  those versions reference). Everything follows: a retention pass is idempotent set reconciliation
+  (compute live set, diff, add/delete); pins are a rebuildable cache of the views exactly as the
+  views are of the chains; deleting an identity is one prefix drop; and two identities pinning the
+  same public blob hold independent pins, so no refcounts and no coordination. Not per-document
+  pins (a document's retained history spans several hashes, and one pin protects one) and not
+  per-version pins (the "why is this held" a longer name would encode is the view's job to answer,
+  not the pin store's). GC is iroh-blobs' own, enabled via its `GcConfig`: collect whatever no pin
+  protects - and until pinning is wired, GC stays off, which fails safe. A node-level accounting
+  index (hash → account/size, for quotas and attribution) is deferred to the storage-budgets open
+  question - pins already answer GC, and nothing else needs it before 4M.
+- **The primitive, not the pipeline.** This layer is bytes ↔ hash, transfer, and GC - nothing else.
+  Media *processing* (the crunch filter, EXIF stripping, type admission) sits above it and is 4M
+  work.
+
+### Versioned Documents
+
+The general mutable-content model: **a document is a stable identity whose versions form a DAG,
+with bodies in the file layer.** Born as the notes design and deliberately format-agnostic - a
+note is a versioned document whose body happens to be text; the same machinery versions an image,
+a tileset, anything with rolling states.
+
+- **A version is a header entry on a chain.** Each save appends a small CBOR header
+  `{doc_id, parents, file_hash, title, format?, refs?}`; the body never rides the chain. A
+  **version's identity is its entry hash** (BLAKE3, already unique); `doc_id` is the document's
+  stable identity across versions - what taxonomies and publication reference, never version
+  hashes.
+- **`parents` is a list from day one** - the git-commit model: zero at genesis, one for an ordinary
+  save, two-plus for a merge, so reconvergence needs no format change even before any merge UI
+  exists. Fast-forward when your parent is the current head; two saves sharing a parent are
+  **detected divergence**, and the universal resolution is **keep-both-with-lineage** - never lose
+  words. Auto-merge is a *per-format capability* layered on top (three-way merge for text; images
+  simply keep both), never core machinery.
+- **`refs` is a derived index** - the file hashes and doc-ids the body references, extracted from
+  the body at save time so GC-reachability and backlinks never require decrypting every body. The
+  body stays the source of truth.
+- **Versions are whole-file snapshots, never diffs.** Encryption defeats storage-layer delta
+  compression (random nonces destroy exactly the redundancy deltas exploit), and delta chains would
+  reintroduce base-dependencies that break independent droppability. Retention bounds storage
+  instead: debounced saves, skip-no-op saves, keep-last-N + GC.
+- **Private documents and public documents share the model, not the history.** A post's draft *is*
+  a private note; publication snapshots **one version** across the membrane as a new public
+  artifact with a history of one (**Copy, Don't Flip**, Doctrine). The version DAG solves a
+  private, multi-device drafting problem; public edit semantics are tombstone/replace (4M's
+  problem).
+
 ### Taxonomies: Documents About Documents
 
 Everything that *organizes* documents - tags, streams, folders, knowledge-base trees, reading
@@ -1913,14 +2002,15 @@ another identity, and the costume attack is handled where it belongs, in the UI:
 the **root-derived identicon** shows wherever a display name does (one canonical treatment: Display Names and
 Contact Names).
 
-### `iroh-blobs` → Large Content
+### `iroh-blobs` → The File Layer's Transport
 
-Content-addressed immutable data, referenced by BLAKE3 hash. Used for:
-- Profile pictures and media.
-- Larger content payloads (posts with images, attachments).
-- Sync entries store blob hashes as values — the actual data is fetched via `iroh-blobs`.
+The transfer and storage substrate for **every** file-shaped byte in the system - private
+(encrypted) note bodies as much as public media; see Data Layer, The File Layer, for the canonical
+design (this section is just the protocol mapping). Chain entries carry blob hashes; the bytes move
+over iroh-blobs as pure point-to-point transfer - dark by default, no content discovery, second
+ALPN on the same endpoint as sync.
 
-`iroh-blobs` is unaffected by the revocation model because blobs are immutable and content-addressed — there is no concept of "author" or "write access" at the blob level. A blob is just bytes identified by a hash.
+`iroh-blobs` is unaffected by the revocation model because blobs are immutable and content-addressed — there is no concept of "author" or "write access" at the blob level. A blob is just bytes identified by a hash. (Revocation *of readers* is the epoch-key layer's job: a revoked member keeps the blobs it already fetched and cannot decrypt anything sealed after its rotation.)
 
 ### `iroh-gossip` → Real-Time Notifications
 

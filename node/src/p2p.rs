@@ -55,7 +55,10 @@ pub async fn build_endpoint(
     };
     let endpoint = builder
         .secret_key(secret)
-        .alpns(vec![SYNC_ALPN.to_vec()])
+        .alpns(vec![
+            SYNC_ALPN.to_vec(),
+            crate::files::BLOB_ALPN.to_vec(),
+        ])
         .bind()
         .await
         .map_err(|e| anyhow!("binding iroh endpoint: {e}"))?;
@@ -89,16 +92,27 @@ pub fn addr_strings(endpoint: &Endpoint) -> Vec<String> {
     out
 }
 
-/// Accept loop: one task per incoming connection, each handed to the sync engine's serve path.
+/// Accept loop: one task per incoming connection, routed by negotiated ALPN - the blob ALPN goes
+/// to iroh-blobs' handler, everything else (i.e. the sync ALPN, the only other one we advertise)
+/// to the sync engine's serve path.
 pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
+    // One blobs handler for the endpoint's lifetime, cloned cheaply into each connection task.
+    let blobs = state.files.protocol();
     tokio::spawn(async move {
         while let Some(incoming) = endpoint.accept().await {
             let state = state.clone();
+            let blobs = blobs.clone();
             tokio::spawn(async move {
                 match incoming.await {
                     Ok(conn) => {
                         let remote = conn.remote_id();
-                        if let Err(e) = crate::sync::serve(conn, state).await {
+                        if conn.alpn() == crate::files::BLOB_ALPN {
+                            if let Err(e) =
+                                iroh::protocol::ProtocolHandler::accept(&blobs, conn).await
+                            {
+                                tracing::warn!(%remote, "blob connection ended with error: {e}");
+                            }
+                        } else if let Err(e) = crate::sync::serve(conn, state).await {
                             tracing::warn!(%remote, "sync connection ended with error: {e:#}");
                         }
                     }
