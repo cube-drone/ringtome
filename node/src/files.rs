@@ -1,7 +1,7 @@
 //! The file layer: encrypted, content-addressed file bodies, stored and transferred by iroh-blobs.
 //!
-//! A "file" is XChaCha ciphertext (epoch key, random nonce) - see [`crate::private::encrypt_file`]
-//! - which iroh-blobs content-addresses by the BLAKE3 of those ciphertext bytes. The store is
+//! A "file" is XChaCha ciphertext (epoch key, random nonce; see [`crate::private::encrypt_file`]),
+//! which iroh-blobs content-addresses by the BLAKE3 of those ciphertext bytes. The store is
 //! content-agnostic: it never sees plaintext and cannot tell a note body from a photo, so this one
 //! layer serves notes, posts, and media alike (NOTES_APP, The file layer).
 //!

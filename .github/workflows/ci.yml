@@ -1,0 +1,41 @@
+# CI is `just ci`, verbatim - the same recipe a developer runs locally (node/justfile:
+# check, clippy -D warnings, unit tests, then the two-node JS integration suite). Keeping the
+# push gate identical to the local gate means the two cannot drift; everything above the last
+# step is just toolchain setup.
+
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Cache cargo registry + target dir; the iroh dependency tree is heavy enough that this
+      # is the difference between ~1 and ~10 minutes.
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: node/integration/package-lock.json
+
+      - name: Install integration-test dependencies
+        working-directory: node
+        run: just integration-install
+
+      - name: Full check (just ci)
+        working-directory: node
+        run: just ci
