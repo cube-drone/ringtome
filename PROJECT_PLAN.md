@@ -2,98 +2,205 @@
 
 ## Vision
 
-Ringtome is a **distributed social network** built on the [Iroh](https://iroh.computer/) peer-to-peer network. 
+Ringtome has two primary goals:
 
-Ringtome's aim is to provide a bunch of stupid horseshit from The Old Internet: IRC-style text chat, bulletin-board
-style posting, geocities-style "simple website authoring", webrings, hit counters, webcomics, MIDI files, and
-if we're feeling saucy maybe some mp3s. 
+* To be a **social network** built on the [Iroh](https://iroh.computer/) peer-to-peer (p2p) network.
+* To be opinionated: this is not a _protocol_, or a _spec_, this is explicitly a product, and that product is
+    designed with an aesthetic and a point-of-view. 
 
-Users connect to **connector nodes** — lightweight Rust servers that provide authenticated access to the p2p network. 
-Each user has a durable, portable cryptographic identity that can roam between nodes.
+That aesthetic and point-of-view is "retro", specifically: Ringtome is intended to loosely 
+ evoke the feeling of being on the world-wide-web, circa 1995-2005, without specifically binding to 
+ a point in time. 
 
-It's "lightly federated" - in ATProto or Mastodon, the fediverse operators need to build large, resilient monolithic
-systems with uptime guarantees, backups, and a holistic view of their system's relationship with the whole network
-(lest their reputation tank and their system get de-listed). 
+Any pointed notes about the fundamental untrustworthiness of nostalgia-goggles or the difficulty of appealing
+ to a nostalgic cycle that is constantly rolling forward in time can be forwarded respectfully to `/dev/null` for 
+ further consideration.
 
-The idea is that in Ringtome, your identity might live across several nodes at the same time - maybe you're running a node
-on your PC, or a cheap VPS you set up, or a friend's PC. You might set up an emergency node on an old Raspberry PI. So long
-as ANY of these devices are on the network, you're on the network. A public server node offers authenticated access to 
-multiple identities, but a local node might simply protect a single identity behind a PIN code.
+### Federation vs. P2P
 
-Ringtome works from a "private by default" nature - the idea is that 99.5% of the network is going to be bots or trolls,
-and instead of trying to moderate them out of a public system in an automated fashion, (increasingly impossible)
-you instead proceed by building out and explicitly modeling trust: you met Eve in person, so you know she's real,
-she met Frank in person and so you're _pretty sure_ Frank is real, but only insofar as you trust Eve, and so on.
-This is why identities are cheap and users are encouraged to run several - a main identity, a pseudonym for the
-webcomic, a burner for the forum argument. Given that in a p2p network you can't trust that anybody isn't a cloud of
-anonymous bots, it makes it much more _clear_ to users that they should not trust anybody if they, too, are empowered
-to be a cloud of disposable identities.
+Both federation and P2P are rife with problems that we hope to present a compelling solution to.
 
-The prior-generation codebase (in `api_old/`) is a Rust+Axum web service organized around multi-tenant
-communities; it serves as a **reference and pattern library** (see API_OLD.md for the autopsy). The new system is
-built from scratch to reflect fundamentally different architectural assumptions - substrate through private chains
-is implemented; see NEXT_STEPS.md for where the ladder stands.
+#### What Are We Hoping to Fix About P2P?
+
+Peer-to-peer protocols like Secure Scuttlebutt or RetroShare are, and I say this affectionaly as a nerd, 
+_nerd shit_. They tend to assume that their users are extremely willing to learn about nodes and 
+certificates and network topologies and maintain complicated crypographic concepts in their heads.
+
+I assert that public key cryptography, while common knowledge for technologists, is beyond the 
+scope of most consumers' expected understanding of any given system.
+
+Systems like SSB, Matrix, and Signal are object lessons in "the system is crypographically pure enough to
+present at least a good challenge to a state level actor", but as a result they often have to present
+a user interface that is at least a little bit _cryptography shaped_.
+
+One of the bigger problems about P2P is: phones. Phones tend to be terrible P2P citizens, spending most of their time
+offline and heavily restricting background operation. It is conceptually easier to have a phone connect to a node that
+does all of the complicated syncing than have the phone sync itself. 
+
+#### What Are We Hoping to Fix About Federation?
+
+Federation - the "email" model - you pick a provider, `@google.com` or `@compuserve.dingus` - and trust them to 
+do all of the hard parts of p2p networking _for_ you. Now, instead of having to learn about public key cryptography,
+you trust Google to learn it on your behalf. 
+
+But:
+ * Small nodes are not a safe place for your identity. `google.com` is unlikely to disappear in a puff of smoke, but
+   `greg.hobby.casual.email` absolutely is.
+ * Medium-sized nodes have to deal with all of the collective legal and moderation burden of fronting a 100, 1000, or 10,000 person
+   community: expensive and difficult. 
+ * There's enormous incentive in federated networks for single nodes to _get enormous_: solving all of these problems are
+   easier with scale and financial resources.
+ * So: on the web (federated), there are 10 big websites.
+   There are 5 big email providers. The bigger they get, the less they care to federate with small players: gmail could stop
+   carrying email from anyone that's not gmail, outlook, et al, and get a huge bump to their spam prevention while only excluding
+   an increasingly small percentage of the network.
+ * The most prominent federated social network, Mastodon, places an enormous amount of moderation load on the shoulders of
+   network topology management: you can only see other nodes approved by your node operator, 
+   and managing the set of nodes that you federate with is a 
+   large job for node operators, who have to constantly perform difficult moderation operations against a large public network
+   on behalf of their users.
+ 
+### The Public Internet Is... A Lot
+
+One of the problems of P2P networks is that you never know if you're talking to _real people_, or 10,000 lightbulbs.
+
+Centralized networks used to be able to solve this somewhat: security, bot detection, and moderation comes at massive human cost,
+and they're willing to bear that cost, because it's profitable! 
+
+But, increasingly, LLMs are driving the costs of attacks up _faster_ than centralized networks can keep up. 
+
+Past that, public content on the internet is increasingly driven by an algorithmic discovery model that prioritizes 
+attention-grabbing, low-context, low-friction, endlessly-consumable content and grows to consume all public spaces.
+
+So: any public space is going to be flooded with low-effort content until discovery becomes necessary, and discovery
+will almost certainly select for the lowest common denominator of attention optimization - as a result, public internet
+spaces trend towards cats with machine guns fighting bikini-clad ragebaiters while unboxing 
+Pokemon cards (with Minecraft playing in the background to keep your attention).
+
+## Ringtome: Federated-ish, Private-ish
+
+Ringtome is a federated protocol, but one that's p2p shaped:
+
+The reasons you can't trust small p2p nodes are:
+
+* Security: you can't trust them.
+* Ops: you can't trust them not to lose your data.
+* Moderation: you can't trust their taste.
+
+So, our model is partially about making it possible to trust small nodes - even, if users _are_ willing to learn a little
+bit about public key cryptography, little self-hosted ones.
+
+### Identity is a Tree
+
+Identity isn't just portable, it's _accumulative_. Your identity is the sum total of all of your identities in a network: each 
+can participate _as you_. Joining a new federated node adds one more leaf to your identity, growing it, making it more permanent
+and harder to erase from the network.
+
+Then, what about security? Well, these different identities are also _revocable_. If you trust a node with your identity and 
+they turn out to be Bad Guys, you can simply take your ball and go home. 
+
+The rules for this are _unbelievably complicated_, but users mostly don't have to think about them: 
+as a broad "good enough" description of the rule, "senior" 
+(via complicated rules explored later in the document, "senior" often means "older" but not always) 
+nodes can always revoke "junior" nodes,
+so if a user starts their network with a node they trust a lot (like something running on their own computer), 
+they'll retain the ability to take their ball so long as they have the recovery code from that node 
+(which we recommend storing on their phone as a picture of a QR code, or in their personal email: not great security but high recoverability). 
+
+### Everything is Private, Social Networks are Closed Systems
+
+Finally, moderation? Well, we solve moderation as best as we can by simply taking as much of it as possible out of the node
+operator's hands - by making nodes smaller, by reducing the attack surface for legally dicey content, by taking "public posting" 
+out of node operator's hands and instead forcing individual users to manage their own networks.
+
+This is also a way of defending against the problem that _most of the network is likely to be bad actors_. Minting new identities
+is free, so all it takes is one person with a fast CPU and they have 100 million users - but there is no public commons for them
+to show up in.
+
+Trust starts at zero by default: it's earned, by meeting people in person, or having friends vouch for them, and is intensely
+user-configurable.  
+
+This may prove to kill the network effect: we may be building an empty online crypt. Let's hope not.
+
+As identities are cheap, users are also encouraged to generate as many of them as they need: if you want a main identity and
+a pseudonym, go for it, champ! "This identity exists for real" is exactly the kind of unverifiable claim that modern social networks
+are no longer able to reliably police without draconian measures. (Measures they are considering as we speak.)
+
+### A Network That's Just Your Monkeysphere
+
+Large protocols like ATProto or Mastodon focus on scaling communities up to 100,000 members or more. 
+Shared public spaces with discoverability, trending, search, recommendations.
+
+They are for answering the question: "What is everybody looking at right now that I might also like?"
+
+Ringtome is for answering the question: "What are my friends doing? What are they interested in right now?".
+It's expected that most users will have personal networks in the 0-200 user range. 
+
+Things can still travel widely through the network, but not by being aggregated to the top of a global feed - 
+instead, the old fashioned way - by being passed from person to person. It's technically _one network_, 
+but you only see _your network_. If people get popular for being great at curating things that you like?
+You can follow them, trust them, add them to your network, and if they _subsequently crash out_, unfollow them.
+
+### Cozy Aesthetic // Hidden Internals
+
+Do you want a network full of crypto-nerds and distributed systems developers? Okay, then the vocabulary of that
+system can be filled with terms like "pubkey", "chain", "entry", "sync", "hash", "repudiate", "tree', and "node".
+
+Broadly our goal is to reduce the amount of _p2p detail_ we surface to users until it's all-but-invisible: 
+we avoid direct protocol vocabulary and prefer to present easy-to-understand abstractions, like 
+"recovery key", "invite", and "vouch". 
+
+This is also an aesthetic goal - the design is intended to evoke "sloppy", "amateur", "friendly", "chaotic",
+it invites collaboration by being unpretentious. We don't want purity or cleanliness, 
+we want sticky friction and the idea that this place encourages contribution at all skill levels. 
 
 ---
 
 ## Architecture Overview
 
-```
-┌─────────┐       ┌─────────┐       ┌─────────┐
-│  User A │       │  User B │       │  User C │
-│ (browser│       │ (browser│       │ (browser│
-│  or app)│       │  or app)│       │  or app)│
-└────┬────┘       └────┬────┘       └────┬────┘
-     │                 │                 │
-     ▼                 ▼                 ▼
-┌─────────┐       ┌─────────┐       ┌─────────┐
-│  Node 1 │◄─────►│  Node 2 │◄─────►│  Node 3 │
-│ (Rust)  │  Iroh │ (Rust)  │  Iroh │ (Rust)  │
-│         │  p2p  │         │  p2p  │         │
-└─────────┘       └─────────┘       └─────────┘
-```
-
 - **Connector Nodes** are Rust servers running this protocol. They join the Iroh p2p network and serve a web UI.
 - **Users** authenticate to a node via the web UI. The node acts as their agent on the p2p network.
 - **Data replication** happens over Iroh between nodes. If a user connects to a second node, their data syncs to it.
 
-### The Node-Operator Trust Model
+### We Trust the Node Operator
 
-A connector node is a **trusted agent** for its users — analogous to an email provider. The node serves the web UI, holds encrypted key material, and acts on the user's behalf. Users should only log in to nodes they trust (self-hosted, operated by a friend, community-run, etc.).
+Like with an e-mail provider, the user _trusts_ that their node operator knows what they're doing and won't ruin their day.
 
-The system is **trust-minimizing, not trustless.** A malicious node operator who serves the web UI can exfiltrate key material — but the architecture deliberately limits what they can capture and makes compromise recoverable:
+This is not a totally trustless protocol: there are lots of ways for a malicious node operator to get up to no-good
+with a user's identity - the idea here is not perfect security, just that **a user can recover from this**.
 
-- A node holds **only one leaf key per identity it agents**, never a root key or another node's keys.
-- Each node has an **independent password** — compromising one node doesn't reveal credentials for any other.
-- Any senior key can **revoke** the compromised leaf, cutting off the attacker's authority.
-- The attacker gains the ability to impersonate **one node of an identity**, not the entire identity.
-- A node that agents **several of a user's identities** necessarily knows they share an owner. A compromised or
-  malicious node can reveal that linkage - the most serious privacy consequence of node compromise, and unrecoverable
-  once out. Users who want an identity unlinkable even under node compromise should agent it from a separate node
-  account (or separate node).
+A malicious node operator becomes privy to all of a user's secrets and can act on that users' behalf up until the moment
+where their access to the identity is revoked. At that point, they _still have all of the users' old secrets_, there's a
+concrete privacy loss at play here: this, again, is _bad_, but what malicious node operator does not have is forward
+access to that users' secrets: once they're revoked, the damage is done but the day is not lost.
 
-This is neither trustless (you do trust each node with its own leaf key and any secrets it has decrypted) nor fully trusting (the node never holds the root key, can be revoked, and cannot compromise other nodes). The key tree architecture exists specifically to make node compromise a **bad, privacy-harming, but recoverable event** rather than a fully catastrophic one.
+This is not end-to-end encryption: the "ends" of the encryption are the identity nodes, and those nodes are distibuted:
+this is a prioritization of your identity's _resilience_ and _ease of operation_ over its _privacy and security_.
 
-**Be blunt about the web-UI boundary: a node that serves your client can *become* your client.** When you log into a
-node's web UI, that node ships the JavaScript that holds your session, prompts for your password, and signs on your
-behalf. A malicious one can therefore steal your password, sign statements as you, hide revocations from you, show
-you fabricated trust state, coax you into publishing a private follow, or reset the monotonic memory that is supposed
-to protect you from eclipse. This is the "trusted agent, like an email provider" model, stated at full strength - it
-is acceptable *for a node you actually trust*, and it is why "only log in to nodes you trust" is a real security
-requirement, not boilerplate. The strong guarantees elsewhere in this document (eclipse resistance via monotonic
-memory, first-contact verification) hold for users on **self-hosted or trusted nodes, or a native/local client** -
-they do **not** protect someone logging into a hostile node's web UI, because there the adversary is the client
-itself. A future "dumb node, smart client" mode (native app, browser-extension signer, or passkey-mediated signing)
-is the path to needing less trust in the node; v1 does not attempt it, and the product must not oversell its
-trust-minimization to web-UI users.
+Ringtome is, intentionally and up-front, a terrible choice for folks who are looking to maintain perfect secrecy 
+against state-level actors: the most obvious attack is for them to run or subvert a popular node and simply look
+at all of the user's secrets on that node without ever doing anything to seem suspicious. 
 
----
+Mastodon stores all of your DMs in plain-text on the operator's box. 
+Ringtome doesn't: a leaked backup won't , but it _might as well_.
 
-## Identity System: The Key Tree
+#### The Node Operator Can Serve UI
 
-A user's identity is a **tree of ed25519 keypairs** with hierarchical authority. The public key of the root node is the user's global identity.
+Part of the reason for this compromise? The node operator can serve the Ringtome UI to the user - secure end to end encryption
+requires that the "end" be completely under the users' control, and this is not the case with an operator-controlled UI
+surface like _any web application_. 
 
-### Structure
+The application, here, _is, in fact_ designed to be run locally as a single self-hosted trusted node, for users who are not
+willing to make this compromise.  In fact, this is expected to be the _most common case_: we're a p2p network with federation-like
+qualities, not a federated network.
+
+## The CROWN Identity
+
+"CROWN" is a backronym, a **Cryptographic Rank of Wandering Names**, describing a user's Identity: a 
+**tree of ed25519 keypairs** with strict heirarchical authority, and succession and usurpation rules that make
+the British peerage look ill-defined. 
+
+### CROWN Structure
 
 ```
 Root Key (K0) — the user's identity IS this public key
@@ -103,114 +210,90 @@ Root Key (K0) — the user's identity IS this public key
     └── K4 (sub-key, created T4, signed by K2)
 ```
 
-### Rules
+Note that, in this order, even though K3 was born _after_ K2, K3 is the rightful heir to the throne.
 
-The goal is a **total order on authority that any node can compute from local data alone** - no global view, no
-synchronized clock, no online coordinator. This is what makes succession tolerant of partition and eclipse: two
-conflicting statements can be ranked using only the statements themselves.
+### Rules Of Succession
 
-1. **Any key in the tree can authorize new child keys.** This makes it easy to add new devices or nodes.
-2. **Seniority is the entire authority relation: any senior key can revoke any junior key, at any time.**
-   Not just parent-over-child - *any* key that outranks another in the total order (rule 5) can revoke it. Seniority
-   is not a mere tie-breaker for conflicting statements; it is the full descriptor of who-can-revoke-whom. (A parent
-   can revoke its children because it is senior to them, not because parenthood is special.) This is what keeps
-   revocation available when ancestors retire or disappear: as long as *any* key senior to a compromised key
-   survives, the compromised key can be cleanly evicted.
-3. **Each key carries a signed usurper list.** When a parent signs a child, it stamps the child with a
-   **cumulative, append-only** list: the parent's own usurper list, plus the parent itself, plus every sibling the
-   parent has *already* signed. So a parent signing children in sequence produces `A1: [R]`, then `B1: [R, A1]`, then
-   `C1: [R, A1, B1]`. Entries can **never** be removed. A senior sibling never needs to know a junior one exists; the
-   junior always carries the signed acknowledgment that it is junior.
-4. **Authority is a key's full signed chain to the root, or it is nothing.** A statement presented without the
-   complete chain of parent-signed authorizations backing every usurper entry is **invalid** - not low-priority,
-   invalid. This blocks the obvious forgery: truncating your own lineage to hide a senior usurper sitting above you.
-   Note that "chain to the root" means the compact bundle of authorization entries along the ancestry path - and
-   that two verifier classes consume this rule differently, deliberately. A **full replica** (one of the identity's
-   own nodes, holding every key's complete identity chains) *recomputes* each stamp from the parent's history and
-   rejects mismatches: for it, the stamp is a cross-check. A **compact-proof relying party** (a stranger, follower,
-   or fronting node holding only the chain-to-root bundles it was just handed) cannot recompute anything - it
-   *ranks from the stamps themselves*, comparing two bundles at their divergence point. The stamp is what makes
-   compact proofs **rank-complete**: it is why a first-contact peer can decide which of two keys is senior, and why
-   a stranger can verify that a revocation's signer outranks its target, without anyone shipping full histories.
-   In one line: full replicas verify stamps against history; strangers verify history against stamps.
-5. **Order is the rank-path, not wall-clock time.** To compare two keys, walk both up to their lowest common
-   ancestor; they diverge into two of that ancestor's children; whichever child is senior (per rule 3's lists), that
-   entire branch wins. Formally this is lexicographic order on the sequence of sibling-ranks from root to key. A
-   brand-new child of the senior branch outranks a long-established child of the junior branch - that is correct and
-   deliberate; birth *time* is not derivable under partition, branch seniority is.
-6. **If the root disappears, children continue operating.** Any key can act as a root for its own subtree - spawning
-   children, interacting with the network - and the rank-path order still totally ranks everyone without the root
-   present.
+The goal here is to have a **total order on key authority** that **any node can compute using only local, public data**.
+There's no synchronized clocks or coordinators to prevent a civil war, it has to be something the system can calculate
+on its own.
 
-**Consequence:** an honestly-built tree is *always* totally ordered, at any depth, across any partition, with no
-tiebreaker needed - including cousins, who are ordered by their branches' seniority with zero global coordination.
+1. **The Bloodline Must Continue! Babies! Babies! Babies!** - any key in the tree can authorize new child keys.
+        We encourage new devices and nodes.
+2. **Succession Order Is Meaningful** - succession order is meaningful. K3 carries revocation rights to K2 and K4.
+3. **Simba Beats Scar** - 
+    This isn't just "parent over child" or "earliest date wins" (because there is no date to win), 
+    Any child that outranks another child carries revocation power over that child - in our example, K3 has
+        authority over K2, **even if K2 is _older_**.
+    * Wall-clock time is meaningless in succession order. 
+    * To compare two keys, walk both up to their lowest common ancestor; they diverge into two of that ancestor's 
+        children; whichever child is senior (per rule 3's lists), that entire branch wins. 
+        Formally this is lexicographic order on the sequence of sibling-ranks from root to key. 
+        A brand-new child of the senior branch outranks a long-established child of the junior branch - 
+        that is correct and deliberate; birth *time* is not derivable under partition, branch seniority is.
+4. **Don't Go Out Without Your Coat of Arms** - Every key carries it's whole family tree at time of creation, 
+    which is a cumulative, append-only list of _potential usurpers_, a _compact lineage bundle_.  
+    * A parent signing children in sequence produces `A1: [R]`, then `B1: [R, A1]`, then
+     `C1: [R, A1, B1]`. Entries can **never** be removed. A senior sibling never needs to know a junior one exists; the
+     junior always carries the signed acknowledgment that it is junior.
+    * If a stranger ever needs to compare two valid statements - contradictory revocations, for example - one of the
+      two statements must contain evidence that the other statement wins.
+    * Technically, _within the identity_, all participating nodes are replicating the full identity at all times, so
+      the usurpation list is just a stamp
+5. **How Are You Related to the King?** - A statement presented without the complete chain of parent-signed authorizations
+    is **invalid** - not "low priority", just straight-up invalid, an obvious forgery.
+6. **The King Has Amnesia After Being Hit By a Frying Pan** - The only way to create a contradiction in a well-meaning 
+    system is for a parent to straight-up _forget it had a kid_. This seems unlikely and laughable, but it's possible: 
+    a root node creates a child entry, then dies, is restored from a backup, and then creates a new child entry. 
+    Now we have **equivocation**: two child nodes who both believe they have equal claim to the throne. This is not 
+    necessarily a sign of malice (frying pans are everywhere, my dude) - so we resolve this with a tiebreaker:
+    * The tiebreaker is based on a random, cosmetic feature that the child can not choose for themselves.
+    * The winner is the _lexicographically smallest pubkey_ - essentially, the _child with the largest birthmark_. 
+    * Prince `000aaa` was born lucky, prince `bbbfff` was not. 
+    * Yes, an intentionally evil king can _grind out children until they have a birthmark-winning child_, 
+        then forget their oldest. An intentionally evil king can also just revoke their oldest. 
+6. **The King is Dead, Long Live the King** - Any key can act as a root for its own subtree - spawning children,
+    interacting with the network, and the rank-path order still totally ranks everyone without the root present.
+    If two warring brothers retreat to their own network paritions, each could pretend to be the identity _in full_
+    until any evidence of their brother appears. 
 
+### Revocation: What Happens When There's a Problem
 
-### When Two Keys Cannot Be Ordered: Equivocation
+Bloody ~~revolution~~ **revocation**! Civil war at last!
 
-Two keys are un-orderable **only** when, at their divergence point, neither sibling appears in the other's usurper
-list. A key signing children in sequence always knows its own prior children, so it always orders them. Therefore the
-*only* way un-ordered siblings arise is if **one key signed two children in two histories that were each unaware of
-the other** - i.e., the same key equivocated. This is the sole case that needs a tiebreaker.
+There are two kinds of revocation, soon to be three: repudiation, retirement ( and exit, TODO).
 
-Crucially, equivocation is **not always malicious.** The identical graph is produced by an innocent accident:
+Revocations are signed statements that remove a node from the identity tree.
 
-- User runs `R` on a laptop, creates `A1` on a phone (`R` signs `A1: [R]`).
-- Laptop dies; user **restores `R` from a backup taken before `A1` existed.**
-- The restored `R`, unaware of `A1`, signs a recovery node `B1: [R]`.
-- Now `A1: [R]` and `B1: [R]` exist - two children of `R`, neither acknowledging the other. Un-orderable.
+#### Repudiation
 
-A stale-backup restore (or the same key copied to two machines) is byte-for-byte indistinguishable from a malicious
-equivocation. So the tiebreaker is not an exotic anti-attacker device; it is what stops an ordinary user's botched
-restore from becoming a permanent split-brain.
+This is The Juicy One For Murders. Someone has misused your identity from a node and it's time for that node to be _excised_.
+This is a removal _with prejudice_.
 
-**Resolution:** when (and only when) two keys are genuinely un-orderable, break the tie with a **fixed, immutable,
-attacker-independent property** every node evaluates identically (e.g. lexicographically smallest pubkey). The goal
-here is **convergence, not fairness**: every relying party must pick the *same* winner, even if it is not the "morally
-correct" one. A split-brain is unrecoverable; agreeing on an arbitrary-but-consistent winner is recoverable, and
-recovery is cheap because impersonation is the worst case (see threat model).
+* Repudiation **must come from a senior node**. 
+ * (TODO: A node can also repudiate itself, co-operatively, which is different from retirement because it kills the child tree)
+* Repudiation **kills all of the node's children, as well**. The entire subtree goes down with the ship.
+* Repudiation **distrusts all history after a cut-point** - and that cut-point can be _anywhere_ in logical history,
+    so a node can have everything its ever done since its birth struck permanently from the record.
 
-Note the tiebreaker is **grindable** - an attacker who intends to equivocate can pre-mine a vanity pubkey to win the
-tie. This is acceptable: reaching the tiebreaker at all already means key compromise or duplication (a crisis), and
-what the tiebreaker buys is convergence, not a security boundary. Grinding lets an attacker bias *which* branch wins;
-it cannot manufacture a split-brain.
+Some of our data structures will actually allow us to rewrite history in this way: others will simply not allow
+the repudiated node _further_ access.
 
-### Revocation Types: Retirement and Repudiation
+#### Retirement
 
-A revocation is one statement type carrying a **disposition** that answers the question mechanism alone cannot:
-*what happens to everything the revoked key already signed?* Both dispositions use the same propagation, the same
-seniority rules, the same monotonic memory - a revoked key's server still physically holds the key material, so even
-the friendliest departure must be a network-visible revocation. The dispositions differ only in the treatment of
-history, and in who may assert them.
+This is the less juicy one: a node is being turned off intentionally. Maybe we're dumping a computer in the trash and we want
+to make sure that nobody goes dumpster diving and retrieves a valid identity, but we don't want to kill its children.
 
-**Retirement Revocation** - "this key is closed, no prejudice."
+A node can **retire**.
 
-- **All signed history is honored**, through a final sequence number in the key's statement chain. Posts, vouches,
-  and - critically - **child authorizations** all stand. The subtree lives: chain validation asks "was the signer
-  valid *when it signed*," so a retired key's descendants keep their full chains forever.
-- **Self-issuable** (or by any senior). A retiring key honestly declares its own final sequence number, and that
-  final word is trustworthy because the key is not adversarial.
-- Backdating is blocked by the existing chain rules: a statement inserted "before" the retirement point means forking
-  the chain, which is equivocation, detected and resolved as such.
-- **Retiring the root works.** The identity born on Server A can leave Server A: the root retires, everything it
-  built stands, and the senior-most surviving child (ideally the recovery key) becomes the effective top of the
-  active tree. Migration off a first server is a routine act, not an identity-ending one.
+This one's a little harder, becuse what stops the dumpster diver from simply minting more, evil children? 
+The answer is determined by the history baked in to the retirement document: new children won't be in that history
+and will be distrusted.
 
-**Repudiation Revocation** - "this key is hostile, quarantine it."
-
-- **History after a cut-point is distrusted.** A compromised key can backdate signatures, so its own timestamps mean
-  nothing; the repudiating senior asserts a conservative sequence number, and relying parties distrust everything the
-  key signed after it. (Stored entries are already kept signed for exactly this retroactive filtering - see Data
-  Layer.)
-- **The subtree dies.** Child authorizations are signatures like any other and can be backdated, so none issued by
-  the repudiated key can be trusted. Legitimate children caught in the blast are re-authorized from a surviving
-  senior branch.
-- **Issuable only by a senior key** - never self-issued. An attacker holding the key will not sign its own death
-  warrant.
-
-**Conflicts between dispositions** resolve by the ordinary seniority rules, with one note: a self-signed retirement
-and a senior-signed repudiation of the same key can both exist (the "attacker eased out the door quietly" case). The
-senior statement wins, and repudiation is the stricter claim - relying parties apply the quarantine.
+* Retirement **can only come from the node that is being retired**. It is self-issuable and self-issued.
+* The retirement chooses a point across all of its chains and signs that with its retirement, 
+    a final call sign sealing its entire history. Anything written after this point is distrusted.
+* It **does not kill the children**, they can go about their merry lives. 
 
 ### Recovery Planning
 
@@ -1631,80 +1714,6 @@ vile becomes their problem in a way a hotlink was not. That is the correct place
 is already bounded by their own accountable users - but it is a genuine increase in exposure, and it must not be
 discovered by surprise. And a bake is a copy: the author has taken someone's picture, and provenance is the least
 we owe for that.
-
----
-
-## The Cozyweb Surface: Language, Ceremony, and Who Gets Summoned
-
-A system's onboarding friction is a filter, and the *flavor* of the friction selects the flavor of the survivors.
-SSB's frictions (pubs, key discipline, day-long syncs, terminal-adjacent tooling) selected for people whose hobby is
-infrastructure, and its culture calcified around them; founding populations are sticky and do not re-roll. Ringtome's
-technical design should therefore be treated as a recruiting instrument, and its user-facing surface as the thing
-that decides who stays. Several existing design decisions are load-bearing here and must be protected as such:
-
-- **The pitch leads with aesthetics, never infrastructure.** Webrings, geocities pages, MIDI files recruit people
-  who miss *making things* - a founding population that produces culture rather than infrastructure discourse. The
-  moment the public pitch leads with "distributed" or "cryptographic," the filter flips.
-- **The single-player floor is cold-start armor.** The cozy-OS client must be fun before the network has people in
-  it (decorate a page, play the toys). Week one should reward decorating, not configuring.
-- **Vouch-driven growth shapes culture.** Growth along in-person trust edges expands through real social graphs, not
-  ideological affinity. The trust graph doubles as the founding-population curation tool.
-- **No global timeline is the structural repellent.** Private-by-default + trust-gated visibility + demand-driven
-  fronting means the megaphone does not exist. The audience-seeking crowd (the free-speech-absolutist attractor
-  every censorship-resistant p2p system summons) bounces off a network that offers strangers no audience - no
-  moderation fight required. Protect this property when designing any "discovery" or "public square" feature.
-
-### The language budget
-
-Users are taught **at most two or three novel concepts, ever**, each wearing a domestic name. Protocol vocabulary is
-**banned from the UI permanently**: node, key, keypair, chain, entry, sync, sign, hash, pubkey, revoke, repudiate.
-If a concept cannot earn one of the two-or-three teaching slots, it must be invisible instead. (Signal is the
-existence proof: millions of users carry keypairs and safety numbers with zero awareness, because the crypto
-surfaces only at one designed moment, wearing clothes.)
-
-### The three ceremonies (the only places cryptography may surface)
-
-1. **The recovery key, at identity creation: the photo ceremony.** The spare key is presented as a **QR code and
-   the user is asked to photograph it with their phone** - because the camera roll is the most durable archive
-   normal people possess (cloud-synced, searchable, survives every device death, never "cleaned up" like a
-   Downloads folder), and because users photograph backup codes anyway; designing the ceremony *as* the inevitable
-   behavior is harm reduction. Specifics:
-   - **Payload is versioned and self-describing** (`ringtome-recovery:v0:<root-pubkey>:<recovery-seed>`), so a
-     future scanner knows what it is and which identity it recovers. Protocol surface: gets a spec line and a test
-     vector when the first scanner is built.
-   - **A labeled artifact, not a bare code:** the QR is framed with the identity's identicon and display name -
-     "Spare key for **Curtis** - keep this photo safe" - so the photo explains itself years later. Lean into the
-     aesthetic: a charming SUPER OFFICIAL SPARE KEY certificate is a photo people keep.
-   - **Creation blocks until the user confirms capture** ("Take a picture of this with your phone. I'll wait."),
-     with file download as the fallback for printer people. Display-once stands: the node never persists the
-     secret (the M2 API contract).
-   - **Emergency framing, never routine login.** Reusable across crises (new machine, dead node, locked out), not
-     a sign-in method: every scan exposes the seed to the scanning device, and devices authorized by the recovery
-     key join the senior-most branch (correct in a real recovery, surprising if habitual).
-   - **Priced caveats:** the camera roll is a leak surface (shared albums, screen-shares, cloud compromise) -
-     acceptable at "casual online identity" stakes, where cloud compromise already means email compromise and the
-     loss of every recovery scheme. While the root lives, a leaked photo is recoverable (root repudiates the
-     recovery key and mints a replacement - which is, note, junior to keys born in between; original supremacy
-     cannot be re-granted). After root retirement the photo is the identity's unrevocable skeleton key, which is
-     why the artifact says "keep this photo safe" in human words.
-   Never "back up your seed," never "ed25519."
-2. **Adding a device or node** - framed as *"invite this computer to be you"*: a QR handshake between something you
-   are already holding and something new. The key tree underneath is engine-room.
-3. **Vouching** - framed as *"I know this person for real."* A statement about the physical world, not a
-   cryptographic act; its gravity should feel social ("don't say it if you don't mean it"), not technical.
-
-Everything else - identity keys, chains, sync state, revocation mechanics - stays engine-room forever. The
-identicon/contact-name design already carries the hardest disguise: the key becomes a picture you recognize, never a
-string you read.
-
-### Culture seeding (the handoff)
-
-The first wave will be node-running nerds regardless - for a while, running a node is the only door in, and that is
-fine *if the handoff is planned*: nerds as hosts and janitors, artists as the culture (the itch.io shape - invisible
-infrastructure people behind a front page that celebrates weird art). The product surface must celebrate **pages,
-comics, and MIDI crimes**, never uptime, node counts, or replication topology. Watch what the "front page"
-equivalent celebrates in every era of the network; that is the filter for wave two, and wave two - not wave one -
-decides what Ringtome is.
 
 ---
 
