@@ -55,6 +55,16 @@ pub fn router() -> Router<AppState> {
             "/api/identity/{root}/private/set/{collection}/{element}",
             delete(private_set_remove_handler),
         )
+        // Versioned documents (the notes app): headers on the notes chain, bodies in the file
+        // layer, divergence kept - never LWW'd away.
+        .route(
+            "/api/identity/{root}/docs",
+            get(docs_list_handler).post(docs_create_handler),
+        )
+        .route(
+            "/api/identity/{root}/docs/{doc_id}",
+            get(docs_get_handler).put(docs_save_handler),
+        )
 }
 
 #[derive(Serialize)]
@@ -489,6 +499,190 @@ async fn private_set_remove_handler(
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Versioned documents (the notes app).
+
+fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
+    hex::decode(s)
+        .ok()
+        .and_then(|b| <[u8; N]>::try_from(b).ok())
+        .ok_or_else(|| AppError::BadRequest(format!("bad {what} (expected {} hex chars)", N * 2)))
+}
+
+#[derive(Deserialize)]
+struct DocCreate {
+    title: String,
+    body: String,
+}
+
+#[derive(Serialize)]
+struct DocCreated {
+    doc_id: String,
+    version: String,
+}
+
+/// Create a document: mint its id, save the genesis version.
+async fn docs_create_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<DocCreate>,
+) -> Result<Json<DocCreated>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let (doc_id, version) = data.documents().create(&req.title, req.body.as_bytes()).await?;
+    Ok(Json(DocCreated {
+        doc_id: hex::encode(doc_id),
+        version: hex::encode(version),
+    }))
+}
+
+#[derive(Deserialize)]
+struct DocSave {
+    title: String,
+    body: String,
+    /// The version hash(es) this save was edited from - the current head for an ordinary save.
+    parents: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct DocSaved {
+    version: String,
+}
+
+/// Save one version of a document. The client asserts `parents`; the materializer detects the
+/// consequences (fast-forward or divergence) - it never resolves them by clock.
+async fn docs_save_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+    Json(req): Json<DocSave>,
+) -> Result<Json<DocSaved>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let parents = req
+        .parents
+        .iter()
+        .map(|p| hex_fixed::<32>(p, "parent version hash"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let version = data
+        .documents()
+        .save(crate::notes::Save {
+            doc_id,
+            parents,
+            title: req.title,
+            body: req.body.into_bytes(),
+        })
+        .await?;
+    Ok(Json(DocSaved {
+        version: hex::encode(version),
+    }))
+}
+
+#[derive(Serialize)]
+struct DocSummary {
+    doc_id: String,
+    title: String,
+    /// The default head's version hash - what an editor opens, and the parent of its next save.
+    head: String,
+    heads: usize,
+    diverged: bool,
+    updated_ms: i64,
+}
+
+#[derive(Serialize)]
+struct DocListResponse {
+    docs: Vec<DocSummary>,
+    undecryptable: usize,
+}
+
+/// Every document, newest first: the note list.
+async fn docs_list_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<DocListResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let view = data.documents().all().await?;
+    let mut docs: Vec<DocSummary> = view
+        .docs
+        .iter()
+        .filter_map(|(id, doc)| {
+            let head = doc.display_head()?;
+            Some(DocSummary {
+                doc_id: hex::encode(id),
+                title: head.header.title.clone(),
+                head: hex::encode(head.hash),
+                heads: doc.heads.len(),
+                diverged: doc.diverged(),
+                updated_ms: head.timestamp_ms,
+            })
+        })
+        .collect();
+    docs.sort_by_key(|d| std::cmp::Reverse(d.updated_ms));
+    Ok(Json(DocListResponse {
+        docs,
+        undecryptable: view.undecryptable,
+    }))
+}
+
+#[derive(Serialize)]
+struct DocHead {
+    version: String,
+    title: String,
+    timestamp_ms: i64,
+    /// Absent when this node can't produce the body (not fetched yet, or outside our key era).
+    body: Option<String>,
+}
+
+#[derive(Serialize)]
+struct DocDetail {
+    doc_id: String,
+    diverged: bool,
+    /// Every current head, bodies included - divergence means more than one, all kept, all
+    /// shown (never-lose-words is a UI obligation too).
+    heads: Vec<DocHead>,
+}
+
+/// One document: all its heads, with bodies.
+async fn docs_get_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<DocDetail>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let view = data.documents().all().await?;
+    let doc = view
+        .docs
+        .get(&doc_id)
+        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+
+    let mut heads = Vec::new();
+    for h in &doc.heads {
+        let Some(version) = doc.versions.get(h) else {
+            continue;
+        };
+        let body = data
+            .documents()
+            .body(version)
+            .await?
+            .map(|b| String::from_utf8_lossy(&b).into_owned());
+        heads.push(DocHead {
+            version: hex::encode(version.hash),
+            title: version.header.title.clone(),
+            timestamp_ms: version.timestamp_ms,
+            body,
+        });
+    }
+    heads.sort_by(|a, b| (b.timestamp_ms, &b.version).cmp(&(a.timestamp_ms, &a.version)));
+
+    Ok(Json(DocDetail {
+        doc_id: hex::encode(doc_id),
+        diverged: doc.diverged(),
+        heads,
     }))
 }
 

@@ -15,6 +15,10 @@ pub mod service {
     pub const POSTS: u32 = 3;
     pub const PUBLIC_FOLLOWS: u32 = 4;
     pub const PRIVATE: u32 = 5;
+    /// Versioned documents (the notes app first): encrypted doc-header entries whose bodies
+    /// live in the file layer. Its own chain so save cadence never interleaves with the
+    /// register/set traffic on `private`.
+    pub const NOTES: u32 = 6;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -24,6 +28,7 @@ pub mod service {
             POSTS => "posts",
             PUBLIC_FOLLOWS => "public-follows",
             PRIVATE => "private",
+            NOTES => "notes",
             _ => "unknown-service",
         }
     }
@@ -42,6 +47,10 @@ pub mod entry_type {
     /// An encrypted private-chain record (outer: epoch + nonce + ciphertext; inner:
     /// [`PrivatePlain`], readable only by members holding the epoch key).
     pub const PRIVATE_RECORD: u32 = 6;
+    /// One version of a versioned document (outer: the same epoch + nonce + ciphertext envelope
+    /// as `private-record`, under its own AAD; inner: [`DocHeaderPlain`]). The entry's own hash
+    /// is the version's identity; the body lives in the file layer.
+    pub const DOC_HEADER: u32 = 7;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -51,6 +60,7 @@ pub mod entry_type {
             POST => "post",
             KEY_EPOCH => "key-epoch",
             PRIVATE_RECORD => "private-record",
+            DOC_HEADER => "doc-header",
             _ => "unknown-type",
         }
     }
@@ -378,6 +388,99 @@ impl PrivatePlain {
     }
 }
 
+/// The *decrypted* content of a `doc-header` entry: one version of a versioned document
+/// (PROJECT_PLAN, Versioned Documents). The version's identity is the entry's own hash;
+/// `parents` holds the entry hashes this version was edited from (empty at a document's genesis,
+/// one for an ordinary save, two-plus for a merge - the git-commit model, a list from day one so
+/// reconvergence needs no format change). `file_hash` names the body in the file layer, by
+/// ciphertext hash. `format` absent means plaintext; the closed enum grows additively.
+///
+/// Encoding: `{0: bstr(16) doc_id, 1: array<bstr(32)> parents, 2: bstr(32) file_hash,
+/// 3: text title, 4?: uint format}`. A `refs` field (the derived index of what the body
+/// references) is reserved as a future additive key - readers already skip unknown keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocHeaderPlain {
+    /// The document's stable identity across all its versions - what taxonomies and publication
+    /// reference. 16 random bytes, minted once at document creation.
+    pub doc_id: [u8; 16],
+    pub parents: Vec<[u8; 32]>,
+    pub file_hash: [u8; 32],
+    pub title: String,
+    pub format: Option<u64>,
+}
+
+impl DocHeaderPlain {
+    pub const MAX_TITLE_LEN: usize = 1024;
+    /// A merge of more heads than this is not a document any more.
+    pub const MAX_PARENTS: usize = 16;
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        if self.title.len() > Self::MAX_TITLE_LEN {
+            return Err(ProtoError::BadEntry("title too long"));
+        }
+        if self.parents.len() > Self::MAX_PARENTS {
+            return Err(ProtoError::BadEntry("too many parents"));
+        }
+        let mut w = Writer::new();
+        w.map(if self.format.is_some() { 5 } else { 4 });
+        w.uint(0);
+        w.bytes(&self.doc_id);
+        w.uint(1);
+        w.array(self.parents.len() as u64);
+        for p in &self.parents {
+            w.bytes(p);
+        }
+        w.uint(2);
+        w.bytes(&self.file_hash);
+        w.uint(3);
+        w.text(&self.title);
+        if let Some(f) = self.format {
+            w.uint(4);
+            w.uint(f);
+        }
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let mut map = r.int_map()?;
+        let (mut doc_id, mut parents, mut file_hash, mut title, mut format) =
+            (None, None, None, None, None);
+        while let Some(key) = map.next_key()? {
+            match key {
+                0 => doc_id = Some(map.bytes_fixed::<16>()?),
+                1 => {
+                    let n = map.array()?;
+                    if n as usize > Self::MAX_PARENTS {
+                        return Err(ProtoError::BadEntry("too many parents"));
+                    }
+                    let mut v = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        v.push(map.bytes_fixed::<32>()?);
+                    }
+                    parents = Some(v);
+                }
+                2 => file_hash = Some(map.bytes_fixed::<32>()?),
+                3 => title = Some(map.text()?.to_string()),
+                4 => format = Some(map.uint()?),
+                _ => map.skip_value()?,
+            }
+        }
+        r.finish()?;
+        let out = Self {
+            doc_id: doc_id.ok_or(ProtoError::BadEntry("doc header missing doc_id"))?,
+            parents: parents.ok_or(ProtoError::BadEntry("doc header missing parents"))?,
+            file_hash: file_hash.ok_or(ProtoError::BadEntry("doc header missing file_hash"))?,
+            title: title.ok_or(ProtoError::BadEntry("doc header missing title"))?,
+            format,
+        };
+        if out.title.len() > Self::MAX_TITLE_LEN {
+            return Err(ProtoError::BadEntry("title too long"));
+        }
+        Ok(out)
+    }
+}
+
 /// What a revocation asserts about the revoked key's already-signed history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Disposition {
@@ -699,6 +802,48 @@ mod tests {
             ciphertext: vec![0xCC; 100],
         };
         assert_eq!(PrivateRecord::decode(&pr.encode().unwrap()).unwrap(), pr);
+    }
+
+    #[test]
+    fn doc_header_round_trips_genesis_save_and_merge() {
+        // The three parent shapes: genesis (none), ordinary save (one), merge (two).
+        for parents in [vec![], vec![[1u8; 32]], vec![[1u8; 32], [2u8; 32]]] {
+            let h = DocHeaderPlain {
+                doc_id: [9u8; 16],
+                parents,
+                file_hash: [3u8; 32],
+                title: "grocery plans".into(),
+                format: None,
+            };
+            assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
+        }
+        // format present survives the trip too
+        let h = DocHeaderPlain {
+            doc_id: [9u8; 16],
+            parents: vec![[1u8; 32]],
+            file_hash: [3u8; 32],
+            title: "essay".into(),
+            format: Some(1),
+        };
+        assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
+    }
+
+    #[test]
+    fn doc_header_enforces_caps() {
+        let base = DocHeaderPlain {
+            doc_id: [0u8; 16],
+            parents: vec![],
+            file_hash: [0u8; 32],
+            title: "x".repeat(DocHeaderPlain::MAX_TITLE_LEN + 1),
+            format: None,
+        };
+        assert!(base.encode().is_err());
+        let too_many = DocHeaderPlain {
+            parents: vec![[0u8; 32]; DocHeaderPlain::MAX_PARENTS + 1],
+            title: "ok".into(),
+            ..base
+        };
+        assert!(too_many.encode().is_err());
     }
 
     #[test]

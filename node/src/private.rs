@@ -37,6 +37,10 @@ const RECORD_AAD: &[u8] = b"ringtome-v0/private-record";
 /// contexts can never be confused for one another.
 const FILE_AAD: &[u8] = b"ringtome-v0/file";
 
+/// AAD for doc-header entries (versioned documents). Same envelope as private records, its own
+/// domain.
+const DOC_AAD: &[u8] = b"ringtome-v0/doc-header";
+
 // ---------------------------------------------------------------------------------------------
 // Encryption keypairs in the keystore
 
@@ -335,6 +339,56 @@ pub fn decrypt_record(record: &PrivateRecord, keys: &EpochKeys) -> Option<Privat
             },
         ) {
             return PrivatePlain::decode(&plaintext).ok();
+        }
+    }
+    None
+}
+
+/// Encrypt one doc header under an epoch key, into the same `{epoch, nonce, ciphertext}`
+/// envelope private records use (its own AAD domain keeps the two apart).
+pub fn encrypt_doc_header(
+    epoch: u64,
+    epoch_key: &[u8; 32],
+    plain: &ringtome_proto::DocHeaderPlain,
+) -> Result<PrivateRecord, AppError> {
+    let plaintext = plain
+        .encode()
+        .map_err(|e| AppError::BadRequest(format!("invalid doc header: {e}")))?;
+    let mut nonce = [0u8; 24];
+    {
+        use rand::RngCore;
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+    }
+    let ciphertext = cipher(epoch_key)
+        .encrypt(
+            XNonce::from_slice(&nonce),
+            chacha20poly1305::aead::Payload {
+                msg: &plaintext,
+                aad: DOC_AAD,
+            },
+        )
+        .map_err(|e| AppError::Internal(anyhow!("encrypting doc header: {e}")))?;
+    Ok(PrivateRecord {
+        epoch,
+        nonce,
+        ciphertext,
+    })
+}
+
+/// Decrypt a doc header with whichever key of its epoch authenticates; `None` on no working key.
+pub fn decrypt_doc_header(
+    record: &PrivateRecord,
+    keys: &EpochKeys,
+) -> Option<ringtome_proto::DocHeaderPlain> {
+    for key in keys.for_epoch(record.epoch) {
+        if let Ok(plaintext) = cipher(key).decrypt(
+            XNonce::from_slice(&record.nonce),
+            chacha20poly1305::aead::Payload {
+                msg: &record.ciphertext,
+                aad: DOC_AAD,
+            },
+        ) {
+            return ringtome_proto::DocHeaderPlain::decode(&plaintext).ok();
         }
     }
     None

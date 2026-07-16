@@ -86,7 +86,15 @@ impl FileStore {
     /// Read a locally-held blob and decrypt it. `Ok(None)` means we hold no working key for its
     /// epoch (a revoked-then-rotated member, or a newcomer not yet re-sealed into that era).
     pub async fn get_decrypted(&self, hash: Hash, keys: &EpochKeys) -> Result<Option<Vec<u8>>> {
-        let blob = self.store().get_bytes(hash).await.context("reading blob")?;
+        // A missing blob is Ok(None), not an error: headers sync ahead of their bodies, and
+        // "not fetched yet" renders the same as "no key for its era" - no body to show, yet.
+        let blob = match self.store().get_bytes(hash).await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::debug!(%hash, "blob not readable locally: {e}");
+                return Ok(None);
+            }
+        };
         Ok(decrypt_file(&blob, keys))
     }
 

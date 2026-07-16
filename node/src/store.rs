@@ -13,6 +13,7 @@
 //! | `private_registers(c)`      | private (5)     | LWW register       | your own nodes only | in-memory, on read | full      |
 //! | `private_set(c)`            | private (5)     | LWW-element-set    | your own nodes only | in-memory, on read | full      |
 //! | `posts()`                   | posts (3)       | append-only log    | everyone (public)   | none (log is view) | suffix*   |
+//! | `documents()`               | notes (6)       | version DAG        | your own nodes only | in-memory, on read | full      |
 //!
 //! (*) Declared, not yet implemented: append-only chains are the suffix-sync candidates
 //! (PROJECT_PLAN, Shallow Sync), and `page()` already tolerates incomplete history, but the
@@ -65,6 +66,8 @@ struct Authorship {
 pub struct Store {
     db: SqlitePool,
     authorship: Authorship,
+    /// The node's file layer (document bodies live there, headers on the chain).
+    files: std::sync::Arc<crate::files::FileStore>,
 }
 
 /// The public slice of an identity's data, opened without credentials - for serving readers who
@@ -91,6 +94,7 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
     Ok(Store {
         db,
         authorship: Authorship { signer, epoch_keys },
+        files: state.files.clone(),
     })
 }
 
@@ -132,6 +136,12 @@ impl Store {
 
     pub fn posts(&self) -> AppendLog<'_> {
         AppendLog { db: &self.db }
+    }
+
+    /// Versioned documents (the notes app): headers on the notes chain, bodies in the file
+    /// layer, divergence detected and kept - never LWW'd away.
+    pub fn documents(&self) -> Documents<'_> {
+        Documents { store: self }
     }
 }
 
@@ -256,6 +266,59 @@ impl Store {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Version DAG, private: documents (the notes app). The one store whose merge rule is
+// deliberately NOT last-writer-wins: concurrent saves are detected and both kept
+// (never-lose-words - NOTES_APP, The sync model).
+
+pub struct Documents<'s> {
+    store: &'s Store,
+}
+
+impl Documents<'_> {
+    /// Create a document: mint its id, save the genesis version. Returns (doc_id, version hash).
+    pub async fn create(&self, title: &str, body: &[u8]) -> Result<([u8; 16], [u8; 32]), AppError> {
+        let doc_id = crate::notes::new_doc_id();
+        let version = self
+            .save(crate::notes::Save {
+                doc_id,
+                parents: vec![],
+                title: title.to_string(),
+                body: body.to_vec(),
+            })
+            .await?;
+        Ok((doc_id, version))
+    }
+
+    /// Save one version (the client asserts its parents). Returns the new version's hash.
+    pub async fn save(&self, save: crate::notes::Save) -> Result<[u8; 32], AppError> {
+        crate::notes::save_version(
+            &self.store.db,
+            &self.store.authorship.signer,
+            &self.store.authorship.epoch_keys,
+            &self.store.files,
+            save,
+        )
+        .await
+    }
+
+    /// The materialized view: every document, its version DAG, heads, and divergence state.
+    pub async fn all(&self) -> Result<crate::notes::NotesView, AppError> {
+        crate::notes::materialize(&self.store.db, &self.store.authorship.epoch_keys).await
+    }
+
+    /// Read and decrypt one version's body. `Ok(None)` when we hold no key for its era or the
+    /// body hasn't been fetched to this node yet.
+    pub async fn body(&self, version: &crate::notes::Version) -> Result<Option<Vec<u8>>, AppError> {
+        crate::notes::read_body(
+            &self.store.files,
+            &self.store.authorship.epoch_keys,
+            version,
+        )
+        .await
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Append-only log, public: posts. Additive content has no conflicts, so the only write is
 // `append` and there is deliberately no update or delete here (deletion is a future tombstone
 // type - PROJECT_PLAN, Open Items - not a log operation).
@@ -369,6 +432,7 @@ mod tests {
         Store {
             db,
             authorship: Authorship { signer, epoch_keys },
+            files: std::sync::Arc::new(crate::files::FileStore::memory()),
         }
     }
 

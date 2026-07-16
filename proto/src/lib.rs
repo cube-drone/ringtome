@@ -28,7 +28,8 @@ pub use entry::{
 pub use error::ProtoError;
 pub use keytree::{Ceiling, KeyStatus, KeyTree};
 pub use registry::{
-    Anchor, Authorize, Disposition, KeyEpoch, PrivateKind, PrivatePlain, PrivateRecord, ProfileSet,
+    Anchor, Authorize, Disposition, DocHeaderPlain, KeyEpoch, PrivateKind, PrivatePlain,
+    PrivateRecord, ProfileSet,
     Revoke,
 };
 pub use sync::MemberProof;
