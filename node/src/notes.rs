@@ -166,6 +166,54 @@ pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<NotesView,
     Ok(view)
 }
 
+/// After a sync: fetch, from the peer we just exchanged with, every referenced body we lack.
+/// Headers ride entry sync; bodies ride iroh-blobs - this is the pass that joins them. Runs on
+/// the initiator's side only (the responder catches up on its own next initiated sync).
+/// Best-effort by design: a body that doesn't land now is fetchable on any later sync, so
+/// nothing here may fail the exchange.
+pub async fn fetch_missing_bodies(
+    state: &crate::AppState,
+    root_hex: &str,
+    addr: iroh::EndpointAddr,
+) -> u64 {
+    let result: anyhow::Result<u64> = async {
+        // The node's own leaf for this identity - the session-free path sync itself uses.
+        let Some(leaf) =
+            crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex).await?
+        else {
+            return Ok(0); // not an identity we agent: nothing to decrypt, nothing to fetch
+        };
+        let leaf_pub = leaf.verifying_key().to_bytes();
+        let enc = crate::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
+        let db = state.user_dbs.get(root_hex).await?;
+        let keys = crate::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
+
+        let view = materialize(&db, &keys).await?;
+        let mut missing: Vec<iroh_blobs::Hash> = Vec::new();
+        for doc in view.docs.values() {
+            for version in doc.versions.values() {
+                let hash = iroh_blobs::Hash::from_bytes(version.header.file_hash);
+                if !missing.contains(&hash) && !state.files.has(hash).await {
+                    missing.push(hash);
+                }
+            }
+        }
+        if missing.is_empty() {
+            return Ok(0);
+        }
+        Ok(state.files.fetch_many(&state.endpoint, addr, &missing).await as u64)
+    }
+    .await;
+
+    match result {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::warn!(root = %root_hex, "body fetch after sync failed: {e:#}");
+            0
+        }
+    }
+}
+
 /// Read and decrypt one version's body from the file layer.
 pub async fn read_body(
     files: &FileStore,

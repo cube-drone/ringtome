@@ -37,6 +37,9 @@ pub struct ExchangeStats {
     pub received: u64,
     pub rejected: u64,
     pub sent: u64,
+    /// Document bodies fetched from this peer after the entry exchange (headers ride sync;
+    /// bodies ride iroh-blobs - see `notes::fetch_missing_bodies`).
+    pub bodies_fetched: u64,
 }
 
 /// Services that never cross the identity boundary: synced only between an identity's own
@@ -406,7 +409,7 @@ pub async fn sync_with_peer(
 
     let conn = state
         .endpoint
-        .connect(addr, ringtome_proto::sync::SYNC_ALPN)
+        .connect(addr.clone(), ringtome_proto::sync::SYNC_ALPN)
         .await
         .map_err(|e| anyhow!("connecting to peer: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening sync stream")?;
@@ -454,10 +457,14 @@ pub async fn sync_with_peer(
     send.finish().ok();
     conn.closed().await; // responder closes once it has ingested our stream
 
+    // Entries landed; now the bodies they reference. Best-effort, never fails the exchange.
+    let bodies_fetched = crate::notes::fetch_missing_bodies(state, root_hex, addr).await;
+
     Ok(ExchangeStats {
         received,
         rejected,
         sent,
+        bodies_fetched,
     })
 }
 

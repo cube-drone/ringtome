@@ -10,6 +10,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
+const { HOST_B } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
 const NOTES_SERVICE = 6;
@@ -114,5 +115,60 @@ describe("versioned documents (notes)", function () {
                 );
             }
         }
+    });
+});
+
+// The loop the whole design exists for: write on the laptop, read on the Pi. Headers ride
+// entry sync; bodies ride iroh-blobs, fetched by the initiator after each exchange.
+(HOST_B ? describe : describe.skip)("documents across two nodes", function () {
+    this.timeout(30000);
+
+    it("writes on A, adopts B, and reads the actual words on B", async function () {
+        // --- Act 1: identity on A, one note written before B exists.
+        const alice = await makeUserFetch({ prefix: "docstwo" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+        const doc = await createDoc(alice, root, "travel", "pack the good hat");
+
+        // --- Act 2: adopt node B. Adoption's member-proven sync pulls the notes chain, and
+        // the post-sync body fetch pulls the file bytes.
+        const aliceOnB = await makeUserFetch({ prefix: "docstwob", host: HOST_B });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        const listOnB = await listDocs(aliceOnB, root);
+        assert.equal(listOnB.docs.length, 1, "B sees the note");
+        assert.equal(listOnB.docs[0].title, "travel");
+        const detailOnB = await getDoc(aliceOnB, root, doc.doc_id);
+        assert.equal(
+            detailOnB.heads[0].body,
+            "pack the good hat",
+            "B reads the actual words - the body crossed as bytes, not just the header"
+        );
+
+        // --- Act 3: a fast-forward save on A reaches B when B initiates the next sync
+        // (body fetch runs on the initiator's side).
+        await saveDoc(alice, root, doc.doc_id, "travel", "pack the good hat, and the spare", [
+            detailOnB.heads[0].version,
+        ]);
+        const syncResults = await (
+            await aliceOnB(`api/identity/${root}/sync`, { method: "POST" })
+        ).json();
+        assert.ok(syncResults.some((r) => r.ok), "B reached A");
+
+        const after = await getDoc(aliceOnB, root, doc.doc_id);
+        assert.equal(after.diverged, false, "the save was a fast-forward");
+        assert.equal(after.heads[0].body, "pack the good hat, and the spare");
     });
 });

@@ -98,6 +98,14 @@ impl FileStore {
         Ok(decrypt_file(&blob, keys))
     }
 
+    /// Do we hold this blob, complete, locally?
+    pub async fn has(&self, hash: Hash) -> bool {
+        matches!(
+            self.store().blobs().status(hash).await,
+            Ok(iroh_blobs::api::blobs::BlobStatus::Complete { .. })
+        )
+    }
+
     /// Fetch a blob from a known provider over iroh-blobs. No discovery: we open the connection
     /// ourselves to the address the taxonomy/sync layer already handed us.
     pub async fn fetch(
@@ -116,6 +124,32 @@ impl FileStore {
             .await
             .context("fetching blob")?;
         Ok(())
+    }
+
+    /// Fetch several blobs from one provider over a single connection. Best-effort per hash:
+    /// returns how many landed (the provider may lack some too - a body it also hasn't fetched
+    /// yet is a normal state, not an error).
+    pub async fn fetch_many(
+        &self,
+        endpoint: &Endpoint,
+        provider: EndpointAddr,
+        hashes: &[Hash],
+    ) -> usize {
+        let conn = match endpoint.connect(provider, BLOB_ALPN).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("dialing blob provider: {e}");
+                return 0;
+            }
+        };
+        let mut fetched = 0;
+        for hash in hashes {
+            match self.store().remote().fetch(conn.clone(), *hash).await {
+                Ok(_) => fetched += 1,
+                Err(e) => tracing::debug!(%hash, "blob not fetched: {e}"),
+            }
+        }
+        fetched
     }
 }
 
