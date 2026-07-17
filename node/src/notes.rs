@@ -34,23 +34,131 @@ pub struct Version {
 #[derive(Debug, Default, Clone)]
 pub struct Doc {
     pub versions: BTreeMap<[u8; 32], Version>,
-    /// Versions no other version names as a parent. One head = clean; several = divergence,
-    /// every head kept and surfaced.
+    /// The DAG's true heads: versions no other version names as a parent. These are the
+    /// `parents` a client's next save must list - folded heads included - so the fork heals
+    /// through an ordinary write (commit-on-next-save).
     pub heads: Vec<[u8; 32]>,
+    /// The heads after read-time mop-up: identical twins collapsed, ancestor echoes folded.
+    /// What the user sees. Divergence is judged here - a fork whose sides carry the same words
+    /// is not a decision anyone should be asked to make.
+    pub logical_heads: Vec<[u8; 32]>,
 }
 
 impl Doc {
+    /// Divergence as the USER experiences it: more than one logical head. The DAG may hold
+    /// more heads than this; the extras carry no distinct words.
     pub fn diverged(&self) -> bool {
-        self.heads.len() > 1
+        self.logical_heads.len() > 1
     }
 
     /// The head to show by default: latest claimed timestamp, entry hash as the deterministic
-    /// tiebreak - cosmetic choice only, every head stays a tap away.
+    /// tiebreak - cosmetic choice only, every logical head stays a tap away.
     pub fn display_head(&self) -> Option<&Version> {
-        self.heads
+        self.logical_heads
             .iter()
             .filter_map(|h| self.versions.get(h))
             .max_by_key(|v| (v.timestamp_ms, v.hash))
+    }
+
+    /// A version's substance: what the mop-up rungs compare. Body fingerprint AND title - a
+    /// rename is real content, so a head that only renamed never folds.
+    fn content_of(&self, hash: &[u8; 32]) -> Option<([u8; 32], &str)> {
+        self.versions
+            .get(hash)
+            .map(|v| (v.header.body_hash, v.header.title.as_str()))
+    }
+
+    /// All proper ancestors of a version we hold headers for (walks stop at retention gaps).
+    fn ancestors(&self, of: &[u8; 32]) -> HashSet<[u8; 32]> {
+        let mut out = HashSet::new();
+        let mut stack: Vec<[u8; 32]> = self
+            .versions
+            .get(of)
+            .map(|v| v.header.parents.clone())
+            .unwrap_or_default();
+        while let Some(h) = stack.pop() {
+            if out.insert(h) {
+                if let Some(v) = self.versions.get(&h) {
+                    stack.extend(v.header.parents.iter().copied());
+                }
+            }
+        }
+        out
+    }
+
+    /// The fork point(s) of two versions: their *maximal* common ancestors - common ancestors
+    /// no other common ancestor descends from. Usually exactly one; criss-cross histories can
+    /// produce several, and the echo rung then requires ALL of them to match (conservative:
+    /// when in doubt, stay diverged - keep-both never loses words).
+    fn fork_points(&self, a: &[u8; 32], b: &[u8; 32]) -> Vec<[u8; 32]> {
+        let ancestors_a = self.ancestors(a);
+        let ancestors_b = self.ancestors(b);
+        let common: Vec<[u8; 32]> = ancestors_a.intersection(&ancestors_b).copied().collect();
+        common
+            .iter()
+            .copied()
+            .filter(|c| !common.iter().any(|d| d != c && self.ancestors(d).contains(c)))
+            .collect()
+    }
+
+    /// The read-time mop-up (NOTES_APP, The sync model): fold away DAG heads that carry no
+    /// distinct words. Deterministic over chain data alone, so every device derives the same
+    /// answer; nothing is written - the DAG heals when the next ordinary save lists all DAG
+    /// heads as parents.
+    fn compute_logical_heads(&mut self) {
+        // Rung 1 - identical twins: heads with the same substance collapse to one
+        // representative (latest stamp, hash tiebreak - same cosmetic order as display).
+        let mut groups: BTreeMap<([u8; 32], String), [u8; 32]> = BTreeMap::new();
+        for h in &self.heads {
+            let Some(v) = self.versions.get(h) else {
+                continue;
+            };
+            let key = (v.header.body_hash, v.header.title.clone());
+            match groups.get(&key) {
+                Some(cur) => {
+                    let cur_v = &self.versions[cur];
+                    if (v.timestamp_ms, v.hash) > (cur_v.timestamp_ms, cur_v.hash) {
+                        groups.insert(key, *h);
+                    }
+                }
+                None => {
+                    groups.insert(key, *h);
+                }
+            }
+        }
+        let mut logical: Vec<[u8; 32]> = groups.into_values().collect();
+        logical.sort();
+
+        // Rung 2 - ancestor echoes: a head whose substance equals the fork point it shares
+        // with a surviving sibling contributed nothing relative to that fork - exactly diff3's
+        // degenerate case - and folds away. Content matching a DEEPER ancestor than the fork
+        // point does not fold: relative to the fork, that side changed something too.
+        loop {
+            let mut folded = None;
+            'search: for (i, h) in logical.iter().enumerate() {
+                if logical.len() < 2 {
+                    break;
+                }
+                for other in logical.iter().filter(|o| *o != h) {
+                    let forks = self.fork_points(h, other);
+                    if !forks.is_empty()
+                        && forks
+                            .iter()
+                            .all(|f| self.content_of(f) == self.content_of(h))
+                    {
+                        folded = Some(i);
+                        break 'search;
+                    }
+                }
+            }
+            match folded {
+                Some(i) => {
+                    logical.remove(i);
+                }
+                None => break,
+            }
+        }
+        self.logical_heads = logical;
     }
 }
 
@@ -75,6 +183,12 @@ pub struct Save {
 
 /// Save one version of a document: body into the file layer, header onto the notes chain.
 /// Returns the new version's hash (the client's next `parents` entry).
+///
+/// **The no-op bounce**: an ordinary save (exactly one parent) whose body fingerprint and title
+/// both match that parent writes nothing and returns the parent's hash - the chain never grows
+/// for a save that adds no words. The client's dirty check should prevent most of these; the
+/// bounce is the node-side floor under impolite clients. (A save matching a *deeper* ancestor is
+/// NOT bounced: an edit-then-revert is a real event the user performed, and its parent differs.)
 pub async fn save_version(
     db: &SqlitePool,
     signer: &SigningKey,
@@ -82,14 +196,46 @@ pub async fn save_version(
     files: &FileStore,
     save: Save,
 ) -> Result<[u8; 32], AppError> {
+    let body_hash = DocHeaderPlain::body_hash(&save.doc_id, &save.body);
     let (epoch, epoch_key) = keys
         .current()
         .ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
-    let file_hash = files.put_encrypted(epoch, &epoch_key, &save.body).await?;
+
+    let view = materialize(db, keys).await?;
+    let doc = view.docs.get(&save.doc_id);
+
+    // The no-op bounce: an ordinary save whose fingerprint and title match its own parent.
+    if let [parent] = save.parents.as_slice() {
+        if let Some(version) = doc.and_then(|d| d.versions.get(parent)) {
+            if version.header.body_hash == body_hash && version.header.title == save.title {
+                return Ok(*parent);
+            }
+        }
+    }
+
+    // Blob reuse: identical content ANYWHERE in this document's history (a revert, an edit
+    // walked back) points at the existing blob instead of encrypting a fresh ciphertext - the
+    // fingerprint proves equality without touching the bytes, so the storage that random-nonce
+    // encryption "cost" comes back exactly where the encrypted headers can vouch for it.
+    // (Scoped to one document by construction: body_hash is doc_id-keyed.)
+    let file_hash = match doc.and_then(|d| {
+        d.versions
+            .values()
+            .find(|v| v.header.body_hash == body_hash)
+            .map(|v| v.header.file_hash)
+    }) {
+        Some(existing) => existing,
+        None => *files
+            .put_encrypted(epoch, &epoch_key, &save.body)
+            .await?
+            .as_bytes(),
+    };
+
     let header = DocHeaderPlain {
         doc_id: save.doc_id,
         parents: save.parents,
-        file_hash: *file_hash.as_bytes(),
+        file_hash,
+        body_hash,
         title: save.title,
         format: None,
     };
@@ -149,7 +295,7 @@ pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<NotesView,
 
     // Heads: versions no other version of the same doc names as a parent. A parent hash we
     // don't hold (retention dropped it, or it hasn't synced yet) still counts as claimed - the
-    // child is a head either way.
+    // child is a head either way. Then the mop-up: which heads carry distinct words.
     for doc in view.docs.values_mut() {
         let claimed: HashSet<[u8; 32]> = doc
             .versions
@@ -162,6 +308,7 @@ pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<NotesView,
             .filter(|h| !claimed.contains(*h))
             .copied()
             .collect();
+        doc.compute_logical_heads();
     }
     Ok(view)
 }
@@ -340,6 +487,169 @@ mod tests {
             let v = doc.versions.get(h).unwrap();
             assert!(read_body(&files, &keys, v).await.unwrap().is_some());
         }
+    }
+
+    #[tokio::test]
+    async fn no_op_saves_bounce_but_reverts_do_not() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
+
+        // Identical content + title against the same parent: bounced - the parent's own hash
+        // comes back and the chain does not grow.
+        let bounced = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start").await;
+        assert_eq!(bounced, v1);
+        let view = materialize(&db, &keys).await.unwrap();
+        assert_eq!(view.docs.get(&doc_id).unwrap().versions.len(), 1);
+
+        // A title-only change is a real save.
+        let renamed = save(&db, &key, &keys, &files, doc_id, vec![v1], "t2", b"start").await;
+        assert_ne!(renamed, v1);
+
+        // Edit, then revert to the ORIGINAL content: parent is the edit, so this is a real
+        // event, not a no-op - the revert must be written (content matches the grandparent,
+        // never the parent).
+        let edited = save(&db, &key, &keys, &files, doc_id, vec![renamed], "t2", b"start, oops").await;
+        let reverted = save(&db, &key, &keys, &files, doc_id, vec![edited], "t2", b"start").await;
+        assert_ne!(reverted, edited);
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.versions.len(), 4);
+        assert_eq!(doc.heads, vec![reverted]);
+
+        // And the revert REUSED the original blob: same content, same file - a fresh encrypt
+        // would necessarily differ (random nonce), so hash equality proves no new blob.
+        assert_eq!(
+            doc.versions.get(&reverted).unwrap().header.file_hash,
+            doc.versions.get(&v1).unwrap().header.file_hash,
+        );
+    }
+
+    /// Notes are private: their entries AND their frontiers stay behind the member proof. A
+    /// stranger syncing public chains must see no evidence the notes chain exists.
+    #[tokio::test]
+    async fn notes_chains_are_withheld_from_unproven_peers() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        save(&db, &key, &keys, &files, doc_id, vec![], "secret", b"words").await;
+
+        let public = crate::sync::local_frontiers(&db, false).await.unwrap();
+        assert!(
+            !public
+                .iter()
+                .any(|f| f.service == ringtome_proto::registry::service::NOTES),
+            "notes frontiers must not be offered to unproven peers"
+        );
+        let member = crate::sync::local_frontiers(&db, true).await.unwrap();
+        assert!(member
+            .iter()
+            .any(|f| f.service == ringtome_proto::registry::service::NOTES));
+    }
+
+    /// Rung 1: the same fix made on two devices before they synced. Two DAG heads, identical
+    /// words - not a decision anyone should be asked to make.
+    #[tokio::test]
+    async fn identical_twins_collapse_to_one_logical_head() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
+        // Both "devices" apply the same edit from the same parent (each dodges the bounce:
+        // the content differs from v1).
+        let a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, fixed").await;
+        let b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, fixed").await;
+        assert_ne!(a, b, "distinct saves, distinct versions");
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.heads.len(), 2, "the DAG truthfully holds both");
+        assert_eq!(doc.logical_heads.len(), 1, "the words diverged zero ways");
+        assert!(!doc.diverged());
+    }
+
+    /// Rung 2: edit-then-revert on one side while the other side wrote something real. The
+    /// revert equals the fork point, contributed nothing, and folds - diff3's degenerate case.
+    #[tokio::test]
+    async fn ancestor_echo_folds_away() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
+        let pc = save(
+            &db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, then an afternoon",
+        )
+        .await;
+        // The phone: a real edit, then a revert back to the fork point's exact content.
+        let typo = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, typo").await;
+        let revert = save(&db, &key, &keys, &files, doc_id, vec![typo], "t", b"start").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        let mut dag_heads = doc.heads.clone();
+        dag_heads.sort();
+        let mut expect = vec![pc, revert];
+        expect.sort();
+        assert_eq!(dag_heads, expect, "the DAG truthfully holds both");
+        assert_eq!(doc.logical_heads, vec![pc], "the echo folds; the afternoon stands");
+        assert!(!doc.diverged());
+    }
+
+    /// A revert to a DEEPER ancestor than the fork point is a real choice: relative to the
+    /// fork, both sides changed something. Stays diverged - keep-both never loses words.
+    #[tokio::test]
+    async fn revert_past_the_fork_point_stays_diverged() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v0 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"draft one").await;
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![v0], "t", b"draft two").await;
+        // Fork at v1: one side writes on; the other reverts all the way to v0's content.
+        let _on = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"draft three").await;
+        let _back = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"draft one").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.logical_heads.len(), 2, "both sides changed the fork's content");
+        assert!(doc.diverged());
+    }
+
+    /// A rename is real content: body echoing the fork point does NOT fold when the title
+    /// changed (that's rung 3's orthogonal merge, later - never the janitor's call).
+    #[tokio::test]
+    async fn title_change_never_folds() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
+        let _pc = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, more").await;
+        let typo = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, typo").await;
+        let _renamed_revert =
+            save(&db, &key, &keys, &files, doc_id, vec![typo], "better title", b"start").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.logical_heads.len(), 2, "the rename survives as its own head");
+        assert!(doc.diverged());
     }
 
     #[tokio::test]

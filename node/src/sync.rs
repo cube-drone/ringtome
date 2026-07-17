@@ -47,7 +47,7 @@ pub struct ExchangeStats {
 /// frontiers, even the count of chains (the *timing and volume* of private activity is itself
 /// private metadata; PROJECT_PLAN, Chains).
 fn is_private_service(svc: u32) -> bool {
-    svc == service::IDENTITY_PRIVATE || svc == service::PRIVATE
+    svc == service::IDENTITY_PRIVATE || svc == service::PRIVATE || svc == service::NOTES
 }
 
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer

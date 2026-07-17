@@ -91,6 +91,9 @@ describe("versioned documents (notes)", function () {
         );
         const versions = detail.heads.map((h) => h.version).sort();
         assert.deepEqual(versions, [pc.version, phone.version].sort());
+
+        // The healing contract: the next save lists every DAG head as a parent.
+        assert.deepEqual(detail.save_parents.sort(), [pc.version, phone.version].sort());
     });
 
     it("stores neither titles nor bodies as plaintext in the entry log", async function () {

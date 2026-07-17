@@ -393,11 +393,14 @@ impl PrivatePlain {
 /// `parents` holds the entry hashes this version was edited from (empty at a document's genesis,
 /// one for an ordinary save, two-plus for a merge - the git-commit model, a list from day one so
 /// reconvergence needs no format change). `file_hash` names the body in the file layer, by
-/// ciphertext hash. `format` absent means plaintext; the closed enum grows additively.
+/// ciphertext hash; `body_hash` fingerprints the *plaintext* body (keyed - see [`Self::body_hash`])
+/// so equality checks never need the body bytes. `format` absent means plaintext; the closed
+/// enum grows additively.
 ///
 /// Encoding: `{0: bstr(16) doc_id, 1: array<bstr(32)> parents, 2: bstr(32) file_hash,
-/// 3: text title, 4?: uint format}`. A `refs` field (the derived index of what the body
-/// references) is reserved as a future additive key - readers already skip unknown keys.
+/// 3: bstr(32) body_hash, 4: text title, 5?: uint format}`. A `refs` field (the derived index of
+/// what the body references) is reserved as a future additive key - readers already skip unknown
+/// keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocHeaderPlain {
     /// The document's stable identity across all its versions - what taxonomies and publication
@@ -405,6 +408,9 @@ pub struct DocHeaderPlain {
     pub doc_id: [u8; 16],
     pub parents: Vec<[u8; 32]>,
     pub file_hash: [u8; 32],
+    /// Keyed BLAKE3 of the plaintext body. Rides inside the encrypted header, so it is a
+    /// member-secret exactly like the body itself; never expose it on a plaintext surface.
+    pub body_hash: [u8; 32],
     pub title: String,
     pub format: Option<u64>,
 }
@@ -414,6 +420,16 @@ impl DocHeaderPlain {
     /// A merge of more heads than this is not a document any more.
     pub const MAX_PARENTS: usize = 16;
 
+    /// The body fingerprint: BLAKE3 keyed by a document-scoped key. Keying by `doc_id` kills
+    /// global rainbow tables - a dictionary attack against a low-entropy body must be mounted
+    /// per-document, by someone already holding the epoch keys. (For key-holders the residual
+    /// is inherent: deleted content stays *confirmable* - never recoverable - as long as its
+    /// header survives. NOTES_APP records the asterisk.)
+    pub fn body_hash(doc_id: &[u8; 16], body: &[u8]) -> [u8; 32] {
+        let key = blake3::derive_key("ringtome-v0/body-hash", doc_id);
+        *blake3::keyed_hash(&key, body).as_bytes()
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
         if self.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -422,7 +438,7 @@ impl DocHeaderPlain {
             return Err(ProtoError::BadEntry("too many parents"));
         }
         let mut w = Writer::new();
-        w.map(if self.format.is_some() { 5 } else { 4 });
+        w.map(if self.format.is_some() { 6 } else { 5 });
         w.uint(0);
         w.bytes(&self.doc_id);
         w.uint(1);
@@ -433,9 +449,11 @@ impl DocHeaderPlain {
         w.uint(2);
         w.bytes(&self.file_hash);
         w.uint(3);
+        w.bytes(&self.body_hash);
+        w.uint(4);
         w.text(&self.title);
         if let Some(f) = self.format {
-            w.uint(4);
+            w.uint(5);
             w.uint(f);
         }
         Ok(w.into_bytes())
@@ -444,8 +462,8 @@ impl DocHeaderPlain {
     pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
         let mut r = Reader::new(bytes);
         let mut map = r.int_map()?;
-        let (mut doc_id, mut parents, mut file_hash, mut title, mut format) =
-            (None, None, None, None, None);
+        let (mut doc_id, mut parents, mut file_hash, mut body_hash, mut title, mut format) =
+            (None, None, None, None, None, None);
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -461,8 +479,9 @@ impl DocHeaderPlain {
                     parents = Some(v);
                 }
                 2 => file_hash = Some(map.bytes_fixed::<32>()?),
-                3 => title = Some(map.text()?.to_string()),
-                4 => format = Some(map.uint()?),
+                3 => body_hash = Some(map.bytes_fixed::<32>()?),
+                4 => title = Some(map.text()?.to_string()),
+                5 => format = Some(map.uint()?),
                 _ => map.skip_value()?,
             }
         }
@@ -471,6 +490,7 @@ impl DocHeaderPlain {
             doc_id: doc_id.ok_or(ProtoError::BadEntry("doc header missing doc_id"))?,
             parents: parents.ok_or(ProtoError::BadEntry("doc header missing parents"))?,
             file_hash: file_hash.ok_or(ProtoError::BadEntry("doc header missing file_hash"))?,
+            body_hash: body_hash.ok_or(ProtoError::BadEntry("doc header missing body_hash"))?,
             title: title.ok_or(ProtoError::BadEntry("doc header missing title"))?,
             format,
         };
@@ -812,6 +832,7 @@ mod tests {
                 doc_id: [9u8; 16],
                 parents,
                 file_hash: [3u8; 32],
+                body_hash: [4u8; 32],
                 title: "grocery plans".into(),
                 format: None,
             };
@@ -822,6 +843,7 @@ mod tests {
             doc_id: [9u8; 16],
             parents: vec![[1u8; 32]],
             file_hash: [3u8; 32],
+            body_hash: [4u8; 32],
             title: "essay".into(),
             format: Some(1),
         };
@@ -834,6 +856,7 @@ mod tests {
             doc_id: [0u8; 16],
             parents: vec![],
             file_hash: [0u8; 32],
+            body_hash: [0u8; 32],
             title: "x".repeat(DocHeaderPlain::MAX_TITLE_LEN + 1),
             format: None,
         };
@@ -844,6 +867,27 @@ mod tests {
             ..base
         };
         assert!(too_many.encode().is_err());
+    }
+
+    #[test]
+    fn body_hash_is_deterministic_and_document_scoped() {
+        let body = b"the words";
+        // Same document, same body: same fingerprint - the whole point.
+        assert_eq!(
+            DocHeaderPlain::body_hash(&[1u8; 16], body),
+            DocHeaderPlain::body_hash(&[1u8; 16], body)
+        );
+        // A different document keys differently: no cross-document (or cross-identity) rainbow
+        // tables over common short texts.
+        assert_ne!(
+            DocHeaderPlain::body_hash(&[1u8; 16], body),
+            DocHeaderPlain::body_hash(&[2u8; 16], body)
+        );
+        // And it is not the bare BLAKE3 of the body.
+        assert_ne!(
+            DocHeaderPlain::body_hash(&[1u8; 16], body),
+            *blake3::hash(body).as_bytes()
+        );
     }
 
     #[test]

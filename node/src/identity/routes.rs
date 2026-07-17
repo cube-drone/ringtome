@@ -615,7 +615,7 @@ async fn docs_list_handler(
                 doc_id: hex::encode(id),
                 title: head.header.title.clone(),
                 head: hex::encode(head.hash),
-                heads: doc.heads.len(),
+                heads: doc.logical_heads.len(),
                 diverged: doc.diverged(),
                 updated_ms: head.timestamp_ms,
             })
@@ -641,9 +641,13 @@ struct DocHead {
 struct DocDetail {
     doc_id: String,
     diverged: bool,
-    /// Every current head, bodies included - divergence means more than one, all kept, all
-    /// shown (never-lose-words is a UI obligation too).
+    /// Every *logical* head, bodies included - divergence means more than one, all kept, all
+    /// shown (never-lose-words is a UI obligation too). Heads that carry no distinct words
+    /// (identical twins, ancestor echoes) are folded at read time and don't appear here.
     heads: Vec<DocHead>,
+    /// What the next save must list as `parents`: ALL the DAG's true heads, folded ones
+    /// included, so the fork heals through an ordinary write.
+    save_parents: Vec<String>,
 }
 
 /// One document: all its heads, with bodies.
@@ -661,7 +665,7 @@ async fn docs_get_handler(
         .ok_or_else(|| AppError::NotFound("document not found".into()))?;
 
     let mut heads = Vec::new();
-    for h in &doc.heads {
+    for h in &doc.logical_heads {
         let Some(version) = doc.versions.get(h) else {
             continue;
         };
@@ -678,11 +682,14 @@ async fn docs_get_handler(
         });
     }
     heads.sort_by(|a, b| (b.timestamp_ms, &b.version).cmp(&(a.timestamp_ms, &a.version)));
+    let mut save_parents: Vec<String> = doc.heads.iter().map(hex::encode).collect();
+    save_parents.sort();
 
     Ok(Json(DocDetail {
         doc_id: hex::encode(doc_id),
         diverged: doc.diverged(),
         heads,
+        save_parents,
     }))
 }
 

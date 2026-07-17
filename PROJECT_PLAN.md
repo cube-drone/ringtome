@@ -1800,10 +1800,16 @@ note is a versioned document whose body happens to be text; the same machinery v
 a tileset, anything with rolling states.
 
 - **A version is a header entry on a chain.** Each save appends a small CBOR header
-  `{doc_id, parents, file_hash, title, format?, refs?}`; the body never rides the chain. A
-  **version's identity is its entry hash** (BLAKE3, already unique); `doc_id` is the document's
-  stable identity across versions - what taxonomies and publication reference, never version
-  hashes.
+  `{doc_id, parents, file_hash, body_hash, title, format?, refs?}`; the body never rides the
+  chain. A **version's identity is its entry hash** (BLAKE3, already unique); `doc_id` is the
+  document's stable identity across versions - what taxonomies and publication reference, never
+  version hashes. `body_hash` is a **plaintext fingerprint riding inside the encrypted header**
+  (BLAKE3 keyed by doc_id, so no global rainbow tables): equality checks - the no-op save bounce,
+  twin/echo detection in merge - never need the body bytes, and work even after old bodies are
+  GC'd. It is a member-secret exactly like the body: never on a plaintext surface. The honest
+  cost: a permanent fingerprint of droppable content - deleted words become *confirmable* (never
+  recoverable) to a key-holder guessing low-entropy content, an accepted asterisk on deletability
+  (NOTES_APP).
 - **`parents` is a list from day one** - the git-commit model: zero at genesis, one for an ordinary
   save, two-plus for a merge, so reconvergence needs no format change even before any merge UI
   exists. Fast-forward when your parent is the current head; two saves sharing a parent are

@@ -34,7 +34,11 @@ adds on top:
   Marquee's target model when embeds exist.
 - **Version history is a retention policy** (keep last N, keep ancestors needed for merge), not
   chain law. Deleting a note is a tombstone plus dropping its files — the *fact* of the note is
-  permanent, its content is not (**Immutable Chains ≠ Immutable Content**, Doctrine).
+  permanent, its content is not (**Immutable Chains ≠ Immutable Content**, Doctrine). One honest
+  asterisk: the header's `body_hash` (a keyed plaintext fingerprint, kept for no-op bouncing and
+  merge detection) outlives the dropped bytes, so deleted content stays *confirmable* — never
+  recoverable — to someone holding the epoch keys and a correct guess. Inert against prose;
+  real against low-entropy secrets. Don't keep your PIN in a note you plan to delete.
 - **Autosave is debounced at the client** (idle/blur, ~10s), so chain growth is dozens of
   entries on a heavy day, not keystrokes — and a save whose body is identical to its parent's
   writes nothing at all. The long-run ceiling is the already-designed snapshot + prefix-GC
@@ -82,6 +86,12 @@ The mechanism is causality, not a text CRDT — the version DAG (PROJECT_PLAN, V
 Documents: `parents`, fast-forward, detected divergence, keep-both universal). The app-level
 behaviors on top:
 
+- **Trivial forks fold at read time, writing nothing**: heads carrying no distinct words -
+  identical twins (the same fix made on two devices) and ancestor echoes (a revert to the fork
+  point while the other side wrote on) - are folded by the materializer, deterministically, on
+  every device alike. No merge entry is minted at detection; the DAG heals when the next
+  ordinary save lists all true heads as `parents`. A rename never folds, and a revert *past*
+  the fork point stays diverged - when in doubt, keep both.
 - **Three-way merge is text's per-format capability**: automatic when edits don't overlap (which
   is nearly every moved-between-devices draft), keep-both-with-lineage when they do — the note
   shows "diverged on two devices," both versions a tap away, merge UI optional and later. v0 may
