@@ -108,8 +108,8 @@ behaviors on top:
   that's never heard of `:::conflict` renders both texts in full (the degraded conflict is still
   a lossless conflict), and the one named client obligation is that **synthesized text starts
   clean, not dirty** — autosave must never commit the tangle the user hasn't touched. Three-plus
-  heads fold pairwise in deterministic order; a GC'd fork point degrades to the whole-document
-  conflict ("both versions in full"). This resolves the merge-UX open question: "diverged on two
+  logical heads, or a GC'd/ambiguous fork point, degrade to the whole-document conflict ("every
+  version in full") - lossless, and conservative rather than attempting a fiddly multi-way merge. This resolves the merge-UX open question: "diverged on two
   devices" looks like your document, with both texts inline under gentle labels.
 - **Clients check the head before saving**: if it moved, rebase (fast-forward the editor onto the
   new head) or fork knowingly — never blind-save. The stale tab becomes a detected sibling, not

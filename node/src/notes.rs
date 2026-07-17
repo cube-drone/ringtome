@@ -921,6 +921,217 @@ mod tests {
         }
     }
 
+    // -------------------------------------------------------------------------------------
+    // Adversarial cases: malformed DAGs, degenerate merges, and determinism.
+
+    /// A client asserts a parent that does not exist (GC'd, or a bug). Must not panic, must
+    /// treat the child as a head, must degrade to a conflict presentation (no fork point) - and
+    /// crucially must never lose the child's words.
+    #[tokio::test]
+    async fn orphan_parent_is_a_head_and_degrades_safely() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let real = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"real start").await;
+        // Sibling claims a parent that was never written.
+        let phantom = [0xAB; 32];
+        let orphan = save(&db, &key, &keys, &files, doc_id, vec![phantom], "t", b"orphan words").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        let mut heads = doc.heads.clone();
+        heads.sort();
+        let mut expect = vec![real, orphan];
+        expect.sort();
+        assert_eq!(heads, expect, "both are heads; the phantom is not");
+        // No common ancestor -> conservative conflict, both bodies present.
+        let r = resolve(&files, &keys, doc).await.unwrap();
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert!(body.contains("real start") && body.contains("orphan words"));
+    }
+
+    /// A parent hash that belongs to a DIFFERENT document. The materializer is per-doc, so it's
+    /// a phantom within this doc - same safe degradation, no cross-doc leakage.
+    #[tokio::test]
+    async fn cross_document_parent_is_treated_as_phantom() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let other_doc = new_doc_id();
+        let alien = save(&db, &key, &keys, &files, other_doc, vec![], "other", b"other doc body").await;
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"mine").await;
+        let child = save(&db, &key, &keys, &files, doc_id, vec![alien], "t", b"mine, edited").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        // v1 and child are both heads (child's only claimed parent lives in another doc).
+        assert_eq!(doc.versions.len(), 2, "the alien parent is not pulled into this doc");
+        assert!(doc.heads.contains(&v1) && doc.heads.contains(&child));
+        let r = resolve(&files, &keys, doc).await.unwrap();
+        assert!(r.body.unwrap().contains("mine, edited"), "no words lost");
+    }
+
+    /// A genuine echo cascade: two reverts at DIFFERENT depths both fold, leaving the one real
+    /// head. (Same-depth echoes would be twins and collapse in rung 1 instead - a cascade only
+    /// exists across depths, which is the case worth stressing for termination.)
+    #[tokio::test]
+    async fn echo_cascade_at_different_depths_folds_to_the_real_head() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"base").await;
+        let v2 = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"level two").await;
+        let real = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"the real thing").await;
+        // Each echo is an edit-then-revert (the only shape the no-op bounce lets through): the
+        // parent differs, but the content lands back on a fork point. One reverts to v1's
+        // content, one to v2's - distinct content, distinct fork depths, so they're not twins.
+        let junk_a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"typo a").await;
+        let _shallow = save(&db, &key, &keys, &files, doc_id, vec![junk_a], "t", b"base").await;
+        let junk_b = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"typo b").await;
+        let _deep = save(&db, &key, &keys, &files, doc_id, vec![junk_b], "t", b"level two").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.heads.len(), 3, "three live heads: real + two reverts");
+        assert_eq!(doc.logical_heads, vec![real], "both echoes fold; the real head stands");
+        assert!(!doc.diverged());
+    }
+
+    /// The termination guard: many same-content heads. Rung 1 collapses the twins; the fold
+    /// never empties the set, and picks the same survivor every run.
+    #[tokio::test]
+    async fn twin_storm_keeps_exactly_one_deterministically() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"base").await;
+        // Five devices independently make the identical edit from v1: five twins.
+        for _ in 0..5 {
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"base, fixed").await;
+        }
+
+        let a = materialize(&db, &keys).await.unwrap();
+        let b = materialize(&db, &keys).await.unwrap();
+        let da = a.docs.get(&doc_id).unwrap();
+        assert_eq!(da.heads.len(), 5, "the DAG holds all five");
+        assert_eq!(da.logical_heads.len(), 1, "one survivor, never zero");
+        assert_eq!(
+            da.logical_heads,
+            b.docs.get(&doc_id).unwrap().logical_heads,
+            "and the same one every time"
+        );
+    }
+
+    /// Criss-cross history: two heads share *two* maximal common ancestors. The fold requires
+    /// ALL fork points to match, and resolve() degrades a multi-fork merge to a whole-document
+    /// conflict - conservative, never a silent wrong merge.
+    #[tokio::test]
+    async fn criss_cross_history_degrades_conservatively() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        // Two roots (both genesis - no parents), then two children each merging both roots.
+        let r1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"root one").await;
+        let r2 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"root two").await;
+        let m1 = save(&db, &key, &keys, &files, doc_id, vec![r1, r2], "t", b"merge left").await;
+        let m2 = save(&db, &key, &keys, &files, doc_id, vec![r1, r2], "t", b"merge right").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        let mut heads = doc.heads.clone();
+        heads.sort();
+        let mut expect = vec![m1, m2];
+        expect.sort();
+        assert_eq!(heads, expect);
+        assert_eq!(doc.fork_points(&m1, &m2).len(), 2, "two maximal common ancestors");
+        let r = resolve(&files, &keys, doc).await.unwrap();
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert!(body.contains("merge left") && body.contains("merge right"));
+    }
+
+    /// A body that literally contains conflict markers. Single head: verbatim round-trip
+    /// (markers are never parsed back). Diverged: still lossless, if visually gnarly.
+    #[tokio::test]
+    async fn body_containing_markers_round_trips_and_never_reparses() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let sneaky = "notes on git:\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>>\n";
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", sneaky.as_bytes()).await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Single);
+        assert_eq!(r.body.unwrap(), sneaky, "marker-laden prose survives verbatim");
+
+        // Now force a real conflict on top - must still contain both bodies' words.
+        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", "one edit\n".as_bytes()).await;
+        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", "other edit\n".as_bytes()).await;
+        let r2 = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert!(r2.body.unwrap().contains("one edit") || r2.resolution == Resolution::Conflict);
+    }
+
+    /// One side deletes everything, the other edits. Must not panic and must not lose the
+    /// surviving side's words (whether diffy calls it merged or conflict).
+    #[tokio::test]
+    async fn empty_side_merge_loses_nothing() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"keep\nthis\n").await;
+        let _cleared = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"").await;
+        let _added = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"keep\nthis\nand more\n").await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert!(r.body.is_some(), "a body was produced, no panic");
+        assert!(r.body.unwrap().contains("and more"), "the added words survive");
+    }
+
+    /// A fork off a MID-HISTORY version (not a current head) still diverges correctly.
+    #[tokio::test]
+    async fn fork_from_deep_in_history() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"one\n").await;
+        let v2 = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one\ntwo\n").await;
+        let _v3 = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"one\ntwo\nthree\n").await;
+        // Someone forks off v1, deep behind the current head v3.
+        let _alt = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one\nBRANCH\n").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert!(doc.diverged(), "the deep fork is a real divergence");
+        let body = resolve(&files, &keys, doc).await.unwrap().body.unwrap();
+        assert!(body.contains("three") && body.contains("BRANCH"), "both branches present");
+    }
+
     #[tokio::test]
     async fn undecryptable_headers_are_counted_not_hidden() {
         let db = test_db().await;
