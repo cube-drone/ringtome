@@ -641,6 +641,13 @@ struct DocHead {
 struct DocDetail {
     doc_id: String,
     diverged: bool,
+    /// The document's current title after field-wise resolution (a rename on one side wins).
+    title: String,
+    /// The synthesized current text - what an editor opens: one head verbatim ("single"), a
+    /// clean three-way merge ("merged"), or the conflict inline, git-style with device labels
+    /// ("conflict"). Null only when needed bodies aren't on this node yet.
+    body: Option<String>,
+    resolution: &'static str,
     /// Every *logical* head, bodies included - divergence means more than one, all kept, all
     /// shown (never-lose-words is a UI obligation too). Heads that carry no distinct words
     /// (identical twins, ancestor echoes) are folded at read time and don't appear here.
@@ -685,9 +692,17 @@ async fn docs_get_handler(
     let mut save_parents: Vec<String> = doc.heads.iter().map(hex::encode).collect();
     save_parents.sort();
 
+    let resolved = data.documents().resolved(doc).await?;
     Ok(Json(DocDetail {
         doc_id: hex::encode(doc_id),
         diverged: doc.diverged(),
+        title: resolved.title,
+        body: resolved.body,
+        resolution: match resolved.resolution {
+            crate::notes::Resolution::Single => "single",
+            crate::notes::Resolution::Merged => "merged",
+            crate::notes::Resolution::Conflict => "conflict",
+        },
         heads,
         save_parents,
     }))

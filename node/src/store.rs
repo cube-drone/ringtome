@@ -316,6 +316,15 @@ impl Documents<'_> {
         )
         .await
     }
+
+    /// The document's synthesized current text: one head's body verbatim, a clean three-way
+    /// merge, or the conflict presented inline (NOTES_APP, The sync model).
+    pub async fn resolved(
+        &self,
+        doc: &crate::notes::Doc,
+    ) -> Result<crate::notes::ResolvedDoc, AppError> {
+        crate::notes::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc).await
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

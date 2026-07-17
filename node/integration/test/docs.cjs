@@ -63,6 +63,9 @@ describe("versioned documents (notes)", function () {
         assert.equal(detail.diverged, false);
         assert.equal(detail.heads.length, 1);
         assert.equal(detail.heads[0].body, "eggs, milk");
+        assert.equal(detail.resolution, "single");
+        assert.equal(detail.body, "eggs, milk");
+        assert.equal(detail.title, "groceries");
     });
 
     it("detects the stale tab: divergence keeps both versions readable", async function () {
@@ -94,6 +97,13 @@ describe("versioned documents (notes)", function () {
 
         // The healing contract: the next save lists every DAG head as a parent.
         assert.deepEqual(detail.save_parents.sort(), [pc.version, phone.version].sort());
+
+        // The conflict is presented IN the document: both sides' words inline, marked and
+        // labeled - the editor is the merge tool, there is no merge UI.
+        assert.equal(detail.resolution, "conflict");
+        assert.ok(detail.body.includes("start!"), "phone words inline");
+        assert.ok(detail.body.includes("whole afternoon"), "PC words inline");
+        assert.ok(detail.body.includes("<<<<<<<"), "markers present");
     });
 
     it("stores neither titles nor bodies as plaintext in the entry log", async function () {

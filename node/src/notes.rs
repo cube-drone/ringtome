@@ -28,6 +28,9 @@ pub struct Version {
     pub header: DocHeaderPlain,
     /// The entry's claimed timestamp - display ordering only, never load-bearing (No Clocks).
     pub timestamp_ms: i64,
+    /// The leaf key that signed this version - which device wrote it. Free attribution for
+    /// conflict labels (chains are per-key, keys are per-device).
+    pub author: [u8; 32],
 }
 
 /// One document: every decryptable version, threaded into a DAG.
@@ -286,6 +289,7 @@ pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<NotesView,
                         hash: *signed.hash(),
                         header,
                         timestamp_ms: signed.entry().timestamp_ms,
+                        author: signed.entry().chain.author,
                     },
                 );
             }
@@ -358,6 +362,176 @@ pub async fn fetch_missing_bodies(
             tracing::warn!(root = %root_hex, "body fetch after sync failed: {e:#}");
             0
         }
+    }
+}
+
+/// The synthesized "current text" of a document - what an editor opens (NOTES_APP, The sync
+/// model: conflicts are presented IN the document; there is no merge UI, ever).
+#[derive(Debug, PartialEq, Eq)]
+pub enum Resolution {
+    /// One logical head: its body, verbatim.
+    Single,
+    /// Divergence resolved by clean three-way merge: edits didn't overlap, every line from
+    /// both sides is present. Rung 3 rides along: a title renamed on one side while the body
+    /// changed on the other merges field-wise.
+    Merged,
+    /// Genuine overlap: the body carries the conflict inline, git-style, with device labels.
+    /// The user resolves by editing - the tangle is text, never a UI.
+    Conflict,
+}
+
+#[derive(Debug)]
+pub struct ResolvedDoc {
+    pub resolution: Resolution,
+    pub title: String,
+    /// `None` only when bodies this resolution needs aren't on this node yet.
+    pub body: Option<String>,
+}
+
+/// A conflict side's label: which device, when. Cozy names are the UI's job; this is honest.
+fn side_label(v: &Version) -> String {
+    format!("device {} at {}", hex::encode(&v.author[..4]), v.timestamp_ms)
+}
+
+fn whole_doc_conflict(sides: &[(&Version, String)]) -> String {
+    // Every side in full - the fallback when three-way merge can't run (no usable fork point,
+    // or more than two heads). Degraded, still lossless.
+    let mut out = String::new();
+    for (i, (v, body)) in sides.iter().enumerate() {
+        out.push_str(&format!("<<<<<<< {}\n", side_label(v)));
+        out.push_str(body);
+        if !body.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(if i + 1 == sides.len() { ">>>>>>>\n" } else { "=======\n" });
+    }
+    out
+}
+
+/// Synthesize the document's current text from its logical heads. Deterministic over chain
+/// data + bodies alone, so every device derives the same answer; nothing is written -
+/// resolution commits when the user next saves (parents = all DAG heads).
+pub async fn resolve(
+    files: &FileStore,
+    keys: &EpochKeys,
+    doc: &Doc,
+) -> Result<ResolvedDoc, AppError> {
+    // Deterministic side order: oldest claimed stamp first (hash tiebreak).
+    let mut heads: Vec<&Version> = doc
+        .logical_heads
+        .iter()
+        .filter_map(|h| doc.versions.get(h))
+        .collect();
+    heads.sort_by_key(|v| (v.timestamp_ms, v.hash));
+
+    let display_title = doc
+        .display_head()
+        .map(|v| v.header.title.clone())
+        .unwrap_or_default();
+
+    let [a, b] = match heads.as_slice() {
+        [] => {
+            return Ok(ResolvedDoc {
+                resolution: Resolution::Single,
+                title: display_title,
+                body: None,
+            })
+        }
+        [only] => {
+            return Ok(ResolvedDoc {
+                resolution: Resolution::Single,
+                title: display_title,
+                body: read_body(files, keys, only)
+                    .await?
+                    .map(|b| String::from_utf8_lossy(&b).into_owned()),
+            })
+        }
+        [a, b] => [*a, *b],
+        // Three-plus logical heads: the whole-document conflict, every side in full.
+        many => {
+            let mut sides = Vec::new();
+            for v in many {
+                let Some(body) = read_body(files, keys, v).await? else {
+                    return Ok(ResolvedDoc {
+                        resolution: Resolution::Conflict,
+                        title: display_title,
+                        body: None,
+                    });
+                };
+                sides.push((*v, String::from_utf8_lossy(&body).into_owned()));
+            }
+            return Ok(ResolvedDoc {
+                resolution: Resolution::Conflict,
+                title: display_title,
+                body: Some(whole_doc_conflict(&sides)),
+            });
+        }
+    };
+
+    let (Some(body_a), Some(body_b)) = (read_body(files, keys, a).await?, read_body(files, keys, b).await?)
+    else {
+        return Ok(ResolvedDoc {
+            resolution: Resolution::Conflict,
+            title: display_title,
+            body: None,
+        });
+    };
+    let (text_a, text_b) = (
+        String::from_utf8_lossy(&body_a).into_owned(),
+        String::from_utf8_lossy(&body_b).into_owned(),
+    );
+
+    // The fork point's body is the three-way base. Exactly one usable fork point, body in
+    // hand, or we degrade to the whole-document conflict - conservative, lossless.
+    let base = match doc.fork_points(&a.hash, &b.hash).as_slice() {
+        [one] => match doc.versions.get(one) {
+            Some(fork) => read_body(files, keys, fork)
+                .await?
+                .map(|b| String::from_utf8_lossy(&b).into_owned()),
+            None => None,
+        },
+        _ => None,
+    };
+    let Some(base) = base else {
+        return Ok(ResolvedDoc {
+            resolution: Resolution::Conflict,
+            title: display_title,
+            body: Some(whole_doc_conflict(&[(a, text_a), (b, text_b)])),
+        });
+    };
+
+    // Rung 3, field-wise title: if exactly one side renamed (relative to the fork point),
+    // the rename wins; if both did, the display head's title stands (recoverable - titles
+    // never lose words, bodies are the guarantee).
+    let fork_title = doc
+        .fork_points(&a.hash, &b.hash)
+        .first()
+        .and_then(|f| doc.versions.get(f))
+        .map(|v| v.header.title.clone())
+        .unwrap_or_default();
+    let title = match (a.header.title != fork_title, b.header.title != fork_title) {
+        (true, false) => a.header.title.clone(),
+        (false, true) => b.header.title.clone(),
+        _ => display_title,
+    };
+
+    // Rung 4: three-way line merge. Clean = every line from both sides present, nobody asked
+    // anything. Overlap = the conflict rides inline, labeled per device.
+    match diffy::merge(&base, &text_a, &text_b) {
+        Ok(merged) => Ok(ResolvedDoc {
+            resolution: Resolution::Merged,
+            title,
+            body: Some(merged),
+        }),
+        Err(marked) => Ok(ResolvedDoc {
+            resolution: Resolution::Conflict,
+            title,
+            body: Some(
+                marked
+                    .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a)))
+                    .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b))),
+            ),
+        }),
     }
 }
 
@@ -650,6 +824,101 @@ mod tests {
         let doc = view.docs.get(&doc_id).unwrap();
         assert_eq!(doc.logical_heads.len(), 2, "the rename survives as its own head");
         assert!(doc.diverged());
+    }
+
+    async fn resolve_doc(
+        db: &SqlitePool,
+        keys: &EpochKeys,
+        files: &FileStore,
+        doc_id: &[u8; 16],
+    ) -> ResolvedDoc {
+        let view = materialize(db, keys).await.unwrap();
+        resolve(files, keys, view.docs.get(doc_id).unwrap())
+            .await
+            .unwrap()
+    }
+
+    /// Rung 4, the clean case: edits to different lines weave together with nobody asked.
+    #[tokio::test]
+    async fn non_overlapping_edits_merge_clean() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"alpha\nbeta\ngamma\n").await;
+        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"ALPHA\nbeta\ngamma\n").await;
+        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"alpha\nbeta\nGAMMA\n").await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Merged);
+        assert_eq!(r.body.unwrap(), "ALPHA\nbeta\nGAMMA\n", "both edits present, no questions");
+    }
+
+    /// Rung 5: the same line edited both ways - the conflict rides inline, labeled, and both
+    /// sides' words are in the text.
+    #[tokio::test]
+    async fn overlapping_edits_present_the_conflict_in_the_document() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is red\n").await;
+        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is blue\n").await;
+        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is green\n").await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert!(body.contains("the hat is blue"), "ours present:\n{body}");
+        assert!(body.contains("the hat is green"), "theirs present:\n{body}");
+        assert!(body.contains("<<<<<<<") && body.contains(">>>>>>>"), "markers present:\n{body}");
+        assert!(body.contains("device "), "sides carry device labels:\n{body}");
+    }
+
+    /// Rung 3: a rename on one side, a body edit on the other - orthogonal fields, both win.
+    #[tokio::test]
+    async fn rename_and_edit_merge_field_wise() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "scratch", b"alpha\nbeta\n").await;
+        let _rename = save(&db, &key, &keys, &files, doc_id, vec![v1], "the hat essay", b"alpha\nbeta\n").await;
+        let _edit = save(&db, &key, &keys, &files, doc_id, vec![v1], "scratch", b"alpha\nbeta\nnew line\n").await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Merged);
+        assert_eq!(r.title, "the hat essay", "the rename wins the title");
+        assert_eq!(r.body.unwrap(), "alpha\nbeta\nnew line\n", "the edit wins the body");
+    }
+
+    /// Three-plus genuinely distinct heads: the whole-document conflict - every side in full.
+    /// Degraded, still lossless.
+    #[tokio::test]
+    async fn three_way_divergence_presents_every_side() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"base\n").await;
+        for body in [b"base one\n".as_slice(), b"base two\n", b"base three\n"] {
+            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", body).await;
+        }
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        for text in ["base one", "base two", "base three"] {
+            assert!(body.contains(text), "{text} present:\n{body}");
+        }
     }
 
     #[tokio::test]

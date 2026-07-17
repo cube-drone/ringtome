@@ -93,10 +93,24 @@ behaviors on top:
   ordinary save lists all true heads as `parents`. A rename never folds, and a revert *past*
   the fork point stays diverged - when in doubt, keep both.
 - **Three-way merge is text's per-format capability**: automatic when edits don't overlap (which
-  is nearly every moved-between-devices draft), keep-both-with-lineage when they do — the note
-  shows "diverged on two devices," both versions a tap away, merge UI optional and later. v0 may
-  ship detect-and-keep-both with no auto-merge at all; the requirement is never-lose, not
-  always-merge.
+  is nearly every moved-between-devices draft). v0 may ship detect-and-keep-both with no
+  auto-merge at all; the requirement is never-lose, not always-merge.
+- **Conflicts are presented IN the document; there is no merge UI, ever.** When edits genuinely
+  overlap, the diverged document's displayed body is the merge output *with the conflict inline*:
+  git-style marker blocks for plaintext (with honest labels — "from your phone, yesterday 9pm";
+  chains are per-device, so attribution is free), a `:::conflict` directive wrapping
+  `:::version` blocks in Marquee. The editor is the merge tool. This text is **synthesized at
+  read time, never written** — resolution is the user tidying it and saving, which lists all DAG
+  heads as parents and heals the fork through the ordinary write. Properties that make it safe:
+  there are no invalid states (saving half-resolved markers just means the document visibly still
+  contains a tangle — lossless, resolvable later; markers are never parsed back, so text *about*
+  conflict syntax can't confuse anything), Marquee's unknown-vocabulary shrug means a client
+  that's never heard of `:::conflict` renders both texts in full (the degraded conflict is still
+  a lossless conflict), and the one named client obligation is that **synthesized text starts
+  clean, not dirty** — autosave must never commit the tangle the user hasn't touched. Three-plus
+  heads fold pairwise in deterministic order; a GC'd fork point degrades to the whole-document
+  conflict ("both versions in full"). This resolves the merge-UX open question: "diverged on two
+  devices" looks like your document, with both texts inline under gentle labels.
 - **Clients check the head before saving**: if it moved, rebase (fast-forward the editor onto the
   new head) or fork knowingly — never blind-save. The stale tab becomes a detected sibling, not
   a destroyer.
@@ -203,8 +217,10 @@ the feature waits).
 
 ## Open questions
 
-- [ ] Merge UX: what does "diverged on two devices" look like in cozy language?
 - [ ] Retention default: keep-last-N versions — what's N, and is it user-visible?
+- [ ] The `:::conflict` / `:::version` vocabulary: Ringtome host vocabulary, or upstream into
+  Marquee's spec as general versioning vocabulary any embedder can use? (Merge UX itself is
+  resolved — conflicts present in-document; see The sync model.)
 - [ ] Header encoding: reuse the private-register's string value (hex-encoded `file_hash`/`parent`)
   or a dedicated CBOR `NoteHeader` payload with binary fields and its own AAD? Leaning dedicated,
   since byte-level file encryption already exists for bodies. (Chunking is no longer a question -
