@@ -126,6 +126,43 @@ describe("versioned documents (notes)", function () {
         assert.ok(detail.body.includes("*blue*") && detail.body.includes("*green*"));
     });
 
+    it("stashes and serves a binary (webp) document body byte-for-byte", async function () {
+        const user = await makeUserFetch({ prefix: "docsimg" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        // A tiny fake webp: RIFF....WEBP + non-utf8 bytes, so a text path would corrupt it.
+        const webp = Buffer.concat([
+            Buffer.from("RIFF"),
+            Buffer.from([0x1a, 0x00, 0x00, 0x00]),
+            Buffer.from("WEBP"),
+            Buffer.from([0xff, 0xfe, 0x00, 0x80, 0x7f, 0x01]),
+        ]);
+
+        const created2 = await (
+            await user("api/identity/" + root + "/docs/binary?title=sunset&format=webp", {
+                method: "POST",
+                body: webp,
+                file: true,
+            })
+        ).json();
+        assert.ok(created2.doc_id, "the image became a document");
+
+        // The list reports it as a webp document.
+        const list = await listDocs(user, root);
+        assert.equal(list.docs[0].format, "webp");
+
+        // Fetch the body: exact bytes, image/webp content-type.
+        const res = await user(`api/identity/${root}/docs/${created2.doc_id}/body`);
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get("content-type"), "image/webp");
+        // Isolation: even a private body may be a hostile polyglot from a compromised member.
+        assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+        assert.equal(res.headers.get("content-security-policy"), "sandbox");
+        const back = Buffer.from(await res.arrayBuffer());
+        assert.ok(back.equals(webp), "the image comes back byte-for-byte");
+    });
+
     it("stores neither titles nor bodies as plaintext in the entry log", async function () {
         const user = await makeUserFetch({ prefix: "docscipher" });
         const created = await (await user("api/identity", { method: "POST" })).json();
@@ -203,5 +240,53 @@ describe("versioned documents (notes)", function () {
         const after = await getDoc(aliceOnB, root, doc.doc_id);
         assert.equal(after.diverged, false, "the save was a fast-forward");
         assert.equal(after.heads[0].body, "pack the good hat, and the spare");
+    });
+
+    it("syncs a webp document body across nodes byte-for-byte", async function () {
+        // --- Act 1: identity on A, one image stashed before B exists.
+        const alice = await makeUserFetch({ prefix: "imgtwo" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const webp = Buffer.concat([
+            Buffer.from("RIFF"),
+            Buffer.from([0x1a, 0x00, 0x00, 0x00]),
+            Buffer.from("WEBP"),
+            Buffer.from([0xff, 0xfe, 0x00, 0x80, 0x7f, 0x2a]),
+        ]);
+        const doc = await (
+            await alice("api/identity/" + root + "/docs/binary?title=holiday&format=webp", {
+                method: "POST",
+                body: webp,
+                file: true,
+            })
+        ).json();
+
+        // --- Act 2: adopt node B. The doc-header crosses on the (member-proven) documents chain;
+        // the encrypted blob crosses over iroh-blobs in the post-sync body fetch.
+        const aliceOnB = await makeUserFetch({ prefix: "imgtwob", host: HOST_B });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        // --- B fetches the image and gets the exact bytes it never held before.
+        const listOnB = await listDocs(aliceOnB, root);
+        assert.equal(listOnB.docs[0].format, "webp", "B sees it as an image document");
+        const res = await aliceOnB(`api/identity/${root}/docs/${doc.doc_id}/body`);
+        assert.equal(res.status, 200, "the blob crossed the wire to B");
+        assert.equal(res.headers.get("content-type"), "image/webp");
+        assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+        const back = Buffer.from(await res.arrayBuffer());
+        assert.ok(back.equals(webp), "B decrypts the image to the exact original bytes");
     });
 });

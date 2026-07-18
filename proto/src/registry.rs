@@ -85,6 +85,14 @@ pub mod entry_type {
 pub mod doc_format {
     /// Marquee markup.
     pub const MARQUEE: u64 = 1;
+    /// A WebP image. The first *media* format: opaque bytes, not mergeable text. Media validation
+    /// (Media-Type Admission Test) splits by threat: *scanning* and stranger-liability are
+    /// public-only, but **sandboxed decoding and don't-trust-the-declared-type apply to private
+    /// media too** - a compromised-not-yet-revoked member is an adversary inside the membrane, so
+    /// the render path treats even "our own" bytes as hostile (Doctrine: Every Byte From The
+    /// Network Is Hostile). EXIF stripping is a publication-boundary concern (don't leak GPS
+    /// outward), not a private-ingest one.
+    pub const WEBP: u64 = 2;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key

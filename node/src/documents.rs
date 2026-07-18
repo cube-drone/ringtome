@@ -21,11 +21,15 @@ use crate::files::FileStore;
 use crate::private::{decrypt_doc_header, encrypt_doc_header, EpochKeys};
 
 /// A document's body format. Plaintext is the default (absent on the wire); the enum grows
-/// additively. Governs how conflicts are *presented* - the one place the formats now diverge.
+/// additively. Governs how the body is rendered and, for the text formats, merged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Plaintext,
     Marquee,
+    /// A WebP image - the first *media* format. Opaque bytes: no line-merge, no inline conflict,
+    /// served natively. (Text is the only substrate with multiple mergeable grammars; a media
+    /// type is self-describing - it IS its format.)
+    Webp,
 }
 
 impl Format {
@@ -34,6 +38,7 @@ impl Format {
     pub fn from_wire(w: Option<u64>) -> Self {
         match w {
             Some(doc_format::MARQUEE) => Format::Marquee,
+            Some(doc_format::WEBP) => Format::Webp,
             _ => Format::Plaintext,
         }
     }
@@ -42,6 +47,7 @@ impl Format {
         match self {
             Format::Plaintext => None,
             Format::Marquee => Some(doc_format::MARQUEE),
+            Format::Webp => Some(doc_format::WEBP),
         }
     }
 
@@ -49,6 +55,7 @@ impl Format {
         match self {
             Format::Plaintext => "plaintext",
             Format::Marquee => "marquee",
+            Format::Webp => "webp",
         }
     }
 
@@ -56,7 +63,23 @@ impl Format {
         match s {
             "plaintext" => Some(Format::Plaintext),
             "marquee" => Some(Format::Marquee),
+            "webp" => Some(Format::Webp),
             _ => None,
+        }
+    }
+
+    /// Text formats merge line-wise and present conflicts inline; media formats are opaque
+    /// (keep-both on divergence, served as bytes). This is the behavioral fork.
+    pub fn is_mergeable_text(self) -> bool {
+        matches!(self, Format::Plaintext | Format::Marquee)
+    }
+
+    /// The Content-Type for serving this body as bytes.
+    pub fn mime(self) -> &'static str {
+        match self {
+            Format::Plaintext => "text/plain; charset=utf-8",
+            Format::Marquee => "text/plain; charset=utf-8",
+            Format::Webp => "image/webp",
         }
     }
 }
@@ -208,7 +231,7 @@ impl Doc {
 
 /// The materialized notes view: every document this identity's chains hold, keyed by doc_id.
 #[derive(Debug, Default)]
-pub struct NotesView {
+pub struct DocumentsView {
     pub docs: BTreeMap<[u8; 16], Doc>,
     /// Headers we hold but cannot decrypt (wrong era for this device) - surfaced, not hidden.
     pub undecryptable: usize,
@@ -312,11 +335,11 @@ pub fn new_doc_id() -> [u8; 16] {
 
 /// Fold every stored doc-header we can decrypt into per-document DAGs. Recomputed per read,
 /// same disposable-view discipline as the private store.
-pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<NotesView, AppError> {
+pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
     let entries =
         crate::imaol::entries_of_type(db, service::DOCUMENTS_PRIVATE, entry_type::DOC_HEADER).await?;
 
-    let mut view = NotesView::default();
+    let mut view = DocumentsView::default();
     for signed in entries {
         let Payload::Inline(payload) = &signed.entry().payload else {
             continue;
@@ -440,9 +463,11 @@ fn side_label(v: &Version) -> String {
 
 /// Present a conflict as *whole* alternatives - the shape used when three-way merge can't run
 /// (no usable fork point, or more than two heads), and the *only* shape for Marquee (which gets
-/// real vocabulary rather than markers). Degraded relative to per-hunk, still lossless.
+/// real vocabulary rather than markers). Degraded relative to per-hunk, still lossless. Text
+/// only: `resolve` returns before this for media (which has no synthesized-text conflict).
 fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> String {
     match format {
+        Format::Webp => unreachable!("media conflicts are keep-both, never synthesized text"),
         // Git-style marker fences: every side in full.
         Format::Plaintext => {
             let mut out = String::new();
@@ -499,9 +524,25 @@ pub async fn resolve(
         .display_head()
         .map(|v| v.header.title.clone())
         .unwrap_or_default();
-    // The document's format governs conflict presentation (the one place plaintext and Marquee
-    // diverge). Read from the display head; a document's versions all carry the same format.
+    // The document's format governs presentation. Read from the display head; a document's
+    // versions all carry the same format.
     let format = Format::from_wire(doc.display_head().and_then(|v| v.header.format));
+
+    // Media bodies are opaque: no line-merge, no synthesized conflict text (you can't merge two
+    // images, or inline a webp into JSON). One logical head or keep-both; the bytes are served
+    // separately via the binary endpoint. Never run diffy/utf8 over binary.
+    if !format.is_mergeable_text() {
+        let resolution = if doc.logical_heads.len() > 1 {
+            Resolution::Conflict
+        } else {
+            Resolution::Single
+        };
+        return Ok(ResolvedDoc {
+            resolution,
+            title: display_title,
+            body: None,
+        });
+    }
 
     let [a, b] = match heads.as_slice() {
         [] => {
@@ -607,6 +648,7 @@ pub async fn resolve(
                     .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a)))
                     .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b))),
                 Format::Marquee => whole_version_conflict(format, &[(a, text_a), (b, text_b)]),
+                Format::Webp => unreachable!("media never reaches text merge"),
             }),
         }),
     }
@@ -1070,6 +1112,52 @@ mod tests {
         let body = resolve_doc(&db, &keys, &files, &doc_id).await.body.unwrap();
         assert!(body.contains("<<<<<<<"), "plaintext gets markers:\n{body}");
         assert!(!body.contains(":::conflict"), "and never marquee vocabulary");
+    }
+
+    /// The image case: a binary body round-trips as a document, byte-for-byte, and `resolve`
+    /// never touches the bytes (no utf8, no diffy). WebP magic + some non-utf8 bytes.
+    #[tokio::test]
+    async fn webp_body_round_trips_and_resolve_leaves_binary_alone() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        // RIFF....WEBP header + bytes that are deliberately not valid UTF-8 (0xFF, 0xFE).
+        let webp = [
+            b"RIFF".as_slice(),
+            &[0x1a, 0x00, 0x00, 0x00],
+            b"WEBP",
+            &[0xff, 0xfe, 0x00, 0x80, 0x7f],
+        ]
+        .concat();
+
+        let doc_id = new_doc_id();
+        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "sunset", &webp, Format::Webp).await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        let head = doc.display_head().unwrap();
+        assert_eq!(head.header.format, Some(2), "recorded as webp");
+
+        // Byte-identical round trip.
+        let got = read_body(&files, &keys, head).await.unwrap().unwrap();
+        assert_eq!(got, webp, "the image comes back exactly");
+
+        // resolve() must NOT mangle the binary: single head, no synthesized body.
+        let r = resolve(&files, &keys, doc).await.unwrap();
+        assert_eq!(r.resolution, Resolution::Single);
+        assert_eq!(r.body, None, "binary is served separately, not inlined");
+
+        // Diverge it: two different images from one parent. Keep-both, still no merge attempt.
+        let other = [b"RIFF\x1a\x00\x00\x00WEBP".as_slice(), &[0x01, 0x02, 0x03]].concat();
+        let _a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &other, Format::Webp).await;
+        let _b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &webp[..webp.len() - 1], Format::Webp).await;
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        let r = resolve(&files, &keys, doc).await.unwrap();
+        assert_eq!(r.resolution, Resolution::Conflict, "two images diverge -> keep both");
+        assert!(doc.diverged());
     }
 
     // -------------------------------------------------------------------------------------

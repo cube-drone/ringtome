@@ -4,7 +4,10 @@
 //! Everything under `/api/identity/{root}/...` is owner-gated for M1: the session's account must
 //! own the identity. (Public serving of profiles is an M3/M4 concern, arriving with sync.)
 
-use axum::extract::{Path, State};
+use axum::body::Bytes;
+use axum::extract::{Path, Query, State};
+use axum::http::header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
+use axum::response::IntoResponse;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -64,6 +67,20 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/identity/{root}/docs/{doc_id}",
             get(docs_get_handler).put(docs_save_handler),
+        )
+        // Binary document bodies (images, etc.): metadata rides the query string, raw bytes ride
+        // the request/response body - a webp can't live in a JSON string.
+        .route(
+            "/api/identity/{root}/docs/binary",
+            post(docs_create_binary_handler),
+        )
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/binary",
+            put(docs_save_binary_handler),
+        )
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/body",
+            get(docs_body_handler),
         )
 }
 
@@ -513,10 +530,10 @@ fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
 }
 
 /// Parse the wire `format` string ("plaintext" | "marquee"), defaulting to plaintext when absent.
-fn parse_format(s: &Option<String>) -> Result<crate::notes::Format, AppError> {
+fn parse_format(s: &Option<String>) -> Result<crate::documents::Format, AppError> {
     match s {
-        None => Ok(crate::notes::Format::Plaintext),
-        Some(s) => crate::notes::Format::parse(s)
+        None => Ok(crate::documents::Format::Plaintext),
+        Some(s) => crate::documents::Format::parse(s)
             .ok_or_else(|| AppError::BadRequest(format!("unknown format {s:?} (plaintext | marquee)"))),
     }
 }
@@ -586,7 +603,7 @@ async fn docs_save_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let version = data
         .documents()
-        .save(crate::notes::Save {
+        .save(crate::documents::Save {
             doc_id,
             parents,
             title: req.title,
@@ -597,6 +614,122 @@ async fn docs_save_handler(
     Ok(Json(DocSaved {
         version: hex::encode(version),
     }))
+}
+
+// --- binary bodies (images) ---------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct BinaryMeta {
+    title: String,
+    format: String,
+    /// Comma-separated parent version hashes (empty for a create).
+    #[serde(default)]
+    parents: String,
+}
+
+fn parse_parents(csv: &str) -> Result<Vec<[u8; 32]>, AppError> {
+    csv.split(',')
+        .filter(|s| !s.is_empty())
+        .map(|p| hex_fixed::<32>(p.trim(), "parent version hash"))
+        .collect()
+}
+
+/// Create a binary document (e.g. an image): metadata in the query, raw bytes in the body.
+async fn docs_create_binary_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Query(meta): Query<BinaryMeta>,
+    body: Bytes,
+) -> Result<Json<DocCreated>, AppError> {
+    let format = crate::documents::Format::parse(&meta.format)
+        .ok_or_else(|| AppError::BadRequest(format!("unknown format {:?}", meta.format)))?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let doc_id = crate::documents::new_doc_id();
+    let version = data
+        .documents()
+        .save(crate::documents::Save {
+            doc_id,
+            parents: vec![],
+            title: meta.title,
+            body: body.to_vec(),
+            format,
+        })
+        .await?;
+    Ok(Json(DocCreated {
+        doc_id: hex::encode(doc_id),
+        version: hex::encode(version),
+    }))
+}
+
+/// Save a new binary version.
+async fn docs_save_binary_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+    Query(meta): Query<BinaryMeta>,
+    body: Bytes,
+) -> Result<Json<DocSaved>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let format = crate::documents::Format::parse(&meta.format)
+        .ok_or_else(|| AppError::BadRequest(format!("unknown format {:?}", meta.format)))?;
+    let parents = parse_parents(&meta.parents)?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let version = data
+        .documents()
+        .save(crate::documents::Save {
+            doc_id,
+            parents,
+            title: meta.title,
+            body: body.to_vec(),
+            format,
+        })
+        .await?;
+    Ok(Json(DocSaved {
+        version: hex::encode(version),
+    }))
+}
+
+/// Serve a document body as raw bytes (the display head), with the format's Content-Type. This
+/// is how a browser fetches an image; for text docs it returns the head's bytes too. A body not
+/// yet fetched to this node is a 404.
+///
+/// **Isolation, because even a private body may be hostile.** A compromised-not-yet-revoked
+/// member can inject a polyglot claiming `format=webp`; served same-origin and content-sniffed,
+/// an HTML polyglot could execute in the app origin - which holds signing authority. `nosniff`
+/// pins the declared type; `sandbox` gives an opaque origin if the response is ever navigated to.
+/// (The fuller measure - a separate serving origin/port and `Content-Disposition` for
+/// non-renderable types - is PROJECT_PLAN's blob-serving target, due with the render path and
+/// public media.)
+async fn docs_body_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let view = data.documents().all().await?;
+    let doc = view
+        .docs
+        .get(&doc_id)
+        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+    let head = doc
+        .display_head()
+        .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
+    let format = crate::documents::Format::from_wire(head.header.format);
+    let bytes = data
+        .documents()
+        .body(head)
+        .await?
+        .ok_or_else(|| AppError::NotFound("body not on this node yet".into()))?;
+    Ok((
+        [
+            (CONTENT_TYPE, format.mime()),
+            (X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (CONTENT_SECURITY_POLICY, "sandbox"),
+        ],
+        bytes,
+    ))
 }
 
 #[derive(Serialize)]
@@ -635,7 +768,7 @@ async fn docs_list_handler(
                 doc_id: hex::encode(id),
                 title: head.header.title.clone(),
                 head: hex::encode(head.hash),
-                format: crate::notes::Format::from_wire(head.header.format).as_str(),
+                format: crate::documents::Format::from_wire(head.header.format).as_str(),
                 heads: doc.logical_heads.len(),
                 diverged: doc.diverged(),
                 updated_ms: head.timestamp_ms,
@@ -718,7 +851,7 @@ async fn docs_get_handler(
     let resolved = data.documents().resolved(doc).await?;
     let format = doc
         .display_head()
-        .map(|v| crate::notes::Format::from_wire(v.header.format).as_str())
+        .map(|v| crate::documents::Format::from_wire(v.header.format).as_str())
         .unwrap_or("plaintext");
     Ok(Json(DocDetail {
         doc_id: hex::encode(doc_id),
@@ -727,9 +860,9 @@ async fn docs_get_handler(
         title: resolved.title,
         body: resolved.body,
         resolution: match resolved.resolution {
-            crate::notes::Resolution::Single => "single",
-            crate::notes::Resolution::Merged => "merged",
-            crate::notes::Resolution::Conflict => "conflict",
+            crate::documents::Resolution::Single => "single",
+            crate::documents::Resolution::Merged => "merged",
+            crate::documents::Resolution::Conflict => "conflict",
         },
         heads,
         save_parents,

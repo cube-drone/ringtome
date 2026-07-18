@@ -24,7 +24,7 @@ mod imaol;
 mod inspect;
 mod keystore;
 mod loops;
-mod notes;
+mod documents;
 mod p2p;
 mod private;
 mod pubkey;

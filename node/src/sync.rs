@@ -38,7 +38,7 @@ pub struct ExchangeStats {
     pub rejected: u64,
     pub sent: u64,
     /// Document bodies fetched from this peer after the entry exchange (headers ride sync;
-    /// bodies ride iroh-blobs - see `notes::fetch_missing_bodies`).
+    /// bodies ride iroh-blobs - see `documents::fetch_missing_bodies`).
     pub bodies_fetched: u64,
 }
 
@@ -460,7 +460,7 @@ pub async fn sync_with_peer(
     conn.closed().await; // responder closes once it has ingested our stream
 
     // Entries landed; now the bodies they reference. Best-effort, never fails the exchange.
-    let bodies_fetched = crate::notes::fetch_missing_bodies(state, root_hex, addr).await;
+    let bodies_fetched = crate::documents::fetch_missing_bodies(state, root_hex, addr).await;
 
     Ok(ExchangeStats {
         received,

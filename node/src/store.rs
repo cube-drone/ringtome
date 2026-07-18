@@ -280,11 +280,11 @@ impl Documents<'_> {
         &self,
         title: &str,
         body: &[u8],
-        format: crate::notes::Format,
+        format: crate::documents::Format,
     ) -> Result<([u8; 16], [u8; 32]), AppError> {
-        let doc_id = crate::notes::new_doc_id();
+        let doc_id = crate::documents::new_doc_id();
         let version = self
-            .save(crate::notes::Save {
+            .save(crate::documents::Save {
                 doc_id,
                 parents: vec![],
                 title: title.to_string(),
@@ -296,8 +296,8 @@ impl Documents<'_> {
     }
 
     /// Save one version (the client asserts its parents). Returns the new version's hash.
-    pub async fn save(&self, save: crate::notes::Save) -> Result<[u8; 32], AppError> {
-        crate::notes::save_version(
+    pub async fn save(&self, save: crate::documents::Save) -> Result<[u8; 32], AppError> {
+        crate::documents::save_version(
             &self.store.db,
             &self.store.authorship.signer,
             &self.store.authorship.epoch_keys,
@@ -308,14 +308,14 @@ impl Documents<'_> {
     }
 
     /// The materialized view: every document, its version DAG, heads, and divergence state.
-    pub async fn all(&self) -> Result<crate::notes::NotesView, AppError> {
-        crate::notes::materialize(&self.store.db, &self.store.authorship.epoch_keys).await
+    pub async fn all(&self) -> Result<crate::documents::DocumentsView, AppError> {
+        crate::documents::materialize(&self.store.db, &self.store.authorship.epoch_keys).await
     }
 
     /// Read and decrypt one version's body. `Ok(None)` when we hold no key for its era or the
     /// body hasn't been fetched to this node yet.
-    pub async fn body(&self, version: &crate::notes::Version) -> Result<Option<Vec<u8>>, AppError> {
-        crate::notes::read_body(
+    pub async fn body(&self, version: &crate::documents::Version) -> Result<Option<Vec<u8>>, AppError> {
+        crate::documents::read_body(
             &self.store.files,
             &self.store.authorship.epoch_keys,
             version,
@@ -327,9 +327,9 @@ impl Documents<'_> {
     /// merge, or the conflict presented inline (NOTES_APP, The sync model).
     pub async fn resolved(
         &self,
-        doc: &crate::notes::Doc,
-    ) -> Result<crate::notes::ResolvedDoc, AppError> {
-        crate::notes::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc).await
+        doc: &crate::documents::Doc,
+    ) -> Result<crate::documents::ResolvedDoc, AppError> {
+        crate::documents::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc).await
     }
 }
 
