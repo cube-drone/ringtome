@@ -16,7 +16,7 @@ dns.setDefaultResultOrder("ipv4first");
 const { HOST_B } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
-const PRIVATE_SERVICE = 5;
+const GENERAL_PRIVATE_SERVICE = 5;
 
 async function putKv(fetch, root, collection, key, value) {
     return fetch(`api/identity/${root}/private/kv/${collection}/${key}`, {
@@ -53,7 +53,7 @@ describe("private chains: the encrypted KV + set store", function () {
         // The one that matters: the plaintext never touches the stored log. Every private
         // record is ciphertext under the epoch key.
         const entries = await (await user(`api/identity/${root}/entries`)).json();
-        const privateEntries = entries.filter((e) => e.service === PRIVATE_SERVICE);
+        const privateEntries = entries.filter((e) => e.service === GENERAL_PRIVATE_SERVICE);
         assert.ok(privateEntries.length >= 2, "private records landed on the private chain");
         const plaintextHex = Buffer.from(secretValue, "utf8").toString("hex");
         for (const e of entries) {
@@ -171,9 +171,9 @@ describe("private chains: the encrypted KV + set store", function () {
 
             // Stronger than "can't decrypt": the post-rotation ciphertext never even reached B.
             const entriesB = await (await aliceOnB(`api/identity/${root}/entries`)).json();
-            const privateOnB = entriesB.filter((e) => e.service === PRIVATE_SERVICE);
+            const privateOnB = entriesB.filter((e) => e.service === GENERAL_PRIVATE_SERVICE);
             const privateOnA = (await (await alice(`api/identity/${root}/entries`)).json())
-                .filter((e) => e.service === PRIVATE_SERVICE);
+                .filter((e) => e.service === GENERAL_PRIVATE_SERVICE);
             assert.equal(
                 privateOnB.length,
                 privateOnA.length - 1,

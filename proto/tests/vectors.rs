@@ -119,7 +119,7 @@ fn build_vectors() -> VectorFile {
     let e0 = make(
         "profile-set genesis (ascii)",
         entry_type::PROFILE_SET,
-        service::PROFILE,
+        service::PROFILE_PUBLIC,
         0,
         ZERO_HASH,
         1_700_000_000_000,
@@ -136,7 +136,7 @@ fn build_vectors() -> VectorFile {
     let _e1 = make(
         "profile-set chained (unicode nfc)",
         entry_type::PROFILE_SET,
-        service::PROFILE,
+        service::PROFILE_PUBLIC,
         1,
         *e0.hash(),
         1_700_000_060_000,
@@ -263,7 +263,7 @@ fn build_vectors() -> VectorFile {
     let _v0 = make(
         "private-record genesis (format only)",
         entry_type::PRIVATE_RECORD,
-        service::PRIVATE,
+        service::GENERAL_PRIVATE,
         0,
         ZERO_HASH,
         1_700_000_420_000,

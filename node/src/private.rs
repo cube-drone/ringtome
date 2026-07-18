@@ -468,7 +468,7 @@ pub async fn write_record(
     crate::imaol::append(
         db,
         signer,
-        service::PRIVATE,
+        service::GENERAL_PRIVATE,
         entry_type::PRIVATE_RECORD,
         Payload::Inline(payload),
     )
@@ -562,7 +562,7 @@ impl PrivateView {
 /// persistence dial at zero.
 pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<PrivateView, AppError> {
     let records =
-        crate::imaol::entries_of_type(db, service::PRIVATE, entry_type::PRIVATE_RECORD).await?;
+        crate::imaol::entries_of_type(db, service::GENERAL_PRIVATE, entry_type::PRIVATE_RECORD).await?;
 
     let mut view = PrivateView::default();
     for signed in records {

@@ -59,7 +59,7 @@ mod tests {
             entry_type: entry_type::PROFILE_SET,
             chain: ChainId {
                 author: k.verifying_key().to_bytes(),
-                service: service::PROFILE,
+                service: service::PROFILE_PUBLIC,
             },
             seq,
             prev_hash,

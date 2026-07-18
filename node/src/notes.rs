@@ -12,13 +12,54 @@
 use std::collections::{BTreeMap, HashSet};
 
 use anyhow::anyhow;
-use ringtome_proto::registry::{entry_type, service};
+use ringtome_proto::registry::{doc_format, entry_type, service};
 use ringtome_proto::{DocHeaderPlain, Payload, PrivateRecord, SigningKey};
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::files::FileStore;
 use crate::private::{decrypt_doc_header, encrypt_doc_header, EpochKeys};
+
+/// A document's body format. Plaintext is the default (absent on the wire); the enum grows
+/// additively. Governs how conflicts are *presented* - the one place the formats now diverge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    Plaintext,
+    Marquee,
+}
+
+impl Format {
+    /// From the header's raw `format` field. Absent = plaintext; an unknown id degrades to
+    /// plaintext (safe: the source is shown, never mis-rendered as a format we don't have).
+    pub fn from_wire(w: Option<u64>) -> Self {
+        match w {
+            Some(doc_format::MARQUEE) => Format::Marquee,
+            _ => Format::Plaintext,
+        }
+    }
+
+    pub fn to_wire(self) -> Option<u64> {
+        match self {
+            Format::Plaintext => None,
+            Format::Marquee => Some(doc_format::MARQUEE),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Format::Plaintext => "plaintext",
+            Format::Marquee => "marquee",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "plaintext" => Some(Format::Plaintext),
+            "marquee" => Some(Format::Marquee),
+            _ => None,
+        }
+    }
+}
 
 /// One decrypted version of a document, as materialized.
 #[derive(Debug, Clone)]
@@ -182,6 +223,10 @@ pub struct Save {
     pub parents: Vec<[u8; 32]>,
     pub title: String,
     pub body: Vec<u8>,
+    /// A document's format is set at creation and carried, unchanged, on every save (a silent
+    /// plaintext→marquee reinterpretation would sprout bullets from a `*`; conversion is a
+    /// future explicit act). The client asserts it, like `parents`.
+    pub format: Format,
 }
 
 /// Save one version of a document: body into the file layer, header onto the notes chain.
@@ -240,7 +285,7 @@ pub async fn save_version(
         file_hash,
         body_hash,
         title: save.title,
-        format: None,
+        format: save.format.to_wire(),
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -249,7 +294,7 @@ pub async fn save_version(
     let signed = crate::imaol::append(
         db,
         signer,
-        service::NOTES,
+        service::DOCUMENTS_PRIVATE,
         entry_type::DOC_HEADER,
         Payload::Inline(payload),
     )
@@ -269,7 +314,7 @@ pub fn new_doc_id() -> [u8; 16] {
 /// same disposable-view discipline as the private store.
 pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<NotesView, AppError> {
     let entries =
-        crate::imaol::entries_of_type(db, service::NOTES, entry_type::DOC_HEADER).await?;
+        crate::imaol::entries_of_type(db, service::DOCUMENTS_PRIVATE, entry_type::DOC_HEADER).await?;
 
     let mut view = NotesView::default();
     for signed in entries {
@@ -393,19 +438,45 @@ fn side_label(v: &Version) -> String {
     format!("device {} at {}", hex::encode(&v.author[..4]), v.timestamp_ms)
 }
 
-fn whole_doc_conflict(sides: &[(&Version, String)]) -> String {
-    // Every side in full - the fallback when three-way merge can't run (no usable fork point,
-    // or more than two heads). Degraded, still lossless.
-    let mut out = String::new();
-    for (i, (v, body)) in sides.iter().enumerate() {
-        out.push_str(&format!("<<<<<<< {}\n", side_label(v)));
-        out.push_str(body);
-        if !body.ends_with('\n') {
-            out.push('\n');
+/// Present a conflict as *whole* alternatives - the shape used when three-way merge can't run
+/// (no usable fork point, or more than two heads), and the *only* shape for Marquee (which gets
+/// real vocabulary rather than markers). Degraded relative to per-hunk, still lossless.
+fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> String {
+    match format {
+        // Git-style marker fences: every side in full.
+        Format::Plaintext => {
+            let mut out = String::new();
+            for (i, (v, body)) in sides.iter().enumerate() {
+                out.push_str(&format!("<<<<<<< {}\n", side_label(v)));
+                out.push_str(body);
+                if !body.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str(if i + 1 == sides.len() { ">>>>>>>\n" } else { "=======\n" });
+            }
+            out
         }
-        out.push_str(if i + 1 == sides.len() { ">>>>>>>\n" } else { "=======\n" });
+        // Marquee vocabulary: a `:::conflict` wrapping one `:::version` per side. An unknowing
+        // renderer shrugs and shows every version's children in full - the degraded conflict is
+        // still a lossless conflict (REQUEST_conflict_vocabulary.md, over in marquee).
+        Format::Marquee => {
+            let mut out = String::from(":::conflict\n");
+            for (v, body) in sides {
+                out.push_str(&format!(
+                    ":::version label=\"{}\" when={}\n",
+                    side_label(v),
+                    v.timestamp_ms
+                ));
+                out.push_str(body);
+                if !body.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str("::: version\n");
+            }
+            out.push_str("::: conflict\n");
+            out
+        }
     }
-    out
 }
 
 /// Synthesize the document's current text from its logical heads. Deterministic over chain
@@ -428,6 +499,9 @@ pub async fn resolve(
         .display_head()
         .map(|v| v.header.title.clone())
         .unwrap_or_default();
+    // The document's format governs conflict presentation (the one place plaintext and Marquee
+    // diverge). Read from the display head; a document's versions all carry the same format.
+    let format = Format::from_wire(doc.display_head().and_then(|v| v.header.format));
 
     let [a, b] = match heads.as_slice() {
         [] => {
@@ -463,7 +537,7 @@ pub async fn resolve(
             return Ok(ResolvedDoc {
                 resolution: Resolution::Conflict,
                 title: display_title,
-                body: Some(whole_doc_conflict(&sides)),
+                body: Some(whole_version_conflict(format, &sides)),
             });
         }
     };
@@ -496,7 +570,7 @@ pub async fn resolve(
         return Ok(ResolvedDoc {
             resolution: Resolution::Conflict,
             title: display_title,
-            body: Some(whole_doc_conflict(&[(a, text_a), (b, text_b)])),
+            body: Some(whole_version_conflict(format, &[(a, text_a), (b, text_b)])),
         });
     };
 
@@ -515,8 +589,10 @@ pub async fn resolve(
         _ => display_title,
     };
 
-    // Rung 4: three-way line merge. Clean = every line from both sides present, nobody asked
-    // anything. Overlap = the conflict rides inline, labeled per device.
+    // Rung 4: three-way line merge, which is format-agnostic (Marquee source is still lines).
+    // Clean = every line from both sides present, nobody asked anything. Overlap presents the
+    // conflict - inline per-hunk markers for plaintext, whole-version `:::conflict` vocabulary
+    // for Marquee (its markers-are-vocabulary is the whole reason we split the formats).
     match diffy::merge(&base, &text_a, &text_b) {
         Ok(merged) => Ok(ResolvedDoc {
             resolution: Resolution::Merged,
@@ -526,11 +602,12 @@ pub async fn resolve(
         Err(marked) => Ok(ResolvedDoc {
             resolution: Resolution::Conflict,
             title,
-            body: Some(
-                marked
+            body: Some(match format {
+                Format::Plaintext => marked
                     .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a)))
                     .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b))),
-            ),
+                Format::Marquee => whole_version_conflict(format, &[(a, text_a), (b, text_b)]),
+            }),
         }),
     }
 }
@@ -582,6 +659,36 @@ mod tests {
                 parents,
                 title: title.into(),
                 body: body.into(),
+                format: Format::Plaintext,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// Save helper that lets a test pick the format (for the Marquee conflict tests).
+    async fn save_fmt(
+        db: &SqlitePool,
+        key: &SigningKey,
+        keys: &EpochKeys,
+        files: &FileStore,
+        doc_id: [u8; 16],
+        parents: Vec<[u8; 32]>,
+        title: &str,
+        body: &[u8],
+        format: Format,
+    ) -> [u8; 32] {
+        save_version(
+            db,
+            key,
+            keys,
+            files,
+            Save {
+                doc_id,
+                parents,
+                title: title.into(),
+                body: body.into(),
+                format,
             },
         )
         .await
@@ -719,13 +826,13 @@ mod tests {
         assert!(
             !public
                 .iter()
-                .any(|f| f.service == ringtome_proto::registry::service::NOTES),
+                .any(|f| f.service == ringtome_proto::registry::service::DOCUMENTS_PRIVATE),
             "notes frontiers must not be offered to unproven peers"
         );
         let member = crate::sync::local_frontiers(&db, true).await.unwrap();
         assert!(member
             .iter()
-            .any(|f| f.service == ringtome_proto::registry::service::NOTES));
+            .any(|f| f.service == ringtome_proto::registry::service::DOCUMENTS_PRIVATE));
     }
 
     /// Rung 1: the same fix made on two devices before they synced. Two DAG heads, identical
@@ -919,6 +1026,50 @@ mod tests {
         for text in ["base one", "base two", "base three"] {
             assert!(body.contains(text), "{text} present:\n{body}");
         }
+    }
+
+    /// The reason the formats split: a Marquee document presents a conflict with `:::conflict`
+    /// vocabulary, not git markers - and both sides' words are inside, so the unknowing-renderer
+    /// shrug is still lossless.
+    #[tokio::test]
+    async fn marquee_conflicts_use_directive_vocabulary_not_markers() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let m = Format::Marquee;
+        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is *red*\n", m).await;
+        let _a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is *blue*\n", m).await;
+        let _b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is *green*\n", m).await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert!(body.contains(":::conflict"), "marquee vocabulary, not markers:\n{body}");
+        assert!(body.contains(":::version"), "one version block per side:\n{body}");
+        assert!(!body.contains("<<<<<<<"), "no git markers in a marquee doc:\n{body}");
+        assert!(body.contains("*blue*") && body.contains("*green*"), "both sides' words present");
+    }
+
+    /// The same divergence in a plaintext doc gets git markers, not directives - the split is
+    /// real and dispatched on `format`.
+    #[tokio::test]
+    async fn plaintext_conflicts_use_markers_not_directives() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is red\n").await;
+        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is blue\n").await;
+        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is green\n").await;
+
+        let body = resolve_doc(&db, &keys, &files, &doc_id).await.body.unwrap();
+        assert!(body.contains("<<<<<<<"), "plaintext gets markers:\n{body}");
+        assert!(!body.contains(":::conflict"), "and never marquee vocabulary");
     }
 
     // -------------------------------------------------------------------------------------

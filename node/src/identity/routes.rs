@@ -512,10 +512,20 @@ fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
         .ok_or_else(|| AppError::BadRequest(format!("bad {what} (expected {} hex chars)", N * 2)))
 }
 
+/// Parse the wire `format` string ("plaintext" | "marquee"), defaulting to plaintext when absent.
+fn parse_format(s: &Option<String>) -> Result<crate::notes::Format, AppError> {
+    match s {
+        None => Ok(crate::notes::Format::Plaintext),
+        Some(s) => crate::notes::Format::parse(s)
+            .ok_or_else(|| AppError::BadRequest(format!("unknown format {s:?} (plaintext | marquee)"))),
+    }
+}
+
 #[derive(Deserialize)]
 struct DocCreate {
     title: String,
     body: String,
+    format: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -531,8 +541,12 @@ async fn docs_create_handler(
     Path(root): Path<String>,
     Json(req): Json<DocCreate>,
 ) -> Result<Json<DocCreated>, AppError> {
+    let format = parse_format(&req.format)?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let (doc_id, version) = data.documents().create(&req.title, req.body.as_bytes()).await?;
+    let (doc_id, version) = data
+        .documents()
+        .create(&req.title, req.body.as_bytes(), format)
+        .await?;
     Ok(Json(DocCreated {
         doc_id: hex::encode(doc_id),
         version: hex::encode(version),
@@ -545,6 +559,8 @@ struct DocSave {
     body: String,
     /// The version hash(es) this save was edited from - the current head for an ordinary save.
     parents: Vec<String>,
+    /// The document's format, carried unchanged from create; defaults to plaintext.
+    format: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -561,6 +577,7 @@ async fn docs_save_handler(
     Json(req): Json<DocSave>,
 ) -> Result<Json<DocSaved>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let format = parse_format(&req.format)?;
     let parents = req
         .parents
         .iter()
@@ -574,6 +591,7 @@ async fn docs_save_handler(
             parents,
             title: req.title,
             body: req.body.into_bytes(),
+            format,
         })
         .await?;
     Ok(Json(DocSaved {
@@ -587,6 +605,8 @@ struct DocSummary {
     title: String,
     /// The default head's version hash - what an editor opens, and the parent of its next save.
     head: String,
+    /// "plaintext" | "marquee" - governs how a divergence is presented, and which renderer.
+    format: &'static str,
     heads: usize,
     diverged: bool,
     updated_ms: i64,
@@ -615,6 +635,7 @@ async fn docs_list_handler(
                 doc_id: hex::encode(id),
                 title: head.header.title.clone(),
                 head: hex::encode(head.hash),
+                format: crate::notes::Format::from_wire(head.header.format).as_str(),
                 heads: doc.logical_heads.len(),
                 diverged: doc.diverged(),
                 updated_ms: head.timestamp_ms,
@@ -641,6 +662,8 @@ struct DocHead {
 struct DocDetail {
     doc_id: String,
     diverged: bool,
+    /// "plaintext" | "marquee" - which renderer the client uses, and the shape of any conflict.
+    format: &'static str,
     /// The document's current title after field-wise resolution (a rename on one side wins).
     title: String,
     /// The synthesized current text - what an editor opens: one head verbatim ("single"), a
@@ -693,9 +716,14 @@ async fn docs_get_handler(
     save_parents.sort();
 
     let resolved = data.documents().resolved(doc).await?;
+    let format = doc
+        .display_head()
+        .map(|v| crate::notes::Format::from_wire(v.header.format).as_str())
+        .unwrap_or("plaintext");
     Ok(Json(DocDetail {
         doc_id: hex::encode(doc_id),
         diverged: doc.diverged(),
+        format,
         title: resolved.title,
         body: resolved.body,
         resolution: match resolved.resolution {

@@ -9,11 +9,11 @@
 //!
 //! | store                       | chain (service) | CRDT               | who receives it     | materialized       | sync      |
 //! |-----------------------------|-----------------|--------------------|---------------------|--------------------|-----------|
-//! | `profile()`                 | profile (2)     | LWW register       | everyone (public)   | `profile_view`     | full      |
-//! | `private_registers(c)`      | private (5)     | LWW register       | your own nodes only | in-memory, on read | full      |
-//! | `private_set(c)`            | private (5)     | LWW-element-set    | your own nodes only | in-memory, on read | full      |
+//! | `profile()`                 | profile-public (2) | LWW register       | everyone (public)   | `profile_view`     | full      |
+//! | `private_registers(c)`      | general-private (5)| LWW register       | your own nodes only | in-memory, on read | full      |
+//! | `private_set(c)`            | general-private (5)| LWW-element-set    | your own nodes only | in-memory, on read | full      |
 //! | `posts()`                   | posts (3)       | append-only log    | everyone (public)   | none (log is view) | suffix*   |
-//! | `documents()`               | notes (6)       | version DAG        | your own nodes only | in-memory, on read | full      |
+//! | `documents()`               | documents-private (6)| version DAG        | your own nodes only | in-memory, on read | full      |
 //!
 //! (*) Declared, not yet implemented: append-only chains are the suffix-sync candidates
 //! (PROJECT_PLAN, Shallow Sync), and `page()` already tolerates incomplete history, but the
@@ -138,7 +138,7 @@ impl Store {
         AppendLog { db: &self.db }
     }
 
-    /// Versioned documents (the notes app): headers on the notes chain, bodies in the file
+    /// Versioned documents (the notes app): headers on the documents-private chain, bodies in the file
     /// layer, divergence detected and kept - never LWW'd away.
     pub fn documents(&self) -> Documents<'_> {
         Documents { store: self }
@@ -276,7 +276,12 @@ pub struct Documents<'s> {
 
 impl Documents<'_> {
     /// Create a document: mint its id, save the genesis version. Returns (doc_id, version hash).
-    pub async fn create(&self, title: &str, body: &[u8]) -> Result<([u8; 16], [u8; 32]), AppError> {
+    pub async fn create(
+        &self,
+        title: &str,
+        body: &[u8],
+        format: crate::notes::Format,
+    ) -> Result<([u8; 16], [u8; 32]), AppError> {
         let doc_id = crate::notes::new_doc_id();
         let version = self
             .save(crate::notes::Save {
@@ -284,6 +289,7 @@ impl Documents<'_> {
                 parents: vec![],
                 title: title.to_string(),
                 body: body.to_vec(),
+                format,
             })
             .await?;
         Ok((doc_id, version))

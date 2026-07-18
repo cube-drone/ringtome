@@ -336,7 +336,7 @@ mod tests {
             entry_type: entry_type::PROFILE_SET,
             chain: ChainId {
                 author: key.verifying_key().to_bytes(),
-                service: service::PROFILE,
+                service: service::PROFILE_PUBLIC,
             },
             seq: 0,
             prev_hash: ZERO_HASH,

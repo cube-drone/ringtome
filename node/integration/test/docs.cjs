@@ -13,21 +13,21 @@ dns.setDefaultResultOrder("ipv4first");
 const { HOST_B } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
-const NOTES_SERVICE = 6;
+const DOCUMENTS_PRIVATE_SERVICE = 6;
 
-async function createDoc(fetch, root, title, body) {
+async function createDoc(fetch, root, title, body, format) {
     const res = await fetch(`api/identity/${root}/docs`, {
         method: "POST",
-        body: JSON.stringify({ title, body }),
+        body: JSON.stringify({ title, body, format }),
     });
     assert.equal(res.status, 200);
     return res.json();
 }
 
-async function saveDoc(fetch, root, docId, title, body, parents) {
+async function saveDoc(fetch, root, docId, title, body, parents, format) {
     const res = await fetch(`api/identity/${root}/docs/${docId}`, {
         method: "PUT",
-        body: JSON.stringify({ title, body, parents }),
+        body: JSON.stringify({ title, body, parents, format }),
     });
     assert.equal(res.status, 200);
     return res.json();
@@ -106,6 +106,26 @@ describe("versioned documents (notes)", function () {
         assert.ok(detail.body.includes("<<<<<<<"), "markers present");
     });
 
+    it("dispatches conflict format on the document's type", async function () {
+        const user = await makeUserFetch({ prefix: "docsfmt" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const doc = await createDoc(user, root, "page", "the hat is *red*", "marquee");
+        await saveDoc(user, root, doc.doc_id, "page", "the hat is *blue*", [doc.version], "marquee");
+        await saveDoc(user, root, doc.doc_id, "page", "the hat is *green*", [doc.version], "marquee");
+
+        const list = await listDocs(user, root);
+        assert.equal(list.docs[0].format, "marquee");
+
+        const detail = await getDoc(user, root, doc.doc_id);
+        assert.equal(detail.format, "marquee");
+        assert.equal(detail.resolution, "conflict");
+        assert.ok(detail.body.includes(":::conflict"), "marquee vocabulary, not markers");
+        assert.ok(!detail.body.includes("<<<<<<<"), "no git markers");
+        assert.ok(detail.body.includes("*blue*") && detail.body.includes("*green*"));
+    });
+
     it("stores neither titles nor bodies as plaintext in the entry log", async function () {
         const user = await makeUserFetch({ prefix: "docscipher" });
         const created = await (await user("api/identity", { method: "POST" })).json();
@@ -116,7 +136,7 @@ describe("versioned documents (notes)", function () {
         await createDoc(user, root, secretTitle, secretBody);
 
         const entries = await (await user(`api/identity/${root}/entries`)).json();
-        const noteEntries = entries.filter((e) => e.service === NOTES_SERVICE);
+        const noteEntries = entries.filter((e) => e.service === DOCUMENTS_PRIVATE_SERVICE);
         assert.ok(noteEntries.length >= 1, "the doc header landed on the notes chain");
 
         for (const secret of [secretTitle, secretBody]) {

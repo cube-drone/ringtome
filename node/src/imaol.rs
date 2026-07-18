@@ -125,7 +125,7 @@ pub async fn set_profile_field(
     let signed = append(
         db,
         key,
-        service::PROFILE,
+        service::PROFILE_PUBLIC,
         entry_type::PROFILE_SET,
         Payload::Inline(payload),
     )
@@ -241,7 +241,7 @@ pub async fn rebuild_views(db: &SqlitePool) -> Result<u64, AppError> {
         ringtome_proto::validate_next(prev_link, &signed)
             .map_err(|e| AppError::Internal(anyhow!("stored chain fails validation: {e}")))?;
 
-        if signed.entry().chain.service == service::PROFILE
+        if signed.entry().chain.service == service::PROFILE_PUBLIC
             && signed.entry().entry_type == entry_type::PROFILE_SET
         {
             apply_profile_set(db, &signed).await?;

@@ -96,10 +96,12 @@ behaviors on top:
   is nearly every moved-between-devices draft). v0 may ship detect-and-keep-both with no
   auto-merge at all; the requirement is never-lose, not always-merge.
 - **Conflicts are presented IN the document; there is no merge UI, ever.** When edits genuinely
-  overlap, the diverged document's displayed body is the merge output *with the conflict inline*:
-  git-style marker blocks for plaintext (with honest labels — "from your phone, yesterday 9pm";
-  chains are per-device, so attribution is free), a `:::conflict` directive wrapping
-  `:::version` blocks in Marquee. The editor is the merge tool. This text is **synthesized at
+  overlap, the diverged document's displayed body is the merge output *with the conflict inline*,
+  and the shape is **dispatched on the header's `format`** (the first behavior to actually differ
+  between formats): git-style marker blocks for plaintext (per-hunk, with honest labels — "from
+  your phone, yesterday 9pm"; chains are per-device, so attribution is free), a `:::conflict`
+  directive wrapping whole-`:::version` blocks in Marquee. Clean three-way merge is
+  format-agnostic (Marquee source is still lines); only the *conflict* presentation forks. The editor is the merge tool. This text is **synthesized at
   read time, never written** — resolution is the user tidying it and saving, which lists all DAG
   heads as parents and heals the fork through the ordinary write. Properties that make it safe:
   there are no invalid states (saving half-resolved markers just means the document visibly still

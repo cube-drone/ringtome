@@ -47,7 +47,9 @@ pub struct ExchangeStats {
 /// frontiers, even the count of chains (the *timing and volume* of private activity is itself
 /// private metadata; PROJECT_PLAN, Chains).
 fn is_private_service(svc: u32) -> bool {
-    svc == service::IDENTITY_PRIVATE || svc == service::PRIVATE || svc == service::NOTES
+    svc == service::IDENTITY_PRIVATE
+        || svc == service::GENERAL_PRIVATE
+        || svc == service::DOCUMENTS_PRIVATE
 }
 
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer
@@ -326,7 +328,7 @@ async fn store_entry(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
 
 /// Fold a freshly-admitted content entry into the materialized views.
 async fn apply_content_views(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
-    if e.entry().chain.service == service::PROFILE
+    if e.entry().chain.service == service::PROFILE_PUBLIC
         && e.entry().entry_type == entry_type::PROFILE_SET
     {
         crate::imaol::apply_profile_set(db, e)

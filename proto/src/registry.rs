@@ -7,28 +7,40 @@
 use crate::cbor::{Reader, Writer};
 use crate::error::ProtoError;
 
-/// Service ids: one chain per (key, service).
+/// Service ids: one chain per (key, service). Visibility is a per-chain property (a chain is
+/// entirely public or entirely member-only encrypted), so every service is named `AREA_PUBLIC`
+/// or `AREA_PRIVATE`. Ids are append-only and never repurposed; a public/private sibling is
+/// added with the next free id when a feature grows a second half - numeric adjacency is not
+/// required (the name carries the pairing).
 pub mod service {
     pub const IDENTITY_PUBLIC: u32 = 0;
     pub const IDENTITY_PRIVATE: u32 = 1;
-    pub const PROFILE: u32 = 2;
+    /// The public self-claim: name, bio (LWW register).
+    pub const PROFILE_PUBLIC: u32 = 2;
+    /// (Reserved for the public-document model that supersedes it; see PROJECT_PLAN.) Today an
+    /// append-only public log - not yet a live consumer.
     pub const POSTS: u32 = 3;
-    pub const PUBLIC_FOLLOWS: u32 = 4;
-    pub const PRIVATE: u32 = 5;
-    /// Versioned documents (the notes app first): encrypted doc-header entries whose bodies
-    /// live in the file layer. Its own chain so save cadence never interleaves with the
-    /// register/set traffic on `private`.
-    pub const NOTES: u32 = 6;
+    /// Serving-follows and vouch publications - the follows you advertise.
+    pub const FOLLOWS_PUBLIC: u32 = 4;
+    /// The **general** private store: small member-only LWW facts (contact names, quiet follows,
+    /// trust edges, settings), multiplexed by `collection`. Domain-less by design - features
+    /// scribble here until one earns its own chain (as documents did). "General" names its role;
+    /// the merge model (LWW) and access style (private) are properties, not its identity.
+    pub const GENERAL_PRIVATE: u32 = 5;
+    /// Private versioned documents (the notes app first): encrypted doc-header entries whose
+    /// bodies live in the file layer. Its own chain so save cadence never interleaves with the
+    /// small-fact traffic on `general-private`.
+    pub const DOCUMENTS_PRIVATE: u32 = 6;
 
     pub fn name(id: u32) -> &'static str {
         match id {
             IDENTITY_PUBLIC => "identity-public",
             IDENTITY_PRIVATE => "identity-private",
-            PROFILE => "profile",
+            PROFILE_PUBLIC => "profile-public",
             POSTS => "posts",
-            PUBLIC_FOLLOWS => "public-follows",
-            PRIVATE => "private",
-            NOTES => "notes",
+            FOLLOWS_PUBLIC => "follows-public",
+            GENERAL_PRIVATE => "general-private",
+            DOCUMENTS_PRIVATE => "documents-private",
             _ => "unknown-service",
         }
     }
@@ -64,6 +76,15 @@ pub mod entry_type {
             _ => "unknown-type",
         }
     }
+}
+
+/// Document body formats: the `format` field of a doc header. **Plaintext is the *absence* of a
+/// format** (the default, forever), so it has no id; other formats are a closed, additively-grown
+/// enum. The declared format is enforced by the renderer, never trusted (Allowlist Beats
+/// Blocklist): an unknown id degrades to plaintext (source shown, never mis-rendered).
+pub mod doc_format {
+    /// Marquee markup.
+    pub const MARQUEE: u64 = 1;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key
@@ -716,7 +737,7 @@ mod tests {
 
     #[test]
     fn registry_names_cover_known_ids() {
-        assert_eq!(service::name(service::PROFILE), "profile");
+        assert_eq!(service::name(service::PROFILE_PUBLIC), "profile-public");
         assert_eq!(entry_type::name(entry_type::PROFILE_SET), "profile-set");
         assert_eq!(service::name(999), "unknown-service");
     }
@@ -763,7 +784,7 @@ mod tests {
                         head_hash: [0xaa; 32],
                     },
                     Anchor {
-                        service: service::PROFILE,
+                        service: service::PROFILE_PUBLIC,
                         seq: 17,
                         head_hash: [0xbb; 32],
                     },

@@ -46,7 +46,7 @@ are ever allowed to meet, and in what costume.
   per-service signed hash chains.
 - **entry** — the atomic unit of signed history. On the wire: an **envelope** `[body, sig]`; the
   signature covers `domain-tag || body-bytes`, so verification slices and never re-encodes.
-- **chain** — one key's entries for one **service** (identity-public = 0, profile = 2, posts = 3,
+- **chain** — one key's entries for one **service** (identity-public = 0, profile-public = 2, documents-private = 6,
   …), dense sequence numbers (**seq**), each entry's **prev_hash** pinning its predecessor's
   exact bytes.
 - **entry hash** — BLAKE3-256 of the envelope bytes; the entry's name; what chains link and
