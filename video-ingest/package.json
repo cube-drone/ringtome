@@ -1,0 +1,15 @@
+{
+  "name": "video-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Proof-of-concept: normalize arbitrary user video into a server-safe intermediary (AV1-in-WebM or 320p APNG + Opus) entirely in the browser.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "test": "node test/run.js",
+    "demo": "node test/serve-demo.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

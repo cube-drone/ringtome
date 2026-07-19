@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>video-ingest demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      h1 { font-size: 1.4rem; }
+      #meta {
+        white-space: pre-wrap;
+        background: #f4f4f4;
+        padding: 1rem;
+        border-radius: 6px;
+        min-height: 3rem;
+      }
+      .row { margin: 1rem 0; }
+      label { font-weight: 600; }
+      a.dl { display: inline-block; margin-right: 1rem; }
+      .preview { max-width: 320px; border: 1px solid #ccc; margin-top: .5rem; }
+      button { padding: .4rem .8rem; }
+    </style>
+  </head>
+  <body>
+    <h1>video-ingest demo</h1>
+    <p>
+      Pick a video. The library normalizes it into a server-safe intermediary
+      chosen by browser capability:
+    </p>
+    <ul>
+      <li><b>av1 lane</b> — AV1-in-WebM (compact; server re-decodes with rav1d).</li>
+      <li><b>frames lane</b> — 320p APNG + separate Opus audio (universal fallback).</li>
+    </ul>
+    <p><b>Serve this over http/https</b> (not file://) so WebCodecs is available.
+      From the project root: <code>npm run demo</code>, then open the printed URL.</p>
+
+    <div class="row">
+      <label>Video file: <input id="file" type="file" accept="video/*" /></label>
+    </div>
+    <div class="row">
+      <label>Lane:
+        <select id="lane">
+          <option value="auto">auto (feature-detect)</option>
+          <option value="av1">force av1</option>
+          <option value="frames">force frames</option>
+        </select>
+      </label>
+      <button id="go">Ingest</button>
+    </div>
+
+    <div class="row">
+      <label>Result</label>
+      <div id="meta">Detected lane: (checking…)</div>
+    </div>
+
+    <div class="row" id="downloads"></div>
+    <div class="row" id="previews"></div>
+
+    <script type="module">
+      import { ingestVideo, pickLane } from '../src/index.js';
+
+      const meta = document.getElementById('meta');
+      const downloads = document.getElementById('downloads');
+      const previews = document.getElementById('previews');
+
+      pickLane().then((l) => {
+        meta.textContent = 'Detected lane for this browser: ' + l +
+          (isSecureContext ? '' : '  (WARNING: not a secure context — WebCodecs disabled)');
+      });
+
+      function dlLink(blob, name) {
+        const a = document.createElement('a');
+        a.className = 'dl';
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.textContent = 'download ' + name + ' (' + blob.size + ' bytes)';
+        return a;
+      }
+
+      document.getElementById('go').addEventListener('click', async () => {
+        const f = document.getElementById('file').files[0];
+        if (!f) { meta.textContent = 'Pick a file first.'; return; }
+        const laneSel = document.getElementById('lane').value;
+        const opts = laneSel === 'auto' ? {} : { forceLane: laneSel };
+
+        downloads.innerHTML = '';
+        previews.innerHTML = '';
+        meta.textContent = 'ingesting… (the av1 lane records at playback speed)';
+
+        const t0 = performance.now();
+        try {
+          const res = await ingestVideo(f, opts);
+          const ms = Math.round(performance.now() - t0);
+          meta.textContent = JSON.stringify(
+            {
+              lane: res.lane,
+              width: res.width,
+              height: res.height,
+              durationMs: res.durationMs,
+              frameCount: res.frameCount,
+              fps: res.fps,
+              videoBytes: res.video.size,
+              audioBytes: res.audio ? res.audio.size : null,
+              elapsedMs: ms,
+            },
+            null,
+            2
+          );
+
+          if (res.lane === 'av1') {
+            downloads.appendChild(dlLink(res.video, 'intermediary.webm'));
+            const v = document.createElement('video');
+            v.controls = true;
+            v.className = 'preview';
+            v.src = URL.createObjectURL(res.video);
+            previews.appendChild(v);
+          } else {
+            downloads.appendChild(dlLink(res.video, 'frames.apng'));
+            if (res.audio) downloads.appendChild(dlLink(res.audio, 'audio.opus'));
+            const img = document.createElement('img');
+            img.className = 'preview';
+            img.src = URL.createObjectURL(res.video);
+            previews.appendChild(img);
+          }
+        } catch (err) {
+          meta.textContent = 'ERROR: ' + err.message;
+          console.error(err);
+        }
+      });
+    </script>
+  </body>
+</html>

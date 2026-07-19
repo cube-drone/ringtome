@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>video-ingest headless test harness</title>
+  </head>
+  <body>
+    <h1>video-ingest test harness</h1>
+    <pre id="log"></pre>
+
+    <script type="module">
+      // This page is driven by test/run.js via puppeteer. It exposes a few
+      // functions on window that the Node side calls with page.evaluate(). It
+      // must be served over http://127.0.0.1 so that isSecureContext === true
+      // and WebCodecs is available.
+
+      import { ingestVideo, pickLane } from '../src/index.js';
+
+      const log = (m) => {
+        document.getElementById('log').textContent += m + '\n';
+        // eslint-disable-next-line no-console
+        console.log(m);
+      };
+
+      function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => {
+            // strip the "data:...;base64," prefix
+            const s = fr.result;
+            resolve(s.slice(s.indexOf(',') + 1));
+          };
+          fr.onerror = reject;
+          fr.readAsDataURL(blob);
+        });
+      }
+
+      // ---- Generate a test video IN-BROWSER (no external fixture) ----
+      // Animated gradient (VP9 video) + a tone (Opus audio) recorded to WebM.
+      async function makeTestVideo(durationMs = 2000) {
+        const W = 640;
+        const H = 480;
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+
+        const stream = canvas.captureStream(30);
+
+        // Add an audible tone so both lanes have real audio to transcode.
+        const audioCtx = new AudioContext();
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 440;
+        const dest = audioCtx.createMediaStreamDestination();
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.2;
+        osc.connect(gain).connect(dest);
+        osc.start();
+        stream.addTrack(dest.stream.getAudioTracks()[0]);
+
+        const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+          ? 'video/webm;codecs=vp9,opus'
+          : 'video/webm;codecs=vp8,opus';
+        const rec = new MediaRecorder(stream, { mimeType: mime });
+        const chunks = [];
+        rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+        const done = new Promise((r) => (rec.onstop = r));
+
+        let start = null;
+        function draw(ts) {
+          if (start === null) start = ts;
+          const t = (ts - start) / 1000;
+          // Moving diagonal gradient.
+          const g = ctx.createLinearGradient(0, 0, W, H);
+          const p = (Math.sin(t * 2) + 1) / 2;
+          g.addColorStop(0, `hsl(${(t * 120) % 360}, 90%, 50%)`);
+          g.addColorStop(1, `hsl(${(t * 120 + 180) % 360}, 90%, 40%)`);
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, W, H);
+          // A moving box so frames clearly differ.
+          ctx.fillStyle = 'white';
+          ctx.fillRect(p * (W - 80), (H - 80) / 2, 80, 80);
+          if ((ts - start) < durationMs) requestAnimationFrame(draw);
+        }
+        requestAnimationFrame(draw);
+
+        rec.start();
+        await new Promise((r) => setTimeout(r, durationMs));
+        rec.stop();
+        await done;
+        osc.stop();
+        await audioCtx.close();
+
+        return new Blob(chunks, { type: 'video/webm' });
+      }
+
+      // ---- Re-decode verifiers (run in the SAME browser) ----
+
+      async function verifyWebmVideo(blob) {
+        const url = URL.createObjectURL(blob);
+        const v = document.createElement('video');
+        v.src = url;
+        v.muted = true;
+        await new Promise((resolve, reject) => {
+          v.addEventListener('loadeddata', resolve, { once: true });
+          v.addEventListener('error', () => reject(new Error('webm failed to load')), {
+            once: true,
+          });
+        });
+        // Seek a touch in and confirm we can rasterize a non-blank frame.
+        await new Promise((resolve, reject) => {
+          v.addEventListener('seeked', resolve, { once: true });
+          v.addEventListener('error', () => reject(new Error('webm seek failed')), {
+            once: true,
+          });
+          v.currentTime = Math.min(0.1, (v.duration || 1) / 2);
+        });
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        c.getContext('2d').drawImage(v, 0, 0);
+        const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let nonBlack = 0;
+        for (let i = 0; i < px.length; i += 4) {
+          if (px[i] || px[i + 1] || px[i + 2]) nonBlack++;
+        }
+        URL.revokeObjectURL(url);
+        return {
+          readyState: v.readyState,
+          width: v.videoWidth,
+          height: v.videoHeight,
+          durationSec: v.duration,
+          nonBlackPixels: nonBlack,
+        };
+      }
+
+      async function verifyApng(blob) {
+        // Prefer ImageDecoder (exposes frame count); fall back to <img>.
+        let frameCount = 1;
+        let width = 0;
+        let height = 0;
+        if (typeof ImageDecoder !== 'undefined') {
+          const dec = new ImageDecoder({ data: await blob.arrayBuffer(), type: 'image/apng' });
+          await dec.tracks.ready;
+          frameCount = dec.tracks.selectedTrack.frameCount;
+          const { image } = await dec.decode({ frameIndex: 0 });
+          width = image.displayWidth;
+          height = image.displayHeight;
+          image.close();
+          dec.close();
+        } else {
+          const url = URL.createObjectURL(blob);
+          const img = new Image();
+          img.src = url;
+          await img.decode();
+          width = img.naturalWidth;
+          height = img.naturalHeight;
+          URL.revokeObjectURL(url);
+        }
+        return { frameCount, width, height };
+      }
+
+      async function verifyOpus(blob) {
+        if (!blob) return { ok: false, reason: 'no audio blob' };
+        const ctx = new AudioContext();
+        try {
+          const ab = await ctx.decodeAudioData(await blob.arrayBuffer());
+          return {
+            ok: true,
+            durationSec: ab.duration,
+            sampleRate: ab.sampleRate,
+            channels: ab.numberOfChannels,
+          };
+        } finally {
+          await ctx.close();
+        }
+      }
+
+      // ---- Orchestration entry point called from Node ----
+      window.__runFullTest = async function () {
+        const result = { secureContext: isSecureContext, lanes: {} };
+
+        result.detectedLane = await pickLane();
+        log('isSecureContext=' + isSecureContext + ' detectedLane=' + result.detectedLane);
+
+        log('generating in-browser test video...');
+        const testVideo = await makeTestVideo(2000);
+        result.testVideoBytes = testVideo.size;
+        log('test video: ' + testVideo.size + ' bytes');
+
+        // ---- av1 lane ----
+        log('running av1 lane...');
+        const av1 = await ingestVideo(testVideo, { forceLane: 'av1' });
+        const av1Verify = await verifyWebmVideo(av1.video);
+        result.lanes.av1 = {
+          meta: {
+            lane: av1.lane,
+            width: av1.width,
+            height: av1.height,
+            durationMs: av1.durationMs,
+            frameCount: av1.frameCount,
+            fps: av1.fps,
+            videoBytes: av1.video.size,
+            hasAudio: av1._hasAudio,
+          },
+          verify: av1Verify,
+          videoB64: await blobToBase64(av1.video),
+        };
+        log('av1 lane: ' + av1.video.size + ' bytes ' + av1.width + 'x' + av1.height);
+
+        // ---- frames lane ----
+        log('running frames lane...');
+        const fr = await ingestVideo(testVideo, { forceLane: 'frames' });
+        const apngVerify = await verifyApng(fr.video);
+        const opusVerify = await verifyOpus(fr.audio);
+        result.lanes.frames = {
+          meta: {
+            lane: fr.lane,
+            width: fr.width,
+            height: fr.height,
+            durationMs: fr.durationMs,
+            frameCount: fr.frameCount,
+            fps: fr.fps,
+            apngBytes: fr.video.size,
+            opusBytes: fr.audio ? fr.audio.size : 0,
+          },
+          apngVerify,
+          opusVerify,
+          apngB64: await blobToBase64(fr.video),
+          opusB64: fr.audio ? await blobToBase64(fr.audio) : null,
+        };
+        log(
+          'frames lane: apng ' +
+            fr.video.size +
+            ' bytes, ' +
+            apngVerify.frameCount +
+            ' frames ' +
+            apngVerify.width +
+            'x' +
+            apngVerify.height +
+            ', opus ' +
+            (fr.audio ? fr.audio.size : 0) +
+            ' bytes'
+        );
+
+        return result;
+      };
+
+      window.__ready = true;
+      log('harness ready');
+    </script>
+  </body>
+</html>
