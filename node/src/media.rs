@@ -47,14 +47,18 @@ const MAX_DECODE_ALLOC_BYTES: u64 = 512 * 1024 * 1024;
 /// The main (bounded) image is resized to *fit inside* this square, preserving aspect ratio.
 const MAIN_BOUND: u32 = 800;
 
-/// The thumbnail is resized to fit inside this square, preserving aspect ratio.
-const THUMB_BOUND: u32 = 256;
+/// The thumbnail is resized to fit inside this square, preserving aspect ratio. Small on purpose:
+/// thumbnails are for list/grid views and ride eagerly when browsing, so they stay tiny.
+const THUMB_BOUND: u32 = 128;
 
-/// AVIF quality (0-100). Conservative: the output must round-trip decode cleanly.
-const AVIF_QUALITY: f32 = 80.0;
+/// AVIF quality (1-100). Deliberately low: 18 is the chosen crush sweet spot - dense text stays
+/// legible but on the edge, with crispy visible artifacting, and typical images land at 5-20 KB.
+/// This is the aesthetic *and* the size lever working together, not a fidelity setting.
+const AVIF_QUALITY: f32 = 18.0;
 
-/// AVIF alpha-channel quality (0-100).
-const AVIF_ALPHA_QUALITY: f32 = 80.0;
+/// AVIF alpha-channel quality (1-100). Matched to the main quality so transparency crushes with
+/// the same character.
+const AVIF_ALPHA_QUALITY: f32 = 18.0;
 
 /// AVIF encoder speed (0 = slowest/best, 10 = fastest). A middle setting: quality-preserving
 /// without pathological encode times on the blocking pool.
@@ -68,7 +72,7 @@ const RESIZE_FILTER: FilterType = FilterType::Lanczos3;
 pub struct Ingested {
     /// The transcoded main image, AVIF, bounded to fit 800x800.
     pub avif: Vec<u8>,
-    /// A small AVIF thumbnail, bounded to fit 256x256.
+    /// A small AVIF thumbnail, bounded to fit 128x128.
     pub thumb_avif: Vec<u8>,
     /// Final (post-bound) width of the MAIN image.
     pub width: u32,
@@ -218,6 +222,198 @@ fn map_image_err(error: ImageError) -> TranscodeError {
     }
 }
 
+/// Tests against the real fixture corpus in `sample_media/` (public-domain / CC, so distributable
+/// and committed). Real-shaped data catches what synthetic PNGs can't - actual JPEG/WebP/GIF
+/// decoders, transparency, animation detection, and formats we *can't* ingest. Transcoded output
+/// is dumped to a gitignored `scratch/` so it can be eyeballed after a run.
+#[cfg(test)]
+mod corpus {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn corpus(name: &str) -> Vec<u8> {
+        let path = format!("{}/../sample_media/{name}", env!("CARGO_MANIFEST_DIR"));
+        std::fs::read(&path).unwrap_or_else(|e| panic!("corpus fixture {name}: {e}"))
+    }
+
+    fn scratch() -> PathBuf {
+        let dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../scratch/transcoded"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn dump(name: &str, out: &Ingested) {
+        let dir = scratch();
+        std::fs::write(dir.join(format!("{name}.avif")), &out.avif).unwrap();
+        std::fs::write(dir.join(format!("{name}.thumb.avif")), &out.thumb_avif).unwrap();
+    }
+
+    fn is_avif(bytes: &[u8]) -> bool {
+        bytes.len() > 12 && &bytes[4..8] == b"ftyp"
+    }
+
+    #[test]
+    #[ignore = "diagnostic: prints how each corpus fixture transcodes"]
+    fn classify_corpus() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../sample_media");
+        let mut names: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+            .collect();
+        names.sort();
+        for name in names {
+            match transcode(&std::fs::read(format!("{dir}/{name}")).unwrap()) {
+                Ok(i) => println!(
+                    "OK       {name}: {}x{}  avif={}KB thumb={}KB",
+                    i.width,
+                    i.height,
+                    i.avif.len() / 1024,
+                    i.thumb_avif.len() / 1024
+                ),
+                Err(e) => println!("REJECT   {name}: {e:?}"),
+            }
+        }
+    }
+
+    /// The real stills - JPEG, static WebP, static GIF, opaque and transparent PNG - all decode and
+    /// re-encode to a bounded AVIF plus thumbnail, and get dumped to `scratch/` for inspection.
+    /// Ignored by default: it runs a real AV1 encode per still (seconds each), which would bloat CI
+    /// as the corpus grows. Run the full verify-and-dump sweep on demand with:
+    ///   cargo test -p ringtome-node stills_transcode_to_bounded_avif -- --ignored --nocapture
+    #[test]
+    #[ignore = "slow (one AV1 encode per still); on-demand verify + dump to scratch/"]
+    fn stills_transcode_to_bounded_avif() {
+        for name in [
+            "polaroid.jpg",
+            "its_webp.webp",
+            "non_animated.gif",
+            "floppy.png",
+            "ready_or_not_transparent.png",
+        ] {
+            let out = transcode(&corpus(name))
+                .unwrap_or_else(|e| panic!("{name} should transcode, got {e:?}"));
+            assert!(out.width > 0 && out.height > 0, "{name} has real dimensions");
+            assert!(
+                out.width <= 800 && out.height <= 800,
+                "{name} is bounded to 800x800 (got {}x{})",
+                out.width,
+                out.height
+            );
+            assert!(is_avif(&out.avif), "{name} body is a real AVIF");
+            assert!(is_avif(&out.thumb_avif), "{name} thumb is a real AVIF");
+            assert_eq!(out.duration_ms, None, "{name} is a still");
+            dump(name, &out);
+        }
+    }
+
+    /// Curiosity, not a permanent path: re-encode the stills at an arbitrary AVIF quality, chosen
+    /// via the `CRONCH_Q` env var (default 18), into `scratch/q<n>/` - so dialing in a quality is
+    /// an env change, not a recompile. Reuses the real decode + 800px bound, swapping only the
+    /// encoder quality (clamped to ravif's valid 1..=100). Run with:
+    ///   CRONCH_Q=18 cargo test -p ringtome-node dump_stills_at_quality -- --ignored --nocapture
+    #[test]
+    #[ignore = "curiosity: re-encode stills at CRONCH_Q (default 18) into scratch/q<n>/"]
+    fn dump_stills_at_quality() {
+        use image::ImageReader;
+        use imgref::Img;
+        use rgb::FromSlice;
+        use std::io::Cursor;
+
+        let q: f32 = std::env::var("CRONCH_Q")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(18.0)
+            .clamp(1.0, 100.0);
+        let src = concat!(env!("CARGO_MANIFEST_DIR"), "/../sample_media");
+        let out = PathBuf::from(format!(
+            "{}/../scratch/q{}",
+            env!("CARGO_MANIFEST_DIR"),
+            q as u32
+        ));
+        std::fs::create_dir_all(&out).unwrap();
+
+        // Every corpus fixture the real pipeline would accept as a still - so new images (and these
+        // text-dense ones) get picked up automatically; animated/video/undecodable are skipped.
+        let mut names: Vec<_> = std::fs::read_dir(src)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+            .collect();
+        names.sort();
+
+        for name in names {
+            let input = std::fs::read(format!("{src}/{name}")).unwrap();
+            let Ok(format) = image::guess_format(&input) else {
+                println!("skip {name}: not an image");
+                continue;
+            };
+            if is_animated(&input, format).unwrap_or(true) {
+                println!("skip {name}: animated");
+                continue;
+            }
+            let mut reader = ImageReader::new(Cursor::new(&input));
+            reader.set_format(format);
+            reader.limits(decode_limits());
+            let decoded = match reader.decode() {
+                Ok(d) => d,
+                Err(e) => {
+                    println!("skip {name}: {e}");
+                    continue;
+                }
+            };
+            let main = fit_within(decoded, MAIN_BOUND);
+
+            let rgba = main.to_rgba8();
+            let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+            let encoded = ravif::Encoder::new()
+                .with_quality(q)
+                .with_alpha_quality(q)
+                .with_speed(AVIF_SPEED)
+                .encode_rgba(Img::new(rgba.as_raw().as_rgba(), w, h))
+                .unwrap();
+            std::fs::write(out.join(format!("{name}.q{}.avif", q as u32)), &encoded.avif_file)
+                .unwrap();
+            println!("q{:<3} {name}: {w}x{h}  {} bytes", q as u32, encoded.avif_file.len());
+        }
+    }
+
+    /// Animated GIF and animated WebP hit the "we don't do animation yet" tombstone rather than
+    /// silently flattening to frame 0.
+    #[test]
+    fn animation_is_rejected() {
+        for name in [
+            "animated_color_squirrel.gif",
+            "animated_logo_transparent_background.gif",
+            "animated_logo_transparent_background.webp",
+        ] {
+            match transcode(&corpus(name)) {
+                Err(TranscodeError::Animated) => {}
+                other => panic!("{name} should be the animation tombstone, got {other:?}"),
+            }
+        }
+    }
+
+    /// A video isn't a decodable still, and - a real, slightly ironic limitation the corpus caught
+    /// - neither is an AVIF *input*: our decoder is pure-Rust with no AV1 decode path, so we can
+    /// emit AVIF but not ingest it. Both are rejected, never silently mis-handled.
+    #[test]
+    fn video_and_avif_input_are_rejected() {
+        assert!(
+            matches!(
+                transcode(&corpus("buck-twenty.mp4")),
+                Err(TranscodeError::Unsupported(_) | TranscodeError::Decode(_))
+            ),
+            "a video is not an ingestible image"
+        );
+        assert!(
+            matches!(
+                transcode(&corpus("retro.avif")),
+                Err(TranscodeError::Unsupported(_))
+            ),
+            "AVIF input can't be decoded without an AV1 decoder (known gap)"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,7 +467,7 @@ mod tests {
         assert_eq!((w, h), (800, 600), "aspect ratio preserved");
         assert_eq!((w, h), (out.width, out.height), "reported dims match encoded");
 
-        // Thumbnail: decodes back and fits 256x256.
+        // Thumbnail: decodes back and fits the (128x128) thumbnail bound.
         let (tw, th) = avif_dims(&out.thumb_avif);
         assert!(tw <= THUMB_BOUND && th <= THUMB_BOUND, "thumb fits the bound");
     }

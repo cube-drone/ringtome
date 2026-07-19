@@ -10,6 +10,9 @@
 .env
 *.env
 
+# scratch: transcoder test output, dumped for eyeballing (see media.rs corpus tests)
+/scratch
+
 # node / js integration tests
 node_modules/
 
