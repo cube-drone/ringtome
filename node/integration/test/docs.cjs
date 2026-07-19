@@ -280,6 +280,39 @@ describe("versioned documents (notes)", function () {
         assert.equal(explained.message, job.error, "and it matches the queue's tombstone");
     });
 
+    it("rejects an oversized text document with 413", async function () {
+        const user = await makeUserFetch({ prefix: "docsnovel" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        // The test nodes boot with RINGTOME_MAX_DOCUMENT_BYTES=256KiB; a novel-stuffer exceeds it.
+        const novel = "x".repeat(300 * 1024);
+        const res = await user(`api/identity/${root}/docs`, {
+            method: "POST",
+            body: JSON.stringify({ title: "war and peace", body: novel }),
+        });
+        assert.equal(res.status, 413, "a document past the distribution cap is refused");
+    });
+
+    it("rejects an upload past the pre-crunch cap with 413", async function () {
+        const user = await makeUserFetch({ prefix: "docsbig" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        // The test nodes boot with RINGTOME_MAX_UPLOAD_BYTES=1MiB; go just past it.
+        const tooBig = Buffer.alloc(1024 * 1024 + 4096, 0x41);
+        const res = await user("api/identity/" + root + "/docs/binary?title=huge", {
+            method: "POST",
+            body: tooBig,
+            file: true,
+        });
+        assert.equal(res.status, 413, "an oversized upload is refused at the body limit");
+
+        // It was rejected before quarantine, so nothing was queued.
+        const jobs = await (await user(`api/identity/${root}/ingest`)).json();
+        assert.equal(jobs.length, 0, "rejected before it could become a job");
+    });
+
     it("stores neither titles nor bodies as plaintext in the entry log", async function () {
         const user = await makeUserFetch({ prefix: "docscipher" });
         const created = await (await user("api/identity", { method: "POST" })).json();

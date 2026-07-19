@@ -146,12 +146,24 @@ async fn main() -> anyhow::Result<()> {
 
     let bind = format!("{}:{}", config.bind_address, config.port);
     let local_test = config.local_test;
+    let body_limits = identity::BodyLimits {
+        upload: config.max_upload_bytes,
+        document: config.max_document_bytes,
+    };
     // Rate limiting is off in local-test mode so integration tests don't trip it.
     let rate_limiter = rate_limit::RateLimiter::new(!local_test);
     let keystore = keystore::Keystore::load(&config.data_directory)?;
     let endpoint = p2p::build_endpoint(&keystore, &config.discovery).await?;
     let directory = discovery::Directory::build(&config.discovery)?;
-    let files = std::sync::Arc::new(files::FileStore::fs(config.data_directory.join("blobs")).await?);
+    // The blob-layer size invariant tracks the document cap (plus a little AEAD/framing headroom),
+    // so "nothing over ~10MB moves on the network" is enforced where bytes actually cross between
+    // nodes - not just at our own HTTP door.
+    let max_blob_bytes = config.max_document_bytes as u64 + 64 * 1024;
+    let files = std::sync::Arc::new(
+        files::FileStore::fs(config.data_directory.join("blobs"))
+            .await?
+            .with_max_blob_bytes(max_blob_bytes),
+    );
     let ingest = ingest::Ingest::new(config.quarantine_directory.clone());
     ingest.ensure_dir()?;
     // Reconcile any jobs left in flight by a previous run before the worker starts claiming.
@@ -198,7 +210,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/config", get(get_config))
         .route("/api/node", get(node_info))
         .merge(auth::router())
-        .merge(identity::router());
+        .merge(identity::router(body_limits));
 
     // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so
     // there is no path to the SQL executor on a normal node. See test_endpoints.

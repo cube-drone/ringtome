@@ -5,7 +5,7 @@
 //! own the identity. (Public serving of profiles is an M3/M4 concern, arriving with sync.)
 
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -20,7 +20,16 @@ use crate::private;
 use crate::store;
 use crate::AppState;
 
-pub fn router() -> Router<AppState> {
+/// Per-route request-body ceilings, from config. Two `usize`s that must not get swapped, so they
+/// travel as named fields.
+pub struct BodyLimits {
+    /// Raw media uploads (pre-crunch) - the binary routes.
+    pub upload: usize,
+    /// Text/marquee document bodies (the distribution cap; text isn't crushed) - the JSON doc routes.
+    pub document: usize,
+}
+
+pub fn router(limits: BodyLimits) -> Router<AppState> {
     Router::new()
         .route("/api/identity", post(create_handler))
         .route("/api/identity", get(list_handler))
@@ -61,23 +70,33 @@ pub fn router() -> Router<AppState> {
         )
         // Versioned documents (the notes app): headers on the notes chain, bodies in the file
         // layer, divergence kept - never LWW'd away.
+        // Text/marquee document routes carry the whole body as JSON, so they lift the limit to the
+        // ~10MB document cap (a novel-stuffer's ceiling); GET is unaffected, but a shared limit on
+        // the method-router is harmless since reads have no body.
         .route(
             "/api/identity/{root}/docs",
-            get(docs_list_handler).post(docs_create_handler),
+            get(docs_list_handler)
+                .post(docs_create_handler)
+                .layer(DefaultBodyLimit::max(limits.document)),
         )
         .route(
             "/api/identity/{root}/docs/{doc_id}",
-            get(docs_get_handler).put(docs_save_handler),
+            get(docs_get_handler)
+                .put(docs_save_handler)
+                .layer(DefaultBodyLimit::max(limits.document)),
         )
         // Binary document bodies (images, etc.): metadata rides the query string, raw bytes ride
         // the request/response body - a webp can't live in a JSON string.
+        // The binary upload routes carry raw media, so they lift the body limit to the pre-crunch
+        // cap; every other route keeps Axum's small default, so a note-save can't be an abuse
+        // vector. An upload past the cap is rejected with 413 before it's ever quarantined.
         .route(
             "/api/identity/{root}/docs/binary",
-            post(docs_create_binary_handler),
+            post(docs_create_binary_handler).layer(DefaultBodyLimit::max(limits.upload)),
         )
         .route(
             "/api/identity/{root}/docs/{doc_id}/binary",
-            put(docs_save_binary_handler),
+            put(docs_save_binary_handler).layer(DefaultBodyLimit::max(limits.upload)),
         )
         .route(
             "/api/identity/{root}/docs/{doc_id}/body",

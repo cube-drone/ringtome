@@ -13,17 +13,25 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use iroh::endpoint::Connection;
 use iroh::{Endpoint, EndpointAddr};
+use iroh_blobs::api::remote::GetProgressItem;
 use iroh_blobs::api::Store;
 use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::store::mem::MemStore;
 use iroh_blobs::{BlobsProtocol, Hash};
+use n0_future::StreamExt;
 
 use crate::private::{decrypt_file, encrypt_file, EpochKeys};
 
 /// The blob-serving ALPN. New protocol beside the sync ALPN on the same endpoint.
 pub const BLOB_ALPN: &[u8] = iroh_blobs::ALPN;
+
+/// The blob-size cap a store defaults to when none is configured (tests, ephemeral stores). A real
+/// node overrides this from config (`max_document_bytes` + framing). Generous enough for any legit
+/// blob; the point is only that "unset" isn't "unbounded".
+const DEFAULT_MAX_BLOB_BYTES: u64 = 16 * 1024 * 1024;
 
 enum Backend {
     Mem(MemStore),
@@ -41,8 +49,16 @@ impl Backend {
 
 /// The node's encrypted file store: one iroh-blobs store holding every identity's ciphertext
 /// blobs by content hash.
+///
+/// The store enforces the network's per-blob size invariant - "nothing over ~10MB moves" - at the
+/// two gates it controls: it refuses to *originate* an over-cap blob (`put_encrypted`) and refuses
+/// to *pull* one (`fetch` aborts mid-stream once the download crosses the cap). Serving needs no
+/// gate: an over-cap blob can never become a *complete* local blob, and only complete blobs are
+/// served. The gate is on the ciphertext (plaintext + AEAD framing), and format-agnostic - a note
+/// body, a transcoded image, and a thumbnail all pass the same check.
 pub struct FileStore {
     backend: Backend,
+    max_blob_bytes: u64,
 }
 
 impl FileStore {
@@ -50,6 +66,7 @@ impl FileStore {
     pub fn memory() -> Self {
         Self {
             backend: Backend::Mem(MemStore::new()),
+            max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
         }
     }
 
@@ -58,7 +75,14 @@ impl FileStore {
         let store = FsStore::load(path).await.context("opening blob store")?;
         Ok(Self {
             backend: Backend::Fs(store),
+            max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
         })
+    }
+
+    /// Set the per-blob ciphertext ceiling (a real node derives it from `max_document_bytes`).
+    pub fn with_max_blob_bytes(mut self, max: u64) -> Self {
+        self.max_blob_bytes = max;
+        self
     }
 
     fn store(&self) -> &Store {
@@ -79,6 +103,16 @@ impl FileStore {
         plaintext: &[u8],
     ) -> Result<Hash> {
         let blob = encrypt_file(epoch, epoch_key, plaintext)?;
+        // Gate one: never originate an over-cap blob. Legit callers are already bounded upstream
+        // (the HTTP document cap, the transcode's output bound); this is the floor under all of it,
+        // at the layer that actually distributes.
+        if blob.len() as u64 > self.max_blob_bytes {
+            bail!(
+                "blob is {} bytes, over the {}-byte cap",
+                blob.len(),
+                self.max_blob_bytes
+            );
+        }
         let tag = self.store().add_bytes(blob).await.context("storing blob")?;
         Ok(tag.hash)
     }
@@ -118,17 +152,37 @@ impl FileStore {
             .connect(provider, BLOB_ALPN)
             .await
             .context("dialing blob provider")?;
-        self.store()
-            .remote()
-            .fetch(conn, hash)
-            .await
-            .context("fetching blob")?;
-        Ok(())
+        self.fetch_on(conn, hash).await
+    }
+
+    /// Gate two: pull a blob over one connection, aborting the moment the running download crosses
+    /// the cap. The progress stream reports cumulative *verified* payload bytes (iroh-blobs streams
+    /// BLAKE3-verified data, and the length is bound to the hash we asked for), so a lying or
+    /// malicious peer can't sneak an over-cap blob past - and we drop the stream, cancelling the
+    /// transfer, having pulled at most ~cap bytes rather than the whole thing.
+    async fn fetch_on(&self, conn: Connection, hash: Hash) -> Result<()> {
+        let mut progress = self.store().remote().fetch(conn, hash).stream();
+        while let Some(item) = progress.next().await {
+            match item {
+                GetProgressItem::Progress(downloaded) => {
+                    if downloaded > self.max_blob_bytes {
+                        // Returning drops `progress`, which cancels the download future.
+                        bail!(
+                            "blob {hash} exceeds the {}-byte cap (aborted at {downloaded})",
+                            self.max_blob_bytes
+                        );
+                    }
+                }
+                GetProgressItem::Done(_) => return Ok(()),
+                GetProgressItem::Error(e) => bail!("fetching blob {hash}: {e:?}"),
+            }
+        }
+        bail!("blob {hash} fetch ended without completing")
     }
 
     /// Fetch several blobs from one provider over a single connection. Best-effort per hash:
     /// returns how many landed (the provider may lack some too - a body it also hasn't fetched
-    /// yet is a normal state, not an error).
+    /// yet is a normal state, not an error - and an over-cap blob is refused the same way).
     pub async fn fetch_many(
         &self,
         endpoint: &Endpoint,
@@ -144,7 +198,7 @@ impl FileStore {
         };
         let mut fetched = 0;
         for hash in hashes {
-            match self.store().remote().fetch(conn.clone(), *hash).await {
+            match self.fetch_on(conn.clone(), *hash).await {
                 Ok(_) => fetched += 1,
                 Err(e) => tracing::debug!(%hash, "blob not fetched: {e}"),
             }
@@ -250,5 +304,56 @@ mod tests {
         let keys = EpochKeys::single(epoch, key);
         let got = store_b.get_decrypted(hash, &keys).await.unwrap();
         assert_eq!(got.unwrap(), plaintext);
+    }
+
+    /// Gate one: a store refuses to originate a blob over its cap. Synthetic bytes - a size gate
+    /// cares only about length - kept small so it's instant.
+    #[tokio::test]
+    async fn put_refuses_a_blob_over_the_cap() {
+        let store = FileStore::memory().with_max_blob_bytes(256 * 1024);
+        let over = vec![0x42u8; 512 * 1024];
+        assert!(
+            store.put_encrypted(1, &[0u8; 32], &over).await.is_err(),
+            "an over-cap body is refused at put"
+        );
+        // Under the cap still stores fine.
+        let hash = store.put_encrypted(1, &[0u8; 32], b"a small body").await.unwrap();
+        assert!(store.has(hash).await);
+    }
+
+    /// Gate two: a node refuses to *pull* a blob past its cap, aborting mid-stream, even when a
+    /// permissive peer is happily serving the whole thing. The fixture is the corpus's real
+    /// (public-domain / CC, hence distributable) 34.6MB video - genuinely over any document cap.
+    #[tokio::test]
+    async fn fetch_refuses_a_blob_over_the_cap() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../sample_media/buck-twenty.mp4");
+        let big = std::fs::read(path).expect("corpus fixture sample_media/buck-twenty.mp4");
+        assert!(big.len() as u64 > 10 * 1024 * 1024, "fixture must be over-cap");
+
+        let epoch = 1u64;
+        let key = [3u8; 32];
+
+        // A permissive peer (generous cap) holds and serves the oversized blob.
+        let ep_a = test_endpoint().await;
+        let store_a = FileStore::memory().with_max_blob_bytes(64 * 1024 * 1024);
+        let hash = store_a.put_encrypted(epoch, &key, &big).await.unwrap();
+        let _router_a = Router::builder(ep_a.clone())
+            .accept(BLOB_ALPN, store_a.protocol())
+            .spawn();
+        let addr_a =
+            crate::sync::endpoint_addr(&ep_a.id().to_string(), &crate::p2p::addr_strings(&ep_a))
+                .unwrap();
+
+        // Our node caps blobs at 10MB and refuses to pull the whole thing.
+        let ep_b = test_endpoint().await;
+        let store_b = FileStore::memory().with_max_blob_bytes(10 * 1024 * 1024);
+        assert!(
+            store_b.fetch(&ep_b, addr_a, hash).await.is_err(),
+            "an over-cap blob is refused mid-stream"
+        );
+        assert!(
+            !store_b.has(hash).await,
+            "and never lands as a complete blob"
+        );
     }
 }

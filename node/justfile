@@ -63,11 +63,11 @@ integration: build kill
     cd "{{workspace}}"
     rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-dht"
     RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="{{test_data}}" RINGTOME_LOCAL_TEST=1 \
-        RINGTOME_DISCOVERY="local:{{test_data}}-dht" \
+        RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
     NODE_PID=$!
     RINGTOME_PORT={{port_b}} RINGTOME_DATA_DIRECTORY="{{test_data}}-b" RINGTOME_LOCAL_TEST=1 \
-        RINGTOME_DISCOVERY="local:{{test_data}}-dht" \
+        RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         ./target/debug/ringtome > /tmp/ringtome-integration-b.log 2>&1 &
     NODE_B_PID=$!
     cleanup() {

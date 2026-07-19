@@ -53,6 +53,19 @@ pub struct Config {
     /// (default), `local:<path>` (shared-folder simulation), or `mainline` (real DHT + relays).
     /// Also selects the iroh preset: mainline gets `N0`, everything else `Minimal`.
     pub discovery: crate::discovery::DiscoveryMode,
+    /// The pre-crunch upload ceiling: the largest RAW media a client may POST before transcode
+    /// (scoped to the binary-upload routes). This is NOT the distribution size - ingest crushes
+    /// media to a far smaller canonical artifact, and the ~10MB *output* cap is enforced in the
+    /// transcode. This is purely "how big a raw upload will this node spend disk+CPU on". A public
+    /// (multi-tenant) node is a DoS surface, so it defaults far lower than a single-tenant desktop;
+    /// override with `RINGTOME_MAX_UPLOAD_BYTES`.
+    pub max_upload_bytes: usize,
+    /// The largest text/marquee document body a client may POST (scoped to the JSON doc routes).
+    /// Unlike media, text isn't crushed - its upload size IS its stored-and-distributed size - so
+    /// this is the *distribution* ceiling: the same ~10MB "nothing bigger moves on the network"
+    /// bound that the transcode enforces on media output. A legitimate note is always kilobytes;
+    /// this only caps a novel-stuffer. Override with `RINGTOME_MAX_DOCUMENT_BYTES`.
+    pub max_document_bytes: usize,
 }
 
 /// The subset of configuration safe to expose to a browser client.
@@ -99,6 +112,28 @@ impl Config {
 
         let discovery = crate::discovery::DiscoveryMode::from_env();
 
+        // Pre-crunch upload ceiling. Default by role: a desktop node ingests its own phone media,
+        // so it's generous; a public node accepts uploads from strangers, so it defaults FAR lower
+        // (a stranger POSTing 1GB to fail-transcode is an attack). "Public should be much lower"
+        // is baked in as the default rather than left to the operator to remember - secure by
+        // default - but any operator can override it either way with RINGTOME_MAX_UPLOAD_BYTES.
+        let upload_default = match tenancy {
+            Tenancy::Single => 1024 * 1024 * 1024, // 1 GiB: your own device, your own media
+            Tenancy::Multi => 128 * 1024 * 1024,   // 128 MiB: a public node is a DoS surface
+        };
+        let max_upload_bytes = env::var("RINGTOME_MAX_UPLOAD_BYTES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(upload_default);
+
+        // The distribution ceiling for a text document, same on every node (text is stored as
+        // uploaded - no crush - so this bound is what actually crosses the wire). 10 MiB ~= a few
+        // novels; real notes are kilobytes.
+        let max_document_bytes = env::var("RINGTOME_MAX_DOCUMENT_BYTES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(10 * 1024 * 1024);
+
         Self {
             app_version,
             bind_address,
@@ -109,6 +144,8 @@ impl Config {
             tenancy,
             local_test,
             discovery,
+            max_upload_bytes,
+            max_document_bytes,
         }
     }
 

@@ -55,6 +55,9 @@ pkarr = "5"
 base64 = "0.22.1"
 dryoc = "0.8.0"
 iroh-blobs = "0.103.0"
+# StreamExt for consuming iroh-blobs' fetch-progress stream (same crate iroh-blobs uses), so a
+# download can be aborted mid-stream once it crosses the blob-size cap.
+n0-future = "0.3"
 diffy = "0.5"
 
 # media ingest transcoder: decode arbitrary bitmap uploads (PURE-RUST decoders
