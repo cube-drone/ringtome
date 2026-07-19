@@ -19,6 +19,8 @@
 #![allow(dead_code)]
 
 use std::io::Cursor;
+use std::mem::MaybeUninit;
+use std::ptr::NonNull;
 
 use image::codecs::gif::GifDecoder;
 use image::codecs::png::PngDecoder;
@@ -26,9 +28,21 @@ use image::codecs::webp::WebPDecoder;
 use image::imageops::FilterType;
 use image::{
     AnimationDecoder, DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, Limits,
+    Rgba, RgbaImage,
 };
 use imgref::Img;
 use rgb::FromSlice;
+
+// rav1d's public surface is the raw `dav1d_*` C ABI plus the `Dav1d*` FFI structs. We drive it
+// directly (there is no safe wrapper crate for the no-asm, pure-rust build) and keep every unsafe
+// touch inside `decode_av1` below.
+use rav1d::include::dav1d::data::Dav1dData;
+use rav1d::include::dav1d::dav1d::{Dav1dContext, Dav1dSettings};
+use rav1d::include::dav1d::picture::Dav1dPicture;
+use rav1d::src::lib::{
+    dav1d_close, dav1d_data_create, dav1d_data_unref, dav1d_default_settings, dav1d_get_picture,
+    dav1d_open, dav1d_picture_unref, dav1d_send_data,
+};
 
 // ---------------------------------------------------------------------------
 // Tunables. Kept together and clearly named so the resize/encode policy is
@@ -116,8 +130,15 @@ impl std::error::Error for TranscodeError {}
 /// Pure function, no I/O. CPU-bound (callers run it under `spawn_blocking`).
 pub fn transcode(input: &[u8]) -> Result<Ingested, TranscodeError> {
     // Identify the format from magic bytes. An unrecognised blob is unsupported, not corrupt.
+    // (`guess_format` recognises the AVIF magic even though the `image` crate has no AVIF decoder
+    // enabled - it inspects the ISOBMFF brand, not the feature set.)
     let format = image::guess_format(input)
         .map_err(|e| TranscodeError::Unsupported(e.to_string()))?;
+
+    // AVIF inputs take the pure-rust rav1d decode path (the `image` crate can't decode them).
+    if format == ImageFormat::Avif {
+        return transcode_avif(input);
+    }
 
     // Reject animation before we commit to decoding a single frame.
     if is_animated(input, format)? {
@@ -134,9 +155,48 @@ pub fn transcode(input: &[u8]) -> Result<Ingested, TranscodeError> {
     let main = fit_within(decoded, MAIN_BOUND);
     let width = main.width();
     let height = main.height();
-    let avif = encode_avif(&main)?;
+    // The canonical body carries the content-neutral "processed here" marker; the thumbnail does not.
+    let avif = add_ringtome_marker(encode_avif(&main)?);
 
     let thumb = fit_within(main, THUMB_BOUND);
+    let thumb_avif = encode_avif(&thumb)?;
+
+    Ok(Ingested {
+        avif,
+        thumb_avif,
+        width,
+        height,
+        duration_ms: None,
+    })
+}
+
+/// Ingest an AVIF upload. Unlike the other formats we can *emit* AVIF verbatim, so an already-in-spec,
+/// already-marked AVIF passes through untouched (zero re-encode, zero generational loss); anything
+/// oversized, unmarked, or foreign is decoded and re-crushed like any other upload.
+fn transcode_avif(input: &[u8]) -> Result<Ingested, TranscodeError> {
+    // Decompression-bomb guard: reject on the container-declared dimensions before decoding pixels.
+    let (w, h) = avif_dimensions(input)?;
+    if w > MAX_DECODE_DIMENSION || h > MAX_DECODE_DIMENSION {
+        return Err(TranscodeError::Decode(format!(
+            "avif declares {w}x{h}, over the {MAX_DECODE_DIMENSION}px decode bound"
+        )));
+    }
+
+    // We need the decoded pixels for the thumbnail regardless of whether the body passes through.
+    let decoded = decode_avif(input)?;
+
+    let in_spec = w <= MAIN_BOUND && h <= MAIN_BOUND;
+    let (avif, width, height) = if in_spec && has_ringtome_marker(input) {
+        // Already ours and already in spec: hand the exact bytes back, avoiding a generational loss.
+        (input.to_vec(), w, h)
+    } else {
+        // Oversized, unmarked, or foreign: bound, re-encode, and mark.
+        let main = fit_within(decoded.clone(), MAIN_BOUND);
+        let (bw, bh) = (main.width(), main.height());
+        (add_ringtome_marker(encode_avif(&main)?), bw, bh)
+    };
+
+    let thumb = fit_within(decoded, THUMB_BOUND);
     let thumb_avif = encode_avif(&thumb)?;
 
     Ok(Ingested {
@@ -200,16 +260,451 @@ fn encode_avif(img: &DynamicImage) -> Result<Vec<u8>, TranscodeError> {
     let (width, height) = (rgba.width() as usize, rgba.height() as usize);
     let pixels = rgba.as_raw().as_rgba();
 
+    // Force 8-bit output (ravif otherwise defaults to 10-bit via `BitDepth::Auto`). This is a
+    // deliberate policy, not a decode limitation - our decoder now handles 10/12-bit foreign AVIFs
+    // via rav1d's `bitdepth_16`. But 8-bit is the right *output*: at our q18 crush it's visually
+    // identical to 10-bit while being smaller, and keeping our canonical body 8-bit keeps the in-spec
+    // self-passthrough exact (the pass-through path decodes every AVIF for its thumbnail).
     let encoder = ravif::Encoder::new()
         .with_quality(AVIF_QUALITY)
         .with_alpha_quality(AVIF_ALPHA_QUALITY)
-        .with_speed(AVIF_SPEED);
+        .with_speed(AVIF_SPEED)
+        .with_bit_depth(ravif::BitDepth::Eight);
 
     let encoded = encoder
         .encode_rgba(Img::new(pixels, width, height))
         .map_err(|e| TranscodeError::Decode(format!("avif encode failed: {e}")))?;
 
     Ok(encoded.avif_file)
+}
+
+// ---------------------------------------------------------------------------
+// AVIF ingest: container parse (avif-parse) + AV1 decode (rav1d, no asm) + a
+// content-neutral "processed here" marker. All pure-rust, no C/dav1d.
+// ---------------------------------------------------------------------------
+
+/// A fixed, content-neutral magic marking an AVIF as "processed by a Ringtome node". It carries NO
+/// identity whatsoever - no document id, no pubkey, no timestamp. Provenance lives in the chain,
+/// never in the pixels' container. Its only job is to let us recognise our own in-spec output and
+/// pass it through unmodified instead of re-crushing it on every hop.
+const RINGTOME_MARKER: &[u8] = b"RNGTMv1";
+
+/// Append a top-level ISOBMFF `free` box whose payload begins with [`RINGTOME_MARKER`]. `free`/`skip`
+/// boxes are defined as ignorable free space, so every conformant AVIF decoder (and every browser)
+/// skips them: the marked file still renders and still round-trips through [`decode_avif`].
+fn add_ringtome_marker(mut avif: Vec<u8>) -> Vec<u8> {
+    // Box layout: [u32 be size][b"free"][payload]. size counts the whole box (header + payload).
+    let box_size = (8 + RINGTOME_MARKER.len()) as u32;
+    avif.extend_from_slice(&box_size.to_be_bytes());
+    avif.extend_from_slice(b"free");
+    avif.extend_from_slice(RINGTOME_MARKER);
+    avif
+}
+
+/// Scan the top-level ISOBMFF box list for a `free` box whose payload starts with [`RINGTOME_MARKER`].
+/// Handles the three size encodings: a following u64 `largesize` when size==1, and "extends to EOF"
+/// when size==0. Malformed/overlong boxes stop the scan rather than reading out of bounds.
+fn has_ringtome_marker(avif: &[u8]) -> bool {
+    let len = avif.len();
+    let mut pos = 0usize;
+    while pos + 8 <= len {
+        let size32 = u32::from_be_bytes([avif[pos], avif[pos + 1], avif[pos + 2], avif[pos + 3]]);
+        let box_type = &avif[pos + 4..pos + 8];
+        let (header_len, box_size) = match size32 {
+            1 => {
+                if pos + 16 > len {
+                    break;
+                }
+                let large = u64::from_be_bytes(avif[pos + 8..pos + 16].try_into().unwrap());
+                (16usize, large as usize)
+            }
+            0 => (8usize, len - pos), // to EOF
+            n => (8usize, n as usize),
+        };
+        // A box smaller than its own header, or one claiming to run past EOF, is malformed: stop.
+        if box_size < header_len || box_size > len - pos {
+            break;
+        }
+        if box_type == b"free" && avif[pos + header_len..pos + box_size].starts_with(RINGTOME_MARKER)
+        {
+            return true;
+        }
+        pos += box_size;
+    }
+    false
+}
+
+/// The primary item's coded dimensions, read from the AVIF container's AV1 sequence header. Used by
+/// the decompression-bomb guard (before any pixels are touched) and the in-spec pass-through check.
+fn avif_dimensions(input: &[u8]) -> Result<(u32, u32), TranscodeError> {
+    let data = avif_parse::read_avif(&mut Cursor::new(input)).map_err(map_avif_parse_err)?;
+    let meta = data.primary_item_metadata().map_err(map_avif_parse_err)?;
+    Ok((meta.max_frame_width.get(), meta.max_frame_height.get()))
+}
+
+/// Map an avif-parse container error onto our taxonomy. avif-parse rejects animated AVIF (the `avis`
+/// brand) up front with a distinctive `Unsupported` message - that becomes our `Animated` tombstone,
+/// so image-sequence detection here is real, not assumed.
+fn map_avif_parse_err(error: avif_parse::Error) -> TranscodeError {
+    use avif_parse::Error;
+    match error {
+        Error::Unsupported(msg) if msg.contains("Animated") => TranscodeError::Animated,
+        Error::Unsupported(msg) => TranscodeError::Unsupported(msg.to_string()),
+        other => TranscodeError::Decode(format!("avif container parse failed: {other}")),
+    }
+}
+
+/// Decode an AVIF still to an RGBA8 `DynamicImage`, pure-rust: avif-parse extracts the primary (and
+/// optional alpha) AV1 item; rav1d decodes the AV1 bitstream; we convert YUV->RGBA ourselves.
+fn decode_avif(input: &[u8]) -> Result<DynamicImage, TranscodeError> {
+    let data = avif_parse::read_avif(&mut Cursor::new(input)).map_err(map_avif_parse_err)?;
+
+    // Bomb guard again, right at the decode boundary: reject before allocating/decoding pixels.
+    let meta = data.primary_item_metadata().map_err(map_avif_parse_err)?;
+    let (w, h) = (meta.max_frame_width.get(), meta.max_frame_height.get());
+    if w > MAX_DECODE_DIMENSION || h > MAX_DECODE_DIMENSION {
+        return Err(TranscodeError::Decode(format!(
+            "avif declares {w}x{h}, over the {MAX_DECODE_DIMENSION}px decode bound"
+        )));
+    }
+
+    // SAFETY: `decode_av1` is a safe wrapper - it owns the entire rav1d context lifecycle and copies
+    // every plane out into owned Vecs before returning, so no rav1d-owned pointer escapes it.
+    let color = decode_av1(&data.primary_item)?;
+    let mut rgba = decoded_to_rgba(&color);
+
+    if let Some(alpha_bitstream) = data.alpha_item.as_deref() {
+        let alpha = decode_av1(alpha_bitstream)?;
+        apply_alpha(&mut rgba, &alpha, data.premultiplied_alpha);
+    }
+
+    Ok(DynamicImage::ImageRgba8(rgba))
+}
+
+/// A decoded AV1 frame, copied out of rav1d into owned buffers (planes are packed tight, stride
+/// padding removed) so all downstream work is safe. `layout` is the dav1d pixel layout (0=I400,
+/// 1=I420, 2=I422, 3=I444); `matrix`/`full_range` come from the AV1 sequence header.
+struct DecodedPicture {
+    width: u32,
+    height: u32,
+    y: Vec<u8>,
+    u: Vec<u8>,
+    v: Vec<u8>,
+    uv_width: usize,
+    layout: u32,
+    matrix: u32,
+    full_range: bool,
+    monochrome: bool,
+}
+
+/// Drive rav1d's C ABI to decode a single-frame AV1 bitstream. This is the *only* unsafe in the AVIF
+/// path; it opens a context, feeds the one OBU frame, pulls the picture, copies the planes out, and
+/// tears everything down (picture + data + context) before returning owned, safe data.
+fn decode_av1(bitstream: &[u8]) -> Result<DecodedPicture, TranscodeError> {
+    if bitstream.is_empty() {
+        return Err(TranscodeError::Decode("empty AV1 bitstream".into()));
+    }
+
+    // SAFETY: every pointer handed to rav1d below points at a live local (`settings`, `ctx`, `data`,
+    // `pic`); `dav1d_default_settings`/`dav1d_data_create`/`dav1d_get_picture` fully initialise the
+    // structs they write via `ptr::write` before we read them; and we unref the picture and data and
+    // close the context on every exit path, so nothing leaks and no rav1d-owned memory escapes.
+    unsafe {
+        // Settings: single-threaded, minimal frame delay, so one send + one get yields the frame.
+        let mut settings = MaybeUninit::<Dav1dSettings>::uninit();
+        dav1d_default_settings(NonNull::new(settings.as_mut_ptr()).unwrap());
+        let mut settings = settings.assume_init();
+        settings.n_threads = 1;
+        settings.max_frame_delay = 1;
+
+        let mut ctx: Option<Dav1dContext> = None;
+        if dav1d_open(NonNull::new(&mut ctx), NonNull::new(&mut settings)).0 != 0 || ctx.is_none() {
+            return Err(TranscodeError::Decode("dav1d_open failed".into()));
+        }
+
+        // Copy the bitstream into a rav1d-allocated `Dav1dData`.
+        let mut data = MaybeUninit::<Dav1dData>::uninit();
+        let dst = dav1d_data_create(NonNull::new(data.as_mut_ptr()), bitstream.len());
+        if dst.is_null() {
+            dav1d_close(NonNull::new(&mut ctx));
+            return Err(TranscodeError::Decode("dav1d_data_create failed".into()));
+        }
+        let mut data = data.assume_init();
+        std::ptr::copy_nonoverlapping(bitstream.as_ptr(), dst, bitstream.len());
+
+        // A zeroed picture is a valid "empty" picture (all refs None), safe to unref even if we never
+        // fill it. `dav1d_get_picture` overwrites it wholesale via `ptr::write`.
+        let mut pic = MaybeUninit::<Dav1dPicture>::zeroed().assume_init();
+
+        // Feed the frame, then pull the picture. For a single still with max_frame_delay=1 this is one
+        // send + one get; the bounded loop only re-feeds if rav1d asks and still has bytes queued.
+        let mut got = false;
+        let _ = dav1d_send_data(ctx, NonNull::new(&mut data));
+        for _ in 0..64 {
+            if dav1d_get_picture(ctx, NonNull::new(&mut pic)).0 == 0 {
+                got = true;
+                break;
+            }
+            if data.sz > 0 {
+                let _ = dav1d_send_data(ctx, NonNull::new(&mut data));
+            } else {
+                break;
+            }
+        }
+
+        let result = if got {
+            extract_picture(&pic)
+        } else {
+            Err(TranscodeError::Decode("AV1 decode produced no frame".into()))
+        };
+
+        dav1d_picture_unref(NonNull::new(&mut pic));
+        dav1d_data_unref(NonNull::new(&mut data));
+        dav1d_close(NonNull::new(&mut ctx));
+        result
+    }
+}
+
+/// Copy a decoded rav1d picture's planes into an owned [`DecodedPicture`].
+///
+/// # Safety
+/// `pic` must be a picture successfully filled by `dav1d_get_picture` (valid plane pointers/strides
+/// and a live sequence header) and still alive (not yet unref'd).
+unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, TranscodeError> {
+    let w = pic.p.w as usize;
+    let h = pic.p.h as usize;
+    let layout = pic.p.layout;
+    // rav1d is built with bitdepth_8 + bitdepth_16, so it decodes 8-, 10-, and 12-bit AV1. We
+    // normalise everything to 8-bit RGBA below; anything outside 8..=12 shouldn't occur, so guard it.
+    let bpc = pic.p.bpc;
+    if !(8..=12).contains(&bpc) {
+        return Err(TranscodeError::Unsupported(format!("AVIF with {bpc}-bit depth")));
+    }
+    let bpc = bpc as u8;
+    if w == 0 || h == 0 {
+        return Err(TranscodeError::Decode("AVIF decoded to a zero-size frame".into()));
+    }
+
+    // SAFETY: rav1d guarantees data[0]/stride[0] describe `h` rows of at least `w` luma samples.
+    let y_ptr = pic.data[0]
+        .ok_or_else(|| TranscodeError::Decode("AVIF frame missing luma plane".into()))?
+        .as_ptr() as *const u8;
+    let y = unsafe { copy_plane_any(y_ptr, pic.stride[0], w, h, bpc) };
+
+    let monochrome = layout == 0; // DAV1D_PIXEL_LAYOUT_I400
+    let (uv_width, uv_height) = match layout {
+        1 => (w.div_ceil(2), h.div_ceil(2)), // I420
+        2 => (w.div_ceil(2), h),             // I422
+        3 => (w, h),                         // I444
+        _ => (0, 0),                         // I400 (monochrome)
+    };
+
+    let (u, v) = if monochrome {
+        (Vec::new(), Vec::new())
+    } else {
+        let u_ptr = pic.data[1]
+            .ok_or_else(|| TranscodeError::Decode("AVIF frame missing U plane".into()))?
+            .as_ptr() as *const u8;
+        let v_ptr = pic.data[2]
+            .ok_or_else(|| TranscodeError::Decode("AVIF frame missing V plane".into()))?
+            .as_ptr() as *const u8;
+        // SAFETY: chroma planes share stride[1]; each holds `uv_height` rows of >= `uv_width` samples.
+        (
+            unsafe { copy_plane_any(u_ptr, pic.stride[1], uv_width, uv_height, bpc) },
+            unsafe { copy_plane_any(v_ptr, pic.stride[1], uv_width, uv_height, bpc) },
+        )
+    };
+
+    // Colour matrix + range come from the AV1 sequence header; default to BT.601 full-range (what
+    // ravif emits) if, implausibly, no header is attached.
+    let (matrix, full_range) = match pic.seq_hdr {
+        // SAFETY: `pic` is alive, so its `seq_hdr` (if set) points at a live sequence header.
+        Some(seq) => {
+            let seq = unsafe { seq.as_ref() };
+            (seq.mtrx, seq.color_range != 0)
+        }
+        None => (6 /* BT601 */, true),
+    };
+
+    Ok(DecodedPicture {
+        width: w as u32,
+        height: h as u32,
+        y,
+        u,
+        v,
+        uv_width,
+        layout,
+        matrix,
+        full_range,
+        monochrome,
+    })
+}
+
+/// Copy `height` rows of `width` bytes from a strided plane into a tightly-packed `Vec`.
+///
+/// # Safety
+/// `base` must point at `height` rows spaced `stride` bytes apart, each with at least `width` readable
+/// bytes.
+unsafe fn copy_plane(base: *const u8, stride: isize, width: usize, height: usize) -> Vec<u8> {
+    let mut out = vec![0u8; width * height];
+    for row in 0..height {
+        // SAFETY: caller guarantees `base + row*stride` starts a run of at least `width` bytes.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                base.offset(row as isize * stride),
+                out.as_mut_ptr().add(row * width),
+                width,
+            );
+        }
+    }
+    out
+}
+
+/// Copy one plane to a tight 8-bit `Vec`, dispatching on bit depth: 8-bit samples are copied
+/// verbatim; 9..=12-bit samples are read as little-endian `u16` and down-shifted to 8-bit.
+///
+/// # Safety
+/// Same contract as [`copy_plane`]: `base` must point at `height` rows spaced `stride` bytes apart,
+/// each holding at least `width` samples (bytes for 8-bit, `u16`s for higher bit depths).
+unsafe fn copy_plane_any(
+    base: *const u8,
+    stride: isize,
+    width: usize,
+    height: usize,
+    bpc: u8,
+) -> Vec<u8> {
+    if bpc == 8 {
+        unsafe { copy_plane(base, stride, width, height) }
+    } else {
+        unsafe { copy_plane_16(base, stride, width, height, bpc) }
+    }
+}
+
+/// Copy a >8-bit plane into a tight 8-bit `Vec`. In the `bitdepth_16` rav1d build, high-bit-depth
+/// planes hold `u16` samples (native/little-endian) while `stride` stays in BYTES; each sample is
+/// down-shifted from `bpc` bits to 8 (`sample >> (bpc - 8)`, clamped) before storing.
+///
+/// # Safety
+/// `base` must point at `height` rows spaced `stride` bytes apart, each holding at least `width`
+/// `u16` samples; `base` need not be `u16`-aligned (reads are unaligned).
+unsafe fn copy_plane_16(
+    base: *const u8,
+    stride: isize,
+    width: usize,
+    height: usize,
+    bpc: u8,
+) -> Vec<u8> {
+    let shift = u32::from(bpc - 8);
+    let mut out = vec![0u8; width * height];
+    for row in 0..height {
+        // SAFETY: caller guarantees `base + row*stride` starts a run of at least `width` u16 samples.
+        let row_ptr = unsafe { base.offset(row as isize * stride) } as *const u16;
+        for col in 0..width {
+            // SAFETY: `col < width`, so `row_ptr + col` is within the row; `read_unaligned` tolerates
+            // the plane not being u16-aligned.
+            let sample = unsafe { row_ptr.add(col).read_unaligned() };
+            out[row * width + col] = (sample >> shift).min(255) as u8;
+        }
+    }
+    out
+}
+
+/// A colour matrix for YUV->RGB. `Identity` is CICP MC 0 (the planes carry G/B/R directly, no matrix).
+enum ColorMatrix {
+    Identity,
+    YCbCr { kr: f32, kb: f32 },
+}
+
+/// Pick luma weights from the AV1 matrix-coefficients code (CICP / ITU-T H.273). Anything we don't
+/// special-case (including "unspecified") falls back to BT.601, which is what ravif encodes.
+fn matrix_for(mtrx: u32) -> ColorMatrix {
+    match mtrx {
+        0 => ColorMatrix::Identity,                            // MC_IDENTITY (RGB / GBR planes)
+        1 => ColorMatrix::YCbCr { kr: 0.2126, kb: 0.0722 },    // MC_BT709
+        4 => ColorMatrix::YCbCr { kr: 0.30, kb: 0.11 },        // MC_FCC
+        7 => ColorMatrix::YCbCr { kr: 0.212, kb: 0.087 },      // MC_SMPTE240
+        _ => ColorMatrix::YCbCr { kr: 0.299, kb: 0.114 },      // MC_BT601/BT470BG/unspecified
+    }
+}
+
+/// Convert one full-or-limited-range YCbCr triple to RGB8 using luma weights `kr`/`kb`.
+fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8, kr: f32, kb: f32, full_range: bool) -> [u8; 3] {
+    let (yf, cbf, crf) = if full_range {
+        (y as f32, cb as f32 - 128.0, cr as f32 - 128.0)
+    } else {
+        // Studio-swing 8-bit: Y in [16,235], C in [16,240]. Expand to full range before matrixing.
+        (
+            (y as f32 - 16.0) * (255.0 / 219.0),
+            (cb as f32 - 128.0) * (255.0 / 224.0),
+            (cr as f32 - 128.0) * (255.0 / 224.0),
+        )
+    };
+    let kg = 1.0 - kr - kb;
+    let r = yf + 2.0 * (1.0 - kr) * crf;
+    let b = yf + 2.0 * (1.0 - kb) * cbf;
+    let g = yf - (2.0 * (1.0 - kr) * kr / kg) * crf - (2.0 * (1.0 - kb) * kb / kg) * cbf;
+    [clamp_u8(r), clamp_u8(g), clamp_u8(b)]
+}
+
+fn clamp_u8(v: f32) -> u8 {
+    v.round().clamp(0.0, 255.0) as u8
+}
+
+/// Convert a decoded YUV picture to an opaque RGBA8 image, upsampling chroma by nearest-neighbour to
+/// match the requested subsampling.
+fn decoded_to_rgba(pic: &DecodedPicture) -> RgbaImage {
+    let w = pic.width as usize;
+    let h = pic.height as usize;
+    let (subx, suby) = match pic.layout {
+        1 => (1u32, 1u32), // I420
+        2 => (1, 0),       // I422
+        _ => (0, 0),       // I444 (I400 handled via `monochrome`)
+    };
+    let matrix = matrix_for(pic.matrix);
+
+    let mut img = RgbaImage::new(pic.width, pic.height);
+    for y in 0..h {
+        for x in 0..w {
+            let luma = pic.y[y * w + x];
+            let rgb = if pic.monochrome {
+                [luma, luma, luma]
+            } else {
+                let cx = x >> subx;
+                let cy = y >> suby;
+                let cb = pic.u[cy * pic.uv_width + cx];
+                let cr = pic.v[cy * pic.uv_width + cx];
+                match matrix {
+                    // Identity/GBR: plane 0 = G, plane 1 = B, plane 2 = R, sample values direct.
+                    ColorMatrix::Identity => [cr, luma, cb],
+                    ColorMatrix::YCbCr { kr, kb } => {
+                        ycbcr_to_rgb(luma, cb, cr, kr, kb, pic.full_range)
+                    }
+                }
+            };
+            img.put_pixel(x as u32, y as u32, Rgba([rgb[0], rgb[1], rgb[2], 255]));
+        }
+    }
+    img
+}
+
+/// Overlay a decoded alpha item (a monochrome AV1 image whose luma plane is the alpha channel) onto
+/// an RGBA image, un-premultiplying the colour if the container flagged premultiplied alpha.
+fn apply_alpha(img: &mut RgbaImage, alpha: &DecodedPicture, premultiplied: bool) {
+    let aw = alpha.width as usize;
+    let w = (img.width() as usize).min(aw);
+    let h = (img.height() as usize).min(alpha.height as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let a = alpha.y[y * aw + x];
+            let px = img.get_pixel_mut(x as u32, y as u32);
+            if premultiplied && a > 0 {
+                for c in 0..3 {
+                    px[c] = ((px[c] as u32 * 255 + a as u32 / 2) / a as u32).min(255) as u8;
+                }
+            }
+            px[3] = a;
+        }
+    }
 }
 
 /// Map an `image` decode error onto our taxonomy: a format the crate recognises but cannot handle
@@ -392,11 +887,9 @@ mod corpus {
         }
     }
 
-    /// A video isn't a decodable still, and - a real, slightly ironic limitation the corpus caught
-    /// - neither is an AVIF *input*: our decoder is pure-Rust with no AV1 decode path, so we can
-    /// emit AVIF but not ingest it. Both are rejected, never silently mis-handled.
+    /// A video isn't a decodable still: it's rejected, never silently mis-handled.
     #[test]
-    fn video_and_avif_input_are_rejected() {
+    fn video_is_rejected() {
         assert!(
             matches!(
                 transcode(&corpus("buck-twenty.mp4")),
@@ -404,13 +897,33 @@ mod corpus {
             ),
             "a video is not an ingestible image"
         );
+    }
+
+    /// A real, foreign AVIF (encoded elsewhere, so unmarked) now ingests: we decode its AV1 bitstream
+    /// with rav1d, bound + re-crush it, and stamp our content-neutral marker on the body. This is the
+    /// path that used to be a known gap - AVIF in, AVIF out.
+    #[test]
+    fn foreign_avif_from_corpus_transcodes() {
+        let out = transcode(&corpus("retro.avif"))
+            .unwrap_or_else(|e| panic!("retro.avif should transcode, got {e:?}"));
+        assert!(out.width > 0 && out.height > 0, "retro.avif has real dimensions");
         assert!(
-            matches!(
-                transcode(&corpus("retro.avif")),
-                Err(TranscodeError::Unsupported(_))
-            ),
-            "AVIF input can't be decoded without an AV1 decoder (known gap)"
+            out.width <= 800 && out.height <= 800,
+            "retro.avif is bounded to 800x800 (got {}x{})",
+            out.width,
+            out.height
         );
+        assert!(is_avif(&out.avif), "retro.avif body is a real AVIF");
+        assert!(is_avif(&out.thumb_avif), "retro.avif thumb is a real AVIF");
+        assert!(
+            has_ringtome_marker(&out.avif),
+            "re-crushed foreign AVIF body is marked"
+        );
+        assert!(
+            !has_ringtome_marker(&out.thumb_avif),
+            "thumbnail is never marked"
+        );
+        dump("retro", &out);
     }
 }
 
@@ -447,6 +960,147 @@ mod tests {
             u32::from(meta.max_frame_width),
             u32::from(meta.max_frame_height),
         )
+    }
+
+    /// Encode a `DynamicImage` to AVIF with plain ravif at the given quality (an unmarked, foreign-
+    /// shaped AVIF - the test analogue of a file encoded by some other tool).
+    fn ravif_encode(img: &DynamicImage, quality: f32) -> Vec<u8> {
+        use imgref::Img;
+        use rgb::FromSlice;
+        let rgba = img.to_rgba8();
+        let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+        ravif::Encoder::new()
+            .with_quality(quality)
+            .with_speed(6)
+            // 8-bit: our decoder is the bitdepth_8-only rav1d (ravif otherwise defaults to 10-bit).
+            .with_bit_depth(ravif::BitDepth::Eight)
+            .encode_rgba(Img::new(rgba.as_raw().as_rgba(), w, h))
+            .expect("ravif encode")
+            .avif_file
+    }
+
+    /// The correctness gate for YUV->RGB: encode a smooth gradient at high quality (so AV1's own loss
+    /// is tiny) and decode it back. A wrong colour matrix or range shifts colours by tens of levels,
+    /// which this small per-channel tolerance would catch.
+    #[test]
+    fn avif_decode_round_trips() {
+        let src = DynamicImage::ImageRgb8(RgbImage::from_fn(200, 150, |x, y| {
+            Rgb([(x % 256) as u8, (y % 256) as u8, 120])
+        }));
+        let avif = ravif_encode(&src, 90.0);
+
+        let decoded = decode_avif(&avif).expect("decode_avif succeeds");
+        assert_eq!(
+            (decoded.width(), decoded.height()),
+            (200, 150),
+            "dimensions round-trip"
+        );
+
+        let (a, b) = (src.to_rgba8(), decoded.to_rgba8());
+        let mut max_diff = 0u8;
+        for (pa, pb) in a.pixels().zip(b.pixels()) {
+            for c in 0..3 {
+                max_diff = max_diff.max(pa[c].abs_diff(pb[c]));
+            }
+        }
+        assert!(
+            max_diff <= 12,
+            "max per-channel diff {max_diff} too high - colour matrix/range bug?"
+        );
+    }
+
+    /// The 10-bit decode path end to end: encode the gradient as a 10-bit AVIF (what many foreign
+    /// uploads are) and decode it back through the `bitdepth_16` rav1d + the 10->8 down-shift. A
+    /// slightly looser tolerance than the 8-bit test accounts for that down-shift's rounding.
+    #[test]
+    fn avif_10bit_decode_round_trips() {
+        use imgref::Img;
+        use rgb::FromSlice;
+
+        let src = DynamicImage::ImageRgb8(RgbImage::from_fn(200, 150, |x, y| {
+            Rgb([(x % 256) as u8, (y % 256) as u8, 120])
+        }));
+        let rgba = src.to_rgba8();
+        let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+        let avif = ravif::Encoder::new()
+            .with_quality(90.0)
+            .with_speed(6)
+            .with_bit_depth(ravif::BitDepth::Ten)
+            .encode_rgba(Img::new(rgba.as_raw().as_rgba(), w, h))
+            .expect("ravif 10-bit encode")
+            .avif_file;
+
+        let decoded = decode_avif(&avif).expect("decode_avif succeeds on 10-bit AVIF");
+        assert_eq!(
+            (decoded.width(), decoded.height()),
+            (200, 150),
+            "dimensions round-trip"
+        );
+
+        let (a, b) = (src.to_rgba8(), decoded.to_rgba8());
+        let mut max_diff = 0u8;
+        for (pa, pb) in a.pixels().zip(b.pixels()) {
+            for c in 0..3 {
+                max_diff = max_diff.max(pa[c].abs_diff(pb[c]));
+            }
+        }
+        assert!(
+            max_diff <= 16,
+            "max per-channel diff {max_diff} too high - 10-bit decode/down-shift bug?"
+        );
+    }
+
+    /// The marker survives a round-trip: added then detected; absent on a plain AVIF; and adding it
+    /// (a `free` box) does not stop the AVIF from decoding.
+    #[test]
+    fn marker_round_trips() {
+        let plain = ravif_encode(&gradient(64, 48), 80.0);
+        assert!(!has_ringtome_marker(&plain), "plain AVIF has no marker");
+
+        let marked = add_ringtome_marker(plain.clone());
+        assert!(has_ringtome_marker(&marked), "marked AVIF is detected");
+
+        let decoded = decode_avif(&marked).expect("marked AVIF still decodes");
+        assert_eq!((decoded.width(), decoded.height()), (64, 48));
+    }
+
+    /// Our transcoded body carries the marker; the thumbnail never does.
+    #[test]
+    fn our_output_is_marked() {
+        let out = transcode(&png_bytes(&gradient(300, 200))).expect("transcode");
+        assert!(has_ringtome_marker(&out.avif), "body is marked");
+        assert!(
+            !has_ringtome_marker(&out.thumb_avif),
+            "thumbnail is not marked"
+        );
+    }
+
+    /// The generational-loss fix: an in-spec marked AVIF (our own prior output) fed back in passes
+    /// through byte-for-byte instead of being re-encoded.
+    #[test]
+    fn passthrough_preserves_bytes() {
+        let first = transcode(&png_bytes(&gradient(120, 90))).expect("first transcode");
+        assert!(first.width <= MAIN_BOUND && first.height <= MAIN_BOUND, "in spec");
+        assert!(has_ringtome_marker(&first.avif), "first body is marked");
+
+        let second = transcode(&first.avif).expect("re-ingest the marked AVIF");
+        assert_eq!(
+            second.avif, first.avif,
+            "in-spec marked AVIF passes through byte-identical"
+        );
+    }
+
+    /// A foreign (unmarked) in-spec AVIF is not trusted: it's decoded and re-crushed, and the fresh
+    /// body differs from the input, stays in spec, and gets marked.
+    #[test]
+    fn foreign_avif_is_recrushed() {
+        let foreign = ravif_encode(&gradient(300, 220), 80.0);
+        assert!(!has_ringtome_marker(&foreign), "input is unmarked");
+
+        let out = transcode(&foreign).expect("foreign AVIF transcodes");
+        assert_ne!(out.avif, foreign, "foreign AVIF is re-encoded, not passed through");
+        assert!(out.width <= MAIN_BOUND && out.height <= MAIN_BOUND, "in spec");
+        assert!(has_ringtome_marker(&out.avif), "re-crushed body is marked");
     }
 
     #[test]

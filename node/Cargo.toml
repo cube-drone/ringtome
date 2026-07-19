@@ -76,10 +76,16 @@ image = { version = "0.25", default-features = false, features = [
 ravif = { version = "0.13", default-features = false, features = ["threading"] }
 rgb = "0.8"
 imgref = "1"
-
-[dev-dependencies]
-# Pure-rust AVIF container + AV1 sequence-header parser, used by the media tests
-# to verify transcoder output. The `image` crate can only *decode* AVIF via its
-# `avif-native` feature, which links dav1d (a C library) - deliberately avoided
-# here, so tests parse the produced AVIF with avif-parse instead.
+# Pure-rust AV1 decoder (no asm: no nasm build step). Drives AVIF *ingest* - we
+# decode the container's AV1 bitstream and convert YUV->RGBA ourselves. See
+# src/media.rs. bitdepth_8 + bitdepth_16 (both pure-rust) so we can decode the
+# 10/12-bit AVIFs common among foreign uploads; `asm` stays off (it needs nasm).
+rav1d = { version = "1.1.0", default-features = false, features = [
+    "bitdepth_8",
+    "bitdepth_16",
+] }
+# Pure-rust AVIF (ISOBMFF) container parser: extracts the primary AV1 item (and
+# alpha item) bitstream and its sequence-header dimensions for the bomb guard.
+# Also used by the media tests to verify produced AVIF output. Kept pure-rust on
+# purpose (the `image` crate's `avif-native` feature would link dav1d, a C lib).
 avif-parse = "2"
