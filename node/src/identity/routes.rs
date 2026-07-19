@@ -7,7 +7,8 @@
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::http::header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
-use axum::response::IntoResponse;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,15 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/identity/{root}/docs/{doc_id}/body",
             get(docs_body_handler),
+        )
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/thumb",
+            get(docs_thumb_handler),
+        )
+        // Media ingest progress: the owner's transcode queue for this identity.
+        .route(
+            "/api/identity/{root}/ingest",
+            get(docs_ingest_status_handler),
         )
 }
 
@@ -609,6 +619,7 @@ async fn docs_save_handler(
             title: req.title,
             body: req.body.into_bytes(),
             format,
+            media: None,
         })
         .await?;
     Ok(Json(DocSaved {
@@ -621,8 +632,8 @@ async fn docs_save_handler(
 #[derive(Deserialize)]
 struct BinaryMeta {
     title: String,
-    format: String,
-    /// Comma-separated parent version hashes (empty for a create).
+    /// Comma-separated parent version hashes (empty for a create). No `format`: every bitmap
+    /// upload is transcoded to canonical AVIF regardless of what arrived.
     #[serde(default)]
     parents: String,
 }
@@ -634,74 +645,177 @@ fn parse_parents(csv: &str) -> Result<Vec<[u8; 32]>, AppError> {
         .collect()
 }
 
-/// Create a binary document (e.g. an image): metadata in the query, raw bytes in the body.
+/// The `202` for a queued upload: the (version-less, pending) document id and the job to poll.
+#[derive(Serialize)]
+struct DocQueued {
+    doc_id: String,
+    job_id: String,
+    status: &'static str,
+}
+
+/// Upload a binary document (an image): metadata in the query, raw bytes in the body. The bytes
+/// don't enter the record or the blob store synchronously - they're quarantined and queued for
+/// transcode to AVIF. Returns `202 Accepted` with the doc_id immediately; the document has no
+/// version until the worker finishes (a version-less doc_id IS the pending state), and a permanent
+/// failure surfaces only in the progress view, never as a ghost document.
 async fn docs_create_binary_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
     Query(meta): Query<BinaryMeta>,
     body: Bytes,
-) -> Result<Json<DocCreated>, AppError> {
-    let format = crate::documents::Format::parse(&meta.format)
-        .ok_or_else(|| AppError::BadRequest(format!("unknown format {:?}", meta.format)))?;
-    let data = store::open(&state, &session.account.id, &root).await?;
+) -> Result<impl IntoResponse, AppError> {
+    // Owner gate: opening the store enforces that this account owns this identity.
+    store::open(&state, &session.account.id, &root).await?;
     let doc_id = crate::documents::new_doc_id();
-    let version = data
-        .documents()
-        .save(crate::documents::Save {
-            doc_id,
-            parents: vec![],
-            title: meta.title,
-            body: body.to_vec(),
-            format,
-        })
+    let job_id = state
+        .ingest
+        .enqueue(
+            &state.node_db,
+            crate::ingest::Upload {
+                account: &session.account.id.to_string(),
+                root: &root,
+                doc_id,
+                parents: &[],
+                title: &meta.title,
+                bytes: &body,
+            },
+        )
         .await?;
-    Ok(Json(DocCreated {
-        doc_id: hex::encode(doc_id),
-        version: hex::encode(version),
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(DocQueued {
+            doc_id: hex::encode(doc_id),
+            job_id,
+            status: "pending",
+        }),
+    ))
 }
 
-/// Save a new binary version.
+/// Upload a new binary version of an existing document. Same async path; the existing doc_id and
+/// asserted parents ride the queue.
 async fn docs_save_binary_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
     Query(meta): Query<BinaryMeta>,
     body: Bytes,
-) -> Result<Json<DocSaved>, AppError> {
+) -> Result<impl IntoResponse, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
-    let format = crate::documents::Format::parse(&meta.format)
-        .ok_or_else(|| AppError::BadRequest(format!("unknown format {:?}", meta.format)))?;
     let parents = parse_parents(&meta.parents)?;
-    let data = store::open(&state, &session.account.id, &root).await?;
-    let version = data
-        .documents()
-        .save(crate::documents::Save {
-            doc_id,
-            parents,
-            title: meta.title,
-            body: body.to_vec(),
-            format,
-        })
+    store::open(&state, &session.account.id, &root).await?;
+    let job_id = state
+        .ingest
+        .enqueue(
+            &state.node_db,
+            crate::ingest::Upload {
+                account: &session.account.id.to_string(),
+                root: &root,
+                doc_id,
+                parents: &parents,
+                title: &meta.title,
+                bytes: &body,
+            },
+        )
         .await?;
-    Ok(Json(DocSaved {
-        version: hex::encode(version),
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(DocQueued {
+            doc_id: hex::encode(doc_id),
+            job_id,
+            status: "pending",
+        }),
+    ))
+}
+
+/// The media ingest progress view for this identity's owner: every queued upload, newest first,
+/// with its status and (on failure) the tombstone message.
+async fn docs_ingest_status_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<Vec<crate::ingest::JobStatus>>, AppError> {
+    // Owner gate before exposing this account's queue.
+    store::open(&state, &session.account.id, &root).await?;
+    let jobs = crate::ingest::jobs_for_account(&state.node_db, &session.account.id.to_string()).await?;
+    Ok(Json(jobs))
 }
 
 /// Serve a document body as raw bytes (the display head), with the format's Content-Type. This
-/// is how a browser fetches an image; for text docs it returns the head's bytes too. A body not
-/// yet fetched to this node is a 404.
+/// is how a browser fetches an image; for text docs it returns the head's bytes too.
+///
+/// **Self-describing about pending/failed ingest.** A media `doc_id` exists (returned in the
+/// upload's `202`) before its transcode lands - and may never land if the upload was bad. Rather
+/// than a bare 404 that can't tell "processing" from "impossible" from "never existed", a
+/// version-less doc_id is explained from the ingest queue: `202` while still transcoding, `422`
+/// with the tombstone message if it terminally failed, `404` only when genuinely unknown. A body
+/// whose version exists but hasn't been fetched to this node yet is still a 404.
 ///
 /// **Isolation, because even a private body may be hostile.** A compromised-not-yet-revoked
-/// member can inject a polyglot claiming `format=webp`; served same-origin and content-sniffed,
+/// member can inject a polyglot claiming an image type; served same-origin and content-sniffed,
 /// an HTML polyglot could execute in the app origin - which holds signing authority. `nosniff`
 /// pins the declared type; `sandbox` gives an opaque origin if the response is ever navigated to.
 /// (The fuller measure - a separate serving origin/port and `Content-Disposition` for
 /// non-renderable types - is PROJECT_PLAN's blob-serving target, due with the render path and
 /// public media.)
 async fn docs_body_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let view = data.documents().all().await?;
+
+    // Version-less: not a real document (yet, or ever). Let the ingest queue explain why.
+    let Some(doc) = view.docs.get(&doc_id) else {
+        return version_less_body_status(&state, &session.account.id.to_string(), doc_id).await;
+    };
+
+    let head = doc
+        .display_head()
+        .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
+    let format = crate::documents::Format::from_wire(head.header.format);
+    let bytes = data
+        .documents()
+        .body(head)
+        .await?
+        .ok_or_else(|| AppError::NotFound("body not on this node yet".into()))?;
+    Ok((
+        [
+            (CONTENT_TYPE, format.mime()),
+            (X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (CONTENT_SECURITY_POLICY, "sandbox"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// Explain a version-less doc_id from the ingest queue: `202` still processing, `422` + tombstone
+/// on a terminal failure, `404` when this account never queued it (or any other state).
+async fn version_less_body_status(
+    state: &AppState,
+    account: &str,
+    doc_id: [u8; 16],
+) -> Result<Response, AppError> {
+    match crate::ingest::latest_job_for_doc(&state.node_db, account, &hex::encode(doc_id)).await? {
+        Some((status, _)) if status == "pending" || status == "processing" => {
+            Ok((StatusCode::ACCEPTED, "still processing").into_response())
+        }
+        Some((status, error)) if status == "failed" => Err(AppError::Unprocessable(
+            error.unwrap_or_else(|| "upload could not be processed".into()),
+        )),
+        // A 'done' job always has its version (so it's in the view above, not here); anything else,
+        // or no job at all, is genuinely not found.
+        _ => Err(AppError::NotFound("document not found".into())),
+    }
+}
+
+/// Serve a media document's thumbnail (the display head's small AVIF), for gallery/list views
+/// that shouldn't pull full-size bodies. Same isolation as the body handler. `404` for a text
+/// document (no thumbnail), a version-less/pending doc, or a thumb not yet fetched to this node.
+async fn docs_thumb_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
@@ -716,15 +830,18 @@ async fn docs_body_handler(
     let head = doc
         .display_head()
         .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
-    let format = crate::documents::Format::from_wire(head.header.format);
+    let thumb_hash = head
+        .header
+        .thumb_hash
+        .ok_or_else(|| AppError::NotFound("document has no thumbnail".into()))?;
     let bytes = data
         .documents()
-        .body(head)
+        .blob(thumb_hash)
         .await?
-        .ok_or_else(|| AppError::NotFound("body not on this node yet".into()))?;
+        .ok_or_else(|| AppError::NotFound("thumbnail not on this node yet".into()))?;
     Ok((
         [
-            (CONTENT_TYPE, format.mime()),
+            (CONTENT_TYPE, crate::documents::Format::Avif.mime()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (CONTENT_SECURITY_POLICY, "sandbox"),
         ],

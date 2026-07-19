@@ -56,3 +56,27 @@ base64 = "0.22.1"
 dryoc = "0.8.0"
 iroh-blobs = "0.103.0"
 diffy = "0.5"
+
+# media ingest transcoder: decode arbitrary bitmap uploads (PURE-RUST decoders
+# only - no C libs) and re-encode to canonical AVIF + thumbnail. See src/media.rs.
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "bmp",
+    "tiff",
+    "webp",
+    "qoi",
+] }
+# AVIF encoder. default-features disabled to drop rav1e's `asm` feature, which
+# would require nasm and pull a non-pure-rust build step.
+ravif = { version = "0.13", default-features = false, features = ["threading"] }
+rgb = "0.8"
+imgref = "1"
+
+[dev-dependencies]
+# Pure-rust AVIF container + AV1 sequence-header parser, used by the media tests
+# to verify transcoder output. The `image` crate can only *decode* AVIF via its
+# `avif-native` feature, which links dav1d (a C library) - deliberately avoided
+# here, so tests parse the produced AVIF with avif-parse instead.
+avif-parse = "2"

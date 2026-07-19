@@ -21,10 +21,12 @@ mod error;
 mod files;
 mod identity;
 mod imaol;
+mod ingest;
 mod inspect;
 mod keystore;
 mod loops;
 mod documents;
+mod media;
 mod p2p;
 mod private;
 mod pubkey;
@@ -57,6 +59,8 @@ pub struct AppState {
     pub directory: discovery::Directory,
     /// The file layer: the node's one global blob store (encrypted bodies, later public media).
     pub files: std::sync::Arc<files::FileStore>,
+    /// Media ingest: quarantine + enqueue handle for the async transcode pipeline.
+    pub ingest: ingest::Ingest,
 }
 
 #[derive(serde::Serialize)]
@@ -148,6 +152,10 @@ async fn main() -> anyhow::Result<()> {
     let endpoint = p2p::build_endpoint(&keystore, &config.discovery).await?;
     let directory = discovery::Directory::build(&config.discovery)?;
     let files = std::sync::Arc::new(files::FileStore::fs(config.data_directory.join("blobs")).await?);
+    let ingest = ingest::Ingest::new(config.quarantine_directory.clone());
+    ingest.ensure_dir()?;
+    // Reconcile any jobs left in flight by a previous run before the worker starts claiming.
+    ingest::reconcile_on_boot(&node_db).await?;
     let state = AppState {
         config,
         node_db,
@@ -157,6 +165,7 @@ async fn main() -> anyhow::Result<()> {
         endpoint: endpoint.clone(),
         directory,
         files,
+        ingest,
     };
     p2p::spawn_accept_loop(endpoint, state.clone());
 
@@ -174,6 +183,14 @@ async fn main() -> anyhow::Result<()> {
         dht_ttl_pace,
         state.clone(),
         identity::serving::republish_pass,
+    );
+    // The media ingest worker: drains the transcode queue. A short cadence keeps upload latency
+    // low; a pass drains everything pending, so under load it's effectively continuous.
+    loops::periodic(
+        "ingest-transcode",
+        std::time::Duration::from_secs(2),
+        state.clone(),
+        ingest::worker_pass,
     );
 
     let mut app = Router::new()

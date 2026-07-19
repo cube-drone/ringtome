@@ -290,6 +290,7 @@ impl Documents<'_> {
                 title: title.to_string(),
                 body: body.to_vec(),
                 format,
+                media: None,
             })
             .await?;
         Ok((doc_id, version))
@@ -321,6 +322,19 @@ impl Documents<'_> {
             version,
         )
         .await
+    }
+
+    /// Read and decrypt an arbitrary referenced blob by hash (e.g. a version's thumbnail).
+    /// `Ok(None)` when we hold no key for its era or it hasn't been fetched to this node yet.
+    pub async fn blob(&self, hash: [u8; 32]) -> Result<Option<Vec<u8>>, AppError> {
+        self.store
+            .files
+            .get_decrypted(
+                iroh_blobs::Hash::from_bytes(hash),
+                &self.store.authorship.epoch_keys,
+            )
+            .await
+            .map_err(AppError::Internal)
     }
 
     /// The document's synthesized current text: one head's body verbatim, a clean three-way

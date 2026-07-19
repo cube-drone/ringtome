@@ -86,3 +86,30 @@ CREATE TABLE pending_adoptions (
     account_id    TEXT    NOT NULL,
     created_at_ms INTEGER NOT NULL
 );
+
+-- ---------------------------------------------------------------------------------------------
+-- Media ingest queue. Uploaded images/audio/video don't enter a user's record or the blob store
+-- until they've been transcoded to a canonical AV1-family codec; while they wait, the raw upload
+-- sits in the quarantine directory and one row here tracks it. Node-LOCAL operational state: it
+-- describes THIS node's processing backlog, is never synced, and never becomes part of anyone's
+-- record. Shared across all users because the workers are shared (a handful of them, not one per
+-- user). FIFO by `seq`; per-account fairness is a deliberate non-goal until a node has enough
+-- users for one uploader's dump to starve another. A version-less doc_id IS the pending state -
+-- the document gets its first version only when transcode succeeds; a permanent failure leaves
+-- the doc_id with no version, visible only here (the progress view), never as a ghost document.
+CREATE TABLE ingest_job (
+    seq             INTEGER PRIMARY KEY AUTOINCREMENT,  -- FIFO order; monotonic, no clock needed
+    job_id          TEXT    NOT NULL UNIQUE,            -- external handle (hex), returned in the 202
+    account         TEXT    NOT NULL,                   -- owning account (for the progress view)
+    root            TEXT    NOT NULL,                   -- identity root pubkey hex (to open the store)
+    doc_id          TEXT    NOT NULL,                   -- minted at enqueue, returned in the 202 (hex)
+    parents         TEXT    NOT NULL DEFAULT '',        -- CSV of parent version hashes (empty = create)
+    title           TEXT    NOT NULL,
+    quarantine_path TEXT    NOT NULL,                   -- absolute path to the raw upload on disk
+    status          TEXT    NOT NULL DEFAULT 'pending', -- pending | processing | done | failed
+    error           TEXT,                               -- set when status = failed (the tombstone)
+    bytes_in        INTEGER NOT NULL,                   -- raw upload size
+    created_ms      INTEGER NOT NULL                    -- local display clock only, never synced
+);
+CREATE INDEX ingest_job_status_idx  ON ingest_job (status, seq);
+CREATE INDEX ingest_job_account_idx ON ingest_job (account, seq);

@@ -85,14 +85,16 @@ pub mod entry_type {
 pub mod doc_format {
     /// Marquee markup.
     pub const MARQUEE: u64 = 1;
-    /// A WebP image. The first *media* format: opaque bytes, not mergeable text. Media validation
+    /// An AVIF image - the canonical *stored* image format. Every bitmap upload (png, jpeg, gif,
+    /// webp, ...) is transcoded once, at ingest, into AVIF (AV1 intra); what lands here and syncs
+    /// is always already-crunched AVIF. Opaque bytes, not mergeable text. Media validation
     /// (Media-Type Admission Test) splits by threat: *scanning* and stranger-liability are
     /// public-only, but **sandboxed decoding and don't-trust-the-declared-type apply to private
     /// media too** - a compromised-not-yet-revoked member is an adversary inside the membrane, so
     /// the render path treats even "our own" bytes as hostile (Doctrine: Every Byte From The
-    /// Network Is Hostile). EXIF stripping is a publication-boundary concern (don't leak GPS
-    /// outward), not a private-ingest one.
-    pub const WEBP: u64 = 2;
+    /// Network Is Hostile). The ingest transcode strips EXIF for free (decode-to-pixels drops it),
+    /// covering the publication-boundary concern (don't leak GPS outward) as a side effect.
+    pub const AVIF: u64 = 2;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key
@@ -442,6 +444,17 @@ pub struct DocHeaderPlain {
     pub body_hash: [u8; 32],
     pub title: String,
     pub format: Option<u64>,
+    /// Media metadata, all absent for text. Populated by the ingest transcode: pixel dimensions
+    /// (a layout hint - authentic, since it's signed in the author's chain, but never a safety
+    /// input; the decoder enforces its own limits regardless of what these claim), an optional
+    /// duration for time-based media (audio/video, `None` for stills), and `thumb_hash` - the
+    /// file-layer hash of a small AVIF thumbnail stored as its OWN sibling blob (never inline: a
+    /// thumbnail in the header would bloat every chain entry and turn a big directory's sync into
+    /// a nightmare). All ride inside the encrypted header, member-secret like `body_hash`.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub duration_ms: Option<u64>,
+    pub thumb_hash: Option<[u8; 32]>,
 }
 
 impl DocHeaderPlain {
@@ -467,7 +480,15 @@ impl DocHeaderPlain {
             return Err(ProtoError::BadEntry("too many parents"));
         }
         let mut w = Writer::new();
-        w.map(if self.format.is_some() { 6 } else { 5 });
+        // Base 5 fields (0..4) plus whichever optionals are present. Keys stay in ascending
+        // order, so the map is canonical.
+        let n = 5
+            + self.format.is_some() as u64
+            + self.width.is_some() as u64
+            + self.height.is_some() as u64
+            + self.duration_ms.is_some() as u64
+            + self.thumb_hash.is_some() as u64;
+        w.map(n);
         w.uint(0);
         w.bytes(&self.doc_id);
         w.uint(1);
@@ -485,6 +506,22 @@ impl DocHeaderPlain {
             w.uint(5);
             w.uint(f);
         }
+        if let Some(x) = self.width {
+            w.uint(6);
+            w.uint(x as u64);
+        }
+        if let Some(x) = self.height {
+            w.uint(7);
+            w.uint(x as u64);
+        }
+        if let Some(d) = self.duration_ms {
+            w.uint(8);
+            w.uint(d);
+        }
+        if let Some(t) = &self.thumb_hash {
+            w.uint(9);
+            w.bytes(t);
+        }
         Ok(w.into_bytes())
     }
 
@@ -493,6 +530,7 @@ impl DocHeaderPlain {
         let mut map = r.int_map()?;
         let (mut doc_id, mut parents, mut file_hash, mut body_hash, mut title, mut format) =
             (None, None, None, None, None, None);
+        let (mut width, mut height, mut duration_ms, mut thumb_hash) = (None, None, None, None);
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -511,6 +549,20 @@ impl DocHeaderPlain {
                 3 => body_hash = Some(map.bytes_fixed::<32>()?),
                 4 => title = Some(map.text()?.to_string()),
                 5 => format = Some(map.uint()?),
+                6 => {
+                    width = Some(
+                        u32::try_from(map.uint()?)
+                            .map_err(|_| ProtoError::BadEntry("width out of range"))?,
+                    )
+                }
+                7 => {
+                    height = Some(
+                        u32::try_from(map.uint()?)
+                            .map_err(|_| ProtoError::BadEntry("height out of range"))?,
+                    )
+                }
+                8 => duration_ms = Some(map.uint()?),
+                9 => thumb_hash = Some(map.bytes_fixed::<32>()?),
                 _ => map.skip_value()?,
             }
         }
@@ -522,6 +574,10 @@ impl DocHeaderPlain {
             body_hash: body_hash.ok_or(ProtoError::BadEntry("doc header missing body_hash"))?,
             title: title.ok_or(ProtoError::BadEntry("doc header missing title"))?,
             format,
+            width,
+            height,
+            duration_ms,
+            thumb_hash,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -864,6 +920,10 @@ mod tests {
                 body_hash: [4u8; 32],
                 title: "grocery plans".into(),
                 format: None,
+                width: None,
+                height: None,
+                duration_ms: None,
+                thumb_hash: None,
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -875,8 +935,26 @@ mod tests {
             body_hash: [4u8; 32],
             title: "essay".into(),
             format: Some(1),
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
+        // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
+        let img = DocHeaderPlain {
+            doc_id: [9u8; 16],
+            parents: vec![],
+            file_hash: [3u8; 32],
+            body_hash: [4u8; 32],
+            title: "sunset".into(),
+            format: Some(super::doc_format::AVIF),
+            width: Some(800),
+            height: Some(533),
+            duration_ms: None,
+            thumb_hash: Some([7u8; 32]),
+        };
+        assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
     }
 
     #[test]
@@ -888,6 +966,10 @@ mod tests {
             body_hash: [0u8; 32],
             title: "x".repeat(DocHeaderPlain::MAX_TITLE_LEN + 1),
             format: None,
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {

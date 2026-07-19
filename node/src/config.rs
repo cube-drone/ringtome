@@ -33,6 +33,12 @@ pub struct Config {
     pub port: u16,
     /// Where per-user databases, key files, and other node state live.
     pub data_directory: PathBuf,
+    /// Where uploaded media sits, in the clear, between arrival and transcode - deliberately
+    /// disposable (defaults under the system temp dir). If a reboot wipes it mid-queue the
+    /// affected uploads just fail and the user re-uploads; nothing durable is ever staged here.
+    /// The plaintext only exists on this trusted, key-holding node; relaying nodes see only the
+    /// encrypted AVIF. Overridable with `RINGTOME_QUARANTINE_DIRECTORY`.
+    pub quarantine_directory: PathBuf,
     pub environment: Environment,
     /// Whether this node serves many accounts (hosted) or one (desktop). See the `Session`
     /// extractor, which branches on it.
@@ -68,9 +74,13 @@ impl Config {
             .and_then(|s| s.parse::<u16>().ok())
             .unwrap_or(5281);
 
-        let data_directory = env::var("RINGTOME_DATA_DIRECTORY")
+        let data_directory: PathBuf = env::var("RINGTOME_DATA_DIRECTORY")
             .unwrap_or_else(|_| "./data".to_string())
             .into();
+
+        let quarantine_directory = env::var("RINGTOME_QUARANTINE_DIRECTORY")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| env::temp_dir().join("ringtome-upload-quarantine"));
 
         let environment = match env::var("RINGTOME_ENVIRONMENT").as_deref() {
             Ok("prod") => Environment::Prod,
@@ -94,6 +104,7 @@ impl Config {
             bind_address,
             port,
             data_directory,
+            quarantine_directory,
             environment,
             tenancy,
             local_test,

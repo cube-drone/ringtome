@@ -26,6 +26,11 @@ pub enum AppError {
     #[error("{0}")]
     NotFound(String),
 
+    /// The request was understood but the underlying entity can't be produced - e.g. an upload
+    /// whose transcode terminally failed. Carries the human tombstone.
+    #[error("{0}")]
+    Unprocessable(String),
+
     #[error("too many requests: {0}")]
     TooManyRequests(String),
 
@@ -41,6 +46,7 @@ impl AppError {
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::Unprocessable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }

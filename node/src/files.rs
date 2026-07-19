@@ -198,6 +198,7 @@ mod tests {
             directory: crate::discovery::Directory::build(&crate::discovery::DiscoveryMode::Off)
                 .unwrap(),
             files: files_a.clone(),
+            ingest: crate::ingest::Ingest::new(dir.join("quarantine")),
         };
         crate::p2p::spawn_accept_loop(ep_a.clone(), state);
 

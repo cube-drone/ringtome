@@ -26,10 +26,11 @@ use crate::private::{decrypt_doc_header, encrypt_doc_header, EpochKeys};
 pub enum Format {
     Plaintext,
     Marquee,
-    /// A WebP image - the first *media* format. Opaque bytes: no line-merge, no inline conflict,
-    /// served natively. (Text is the only substrate with multiple mergeable grammars; a media
-    /// type is self-describing - it IS its format.)
-    Webp,
+    /// An AVIF image - the canonical stored image format. Every bitmap upload is transcoded to
+    /// AVIF once at ingest; what's stored and served is always AVIF. Opaque bytes: no line-merge,
+    /// no inline conflict, served natively. (Text is the only substrate with multiple mergeable
+    /// grammars; a media type is self-describing - it IS its format.)
+    Avif,
 }
 
 impl Format {
@@ -38,7 +39,7 @@ impl Format {
     pub fn from_wire(w: Option<u64>) -> Self {
         match w {
             Some(doc_format::MARQUEE) => Format::Marquee,
-            Some(doc_format::WEBP) => Format::Webp,
+            Some(doc_format::AVIF) => Format::Avif,
             _ => Format::Plaintext,
         }
     }
@@ -47,7 +48,7 @@ impl Format {
         match self {
             Format::Plaintext => None,
             Format::Marquee => Some(doc_format::MARQUEE),
-            Format::Webp => Some(doc_format::WEBP),
+            Format::Avif => Some(doc_format::AVIF),
         }
     }
 
@@ -55,7 +56,7 @@ impl Format {
         match self {
             Format::Plaintext => "plaintext",
             Format::Marquee => "marquee",
-            Format::Webp => "webp",
+            Format::Avif => "avif",
         }
     }
 
@@ -63,7 +64,7 @@ impl Format {
         match s {
             "plaintext" => Some(Format::Plaintext),
             "marquee" => Some(Format::Marquee),
-            "webp" => Some(Format::Webp),
+            "avif" => Some(Format::Avif),
             _ => None,
         }
     }
@@ -79,7 +80,7 @@ impl Format {
         match self {
             Format::Plaintext => "text/plain; charset=utf-8",
             Format::Marquee => "text/plain; charset=utf-8",
-            Format::Webp => "image/webp",
+            Format::Avif => "image/avif",
         }
     }
 }
@@ -250,6 +251,21 @@ pub struct Save {
     /// plaintext→marquee reinterpretation would sprout bullets from a `*`; conversion is a
     /// future explicit act). The client asserts it, like `parents`.
     pub format: Format,
+    /// Media metadata for a media save (`None` for text). The ingest worker fills this in after
+    /// transcoding: measured dimensions, optional duration, and the hash of the thumbnail blob it
+    /// already stored. `body` for a media save is the transcoded AVIF, not the original upload.
+    pub media: Option<MediaMeta>,
+}
+
+/// What the ingest transcode measured/produced, minus the bytes themselves: dimensions, an
+/// optional duration (time-based media only), and the file-layer hash of the thumbnail blob the
+/// worker stored separately. Copied verbatim into the encrypted header.
+#[derive(Debug, Clone)]
+pub struct MediaMeta {
+    pub width: u32,
+    pub height: u32,
+    pub duration_ms: Option<u64>,
+    pub thumb_hash: [u8; 32],
 }
 
 /// Save one version of a document: body into the file layer, header onto the notes chain.
@@ -309,6 +325,10 @@ pub async fn save_version(
         body_hash,
         title: save.title,
         format: save.format.to_wire(),
+        width: save.media.as_ref().map(|m| m.width),
+        height: save.media.as_ref().map(|m| m.height),
+        duration_ms: save.media.as_ref().and_then(|m| m.duration_ms),
+        thumb_hash: save.media.as_ref().map(|m| m.thumb_hash),
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -411,9 +431,14 @@ pub async fn fetch_missing_bodies(
         let mut missing: Vec<iroh_blobs::Hash> = Vec::new();
         for doc in view.docs.values() {
             for version in doc.versions.values() {
-                let hash = iroh_blobs::Hash::from_bytes(version.header.file_hash);
-                if !missing.contains(&hash) && !state.files.has(hash).await {
-                    missing.push(hash);
+                // A version references its body, and (for media) a sibling thumbnail blob. Both
+                // ride iroh-blobs and both may be absent; fetch whichever we lack.
+                let mut refs = vec![version.header.file_hash];
+                refs.extend(version.header.thumb_hash);
+                for hash in refs.into_iter().map(iroh_blobs::Hash::from_bytes) {
+                    if !missing.contains(&hash) && !state.files.has(hash).await {
+                        missing.push(hash);
+                    }
                 }
             }
         }
@@ -467,7 +492,7 @@ fn side_label(v: &Version) -> String {
 /// only: `resolve` returns before this for media (which has no synthesized-text conflict).
 fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> String {
     match format {
-        Format::Webp => unreachable!("media conflicts are keep-both, never synthesized text"),
+        Format::Avif => unreachable!("media conflicts are keep-both, never synthesized text"),
         // Git-style marker fences: every side in full.
         Format::Plaintext => {
             let mut out = String::new();
@@ -648,7 +673,7 @@ pub async fn resolve(
                     .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a)))
                     .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b))),
                 Format::Marquee => whole_version_conflict(format, &[(a, text_a), (b, text_b)]),
-                Format::Webp => unreachable!("media never reaches text merge"),
+                Format::Avif => unreachable!("media never reaches text merge"),
             }),
         }),
     }
@@ -702,6 +727,7 @@ mod tests {
                 title: title.into(),
                 body: body.into(),
                 format: Format::Plaintext,
+                media: None,
             },
         )
         .await
@@ -731,6 +757,7 @@ mod tests {
                 title: title.into(),
                 body: body.into(),
                 format,
+                media: None,
             },
         )
         .await
@@ -1133,12 +1160,12 @@ mod tests {
         .concat();
 
         let doc_id = new_doc_id();
-        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "sunset", &webp, Format::Webp).await;
+        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "sunset", &webp, Format::Avif).await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         let head = doc.display_head().unwrap();
-        assert_eq!(head.header.format, Some(2), "recorded as webp");
+        assert_eq!(head.header.format, Some(2), "recorded as avif");
 
         // Byte-identical round trip.
         let got = read_body(&files, &keys, head).await.unwrap().unwrap();
@@ -1151,13 +1178,53 @@ mod tests {
 
         // Diverge it: two different images from one parent. Keep-both, still no merge attempt.
         let other = [b"RIFF\x1a\x00\x00\x00WEBP".as_slice(), &[0x01, 0x02, 0x03]].concat();
-        let _a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &other, Format::Webp).await;
-        let _b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &webp[..webp.len() - 1], Format::Webp).await;
+        let _a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &other, Format::Avif).await;
+        let _b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &webp[..webp.len() - 1], Format::Avif).await;
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         let r = resolve(&files, &keys, doc).await.unwrap();
         assert_eq!(r.resolution, Resolution::Conflict, "two images diverge -> keep both");
         assert!(doc.diverged());
+    }
+
+    /// Binary can't merge - divergence is keep-both. But the plaintext fingerprint still catches
+    /// "secretly the same file": two devices that independently set the *same* image collapse to
+    /// one logical head (rung 1, format-agnostic). Same bytes but a different title stays diverged
+    /// - the rename is real, exactly as for text.
+    #[tokio::test]
+    async fn identical_binary_saves_collapse_by_fingerprint_but_renames_stay_diverged() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let img = [b"RIFF\x1a\x00\x00\x00WEBP".as_slice(), &[0x01, 0x02, 0x03]].concat();
+        let replacement = [b"RIFF\x1a\x00\x00\x00WEBP".as_slice(), &[0x09, 0x09, 0x09]].concat();
+
+        // Two devices replace the same original with the SAME new image, same title.
+        let doc_id = new_doc_id();
+        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "pic", &img, Format::Avif).await;
+        let a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "pic", &replacement, Format::Avif).await;
+        let b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "pic", &replacement, Format::Avif).await;
+        assert_ne!(a, b, "distinct versions on distinct saves");
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.heads.len(), 2, "the DAG truthfully holds both");
+        assert_eq!(doc.logical_heads.len(), 1, "same bytes + title -> not a real divergence");
+        assert!(!doc.diverged());
+
+        // Same replacement bytes, DIFFERENT title -> a real difference, stays diverged.
+        let doc2 = new_doc_id();
+        let w1 = save_fmt(&db, &key, &keys, &files, doc2, vec![], "pic", &img, Format::Avif).await;
+        save_fmt(&db, &key, &keys, &files, doc2, vec![w1], "sunset", &replacement, Format::Avif).await;
+        save_fmt(&db, &key, &keys, &files, doc2, vec![w1], "sunrise", &replacement, Format::Avif).await;
+        let view = materialize(&db, &keys).await.unwrap();
+        assert_eq!(
+            view.docs.get(&doc2).unwrap().logical_heads.len(),
+            2,
+            "same image, different title = a genuine divergence"
+        );
     }
 
     // -------------------------------------------------------------------------------------
