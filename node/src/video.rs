@@ -90,7 +90,7 @@ const MIN_FRAME_SPACING_MS: u64 = 50;
 const MAX_FRAMES: u32 = 2_400;
 
 /// A WebM whose Segment Info *declares* a duration longer than this is rejected with
-/// [`VideoError::TooLong`] before any block is decoded - the client is supposed to bound duration,
+/// [`CrushError::TooLong`] before any block is decoded - the client is supposed to bound duration,
 /// so a self-declared over-long upload is a misbehaving client, refused cheaply and early.
 /// 150 s = the MAX_FRAMES budget (2 min at 20 fps) plus slack.
 const MAX_DURATION_MS: f64 = 150_000.0;
@@ -168,7 +168,7 @@ pub enum CrushedFormat {
 
 /// Why an upload could not be turned into canonical video.
 #[derive(Debug)]
-pub enum VideoError {
+pub enum CrushError {
     /// Not one of the closed set of intermediary shapes (wrong container, wrong codec).
     Unsupported(String),
     /// Malformed / corrupt / decompression-bomb / decode or encode failure.
@@ -177,17 +177,17 @@ pub enum VideoError {
     TooLong(String),
 }
 
-impl std::fmt::Display for VideoError {
+impl std::fmt::Display for CrushError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VideoError::Unsupported(detail) => write!(f, "unsupported video input: {detail}"),
-            VideoError::Decode(detail) => write!(f, "could not process video: {detail}"),
-            VideoError::TooLong(detail) => write!(f, "video too long: {detail}"),
+            CrushError::Unsupported(detail) => write!(f, "unsupported video input: {detail}"),
+            CrushError::Decode(detail) => write!(f, "could not process video: {detail}"),
+            CrushError::TooLong(detail) => write!(f, "video too long: {detail}"),
         }
     }
 }
 
-impl std::error::Error for VideoError {}
+impl std::error::Error for CrushError {}
 
 /// Knobs for [`crush`]. `max_frames: None` means the [`MAX_FRAMES`] const; tests pass a small
 /// `Some(n)` to window the big fixtures at CI speed (the cap truncates - see [`MAX_FRAMES`]).
@@ -205,7 +205,7 @@ pub fn crush(
     video: &[u8],
     audio_ogg_opus: Option<&[u8]>,
     opts: CrushOpts,
-) -> Result<Crushed, VideoError> {
+) -> Result<Crushed, CrushError> {
     let cap = opts.max_frames.unwrap_or(MAX_FRAMES).max(1) as usize;
 
     // Sniff the container from magic bytes and take the matching decode lane. Each lane yields
@@ -225,7 +225,7 @@ pub fn crush(
     };
 
     if frames.is_empty() {
-        return Err(VideoError::Decode("input contained no frames".into()));
+        return Err(CrushError::Decode("input contained no frames".into()));
     }
     let width = frames[0].image.width();
     let height = frames[0].image.height();
@@ -291,7 +291,7 @@ enum InputKind {
 
 /// Identify the container from magic bytes. Anything unrecognised - mp4, random bytes, whatever -
 /// is `Unsupported`, not corrupt: the closed set is the contract.
-fn sniff(input: &[u8]) -> Result<InputKind, VideoError> {
+fn sniff(input: &[u8]) -> Result<InputKind, CrushError> {
     if input.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
         return Ok(InputKind::Webm);
     }
@@ -304,7 +304,7 @@ fn sniff(input: &[u8]) -> Result<InputKind, VideoError> {
     if input.len() >= 12 && &input[0..4] == b"RIFF" && &input[8..12] == b"WEBP" {
         return Ok(InputKind::Webp);
     }
-    Err(VideoError::Unsupported(
+    Err(CrushError::Unsupported(
         "not a WebM, APNG, GIF, or WebP".into(),
     ))
 }
@@ -360,7 +360,7 @@ impl FrameSink {
     }
 
     /// Offer one raw decoded frame (source resolution) with its source timing.
-    fn push(&mut self, image: &RgbaImage, ms: u64, dur_ms: u64) -> Result<(), VideoError> {
+    fn push(&mut self, image: &RgbaImage, ms: u64, dur_ms: u64) -> Result<(), CrushError> {
         let (w, h) = (image.width(), image.height());
         match self.source_dims {
             None => {
@@ -370,7 +370,7 @@ impl FrameSink {
             }
             // A mid-stream resolution switch is not something any honest client emits.
             Some(dims) if dims != (w, h) => {
-                return Err(VideoError::Decode(
+                return Err(CrushError::Decode(
                     "frame dimensions changed mid-stream".into(),
                 ));
             }
@@ -462,7 +462,7 @@ struct DemuxedWebm {
 /// Demux a WebM: strict against the closed set. Exactly one video track and it must be V_AV1;
 /// at most one audio track and it must be A_OPUS with an OpusHead CodecPrivate; any other track
 /// is `Unsupported`. A declared over-budget duration is refused before any block is read.
-fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
+fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, CrushError> {
     let mut src = Cursor::new(input);
     // Buffer TrackEntry masters whole so each track's children can be inspected in one piece.
     let iter = WebmIterator::new(&mut src, &[MatroskaSpec::TrackEntry(Master::Start)]);
@@ -480,7 +480,7 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
     let ticks_to_ms = |ticks: u64, scale: u64| -> u64 { ticks.saturating_mul(scale) / 1_000_000 };
 
     for tag in iter {
-        let tag = tag.map_err(|e| VideoError::Decode(format!("webm parse failed: {e}")))?;
+        let tag = tag.map_err(|e| CrushError::Decode(format!("webm parse failed: {e}")))?;
         match tag {
             MatroskaSpec::TimestampScale(v) => timestamp_scale = v.max(1),
             // The duration bound, checked the moment the file declares it: refuse an over-long
@@ -488,7 +488,7 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
             MatroskaSpec::Duration(d) => {
                 let declared_ms = d * (timestamp_scale as f64) / 1_000_000.0;
                 if !declared_ms.is_finite() || declared_ms > MAX_DURATION_MS {
-                    return Err(VideoError::TooLong(format!(
+                    return Err(CrushError::TooLong(format!(
                         "webm declares {declared_ms:.0} ms, over the {MAX_DURATION_MS:.0} ms bound"
                     )));
                 }
@@ -500,7 +500,7 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
                     _ => continue,
                 };
                 let number = find_uint(&children, |t| matches!(t, MatroskaSpec::TrackNumber(_)))
-                    .ok_or_else(|| VideoError::Decode("track without a number".into()))?;
+                    .ok_or_else(|| CrushError::Decode("track without a number".into()))?;
                 let track_type =
                     find_uint(&children, |t| matches!(t, MatroskaSpec::TrackType(_))).unwrap_or(0);
                 let codec = children.iter().find_map(|t| match t {
@@ -512,22 +512,22 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
                     // Video: must be AV1, exactly once, with sane declared dimensions.
                     1 => {
                         if codec != "V_AV1" {
-                            return Err(VideoError::Unsupported(format!(
+                            return Err(CrushError::Unsupported(format!(
                                 "webm video codec {codec:?} (only V_AV1 is accepted)"
                             )));
                         }
                         if video_track.is_some() {
-                            return Err(VideoError::Unsupported(
+                            return Err(CrushError::Unsupported(
                                 "webm has multiple video tracks".into(),
                             ));
                         }
                         let (w, h) = video_dimensions(&children).ok_or_else(|| {
-                            VideoError::Decode("video track without dimensions".into())
+                            CrushError::Decode("video track without dimensions".into())
                         })?;
                         // Bomb guard on the *declared* dimensions, before any pixel decode. Each
                         // decoded picture is re-checked against the same bounds in extract_picture.
                         if w > MAX_DECODE_DIMENSION || h > MAX_DECODE_DIMENSION {
-                            return Err(VideoError::Decode(format!(
+                            return Err(CrushError::Decode(format!(
                                 "webm declares {w}x{h}, over the {MAX_DECODE_DIMENSION}px bound"
                             )));
                         }
@@ -538,12 +538,12 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
                     // Audio: must be Opus, exactly once, with the OpusHead riding as CodecPrivate.
                     2 => {
                         if codec != "A_OPUS" {
-                            return Err(VideoError::Unsupported(format!(
+                            return Err(CrushError::Unsupported(format!(
                                 "webm audio codec {codec:?} (only A_OPUS is accepted)"
                             )));
                         }
                         if audio_track.is_some() {
-                            return Err(VideoError::Unsupported(
+                            return Err(CrushError::Unsupported(
                                 "webm has multiple audio tracks".into(),
                             ));
                         }
@@ -554,7 +554,7 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
                                 _ => None,
                             })
                             .ok_or_else(|| {
-                                VideoError::Decode("opus track without an OpusHead".into())
+                                CrushError::Decode("opus track without an OpusHead".into())
                             })?;
                         let (channels, pre_skip) = parse_opus_head(&head)?;
                         audio_track = Some(number);
@@ -567,7 +567,7 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
                     }
                     // Anything else (subtitles, whatever) is outside the closed set.
                     other => {
-                        return Err(VideoError::Unsupported(format!(
+                        return Err(CrushError::Unsupported(format!(
                             "webm track type {other} (only one video + one audio track)"
                         )));
                     }
@@ -576,13 +576,13 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
             MatroskaSpec::Timestamp(v) => cluster_ticks = v,
             MatroskaSpec::SimpleBlock(ref data) => {
                 let block = SimpleBlock::try_from(data.as_slice())
-                    .map_err(|e| VideoError::Decode(format!("bad webm block: {e}")))?;
+                    .map_err(|e| CrushError::Decode(format!("bad webm block: {e}")))?;
                 collect_block_frames(
                     block.track,
                     block.timestamp,
                     &block
                         .read_frame_data()
-                        .map_err(|e| VideoError::Decode(format!("bad webm lacing: {e}")))?,
+                        .map_err(|e| CrushError::Decode(format!("bad webm lacing: {e}")))?,
                     cluster_ticks,
                     |ticks| ticks_to_ms(ticks, timestamp_scale),
                     video_track,
@@ -595,13 +595,13 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
             // the way in - rav1d finds its own sync points).
             MatroskaSpec::Block(ref data) => {
                 let block = Block::try_from(data.as_slice())
-                    .map_err(|e| VideoError::Decode(format!("bad webm block: {e}")))?;
+                    .map_err(|e| CrushError::Decode(format!("bad webm block: {e}")))?;
                 collect_block_frames(
                     block.track,
                     block.timestamp,
                     &block
                         .read_frame_data()
-                        .map_err(|e| VideoError::Decode(format!("bad webm lacing: {e}")))?,
+                        .map_err(|e| CrushError::Decode(format!("bad webm lacing: {e}")))?,
                     cluster_ticks,
                     |ticks| ticks_to_ms(ticks, timestamp_scale),
                     video_track,
@@ -615,10 +615,10 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, VideoError> {
     }
 
     if video_track.is_none() {
-        return Err(VideoError::Unsupported("webm has no video track".into()));
+        return Err(CrushError::Unsupported("webm has no video track".into()));
     }
     if video_packets.is_empty() {
-        return Err(VideoError::Decode("webm has no video data".into()));
+        return Err(CrushError::Decode("webm has no video data".into()));
     }
     if let Some(a) = audio.as_mut() {
         a.packets = std::mem::take(&mut audio_packets);
@@ -680,7 +680,7 @@ fn video_dimensions(children: &[MatroskaSpec]) -> Option<(u32, u32)> {
 /// Decode a demuxed WebM's AV1 packets into bounded frames. Pictures come out of rav1d in
 /// presentation order (an AV1-in-WebM block is one temporal unit = one shown frame), so picture N
 /// takes block N's timestamp; durations are the gaps between blocks.
-fn decode_webm_frames(demuxed: &DemuxedWebm, cap: usize) -> Result<Vec<BoundedFrame>, VideoError> {
+fn decode_webm_frames(demuxed: &DemuxedWebm, cap: usize) -> Result<Vec<BoundedFrame>, CrushError> {
     // Per-block durations from the timestamp deltas; the last block reuses the previous duration
     // (the mux has no "end" marker), defaulting to the 20 fps spacing for a single block.
     let ts: Vec<u64> = demuxed.video_packets.iter().map(|(ms, _)| *ms).collect();
@@ -697,7 +697,7 @@ fn decode_webm_frames(demuxed: &DemuxedWebm, cap: usize) -> Result<Vec<BoundedFr
     let mut sink = FrameSink::new(cap);
     let mut decoder = Av1Decoder::open()?;
     let mut picture_index = 0usize;
-    let mut on_picture = |pic: DecodedPicture, sink: &mut FrameSink| -> Result<(), VideoError> {
+    let mut on_picture = |pic: DecodedPicture, sink: &mut FrameSink| -> Result<(), CrushError> {
         let i = picture_index.min(ts.len().saturating_sub(1));
         picture_index += 1;
         let rgba = decoded_to_rgba(&pic);
@@ -754,7 +754,7 @@ struct Av1Decoder {
 
 impl Av1Decoder {
     /// Open a single-threaded, minimal-delay decoder (same settings as media.rs).
-    fn open() -> Result<Self, VideoError> {
+    fn open() -> Result<Self, CrushError> {
         // SAFETY: `settings` is a live local fully initialised by `dav1d_default_settings` (via
         // `ptr::write`) before any field is read; `dav1d_open` writes `ctx` before we use it.
         unsafe {
@@ -768,7 +768,7 @@ impl Av1Decoder {
             if dav1d_open(NonNull::new(&mut ctx), NonNull::new(&mut settings)).0 != 0
                 || ctx.is_none()
             {
-                return Err(VideoError::Decode("dav1d_open failed".into()));
+                return Err(CrushError::Decode("dav1d_open failed".into()));
             }
             Ok(Av1Decoder { ctx })
         }
@@ -777,9 +777,9 @@ impl Av1Decoder {
     /// Feed one WebM block's AV1 data (a temporal unit) and collect every picture that becomes
     /// ready. rav1d may hold pictures back (frame delay); they surface on a later send or in
     /// [`Self::drain`].
-    fn send_packet(&mut self, packet: &[u8]) -> Result<Vec<DecodedPicture>, VideoError> {
+    fn send_packet(&mut self, packet: &[u8]) -> Result<Vec<DecodedPicture>, CrushError> {
         if packet.is_empty() {
-            return Err(VideoError::Decode("empty AV1 packet".into()));
+            return Err(CrushError::Decode("empty AV1 packet".into()));
         }
         let ctx = self.ctx;
         let mut out = Vec::new();
@@ -792,7 +792,7 @@ impl Av1Decoder {
             let mut data = MaybeUninit::<Dav1dData>::uninit();
             let dst = dav1d_data_create(NonNull::new(data.as_mut_ptr()), packet.len());
             if dst.is_null() {
-                return Err(VideoError::Decode("dav1d_data_create failed".into()));
+                return Err(CrushError::Decode("dav1d_data_create failed".into()));
             }
             let mut data = data.assume_init();
             std::ptr::copy_nonoverlapping(packet.as_ptr(), dst, packet.len());
@@ -828,7 +828,7 @@ impl Av1Decoder {
     }
 
     /// End of stream: pull whatever the delay pipeline still holds.
-    fn drain(&mut self) -> Result<Vec<DecodedPicture>, VideoError> {
+    fn drain(&mut self) -> Result<Vec<DecodedPicture>, CrushError> {
         let ctx = self.ctx;
         let mut out = Vec::new();
         // Bounded for the same reason as the send loop; the frame delay is 1, so this is plenty.
@@ -850,7 +850,7 @@ impl Av1Decoder {
     /// `ctx` must be a live context from `dav1d_open` that has not been closed.
     unsafe fn next_picture(
         ctx: Option<Dav1dContext>,
-    ) -> Result<Option<DecodedPicture>, VideoError> {
+    ) -> Result<Option<DecodedPicture>, CrushError> {
         // SAFETY: a zeroed picture is a valid "empty" picture (all refs None), safe to unref even
         // if never filled; `dav1d_get_picture` overwrites it wholesale via `ptr::write` on
         // success. The picture is unref'd on every path after `extract_picture` copies it out.
@@ -881,7 +881,7 @@ impl Drop for Av1Decoder {
 /// # Safety
 /// `pic` must be a picture successfully filled by `dav1d_get_picture` (valid plane pointers /
 /// strides and a live sequence header) and still alive (not yet unref'd).
-unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, VideoError> {
+unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, CrushError> {
     let w = pic.p.w as usize;
     let h = pic.p.h as usize;
     let layout = pic.p.layout;
@@ -890,11 +890,11 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, VideoErr
     // depth, so handle what rav1d can hand us).
     let bpc = pic.p.bpc;
     if !(8..=12).contains(&bpc) {
-        return Err(VideoError::Unsupported(format!("AV1 with {bpc}-bit depth")));
+        return Err(CrushError::Unsupported(format!("AV1 with {bpc}-bit depth")));
     }
     let bpc = bpc as u8;
     if w == 0 || h == 0 {
-        return Err(VideoError::Decode(
+        return Err(CrushError::Decode(
             "AV1 decoded to a zero-size frame".into(),
         ));
     }
@@ -902,14 +902,14 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, VideoErr
         || h > MAX_DECODE_DIMENSION as usize
         || (w as u64) * (h as u64) * 4 > MAX_DECODE_ALLOC_BYTES
     {
-        return Err(VideoError::Decode(format!(
+        return Err(CrushError::Decode(format!(
             "AV1 frame {w}x{h} is over the decode bounds"
         )));
     }
 
     // SAFETY: rav1d guarantees data[0]/stride[0] describe `h` rows of at least `w` luma samples.
     let y_ptr = pic.data[0]
-        .ok_or_else(|| VideoError::Decode("AV1 frame missing luma plane".into()))?
+        .ok_or_else(|| CrushError::Decode("AV1 frame missing luma plane".into()))?
         .as_ptr() as *const u8;
     let y = unsafe { copy_plane_any(y_ptr, pic.stride[0], w, h, bpc) };
 
@@ -925,10 +925,10 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, VideoErr
         (Vec::new(), Vec::new())
     } else {
         let u_ptr = pic.data[1]
-            .ok_or_else(|| VideoError::Decode("AV1 frame missing U plane".into()))?
+            .ok_or_else(|| CrushError::Decode("AV1 frame missing U plane".into()))?
             .as_ptr() as *const u8;
         let v_ptr = pic.data[2]
-            .ok_or_else(|| VideoError::Decode("AV1 frame missing V plane".into()))?
+            .ok_or_else(|| CrushError::Decode("AV1 frame missing V plane".into()))?
             .as_ptr() as *const u8;
         // SAFETY: chroma planes share stride[1]; each holds `uv_height` rows of >= `uv_width`
         // samples.
@@ -1131,7 +1131,7 @@ fn decode_animation(
     input: &[u8],
     kind: InputKind,
     cap: usize,
-) -> Result<(Vec<BoundedFrame>, bool), VideoError> {
+) -> Result<(Vec<BoundedFrame>, bool), CrushError> {
     let frames: Box<dyn Iterator<Item = image::ImageResult<image::Frame>>> = match kind {
         InputKind::Apng => {
             let mut decoder = PngDecoder::new(Cursor::new(input)).map_err(map_image_err)?;
@@ -1174,11 +1174,11 @@ fn decode_animation(
 }
 
 /// Map an `image` decode error onto our taxonomy (same shape as media.rs).
-fn map_image_err(error: image::ImageError) -> VideoError {
+fn map_image_err(error: image::ImageError) -> CrushError {
     let detail = error.to_string();
     match error {
-        image::ImageError::Unsupported(_) => VideoError::Unsupported(detail),
-        _ => VideoError::Decode(detail),
+        image::ImageError::Unsupported(_) => CrushError::Unsupported(detail),
+        _ => CrushError::Decode(detail),
     }
 }
 
@@ -1191,15 +1191,15 @@ fn map_image_err(error: image::ImageError) -> VideoError {
 /// each packet's own self-describing TOC duration (accumulated from zero), not from granule
 /// positions - the TOC is what the mux timing needs and it cannot be spoofed independently of
 /// the audio the viewer will hear.
-fn parse_ogg_opus(input: &[u8]) -> Result<AudioTrack, VideoError> {
+fn parse_ogg_opus(input: &[u8]) -> Result<AudioTrack, CrushError> {
     let mut reader = ogg::PacketReader::new(Cursor::new(input));
-    let map_ogg = |e: ogg::OggReadError| VideoError::Decode(format!("ogg parse failed: {e}"));
+    let map_ogg = |e: ogg::OggReadError| CrushError::Decode(format!("ogg parse failed: {e}"));
 
     // First packet of the (first) logical stream must be the OpusHead.
     let head = reader
         .read_packet()
         .map_err(map_ogg)?
-        .ok_or_else(|| VideoError::Decode("ogg stream is empty".into()))?;
+        .ok_or_else(|| CrushError::Decode("ogg stream is empty".into()))?;
     let serial = head.stream_serial();
     let (channels, pre_skip) = parse_opus_head(&head.data)?;
     let codec_private = head.data;
@@ -1222,7 +1222,7 @@ fn parse_ogg_opus(input: &[u8]) -> Result<AudioTrack, VideoError> {
         packets.push((ms, packet.data));
     }
     if packets.is_empty() {
-        return Err(VideoError::Decode("ogg has no opus audio packets".into()));
+        return Err(CrushError::Decode("ogg has no opus audio packets".into()));
     }
     Ok(AudioTrack {
         codec_private,
@@ -1234,13 +1234,13 @@ fn parse_ogg_opus(input: &[u8]) -> Result<AudioTrack, VideoError> {
 
 /// Validate an OpusHead and pull out (channels, pre_skip). Layout per RFC 7845 §5.1:
 /// magic(8) version(1) channels(1) pre_skip(u16 LE) input_rate(u32 LE) gain(i16) mapping(1).
-fn parse_opus_head(head: &[u8]) -> Result<(u8, u16), VideoError> {
+fn parse_opus_head(head: &[u8]) -> Result<(u8, u16), CrushError> {
     if head.len() < 19 || &head[0..8] != b"OpusHead" {
-        return Err(VideoError::Decode("missing or malformed OpusHead".into()));
+        return Err(CrushError::Decode("missing or malformed OpusHead".into()));
     }
     let channels = head[9];
     if channels == 0 {
-        return Err(VideoError::Decode("OpusHead declares zero channels".into()));
+        return Err(CrushError::Decode("OpusHead declares zero channels".into()));
     }
     let pre_skip = u16::from_le_bytes([head[10], head[11]]);
     Ok((channels, pre_skip))
@@ -1248,10 +1248,10 @@ fn parse_opus_head(head: &[u8]) -> Result<(u8, u16), VideoError> {
 
 /// An Opus packet's duration in 48 kHz samples, from its self-describing TOC byte (RFC 6716 §3.1):
 /// the config picks the per-frame duration, the count code the number of frames.
-fn opus_packet_samples(packet: &[u8]) -> Result<u64, VideoError> {
+fn opus_packet_samples(packet: &[u8]) -> Result<u64, CrushError> {
     let toc = *packet
         .first()
-        .ok_or_else(|| VideoError::Decode("empty opus packet".into()))?;
+        .ok_or_else(|| CrushError::Decode("empty opus packet".into()))?;
     let config = toc >> 3;
     let frame_samples: u64 = match config {
         0..=11 => [480, 960, 1920, 2880][(config & 3) as usize], // SILK 10/20/40/60 ms
@@ -1266,7 +1266,7 @@ fn opus_packet_samples(packet: &[u8]) -> Result<u64, VideoError> {
                 .get(1)
                 .map(|b| u64::from(b & 0x3F))
                 .filter(|c| *c > 0)
-                .ok_or_else(|| VideoError::Decode("malformed opus packet".into()))?;
+                .ok_or_else(|| CrushError::Decode("malformed opus packet".into()))?;
             count
         }
     };
@@ -1305,11 +1305,11 @@ fn encode_av1(
     width: u32,
     height: u32,
     flatten: bool,
-) -> Result<EncodedVideo, VideoError> {
+) -> Result<EncodedVideo, CrushError> {
     let chunk_len = KEYFRAME_INTERVAL_FRAMES as usize;
     // Scoped threads (chunks borrow `frames`); each chunk's rav1e context shares the global
     // rayon pool for its tile work, so the box is saturated without oversubscription drama.
-    let chunk_results: Vec<Result<Vec<Av1Packet>, VideoError>> = std::thread::scope(|scope| {
+    let chunk_results: Vec<Result<Vec<Av1Packet>, CrushError>> = std::thread::scope(|scope| {
         let handles: Vec<_> = frames
             .chunks(chunk_len)
             .map(|chunk| scope.spawn(move || encode_av1_chunk(chunk, width, height, flatten)))
@@ -1319,7 +1319,7 @@ fn encode_av1(
             .map(|handle| {
                 handle
                     .join()
-                    .map_err(|_| VideoError::Decode("av1 encoder thread panicked".into()))
+                    .map_err(|_| CrushError::Decode("av1 encoder thread panicked".into()))
                     .and_then(|result| result)
             })
             .collect()
@@ -1346,7 +1346,7 @@ fn encode_av1_chunk(
     width: u32,
     height: u32,
     flatten: bool,
-) -> Result<Vec<Av1Packet>, VideoError> {
+) -> Result<Vec<Av1Packet>, CrushError> {
     let mut enc = EncoderConfig::with_speed_preset(AV1_SPEED);
     enc.width = width as usize;
     enc.height = height as usize;
@@ -1377,12 +1377,12 @@ fn encode_av1_chunk(
     let cfg = Config::new().with_encoder_config(enc);
     let mut ctx = cfg
         .new_context::<u8>()
-        .map_err(|e| VideoError::Decode(format!("rav1e config rejected: {e:?}")))?;
+        .map_err(|e| CrushError::Decode(format!("rav1e config rejected: {e:?}")))?;
 
     let mut packets: Vec<(u64, bool, Vec<u8>)> = Vec::new();
     let receive = |ctx: &mut rav1e::Context<u8>,
                    packets: &mut Vec<(u64, bool, Vec<u8>)>|
-     -> Result<bool, VideoError> {
+     -> Result<bool, CrushError> {
         // Returns false once the encoder is fully drained (LimitReached).
         loop {
             match ctx.receive_packet() {
@@ -1396,7 +1396,7 @@ fn encode_av1_chunk(
                 Err(EncoderStatus::Encoded) => continue,
                 Err(EncoderStatus::NeedMoreData) => return Ok(true),
                 Err(EncoderStatus::LimitReached) => return Ok(false),
-                Err(e) => return Err(VideoError::Decode(format!("rav1e encode failed: {e:?}"))),
+                Err(e) => return Err(CrushError::Decode(format!("rav1e encode failed: {e:?}"))),
             }
         }
     };
@@ -1408,7 +1408,7 @@ fn encode_av1_chunk(
         frame.planes[1].copy_from_raw_u8(&u, (width / 2) as usize, 1);
         frame.planes[2].copy_from_raw_u8(&v, (width / 2) as usize, 1);
         ctx.send_frame(frame)
-            .map_err(|e| VideoError::Decode(format!("rav1e rejected a frame: {e:?}")))?;
+            .map_err(|e| CrushError::Decode(format!("rav1e rejected a frame: {e:?}")))?;
         // Drain opportunistically so the encoder's queue never balloons.
         receive(&mut ctx, &mut packets)?;
     }
@@ -1723,7 +1723,7 @@ fn mux_webm(
     duration_ms: u64,
     width: u32,
     height: u32,
-) -> Result<Vec<u8>, VideoError> {
+) -> Result<Vec<u8>, CrushError> {
     let header = el_master(
         ID_EBML,
         &[
@@ -1841,7 +1841,7 @@ fn mux_webm(
             cluster.push(el_uint(ID_TIMESTAMP, cluster_start_ms));
         }
         let rel = i16::try_from(block.ms - cluster_start_ms)
-            .map_err(|_| VideoError::Decode("cluster overflow in webm mux".into()))?;
+            .map_err(|_| CrushError::Decode("cluster overflow in webm mux".into()))?;
         cluster.push(el_simple_block(
             block.track,
             rel,
@@ -1869,8 +1869,8 @@ fn mux_webm(
 
 /// Encode bounded RGBA frames as a crushed APNG (the transparent + silent route; alpha survives).
 /// PNG is lossless, so the "crush" here is the 320p bound + the frame-rate cap doing the work.
-fn encode_apng(frames: &[BoundedFrame], width: u32, height: u32) -> Result<Vec<u8>, VideoError> {
-    let map_png = |e: png::EncodingError| VideoError::Decode(format!("apng encode failed: {e}"));
+fn encode_apng(frames: &[BoundedFrame], width: u32, height: u32) -> Result<Vec<u8>, CrushError> {
+    let map_png = |e: png::EncodingError| CrushError::Decode(format!("apng encode failed: {e}"));
     let mut out = Vec::new();
     let mut encoder = png::Encoder::new(&mut out, width, height);
     encoder.set_color(png::ColorType::Rgba);
@@ -2131,7 +2131,7 @@ mod tests {
         assert!(
             matches!(
                 crush(b"definitely not a video", None, CrushOpts::default()),
-                Err(VideoError::Unsupported(_))
+                Err(CrushError::Unsupported(_))
             ),
             "random bytes are unsupported"
         );
@@ -2140,7 +2140,7 @@ mod tests {
         assert!(
             matches!(
                 crush(&corpus("buck-twenty.mp4"), None, CrushOpts::default()),
-                Err(VideoError::Unsupported(_))
+                Err(CrushError::Unsupported(_))
             ),
             "mp4 is not an intermediary format"
         );
@@ -2173,7 +2173,7 @@ mod tests {
         assert!(
             matches!(
                 crush(&vp9, None, CrushOpts::default()),
-                Err(VideoError::Unsupported(_))
+                Err(CrushError::Unsupported(_))
             ),
             "non-AV1 webm is unsupported"
         );
@@ -2220,7 +2220,7 @@ mod tests {
         assert!(
             matches!(
                 crush(&long, None, CrushOpts::default()),
-                Err(VideoError::TooLong(_))
+                Err(CrushError::TooLong(_))
             ),
             "a declared over-budget duration is refused"
         );

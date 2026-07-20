@@ -21,7 +21,7 @@
 //! encode bitrate is `clamp(cap_bits / duration, FLOOR, HOUSE)`. Short clips get the house
 //! quality; long podcasts automatically get crunchier instead of being rejected (an hour lands
 //! around 18 kbps and fits); only past the point where even the floor bitrate cannot fit does the
-//! upload become [`AudioError::TooLong`].
+//! upload become [`CrushError::TooLong`].
 //!
 //! **Memory is bounded** regardless of input length: ~110 minutes of 48 kHz stereo f32 PCM is
 //! ~2.5 GB, so the decoded stream is never buffered whole. Decode, resample, and Opus encode all
@@ -31,7 +31,7 @@
 //! work.
 //!
 //! Everything here is a pure function - no I/O, no shared state. CPU-bound; callers run
-//! [`crush_audio`] under `tokio::task::spawn_blocking`.
+//! [`crush`] under `tokio::task::spawn_blocking`.
 
 // The public interface below is consumed by the ingest wiring, which lands separately; within this
 // binary crate on its own the items read as unused. Keep the lint quiet without hiding real dead
@@ -89,7 +89,7 @@ const FLOOR_BITRATE_BPS: u32 = 12_000;
 const DEFAULT_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
 /// The duration ceiling: where the floor bitrate meets the default cap (~116 minutes). Past this,
-/// even maximum crunch cannot fit the cap, so the upload is [`AudioError::TooLong`]. A smaller
+/// even maximum crunch cannot fit the cap, so the upload is [`CrushError::TooLong`]. A smaller
 /// `max_bytes` tightens the effective ceiling proportionally (see [`effective_max_duration_ms`]).
 const MAX_DURATION_MS: u64 = DEFAULT_CAP_BYTES * 8_000 / FLOOR_BITRATE_BPS as u64;
 
@@ -154,7 +154,7 @@ const WAVEFORM_AVIF_SPEED: u8 = 6;
 /// A successfully crushed audio upload: canonical Ogg Opus plus the facts the ingest wiring
 /// stores.
 #[derive(Debug)]
-pub struct CrushedAudio {
+pub struct Crushed {
     /// The crushed output: a complete Ogg Opus file.
     pub bytes: Vec<u8>,
     /// Playback duration of the crushed audio.
@@ -173,7 +173,7 @@ pub struct CrushedAudio {
 
 /// Why an upload could not be turned into canonical audio.
 #[derive(Debug)]
-pub enum AudioError {
+pub enum CrushError {
     /// Not a format we can decode (or Ogg Opus we cannot re-crush - see [`passthrough_ogg_opus`]).
     Unsupported(String),
     /// Malformed / corrupt / decompression-bomb / decode or encode failure.
@@ -182,19 +182,19 @@ pub enum AudioError {
     TooLong(String),
 }
 
-impl std::fmt::Display for AudioError {
+impl std::fmt::Display for CrushError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AudioError::Unsupported(detail) => write!(f, "unsupported audio input: {detail}"),
-            AudioError::Decode(detail) => write!(f, "could not process audio: {detail}"),
-            AudioError::TooLong(detail) => write!(f, "audio too long: {detail}"),
+            CrushError::Unsupported(detail) => write!(f, "unsupported audio input: {detail}"),
+            CrushError::Decode(detail) => write!(f, "could not process audio: {detail}"),
+            CrushError::TooLong(detail) => write!(f, "audio too long: {detail}"),
         }
     }
 }
 
-impl std::error::Error for AudioError {}
+impl std::error::Error for CrushError {}
 
-/// Knobs for [`crush_audio`]. `max_bytes: None` means the [`DEFAULT_CAP_BYTES`] network cap;
+/// Knobs for [`crush`]. `max_bytes: None` means the [`DEFAULT_CAP_BYTES`] network cap;
 /// tests pass small `Some(n)` values to force the fit-to-cap and too-long paths cheaply.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CrushOpts {
@@ -204,7 +204,7 @@ pub struct CrushOpts {
 /// Crush an audio upload to canonical Ogg Opus.
 ///
 /// Pure function, no I/O. CPU-bound (callers run it under `spawn_blocking`).
-pub fn crush_audio(input: &[u8], opts: CrushOpts) -> Result<CrushedAudio, AudioError> {
+pub fn crush(input: &[u8], opts: CrushOpts) -> Result<Crushed, CrushError> {
     let cap_bytes = opts.max_bytes.unwrap_or(DEFAULT_CAP_BYTES).max(1);
     let max_ms = effective_max_duration_ms(cap_bytes);
 
@@ -256,21 +256,21 @@ fn passthrough_ogg_opus(
     input: &[u8],
     cap_bytes: u64,
     max_ms: u64,
-) -> Result<CrushedAudio, AudioError> {
+) -> Result<Crushed, CrushError> {
     let mut reader = PacketReader::new(Cursor::new(input));
-    let map_ogg = |e: ogg::OggReadError| AudioError::Decode(format!("ogg parse failed: {e}"));
+    let map_ogg = |e: ogg::OggReadError| CrushError::Decode(format!("ogg parse failed: {e}"));
 
     // First packet of the (first) logical stream is the OpusHead - the sniff saw its magic, this
     // parse validates its shape.
     let head = reader
         .read_packet()
         .map_err(map_ogg)?
-        .ok_or_else(|| AudioError::Decode("ogg stream is empty".into()))?;
+        .ok_or_else(|| CrushError::Decode("ogg stream is empty".into()))?;
     let serial = head.stream_serial();
     let (channels, pre_skip) = parse_opus_head(&head.data)?;
     if channels > 2 {
         // The canonical form is ≤2 channels and downmixing requires a decode we don't have.
-        return Err(AudioError::Unsupported(format!(
+        return Err(CrushError::Unsupported(format!(
             "{channels}-channel Opus (cannot downmix without a pure-rust Opus decoder)"
         )));
     }
@@ -294,7 +294,7 @@ fn passthrough_ogg_opus(
         if !seen_tags {
             seen_tags = true;
             if !packet.data.starts_with(b"OpusTags") {
-                return Err(AudioError::Decode(
+                return Err(CrushError::Decode(
                     "ogg opus stream missing OpusTags".into(),
                 ));
             }
@@ -307,7 +307,7 @@ fn passthrough_ogg_opus(
         });
     }
     if packets.is_empty() {
-        return Err(AudioError::Decode("ogg opus has no audio packets".into()));
+        return Err(CrushError::Decode("ogg opus has no audio packets".into()));
     }
 
     // Duration from granule positions: the final page's granule counts 48 kHz samples including
@@ -317,12 +317,12 @@ fn passthrough_ogg_opus(
     let duration_ms =
         final_granule.saturating_sub(u64::from(pre_skip)) * 1_000 / u64::from(OPUS_SAMPLE_RATE);
     if duration_ms > max_ms {
-        return Err(AudioError::TooLong(format!(
+        return Err(CrushError::TooLong(format!(
             "ogg opus runs {duration_ms} ms, over the {max_ms} ms bound"
         )));
     }
     if input.len() as u64 > cap_bytes {
-        return Err(AudioError::Unsupported(format!(
+        return Err(CrushError::Unsupported(format!(
             "ogg opus is {} bytes, over the {cap_bytes}-byte cap, and cannot be re-crushed \
              (no pure-rust Opus decoder)",
             input.len()
@@ -336,7 +336,7 @@ fn passthrough_ogg_opus(
     let mut out = Vec::with_capacity(input.len());
     {
         let mut writer = PacketWriter::new(Cursor::new(&mut out));
-        let map_io = |e: std::io::Error| AudioError::Decode(format!("ogg write failed: {e}"));
+        let map_io = |e: std::io::Error| CrushError::Decode(format!("ogg write failed: {e}"));
         writer
             .write_packet(head.data, serial, PacketWriteEndInfo::EndPage, 0)
             .map_err(map_io)?;
@@ -364,7 +364,7 @@ fn passthrough_ogg_opus(
     let bitrate_bps =
         u32::try_from(audio_bytes.saturating_mul(8_000) / duration_ms.max(1)).unwrap_or(u32::MAX);
 
-    Ok(CrushedAudio {
+    Ok(Crushed {
         bytes: out,
         duration_ms,
         channels,
@@ -377,13 +377,13 @@ fn passthrough_ogg_opus(
 
 /// Validate an OpusHead and pull out (channels, pre_skip). Layout per RFC 7845 §5.1:
 /// magic(8) version(1) channels(1) pre_skip(u16 LE) input_rate(u32 LE) gain(i16) mapping(1).
-fn parse_opus_head(head: &[u8]) -> Result<(u8, u16), AudioError> {
+fn parse_opus_head(head: &[u8]) -> Result<(u8, u16), CrushError> {
     if head.len() < 19 || &head[0..8] != b"OpusHead" {
-        return Err(AudioError::Decode("missing or malformed OpusHead".into()));
+        return Err(CrushError::Decode("missing or malformed OpusHead".into()));
     }
     let channels = head[9];
     if channels == 0 {
-        return Err(AudioError::Decode("OpusHead declares zero channels".into()));
+        return Err(CrushError::Decode("OpusHead declares zero channels".into()));
     }
     let pre_skip = u16::from_le_bytes([head[10], head[11]]);
     Ok((channels, pre_skip))
@@ -419,12 +419,12 @@ struct ProbedTrack {
 
 /// The channel bomb guard, applied to the declared count at probe time and to the real count at
 /// first decode.
-fn check_channel_bound(channels: usize) -> Result<(), AudioError> {
+fn check_channel_bound(channels: usize) -> Result<(), CrushError> {
     if channels == 0 {
-        return Err(AudioError::Decode("track has no channels".into()));
+        return Err(CrushError::Decode("track has no channels".into()));
     }
     if channels > MAX_INPUT_CHANNELS {
-        return Err(AudioError::Unsupported(format!(
+        return Err(CrushError::Unsupported(format!(
             "{channels} channels (over the {MAX_INPUT_CHANNELS}-channel bound)"
         )));
     }
@@ -434,7 +434,7 @@ fn check_channel_bound(channels: usize) -> Result<(), AudioError> {
 /// Probe the bytes with symphonia and select the first decodable audio track, enforcing the
 /// declared-parameter bomb guards before any decode work. An unrecognised container is
 /// `Unsupported`, not corrupt: the format zoo is the contract.
-fn probe_track(input: &[u8]) -> Result<ProbedTrack, AudioError> {
+fn probe_track(input: &[u8]) -> Result<ProbedTrack, CrushError> {
     let source = MediaSourceStream::new(Box::new(Cursor::new(input.to_vec())), Default::default());
     let probed = symphonia::default::get_probe()
         .format(
@@ -443,18 +443,18 @@ fn probe_track(input: &[u8]) -> Result<ProbedTrack, AudioError> {
             &FormatOptions::default(),
             &MetadataOptions::default(),
         )
-        .map_err(|e| AudioError::Unsupported(format!("not a recognised audio format: {e}")))?;
+        .map_err(|e| CrushError::Unsupported(format!("not a recognised audio format: {e}")))?;
     let format = probed.format;
 
     let track = format
         .tracks()
         .iter()
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL && t.codec_params.sample_rate.is_some())
-        .ok_or_else(|| AudioError::Unsupported("no decodable audio track".into()))?;
+        .ok_or_else(|| CrushError::Unsupported("no decodable audio track".into()))?;
 
     let sample_rate = track.codec_params.sample_rate.unwrap_or(0);
     if !(MIN_INPUT_SAMPLE_RATE..=MAX_INPUT_SAMPLE_RATE).contains(&sample_rate) {
-        return Err(AudioError::Decode(format!(
+        return Err(CrushError::Decode(format!(
             "declared sample rate {sample_rate} Hz is outside the \
              {MIN_INPUT_SAMPLE_RATE}-{MAX_INPUT_SAMPLE_RATE} Hz sanity window"
         )));
@@ -483,7 +483,7 @@ fn probe_track(input: &[u8]) -> Result<ProbedTrack, AudioError> {
 ///
 /// Falls back to the declared frame count if the demuxer reports no per-packet durations (rare;
 /// the decode pass re-verifies the total either way).
-fn measure_duration_ms(input: &[u8], max_ms: u64) -> Result<u64, AudioError> {
+fn measure_duration_ms(input: &[u8], max_ms: u64) -> Result<u64, CrushError> {
     let mut probed = probe_track(input)?;
     let mut frames: u64 = 0; // in source-rate sample frames
     loop {
@@ -494,7 +494,7 @@ fn measure_duration_ms(input: &[u8], max_ms: u64) -> Result<u64, AudioError> {
             }
             // A chained/reset stream: only the first stream is measured (and later decoded).
             Err(SymphoniaError::ResetRequired) => break,
-            Err(e) => return Err(AudioError::Decode(format!("demux failed: {e}"))),
+            Err(e) => return Err(CrushError::Decode(format!("demux failed: {e}"))),
         };
         if packet.track_id() != probed.track_id {
             continue;
@@ -503,7 +503,7 @@ fn measure_duration_ms(input: &[u8], max_ms: u64) -> Result<u64, AudioError> {
         frames = frames.saturating_add(packet.dur());
         let ms = frames.saturating_mul(1_000) / u64::from(probed.sample_rate);
         if ms > max_ms {
-            return Err(AudioError::TooLong(format!(
+            return Err(CrushError::TooLong(format!(
                 "measured over {ms} ms of audio, past the {max_ms} ms bound"
             )));
         }
@@ -518,12 +518,12 @@ fn measure_duration_ms(input: &[u8], max_ms: u64) -> Result<u64, AudioError> {
             .unwrap_or(0);
     }
     if ms == 0 {
-        return Err(AudioError::Decode(
+        return Err(CrushError::Decode(
             "could not determine audio duration".into(),
         ));
     }
     if ms > max_ms {
-        return Err(AudioError::TooLong(format!(
+        return Err(CrushError::TooLong(format!(
             "audio runs {ms} ms, over the {max_ms} ms bound"
         )));
     }
@@ -551,8 +551,8 @@ fn decode_downmixed(
     input: &[u8],
     max_ms: u64,
     measured_ms: u64,
-    sink: &mut dyn FnMut(PcmChunk<'_>) -> Result<(), AudioError>,
-) -> Result<(), AudioError> {
+    sink: &mut dyn FnMut(PcmChunk<'_>) -> Result<(), CrushError>,
+) -> Result<(), CrushError> {
     let mut probed = probe_track(input)?;
     let source_rate = probed.sample_rate;
 
@@ -564,7 +564,7 @@ fn decode_downmixed(
         .expect("probed track exists");
     let mut decoder = symphonia::default::get_codecs()
         .make(&decoder_track.codec_params, &DecoderOptions::default())
-        .map_err(|e| AudioError::Unsupported(format!("no decoder for this codec: {e}")))?;
+        .map_err(|e| CrushError::Unsupported(format!("no decoder for this codec: {e}")))?;
 
     // The running-count guards: the real decoded length must stay under the duration bound (a
     // lying header must not matter) and close to the measured length (or the caller's bitrate
@@ -585,21 +585,21 @@ fn decode_downmixed(
                 break;
             }
             Err(SymphoniaError::ResetRequired) => break, // chained stream: first stream only
-            Err(e) => return Err(AudioError::Decode(format!("demux failed: {e}"))),
+            Err(e) => return Err(CrushError::Decode(format!("demux failed: {e}"))),
         };
         if packet.track_id() != probed.track_id {
             continue;
         }
         let decoded = decoder
             .decode(&packet)
-            .map_err(|e| AudioError::Decode(format!("audio decode failed: {e}")))?;
+            .map_err(|e| CrushError::Decode(format!("audio decode failed: {e}")))?;
 
         let spec = *decoded.spec();
         let channels = match source_channels {
             Some(known) => {
                 // A mid-stream format switch is not something any honest encoder emits.
                 if spec.channels.count() != known || spec.rate != source_rate {
-                    return Err(AudioError::Decode("audio format changed mid-stream".into()));
+                    return Err(CrushError::Decode("audio format changed mid-stream".into()));
                 }
                 known
             }
@@ -609,7 +609,7 @@ fn decode_downmixed(
                 let known = spec.channels.count();
                 check_channel_bound(known)?;
                 if spec.rate != source_rate {
-                    return Err(AudioError::Decode(
+                    return Err(CrushError::Decode(
                         "decoded sample rate contradicts the container".into(),
                     ));
                 }
@@ -636,12 +636,12 @@ fn decode_downmixed(
 
         source_frames += (interleaved.len() / channels) as u64;
         if source_frames > max_source_frames {
-            return Err(AudioError::TooLong(format!(
+            return Err(CrushError::TooLong(format!(
                 "decoded past the {max_ms} ms bound (container under-declared its length)"
             )));
         }
         if source_frames > lie_bound_frames {
-            return Err(AudioError::Decode(
+            return Err(CrushError::Decode(
                 "stream is substantially longer than its container declares".into(),
             ));
         }
@@ -658,7 +658,7 @@ fn decode_downmixed(
 
 /// The decode lane end to end: measure duration (demux-only pass), pick the fit-to-cap bitrate,
 /// then stream decode -> downmix -> resample -> Opus encode -> Ogg mux with bounded buffers.
-fn crush_via_decode(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<CrushedAudio, AudioError> {
+fn crush_via_decode(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Crushed, CrushError> {
     let duration_ms = measure_duration_ms(input, max_ms)?;
     let bitrate_bps = fit_bitrate_bps(cap_bytes, duration_ms);
 
@@ -688,20 +688,20 @@ fn crush_via_decode(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Crushed
     })?;
 
     let Some(mut stages) = pipeline else {
-        return Err(AudioError::Decode("input contained no audio".into()));
+        return Err(CrushError::Decode("input contained no audio".into()));
     };
     let tail = stages.resampler.finish()?;
     stages.opus.push(&tail)?;
     let encoded = stages.opus.finish()?;
     if encoded.total_samples == 0 {
-        return Err(AudioError::Decode("input contained no audio".into()));
+        return Err(CrushError::Decode("input contained no audio".into()));
     }
 
     let out_duration_ms = encoded.total_samples.saturating_mul(1_000) / u64::from(OPUS_SAMPLE_RATE);
     let bytes = mux_ogg_opus(&encoded, stages.out_channels as u8)?;
     let waveform_avif = Some(stages.waveform.render()?);
 
-    Ok(CrushedAudio {
+    Ok(Crushed {
         bytes,
         duration_ms: out_duration_ms,
         channels: stages.out_channels as u8,
@@ -767,7 +767,7 @@ struct StreamResampler {
 }
 
 impl StreamResampler {
-    fn new(source_rate: u32, channels: usize) -> Result<Self, AudioError> {
+    fn new(source_rate: u32, channels: usize) -> Result<Self, CrushError> {
         let inner = if source_rate == OPUS_SAMPLE_RATE {
             None
         } else {
@@ -778,7 +778,7 @@ impl StreamResampler {
                 channels,
                 FixedSync::Input,
             )
-            .map_err(|e| AudioError::Decode(format!("resampler rejected the rate: {e}")))?;
+            .map_err(|e| CrushError::Decode(format!("resampler rejected the rate: {e}")))?;
             Some(fft)
         };
         let delay_to_trim = inner.as_ref().map(|r| r.output_delay()).unwrap_or(0);
@@ -794,7 +794,7 @@ impl StreamResampler {
     }
 
     /// Feed interleaved input; returns whatever interleaved 48 kHz output became ready.
-    fn feed(&mut self, interleaved: &[f32]) -> Result<Vec<f32>, AudioError> {
+    fn feed(&mut self, interleaved: &[f32]) -> Result<Vec<f32>, CrushError> {
         self.in_frames += (interleaved.len() / self.channels.max(1)) as u64;
         if self.inner.is_none() {
             return Ok(interleaved.to_vec());
@@ -812,7 +812,7 @@ impl StreamResampler {
 
     /// End of input: resample the final partial chunk, then push silence until the delay-shifted
     /// tail is fully flushed, emitting exactly the expected number of output frames overall.
-    fn finish(&mut self) -> Result<Vec<f32>, AudioError> {
+    fn finish(&mut self) -> Result<Vec<f32>, CrushError> {
         if self.inner.is_none() {
             return Ok(Vec::new());
         }
@@ -846,11 +846,11 @@ impl StreamResampler {
         interleaved: &[f32],
         frames: usize,
         out: &mut Vec<f32>,
-    ) -> Result<(), AudioError> {
+    ) -> Result<(), CrushError> {
         let resampler = self.inner.as_mut().expect("only called when resampling");
-        let map_rs = |e: rubato::ResampleError| AudioError::Decode(format!("resample failed: {e}"));
+        let map_rs = |e: rubato::ResampleError| CrushError::Decode(format!("resample failed: {e}"));
         let input = InterleavedSlice::new(interleaved, self.channels, frames)
-            .map_err(|e| AudioError::Decode(format!("resample buffer shape: {e}")))?;
+            .map_err(|e| CrushError::Decode(format!("resample buffer shape: {e}")))?;
         let out_cap = resampler.output_frames_next();
         let mut output = InterleavedOwned::<f32>::new(0.0, self.channels, out_cap);
         let indexing = Indexing {
@@ -908,7 +908,7 @@ struct LibopusEncoder {
 impl LibopusEncoder {
     /// Create a 48 kHz encoder at the given channel count and VBR bitrate target (libopus
     /// defaults to VBR - fit-to-cap targets an average, and VBR spends it better than CBR).
-    fn new(channels: usize, bitrate_bps: u32) -> Result<Self, AudioError> {
+    fn new(channels: usize, bitrate_bps: u32) -> Result<Self, CrushError> {
         let mut err = 0i32;
         // SAFETY: arguments satisfy opus_encoder_create's contract (48 kHz, 1-2 channels, a
         // valid application constant); the error out-pointer is a live local; the returned
@@ -922,7 +922,7 @@ impl LibopusEncoder {
             )
         };
         if st.is_null() || err != 0 {
-            return Err(AudioError::Decode(format!(
+            return Err(CrushError::Decode(format!(
                 "opus encoder init failed (code {err})"
             )));
         }
@@ -933,12 +933,12 @@ impl LibopusEncoder {
     }
 
     /// Set one i32 CTL value.
-    fn set(&mut self, request: i32, value: i32) -> Result<(), AudioError> {
+    fn set(&mut self, request: i32, value: i32) -> Result<(), CrushError> {
         // SAFETY: `st` is live (created in `new`, destroyed only in Drop); the varargs shape
         // (one i32 in) matches what each SET request consumes.
         let code = unsafe { opus_encoder_ctl_impl(self.st, request, varargs![value]) };
         if code != 0 {
-            return Err(AudioError::Decode(format!(
+            return Err(CrushError::Decode(format!(
                 "opus encoder ctl {request} failed (code {code})"
             )));
         }
@@ -946,7 +946,7 @@ impl LibopusEncoder {
     }
 
     /// The encoder's look-ahead in 48 kHz samples - the honest OpusHead pre-skip.
-    fn lookahead(&mut self) -> Result<u16, AudioError> {
+    fn lookahead(&mut self) -> Result<u16, CrushError> {
         let mut value = 0i32;
         // SAFETY: `st` is live; the varargs shape (one i32 out-reference) matches what the GET
         // request writes.
@@ -954,7 +954,7 @@ impl LibopusEncoder {
             opus_encoder_ctl_impl(self.st, OPUS_GET_LOOKAHEAD_REQUEST, varargs![&mut value])
         };
         if code != 0 || !(0..=i32::from(u16::MAX)).contains(&value) {
-            return Err(AudioError::Decode(format!(
+            return Err(CrushError::Decode(format!(
                 "opus lookahead query failed (code {code}, value {value})"
             )));
         }
@@ -962,7 +962,7 @@ impl LibopusEncoder {
     }
 
     /// Encode one full 20 ms frame into `out`; returns the packet length.
-    fn encode(&mut self, frame: &[f32], out: &mut [u8]) -> Result<usize, AudioError> {
+    fn encode(&mut self, frame: &[f32], out: &mut [u8]) -> Result<usize, CrushError> {
         // SAFETY: `st` is live; `frame` holds exactly OPUS_FRAME_SAMPLES interleaved frames for
         // the channel count the encoder was created with (asserted), so libopus reads no further;
         // `out` is a live buffer and libopus writes at most `out.len()` bytes.
@@ -976,7 +976,7 @@ impl LibopusEncoder {
             )
         };
         if n < 0 {
-            return Err(AudioError::Decode(format!("opus encode failed (code {n})")));
+            return Err(CrushError::Decode(format!("opus encode failed (code {n})")));
         }
         Ok(n as usize)
     }
@@ -1003,7 +1003,7 @@ struct OpusSink {
 }
 
 impl OpusSink {
-    fn new(channels: usize, bitrate_bps: u32) -> Result<Self, AudioError> {
+    fn new(channels: usize, bitrate_bps: u32) -> Result<Self, CrushError> {
         let mut encoder = LibopusEncoder::new(channels, bitrate_bps)?;
         let pre_skip = encoder.lookahead()?;
         Ok(OpusSink {
@@ -1018,7 +1018,7 @@ impl OpusSink {
     }
 
     /// Accept interleaved 48 kHz samples, encoding every completed 20 ms frame.
-    fn push(&mut self, interleaved: &[f32]) -> Result<(), AudioError> {
+    fn push(&mut self, interleaved: &[f32]) -> Result<(), CrushError> {
         self.pending.extend_from_slice(interleaved);
         let frame_len = OPUS_FRAME_SAMPLES * self.channels;
         while self.pending.len() >= frame_len {
@@ -1033,7 +1033,7 @@ impl OpusSink {
     /// the mux trims the padding on playback) and hand over the packets. Also guarantees the
     /// stream decodes to at least pre-skip + real samples (extra silence if the padding fell
     /// short), so the final granule never claims more than the packets deliver.
-    fn finish(mut self) -> Result<EncodedOpus, AudioError> {
+    fn finish(mut self) -> Result<EncodedOpus, CrushError> {
         if !self.pending.is_empty() {
             let real = self.pending.len() / self.channels;
             let mut frame = std::mem::take(&mut self.pending);
@@ -1055,7 +1055,7 @@ impl OpusSink {
 
     /// Encode one full 20 ms frame; `real_samples` is how many of its frames are real audio
     /// rather than final-frame padding.
-    fn encode_frame(&mut self, frame: &[f32], real_samples: usize) -> Result<(), AudioError> {
+    fn encode_frame(&mut self, frame: &[f32], real_samples: usize) -> Result<(), CrushError> {
         debug_assert_eq!(frame.len(), OPUS_FRAME_SAMPLES * self.channels);
         let n = self.encoder.encode(frame, &mut self.scratch)?;
         self.packets.push(self.scratch[..n].to_vec());
@@ -1068,8 +1068,8 @@ impl OpusSink {
 /// the audio packets with granule positions counting 48 kHz samples (offset by pre-skip, RFC 7845
 /// §4). The final granule uses the true unpadded sample count, so players trim the last frame's
 /// zero-padding automatically.
-fn mux_ogg_opus(encoded: &EncodedOpus, channels: u8) -> Result<Vec<u8>, AudioError> {
-    let map_io = |e: std::io::Error| AudioError::Decode(format!("ogg write failed: {e}"));
+fn mux_ogg_opus(encoded: &EncodedOpus, channels: u8) -> Result<Vec<u8>, CrushError> {
+    let map_io = |e: std::io::Error| CrushError::Decode(format!("ogg write failed: {e}"));
     let mut out = Vec::new();
     {
         let mut writer = PacketWriter::new(Cursor::new(&mut out));
@@ -1170,7 +1170,7 @@ impl WaveformEnvelope {
     /// Render the envelope to a small AVIF: dark field, light symmetric peak bars, one column per
     /// bucket. Same ravif recipe as media.rs's `encode_avif`, tuned for line art (see the
     /// [`WAVEFORM_AVIF_QUALITY`] note).
-    fn render(&self) -> Result<Vec<u8>, AudioError> {
+    fn render(&self) -> Result<Vec<u8>, CrushError> {
         let (w, h) = (WAVEFORM_WIDTH as usize, WAVEFORM_HEIGHT as usize);
         let bg = rgb::RGBA8::new(
             WAVEFORM_BACKGROUND[0],
@@ -1200,7 +1200,7 @@ impl WaveformEnvelope {
             .with_bit_depth(ravif::BitDepth::Eight);
         let encoded = encoder
             .encode_rgba(imgref::Img::new(pixels.as_slice(), w, h))
-            .map_err(|e| AudioError::Decode(format!("waveform avif encode failed: {e}")))?;
+            .map_err(|e| CrushError::Decode(format!("waveform avif encode failed: {e}")))?;
         Ok(encoded.avif_file)
     }
 }
@@ -1350,7 +1350,7 @@ mod tests {
     }
 
     fn output_stats(name: &str) -> OutputStats {
-        let out = crush_audio(&corpus(name), CrushOpts::default())
+        let out = crush(&corpus(name), CrushOpts::default())
             .unwrap_or_else(|e| panic!("{name} should crush, got {e:?}"));
         let parsed = parse_ogg_opus(&out.bytes);
         let (channels, pre_skip) = parse_opus_head(&parsed.head).unwrap();
@@ -1481,7 +1481,7 @@ mod tests {
             "firefox_audio.ogx",
         ] {
             let input = corpus(name);
-            match crush_audio(&input, CrushOpts::default()) {
+            match crush(&input, CrushOpts::default()) {
                 Ok(out) => {
                     println!(
                         "OK       {name}: {} -> {} bytes, {} ms, {} bps, passthrough={}",
@@ -1514,7 +1514,7 @@ mod tests {
             "buck-audio.ogg",
         ] {
             let input = corpus(name);
-            let out = crush_audio(&input, CrushOpts::default())
+            let out = crush(&input, CrushOpts::default())
                 .unwrap_or_else(|e| panic!("{name} should crush, got {e:?}"));
 
             assert!(!out.passthrough, "{name} takes the decode lane");
@@ -1563,7 +1563,7 @@ mod tests {
                 // content-addressable. This regressed under the opus-rs port (uninitialised
                 // memory made packet bytes vary with process history); the reference libopus
                 // transpile is deterministic, and this assert keeps it that way.
-                let again = crush_audio(&input, CrushOpts::default()).expect("re-crush");
+                let again = crush(&input, CrushOpts::default()).expect("re-crush");
                 assert_eq!(again.bytes, out.bytes, "{name} crushes deterministically");
             }
         }
@@ -1574,7 +1574,7 @@ mod tests {
     #[test]
     fn opus_passthrough_preserves_packets() {
         let input = corpus("firefox_audio.ogx");
-        let out = crush_audio(&input, CrushOpts::default()).expect("in-spec opus passes through");
+        let out = crush(&input, CrushOpts::default()).expect("in-spec opus passes through");
         assert!(out.passthrough);
         assert!(out.waveform_avif.is_none(), "no decode, no waveform");
 
@@ -1618,7 +1618,7 @@ mod tests {
     #[test]
     fn fit_to_cap_engages() {
         let cap: u64 = 60_000; // 480 kbit over ~20 s => ~24 kbps: between FLOOR and HOUSE
-        let out = crush_audio(
+        let out = crush(
             &corpus("buck-audio.wav"),
             CrushOpts {
                 max_bytes: Some(cap),
@@ -1650,14 +1650,14 @@ mod tests {
     #[test]
     fn too_long_rejected() {
         // 20_000 bytes at the 12 kbps floor is ~13.3 s of budget; the fixture runs 20 s.
-        let result = crush_audio(
+        let result = crush(
             &corpus("buck-audio.flac"),
             CrushOpts {
                 max_bytes: Some(20_000),
             },
         );
         assert!(
-            matches!(result, Err(AudioError::TooLong(_))),
+            matches!(result, Err(CrushError::TooLong(_))),
             "expected TooLong, got {result:?}"
         );
     }
@@ -1680,8 +1680,8 @@ mod tests {
         jpegish.extend_from_slice(&noise);
 
         for (label, blob) in [("noise", &noise), ("jpeg", &jpegish)] {
-            match crush_audio(blob, CrushOpts::default()) {
-                Err(AudioError::Unsupported(_)) => {}
+            match crush(blob, CrushOpts::default()) {
+                Err(CrushError::Unsupported(_)) => {}
                 other => panic!("{label} should be Unsupported, got {other:?}"),
             }
         }
@@ -1696,7 +1696,7 @@ mod tests {
 
         let mp3 = corpus("buck-audio.mp3");
         assert!(contains(&mp3, b"ID3"), "mp3 fixture carries ID3");
-        let out = crush_audio(&mp3, CrushOpts::default()).expect("mp3 crushes");
+        let out = crush(&mp3, CrushOpts::default()).expect("mp3 crushes");
         assert!(!contains(&out.bytes, b"ID3"), "ID3 does not survive");
 
         let ogg = corpus("buck-audio.ogg");
@@ -1704,7 +1704,7 @@ mod tests {
             contains(&ogg, b"Lavf"),
             "vorbis fixture carries an encoder vendor"
         );
-        let out = crush_audio(&ogg, CrushOpts::default()).expect("vorbis crushes");
+        let out = crush(&ogg, CrushOpts::default()).expect("vorbis crushes");
         assert!(
             !contains(&out.bytes, b"Lavf"),
             "source vendor does not survive"
@@ -1751,7 +1751,7 @@ mod tests {
         wav.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
         wav.extend_from_slice(&pcm);
 
-        let out = crush_audio(&wav, CrushOpts::default()).expect("44.1 kHz wav crushes");
+        let out = crush(&wav, CrushOpts::default()).expect("44.1 kHz wav crushes");
         assert!(
             out.duration_ms.abs_diff(1_000 * u64::from(seconds)) <= 150,
             "resampled duration ≈2 s (got {} ms)",

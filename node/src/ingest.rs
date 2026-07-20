@@ -25,7 +25,7 @@ use std::path::PathBuf;
 
 use crate::clock::now_ms;
 use crate::documents::{save_version, Format, MediaMeta, Save};
-use crate::media::TranscodeError;
+use crate::media::CrushError;
 use crate::AppError;
 
 /// The enqueue handle, stored in `AppState`. Cheap to clone (just the quarantine path).
@@ -165,7 +165,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         .with_context(|| format!("reading quarantine file {}", job.quarantine_path))?;
 
     // AV1 encode is CPU-bound: keep it off the async runtime.
-    let outcome = tokio::task::spawn_blocking(move || crate::media::transcode(&bytes)).await?;
+    let outcome = tokio::task::spawn_blocking(move || crate::media::crush(&bytes)).await?;
     let ingested = match outcome {
         Ok(i) => i,
         Err(te) => {
@@ -227,11 +227,11 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
 
 /// The human message a failed job carries. Animation is the intended-soon tombstone; the rest are
 /// genuine "this upload can't be stored" failures.
-fn tombstone(te: &TranscodeError) -> String {
+fn tombstone(te: &CrushError) -> String {
     match te {
-        TranscodeError::Animated => "animated images aren't supported yet".to_string(),
-        TranscodeError::Unsupported(f) => format!("unsupported image format ({f})"),
-        TranscodeError::Decode(e) => format!("couldn't read the image ({e})"),
+        CrushError::Animated => "animated images aren't supported yet".to_string(),
+        CrushError::Unsupported(f) => format!("unsupported image format ({f})"),
+        CrushError::Decode(e) => format!("couldn't read the image ({e})"),
     }
 }
 

@@ -6,10 +6,10 @@
 //! image plus a small AVIF thumbnail via `ravif`.
 //!
 //! Everything here is a pure function - no I/O, no shared state. It is CPU-bound; callers run
-//! [`transcode`] under `tokio::task::spawn_blocking`.
+//! [`crush`] under `tokio::task::spawn_blocking`.
 //!
 //! Scope for now is *stills only*. Animated inputs (multi-frame GIF, animated WebP, APNG) are
-//! rejected with [`TranscodeError::Animated`] rather than silently flattened to their first frame.
+//! rejected with [`CrushError::Animated`] rather than silently flattened to their first frame.
 //! Aesthetic "crunch" (palette reduction, colour quantisation, filtering) is deliberately out of
 //! scope: we bound dimensions and re-encode, nothing more.
 
@@ -83,7 +83,7 @@ const RESIZE_FILTER: FilterType = FilterType::Lanczos3;
 
 /// A successfully ingested still image: canonical AVIF plus thumbnail and final dimensions.
 #[derive(Debug)]
-pub struct Ingested {
+pub struct Crushed {
     /// The transcoded main image, AVIF, bounded to fit 800x800.
     pub avif: Vec<u8>,
     /// A small AVIF thumbnail, bounded to fit 128x128.
@@ -98,7 +98,7 @@ pub struct Ingested {
 
 /// Why an upload could not be turned into canonical media.
 #[derive(Debug)]
-pub enum TranscodeError {
+pub enum CrushError {
     /// Input has more than one frame; the "we don't support animated images yet" tombstone.
     Animated,
     /// A format we cannot decode.
@@ -107,33 +107,33 @@ pub enum TranscodeError {
     Decode(String),
 }
 
-impl std::fmt::Display for TranscodeError {
+impl std::fmt::Display for CrushError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TranscodeError::Animated => {
+            CrushError::Animated => {
                 write!(f, "animated images are not supported yet")
             }
-            TranscodeError::Unsupported(detail) => {
+            CrushError::Unsupported(detail) => {
                 write!(f, "unsupported image format: {detail}")
             }
-            TranscodeError::Decode(detail) => {
+            CrushError::Decode(detail) => {
                 write!(f, "could not decode image: {detail}")
             }
         }
     }
 }
 
-impl std::error::Error for TranscodeError {}
+impl std::error::Error for CrushError {}
 
 /// Decode an arbitrary bitmap upload and re-encode to canonical AVIF + thumbnail.
 ///
 /// Pure function, no I/O. CPU-bound (callers run it under `spawn_blocking`).
-pub fn transcode(input: &[u8]) -> Result<Ingested, TranscodeError> {
+pub fn crush(input: &[u8]) -> Result<Crushed, CrushError> {
     // Identify the format from magic bytes. An unrecognised blob is unsupported, not corrupt.
     // (`guess_format` recognises the AVIF magic even though the `image` crate has no AVIF decoder
     // enabled - it inspects the ISOBMFF brand, not the feature set.)
     let format = image::guess_format(input)
-        .map_err(|e| TranscodeError::Unsupported(e.to_string()))?;
+        .map_err(|e| CrushError::Unsupported(e.to_string()))?;
 
     // AVIF inputs take the pure-rust rav1d decode path (the `image` crate can't decode them).
     if format == ImageFormat::Avif {
@@ -142,7 +142,7 @@ pub fn transcode(input: &[u8]) -> Result<Ingested, TranscodeError> {
 
     // Reject animation before we commit to decoding a single frame.
     if is_animated(input, format)? {
-        return Err(TranscodeError::Animated);
+        return Err(CrushError::Animated);
     }
 
     // Decode the (single) frame behind the decompression-bomb guard.
@@ -161,7 +161,7 @@ pub fn transcode(input: &[u8]) -> Result<Ingested, TranscodeError> {
     let thumb = fit_within(main, THUMB_BOUND);
     let thumb_avif = encode_avif(&thumb)?;
 
-    Ok(Ingested {
+    Ok(Crushed {
         avif,
         thumb_avif,
         width,
@@ -173,11 +173,11 @@ pub fn transcode(input: &[u8]) -> Result<Ingested, TranscodeError> {
 /// Ingest an AVIF upload. Unlike the other formats we can *emit* AVIF verbatim, so an already-in-spec,
 /// already-marked AVIF passes through untouched (zero re-encode, zero generational loss); anything
 /// oversized, unmarked, or foreign is decoded and re-crushed like any other upload.
-fn transcode_avif(input: &[u8]) -> Result<Ingested, TranscodeError> {
+fn transcode_avif(input: &[u8]) -> Result<Crushed, CrushError> {
     // Decompression-bomb guard: reject on the container-declared dimensions before decoding pixels.
     let (w, h) = avif_dimensions(input)?;
     if w > MAX_DECODE_DIMENSION || h > MAX_DECODE_DIMENSION {
-        return Err(TranscodeError::Decode(format!(
+        return Err(CrushError::Decode(format!(
             "avif declares {w}x{h}, over the {MAX_DECODE_DIMENSION}px decode bound"
         )));
     }
@@ -199,7 +199,7 @@ fn transcode_avif(input: &[u8]) -> Result<Ingested, TranscodeError> {
     let thumb = fit_within(decoded, THUMB_BOUND);
     let thumb_avif = encode_avif(&thumb)?;
 
-    Ok(Ingested {
+    Ok(Crushed {
         avif,
         thumb_avif,
         width,
@@ -221,7 +221,7 @@ fn decode_limits() -> Limits {
 /// Is this input animated? Only formats that *can* animate are inspected; jpeg/bmp/tiff/qoi are
 /// single-frame by construction and skip the check. Detection uses each format's own frame/anim
 /// API, all under the same bomb guard so a hostile "animated" header cannot allocate freely.
-fn is_animated(input: &[u8], format: ImageFormat) -> Result<bool, TranscodeError> {
+fn is_animated(input: &[u8], format: ImageFormat) -> Result<bool, CrushError> {
     match format {
         ImageFormat::Gif => {
             let mut decoder = GifDecoder::new(Cursor::new(input)).map_err(map_image_err)?;
@@ -255,7 +255,7 @@ fn fit_within(img: DynamicImage, bound: u32) -> DynamicImage {
 }
 
 /// Encode an RGBA view of `img` to AVIF at the configured quality/speed.
-fn encode_avif(img: &DynamicImage) -> Result<Vec<u8>, TranscodeError> {
+fn encode_avif(img: &DynamicImage) -> Result<Vec<u8>, CrushError> {
     let rgba = img.to_rgba8();
     let (width, height) = (rgba.width() as usize, rgba.height() as usize);
     let pixels = rgba.as_raw().as_rgba();
@@ -273,7 +273,7 @@ fn encode_avif(img: &DynamicImage) -> Result<Vec<u8>, TranscodeError> {
 
     let encoded = encoder
         .encode_rgba(Img::new(pixels, width, height))
-        .map_err(|e| TranscodeError::Decode(format!("avif encode failed: {e}")))?;
+        .map_err(|e| CrushError::Decode(format!("avif encode failed: {e}")))?;
 
     Ok(encoded.avif_file)
 }
@@ -336,7 +336,7 @@ fn has_ringtome_marker(avif: &[u8]) -> bool {
 
 /// The primary item's coded dimensions, read from the AVIF container's AV1 sequence header. Used by
 /// the decompression-bomb guard (before any pixels are touched) and the in-spec pass-through check.
-fn avif_dimensions(input: &[u8]) -> Result<(u32, u32), TranscodeError> {
+fn avif_dimensions(input: &[u8]) -> Result<(u32, u32), CrushError> {
     let data = avif_parse::read_avif(&mut Cursor::new(input)).map_err(map_avif_parse_err)?;
     let meta = data.primary_item_metadata().map_err(map_avif_parse_err)?;
     Ok((meta.max_frame_width.get(), meta.max_frame_height.get()))
@@ -345,25 +345,25 @@ fn avif_dimensions(input: &[u8]) -> Result<(u32, u32), TranscodeError> {
 /// Map an avif-parse container error onto our taxonomy. avif-parse rejects animated AVIF (the `avis`
 /// brand) up front with a distinctive `Unsupported` message - that becomes our `Animated` tombstone,
 /// so image-sequence detection here is real, not assumed.
-fn map_avif_parse_err(error: avif_parse::Error) -> TranscodeError {
+fn map_avif_parse_err(error: avif_parse::Error) -> CrushError {
     use avif_parse::Error;
     match error {
-        Error::Unsupported(msg) if msg.contains("Animated") => TranscodeError::Animated,
-        Error::Unsupported(msg) => TranscodeError::Unsupported(msg.to_string()),
-        other => TranscodeError::Decode(format!("avif container parse failed: {other}")),
+        Error::Unsupported(msg) if msg.contains("Animated") => CrushError::Animated,
+        Error::Unsupported(msg) => CrushError::Unsupported(msg.to_string()),
+        other => CrushError::Decode(format!("avif container parse failed: {other}")),
     }
 }
 
 /// Decode an AVIF still to an RGBA8 `DynamicImage`, pure-rust: avif-parse extracts the primary (and
 /// optional alpha) AV1 item; rav1d decodes the AV1 bitstream; we convert YUV->RGBA ourselves.
-fn decode_avif(input: &[u8]) -> Result<DynamicImage, TranscodeError> {
+fn decode_avif(input: &[u8]) -> Result<DynamicImage, CrushError> {
     let data = avif_parse::read_avif(&mut Cursor::new(input)).map_err(map_avif_parse_err)?;
 
     // Bomb guard again, right at the decode boundary: reject before allocating/decoding pixels.
     let meta = data.primary_item_metadata().map_err(map_avif_parse_err)?;
     let (w, h) = (meta.max_frame_width.get(), meta.max_frame_height.get());
     if w > MAX_DECODE_DIMENSION || h > MAX_DECODE_DIMENSION {
-        return Err(TranscodeError::Decode(format!(
+        return Err(CrushError::Decode(format!(
             "avif declares {w}x{h}, over the {MAX_DECODE_DIMENSION}px decode bound"
         )));
     }
@@ -400,9 +400,9 @@ struct DecodedPicture {
 /// Drive rav1d's C ABI to decode a single-frame AV1 bitstream. This is the *only* unsafe in the AVIF
 /// path; it opens a context, feeds the one OBU frame, pulls the picture, copies the planes out, and
 /// tears everything down (picture + data + context) before returning owned, safe data.
-fn decode_av1(bitstream: &[u8]) -> Result<DecodedPicture, TranscodeError> {
+fn decode_av1(bitstream: &[u8]) -> Result<DecodedPicture, CrushError> {
     if bitstream.is_empty() {
-        return Err(TranscodeError::Decode("empty AV1 bitstream".into()));
+        return Err(CrushError::Decode("empty AV1 bitstream".into()));
     }
 
     // SAFETY: every pointer handed to rav1d below points at a live local (`settings`, `ctx`, `data`,
@@ -419,7 +419,7 @@ fn decode_av1(bitstream: &[u8]) -> Result<DecodedPicture, TranscodeError> {
 
         let mut ctx: Option<Dav1dContext> = None;
         if dav1d_open(NonNull::new(&mut ctx), NonNull::new(&mut settings)).0 != 0 || ctx.is_none() {
-            return Err(TranscodeError::Decode("dav1d_open failed".into()));
+            return Err(CrushError::Decode("dav1d_open failed".into()));
         }
 
         // Copy the bitstream into a rav1d-allocated `Dav1dData`.
@@ -427,7 +427,7 @@ fn decode_av1(bitstream: &[u8]) -> Result<DecodedPicture, TranscodeError> {
         let dst = dav1d_data_create(NonNull::new(data.as_mut_ptr()), bitstream.len());
         if dst.is_null() {
             dav1d_close(NonNull::new(&mut ctx));
-            return Err(TranscodeError::Decode("dav1d_data_create failed".into()));
+            return Err(CrushError::Decode("dav1d_data_create failed".into()));
         }
         let mut data = data.assume_init();
         std::ptr::copy_nonoverlapping(bitstream.as_ptr(), dst, bitstream.len());
@@ -455,7 +455,7 @@ fn decode_av1(bitstream: &[u8]) -> Result<DecodedPicture, TranscodeError> {
         let result = if got {
             extract_picture(&pic)
         } else {
-            Err(TranscodeError::Decode("AV1 decode produced no frame".into()))
+            Err(CrushError::Decode("AV1 decode produced no frame".into()))
         };
 
         dav1d_picture_unref(NonNull::new(&mut pic));
@@ -470,7 +470,7 @@ fn decode_av1(bitstream: &[u8]) -> Result<DecodedPicture, TranscodeError> {
 /// # Safety
 /// `pic` must be a picture successfully filled by `dav1d_get_picture` (valid plane pointers/strides
 /// and a live sequence header) and still alive (not yet unref'd).
-unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, TranscodeError> {
+unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, CrushError> {
     let w = pic.p.w as usize;
     let h = pic.p.h as usize;
     let layout = pic.p.layout;
@@ -478,16 +478,16 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, Transcod
     // normalise everything to 8-bit RGBA below; anything outside 8..=12 shouldn't occur, so guard it.
     let bpc = pic.p.bpc;
     if !(8..=12).contains(&bpc) {
-        return Err(TranscodeError::Unsupported(format!("AVIF with {bpc}-bit depth")));
+        return Err(CrushError::Unsupported(format!("AVIF with {bpc}-bit depth")));
     }
     let bpc = bpc as u8;
     if w == 0 || h == 0 {
-        return Err(TranscodeError::Decode("AVIF decoded to a zero-size frame".into()));
+        return Err(CrushError::Decode("AVIF decoded to a zero-size frame".into()));
     }
 
     // SAFETY: rav1d guarantees data[0]/stride[0] describe `h` rows of at least `w` luma samples.
     let y_ptr = pic.data[0]
-        .ok_or_else(|| TranscodeError::Decode("AVIF frame missing luma plane".into()))?
+        .ok_or_else(|| CrushError::Decode("AVIF frame missing luma plane".into()))?
         .as_ptr() as *const u8;
     let y = unsafe { copy_plane_any(y_ptr, pic.stride[0], w, h, bpc) };
 
@@ -503,10 +503,10 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, Transcod
         (Vec::new(), Vec::new())
     } else {
         let u_ptr = pic.data[1]
-            .ok_or_else(|| TranscodeError::Decode("AVIF frame missing U plane".into()))?
+            .ok_or_else(|| CrushError::Decode("AVIF frame missing U plane".into()))?
             .as_ptr() as *const u8;
         let v_ptr = pic.data[2]
-            .ok_or_else(|| TranscodeError::Decode("AVIF frame missing V plane".into()))?
+            .ok_or_else(|| CrushError::Decode("AVIF frame missing V plane".into()))?
             .as_ptr() as *const u8;
         // SAFETY: chroma planes share stride[1]; each holds `uv_height` rows of >= `uv_width` samples.
         (
@@ -709,11 +709,11 @@ fn apply_alpha(img: &mut RgbaImage, alpha: &DecodedPicture, premultiplied: bool)
 
 /// Map an `image` decode error onto our taxonomy: a format the crate recognises but cannot handle
 /// is `Unsupported`; everything else (corruption, truncation, tripped limits) is `Decode`.
-fn map_image_err(error: ImageError) -> TranscodeError {
+fn map_image_err(error: ImageError) -> CrushError {
     let detail = error.to_string();
     match error {
-        ImageError::Unsupported(_) => TranscodeError::Unsupported(detail),
-        _ => TranscodeError::Decode(detail),
+        ImageError::Unsupported(_) => CrushError::Unsupported(detail),
+        _ => CrushError::Decode(detail),
     }
 }
 
@@ -737,7 +737,7 @@ mod corpus {
         dir
     }
 
-    fn dump(name: &str, out: &Ingested) {
+    fn dump(name: &str, out: &Crushed) {
         let dir = scratch();
         std::fs::write(dir.join(format!("{name}.avif")), &out.avif).unwrap();
         std::fs::write(dir.join(format!("{name}.thumb.avif")), &out.thumb_avif).unwrap();
@@ -757,7 +757,7 @@ mod corpus {
             .collect();
         names.sort();
         for name in names {
-            match transcode(&std::fs::read(format!("{dir}/{name}")).unwrap()) {
+            match crush(&std::fs::read(format!("{dir}/{name}")).unwrap()) {
                 Ok(i) => println!(
                     "OK       {name}: {}x{}  avif={}KB thumb={}KB",
                     i.width,
@@ -785,7 +785,7 @@ mod corpus {
             "floppy.png",
             "ready_or_not_transparent.png",
         ] {
-            let out = transcode(&corpus(name))
+            let out = crush(&corpus(name))
                 .unwrap_or_else(|e| panic!("{name} should transcode, got {e:?}"));
             assert!(out.width > 0 && out.height > 0, "{name} has real dimensions");
             assert!(
@@ -880,8 +880,8 @@ mod corpus {
             "animated_logo_transparent_background.gif",
             "animated_logo_transparent_background.webp",
         ] {
-            match transcode(&corpus(name)) {
-                Err(TranscodeError::Animated) => {}
+            match crush(&corpus(name)) {
+                Err(CrushError::Animated) => {}
                 other => panic!("{name} should be the animation tombstone, got {other:?}"),
             }
         }
@@ -892,8 +892,8 @@ mod corpus {
     fn video_is_rejected() {
         assert!(
             matches!(
-                transcode(&corpus("buck-twenty.mp4")),
-                Err(TranscodeError::Unsupported(_) | TranscodeError::Decode(_))
+                crush(&corpus("buck-twenty.mp4")),
+                Err(CrushError::Unsupported(_) | CrushError::Decode(_))
             ),
             "a video is not an ingestible image"
         );
@@ -904,7 +904,7 @@ mod corpus {
     /// path that used to be a known gap - AVIF in, AVIF out.
     #[test]
     fn foreign_avif_from_corpus_transcodes() {
-        let out = transcode(&corpus("retro.avif"))
+        let out = crush(&corpus("retro.avif"))
             .unwrap_or_else(|e| panic!("retro.avif should transcode, got {e:?}"));
         assert!(out.width > 0 && out.height > 0, "retro.avif has real dimensions");
         assert!(
@@ -1067,7 +1067,7 @@ mod tests {
     /// Our transcoded body carries the marker; the thumbnail never does.
     #[test]
     fn our_output_is_marked() {
-        let out = transcode(&png_bytes(&gradient(300, 200))).expect("transcode");
+        let out = crush(&png_bytes(&gradient(300, 200))).expect("transcode");
         assert!(has_ringtome_marker(&out.avif), "body is marked");
         assert!(
             !has_ringtome_marker(&out.thumb_avif),
@@ -1079,11 +1079,11 @@ mod tests {
     /// through byte-for-byte instead of being re-encoded.
     #[test]
     fn passthrough_preserves_bytes() {
-        let first = transcode(&png_bytes(&gradient(120, 90))).expect("first transcode");
+        let first = crush(&png_bytes(&gradient(120, 90))).expect("first transcode");
         assert!(first.width <= MAIN_BOUND && first.height <= MAIN_BOUND, "in spec");
         assert!(has_ringtome_marker(&first.avif), "first body is marked");
 
-        let second = transcode(&first.avif).expect("re-ingest the marked AVIF");
+        let second = crush(&first.avif).expect("re-ingest the marked AVIF");
         assert_eq!(
             second.avif, first.avif,
             "in-spec marked AVIF passes through byte-identical"
@@ -1097,7 +1097,7 @@ mod tests {
         let foreign = ravif_encode(&gradient(300, 220), 80.0);
         assert!(!has_ringtome_marker(&foreign), "input is unmarked");
 
-        let out = transcode(&foreign).expect("foreign AVIF transcodes");
+        let out = crush(&foreign).expect("foreign AVIF transcodes");
         assert_ne!(out.avif, foreign, "foreign AVIF is re-encoded, not passed through");
         assert!(out.width <= MAIN_BOUND && out.height <= MAIN_BOUND, "in spec");
         assert!(has_ringtome_marker(&out.avif), "re-crushed body is marked");
@@ -1106,7 +1106,7 @@ mod tests {
     #[test]
     fn transcode_png_produces_decodable_avif() {
         let input = png_bytes(&gradient(1200, 900));
-        let out = transcode(&input).expect("transcode succeeds");
+        let out = crush(&input).expect("transcode succeeds");
 
         assert_eq!(out.duration_ms, None);
 
@@ -1129,7 +1129,7 @@ mod tests {
     #[test]
     fn small_image_is_not_upscaled() {
         let input = png_bytes(&gradient(100, 60));
-        let out = transcode(&input).expect("transcode succeeds");
+        let out = crush(&input).expect("transcode succeeds");
 
         assert_eq!((out.width, out.height), (100, 60), "main not upscaled");
         assert_eq!(avif_dims(&out.avif), (100, 60), "encoded dims unchanged");
@@ -1148,15 +1148,15 @@ mod tests {
         }
 
         assert!(matches!(
-            transcode(&bytes),
-            Err(TranscodeError::Animated)
+            crush(&bytes),
+            Err(CrushError::Animated)
         ));
     }
 
     #[test]
     fn garbage_bytes_are_a_decode_error_not_a_panic() {
         // Must return Err (Decode or Unsupported), never panic.
-        assert!(transcode(b"definitely not an image").is_err());
+        assert!(crush(b"definitely not an image").is_err());
     }
 
     /// Standard CRC-32 (IEEE) - PNG chunk checksums, so we can hand-craft a header. Tiny enough
@@ -1201,15 +1201,15 @@ mod tests {
     }
 
     /// The decompression-bomb guard. We craft a tiny PNG whose header *declares* 100000x100000 -
-    /// no such buffer exists on disk. `transcode` must reject it as `Decode` (never OOM/panic),
+    /// no such buffer exists on disk. `crush` must reject it as `Decode` (never OOM/panic),
     /// and we additionally assert the rejection is specifically the `Limits` guard firing on the
     /// declared dimensions, not merely the absence of pixel data.
     #[test]
     fn bomb_dimensions_are_limited() {
         let bomb = png_declaring_dimensions(100_000, 100_000);
 
-        match transcode(&bomb) {
-            Err(TranscodeError::Decode(_)) => {}
+        match crush(&bomb) {
+            Err(CrushError::Decode(_)) => {}
             other => panic!("expected Decode from the bomb guard, got {other:?}"),
         }
 
