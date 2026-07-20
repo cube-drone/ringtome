@@ -95,6 +95,18 @@ pub mod doc_format {
     /// Network Is Hostile). The ingest transcode strips EXIF for free (decode-to-pixels drops it),
     /// covering the publication-boundary concern (don't leak GPS outward) as a side effect.
     pub const AVIF: u64 = 2;
+    /// Animated PNG - the canonical form for animated images that are TRANSPARENT and silent (a
+    /// transparent sticker, an under-construction sign). Alpha survives and every browser renders
+    /// APNG-alpha in an `<img>`; alpha-in-video has no universal playback path, so transparency
+    /// stays in the image lane. Opaque or audio-bearing animation routes to `WEBM_AV1` instead.
+    pub const APNG: u64 = 3;
+    /// AV1-in-WebM (+ Opus when the source has audio) - the canonical form for video and for
+    /// opaque animation. The browser normalizes the input codec zoo into a closed set; the node
+    /// re-decodes (rav1d) and re-encodes (rav1e) to launder, so only our own bytes ever distribute.
+    pub const WEBM_AV1: u64 = 4;
+    /// Ogg Opus - the canonical audio form. Wild input formats (mp3/aac/flac/wav/vorbis) are
+    /// decoded in memory-safe Rust and re-encoded to a fit-to-cap Opus; in-spec Opus passes through.
+    pub const OGG_OPUS: u64 = 5;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key

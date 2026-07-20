@@ -218,6 +218,30 @@ fn decode_limits() -> Limits {
     limits
 }
 
+/// The media dispatcher's routing verdict for these bytes: a still this lane crushes, an animated
+/// image that belongs in the video lane, or not an image at all (a video/audio container, or
+/// garbage). Magic-byte + frame-count inspection only - no full decode.
+pub(super) enum Detected {
+    Still,
+    Animated,
+    NotImage,
+}
+
+/// Classify an upload for [`crate::media::crush`]. `guess_format` recognises only image containers,
+/// so a WebM/Ogg/WAV/MP3 (or garbage) lands as `NotImage` and routes elsewhere; a recognised image
+/// splits still-vs-animated by frame count. A recognised-but-corrupt image stays `Still` so the
+/// still lane surfaces the real decode error rather than silently rerouting it to audio.
+pub(super) fn detect(input: &[u8]) -> Detected {
+    let Ok(format) = image::guess_format(input) else {
+        return Detected::NotImage;
+    };
+    match is_animated(input, format) {
+        Ok(true) => Detected::Animated,
+        Ok(false) => Detected::Still,
+        Err(_) => Detected::Still,
+    }
+}
+
 /// Is this input animated? Only formats that *can* animate are inspected; jpeg/bmp/tiff/qoi are
 /// single-frame by construction and skip the check. Detection uses each format's own frame/anim
 /// API, all under the same bomb guard so a hostile "animated" header cannot allocate freely.

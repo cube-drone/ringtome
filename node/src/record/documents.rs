@@ -31,6 +31,13 @@ pub enum Format {
     /// no inline conflict, served natively. (Text is the only substrate with multiple mergeable
     /// grammars; a media type is self-describing - it IS its format.)
     Avif,
+    /// Animated PNG: the canonical form for transparent, silent animated images (alpha survives,
+    /// rendered in an `<img>`). Opaque bytes; keep-both on divergence.
+    Apng,
+    /// AV1-in-WebM (+ Opus): the canonical form for video and for opaque animation. `<video>`.
+    WebmAv1,
+    /// Ogg Opus: the canonical audio form. `<audio>`.
+    OggOpus,
 }
 
 impl Format {
@@ -40,6 +47,9 @@ impl Format {
         match w {
             Some(doc_format::MARQUEE) => Format::Marquee,
             Some(doc_format::AVIF) => Format::Avif,
+            Some(doc_format::APNG) => Format::Apng,
+            Some(doc_format::WEBM_AV1) => Format::WebmAv1,
+            Some(doc_format::OGG_OPUS) => Format::OggOpus,
             _ => Format::Plaintext,
         }
     }
@@ -49,6 +59,9 @@ impl Format {
             Format::Plaintext => None,
             Format::Marquee => Some(doc_format::MARQUEE),
             Format::Avif => Some(doc_format::AVIF),
+            Format::Apng => Some(doc_format::APNG),
+            Format::WebmAv1 => Some(doc_format::WEBM_AV1),
+            Format::OggOpus => Some(doc_format::OGG_OPUS),
         }
     }
 
@@ -57,6 +70,9 @@ impl Format {
             Format::Plaintext => "plaintext",
             Format::Marquee => "marquee",
             Format::Avif => "avif",
+            Format::Apng => "apng",
+            Format::WebmAv1 => "webm",
+            Format::OggOpus => "opus",
         }
     }
 
@@ -65,6 +81,9 @@ impl Format {
             "plaintext" => Some(Format::Plaintext),
             "marquee" => Some(Format::Marquee),
             "avif" => Some(Format::Avif),
+            "apng" => Some(Format::Apng),
+            "webm" => Some(Format::WebmAv1),
+            "opus" => Some(Format::OggOpus),
             _ => None,
         }
     }
@@ -81,6 +100,9 @@ impl Format {
             Format::Plaintext => "text/plain; charset=utf-8",
             Format::Marquee => "text/plain; charset=utf-8",
             Format::Avif => "image/avif",
+            Format::Apng => "image/apng",
+            Format::WebmAv1 => "video/webm",
+            Format::OggOpus => "audio/ogg",
         }
     }
 }
@@ -257,15 +279,17 @@ pub struct Save {
     pub media: Option<MediaMeta>,
 }
 
-/// What the ingest transcode measured/produced, minus the bytes themselves: dimensions, an
-/// optional duration (time-based media only), and the file-layer hash of the thumbnail blob the
-/// worker stored separately. Copied verbatim into the encrypted header.
-#[derive(Debug, Clone)]
+/// What the ingest crush measured/produced, minus the bytes themselves - every field optional
+/// because the media kinds differ: images/video carry dimensions but audio does not; video and
+/// audio carry a duration but stills do not; images always have a thumbnail, audio has one only
+/// when it decoded (a waveform), and video has none yet. Copied verbatim into the encrypted
+/// header (which stores each as `Option`).
+#[derive(Debug, Clone, Default)]
 pub struct MediaMeta {
-    pub width: u32,
-    pub height: u32,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
     pub duration_ms: Option<u64>,
-    pub thumb_hash: [u8; 32],
+    pub thumb_hash: Option<[u8; 32]>,
 }
 
 /// Save one version of a document: body into the file layer, header onto the notes chain.
@@ -325,10 +349,10 @@ pub async fn save_version(
         body_hash,
         title: save.title,
         format: save.format.to_wire(),
-        width: save.media.as_ref().map(|m| m.width),
-        height: save.media.as_ref().map(|m| m.height),
+        width: save.media.as_ref().and_then(|m| m.width),
+        height: save.media.as_ref().and_then(|m| m.height),
         duration_ms: save.media.as_ref().and_then(|m| m.duration_ms),
-        thumb_hash: save.media.as_ref().map(|m| m.thumb_hash),
+        thumb_hash: save.media.as_ref().and_then(|m| m.thumb_hash),
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -492,7 +516,9 @@ fn side_label(v: &Version) -> String {
 /// only: `resolve` returns before this for media (which has no synthesized-text conflict).
 fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> String {
     match format {
-        Format::Avif => unreachable!("media conflicts are keep-both, never synthesized text"),
+        Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
+            unreachable!("media conflicts are keep-both, never synthesized text")
+        }
         // Git-style marker fences: every side in full.
         Format::Plaintext => {
             let mut out = String::new();
@@ -673,7 +699,9 @@ pub async fn resolve(
                     .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a)))
                     .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b))),
                 Format::Marquee => whole_version_conflict(format, &[(a, text_a), (b, text_b)]),
-                Format::Avif => unreachable!("media never reaches text merge"),
+                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
+                    unreachable!("media never reaches text merge")
+                }
             }),
         }),
     }

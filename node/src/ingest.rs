@@ -24,8 +24,8 @@ use sqlx::SqlitePool;
 use std::path::PathBuf;
 
 use crate::clock::now_ms;
-use crate::record::documents::{save_version, Format, MediaMeta, Save};
-use crate::media::image::CrushError;
+use crate::record::documents::{save_version, MediaMeta, Save};
+use crate::media::CrushError;
 use crate::AppError;
 
 /// The enqueue handle, stored in `AppState`. Cheap to clone (just the quarantine path).
@@ -164,8 +164,9 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("reading quarantine file {}", job.quarantine_path))?;
 
-    // AV1 encode is CPU-bound: keep it off the async runtime.
-    let outcome = tokio::task::spawn_blocking(move || crate::media::image::crush(&bytes)).await?;
+    // The crush (AV1/AVIF/Opus encode) is CPU-bound: keep it off the async runtime. `media::crush`
+    // sniffs the upload and routes it to the image, video, or audio lane.
+    let outcome = tokio::task::spawn_blocking(move || crate::media::crush(&bytes)).await?;
     let ingested = match outcome {
         Ok(i) => i,
         Err(te) => {
@@ -191,13 +192,19 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         .current()
         .ok_or_else(|| anyhow!("no epoch key to write media under"))?;
 
-    // The thumbnail is its own sibling blob (never inline in the header). The body - the
-    // transcoded AVIF - rides save_version's normal store-and-append path (with blob reuse).
-    let thumb_hash = *state
-        .files
-        .put_encrypted(epoch, &epoch_key, &ingested.thumb_avif)
-        .await?
-        .as_bytes();
+    // The thumbnail (when the lane produced one - image thumb, audio waveform; video has none yet)
+    // is its own sibling blob, never inline in the header. The body - the crushed AVIF/WebM/APNG/
+    // Opus - rides save_version's normal store-and-append path (with blob reuse).
+    let thumb_hash = match &ingested.thumb_avif {
+        Some(thumb) => Some(
+            *state
+                .files
+                .put_encrypted(epoch, &epoch_key, thumb)
+                .await?
+                .as_bytes(),
+        ),
+        None => None,
+    };
 
     save_version(
         &db,
@@ -208,8 +215,8 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
             doc_id: job.doc_id,
             parents: job.parents.clone(),
             title: job.title.clone(),
-            body: ingested.avif,
-            format: Format::Avif,
+            body: ingested.body,
+            format: ingested.format,
             media: Some(MediaMeta {
                 width: ingested.width,
                 height: ingested.height,
@@ -229,9 +236,9 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
 /// genuine "this upload can't be stored" failures.
 fn tombstone(te: &CrushError) -> String {
     match te {
-        CrushError::Animated => "animated images aren't supported yet".to_string(),
-        CrushError::Unsupported(f) => format!("unsupported image format ({f})"),
-        CrushError::Decode(e) => format!("couldn't read the image ({e})"),
+        CrushError::Unsupported(f) => format!("unsupported media ({f})"),
+        CrushError::Decode(e) => format!("couldn't process the media ({e})"),
+        CrushError::TooLong(e) => format!("too long to store ({e})"),
     }
 }
 
