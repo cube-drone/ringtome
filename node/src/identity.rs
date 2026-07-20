@@ -91,7 +91,7 @@ pub async fn create(
         .context("sealing identity private key")
         .map_err(AppError::Internal)?;
     let root_enc = crate::seal::EncKeyPair::generate();
-    crate::private::store_enc_keypair(keystore, &pubkey_hex, &root_enc)
+    crate::record::private::store_enc_keypair(keystore, &pubkey_hex, &root_enc)
         .context("sealing identity encryption key")
         .map_err(AppError::Internal)?;
 
@@ -119,7 +119,7 @@ pub async fn create(
     }
     .encode()
     .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding recovery authorization: {e}")))?;
-    let genesis = crate::imaol::append(
+    let genesis = crate::record::imaol::append(
         &user_db,
         &signing_key,
         service::IDENTITY_PUBLIC,
@@ -131,8 +131,8 @@ pub async fn create(
     // 7. Epoch 0: the identity's first private-chain key, sealed to the root and the (offline)
     //    recovery key. Every private record ever written is under some epoch; minting the first
     //    one here means "has private chains" is an invariant, not a lazy upgrade.
-    let epoch_key = crate::private::fresh_epoch_key();
-    crate::private::mint_epoch(
+    let epoch_key = crate::record::private::fresh_epoch_key();
+    crate::record::private::mint_epoch(
         &user_db,
         &signing_key,
         0,
@@ -345,7 +345,7 @@ pub async fn revoke_key(
         .get(root_hex)
         .await
         .map_err(AppError::Internal)?;
-    let tree = crate::imaol::load_key_tree(&db, root_hex).await?;
+    let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
 
     let authorized = match disposition {
         Disposition::Retirement => signer_pub == target || tree.is_senior(&signer_pub, &target),
@@ -359,7 +359,7 @@ pub async fn revoke_key(
 
     // Anchors: our stored head of every chain the target has written (via imaol - the entries
     // table's owner).
-    let anchors: Vec<Anchor> = crate::imaol::chain_heads_for_author(&db, target_hex)
+    let anchors: Vec<Anchor> = crate::record::imaol::chain_heads_for_author(&db, target_hex)
         .await?
         .into_iter()
         .map(|(service, seq, head_hash)| Anchor {
@@ -376,7 +376,7 @@ pub async fn revoke_key(
     }
     .encode()
     .map_err(|e| AppError::Internal(anyhow!("encoding revocation: {e}")))?;
-    let signed = crate::imaol::append(
+    let signed = crate::record::imaol::append(
         &db,
         &signer,
         service::IDENTITY_PUBLIC,
@@ -389,8 +389,8 @@ pub async fn revoke_key(
     // revocation - retirement included, however friendly - rotates to a fresh epoch sealed to
     // everyone but the departed. It reads its era forever; the future is closed. (Rotation
     // failing must not unwind the revocation itself: eviction now, re-key ASAP beats neither.)
-    let tree = crate::imaol::load_key_tree(&db, root_hex).await?;
-    match crate::private::rotate_epoch(&db, &signer, &tree, &target).await {
+    let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
+    match crate::record::private::rotate_epoch(&db, &signer, &tree, &target).await {
         Ok(epoch_entry) => tracing::info!(
             root = %root_hex,
             entry = %hex::encode(epoch_entry.hash()),

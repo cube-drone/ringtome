@@ -1,4 +1,9 @@
-//! The key tree: authority resolution for one identity.
+//! The CROWN - the key tree: authority resolution for one identity.
+//!
+//! CROWN is the name of this specific scheme (the hierarchical pubkey tree with ranks,
+//! structural seniority, and usurper lists - PROJECT_PLAN, Identity System). In prose and in
+//! most code, plain "identity"/"key tree" stays the clearer word; `Crown` is the shorthand for
+//! this exact structure and its verdicts.
 //!
 //! Input: the identity's `identity-public` chain entries (from every key claiming membership).
 //! Output: a total authority order plus a status for every key - who exists, who outranks whom,
@@ -103,7 +108,7 @@ struct Node {
 
 /// The resolved tree. Build once from entries, query many times.
 #[derive(Debug, Clone)]
-pub struct KeyTree {
+pub struct Crown {
     root: Pubkey,
     nodes: BTreeMap<Pubkey, Node>,
     children: BTreeMap<Pubkey, Vec<Pubkey>>,
@@ -112,14 +117,14 @@ pub struct KeyTree {
     rejected: Vec<Rejected>,
 }
 
-impl KeyTree {
+impl Crown {
     /// Resolve an identity's tree from its identity-chain entries.
     ///
     /// `entries` may arrive in any order and from any mixture of keys; the result is identical
     /// for any permutation of the same set (this is load-bearing - every relying party must
     /// converge). Entries with invalid signatures are a hard error: storage and sync must never
     /// have admitted them. Entries on services other than `identity-public` are ignored.
-    pub fn build(root: Pubkey, entries: &[SignedEntry]) -> Result<KeyTree, ProtoError> {
+    pub fn build(root: Pubkey, entries: &[SignedEntry]) -> Result<Crown, ProtoError> {
         // Group identity-chain entries by author, deduplicating by entry hash.
         let mut by_author: BTreeMap<Pubkey, BTreeMap<[u8; HASH_LEN], &SignedEntry>> =
             BTreeMap::new();
@@ -134,7 +139,7 @@ impl KeyTree {
                 .insert(*e.hash(), e);
         }
 
-        let mut tree = KeyTree {
+        let mut tree = Crown {
             root,
             nodes: BTreeMap::new(),
             children: BTreeMap::new(),
@@ -586,7 +591,7 @@ mod tests {
     #[test]
     fn family_tree_is_totally_ordered() {
         let (root, recovery, laptop, phone, entries) = family();
-        let tree = KeyTree::build(root.pk(), &entries).unwrap();
+        let tree = Crown::build(root.pk(), &entries).unwrap();
 
         use core::cmp::Ordering::Less;
         assert_eq!(tree.rank_path(&root.pk()).unwrap(), &[] as &[u64]);
@@ -618,9 +623,9 @@ mod tests {
     #[test]
     fn build_is_order_independent() {
         let (root, _, _, _, mut entries) = family();
-        let forward = KeyTree::build(root.pk(), &entries).unwrap();
+        let forward = Crown::build(root.pk(), &entries).unwrap();
         entries.reverse();
-        let backward = KeyTree::build(root.pk(), &entries).unwrap();
+        let backward = Crown::build(root.pk(), &entries).unwrap();
 
         let f: Vec<_> = forward.members().map(|(k, s)| (*k, s)).collect();
         let b: Vec<_> = backward.members().map(|(k, s)| (*k, s)).collect();
@@ -644,7 +649,7 @@ mod tests {
         .unwrap();
         let e1 = root.append(entry_type::AUTHORIZE, bad_stamp);
 
-        let tree = KeyTree::build(root.pk(), &[e0, e1]).unwrap();
+        let tree = Crown::build(root.pk(), &[e0, e1]).unwrap();
         assert_eq!(tree.status(&liar.pk()), KeyStatus::Unknown);
         assert_eq!(tree.rejected().len(), 1);
         assert_eq!(
@@ -663,8 +668,8 @@ mod tests {
         let (child_b, eb) = history_b.authorize(20);
         let root_pk = history_a.pk();
 
-        let tree_ab = KeyTree::build(root_pk, &[ea.clone(), eb.clone()]).unwrap();
-        let tree_ba = KeyTree::build(root_pk, &[eb, ea]).unwrap();
+        let tree_ab = Crown::build(root_pk, &[ea.clone(), eb.clone()]).unwrap();
+        let tree_ba = Crown::build(root_pk, &[eb, ea]).unwrap();
 
         // Same winner regardless of arrival order: the lowest child pubkey.
         let winner = if child_a.pk() < child_b.pk() {
@@ -703,7 +708,7 @@ mod tests {
         }];
         entries.push(laptop.revoke(laptop.pk(), Disposition::Retirement, anchors));
 
-        let tree = KeyTree::build(root.pk(), &entries).unwrap();
+        let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Retired);
         assert_eq!(
             tree.status(&phone.pk()),
@@ -733,7 +738,7 @@ mod tests {
             }],
         ));
 
-        let tree = KeyTree::build(root.pk(), &entries).unwrap();
+        let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Repudiated);
         assert_eq!(
             tree.status(&phone.pk()),
@@ -752,7 +757,7 @@ mod tests {
         entries.push(phone.revoke(recovery.pk(), Disposition::Repudiation, vec![]));
         entries.push(phone.revoke(phone.pk(), Disposition::Repudiation, vec![]));
 
-        let tree = KeyTree::build(root.pk(), &entries).unwrap();
+        let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&recovery.pk()), KeyStatus::Active);
         assert_eq!(tree.status(&phone.pk()), KeyStatus::Active);
         assert_eq!(tree.rejected().len(), 2);
@@ -786,7 +791,7 @@ mod tests {
             }],
         ));
 
-        let tree = KeyTree::build(root.pk(), &entries).unwrap();
+        let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&root.pk()), KeyStatus::Retired);
         assert_eq!(tree.status(&recovery.pk()), KeyStatus::Active);
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Repudiated);
@@ -811,7 +816,7 @@ mod tests {
             }],
         ));
 
-        let tree = KeyTree::build(root.pk(), &entries).unwrap();
+        let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&recovery.pk()), KeyStatus::Active);
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Repudiated);
         assert!(tree.rejected().iter().any(|r| r.reason
@@ -845,7 +850,7 @@ mod tests {
                 entries.push(entry);
             }
             let root_pk = keys[0].pk();
-            let tree = KeyTree::build(root_pk, &entries).unwrap();
+            let tree = Crown::build(root_pk, &entries).unwrap();
 
             // Everyone admitted, nothing rejected, no forks in an honest tree.
             assert!(tree.forks().is_empty(), "seed {seed}");
@@ -899,7 +904,7 @@ mod tests {
             shuffled.reverse();
             let rot = next(shuffled.len().max(1));
             shuffled.rotate_left(rot);
-            let tree2 = KeyTree::build(root_pk, &shuffled).unwrap();
+            let tree2 = Crown::build(root_pk, &shuffled).unwrap();
             for pk in &pks {
                 assert_eq!(tree.status(pk), tree2.status(pk), "seed {seed}");
                 assert_eq!(tree.rank_path(pk), tree2.rank_path(pk), "seed {seed}");
@@ -932,7 +937,7 @@ mod tests {
             }],
         ));
 
-        let tree = KeyTree::build(root.pk(), &entries).unwrap();
+        let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Repudiated);
         assert_eq!(tree.status(&phone.pk()), KeyStatus::Invalid);
         assert_eq!(

@@ -24,8 +24,8 @@ use sqlx::SqlitePool;
 use std::path::PathBuf;
 
 use crate::clock::now_ms;
-use crate::documents::{save_version, Format, MediaMeta, Save};
-use crate::media::CrushError;
+use crate::record::documents::{save_version, Format, MediaMeta, Save};
+use crate::media::image::CrushError;
 use crate::AppError;
 
 /// The enqueue handle, stored in `AppState`. Cheap to clone (just the quarantine path).
@@ -165,7 +165,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         .with_context(|| format!("reading quarantine file {}", job.quarantine_path))?;
 
     // AV1 encode is CPU-bound: keep it off the async runtime.
-    let outcome = tokio::task::spawn_blocking(move || crate::media::crush(&bytes)).await?;
+    let outcome = tokio::task::spawn_blocking(move || crate::media::image::crush(&bytes)).await?;
     let ingested = match outcome {
         Ok(i) => i,
         Err(te) => {
@@ -184,9 +184,9 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         .await?
         .ok_or_else(|| anyhow!("node does not agent identity {}", job.root))?;
     let leaf_pub = leaf.verifying_key().to_bytes();
-    let enc = crate::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
+    let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
     let db = state.user_dbs.get(&job.root).await?;
-    let keys = crate::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
+    let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
     let (epoch, epoch_key) = keys
         .current()
         .ok_or_else(|| anyhow!("no epoch key to write media under"))?;

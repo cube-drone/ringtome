@@ -44,7 +44,7 @@ pub async fn publish_record(state: &AppState, root_hex: &str) -> Result<(), AppE
         .map_err(|e| AppError::Internal(anyhow!("signing serving record: {e}")))?;
 
     match &state.directory {
-        crate::discovery::Directory::Mainline(m) => m
+        crate::net::discovery::Directory::Mainline(m) => m
             .publish_serving_with_key(&signed, &leaf_key.to_bytes())
             .await
             .map_err(AppError::Internal)?,

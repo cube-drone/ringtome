@@ -11,7 +11,7 @@
 use anyhow::{anyhow, Context};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
-use ringtome_proto::keytree::KeyStatus;
+use ringtome_proto::crown::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Authorize, Payload};
 use uuid::Uuid;
@@ -58,7 +58,7 @@ pub async fn begin(state: &AppState, account_id: &Uuid) -> Result<RequestCode, A
         .context("sealing adoption leaf key")
         .map_err(AppError::Internal)?;
     let leaf_enc = crate::seal::EncKeyPair::generate();
-    crate::private::store_enc_keypair(&state.keystore, &leaf_hex, &leaf_enc)
+    crate::record::private::store_enc_keypair(&state.keystore, &leaf_hex, &leaf_enc)
         .context("sealing adoption encryption key")
         .map_err(AppError::Internal)?;
     sqlx::query(
@@ -78,7 +78,7 @@ pub async fn begin(state: &AppState, account_id: &Uuid) -> Result<RequestCode, A
         leaf_pubkey: leaf_hex,
         enc_pubkey: hex::encode(leaf_enc.public),
         endpoint_id: state.endpoint.id().to_string(),
-        addrs: crate::p2p::addr_strings(&state.endpoint),
+        addrs: crate::net::p2p::addr_strings(&state.endpoint),
     })
 }
 
@@ -113,7 +113,7 @@ pub async fn authorize_node(
         .get(root_hex)
         .await
         .map_err(AppError::Internal)?;
-    let tree = crate::imaol::load_key_tree(&db, root_hex).await?;
+    let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
     if tree.status(&leaf) != KeyStatus::Unknown {
         return Err(AppError::BadRequest(
             "that key is already in the tree".into(),
@@ -130,7 +130,7 @@ pub async fn authorize_node(
     }
     .encode()
     .map_err(|e| AppError::Internal(anyhow!("encoding authorization: {e}")))?;
-    crate::imaol::append(
+    crate::record::imaol::append(
         &db,
         &signer,
         service::IDENTITY_PUBLIC,
@@ -142,16 +142,16 @@ pub async fn authorize_node(
     // Adoption's private half: re-seal every epoch key this node holds to the newcomer, so its
     // private view reaches all the way back. A member is a member of the whole history - the
     // exclusion boundary is revocation's rotation, never adoption.
-    let our_enc = crate::private::load_enc_keypair(&state.keystore, root_hex)
+    let our_enc = crate::record::private::load_enc_keypair(&state.keystore, root_hex)
         .context("loading our encryption key")
         .map_err(AppError::Internal)?;
-    let epoch_keys = crate::private::unseal_epoch_keys(&db, &root, &our_enc).await?;
+    let epoch_keys = crate::record::private::unseal_epoch_keys(&db, &root, &our_enc).await?;
     let resealed =
-        crate::private::reseal_epochs_to(&db, &signer, &leaf, &leaf_enc, &epoch_keys).await?;
+        crate::record::private::reseal_epochs_to(&db, &signer, &leaf, &leaf_enc, &epoch_keys).await?;
     tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, resealed, "sealed epoch history");
 
     // Remember the joining node as a peer so future syncs reach it.
-    crate::sync::add_peer(&state.node_db, root_hex, &code.endpoint_id)
+    crate::net::sync::add_peer(&state.node_db, root_hex, &code.endpoint_id)
         .await
         .map_err(AppError::Internal)?;
 
@@ -162,7 +162,7 @@ pub async fn authorize_node(
         root_pubkey: root_hex.to_string(),
         leaf_pubkey: code.leaf_pubkey,
         endpoint_id: state.endpoint.id().to_string(),
-        addrs: crate::p2p::addr_strings(&state.endpoint),
+        addrs: crate::net::p2p::addr_strings(&state.endpoint),
     })
 }
 
@@ -192,16 +192,16 @@ pub async fn complete(
 
     let leaf = pubkey::require(&code.leaf_pubkey, "leaf pubkey in grant code")?;
 
-    crate::sync::add_peer(&state.node_db, &code.root_pubkey, &code.endpoint_id)
+    crate::net::sync::add_peer(&state.node_db, &code.root_pubkey, &code.endpoint_id)
         .await
         .map_err(AppError::Internal)?;
     // Bootstrap dial: the grant code's addresses are ephemeral single-use hints (allowed to be
     // addresses precisely because they don't live long enough to rot). Later syncs resolve via
     // the directory.
-    let addr = crate::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
+    let addr = crate::net::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
         .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
 
-    let stats = crate::sync::sync_with_peer(state, &code.root_pubkey, addr)
+    let stats = crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr)
         .await
         .map_err(|e| AppError::Internal(anyhow!("initial sync failed: {e}")))?;
     tracing::info!(root = %code.root_pubkey, ?stats, "adoption sync complete");
@@ -211,7 +211,7 @@ pub async fn complete(
         .get(&code.root_pubkey)
         .await
         .map_err(AppError::Internal)?;
-    let tree = crate::imaol::load_key_tree(&db, &code.root_pubkey).await?;
+    let tree = crate::record::imaol::load_key_tree(&db, &code.root_pubkey).await?;
     if tree.status(&leaf) != KeyStatus::Active {
         return Err(AppError::BadRequest(
             "our key is not (yet) authorized on the identity chain - paste the request code at \
@@ -235,16 +235,16 @@ pub async fn complete(
         .await
         .context("clearing pending adoption")
         .map_err(AppError::Internal)?;
-    crate::sync::mark_synced(&state.node_db, &code.root_pubkey, &code.endpoint_id)
+    crate::net::sync::mark_synced(&state.node_db, &code.root_pubkey, &code.endpoint_id)
         .await
         .map_err(AppError::Internal)?;
 
     // Second pass, now that we agent the identity: the first sync ran proof-less (no identities
     // row yet), so the granter rightly withheld the private chains. This one carries our member
     // proof and pulls them - adoption ends with the private state here, not eventually.
-    let addr = crate::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
+    let addr = crate::net::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
         .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
-    let stats = crate::sync::sync_with_peer(state, &code.root_pubkey, addr)
+    let stats = crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr)
         .await
         .map_err(|e| AppError::Internal(anyhow!("private-chain sync failed: {e}")))?;
     tracing::info!(root = %code.root_pubkey, ?stats, "adoption private sync complete");

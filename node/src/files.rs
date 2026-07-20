@@ -1,6 +1,6 @@
 //! The file layer: encrypted, content-addressed file bodies, stored and transferred by iroh-blobs.
 //!
-//! A "file" is XChaCha ciphertext (epoch key, random nonce; see [`crate::private::encrypt_file`]),
+//! A "file" is XChaCha ciphertext (epoch key, random nonce; see [`crate::record::private::encrypt_file`]),
 //! which iroh-blobs content-addresses by the BLAKE3 of those ciphertext bytes. The store is
 //! content-agnostic: it never sees plaintext and cannot tell a note body from a photo, so this one
 //! layer serves notes, posts, and media alike (NOTES_APP, The file layer).
@@ -23,7 +23,7 @@ use iroh_blobs::store::mem::MemStore;
 use iroh_blobs::{BlobsProtocol, Hash};
 use n0_future::StreamExt;
 
-use crate::private::{decrypt_file, encrypt_file, EpochKeys};
+use crate::record::private::{decrypt_file, encrypt_file, EpochKeys};
 
 /// The blob-serving ALPN. New protocol beside the sync ALPN on the same endpoint.
 pub const BLOB_ALPN: &[u8] = iroh_blobs::ALPN;
@@ -238,7 +238,7 @@ mod tests {
 
         // Node A, assembled from the same constructors main() uses.
         let keystore = crate::keystore::Keystore::load(&dir).unwrap();
-        let ep_a = crate::p2p::build_endpoint(&keystore, &crate::discovery::DiscoveryMode::Off)
+        let ep_a = crate::net::p2p::build_endpoint(&keystore, &crate::net::discovery::DiscoveryMode::Off)
             .await
             .unwrap();
         let files_a = std::sync::Arc::new(FileStore::memory());
@@ -249,12 +249,12 @@ mod tests {
             rate_limiter: crate::rate_limit::RateLimiter::new(false),
             keystore,
             endpoint: ep_a.clone(),
-            directory: crate::discovery::Directory::build(&crate::discovery::DiscoveryMode::Off)
+            directory: crate::net::discovery::Directory::build(&crate::net::discovery::DiscoveryMode::Off)
                 .unwrap(),
             files: files_a.clone(),
             ingest: crate::ingest::Ingest::new(dir.join("quarantine")),
         };
-        crate::p2p::spawn_accept_loop(ep_a.clone(), state);
+        crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 
         let epoch = 5u64;
         let key = [7u8; 32];
@@ -262,7 +262,7 @@ mod tests {
         let hash = files_a.put_encrypted(epoch, &key, &plaintext).await.unwrap();
 
         let addr_a =
-            crate::sync::endpoint_addr(&ep_a.id().to_string(), &crate::p2p::addr_strings(&ep_a))
+            crate::net::sync::endpoint_addr(&ep_a.id().to_string(), &crate::net::p2p::addr_strings(&ep_a))
                 .unwrap();
 
         // Node B fetches through A's accept loop.
@@ -293,7 +293,7 @@ mod tests {
 
         // A's connectable address, built with the same helpers the sync path uses.
         let addr_a =
-            crate::sync::endpoint_addr(&ep_a.id().to_string(), &crate::p2p::addr_strings(&ep_a))
+            crate::net::sync::endpoint_addr(&ep_a.id().to_string(), &crate::net::p2p::addr_strings(&ep_a))
                 .unwrap();
 
         // Node B has never seen the blob; fetch it by hash and decrypt with the same epoch key.
@@ -341,7 +341,7 @@ mod tests {
             .accept(BLOB_ALPN, store_a.protocol())
             .spawn();
         let addr_a =
-            crate::sync::endpoint_addr(&ep_a.id().to_string(), &crate::p2p::addr_strings(&ep_a))
+            crate::net::sync::endpoint_addr(&ep_a.id().to_string(), &crate::net::p2p::addr_strings(&ep_a))
                 .unwrap();
 
         // Our node caps blobs at 10MB and refuses to pull the whole thing.

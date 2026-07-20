@@ -20,7 +20,7 @@ use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{
-    Authorize, KeyEpoch, KeyTree, Payload, PrivateKind, PrivatePlain, PrivateRecord, SignedEntry,
+    Authorize, KeyEpoch, Crown, Payload, PrivateKind, PrivatePlain, PrivateRecord, SignedEntry,
     SigningKey,
 };
 use sqlx::SqlitePool;
@@ -114,7 +114,7 @@ impl EpochKeys {
 /// Every decodable `key-epoch` entry stored on the identity-public chains.
 async fn load_epoch_entries(db: &SqlitePool) -> Result<Vec<KeyEpoch>, AppError> {
     let entries =
-        crate::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::KEY_EPOCH).await?;
+        crate::record::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::KEY_EPOCH).await?;
     let mut out = Vec::with_capacity(entries.len());
     for signed in entries {
         let Payload::Inline(payload) = &signed.entry().payload else {
@@ -174,7 +174,7 @@ pub async fn enc_roster(db: &SqlitePool) -> Result<BTreeMap<[u8; 32], [u8; 32]>,
     let mut roster = BTreeMap::new();
 
     let authorizes =
-        crate::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::AUTHORIZE).await?;
+        crate::record::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::AUTHORIZE).await?;
     for signed in authorizes {
         let Payload::Inline(payload) = &signed.entry().payload else {
             continue;
@@ -223,7 +223,7 @@ pub async fn mint_epoch(
     }
     .encode()
     .map_err(|e| AppError::Internal(anyhow!("encoding key-epoch: {e}")))?;
-    crate::imaol::append(
+    crate::record::imaol::append(
         db,
         signer,
         service::IDENTITY_PUBLIC,
@@ -257,10 +257,10 @@ pub async fn reseal_epochs_to(
 pub async fn rotate_epoch(
     db: &SqlitePool,
     signer: &SigningKey,
-    tree: &KeyTree,
+    tree: &Crown,
     exclude: &[u8; 32],
 ) -> Result<SignedEntry, AppError> {
-    use ringtome_proto::keytree::KeyStatus;
+    use ringtome_proto::crown::KeyStatus;
 
     let roster = enc_roster(db).await?;
     let mut recipients: Vec<([u8; 32], [u8; 32])> = Vec::new();
@@ -465,7 +465,7 @@ pub async fn write_record(
     let payload = record
         .encode()
         .map_err(|e| AppError::Internal(anyhow!("encoding private record: {e}")))?;
-    crate::imaol::append(
+    crate::record::imaol::append(
         db,
         signer,
         service::GENERAL_PRIVATE,
@@ -562,7 +562,7 @@ impl PrivateView {
 /// persistence dial at zero.
 pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<PrivateView, AppError> {
     let records =
-        crate::imaol::entries_of_type(db, service::GENERAL_PRIVATE, entry_type::PRIVATE_RECORD).await?;
+        crate::record::imaol::entries_of_type(db, service::GENERAL_PRIVATE, entry_type::PRIVATE_RECORD).await?;
 
     let mut view = PrivateView::default();
     for signed in records {

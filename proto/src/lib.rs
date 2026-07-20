@@ -16,7 +16,7 @@ mod chain;
 pub mod directory;
 mod entry;
 mod error;
-pub mod keytree;
+pub mod crown;
 pub mod registry;
 pub mod sync;
 
@@ -26,7 +26,7 @@ pub use entry::{
     MAX_INLINE_PAYLOAD, SIG_LEN, ZERO_HASH,
 };
 pub use error::ProtoError;
-pub use keytree::{Ceiling, KeyStatus, KeyTree};
+pub use crown::{Ceiling, KeyStatus, Crown};
 pub use registry::{
     Anchor, Authorize, Disposition, DocHeaderPlain, KeyEpoch, PrivateKind, PrivatePlain,
     PrivateRecord, ProfileSet,

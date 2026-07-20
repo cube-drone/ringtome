@@ -20,14 +20,14 @@ use std::collections::{BTreeMap, HashMap};
 use anyhow::{anyhow, bail, Context, Result};
 use iroh::endpoint::{Connection, SendStream};
 use iroh::EndpointAddr;
-use ringtome_proto::keytree::KeyStatus;
+use ringtome_proto::crown::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::sync::{Frontier, MemberProof, SyncMessage};
-use ringtome_proto::{validate_next, KeyTree, SignedEntry};
+use ringtome_proto::{validate_next, Crown, SignedEntry};
 use sqlx::SqlitePool;
 
 use crate::clock::now_ms;
-use crate::p2p::{read_frame, write_frame};
+use crate::net::p2p::{read_frame, write_frame};
 use crate::pubkey;
 use crate::AppState;
 
@@ -200,7 +200,7 @@ async fn ingest_batch(
     // or whose seq lies beyond the author's identity-chain ceiling.
     let mut tree_input = stored_identity.clone();
     tree_input.extend(admitted_identity.iter().cloned());
-    let tree = KeyTree::build(root, &tree_input)
+    let tree = Crown::build(root, &tree_input)
         .map_err(|e| anyhow!("key tree resolution during ingest: {e}"))?;
 
     let mut received = 0u64;
@@ -331,7 +331,7 @@ async fn apply_content_views(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
     if e.entry().chain.service == service::PROFILE_PUBLIC
         && e.entry().entry_type == entry_type::PROFILE_SET
     {
-        crate::imaol::apply_profile_set(db, e)
+        crate::record::imaol::apply_profile_set(db, e)
             .await
             .map_err(|err| anyhow!("applying profile view: {err}"))?;
     }
@@ -382,7 +382,7 @@ async fn peer_is_member(
     if p.verify(&root, prover_endpoint, verifier_endpoint).is_err() {
         return false;
     }
-    match crate::imaol::load_key_tree(db, &hex::encode(root)).await {
+    match crate::record::imaol::load_key_tree(db, &hex::encode(root)).await {
         Ok(tree) => tree.status(&p.leaf) == KeyStatus::Active,
         Err(e) => {
             tracing::warn!("key tree unavailable while checking member proof: {e}");
@@ -460,7 +460,7 @@ pub async fn sync_with_peer(
     conn.closed().await; // responder closes once it has ingested our stream
 
     // Entries landed; now the bodies they reference. Best-effort, never fails the exchange.
-    let bodies_fetched = crate::documents::fetch_missing_bodies(state, root_hex, addr).await;
+    let bodies_fetched = crate::record::documents::fetch_missing_bodies(state, root_hex, addr).await;
 
     Ok(ExchangeStats {
         received,

@@ -49,8 +49,9 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::private::EpochKeys;
-use crate::{imaol, private, AppState};
+use crate::record::private::EpochKeys;
+use crate::record::{imaol, private};
+use crate::AppState;
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
 pub const PROFILE_FIELDS: &[&str] = &["name", "bio"];
@@ -280,11 +281,11 @@ impl Documents<'_> {
         &self,
         title: &str,
         body: &[u8],
-        format: crate::documents::Format,
+        format: crate::record::documents::Format,
     ) -> Result<([u8; 16], [u8; 32]), AppError> {
-        let doc_id = crate::documents::new_doc_id();
+        let doc_id = crate::record::documents::new_doc_id();
         let version = self
-            .save(crate::documents::Save {
+            .save(crate::record::documents::Save {
                 doc_id,
                 parents: vec![],
                 title: title.to_string(),
@@ -297,8 +298,8 @@ impl Documents<'_> {
     }
 
     /// Save one version (the client asserts its parents). Returns the new version's hash.
-    pub async fn save(&self, save: crate::documents::Save) -> Result<[u8; 32], AppError> {
-        crate::documents::save_version(
+    pub async fn save(&self, save: crate::record::documents::Save) -> Result<[u8; 32], AppError> {
+        crate::record::documents::save_version(
             &self.store.db,
             &self.store.authorship.signer,
             &self.store.authorship.epoch_keys,
@@ -309,14 +310,14 @@ impl Documents<'_> {
     }
 
     /// The materialized view: every document, its version DAG, heads, and divergence state.
-    pub async fn all(&self) -> Result<crate::documents::DocumentsView, AppError> {
-        crate::documents::materialize(&self.store.db, &self.store.authorship.epoch_keys).await
+    pub async fn all(&self) -> Result<crate::record::documents::DocumentsView, AppError> {
+        crate::record::documents::materialize(&self.store.db, &self.store.authorship.epoch_keys).await
     }
 
     /// Read and decrypt one version's body. `Ok(None)` when we hold no key for its era or the
     /// body hasn't been fetched to this node yet.
-    pub async fn body(&self, version: &crate::documents::Version) -> Result<Option<Vec<u8>>, AppError> {
-        crate::documents::read_body(
+    pub async fn body(&self, version: &crate::record::documents::Version) -> Result<Option<Vec<u8>>, AppError> {
+        crate::record::documents::read_body(
             &self.store.files,
             &self.store.authorship.epoch_keys,
             version,
@@ -341,9 +342,9 @@ impl Documents<'_> {
     /// merge, or the conflict presented inline (NOTES_APP, The sync model).
     pub async fn resolved(
         &self,
-        doc: &crate::documents::Doc,
-    ) -> Result<crate::documents::ResolvedDoc, AppError> {
-        crate::documents::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc).await
+        doc: &crate::record::documents::Doc,
+    ) -> Result<crate::record::documents::ResolvedDoc, AppError> {
+        crate::record::documents::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc).await
     }
 }
 

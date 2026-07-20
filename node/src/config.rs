@@ -52,7 +52,7 @@ pub struct Config {
     /// How this node publishes/resolves discovery records (`RINGTOME_DISCOVERY`): `off`
     /// (default), `local:<path>` (shared-folder simulation), or `mainline` (real DHT + relays).
     /// Also selects the iroh preset: mainline gets `N0`, everything else `Minimal`.
-    pub discovery: crate::discovery::DiscoveryMode,
+    pub discovery: crate::net::discovery::DiscoveryMode,
     /// The pre-crunch upload ceiling: the largest RAW media a client may POST before transcode
     /// (scoped to the binary-upload routes). This is NOT the distribution size - ingest crushes
     /// media to a far smaller canonical artifact, and the ~10MB *output* cap is enforced in the
@@ -110,7 +110,7 @@ impl Config {
             Ok("1") | Ok("true")
         );
 
-        let discovery = crate::discovery::DiscoveryMode::from_env();
+        let discovery = crate::net::discovery::DiscoveryMode::from_env();
 
         // Pre-crunch upload ceiling. Default by role: a desktop node ingests its own phone media,
         // so it's generous; a public node accepts uploads from strangers, so it defaults FAR lower

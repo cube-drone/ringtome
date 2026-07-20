@@ -12,32 +12,25 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod audio;
 mod auth;
 mod clock;
 mod config;
 mod db;
-mod discovery;
 mod error;
 mod files;
 mod identity;
-mod imaol;
 mod ingest;
 mod inspect;
 mod keystore;
 mod loops;
-mod documents;
 mod media;
-mod p2p;
-mod private;
+mod net;
 mod pubkey;
 mod rate_limit;
+mod record;
 mod request_context;
 mod seal;
-mod store;
-mod sync;
 mod test_endpoints;
-mod video;
 
 use config::{Config, PublicConfig};
 use error::AppError;
@@ -58,7 +51,7 @@ pub struct AppState {
     /// The node's iroh endpoint: transport identity + p2p connections (cheaply cloneable).
     pub endpoint: iroh::Endpoint,
     /// Discovery: publish/resolve serving + endpoint records (off / local stub / mainline DHT).
-    pub directory: discovery::Directory,
+    pub directory: net::discovery::Directory,
     /// The file layer: the node's one global blob store (encrypted bodies, later public media).
     pub files: std::sync::Arc<files::FileStore>,
     /// Media ingest: quarantine + enqueue handle for the async transcode pipeline.
@@ -155,8 +148,8 @@ async fn main() -> anyhow::Result<()> {
     // Rate limiting is off in local-test mode so integration tests don't trip it.
     let rate_limiter = rate_limit::RateLimiter::new(!local_test);
     let keystore = keystore::Keystore::load(&config.data_directory)?;
-    let endpoint = p2p::build_endpoint(&keystore, &config.discovery).await?;
-    let directory = discovery::Directory::build(&config.discovery)?;
+    let endpoint = net::p2p::build_endpoint(&keystore, &config.discovery).await?;
+    let directory = net::discovery::Directory::build(&config.discovery)?;
     // The blob-layer size invariant tracks the document cap (plus a little AEAD/framing headroom),
     // so "nothing over ~10MB moves on the network" is enforced where bytes actually cross between
     // nodes - not just at our own HTTP door.
@@ -181,7 +174,7 @@ async fn main() -> anyhow::Result<()> {
         files,
         ingest,
     };
-    p2p::spawn_accept_loop(endpoint, state.clone());
+    net::p2p::spawn_accept_loop(endpoint, state.clone());
 
     // Background loops: every recurring process in the node, registered here by name. Modules
     // export one-pass functions; loops.rs owns the ticking, logging, and panic containment.
@@ -190,7 +183,7 @@ async fn main() -> anyhow::Result<()> {
         "republish-endpoint-record",
         dht_ttl_pace,
         state.clone(),
-        discovery::republish_endpoint_pass,
+        net::discovery::republish_endpoint_pass,
     );
     loops::periodic(
         "republish-serving-records",

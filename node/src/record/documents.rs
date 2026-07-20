@@ -18,7 +18,7 @@ use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::files::FileStore;
-use crate::private::{decrypt_doc_header, encrypt_doc_header, EpochKeys};
+use crate::record::private::{decrypt_doc_header, encrypt_doc_header, EpochKeys};
 
 /// A document's body format. Plaintext is the default (absent on the wire); the enum grows
 /// additively. Governs how the body is rendered and, for the text formats, merged.
@@ -334,7 +334,7 @@ pub async fn save_version(
     let payload = record
         .encode()
         .map_err(|e| AppError::Internal(anyhow!("encoding doc header record: {e}")))?;
-    let signed = crate::imaol::append(
+    let signed = crate::record::imaol::append(
         db,
         signer,
         service::DOCUMENTS_PRIVATE,
@@ -357,7 +357,7 @@ pub fn new_doc_id() -> [u8; 16] {
 /// same disposable-view discipline as the private store.
 pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
     let entries =
-        crate::imaol::entries_of_type(db, service::DOCUMENTS_PRIVATE, entry_type::DOC_HEADER).await?;
+        crate::record::imaol::entries_of_type(db, service::DOCUMENTS_PRIVATE, entry_type::DOC_HEADER).await?;
 
     let mut view = DocumentsView::default();
     for signed in entries {
@@ -423,9 +423,9 @@ pub async fn fetch_missing_bodies(
             return Ok(0); // not an identity we agent: nothing to decrypt, nothing to fetch
         };
         let leaf_pub = leaf.verifying_key().to_bytes();
-        let enc = crate::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
+        let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
         let db = state.user_dbs.get(root_hex).await?;
-        let keys = crate::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
+        let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
 
         let view = materialize(&db, &keys).await?;
         let mut missing: Vec<iroh_blobs::Hash> = Vec::new();
@@ -891,14 +891,14 @@ mod tests {
         let doc_id = new_doc_id();
         save(&db, &key, &keys, &files, doc_id, vec![], "secret", b"words").await;
 
-        let public = crate::sync::local_frontiers(&db, false).await.unwrap();
+        let public = crate::net::sync::local_frontiers(&db, false).await.unwrap();
         assert!(
             !public
                 .iter()
                 .any(|f| f.service == ringtome_proto::registry::service::DOCUMENTS_PRIVATE),
             "notes frontiers must not be offered to unproven peers"
         );
-        let member = crate::sync::local_frontiers(&db, true).await.unwrap();
+        let member = crate::net::sync::local_frontiers(&db, true).await.unwrap();
         assert!(member
             .iter()
             .any(|f| f.service == ringtome_proto::registry::service::DOCUMENTS_PRIVATE));

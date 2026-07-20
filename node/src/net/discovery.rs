@@ -113,7 +113,7 @@ impl Directory {
 /// socket-address mapping. Transport plumbing, identity-free - iroh's own discovery covers
 /// mainline mode, the LocalDirectory needs it, Off publishes nothing.
 pub async fn republish_endpoint_pass(state: crate::AppState) -> Result<()> {
-    let addrs = crate::p2p::addr_strings(&state.endpoint);
+    let addrs = crate::net::p2p::addr_strings(&state.endpoint);
     state
         .directory
         .publish_endpoint(&state.endpoint.id().to_string(), &addrs)

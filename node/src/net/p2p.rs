@@ -46,11 +46,11 @@ fn load_or_create_node_key(keystore: &Keystore) -> Result<SecretKey> {
 /// directory or from adoption codes).
 pub async fn build_endpoint(
     keystore: &Keystore,
-    mode: &crate::discovery::DiscoveryMode,
+    mode: &crate::net::discovery::DiscoveryMode,
 ) -> Result<Endpoint> {
     let secret = load_or_create_node_key(keystore)?;
     let builder = match mode {
-        crate::discovery::DiscoveryMode::Mainline => Endpoint::builder(presets::N0),
+        crate::net::discovery::DiscoveryMode::Mainline => Endpoint::builder(presets::N0),
         _ => Endpoint::builder(presets::Minimal),
     };
     let endpoint = builder
@@ -112,7 +112,7 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                             {
                                 tracing::warn!(%remote, "blob connection ended with error: {e}");
                             }
-                        } else if let Err(e) = crate::sync::serve(conn, state).await {
+                        } else if let Err(e) = crate::net::sync::serve(conn, state).await {
                             tracing::warn!(%remote, "sync connection ended with error: {e:#}");
                         }
                     }

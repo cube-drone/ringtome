@@ -94,7 +94,7 @@ impl MemberProof {
     }
 
     /// Verify the signature binds (root, this connection). Says nothing about whether `leaf` is
-    /// actually in the tree - the caller checks that against its own KeyTree, which is the part
+    /// actually in the tree - the caller checks that against its own Crown, which is the part
     /// that makes it authorization.
     pub fn verify(
         &self,

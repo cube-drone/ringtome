@@ -15,9 +15,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::Session;
 use crate::error::AppError;
-use crate::imaol;
-use crate::private;
-use crate::store;
+use crate::record::imaol;
+use crate::record::private;
+use crate::record::store;
 use crate::AppState;
 
 /// Per-route request-body ceilings, from config. Two `usize`s that must not get swapped, so they
@@ -315,7 +315,7 @@ struct PeerSyncResult {
     peer: String,
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    stats: Option<crate::sync::ExchangeStats>,
+    stats: Option<crate::net::sync::ExchangeStats>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
@@ -328,7 +328,7 @@ async fn sync_handler(
     Path(root): Path<String>,
 ) -> Result<Json<Vec<PeerSyncResult>>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
-    let peers = crate::sync::peers_for(&state.node_db, &root)
+    let peers = crate::net::sync::peers_for(&state.node_db, &root)
         .await
         .map_err(AppError::Internal)?;
 
@@ -336,12 +336,12 @@ async fn sync_handler(
     for peer_id in peers {
         // Resolve at dial time: id -> addresses via the directory (or iroh's own discovery).
         let attempt = async {
-            let addr = crate::sync::dial_addr(&state, &peer_id).await?;
-            crate::sync::sync_with_peer(&state, &root, addr).await
+            let addr = crate::net::sync::dial_addr(&state, &peer_id).await?;
+            crate::net::sync::sync_with_peer(&state, &root, addr).await
         };
         match attempt.await {
             Ok(stats) => {
-                crate::sync::mark_synced(&state.node_db, &root, &peer_id)
+                crate::net::sync::mark_synced(&state.node_db, &root, &peer_id)
                     .await
                     .map_err(AppError::Internal)?;
                 results.push(PeerSyncResult {
@@ -418,7 +418,7 @@ struct KeyInfo {
 }
 
 #[derive(Serialize)]
-struct KeyTreeResponse {
+struct CrownResponse {
     root_pubkey: String,
     keys: Vec<KeyInfo>,
     forks: usize,
@@ -430,7 +430,7 @@ async fn keys_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
-) -> Result<Json<KeyTreeResponse>, AppError> {
+) -> Result<Json<CrownResponse>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let db = state
         .user_dbs
@@ -448,7 +448,7 @@ async fn keys_handler(
         })
         .collect();
 
-    Ok(Json(KeyTreeResponse {
+    Ok(Json(CrownResponse {
         root_pubkey: root,
         keys,
         forks: tree.forks().len(),
@@ -559,10 +559,10 @@ fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
 }
 
 /// Parse the wire `format` string ("plaintext" | "marquee"), defaulting to plaintext when absent.
-fn parse_format(s: &Option<String>) -> Result<crate::documents::Format, AppError> {
+fn parse_format(s: &Option<String>) -> Result<crate::record::documents::Format, AppError> {
     match s {
-        None => Ok(crate::documents::Format::Plaintext),
-        Some(s) => crate::documents::Format::parse(s)
+        None => Ok(crate::record::documents::Format::Plaintext),
+        Some(s) => crate::record::documents::Format::parse(s)
             .ok_or_else(|| AppError::BadRequest(format!("unknown format {s:?} (plaintext | marquee)"))),
     }
 }
@@ -632,7 +632,7 @@ async fn docs_save_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let version = data
         .documents()
-        .save(crate::documents::Save {
+        .save(crate::record::documents::Save {
             doc_id,
             parents,
             title: req.title,
@@ -686,7 +686,7 @@ async fn docs_create_binary_handler(
 ) -> Result<impl IntoResponse, AppError> {
     // Owner gate: opening the store enforces that this account owns this identity.
     store::open(&state, &session.account.id, &root).await?;
-    let doc_id = crate::documents::new_doc_id();
+    let doc_id = crate::record::documents::new_doc_id();
     let job_id = state
         .ingest
         .enqueue(
@@ -794,7 +794,7 @@ async fn docs_body_handler(
     let head = doc
         .display_head()
         .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
-    let format = crate::documents::Format::from_wire(head.header.format);
+    let format = crate::record::documents::Format::from_wire(head.header.format);
     let bytes = data
         .documents()
         .body(head)
@@ -860,7 +860,7 @@ async fn docs_thumb_handler(
         .ok_or_else(|| AppError::NotFound("thumbnail not on this node yet".into()))?;
     Ok((
         [
-            (CONTENT_TYPE, crate::documents::Format::Avif.mime()),
+            (CONTENT_TYPE, crate::record::documents::Format::Avif.mime()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (CONTENT_SECURITY_POLICY, "sandbox"),
         ],
@@ -904,7 +904,7 @@ async fn docs_list_handler(
                 doc_id: hex::encode(id),
                 title: head.header.title.clone(),
                 head: hex::encode(head.hash),
-                format: crate::documents::Format::from_wire(head.header.format).as_str(),
+                format: crate::record::documents::Format::from_wire(head.header.format).as_str(),
                 heads: doc.logical_heads.len(),
                 diverged: doc.diverged(),
                 updated_ms: head.timestamp_ms,
@@ -987,7 +987,7 @@ async fn docs_get_handler(
     let resolved = data.documents().resolved(doc).await?;
     let format = doc
         .display_head()
-        .map(|v| crate::documents::Format::from_wire(v.header.format).as_str())
+        .map(|v| crate::record::documents::Format::from_wire(v.header.format).as_str())
         .unwrap_or("plaintext");
     Ok(Json(DocDetail {
         doc_id: hex::encode(doc_id),
@@ -996,9 +996,9 @@ async fn docs_get_handler(
         title: resolved.title,
         body: resolved.body,
         resolution: match resolved.resolution {
-            crate::documents::Resolution::Single => "single",
-            crate::documents::Resolution::Merged => "merged",
-            crate::documents::Resolution::Conflict => "conflict",
+            crate::record::documents::Resolution::Single => "single",
+            crate::record::documents::Resolution::Merged => "merged",
+            crate::record::documents::Resolution::Conflict => "conflict",
         },
         heads,
         save_parents,

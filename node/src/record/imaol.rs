@@ -271,7 +271,7 @@ pub struct StoredEntry {
 pub async fn load_key_tree(
     db: &SqlitePool,
     root_hex: &str,
-) -> Result<ringtome_proto::KeyTree, AppError> {
+) -> Result<ringtome_proto::Crown, AppError> {
     let root = pubkey::require(root_hex, "root pubkey")?;
 
     let rows: Vec<(Vec<u8>,)> =
@@ -288,7 +288,7 @@ pub async fn load_key_tree(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| AppError::Internal(anyhow!("stored identity entry fails decode: {e}")))?;
 
-    ringtome_proto::KeyTree::build(root, &entries)
+    ringtome_proto::Crown::build(root, &entries)
         .map_err(|e| AppError::Internal(anyhow!("key tree resolution failed: {e}")))
 }
 
