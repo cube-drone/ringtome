@@ -12,6 +12,7 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod audio;
 mod auth;
 mod clock;
 mod config;

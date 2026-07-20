@@ -104,3 +104,33 @@ rav1e = { version = "0.8.1", default-features = false, features = ["threading"] 
 # APNG encoder for the transparent-and-silent output route. Already in the tree
 # as `image`'s PNG backend; adding it as a direct dep costs nothing.
 png = "0.18"
+
+# --- audio crush pipeline (src/audio.rs) ---
+# Pure-rust demux + decode for the wild audio zoo (MP3, AAC-in-M4A, FLAC,
+# WAV/PCM, Vorbis-in-Ogg). Every upload is hostile; symphonia is the
+# memory-safe decode wall. No default features: exactly the codec set we
+# accept, nothing more.
+symphonia = { version = "0.5", default-features = false, features = [
+    "mp3",
+    "aac",
+    "isomp4",
+    "flac",
+    "wav",
+    "pcm",
+    "ogg",
+    "vorbis",
+] }
+# Opus ENCODER: the c2rust transpile of the REFERENCE C libopus - the same
+# battle-tested DSP, compiled as pure rust with no C toolchain (the vendored C
+# -sys crates all require cmake). Its API is the raw C one, so audio.rs keeps
+# a small contained unsafe glue around it, the same precedent as the rav1d
+# glue in media.rs/video.rs. The from-scratch pure-rust `opus-rs` port was
+# tried first and disqualified by measurement: it reads uninitialised memory
+# on some encode paths and emits garbage packets in a long-lived process (the
+# loudness regression test in audio.rs now stands guard, with an independent
+# ffmpeg referee where ffmpeg is installed).
+unsafe-libopus = "0.2"
+# Pure-rust resampler: Opus only accepts 8/12/16/24/48 kHz input and we encode
+# at 48 kHz, so anything else (44.1k above all) is FFT-resampled in streamed
+# chunks. See src/audio.rs.
+rubato = "4"
