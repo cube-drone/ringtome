@@ -30,7 +30,9 @@ mod rate_limit;
 mod record;
 mod request_context;
 mod seal;
+mod semver;
 mod test_endpoints;
+mod ui;
 
 use config::{Config, PublicConfig};
 use error::AppError;
@@ -201,6 +203,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let mut app = Router::new()
+        // SPA shell: every frontend route returns the same HTML
+        .route("/", get(ui::homepage))
+        .route("/home", get(ui::homepage))
+        .route("/home/{*wildcard}", get(ui::homepage))
+        // Versioned static assets (CDN cache-safe)
+        .route("/static/{version}/app.js", get(ui::app_js))
+        .route("/static/{version}/app.css", get(ui::app_css))
+        // API routes
         .route("/health", get(health))
         .route("/api/config", get(get_config))
         .route("/api/node", get(node_info))

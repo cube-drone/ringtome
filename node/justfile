@@ -44,6 +44,61 @@ test-unit:
 run:
     cd "{{workspace}}" && cargo run --bin ringtome
 
+# Boot the server + UI watchers in one terminal. Ctrl-C tears everything down.
+start: ui-install
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{workspace}}"
+
+    # ensure esbuild output dirs exist
+    mkdir -p node/js/target/js node/js/target/css
+
+    # initial build so the server has bundles to include_str! on first compile
+    cd node/js && npx esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser --sourcemap --keep-names && \
+                  npx esbuild index.css --bundle --outfile=target/css/bundle.css --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png'
+    cd "{{workspace}}"
+
+    # JS watcher
+    (cd node/js && npx esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser \
+        --watch --sourcemap --keep-names --define:process.env.NODE_ENV=\"development\" \
+        --log-level=info --legal-comments=inline) &
+    JS_PID=$!
+
+    # CSS watcher
+    (cd node/js && npx esbuild index.css --bundle --outfile=target/css/bundle.css \
+        --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png' --watch) &
+    CSS_PID=$!
+
+    cleanup() {
+        echo ""
+        echo "shutting down..."
+        kill "$JS_PID" "$CSS_PID" 2>/dev/null || true
+        wait "$JS_PID" "$CSS_PID" 2>/dev/null || true
+        echo "done."
+    }
+    trap cleanup EXIT
+
+    # Rust server (foreground — Ctrl-C lands here first)
+    cargo run --bin ringtome
+
+# --- ui -----------------------------------------------------------------------
+
+# Install JS dependencies for the Preact UI.
+ui-install:
+    cd "{{justfile_directory()}}/js" && npm install
+
+# Production build of the Preact UI (JS + CSS bundles).
+ui-build:
+    cd "{{justfile_directory()}}/js" && mkdir -p target/js target/css && npx esbuild index.js --bundle --tree-shaking=true --metafile=target/js/meta.json --outfile=target/js/bundle.js --platform=browser --minify && npx esbuild index.css --bundle --outfile=target/css/bundle.css --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png'
+
+# Watch-rebuild the JS bundle on save (run in a separate terminal).
+ui-watch:
+    cd "{{justfile_directory()}}/js" && npx esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser --watch --sourcemap --keep-names --define:process.env.NODE_ENV=\"development\" --log-level=info --legal-comments=inline
+
+# Watch-rebuild the CSS bundle on save (run in a separate terminal).
+ui-csswatch:
+    cd "{{justfile_directory()}}/js" && npx esbuild index.css --bundle --outfile=target/css/bundle.css --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png' --watch
+
 # --- integration tests -----------------------------------------------------
 
 # Install the JS integration-test dependencies.

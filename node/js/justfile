@@ -1,0 +1,19 @@
+# Ringtome UI — JS/CSS build automation.
+# Run `just` with no arguments to list recipes.
+
+# List available recipes.
+default:
+    @just --list
+
+# Production build (JS + CSS bundles).
+build:
+    npm run build
+    npm run css
+
+# Watch-rebuild JS on save.
+watch:
+    npm run watch
+
+# Watch-rebuild CSS on save.
+csswatch:
+    npm run csswatch
