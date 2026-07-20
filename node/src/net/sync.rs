@@ -15,7 +15,7 @@
 //! everything downstream, so nothing gets a row without earning it (PROJECT_PLAN, Iroh Protocol
 //! Mapping: "gate here!").
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{anyhow, bail, Context, Result};
 use iroh::endpoint::{Connection, SendStream};
@@ -23,7 +23,7 @@ use iroh::EndpointAddr;
 use ringtome_proto::crown::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::sync::{Frontier, MemberProof, SyncMessage};
-use ringtome_proto::{validate_next, Crown, SignedEntry};
+use ringtome_proto::{validate_next, Ceiling, Crown, SignedEntry, ZERO_HASH};
 use sqlx::SqlitePool;
 
 use crate::clock::now_ms;
@@ -133,9 +133,13 @@ async fn send_missing(
 /// The validation gate: admit a batch of arrived entries into the store, or reject them.
 ///
 /// Identity entries are admitted only if they chain contiguously from what we hold *and* their
-/// author lands in the resolved key tree; content entries additionally require an Active (or
-/// Retired, within-ceiling) author. Rejections are counted, logged, and never stored - a
-/// rejected entry simply does not exist as far as this node's views are concerned.
+/// author lands in the resolved key tree; content entries additionally require an Active author.
+/// Chains under a revocation ceiling get neither of those paths: they are admitted only as the
+/// exact **sealed prefix** the revocation's anchor pins (`admit_ceilinged_chain`), because a
+/// revoked key is still attacker-held and can sign fresh under-ceiling history at will - the
+/// anchor's hash, not its seq, is what separates grandfathered truth from fabrication.
+/// Rejections are counted, logged, and never stored - a rejected entry simply does not exist as
+/// far as this node's views are concerned.
 ///
 /// `peer_proven`: whether the sending peer proved membership. Private-chain entries from an
 /// unproven peer are rejected outright - an honest stranger never sends them (we withheld those
@@ -147,6 +151,8 @@ async fn ingest_batch(
     peer_proven: bool,
 ) -> Result<(u64, u64)> {
     let mut rejected = 0u64;
+    let mut received = 0u64;
+    let mut evicted_rows = 0u64;
 
     // Strict decode + signature check; split identity vs content.
     let mut identity_candidates: Vec<SignedEntry> = Vec::new();
@@ -166,62 +172,72 @@ async fn ingest_batch(
         }
     }
 
-    // Phase 1: structurally admit identity entries (contiguity from stored heads), per author,
-    // in seq order - but hold them aside until the tree pass approves their authors.
+    // Phase 1: resolve the key tree over stored ∪ *every* arriving identity entry. No
+    // structural prefilter: the crown linearizes by hash links and resolves forks itself, and
+    // it must see both branches of a fork to convict the forker and pick the convergent winner.
+    // Resolution is not admission - storage is decided below, against the resolved tree.
     let stored_identity = load_identity_entries(db).await?;
-    let mut stored_heads: BTreeMap<[u8; 32], SignedEntry> = BTreeMap::new();
-    for e in &stored_identity {
-        stored_heads.insert(e.entry().chain.author, e.clone()); // ascending order: last wins
-    }
-
-    identity_candidates.sort_by_key(|e| (e.entry().chain.author, e.entry().seq));
-    let mut admitted_identity: Vec<SignedEntry> = Vec::new();
-    let mut head_cursor = stored_heads.clone();
-    for e in identity_candidates {
-        let author = e.entry().chain.author;
-        let prev = head_cursor.get(&author);
-        // Already held? (Peer resent below our head.) Skip silently.
-        if let Some(p) = prev {
-            if e.entry().seq <= p.entry().seq {
-                continue;
-            }
-        }
-        match validate_next(prev, &e) {
-            Ok(()) => {
-                head_cursor.insert(author, e.clone());
-                admitted_identity.push(e);
-            }
-            Err(_) => rejected += 1,
-        }
-    }
-
-    // Phase 2: resolve the tree over stored + admitted, then drop admitted entries whose author
-    // never became a member (a stranger's self-consistent chain is still a stranger's chain),
-    // or whose seq lies beyond the author's identity-chain ceiling.
     let mut tree_input = stored_identity.clone();
-    tree_input.extend(admitted_identity.iter().cloned());
+    tree_input.extend(identity_candidates.iter().cloned());
     let tree = Crown::build(root, &tree_input)
         .map_err(|e| anyhow!("key tree resolution during ingest: {e}"))?;
 
-    let mut received = 0u64;
-    for e in &admitted_identity {
-        let author = e.entry().chain.author;
-        if tree.status(&author) == KeyStatus::Unknown {
-            rejected += 1;
+    // Phase 2: proven-forgery eviction. A just-arrived revocation may disprove chains we
+    // already stored (the attacker raced its forged prefix in ahead of the revoke); sweep
+    // every ceiling against the store before deciding admissions.
+    evicted_rows += evict_disproven_chains(db, &tree).await?;
+
+    // Phase 3: identity entries, per author in seq order.
+    identity_candidates.sort_by_key(|e| (e.entry().chain.author, e.entry().seq));
+    let mut identity_by_author: BTreeMap<[u8; 32], Vec<SignedEntry>> = BTreeMap::new();
+    for e in identity_candidates {
+        identity_by_author
+            .entry(e.entry().chain.author)
+            .or_default()
+            .push(e);
+    }
+    for (author, entries) in identity_by_author {
+        if let Some(c) = tree.ceiling(&author, service::IDENTITY_PUBLIC) {
+            let (stored_now, refused, evicted) =
+                admit_ceilinged_chain(db, &author, service::IDENTITY_PUBLIC, &c, &entries).await?;
+            received += stored_now.len() as u64;
+            rejected += refused;
+            evicted_rows += evicted;
             continue;
         }
-        if let Some(c) = tree.ceiling(&author, service::IDENTITY_PUBLIC) {
-            if e.entry().seq > c.final_seq {
-                rejected += 1;
-                continue;
+        match tree.status(&author) {
+            KeyStatus::Active => {
+                let mut prev = stored_chain_head(db, &author, service::IDENTITY_PUBLIC).await?;
+                for e in entries {
+                    // Already held? (Peer resent below our head.) Skip silently.
+                    if let Some(p) = &prev {
+                        if e.entry().seq <= p.entry().seq {
+                            continue;
+                        }
+                    }
+                    match validate_next(prev.as_ref(), &e) {
+                        Ok(()) => {
+                            store_entry(db, &e).await?;
+                            received += 1;
+                            prev = Some(e);
+                        }
+                        Err(_) => rejected += 1,
+                    }
+                }
             }
+            // Unknown: a stranger's self-consistent chain is still a stranger's chain.
+            // Invalid: structurally void - nothing it signs can earn a row. Retired/Repudiated
+            // *without* an identity ceiling: the revocation anchored no identity chain, so an
+            // identity chain from that key has no proven standing - seal-or-nothing, same as
+            // content.
+            _ => rejected += entries.len() as u64,
         }
-        store_entry(db, e).await?;
-        received += 1;
     }
 
-    // Phase 3: content entries, gated by the (now-updated) tree: member author in good standing,
-    // within any ceiling, contiguous with our stored head.
+    // Phase 4: content entries, gated by the resolved tree: Active authors extend their chains
+    // contiguously; ceilinged chains are admitted only as their sealed prefix; everyone else -
+    // strangers, the structurally void, and revoked keys on chains the revocation never
+    // anchored - is refused.
     content_candidates.sort_by_key(|e| {
         (
             e.entry().chain.author,
@@ -229,49 +245,239 @@ async fn ingest_batch(
             e.entry().seq,
         )
     });
-    let mut content_heads: BTreeMap<([u8; 32], u32), SignedEntry> = BTreeMap::new();
+    let mut content_by_chain: BTreeMap<([u8; 32], u32), Vec<SignedEntry>> = BTreeMap::new();
     for e in content_candidates {
-        let author = e.entry().chain.author;
-        let svc = e.entry().chain.service;
-
-        // Active keys write freely; retired/repudiated keys' *anchored history* is honored
-        // (that's what the anchors are for) but anything beyond an anchor - or on a chain the
-        // revocation didn't anchor at all - is refused.
-        let allowed = match tree.status(&author) {
-            KeyStatus::Active => tree
-                .ceiling(&author, svc)
-                .is_none_or(|c| e.entry().seq <= c.final_seq),
-            KeyStatus::Retired | KeyStatus::Repudiated => tree
-                .ceiling(&author, svc)
-                .is_some_and(|c| e.entry().seq <= c.final_seq),
-            KeyStatus::Invalid | KeyStatus::Unknown => false,
-        };
-        if !allowed {
-            rejected += 1;
+        content_by_chain
+            .entry((e.entry().chain.author, e.entry().chain.service))
+            .or_default()
+            .push(e);
+    }
+    for ((author, svc), entries) in content_by_chain {
+        if matches!(
+            tree.status(&author),
+            KeyStatus::Invalid | KeyStatus::Unknown
+        ) {
+            rejected += entries.len() as u64;
             continue;
         }
-
-        let prev = match content_heads.get(&(author, svc)) {
-            Some(p) => Some(p.clone()),
-            None => stored_chain_head(db, &author, svc).await?,
-        };
-        if let Some(p) = &prev {
-            if e.entry().seq <= p.entry().seq {
-                continue; // duplicate of something we hold
+        if let Some(c) = tree.ceiling(&author, svc) {
+            let (stored_now, refused, evicted) =
+                admit_ceilinged_chain(db, &author, svc, &c, &entries).await?;
+            for e in &stored_now {
+                apply_content_views(db, e).await?;
             }
+            received += stored_now.len() as u64;
+            rejected += refused;
+            evicted_rows += evicted;
+            continue;
         }
-        match validate_next(prev.as_ref(), &e) {
-            Ok(()) => {
-                store_entry(db, &e).await?;
-                apply_content_views(db, &e).await?;
-                content_heads.insert((author, svc), e);
-                received += 1;
+        match tree.status(&author) {
+            KeyStatus::Active => {
+                let mut prev = stored_chain_head(db, &author, svc).await?;
+                for e in entries {
+                    if let Some(p) = &prev {
+                        if e.entry().seq <= p.entry().seq {
+                            continue; // duplicate of something we hold
+                        }
+                    }
+                    match validate_next(prev.as_ref(), &e) {
+                        Ok(()) => {
+                            store_entry(db, &e).await?;
+                            apply_content_views(db, &e).await?;
+                            received += 1;
+                            prev = Some(e);
+                        }
+                        Err(_) => rejected += 1,
+                    }
+                }
             }
-            Err(_) => rejected += 1,
+            // Retired/repudiated, and the revocation anchored no ceiling for this chain: the
+            // revoker never vouched for it, so nothing on it is honored history.
+            _ => rejected += entries.len() as u64,
         }
     }
 
+    // Evicted rows may have been folded into materialized views before they were disproven;
+    // rebuild the views from the surviving log.
+    if evicted_rows > 0 {
+        crate::record::imaol::rebuild_views(db)
+            .await
+            .map_err(|e| anyhow!("rebuilding views after forgery eviction: {e}"))?;
+    }
+
     Ok((received, rejected))
+}
+
+/// Proven-forgery eviction (PROJECT_PLAN, Anchored Revocations). For every ceiling the resolved
+/// tree knows, check the *stored* chain against the anchor: a stored entry at `final_seq` whose
+/// hash is not `head_hash` proves the stored chain is a fabrication - the attacker delivered a
+/// forged prefix before the revocation reached us - and every row of it is deleted. The whole
+/// chain goes, not just the rows at or below the seal: rows above `final_seq` hash-link through
+/// the disproven entry (they are the same fabrication), and a dangling suffix would wedge
+/// frontier-driven resync (peers send from our head onward, so the sealed prefix would never
+/// re-arrive).
+///
+/// This does not violate monotonic memory. That promise protects *honest* history - a relying
+/// party never forgets a revocation or downgrades to weaker authority it has seen. These rows
+/// are cryptographically proven fabrications: the revoker's signed anchor and the stored entry's
+/// own signature cannot both be honest at one (seq, chain), and the anchor is the senior word.
+/// Incomplete-but-consistent stored prefixes are left alone - nothing is proven against them,
+/// they may yet complete honestly on a later sync, and the seal-or-nothing gate keeps them from
+/// being over-trusted meanwhile.
+async fn evict_disproven_chains(db: &SqlitePool, tree: &Crown) -> Result<u64> {
+    let mut evicted = 0u64;
+    for ((key, svc), c) in tree.ceilings() {
+        // A final_seq beyond i64 can have no stored row at all; nothing to disprove.
+        let Ok(final_seq) = i64::try_from(c.final_seq) else {
+            continue;
+        };
+        let author_hex = hex::encode(key);
+        let row: Option<(Vec<u8>,)> = sqlx::query_as(
+            "SELECT entry_hash FROM entries
+             WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
+        )
+        .bind(&author_hex)
+        .bind(i64::from(*svc))
+        .bind(final_seq)
+        .fetch_optional(db)
+        .await
+        .context("checking stored chain against revocation anchor")?;
+        let Some((hash,)) = row else {
+            continue; // incomplete: unproven either way, leave it
+        };
+        if hash.as_slice() == c.head_hash {
+            continue; // sealed: the stored prefix is the anchored one
+        }
+        let res = sqlx::query("DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2")
+            .bind(&author_hex)
+            .bind(i64::from(*svc))
+            .execute(db)
+            .await
+            .context("evicting disproven chain")?;
+        evicted += res.rows_affected();
+        tracing::warn!(
+            author = %author_hex,
+            service = *svc,
+            final_seq = c.final_seq,
+            rows = res.rows_affected(),
+            "stored chain contradicts its revocation anchor; evicted proven-forged rows"
+        );
+    }
+    Ok(evicted)
+}
+
+/// Seal-or-nothing admission for a chain under a revocation ceiling. Under-ceiling entries are
+/// admitted only as the complete **sealed prefix**: stored ∪ incoming must reach `final_seq`,
+/// and the prefix is assembled by walking hash links *down from the anchor's own hash*, so every
+/// admitted entry is transitively pinned by the revoker's seal. Anything else is refused: a
+/// partial prefix (provisional acceptance is exactly the hole a still-held revoked key forks
+/// into), an under-ceiling entry off the anchored chain (a forgery wearing an old seq), or an
+/// entry beyond the seal. Refusal is retriable, and honest sync converges: an honest revoker's
+/// nodes hold the sealed prefix whole, so some later exchange ships it whole.
+///
+/// A stored row displaced by the assembled prefix (same seq, different hash) is a proven
+/// forgery - only one branch of that fork carries the revoker's seal - and is deleted before the
+/// sealed entry is stored, the same monotonic-memory-compatible eviction as
+/// [`evict_disproven_chains`].
+///
+/// Returns (entries newly stored, incoming refused, stored rows evicted).
+async fn admit_ceilinged_chain(
+    db: &SqlitePool,
+    author: &[u8; 32],
+    svc: u32,
+    ceiling: &Ceiling,
+    incoming: &[SignedEntry],
+) -> Result<(Vec<SignedEntry>, u64, u64)> {
+    let stored = stored_chain(db, author, svc).await?;
+    let mut by_hash: HashMap<[u8; 32], &SignedEntry> = HashMap::new();
+    for e in stored.iter().chain(incoming.iter()) {
+        if e.entry().seq <= ceiling.final_seq {
+            by_hash.insert(*e.hash(), e);
+        }
+    }
+
+    let prefix: Option<Vec<&SignedEntry>> =
+        usize::try_from(ceiling.final_seq)
+            .ok()
+            .and_then(|final_seq| {
+                if by_hash.len() <= final_seq {
+                    return None; // cannot possibly hold seqs 0..=final_seq
+                }
+                let mut want = ceiling.head_hash;
+                let mut out: Vec<&SignedEntry> = Vec::with_capacity(final_seq + 1);
+                for seq in (0..=final_seq).rev() {
+                    let e = *by_hash.get(&want)?;
+                    if e.entry().seq != seq as u64 {
+                        return None;
+                    }
+                    want = e.entry().prev_hash;
+                    out.push(e);
+                }
+                (want == ZERO_HASH).then(|| {
+                    out.reverse();
+                    out
+                })
+            });
+    let Some(prefix) = prefix else {
+        // No sealed prefix assemblable yet: admit nothing, keep what we hold. Fail closed.
+        return Ok((Vec::new(), incoming.len() as u64, 0));
+    };
+
+    let stored_by_seq: BTreeMap<u64, &SignedEntry> =
+        stored.iter().map(|e| (e.entry().seq, e)).collect();
+    let mut stored_now: Vec<SignedEntry> = Vec::new();
+    let mut evicted = 0u64;
+    for e in &prefix {
+        match stored_by_seq.get(&e.entry().seq) {
+            Some(held) if held.hash() == e.hash() => {} // already held
+            Some(_) => {
+                sqlx::query(
+                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
+                )
+                .bind(hex::encode(author))
+                .bind(i64::from(svc))
+                .bind(e.entry().seq as i64)
+                .execute(db)
+                .await
+                .context("evicting row displaced by the sealed prefix")?;
+                evicted += 1;
+                tracing::warn!(
+                    author = %hex::encode(author),
+                    service = svc,
+                    seq = e.entry().seq,
+                    "stored row displaced by the sealed prefix; evicted proven-forged row"
+                );
+                store_entry(db, e).await?;
+                stored_now.push((*e).clone());
+            }
+            None => {
+                store_entry(db, e).await?;
+                stored_now.push((*e).clone());
+            }
+        }
+    }
+
+    let on_prefix: HashSet<[u8; 32]> = prefix.iter().map(|e| *e.hash()).collect();
+    let refused = incoming
+        .iter()
+        .filter(|e| !on_prefix.contains(e.hash()))
+        .count() as u64;
+    Ok((stored_now, refused, evicted))
+}
+
+/// Every stored entry of one chain, in seq order.
+async fn stored_chain(db: &SqlitePool, author: &[u8; 32], svc: u32) -> Result<Vec<SignedEntry>> {
+    let rows: Vec<(Vec<u8>,)> = sqlx::query_as(
+        "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 ORDER BY seq",
+    )
+    .bind(hex::encode(author))
+    .bind(i64::from(svc))
+    .fetch_all(db)
+    .await
+    .context("reading stored chain")?;
+    rows.into_iter()
+        .map(|(b,)| SignedEntry::decode(&b).map_err(|e| anyhow!("stored entry fails decode: {e}")))
+        .collect()
 }
 
 async fn load_identity_entries(db: &SqlitePool) -> Result<Vec<SignedEntry>> {
@@ -460,7 +666,8 @@ pub async fn sync_with_peer(
     conn.closed().await; // responder closes once it has ingested our stream
 
     // Entries landed; now the bodies they reference. Best-effort, never fails the exchange.
-    let bodies_fetched = crate::record::documents::fetch_missing_bodies(state, root_hex, addr).await;
+    let bodies_fetched =
+        crate::record::documents::fetch_missing_bodies(state, root_hex, addr).await;
 
     Ok(ExchangeStats {
         received,
@@ -617,4 +824,332 @@ pub async fn mark_synced(node_db: &SqlitePool, root_hex: &str, endpoint_id: &str
     .await
     .context("marking peer synced")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! The gate under attack. The scenario throughout: root authorizes leaf K; K writes an
+    //! honest chain; K is compromised and root repudiates it, anchoring K's real heads. The
+    //! attacker still *holds* K, so it can sign an alternative under-ceiling history with
+    //! perfectly valid signatures - the seal's hash, not its seq, is the only thing that
+    //! separates the two. These tests drive `ingest_batch` directly (the sync framing above it
+    //! adds nothing to the trust decisions).
+
+    use super::*;
+    use ringtome_proto::{
+        Anchor, Authorize, ChainId, Disposition, Entry, Payload, Revoke, SigningKey, ENTRY_VERSION,
+    };
+
+    async fn test_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::db::user_migrator_for_test(&pool).await;
+        pool
+    }
+
+    /// One (key, service) chain under construction - dense seqs, real hash links.
+    struct Chain {
+        sk: SigningKey,
+        svc: u32,
+        seq: u64,
+        prev: [u8; 32],
+    }
+
+    impl Chain {
+        fn new(seed: u8, svc: u32) -> Self {
+            Self {
+                sk: SigningKey::from_bytes(&[seed; 32]),
+                svc,
+                seq: 0,
+                prev: ZERO_HASH,
+            }
+        }
+
+        fn pk(&self) -> [u8; 32] {
+            self.sk.verifying_key().to_bytes()
+        }
+
+        fn append(&mut self, type_id: u32, payload: Vec<u8>) -> SignedEntry {
+            let entry = Entry {
+                v: ENTRY_VERSION,
+                entry_type: type_id,
+                chain: ChainId {
+                    author: self.pk(),
+                    service: self.svc,
+                },
+                seq: self.seq,
+                prev_hash: self.prev,
+                timestamp_ms: 1_700_000_000_000 + self.seq as i64,
+                payload: Payload::Inline(payload),
+            };
+            let signed = SignedEntry::create(&entry, &self.sk).unwrap();
+            self.seq += 1;
+            self.prev = *signed.hash();
+            signed
+        }
+    }
+
+    struct Scenario {
+        root: [u8; 32],
+        k: [u8; 32],
+        /// Root's identity chain, entry 0: authorize K.
+        authorize: SignedEntry,
+        /// Root's identity chain, entry 1: repudiate K, anchoring the honest posts head.
+        revoke: SignedEntry,
+        /// K's honest posts chain, seqs 0..=2 - the anchored history.
+        honest: Vec<SignedEntry>,
+        /// The attacker's alternative posts chain, same key, same seqs, valid signatures.
+        forged: Vec<SignedEntry>,
+    }
+
+    fn scenario() -> Scenario {
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut k_posts = Chain::new(2, service::POSTS);
+        let k = k_posts.pk();
+
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let honest: Vec<SignedEntry> = (0..3u8)
+            .map(|n| k_posts.append(entry_type::POST, vec![0xa0, n]))
+            .collect();
+        let mut forged_posts = Chain::new(2, service::POSTS);
+        let forged: Vec<SignedEntry> = (0..3u8)
+            .map(|n| forged_posts.append(entry_type::POST, vec![0xbb, n]))
+            .collect();
+        let revoke = root_chain.append(
+            entry_type::REVOKE,
+            Revoke {
+                target: k,
+                disposition: Disposition::Repudiation,
+                anchors: vec![Anchor {
+                    service: service::POSTS,
+                    seq: 2,
+                    head_hash: *honest[2].hash(),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        );
+
+        Scenario {
+            root: root_chain.pk(),
+            k,
+            authorize,
+            revoke,
+            honest,
+            forged,
+        }
+    }
+
+    async fn ingest(db: &SqlitePool, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
+        let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
+        ingest_batch(db, root, raw, false).await.unwrap()
+    }
+
+    async fn stored_hashes(db: &SqlitePool, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {
+        stored_chain(db, author, svc)
+            .await
+            .unwrap()
+            .iter()
+            .map(|e| *e.hash())
+            .collect()
+    }
+
+    fn hashes(entries: &[SignedEntry]) -> Vec<[u8; 32]> {
+        entries.iter().map(|e| *e.hash()).collect()
+    }
+
+    #[tokio::test]
+    async fn a_forged_prefix_under_a_known_ceiling_is_refused() {
+        // The attack verbatim: a fresh store that knows the ceiling but holds none of K's
+        // chain is offered the attacker's under-ceiling history - every seq within the seal,
+        // every signature valid. Without the hash check this batch walks straight in.
+        let db = test_db().await;
+        let s = scenario();
+        assert_eq!(ingest(&db, s.root, &[s.authorize, s.revoke]).await, (2, 0));
+
+        let (received, rejected) = ingest(&db, s.root, &s.forged).await;
+        assert_eq!(
+            (received, rejected),
+            (0, 3),
+            "the forged prefix is refused whole"
+        );
+        assert!(stored_hashes(&db, &s.k, service::POSTS).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_honest_sealed_prefix_is_accepted() {
+        let db = test_db().await;
+        let s = scenario();
+        assert_eq!(ingest(&db, s.root, &[s.authorize, s.revoke]).await, (2, 0));
+
+        let (received, rejected) = ingest(&db, s.root, &s.honest).await;
+        assert_eq!((received, rejected), (3, 0));
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            hashes(&s.honest),
+            "the anchored history lands intact"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_partial_prefix_is_refused_until_it_completes() {
+        // No provisional acceptance: an honest-but-partial under-ceiling batch is refused
+        // (that is the hole an attacker forks into), and a later batch shipping the sealed
+        // prefix whole is accepted - honest peers hold it whole, so honest sync converges.
+        let db = test_db().await;
+        let s = scenario();
+        assert_eq!(ingest(&db, s.root, &[s.authorize, s.revoke]).await, (2, 0));
+
+        assert_eq!(ingest(&db, s.root, &s.honest[..2]).await, (0, 2));
+        assert!(stored_hashes(&db, &s.k, service::POSTS).await.is_empty());
+
+        assert_eq!(ingest(&db, s.root, &s.honest).await, (3, 0));
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            hashes(&s.honest)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stored_consistent_prefix_completes_across_the_ceiling() {
+        // The other half of seal-or-nothing: entries stored *before* the revocation arrived
+        // are honest-but-incomplete, not disproven - they stay, and the seal completes from
+        // the combined stored ∪ incoming set.
+        let db = test_db().await;
+        let s = scenario();
+        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, &s.honest[..2]).await, (2, 0));
+
+        // The revocation arrives; the stored prefix is consistent with the anchor, so nothing
+        // is evicted.
+        assert_eq!(ingest(&db, s.root, &[s.revoke]).await, (1, 0));
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            hashes(&s.honest[..2]),
+            "incomplete-but-consistent history is left in place"
+        );
+
+        // The final anchored entry completes the seal against what is already stored.
+        assert_eq!(ingest(&db, s.root, &s.honest[2..]).await, (1, 0));
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            hashes(&s.honest)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_raced_in_forgery_is_evicted_when_the_revocation_arrives() {
+        // The race: the attacker delivers the forged chain BEFORE the revoke reaches this
+        // node - K still looks Active, the chain is contiguous, and the gate rightly accepts
+        // it. The arriving revocation then proves those rows forged (the anchor and the stored
+        // entry cannot both be honest at one seq), they are evicted, and the honest prefix is
+        // accepted afterward. Deleting them does not violate monotonic memory: that protects
+        // honest history, not cryptographically-proven fabrications.
+        let db = test_db().await;
+        let s = scenario();
+        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, &s.forged).await, (3, 0));
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            hashes(&s.forged),
+            "pre-revocation, the forgery is indistinguishable and lands"
+        );
+
+        assert_eq!(ingest(&db, s.root, &[s.revoke]).await, (1, 0));
+        assert!(
+            stored_hashes(&db, &s.k, service::POSTS).await.is_empty(),
+            "the revocation's anchor convicts the stored rows; they are gone"
+        );
+
+        assert_eq!(ingest(&db, s.root, &s.honest).await, (3, 0));
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            hashes(&s.honest),
+            "the sealed history replaces the fabrication"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_forged_identity_prefix_never_mints_members() {
+        // The identity-chain variant: K's forged identity chain authorizes a phantom child.
+        // Under a seq-only ceiling the phantom's authorization is "within" the seal; the hash
+        // check refuses the row entirely, and the honest identity prefix is accepted later.
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut k_id = Chain::new(2, service::IDENTITY_PUBLIC);
+        let k = k_id.pk();
+        let child = Chain::new(3, service::IDENTITY_PUBLIC);
+        let phantom = Chain::new(9, service::IDENTITY_PUBLIC);
+
+        let authorize_k = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let honest_auth = k_id.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: child.pk(),
+                usurpers: vec![root_chain.pk(), k],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let mut forged_k = Chain::new(2, service::IDENTITY_PUBLIC);
+        let forged_auth = forged_k.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: phantom.pk(),
+                usurpers: vec![root_chain.pk(), k],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let revoke = root_chain.append(
+            entry_type::REVOKE,
+            Revoke {
+                target: k,
+                disposition: Disposition::Repudiation,
+                anchors: vec![Anchor {
+                    service: service::IDENTITY_PUBLIC,
+                    seq: 0,
+                    head_hash: *honest_auth.hash(),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        );
+        let root = root_chain.pk();
+
+        let db = test_db().await;
+        assert_eq!(ingest(&db, root, &[authorize_k, revoke]).await, (2, 0));
+        assert_eq!(
+            ingest(&db, root, &[forged_auth]).await,
+            (0, 1),
+            "the phantom authorization is refused, not merely uncredited"
+        );
+        assert!(stored_hashes(&db, &k, service::IDENTITY_PUBLIC)
+            .await
+            .is_empty());
+
+        assert_eq!(ingest(&db, root, &[honest_auth.clone()]).await, (1, 0));
+        assert_eq!(
+            stored_hashes(&db, &k, service::IDENTITY_PUBLIC).await,
+            vec![*honest_auth.hash()]
+        );
+    }
 }

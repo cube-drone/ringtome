@@ -1064,6 +1064,26 @@ transitively, the entire prefix beneath it. A revocation is a **closing seal acr
   what makes repudiation implementable. The straggler sweep applies here too, as the emergency allows: gossip for
   missing entries before signing, so legitimate unsynced entries are not needlessly quarantined.
 
+Enforcement follows from one fact: the revoked key is **still attacker-held**, so `seq <= final_seq` alone proves
+nothing - the attacker can sign a fresh under-ceiling prefix at will, with perfect signatures. The sealed prefix is
+therefore **a unit, verified by its hash**, and three rules make that concrete (implemented in `crown.rs` and the
+sync gate):
+
+- **Sealed prefix as the credited unit.** The key tree credits a ceilinged key's statements - child authorizations,
+  revokes - only from a prefix held through `final_seq` whose entry there *is* `head_hash`. Contradicted, incomplete,
+  or never-anchored chains credit nothing: fail closed, authority must be proven. A hash mismatch at the anchor is
+  cryptographic proof of forgery and is recorded as evidence.
+- **Seal-or-nothing at the gate.** Under-ceiling entries are stored only when stored ∪ incoming assembles the
+  complete sealed prefix (walked down by hash link from the anchor itself). No provisional acceptance of partial
+  under-ceiling prefixes - that is exactly the hole a still-held key forks into. Refusal is retriable and honest
+  sync converges: the revoker's own nodes hold the prefix whole and ship it whole.
+- **Proven-forgery eviction.** The attacker can race its forged prefix in ahead of the revocation. When the ceiling
+  arrives, any *stored* chain whose entry at `final_seq` contradicts the anchor is deleted outright. This does not
+  bend monotonic memory: that promise protects **honest history** from being forgotten, not cryptographically-proven
+  fabrications - the revoker's signed anchor and the stored row cannot both be honest at one seq, and the anchor is
+  the senior word. Incomplete-but-consistent stored prefixes stay (they may complete honestly later; the gate keeps
+  them untrusted meanwhile).
+
 ### Private Chains: Epoch Keys and the Membership Boundary (IMPLEMENTED)
 
 Private chains hold what must sync across your own nodes and never cross the identity boundary: contact names,
