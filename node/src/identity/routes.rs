@@ -106,6 +106,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/{doc_id}/thumb",
             get(docs_thumb_handler),
         )
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/preview",
+            get(docs_preview_handler),
+        )
         // Media ingest progress: the owner's transcode queue for this identity.
         .route(
             "/api/identity/{root}/ingest",
@@ -868,14 +872,93 @@ async fn docs_thumb_handler(
     ))
 }
 
+/// Serve a video document's silent hover-preview clip (the display head's small AV1-in-WebM), a
+/// sibling blob to the poster thumbnail. Only WebM-output video carries one, so this is `404` for
+/// every other kind - an image, an audio doc, a self-animating APNG, a text note, a version-less
+/// doc, or a preview not yet fetched to this node. Same isolation and headers as `/thumb`.
+async fn docs_preview_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let view = data.documents().all().await?;
+    let doc = view
+        .docs
+        .get(&doc_id)
+        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+    let head = doc
+        .display_head()
+        .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
+    let preview_hash = head
+        .header
+        .preview_hash
+        .ok_or_else(|| AppError::NotFound("document has no preview clip".into()))?;
+    let bytes = data
+        .documents()
+        .blob(preview_hash)
+        .await?
+        .ok_or_else(|| AppError::NotFound("preview not on this node yet".into()))?;
+    Ok((
+        [
+            (
+                CONTENT_TYPE,
+                crate::record::documents::Format::WebmAv1.mime(),
+            ),
+            (X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (CONTENT_SECURITY_POLICY, "sandbox"),
+        ],
+        bytes,
+    ))
+}
+
+/// The media facts a client needs to render a document's body: the element to emit (`<img>` vs
+/// `<video>` vs `<audio>` follows from `format`), its intrinsic size, its duration, and whether the
+/// sibling `/thumb` and `/preview` blobs exist. `None` for a text document - it has no media.
+#[derive(Serialize)]
+struct MediaInfo {
+    /// Intrinsic pixel width of the body (image/video); `None` for audio.
+    width: Option<u32>,
+    /// Intrinsic pixel height of the body (image/video); `None` for audio.
+    height: Option<u32>,
+    /// Playback length in milliseconds (audio/video); `None` for a still.
+    duration_ms: Option<u64>,
+    /// A `/thumb` blob exists: an image thumbnail, an audio waveform, or a video poster frame.
+    has_thumb: bool,
+    /// A `/preview` blob exists: a silent hover-preview clip (WebM-output video only).
+    has_preview: bool,
+}
+
+impl MediaInfo {
+    /// Media facts for a display head, or `None` when the head is a mergeable-text format (which
+    /// has no dimensions, duration, thumbnail, or preview - it is served and rendered as text).
+    fn of(head: &crate::record::documents::Version) -> Option<Self> {
+        let format = crate::record::documents::Format::from_wire(head.header.format);
+        if format.is_mergeable_text() {
+            return None;
+        }
+        Some(MediaInfo {
+            width: head.header.width,
+            height: head.header.height,
+            duration_ms: head.header.duration_ms,
+            has_thumb: head.header.thumb_hash.is_some(),
+            has_preview: head.header.preview_hash.is_some(),
+        })
+    }
+}
+
 #[derive(Serialize)]
 struct DocSummary {
     doc_id: String,
     title: String,
     /// The default head's version hash - what an editor opens, and the parent of its next save.
     head: String,
-    /// "plaintext" | "marquee" - governs how a divergence is presented, and which renderer.
+    /// The stored format: "plaintext" | "marquee" | "avif" | "apng" | "webm" | "opus". Governs
+    /// which renderer/element the client picks and how a divergence is presented.
     format: &'static str,
+    /// Media facts for rendering this doc's body (size, duration, sibling blobs); `null` for text.
+    media: Option<MediaInfo>,
     heads: usize,
     diverged: bool,
     updated_ms: i64,
@@ -905,6 +988,7 @@ async fn docs_list_handler(
                 title: head.header.title.clone(),
                 head: hex::encode(head.hash),
                 format: crate::record::documents::Format::from_wire(head.header.format).as_str(),
+                media: MediaInfo::of(head),
                 heads: doc.logical_heads.len(),
                 diverged: doc.diverged(),
                 updated_ms: head.timestamp_ms,
@@ -931,8 +1015,11 @@ struct DocHead {
 struct DocDetail {
     doc_id: String,
     diverged: bool,
-    /// "plaintext" | "marquee" - which renderer the client uses, and the shape of any conflict.
+    /// The stored format: "plaintext" | "marquee" | "avif" | "apng" | "webm" | "opus" - which
+    /// renderer/element the client uses, and the shape of any conflict.
     format: &'static str,
+    /// Media facts for rendering this doc's body (size, duration, sibling blobs); `null` for text.
+    media: Option<MediaInfo>,
     /// The document's current title after field-wise resolution (a rename on one side wins).
     title: String,
     /// The synthesized current text - what an editor opens: one head verbatim ("single"), a
@@ -963,16 +1050,24 @@ async fn docs_get_handler(
         .get(&doc_id)
         .ok_or_else(|| AppError::NotFound("document not found".into()))?;
 
+    // Media facts for the display head. Its presence also decides body inlining: a media body is
+    // opaque bytes served via `/body`, never UTF-8-mangled into this JSON (a webp is not a string).
+    let media = doc.display_head().and_then(MediaInfo::of);
+    let inline_bodies = media.is_none();
+
     let mut heads = Vec::new();
     for h in &doc.logical_heads {
         let Some(version) = doc.versions.get(h) else {
             continue;
         };
-        let body = data
-            .documents()
-            .body(version)
-            .await?
-            .map(|b| String::from_utf8_lossy(&b).into_owned());
+        let body = if inline_bodies {
+            data.documents()
+                .body(version)
+                .await?
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+        } else {
+            None
+        };
         heads.push(DocHead {
             version: hex::encode(version.hash),
             title: version.header.title.clone(),
@@ -993,6 +1088,7 @@ async fn docs_get_handler(
         doc_id: hex::encode(doc_id),
         diverged: doc.diverged(),
         format,
+        media,
         title: resolved.title,
         body: resolved.body,
         resolution: match resolved.resolution {
@@ -1023,4 +1119,98 @@ async fn private_set_list_handler(
         elements,
         undecryptable,
     }))
+}
+
+#[cfg(test)]
+mod media_info_tests {
+    use super::MediaInfo;
+    use crate::record::documents::Version;
+    use ringtome_proto::registry::doc_format;
+    use ringtome_proto::DocHeaderPlain;
+
+    /// A minimal header carrying just the fields `MediaInfo::of` reads; everything else is inert.
+    fn header(
+        format: Option<u64>,
+        width: Option<u32>,
+        height: Option<u32>,
+        duration_ms: Option<u64>,
+        thumb_hash: Option<[u8; 32]>,
+        preview_hash: Option<[u8; 32]>,
+    ) -> Version {
+        Version {
+            hash: [0u8; 32],
+            timestamp_ms: 0,
+            author: [0u8; 32],
+            header: DocHeaderPlain {
+                doc_id: [0u8; 16],
+                parents: vec![],
+                file_hash: [0u8; 32],
+                body_hash: [0u8; 32],
+                title: String::new(),
+                format,
+                width,
+                height,
+                duration_ms,
+                thumb_hash,
+                preview_hash,
+            },
+        }
+    }
+
+    /// A text document has no media facts at all - the serialized `media` is `null`, and the
+    /// handler reads that absence as "inline the body as text".
+    #[test]
+    fn text_has_no_media() {
+        assert!(MediaInfo::of(&header(None, None, None, None, None, None)).is_none());
+        let marquee = header(Some(doc_format::MARQUEE), None, None, None, None, None);
+        assert!(MediaInfo::of(&marquee).is_none());
+    }
+
+    /// A still image (the AVIF lane): dimensions and a thumbnail, no duration, no preview.
+    #[test]
+    fn still_image_facts() {
+        let v = header(Some(doc_format::AVIF), Some(800), Some(600), None, Some([1u8; 32]), None);
+        let m = MediaInfo::of(&v).expect("image is media");
+        assert_eq!((m.width, m.height), (Some(800), Some(600)));
+        assert_eq!(m.duration_ms, None);
+        assert!(m.has_thumb, "the image lane always makes a thumbnail");
+        assert!(!m.has_preview, "a still has no hover-preview clip");
+    }
+
+    /// Audio (the Opus lane): a duration and a waveform thumbnail, but no dimensions and no preview.
+    #[test]
+    fn audio_facts() {
+        let v = header(Some(doc_format::OGG_OPUS), None, None, Some(90_000), Some([2u8; 32]), None);
+        let m = MediaInfo::of(&v).expect("audio is media");
+        assert_eq!((m.width, m.height), (None, None), "audio has no dimensions");
+        assert_eq!(m.duration_ms, Some(90_000));
+        assert!(m.has_thumb, "the decode lane draws a waveform");
+        assert!(!m.has_preview);
+    }
+
+    /// WebM video (the AV1 lane): the only kind that carries a hover-preview - poster AND preview.
+    #[test]
+    fn video_has_preview() {
+        let v = header(
+            Some(doc_format::WEBM_AV1),
+            Some(320),
+            Some(180),
+            Some(12_000),
+            Some([3u8; 32]),
+            Some([4u8; 32]),
+        );
+        let m = MediaInfo::of(&v).expect("video is media");
+        assert_eq!(m.duration_ms, Some(12_000));
+        assert!(m.has_thumb, "video fills the thumbnail slot with a poster");
+        assert!(m.has_preview, "WebM-output video carries a hover-preview clip");
+    }
+
+    /// A self-animating APNG (transparent silent animation): a poster, but never a preview clip.
+    #[test]
+    fn apng_has_poster_no_preview() {
+        let v = header(Some(doc_format::APNG), Some(256), Some(256), Some(3_000), Some([5u8; 32]), None);
+        let m = MediaInfo::of(&v).expect("apng is media");
+        assert!(m.has_thumb, "the APNG lane still produces a poster");
+        assert!(!m.has_preview, "APNG animates itself; no separate preview clip");
+    }
 }
