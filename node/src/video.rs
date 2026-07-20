@@ -1292,17 +1292,61 @@ struct EncodedVideo {
     av1c: Option<Vec<u8>>,
 }
 
-/// Encode bounded RGBA frames to AV1 with rav1e at the crush settings. Frames are converted to
-/// 4:2:0 limited-range BT.601 (matching the colour description signalled in the bitstream, and
-/// the default our decode side assumes for unspecified web video). rav1e emits one packet per
-/// shown frame with `input_frameno` increasing sequentially, so packet N carries frame N's
-/// timestamp.
+/// Encode bounded RGBA frames to AV1 with rav1e at the crush settings - in parallel, one
+/// independent encoder per keyframe interval. AV1 references never cross a keyframe, so cutting
+/// the clip into [`KEYFRAME_INTERVAL_FRAMES`]-sized chunks and encoding each in its own context
+/// produces the same stream shape a single long encode would (every chunk opens with the
+/// keyframe the interval demanded anyway) while letting a multi-core box chew all chunks at
+/// once. This matters because the no-asm pure-rust rav1e is slow serially (~0.2 s/frame at 320p
+/// even at speed 10 with tiles); chunking turns a ~2-minute full-length encode into seconds of
+/// wall clock. Packets are stitched back in chunk order, so timestamps stay monotonic.
 fn encode_av1(
     frames: &[BoundedFrame],
     width: u32,
     height: u32,
     flatten: bool,
 ) -> Result<EncodedVideo, VideoError> {
+    let chunk_len = KEYFRAME_INTERVAL_FRAMES as usize;
+    // Scoped threads (chunks borrow `frames`); each chunk's rav1e context shares the global
+    // rayon pool for its tile work, so the box is saturated without oversubscription drama.
+    let chunk_results: Vec<Result<Vec<Av1Packet>, VideoError>> = std::thread::scope(|scope| {
+        let handles: Vec<_> = frames
+            .chunks(chunk_len)
+            .map(|chunk| scope.spawn(move || encode_av1_chunk(chunk, width, height, flatten)))
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| VideoError::Decode("av1 encoder thread panicked".into()))
+                    .and_then(|result| result)
+            })
+            .collect()
+    });
+
+    let mut packets: Vec<Av1Packet> = Vec::with_capacity(frames.len());
+    for result in chunk_results {
+        packets.extend(result?);
+    }
+    let av1c = packets
+        .first()
+        .and_then(|p| extract_sequence_header_obu(&p.data))
+        .and_then(build_av1c);
+    Ok(EncodedVideo { packets, av1c })
+}
+
+/// Encode one keyframe-aligned chunk of frames in its own rav1e context. Frames are converted to
+/// 4:2:0 limited-range BT.601 (matching the colour description signalled in the bitstream, and
+/// the default our decode side assumes for unspecified web video). rav1e emits one packet per
+/// shown frame with `input_frameno` increasing sequentially, so packet N carries chunk frame N's
+/// timestamp.
+fn encode_av1_chunk(
+    frames: &[BoundedFrame],
+    width: u32,
+    height: u32,
+    flatten: bool,
+) -> Result<Vec<Av1Packet>, VideoError> {
     let mut enc = EncoderConfig::with_speed_preset(AV1_SPEED);
     enc.width = width as usize;
     enc.height = height as usize;
@@ -1372,13 +1416,9 @@ fn encode_av1(
     while receive(&mut ctx, &mut packets)? {}
 
     // Packets arrive with sequentially-increasing input_frameno; sort defensively and map each
-    // back to its kept frame's honest timestamp.
+    // back to its kept frame's honest (absolute) timestamp.
     packets.sort_by_key(|(frameno, _, _)| *frameno);
-    let av1c = packets
-        .first()
-        .and_then(|(_, _, data)| extract_sequence_header_obu(data))
-        .and_then(build_av1c);
-    let packets = packets
+    Ok(packets
         .into_iter()
         .map(|(frameno, keyframe, data)| {
             let i = (frameno as usize).min(frames.len() - 1);
@@ -1388,8 +1428,7 @@ fn encode_av1(
                 data,
             }
         })
-        .collect();
-    Ok(EncodedVideo { packets, av1c })
+        .collect())
 }
 
 /// Convert an RGBA frame to planar 4:2:0 limited-range BT.601 (the matrix signalled in the
