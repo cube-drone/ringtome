@@ -467,6 +467,9 @@ pub struct DocHeaderPlain {
     pub height: Option<u32>,
     pub duration_ms: Option<u64>,
     pub thumb_hash: Option<[u8; 32]>,
+    /// `preview_hash` - the file-layer hash of a silent AV1-in-WebM hover-preview clip, stored as
+    /// its OWN sibling blob exactly like `thumb_hash` (video only, `None` for everything else).
+    pub preview_hash: Option<[u8; 32]>,
 }
 
 impl DocHeaderPlain {
@@ -499,7 +502,8 @@ impl DocHeaderPlain {
             + self.width.is_some() as u64
             + self.height.is_some() as u64
             + self.duration_ms.is_some() as u64
-            + self.thumb_hash.is_some() as u64;
+            + self.thumb_hash.is_some() as u64
+            + self.preview_hash.is_some() as u64;
         w.map(n);
         w.uint(0);
         w.bytes(&self.doc_id);
@@ -534,6 +538,10 @@ impl DocHeaderPlain {
             w.uint(9);
             w.bytes(t);
         }
+        if let Some(p) = &self.preview_hash {
+            w.uint(10);
+            w.bytes(p);
+        }
         Ok(w.into_bytes())
     }
 
@@ -542,7 +550,8 @@ impl DocHeaderPlain {
         let mut map = r.int_map()?;
         let (mut doc_id, mut parents, mut file_hash, mut body_hash, mut title, mut format) =
             (None, None, None, None, None, None);
-        let (mut width, mut height, mut duration_ms, mut thumb_hash) = (None, None, None, None);
+        let (mut width, mut height, mut duration_ms, mut thumb_hash, mut preview_hash) =
+            (None, None, None, None, None);
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -575,6 +584,7 @@ impl DocHeaderPlain {
                 }
                 8 => duration_ms = Some(map.uint()?),
                 9 => thumb_hash = Some(map.bytes_fixed::<32>()?),
+                10 => preview_hash = Some(map.bytes_fixed::<32>()?),
                 _ => map.skip_value()?,
             }
         }
@@ -590,6 +600,7 @@ impl DocHeaderPlain {
             height,
             duration_ms,
             thumb_hash,
+            preview_hash,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -936,6 +947,7 @@ mod tests {
                 height: None,
                 duration_ms: None,
                 thumb_hash: None,
+                preview_hash: None,
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -951,6 +963,7 @@ mod tests {
             height: None,
             duration_ms: None,
             thumb_hash: None,
+            preview_hash: None,
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -965,8 +978,24 @@ mod tests {
             height: Some(533),
             duration_ms: None,
             thumb_hash: Some([7u8; 32]),
+            preview_hash: None,
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
+        // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
+        let vid = DocHeaderPlain {
+            doc_id: [9u8; 16],
+            parents: vec![[1u8; 32]],
+            file_hash: [3u8; 32],
+            body_hash: [4u8; 32],
+            title: "clip".into(),
+            format: Some(super::doc_format::WEBM_AV1),
+            width: Some(320),
+            height: Some(180),
+            duration_ms: Some(20_149),
+            thumb_hash: Some([7u8; 32]),
+            preview_hash: Some([8u8; 32]),
+        };
+        assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
 
     #[test]
@@ -982,6 +1011,7 @@ mod tests {
             height: None,
             duration_ms: None,
             thumb_hash: None,
+            preview_hash: None,
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {

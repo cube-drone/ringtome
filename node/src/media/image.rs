@@ -132,8 +132,7 @@ pub fn crush(input: &[u8]) -> Result<Crushed, CrushError> {
     // Identify the format from magic bytes. An unrecognised blob is unsupported, not corrupt.
     // (`guess_format` recognises the AVIF magic even though the `image` crate has no AVIF decoder
     // enabled - it inspects the ISOBMFF brand, not the feature set.)
-    let format = image::guess_format(input)
-        .map_err(|e| CrushError::Unsupported(e.to_string()))?;
+    let format = image::guess_format(input).map_err(|e| CrushError::Unsupported(e.to_string()))?;
 
     // AVIF inputs take the pure-rust rav1d decode path (the `image` crate can't decode them).
     if format == ImageFormat::Avif {
@@ -349,7 +348,8 @@ fn has_ringtome_marker(avif: &[u8]) -> bool {
         if box_size < header_len || box_size > len - pos {
             break;
         }
-        if box_type == b"free" && avif[pos + header_len..pos + box_size].starts_with(RINGTOME_MARKER)
+        if box_type == b"free"
+            && avif[pos + header_len..pos + box_size].starts_with(RINGTOME_MARKER)
         {
             return true;
         }
@@ -502,11 +502,15 @@ unsafe fn extract_picture(pic: &Dav1dPicture) -> Result<DecodedPicture, CrushErr
     // normalise everything to 8-bit RGBA below; anything outside 8..=12 shouldn't occur, so guard it.
     let bpc = pic.p.bpc;
     if !(8..=12).contains(&bpc) {
-        return Err(CrushError::Unsupported(format!("AVIF with {bpc}-bit depth")));
+        return Err(CrushError::Unsupported(format!(
+            "AVIF with {bpc}-bit depth"
+        )));
     }
     let bpc = bpc as u8;
     if w == 0 || h == 0 {
-        return Err(CrushError::Decode("AVIF decoded to a zero-size frame".into()));
+        return Err(CrushError::Decode(
+            "AVIF decoded to a zero-size frame".into(),
+        ));
     }
 
     // SAFETY: rav1d guarantees data[0]/stride[0] describe `h` rows of at least `w` luma samples.
@@ -643,11 +647,20 @@ enum ColorMatrix {
 /// special-case (including "unspecified") falls back to BT.601, which is what ravif encodes.
 fn matrix_for(mtrx: u32) -> ColorMatrix {
     match mtrx {
-        0 => ColorMatrix::Identity,                            // MC_IDENTITY (RGB / GBR planes)
-        1 => ColorMatrix::YCbCr { kr: 0.2126, kb: 0.0722 },    // MC_BT709
-        4 => ColorMatrix::YCbCr { kr: 0.30, kb: 0.11 },        // MC_FCC
-        7 => ColorMatrix::YCbCr { kr: 0.212, kb: 0.087 },      // MC_SMPTE240
-        _ => ColorMatrix::YCbCr { kr: 0.299, kb: 0.114 },      // MC_BT601/BT470BG/unspecified
+        0 => ColorMatrix::Identity, // MC_IDENTITY (RGB / GBR planes)
+        1 => ColorMatrix::YCbCr {
+            kr: 0.2126,
+            kb: 0.0722,
+        }, // MC_BT709
+        4 => ColorMatrix::YCbCr { kr: 0.30, kb: 0.11 }, // MC_FCC
+        7 => ColorMatrix::YCbCr {
+            kr: 0.212,
+            kb: 0.087,
+        }, // MC_SMPTE240
+        _ => ColorMatrix::YCbCr {
+            kr: 0.299,
+            kb: 0.114,
+        }, // MC_BT601/BT470BG/unspecified
     }
 }
 
@@ -756,7 +769,10 @@ mod corpus {
     }
 
     fn scratch() -> PathBuf {
-        let dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../scratch/transcoded"));
+        let dir = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../scratch/transcoded"
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -811,7 +827,10 @@ mod corpus {
         ] {
             let out = crush(&corpus(name))
                 .unwrap_or_else(|e| panic!("{name} should transcode, got {e:?}"));
-            assert!(out.width > 0 && out.height > 0, "{name} has real dimensions");
+            assert!(
+                out.width > 0 && out.height > 0,
+                "{name} has real dimensions"
+            );
             assert!(
                 out.width <= 800 && out.height <= 800,
                 "{name} is bounded to 800x800 (got {}x{})",
@@ -889,9 +908,16 @@ mod corpus {
                 .with_speed(AVIF_SPEED)
                 .encode_rgba(Img::new(rgba.as_raw().as_rgba(), w, h))
                 .unwrap();
-            std::fs::write(out.join(format!("{name}.q{}.avif", q as u32)), &encoded.avif_file)
-                .unwrap();
-            println!("q{:<3} {name}: {w}x{h}  {} bytes", q as u32, encoded.avif_file.len());
+            std::fs::write(
+                out.join(format!("{name}.q{}.avif", q as u32)),
+                &encoded.avif_file,
+            )
+            .unwrap();
+            println!(
+                "q{:<3} {name}: {w}x{h}  {} bytes",
+                q as u32,
+                encoded.avif_file.len()
+            );
         }
     }
 
@@ -930,7 +956,10 @@ mod corpus {
     fn foreign_avif_from_corpus_transcodes() {
         let out = crush(&corpus("retro.avif"))
             .unwrap_or_else(|e| panic!("retro.avif should transcode, got {e:?}"));
-        assert!(out.width > 0 && out.height > 0, "retro.avif has real dimensions");
+        assert!(
+            out.width > 0 && out.height > 0,
+            "retro.avif has real dimensions"
+        );
         assert!(
             out.width <= 800 && out.height <= 800,
             "retro.avif is bounded to 800x800 (got {}x{})",
@@ -960,7 +989,8 @@ mod tests {
     /// Encode a `DynamicImage` to in-memory PNG bytes (test input generator).
     fn png_bytes(img: &DynamicImage) -> Vec<u8> {
         let mut buf = Cursor::new(Vec::new());
-        img.write_to(&mut buf, ImageFormat::Png).expect("encode png");
+        img.write_to(&mut buf, ImageFormat::Png)
+            .expect("encode png");
         buf.into_inner()
     }
 
@@ -975,8 +1005,7 @@ mod tests {
     /// proves the produced bytes are a well-formed, parseable AVIF *and* recovers dimensions -
     /// done with the pure-rust `avif-parse` because `image` cannot decode AVIF without dav1d (C).
     fn avif_dims(bytes: &[u8]) -> (u32, u32) {
-        let data =
-            avif_parse::read_avif(&mut Cursor::new(bytes)).expect("output is a valid AVIF");
+        let data = avif_parse::read_avif(&mut Cursor::new(bytes)).expect("output is a valid AVIF");
         let meta = data
             .primary_item_metadata()
             .expect("AVIF has a parseable AV1 sequence header");
@@ -1104,7 +1133,10 @@ mod tests {
     #[test]
     fn passthrough_preserves_bytes() {
         let first = crush(&png_bytes(&gradient(120, 90))).expect("first transcode");
-        assert!(first.width <= MAIN_BOUND && first.height <= MAIN_BOUND, "in spec");
+        assert!(
+            first.width <= MAIN_BOUND && first.height <= MAIN_BOUND,
+            "in spec"
+        );
         assert!(has_ringtome_marker(&first.avif), "first body is marked");
 
         let second = crush(&first.avif).expect("re-ingest the marked AVIF");
@@ -1122,8 +1154,14 @@ mod tests {
         assert!(!has_ringtome_marker(&foreign), "input is unmarked");
 
         let out = crush(&foreign).expect("foreign AVIF transcodes");
-        assert_ne!(out.avif, foreign, "foreign AVIF is re-encoded, not passed through");
-        assert!(out.width <= MAIN_BOUND && out.height <= MAIN_BOUND, "in spec");
+        assert_ne!(
+            out.avif, foreign,
+            "foreign AVIF is re-encoded, not passed through"
+        );
+        assert!(
+            out.width <= MAIN_BOUND && out.height <= MAIN_BOUND,
+            "in spec"
+        );
         assert!(has_ringtome_marker(&out.avif), "re-crushed body is marked");
     }
 
@@ -1143,11 +1181,18 @@ mod tests {
             "longest side is pinned to the bound"
         );
         assert_eq!((w, h), (800, 600), "aspect ratio preserved");
-        assert_eq!((w, h), (out.width, out.height), "reported dims match encoded");
+        assert_eq!(
+            (w, h),
+            (out.width, out.height),
+            "reported dims match encoded"
+        );
 
         // Thumbnail: decodes back and fits the (128x128) thumbnail bound.
         let (tw, th) = avif_dims(&out.thumb_avif);
-        assert!(tw <= THUMB_BOUND && th <= THUMB_BOUND, "thumb fits the bound");
+        assert!(
+            tw <= THUMB_BOUND && th <= THUMB_BOUND,
+            "thumb fits the bound"
+        );
     }
 
     #[test]
@@ -1171,10 +1216,7 @@ mod tests {
             }
         }
 
-        assert!(matches!(
-            crush(&bytes),
-            Err(CrushError::Animated)
-        ));
+        assert!(matches!(crush(&bytes), Err(CrushError::Animated)));
     }
 
     #[test]

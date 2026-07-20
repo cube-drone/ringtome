@@ -24,8 +24,8 @@ use sqlx::SqlitePool;
 use std::path::PathBuf;
 
 use crate::clock::now_ms;
-use crate::record::documents::{save_version, MediaMeta, Save};
 use crate::media::CrushError;
+use crate::record::documents::{save_version, MediaMeta, Save};
 use crate::AppError;
 
 /// The enqueue handle, stored in `AppState`. Cheap to clone (just the quarantine path).
@@ -58,10 +58,7 @@ impl Ingest {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(
-                &self.quarantine_dir,
-                std::fs::Permissions::from_mode(0o700),
-            )?;
+            std::fs::set_permissions(&self.quarantine_dir, std::fs::Permissions::from_mode(0o700))?;
         }
         Ok(())
     }
@@ -84,7 +81,12 @@ impl Ingest {
             .await
             .map_err(|e| AppError::Internal(anyhow!("writing quarantine file: {e}")))?;
 
-        let parents_csv = up.parents.iter().map(hex::encode).collect::<Vec<_>>().join(",");
+        let parents_csv = up
+            .parents
+            .iter()
+            .map(hex::encode)
+            .collect::<Vec<_>>()
+            .join(",");
         sqlx::query(
             "INSERT INTO ingest_job \
              (job_id, account, root, doc_id, parents, title, quarantine_path, status, bytes_in, created_ms) \
@@ -206,6 +208,18 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         None => None,
     };
 
+    // The hover-preview clip (video WebM output only) is likewise its own sibling blob.
+    let preview_hash = match &ingested.preview_webm {
+        Some(preview) => Some(
+            *state
+                .files
+                .put_encrypted(epoch, &epoch_key, preview)
+                .await?
+                .as_bytes(),
+        ),
+        None => None,
+    };
+
     save_version(
         &db,
         &leaf,
@@ -222,6 +236,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
                 height: ingested.height,
                 duration_ms: ingested.duration_ms,
                 thumb_hash,
+                preview_hash,
             }),
         },
     )
@@ -311,7 +326,10 @@ type JobRow = (String, String, String, String, Option<String>, i64, i64);
 
 /// Every ingest job this account has queued, newest first - the "how long until my uploads are
 /// usable" view. Failures show here (with their message); they never appear as ghost documents.
-pub async fn jobs_for_account(node_db: &SqlitePool, account: &str) -> Result<Vec<JobStatus>, AppError> {
+pub async fn jobs_for_account(
+    node_db: &SqlitePool,
+    account: &str,
+) -> Result<Vec<JobStatus>, AppError> {
     let rows: Vec<JobRow> = sqlx::query_as(
         "SELECT job_id, doc_id, title, status, error, bytes_in, created_ms \
          FROM ingest_job WHERE account = ?1 ORDER BY seq DESC",
@@ -440,8 +458,14 @@ mod tests {
         let db = node_db().await;
         let dir = scratch_dir("claim");
         let ingest = Ingest::new(dir.clone());
-        ingest.enqueue(&db, upload([1u8; 16], "first", b"1")).await.unwrap();
-        ingest.enqueue(&db, upload([2u8; 16], "second", b"2")).await.unwrap();
+        ingest
+            .enqueue(&db, upload([1u8; 16], "first", b"1"))
+            .await
+            .unwrap();
+        ingest
+            .enqueue(&db, upload([2u8; 16], "second", b"2"))
+            .await
+            .unwrap();
 
         // Oldest first, and claiming one flips it to processing so the next claim skips it.
         let a = claim_next(&db).await.unwrap().unwrap();
@@ -449,7 +473,10 @@ mod tests {
         assert_eq!(a.doc_id, [1u8; 16]);
         let b = claim_next(&db).await.unwrap().unwrap();
         assert_eq!(b.title, "second");
-        assert!(claim_next(&db).await.unwrap().is_none(), "nothing left to claim");
+        assert!(
+            claim_next(&db).await.unwrap().is_none(),
+            "nothing left to claim"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -459,8 +486,14 @@ mod tests {
         let db = node_db().await;
         let dir = scratch_dir("reconcile");
         let ingest = Ingest::new(dir.clone());
-        let survivor = ingest.enqueue(&db, upload([1u8; 16], "survivor", b"aa")).await.unwrap();
-        let lost = ingest.enqueue(&db, upload([2u8; 16], "lost", b"bb")).await.unwrap();
+        let survivor = ingest
+            .enqueue(&db, upload([1u8; 16], "survivor", b"aa"))
+            .await
+            .unwrap();
+        let lost = ingest
+            .enqueue(&db, upload([2u8; 16], "lost", b"bb"))
+            .await
+            .unwrap();
 
         // Simulate a crash mid-run: both were claimed (processing), and one quarantine file was
         // wiped (a /tmp reboot, say) while the other survived.
@@ -476,7 +509,11 @@ mod tests {
         let by = |id: &str| jobs.iter().find(|j| j.job_id == id).unwrap();
         assert_eq!(by(&survivor).status, "pending", "file present -> requeued");
         assert_eq!(by(&lost).status, "failed", "file gone -> failed");
-        assert!(by(&lost).error.as_deref().unwrap().contains("lost on restart"));
+        assert!(by(&lost)
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("lost on restart"));
 
         std::fs::remove_dir_all(&dir).ok();
     }

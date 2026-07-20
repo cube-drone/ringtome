@@ -29,9 +29,12 @@ const EBML_MAGIC: [u8; 4] = [0x1A, 0x45, 0xDF, 0xA3];
 pub struct Ingested {
     pub body: Vec<u8>,
     pub format: Format,
-    /// A small AVIF thumbnail: the image's own thumb, an audio waveform, or `None` (video, and
-    /// passthrough audio, have none).
+    /// A small AVIF thumbnail: the image's own thumb, an audio waveform, a video's poster frame, or
+    /// `None` (passthrough audio has none).
     pub thumb_avif: Option<Vec<u8>>,
+    /// A silent AV1-in-WebM hover-preview clip - video's WebM output only; `None` for stills, audio,
+    /// and the self-animating APNG output.
+    pub preview_webm: Option<Vec<u8>>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub duration_ms: Option<u64>,
@@ -93,6 +96,7 @@ impl Ingested {
             body: c.avif,
             format: Format::Avif,
             thumb_avif: Some(c.thumb_avif),
+            preview_webm: None,
             width: Some(c.width),
             height: Some(c.height),
             duration_ms: c.duration_ms,
@@ -107,7 +111,10 @@ impl Ingested {
         Ingested {
             body: c.bytes,
             format,
-            thumb_avif: None, // video poster frames are a later addition
+            // The video lane's static poster fills the uniform thumbnail slot; its silent motion
+            // preview (WebM output only) rides its own sibling field.
+            thumb_avif: Some(c.poster_avif),
+            preview_webm: c.preview_webm,
             width: Some(c.width),
             height: Some(c.height),
             duration_ms: Some(c.duration_ms),
@@ -119,6 +126,7 @@ impl Ingested {
             body: c.bytes,
             format: Format::OggOpus,
             thumb_avif: c.waveform_avif,
+            preview_webm: None,
             width: None,
             height: None,
             duration_ms: Some(c.duration_ms),
@@ -212,7 +220,18 @@ mod tests {
         let webm = crush(&corpus("chrome_intermediary.webm")).expect("webm crushes");
         assert_eq!(webm.format, Format::WebmAv1);
         assert!(webm.duration_ms.is_some());
-        let opaque = crush(&corpus("animated_color_squirrel.gif")).expect("opaque animation crushes");
+        // Video now fills the thumbnail slot (a poster frame) AND carries a hover-preview clip.
+        assert!(
+            webm.thumb_avif.is_some(),
+            "video carries a poster thumbnail"
+        );
+        assert!(webm.preview_webm.is_some(), "video carries a preview clip");
+        let opaque =
+            crush(&corpus("animated_color_squirrel.gif")).expect("opaque animation crushes");
         assert_eq!(opaque.format, Format::WebmAv1);
+        assert!(
+            opaque.preview_webm.is_some(),
+            "opaque animation carries a preview"
+        );
     }
 }

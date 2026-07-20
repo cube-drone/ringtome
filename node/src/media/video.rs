@@ -107,6 +107,29 @@ const AV1_QUANTIZER: usize = 140;
 /// Maximum keyframe interval in frames (~2 s at the 20 fps target): seek granularity vs size.
 const KEYFRAME_INTERVAL_FRAMES: u64 = 40;
 
+/// Poster still: frame 0, downscaled to fit this square, encoded to a single AVIF. 128 matches the
+/// image lane's thumbnail bound - the poster fills that same uniform thumbnail slot (and doubles as
+/// the `<video poster>` frame), so the two should size the same.
+const POSTER_BOUND: u32 = 128;
+
+/// The poster AVIF quality/speed. Mirrors the image lane (q18, speed 6): the poster is a thumbnail,
+/// crushed with the same character as every other thumbnail on the shelf.
+const POSTER_AVIF_QUALITY: f32 = 18.0;
+const POSTER_AVIF_SPEED: u8 = 6;
+
+/// Preview clip: hover-preview frames are downscaled to fit this square. 128 keeps the motion
+/// thumbnail tiny - it plays on hover in a grid, never full-size.
+const PREVIEW_BOUND: u32 = 128;
+
+/// Preview clip: only the first this-many ms of playback become the hover preview (or the whole
+/// clip if it is shorter). Five seconds is enough to read "what is this" without carrying the body.
+const PREVIEW_MAX_MS: u64 = 5_000;
+
+/// Preview clip quantizer - far crueler than the body's [`AV1_QUANTIZER`] of 140. At 128px + this
+/// quantizer a typical preview lands well under 100 KB; it is a motion thumbnail, never the artefact
+/// you actually watch, so it crushes hard. Tunable later.
+const PREVIEW_QUANTIZER: usize = 200;
+
 /// rav1e tile request. Tiles are the only real parallelism lever in the no-asm pure-rust build
 /// (rayon splits work per tile), and the difference is stark: a measured 6.6x wall-clock speedup
 /// together with `low_latency` below (2.2 s/frame -> 0.2 s/frame at 320p). At our frame size the
@@ -155,6 +178,13 @@ pub struct Crushed {
     /// True when the source had transparency that was flattened onto [`FLATTEN_BACKGROUND`]
     /// because audio forced the WebM route.
     pub alpha_flattened: bool,
+    /// A static AVIF poster: frame 0, bounded to [`POSTER_BOUND`]. Produced for BOTH output kinds -
+    /// it fills the uniform thumbnail slot and doubles as the `<video poster>` frame.
+    pub poster_avif: Vec<u8>,
+    /// A silent AV1-in-WebM preview clip (the first [`PREVIEW_MAX_MS`], bounded to [`PREVIEW_BOUND`],
+    /// crushed at [`PREVIEW_QUANTIZER`]) for hover-preview. `Some` only for the WebM output kind; an
+    /// APNG already self-animates in an `<img>`, so it needs no motion preview.
+    pub preview_webm: Option<Vec<u8>>,
 }
 
 /// The two canonical output containers.
@@ -244,6 +274,10 @@ pub fn crush(
     });
     let has_audio = audio.is_some();
 
+    // The static poster: frame 0, for BOTH output kinds. Alpha is preserved here (an APNG poster
+    // stays transparent); the WebM route's own body may flatten alpha, but the poster need not.
+    let poster_avif = encode_poster_avif(&frames[0].image)?;
+
     // The routing ruling: transparency only survives when there is no audio (APNG); audio always
     // wins the container fight, flattening any alpha onto the background const.
     if transparent && !has_audio {
@@ -257,12 +291,16 @@ pub fn crush(
             frame_count,
             has_audio: false,
             alpha_flattened: false,
+            poster_avif,
+            // An APNG already animates in an `<img>`; it needs no separate motion preview.
+            preview_webm: None,
         });
     }
 
     let alpha_flattened = transparent;
-    let encoded = encode_av1(&frames, width, height, alpha_flattened)?;
+    let encoded = encode_av1(&frames, width, height, alpha_flattened, AV1_QUANTIZER)?;
     let bytes = mux_webm(&encoded, audio.as_ref(), duration_ms, width, height)?;
+    let preview_webm = Some(build_preview_webm(&frames, alpha_flattened)?);
     Ok(Crushed {
         format: CrushedFormat::WebmAv1,
         bytes,
@@ -272,7 +310,72 @@ pub fn crush(
         frame_count,
         has_audio,
         alpha_flattened,
+        poster_avif,
+        preview_webm,
     })
+}
+
+/// Encode a single bounded RGBA frame as an AVIF still - the video's poster. Downscales frame 0 to
+/// fit [`POSTER_BOUND`] (never upscaling) and encodes it with the same ravif recipe the image lane
+/// uses (8-bit, [`POSTER_AVIF_QUALITY`]); alpha is carried through so a transparent APNG's poster
+/// stays transparent.
+fn encode_poster_avif(frame: &RgbaImage) -> Result<Vec<u8>, CrushError> {
+    use imgref::Img;
+    use rgb::FromSlice;
+
+    let longest = frame.width().max(frame.height());
+    let poster = if longest <= POSTER_BOUND {
+        std::borrow::Cow::Borrowed(frame)
+    } else {
+        let scale = f64::from(POSTER_BOUND) / f64::from(longest);
+        let w = ((f64::from(frame.width()) * scale).round() as u32).max(1);
+        let h = ((f64::from(frame.height()) * scale).round() as u32).max(1);
+        std::borrow::Cow::Owned(image::imageops::resize(frame, w, h, RESIZE_FILTER))
+    };
+    let (w, h) = (poster.width() as usize, poster.height() as usize);
+    let encoded = ravif::Encoder::new()
+        .with_quality(POSTER_AVIF_QUALITY)
+        .with_alpha_quality(POSTER_AVIF_QUALITY)
+        .with_speed(POSTER_AVIF_SPEED)
+        .with_bit_depth(ravif::BitDepth::Eight)
+        .encode_rgba(Img::new(poster.as_raw().as_rgba(), w, h))
+        .map_err(|e| CrushError::Decode(format!("poster avif encode failed: {e}")))?;
+    Ok(encoded.avif_file)
+}
+
+/// Build the silent hover-preview WebM: the first [`PREVIEW_MAX_MS`] of playback (or the whole clip
+/// if shorter), downscaled to fit [`PREVIEW_BOUND`], re-encoded at the crushier [`PREVIEW_QUANTIZER`]
+/// and muxed with NO audio track. Reuses the body's [`encode_av1`]/[`mux_webm`]; the only changes
+/// are the smaller bound, the harsher quantizer, and the absent audio.
+fn build_preview_webm(frames: &[BoundedFrame], flatten: bool) -> Result<Vec<u8>, CrushError> {
+    // Preview geometry from the (already-bounded) body frame - fit the smaller square, even dims.
+    let (pw, ph) = even_fit(
+        frames[0].image.width(),
+        frames[0].image.height(),
+        PREVIEW_BOUND,
+    );
+
+    // Frames are ms-ascending and start at 0, so frame 0 always survives this window.
+    let preview: Vec<BoundedFrame> = frames
+        .iter()
+        .take_while(|f| f.ms < PREVIEW_MAX_MS)
+        .map(|f| {
+            let image = if (f.image.width(), f.image.height()) == (pw, ph) {
+                f.image.clone()
+            } else {
+                image::imageops::resize(&f.image, pw, ph, RESIZE_FILTER)
+            };
+            BoundedFrame {
+                image,
+                ms: f.ms,
+                dur_ms: f.dur_ms,
+            }
+        })
+        .collect();
+
+    let duration_ms = preview.last().map(|f| f.ms + f.dur_ms).unwrap_or(0).max(1);
+    let encoded = encode_av1(&preview, pw, ph, flatten, PREVIEW_QUANTIZER)?;
+    mux_webm(&encoded, None, duration_ms, pw, ph)
 }
 
 // ---------------------------------------------------------------------------
@@ -420,12 +523,19 @@ impl FrameSink {
 /// The crush geometry: fit inside [`MAX_SIDE`] (never upscale), then force both dimensions even
 /// (the AV1 route encodes 4:2:0, and one policy for both routes keeps output dims predictable).
 fn bounded_dims(w: u32, h: u32) -> (u32, u32) {
+    even_fit(w, h, MAX_SIDE)
+}
+
+/// Fit `(w, h)` inside a `bound` square (never upscaling) and force both dimensions even - the AV1
+/// encoder needs even 4:2:0 dims. [`bounded_dims`] is this at [`MAX_SIDE`]; the preview reuses it at
+/// [`PREVIEW_BOUND`].
+fn even_fit(w: u32, h: u32, bound: u32) -> (u32, u32) {
     let (w, h) = (w.max(1), h.max(1));
     let longest = w.max(h);
-    let (bw, bh) = if longest <= MAX_SIDE {
+    let (bw, bh) = if longest <= bound {
         (w, h)
     } else {
-        let scale = f64::from(MAX_SIDE) / f64::from(longest);
+        let scale = f64::from(bound) / f64::from(longest);
         (
             ((f64::from(w) * scale).round() as u32).max(1),
             ((f64::from(h) * scale).round() as u32).max(1),
@@ -1305,6 +1415,7 @@ fn encode_av1(
     width: u32,
     height: u32,
     flatten: bool,
+    quantizer: usize,
 ) -> Result<EncodedVideo, CrushError> {
     let chunk_len = KEYFRAME_INTERVAL_FRAMES as usize;
     // Scoped threads (chunks borrow `frames`); each chunk's rav1e context shares the global
@@ -1312,7 +1423,9 @@ fn encode_av1(
     let chunk_results: Vec<Result<Vec<Av1Packet>, CrushError>> = std::thread::scope(|scope| {
         let handles: Vec<_> = frames
             .chunks(chunk_len)
-            .map(|chunk| scope.spawn(move || encode_av1_chunk(chunk, width, height, flatten)))
+            .map(|chunk| {
+                scope.spawn(move || encode_av1_chunk(chunk, width, height, flatten, quantizer))
+            })
             .collect();
         handles
             .into_iter()
@@ -1346,6 +1459,7 @@ fn encode_av1_chunk(
     width: u32,
     height: u32,
     flatten: bool,
+    quantizer: usize,
 ) -> Result<Vec<Av1Packet>, CrushError> {
     let mut enc = EncoderConfig::with_speed_preset(AV1_SPEED);
     enc.width = width as usize;
@@ -1359,7 +1473,7 @@ fn encode_av1_chunk(
         transfer_characteristics: TransferCharacteristics::SRGB,
         matrix_coefficients: MatrixCoefficients::BT601,
     });
-    enc.quantizer = AV1_QUANTIZER;
+    enc.quantizer = quantizer;
     enc.min_key_frame_interval = KEYFRAME_INTERVAL_FRAMES.min(12);
     enc.max_key_frame_interval = KEYFRAME_INTERVAL_FRAMES;
     // Forward-only references. This trades a little compression (no alt-ref frames) for roughly
@@ -1988,6 +2102,52 @@ mod tests {
         assert_webm_round_trips(&out, true);
     }
 
+    /// A WebM-output crush yields both new artifacts: a valid AVIF poster and a valid, silent,
+    /// tiny WebM preview clip.
+    #[test]
+    fn webm_output_has_poster_and_silent_preview() {
+        let out = crush(
+            &corpus("chrome_intermediary.webm"),
+            None,
+            CrushOpts {
+                max_frames: Some(CI_FRAMES),
+            },
+        )
+        .expect("chrome intermediary crushes");
+        assert_eq!(out.format, CrushedFormat::WebmAv1);
+
+        // Poster: a non-empty, well-formed AVIF (ISOBMFF `ftyp` box at offset 4).
+        assert!(!out.poster_avif.is_empty(), "poster present");
+        assert_eq!(&out.poster_avif[4..8], b"ftyp", "poster is a real AVIF");
+
+        // Preview: Some, valid WebM, tiny, silent, and bounded.
+        let preview = out
+            .preview_webm
+            .as_ref()
+            .expect("webm output has a preview");
+        assert!(
+            preview.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]),
+            "preview is a real WebM (EBML magic)"
+        );
+        assert!(
+            preview.len() < 100_000,
+            "preview is well under 100 KB (got {} bytes)",
+            preview.len()
+        );
+        let demuxed = demux_webm(preview).expect("preview re-demuxes");
+        assert!(
+            demuxed.audio.is_none(),
+            "preview is SILENT (no A_OPUS track)"
+        );
+        assert!(!demuxed.video_packets.is_empty(), "preview has video");
+        assert!(
+            demuxed.width <= PREVIEW_BOUND && demuxed.height <= PREVIEW_BOUND,
+            "preview bounded to {PREVIEW_BOUND}px (got {}x{})",
+            demuxed.width,
+            demuxed.height
+        );
+    }
+
     /// The fallback lane: Firefox's APNG frames + separate Ogg Opus. Opaque + audio, so it
     /// crushes to WebM with the audio remuxed in.
     #[test]
@@ -2045,6 +2205,15 @@ mod tests {
             .iter()
             .any(|f| f.buffer().pixels().any(|p| p[3] < 255));
         assert!(transparent_survived, "some pixel kept alpha < 255");
+
+        // The APNG route still gets a poster (fills the thumbnail slot) but NO motion preview -
+        // an APNG already self-animates in an `<img>`.
+        assert!(!out.poster_avif.is_empty(), "poster present");
+        assert_eq!(&out.poster_avif[4..8], b"ftyp", "poster is a real AVIF");
+        assert!(
+            out.preview_webm.is_none(),
+            "a self-animating APNG needs no preview clip"
+        );
     }
 
     /// Transparent + audio: audio wins the container fight; alpha is flattened onto black and
@@ -2320,16 +2489,25 @@ mod tests {
             CrushOpts::default(),
         )
         .expect("full chrome crush");
+        let preview = out.preview_webm.clone().expect("webm output has a preview");
         println!(
-            "chrome_intermediary: {}x{} {} frames {} ms audio={} -> {} KB webm",
+            "chrome_intermediary: {}x{} {} frames {} ms audio={} -> body {} KB, poster {} B, preview {} B",
             out.width,
             out.height,
             out.frame_count,
             out.duration_ms,
             out.has_audio,
-            out.bytes.len() / 1024
+            out.bytes.len() / 1024,
+            out.poster_avif.len(),
+            preview.len(),
         );
         std::fs::write(dir.join("chrome_intermediary.crushed.webm"), &out.bytes).unwrap();
+        std::fs::write(
+            dir.join("chrome_intermediary.poster.avif"),
+            &out.poster_avif,
+        )
+        .unwrap();
+        std::fs::write(dir.join("chrome_intermediary.preview.webm"), &preview).unwrap();
         assert_webm_round_trips(&out, true);
 
         let out = crush(

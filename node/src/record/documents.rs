@@ -187,7 +187,11 @@ impl Doc {
         common
             .iter()
             .copied()
-            .filter(|c| !common.iter().any(|d| d != c && self.ancestors(d).contains(c)))
+            .filter(|c| {
+                !common
+                    .iter()
+                    .any(|d| d != c && self.ancestors(d).contains(c))
+            })
             .collect()
     }
 
@@ -290,6 +294,9 @@ pub struct MediaMeta {
     pub height: Option<u32>,
     pub duration_ms: Option<u64>,
     pub thumb_hash: Option<[u8; 32]>,
+    /// The file-layer hash of a silent AV1-in-WebM hover-preview clip, stored as its OWN sibling
+    /// blob (like `thumb_hash`). Video WebM output only; `None` for everything else.
+    pub preview_hash: Option<[u8; 32]>,
 }
 
 /// Save one version of a document: body into the file layer, header onto the notes chain.
@@ -353,6 +360,7 @@ pub async fn save_version(
         height: save.media.as_ref().and_then(|m| m.height),
         duration_ms: save.media.as_ref().and_then(|m| m.duration_ms),
         thumb_hash: save.media.as_ref().and_then(|m| m.thumb_hash),
+        preview_hash: save.media.as_ref().and_then(|m| m.preview_hash),
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -380,8 +388,12 @@ pub fn new_doc_id() -> [u8; 16] {
 /// Fold every stored doc-header we can decrypt into per-document DAGs. Recomputed per read,
 /// same disposable-view discipline as the private store.
 pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
-    let entries =
-        crate::record::imaol::entries_of_type(db, service::DOCUMENTS_PRIVATE, entry_type::DOC_HEADER).await?;
+    let entries = crate::record::imaol::entries_of_type(
+        db,
+        service::DOCUMENTS_PRIVATE,
+        entry_type::DOC_HEADER,
+    )
+    .await?;
 
     let mut view = DocumentsView::default();
     for signed in entries {
@@ -447,7 +459,8 @@ pub async fn fetch_missing_bodies(
             return Ok(0); // not an identity we agent: nothing to decrypt, nothing to fetch
         };
         let leaf_pub = leaf.verifying_key().to_bytes();
-        let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
+        let enc =
+            crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
         let db = state.user_dbs.get(root_hex).await?;
         let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
 
@@ -455,10 +468,11 @@ pub async fn fetch_missing_bodies(
         let mut missing: Vec<iroh_blobs::Hash> = Vec::new();
         for doc in view.docs.values() {
             for version in doc.versions.values() {
-                // A version references its body, and (for media) a sibling thumbnail blob. Both
-                // ride iroh-blobs and both may be absent; fetch whichever we lack.
+                // A version references its body, and (for media) sibling thumbnail and preview
+                // blobs. All ride iroh-blobs and any may be absent; fetch whichever we lack.
                 let mut refs = vec![version.header.file_hash];
                 refs.extend(version.header.thumb_hash);
+                refs.extend(version.header.preview_hash);
                 for hash in refs.into_iter().map(iroh_blobs::Hash::from_bytes) {
                     if !missing.contains(&hash) && !state.files.has(hash).await {
                         missing.push(hash);
@@ -469,7 +483,10 @@ pub async fn fetch_missing_bodies(
         if missing.is_empty() {
             return Ok(0);
         }
-        Ok(state.files.fetch_many(&state.endpoint, addr, &missing).await as u64)
+        Ok(state
+            .files
+            .fetch_many(&state.endpoint, addr, &missing)
+            .await as u64)
     }
     .await;
 
@@ -507,7 +524,11 @@ pub struct ResolvedDoc {
 
 /// A conflict side's label: which device, when. Cozy names are the UI's job; this is honest.
 fn side_label(v: &Version) -> String {
-    format!("device {} at {}", hex::encode(&v.author[..4]), v.timestamp_ms)
+    format!(
+        "device {} at {}",
+        hex::encode(&v.author[..4]),
+        v.timestamp_ms
+    )
 }
 
 /// Present a conflict as *whole* alternatives - the shape used when three-way merge can't run
@@ -528,7 +549,11 @@ fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> Strin
                 if !body.ends_with('\n') {
                     out.push('\n');
                 }
-                out.push_str(if i + 1 == sides.len() { ">>>>>>>\n" } else { "=======\n" });
+                out.push_str(if i + 1 == sides.len() {
+                    ">>>>>>>\n"
+                } else {
+                    "=======\n"
+                });
             }
             out
         }
@@ -634,8 +659,10 @@ pub async fn resolve(
         }
     };
 
-    let (Some(body_a), Some(body_b)) = (read_body(files, keys, a).await?, read_body(files, keys, b).await?)
-    else {
+    let (Some(body_a), Some(body_b)) = (
+        read_body(files, keys, a).await?,
+        read_body(files, keys, b).await?,
+    ) else {
         return Ok(ResolvedDoc {
             resolution: Resolution::Conflict,
             title: display_title,
@@ -800,7 +827,17 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "shopping", b"eggs").await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "shopping",
+            b"eggs",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -844,16 +881,36 @@ mod tests {
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "draft", b"start").await;
         // The PC afternoon: a real continuation.
         let pc = save(
-            &db, &key, &keys, &files, doc_id, vec![v1], "draft", b"start, then a whole afternoon",
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "draft",
+            b"start, then a whole afternoon",
         )
         .await;
         // The stale phone tab: same parent, older text, NEWER wall-clock claim.
-        let phone = save(&db, &key, &keys, &files, doc_id, vec![v1], "draft", b"start!").await;
+        let phone = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "draft",
+            b"start!",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
 
-        assert!(doc.diverged(), "two saves sharing a parent must be detected");
+        assert!(
+            doc.diverged(),
+            "two saves sharing a parent must be detected"
+        );
         let mut heads = doc.heads.clone();
         heads.sort();
         let mut expect = vec![pc, phone];
@@ -891,8 +948,28 @@ mod tests {
         // Edit, then revert to the ORIGINAL content: parent is the edit, so this is a real
         // event, not a no-op - the revert must be written (content matches the grandparent,
         // never the parent).
-        let edited = save(&db, &key, &keys, &files, doc_id, vec![renamed], "t2", b"start, oops").await;
-        let reverted = save(&db, &key, &keys, &files, doc_id, vec![edited], "t2", b"start").await;
+        let edited = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![renamed],
+            "t2",
+            b"start, oops",
+        )
+        .await;
+        let reverted = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![edited],
+            "t2",
+            b"start",
+        )
+        .await;
         assert_ne!(reverted, edited);
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -945,8 +1022,28 @@ mod tests {
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
         // Both "devices" apply the same edit from the same parent (each dodges the bounce:
         // the content differs from v1).
-        let a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, fixed").await;
-        let b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, fixed").await;
+        let a = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, fixed",
+        )
+        .await;
+        let b = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, fixed",
+        )
+        .await;
         assert_ne!(a, b, "distinct saves, distinct versions");
 
         let view = materialize(&db, &keys).await.unwrap();
@@ -968,11 +1065,28 @@ mod tests {
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
         let pc = save(
-            &db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, then an afternoon",
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, then an afternoon",
         )
         .await;
         // The phone: a real edit, then a revert back to the fork point's exact content.
-        let typo = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, typo").await;
+        let typo = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, typo",
+        )
+        .await;
         let revert = save(&db, &key, &keys, &files, doc_id, vec![typo], "t", b"start").await;
 
         let view = materialize(&db, &keys).await.unwrap();
@@ -982,7 +1096,11 @@ mod tests {
         let mut expect = vec![pc, revert];
         expect.sort();
         assert_eq!(dag_heads, expect, "the DAG truthfully holds both");
-        assert_eq!(doc.logical_heads, vec![pc], "the echo folds; the afternoon stands");
+        assert_eq!(
+            doc.logical_heads,
+            vec![pc],
+            "the echo folds; the afternoon stands"
+        );
         assert!(!doc.diverged());
     }
 
@@ -997,14 +1115,48 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v0 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"draft one").await;
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![v0], "t", b"draft two").await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v0],
+            "t",
+            b"draft two",
+        )
+        .await;
         // Fork at v1: one side writes on; the other reverts all the way to v0's content.
-        let _on = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"draft three").await;
-        let _back = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"draft one").await;
+        let _on = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"draft three",
+        )
+        .await;
+        let _back = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"draft one",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
-        assert_eq!(doc.logical_heads.len(), 2, "both sides changed the fork's content");
+        assert_eq!(
+            doc.logical_heads.len(),
+            2,
+            "both sides changed the fork's content"
+        );
         assert!(doc.diverged());
     }
 
@@ -1019,14 +1171,47 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
-        let _pc = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, more").await;
-        let typo = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"start, typo").await;
-        let _renamed_revert =
-            save(&db, &key, &keys, &files, doc_id, vec![typo], "better title", b"start").await;
+        let _pc = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, more",
+        )
+        .await;
+        let typo = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, typo",
+        )
+        .await;
+        let _renamed_revert = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![typo],
+            "better title",
+            b"start",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
-        assert_eq!(doc.logical_heads.len(), 2, "the rename survives as its own head");
+        assert_eq!(
+            doc.logical_heads.len(),
+            2,
+            "the rename survives as its own head"
+        );
         assert!(doc.diverged());
     }
 
@@ -1051,13 +1236,47 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"alpha\nbeta\ngamma\n").await;
-        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"ALPHA\nbeta\ngamma\n").await;
-        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"alpha\nbeta\nGAMMA\n").await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "t",
+            b"alpha\nbeta\ngamma\n",
+        )
+        .await;
+        let _a = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"ALPHA\nbeta\ngamma\n",
+        )
+        .await;
+        let _b = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"alpha\nbeta\nGAMMA\n",
+        )
+        .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Merged);
-        assert_eq!(r.body.unwrap(), "ALPHA\nbeta\nGAMMA\n", "both edits present, no questions");
+        assert_eq!(
+            r.body.unwrap(),
+            "ALPHA\nbeta\nGAMMA\n",
+            "both edits present, no questions"
+        );
     }
 
     /// Rung 5: the same line edited both ways - the conflict rides inline, labeled, and both
@@ -1070,17 +1289,53 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is red\n").await;
-        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is blue\n").await;
-        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is green\n").await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "t",
+            b"the hat is red\n",
+        )
+        .await;
+        let _a = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"the hat is blue\n",
+        )
+        .await;
+        let _b = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"the hat is green\n",
+        )
+        .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
         assert!(body.contains("the hat is blue"), "ours present:\n{body}");
         assert!(body.contains("the hat is green"), "theirs present:\n{body}");
-        assert!(body.contains("<<<<<<<") && body.contains(">>>>>>>"), "markers present:\n{body}");
-        assert!(body.contains("device "), "sides carry device labels:\n{body}");
+        assert!(
+            body.contains("<<<<<<<") && body.contains(">>>>>>>"),
+            "markers present:\n{body}"
+        );
+        assert!(
+            body.contains("device "),
+            "sides carry device labels:\n{body}"
+        );
     }
 
     /// Rung 3: a rename on one side, a body edit on the other - orthogonal fields, both win.
@@ -1092,14 +1347,48 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "scratch", b"alpha\nbeta\n").await;
-        let _rename = save(&db, &key, &keys, &files, doc_id, vec![v1], "the hat essay", b"alpha\nbeta\n").await;
-        let _edit = save(&db, &key, &keys, &files, doc_id, vec![v1], "scratch", b"alpha\nbeta\nnew line\n").await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "scratch",
+            b"alpha\nbeta\n",
+        )
+        .await;
+        let _rename = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "the hat essay",
+            b"alpha\nbeta\n",
+        )
+        .await;
+        let _edit = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "scratch",
+            b"alpha\nbeta\nnew line\n",
+        )
+        .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Merged);
         assert_eq!(r.title, "the hat essay", "the rename wins the title");
-        assert_eq!(r.body.unwrap(), "alpha\nbeta\nnew line\n", "the edit wins the body");
+        assert_eq!(
+            r.body.unwrap(),
+            "alpha\nbeta\nnew line\n",
+            "the edit wins the body"
+        );
     }
 
     /// Three-plus genuinely distinct heads: the whole-document conflict - every side in full.
@@ -1137,17 +1426,62 @@ mod tests {
 
         let doc_id = new_doc_id();
         let m = Format::Marquee;
-        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is *red*\n", m).await;
-        let _a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is *blue*\n", m).await;
-        let _b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is *green*\n", m).await;
+        let v1 = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "t",
+            b"the hat is *red*\n",
+            m,
+        )
+        .await;
+        let _a = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"the hat is *blue*\n",
+            m,
+        )
+        .await;
+        let _b = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"the hat is *green*\n",
+            m,
+        )
+        .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
-        assert!(body.contains(":::conflict"), "marquee vocabulary, not markers:\n{body}");
-        assert!(body.contains(":::version"), "one version block per side:\n{body}");
-        assert!(!body.contains("<<<<<<<"), "no git markers in a marquee doc:\n{body}");
-        assert!(body.contains("*blue*") && body.contains("*green*"), "both sides' words present");
+        assert!(
+            body.contains(":::conflict"),
+            "marquee vocabulary, not markers:\n{body}"
+        );
+        assert!(
+            body.contains(":::version"),
+            "one version block per side:\n{body}"
+        );
+        assert!(
+            !body.contains("<<<<<<<"),
+            "no git markers in a marquee doc:\n{body}"
+        );
+        assert!(
+            body.contains("*blue*") && body.contains("*green*"),
+            "both sides' words present"
+        );
     }
 
     /// The same divergence in a plaintext doc gets git markers, not directives - the split is
@@ -1160,13 +1494,46 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"the hat is red\n").await;
-        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is blue\n").await;
-        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"the hat is green\n").await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "t",
+            b"the hat is red\n",
+        )
+        .await;
+        let _a = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"the hat is blue\n",
+        )
+        .await;
+        let _b = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"the hat is green\n",
+        )
+        .await;
 
         let body = resolve_doc(&db, &keys, &files, &doc_id).await.body.unwrap();
         assert!(body.contains("<<<<<<<"), "plaintext gets markers:\n{body}");
-        assert!(!body.contains(":::conflict"), "and never marquee vocabulary");
+        assert!(
+            !body.contains(":::conflict"),
+            "and never marquee vocabulary"
+        );
     }
 
     /// The image case: a binary body round-trips as a document, byte-for-byte, and `resolve`
@@ -1188,7 +1555,18 @@ mod tests {
         .concat();
 
         let doc_id = new_doc_id();
-        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "sunset", &webp, Format::Avif).await;
+        let v1 = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "sunset",
+            &webp,
+            Format::Avif,
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -1206,12 +1584,38 @@ mod tests {
 
         // Diverge it: two different images from one parent. Keep-both, still no merge attempt.
         let other = [b"RIFF\x1a\x00\x00\x00WEBP".as_slice(), &[0x01, 0x02, 0x03]].concat();
-        let _a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &other, Format::Avif).await;
-        let _b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "sunset", &webp[..webp.len() - 1], Format::Avif).await;
+        let _a = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "sunset",
+            &other,
+            Format::Avif,
+        )
+        .await;
+        let _b = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "sunset",
+            &webp[..webp.len() - 1],
+            Format::Avif,
+        )
+        .await;
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         let r = resolve(&files, &keys, doc).await.unwrap();
-        assert_eq!(r.resolution, Resolution::Conflict, "two images diverge -> keep both");
+        assert_eq!(
+            r.resolution,
+            Resolution::Conflict,
+            "two images diverge -> keep both"
+        );
         assert!(doc.diverged());
     }
 
@@ -1231,22 +1635,92 @@ mod tests {
 
         // Two devices replace the same original with the SAME new image, same title.
         let doc_id = new_doc_id();
-        let v1 = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "pic", &img, Format::Avif).await;
-        let a = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "pic", &replacement, Format::Avif).await;
-        let b = save_fmt(&db, &key, &keys, &files, doc_id, vec![v1], "pic", &replacement, Format::Avif).await;
+        let v1 = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "pic",
+            &img,
+            Format::Avif,
+        )
+        .await;
+        let a = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "pic",
+            &replacement,
+            Format::Avif,
+        )
+        .await;
+        let b = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "pic",
+            &replacement,
+            Format::Avif,
+        )
+        .await;
         assert_ne!(a, b, "distinct versions on distinct saves");
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         assert_eq!(doc.heads.len(), 2, "the DAG truthfully holds both");
-        assert_eq!(doc.logical_heads.len(), 1, "same bytes + title -> not a real divergence");
+        assert_eq!(
+            doc.logical_heads.len(),
+            1,
+            "same bytes + title -> not a real divergence"
+        );
         assert!(!doc.diverged());
 
         // Same replacement bytes, DIFFERENT title -> a real difference, stays diverged.
         let doc2 = new_doc_id();
-        let w1 = save_fmt(&db, &key, &keys, &files, doc2, vec![], "pic", &img, Format::Avif).await;
-        save_fmt(&db, &key, &keys, &files, doc2, vec![w1], "sunset", &replacement, Format::Avif).await;
-        save_fmt(&db, &key, &keys, &files, doc2, vec![w1], "sunrise", &replacement, Format::Avif).await;
+        let w1 = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc2,
+            vec![],
+            "pic",
+            &img,
+            Format::Avif,
+        )
+        .await;
+        save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc2,
+            vec![w1],
+            "sunset",
+            &replacement,
+            Format::Avif,
+        )
+        .await;
+        save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc2,
+            vec![w1],
+            "sunrise",
+            &replacement,
+            Format::Avif,
+        )
+        .await;
         let view = materialize(&db, &keys).await.unwrap();
         assert_eq!(
             view.docs.get(&doc2).unwrap().logical_heads.len(),
@@ -1272,7 +1746,17 @@ mod tests {
         let real = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"real start").await;
         // Sibling claims a parent that was never written.
         let phantom = [0xAB; 32];
-        let orphan = save(&db, &key, &keys, &files, doc_id, vec![phantom], "t", b"orphan words").await;
+        let orphan = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![phantom],
+            "t",
+            b"orphan words",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -1298,16 +1782,40 @@ mod tests {
         let files = FileStore::memory();
 
         let other_doc = new_doc_id();
-        let alien = save(&db, &key, &keys, &files, other_doc, vec![], "other", b"other doc body").await;
+        let alien = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            other_doc,
+            vec![],
+            "other",
+            b"other doc body",
+        )
+        .await;
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"mine").await;
-        let child = save(&db, &key, &keys, &files, doc_id, vec![alien], "t", b"mine, edited").await;
+        let child = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![alien],
+            "t",
+            b"mine, edited",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         // v1 and child are both heads (child's only claimed parent lives in another doc).
-        assert_eq!(doc.versions.len(), 2, "the alien parent is not pulled into this doc");
+        assert_eq!(
+            doc.versions.len(),
+            2,
+            "the alien parent is not pulled into this doc"
+        );
         assert!(doc.heads.contains(&v1) && doc.heads.contains(&child));
         let r = resolve(&files, &keys, doc).await.unwrap();
         assert!(r.body.unwrap().contains("mine, edited"), "no words lost");
@@ -1325,20 +1833,54 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"base").await;
-        let v2 = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"level two").await;
-        let real = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"the real thing").await;
+        let v2 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"level two",
+        )
+        .await;
+        let real = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v2],
+            "t",
+            b"the real thing",
+        )
+        .await;
         // Each echo is an edit-then-revert (the only shape the no-op bounce lets through): the
         // parent differs, but the content lands back on a fork point. One reverts to v1's
         // content, one to v2's - distinct content, distinct fork depths, so they're not twins.
         let junk_a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"typo a").await;
         let _shallow = save(&db, &key, &keys, &files, doc_id, vec![junk_a], "t", b"base").await;
         let junk_b = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"typo b").await;
-        let _deep = save(&db, &key, &keys, &files, doc_id, vec![junk_b], "t", b"level two").await;
+        let _deep = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![junk_b],
+            "t",
+            b"level two",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         assert_eq!(doc.heads.len(), 3, "three live heads: real + two reverts");
-        assert_eq!(doc.logical_heads, vec![real], "both echoes fold; the real head stands");
+        assert_eq!(
+            doc.logical_heads,
+            vec![real],
+            "both echoes fold; the real head stands"
+        );
         assert!(!doc.diverged());
     }
 
@@ -1355,7 +1897,17 @@ mod tests {
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"base").await;
         // Five devices independently make the identical edit from v1: five twins.
         for _ in 0..5 {
-            save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"base, fixed").await;
+            save(
+                &db,
+                &key,
+                &keys,
+                &files,
+                doc_id,
+                vec![v1],
+                "t",
+                b"base, fixed",
+            )
+            .await;
         }
 
         let a = materialize(&db, &keys).await.unwrap();
@@ -1384,8 +1936,28 @@ mod tests {
         // Two roots (both genesis - no parents), then two children each merging both roots.
         let r1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"root one").await;
         let r2 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"root two").await;
-        let m1 = save(&db, &key, &keys, &files, doc_id, vec![r1, r2], "t", b"merge left").await;
-        let m2 = save(&db, &key, &keys, &files, doc_id, vec![r1, r2], "t", b"merge right").await;
+        let m1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![r1, r2],
+            "t",
+            b"merge left",
+        )
+        .await;
+        let m2 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![r1, r2],
+            "t",
+            b"merge right",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
@@ -1394,7 +1966,11 @@ mod tests {
         let mut expect = vec![m1, m2];
         expect.sort();
         assert_eq!(heads, expect);
-        assert_eq!(doc.fork_points(&m1, &m2).len(), 2, "two maximal common ancestors");
+        assert_eq!(
+            doc.fork_points(&m1, &m2).len(),
+            2,
+            "two maximal common ancestors"
+        );
         let r = resolve(&files, &keys, doc).await.unwrap();
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
@@ -1412,15 +1988,49 @@ mod tests {
 
         let sneaky = "notes on git:\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>>\n";
         let doc_id = new_doc_id();
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", sneaky.as_bytes()).await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "t",
+            sneaky.as_bytes(),
+        )
+        .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert_eq!(r.resolution, Resolution::Single);
-        assert_eq!(r.body.unwrap(), sneaky, "marker-laden prose survives verbatim");
+        assert_eq!(
+            r.body.unwrap(),
+            sneaky,
+            "marker-laden prose survives verbatim"
+        );
 
         // Now force a real conflict on top - must still contain both bodies' words.
-        let _a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", "one edit\n".as_bytes()).await;
-        let _b = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", "other edit\n".as_bytes()).await;
+        let _a = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            "one edit\n".as_bytes(),
+        )
+        .await;
+        let _b = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            "other edit\n".as_bytes(),
+        )
+        .await;
         let r2 = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert!(r2.body.unwrap().contains("one edit") || r2.resolution == Resolution::Conflict);
     }
@@ -1435,13 +2045,36 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"keep\nthis\n").await;
+        let v1 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "t",
+            b"keep\nthis\n",
+        )
+        .await;
         let _cleared = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"").await;
-        let _added = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"keep\nthis\nand more\n").await;
+        let _added = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"keep\nthis\nand more\n",
+        )
+        .await;
 
         let r = resolve_doc(&db, &keys, &files, &doc_id).await;
         assert!(r.body.is_some(), "a body was produced, no panic");
-        assert!(r.body.unwrap().contains("and more"), "the added words survive");
+        assert!(
+            r.body.unwrap().contains("and more"),
+            "the added words survive"
+        );
     }
 
     /// A fork off a MID-HISTORY version (not a current head) still diverges correctly.
@@ -1454,16 +2087,49 @@ mod tests {
 
         let doc_id = new_doc_id();
         let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"one\n").await;
-        let v2 = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one\ntwo\n").await;
-        let _v3 = save(&db, &key, &keys, &files, doc_id, vec![v2], "t", b"one\ntwo\nthree\n").await;
+        let v2 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"one\ntwo\n",
+        )
+        .await;
+        let _v3 = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v2],
+            "t",
+            b"one\ntwo\nthree\n",
+        )
+        .await;
         // Someone forks off v1, deep behind the current head v3.
-        let _alt = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one\nBRANCH\n").await;
+        let _alt = save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"one\nBRANCH\n",
+        )
+        .await;
 
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         assert!(doc.diverged(), "the deep fork is a real divergence");
         let body = resolve(&files, &keys, doc).await.unwrap().body.unwrap();
-        assert!(body.contains("three") && body.contains("BRANCH"), "both branches present");
+        assert!(
+            body.contains("three") && body.contains("BRANCH"),
+            "both branches present"
+        );
     }
 
     #[tokio::test]
@@ -1474,7 +2140,17 @@ mod tests {
         let files = FileStore::memory();
 
         let doc_id = new_doc_id();
-        save(&db, &key, &write_keys, &files, doc_id, vec![], "secret", b"x").await;
+        save(
+            &db,
+            &key,
+            &write_keys,
+            &files,
+            doc_id,
+            vec![],
+            "secret",
+            b"x",
+        )
+        .await;
 
         // A device that never got epoch 3 (revoked before, or adopted without the re-seal).
         let wrong_keys = EpochKeys::single(3, [1u8; 32]);

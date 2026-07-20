@@ -252,11 +252,7 @@ fn is_ogg_opus(input: &[u8]) -> bool {
 /// re-crushed: there is no production-quality pure-rust Opus *decoder*, so we cannot decode it to
 /// PCM and fit-to-cap it the way the other formats are. Documented honestly rather than papered
 /// over; the day a pure-rust decoder lands, this branch becomes a decode lane.
-fn passthrough_ogg_opus(
-    input: &[u8],
-    cap_bytes: u64,
-    max_ms: u64,
-) -> Result<Crushed, CrushError> {
+fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Crushed, CrushError> {
     let mut reader = PacketReader::new(Cursor::new(input));
     let map_ogg = |e: ogg::OggReadError| CrushError::Decode(format!("ogg parse failed: {e}"));
 
