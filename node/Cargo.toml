@@ -89,3 +89,18 @@ rav1d = { version = "1.1.0", default-features = false, features = [
 # Also used by the media tests to verify produced AVIF output. Kept pure-rust on
 # purpose (the `image` crate's `avif-native` feature would link dav1d, a C lib).
 avif-parse = "2"
+
+# --- video crush pipeline (src/video.rs) ---
+# Pure-rust WebM/Matroska demux + mux (EBML). Used to read the client's
+# AV1-in-WebM intermediary and to write our crushed WebM output.
+webm-iterable = "0.6"
+# Pure-rust Ogg container reader: extracts Opus packets from the client's
+# separate Ogg Opus audio blob for PASSTHROUGH into the WebM mux (never decoded).
+ogg = "0.9"
+# AV1 *encoder* for the crushed video output. Exactly the no-default-features
+# recipe ravif already uses in this tree (same version, zero new compilation),
+# which keeps the `asm` feature (and its nasm build dep) off.
+rav1e = { version = "0.8.1", default-features = false, features = ["threading"] }
+# APNG encoder for the transparent-and-silent output route. Already in the tree
+# as `image`'s PNG backend; adding it as a direct dep costs nothing.
+png = "0.18"

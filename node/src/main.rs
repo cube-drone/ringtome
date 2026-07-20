@@ -36,6 +36,7 @@ mod seal;
 mod store;
 mod sync;
 mod test_endpoints;
+mod video;
 
 use config::{Config, PublicConfig};
 use error::AppError;

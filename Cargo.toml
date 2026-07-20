@@ -12,3 +12,25 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = "debuginfo"
+
+# Dev builds optimize DEPENDENCIES while our own crates stay debug (fast compiles, full debug
+# info where we actually develop). The codec crates are pure pixel-math inner loops - rav1e in
+# true debug is 10-30x slower, which turns a seconds-long video crush into a 20-minute one and
+# would make every CI run crawl. One-time dependency rebuild, then cached.
+[profile.dev.package."*"]
+opt-level = 2
+
+# The dev profile leaves debug-assertions and overflow-checks ON even in package overrides, and
+# rav1e/rav1d run asserts and checked arithmetic in per-pixel inner loops - dropping them is a
+# measured ~10% on rav1e encode (the big encode win was tile parallelism, in video.rs). These two
+# crates only ever touch already-bomb-guarded pixel buffers, and release builds run without these
+# checks anyway.
+[profile.dev.package.rav1e]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+
+[profile.dev.package.rav1d]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
