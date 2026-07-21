@@ -13,12 +13,13 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::db::Db;
 use anyhow::anyhow;
+use anyhow::Context;
 use ringtome_proto::registry::{doc_format, entry_type, service};
-use ringtome_proto::{DocHeaderPlain, Payload, PrivateRecord, SigningKey};
+use ringtome_proto::{DocHeaderPlain, Payload, PrivateRecord, SignedEntry, SigningKey};
 
 use crate::error::AppError;
 use crate::files::FileStore;
-use crate::record::private::{decrypt_doc_header, encrypt_doc_header, EpochKeys};
+use crate::record::private::{encrypt_doc_header, open_doc_header, EpochKeys, Opened};
 
 /// A document's body format. Plaintext is the default (absent on the wire); the enum grows
 /// additively. Governs how the body is rendered and, for the text formats, merged.
@@ -385,40 +386,268 @@ pub fn new_doc_id() -> [u8; 16] {
     id
 }
 
-/// Fold every stored doc-header we can decrypt into per-document DAGs. Recomputed per read,
-/// same disposable-view discipline as the private store.
-pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
-    let entries = crate::record::imaol::entries_of_type(
+// ---------------------------------------------------------------------------------------------
+// The persisted fold (doc_versions). Facts land in SQL; DAG judgment stays above, in Rust.
+//
+// `doc_versions.parents` codec: a canonical CBOR array of 32-byte byte strings - the same v0
+// subset the proto crate speaks. MAX_PARENTS is 16, so the array header is always the single
+// byte 0x80|len; each item is bstr(32) = 0x58 0x20 + the hash.
+
+fn encode_parents(parents: &[[u8; 32]]) -> Vec<u8> {
+    debug_assert!(parents.len() <= DocHeaderPlain::MAX_PARENTS);
+    let mut out = Vec::with_capacity(1 + parents.len() * 34);
+    out.push(0x80 | parents.len() as u8);
+    for parent in parents {
+        out.push(0x58);
+        out.push(32);
+        out.extend_from_slice(parent);
+    }
+    out
+}
+
+fn decode_parents(bytes: &[u8]) -> Result<Vec<[u8; 32]>, AppError> {
+    let corrupt = || AppError::Internal(anyhow!("corrupt parents CBOR in doc_versions"));
+    let (&head, mut rest) = bytes.split_first().ok_or_else(corrupt)?;
+    if head & 0xE0 != 0x80 || head & 0x1F > 23 {
+        return Err(corrupt());
+    }
+    let mut parents = Vec::with_capacity((head & 0x1F) as usize);
+    for _ in 0..head & 0x1F {
+        let (item, tail) = rest.split_at_checked(34).ok_or_else(corrupt)?;
+        if item[0] != 0x58 || item[1] != 32 {
+            return Err(corrupt());
+        }
+        parents.push(item[2..].try_into().expect("34-byte split holds 32 bytes"));
+        rest = tail;
+    }
+    if !rest.is_empty() {
+        return Err(corrupt());
+    }
+    Ok(parents)
+}
+
+/// Fold one decrypted header into `doc_versions`. A version is an immutable fact and its entry
+/// hash is its identity, so the primary key dedups refolds - INSERT OR IGNORE, no LWW - which
+/// is also what makes concurrent catch-ups benign.
+async fn fold_header(
+    db: &Db,
+    signed: &SignedEntry,
+    header: &DocHeaderPlain,
+) -> Result<(), AppError> {
+    db.execute(
+        "INSERT OR IGNORE INTO doc_versions
+           (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
+            duration_ms, thumb_hash, preview_hash, timestamp_ms, seq, author_pubkey)
+         VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
+                 :width, :height, :duration_ms, :thumb_hash, :preview_hash, :timestamp_ms,
+                 :seq, :author_pubkey)",
+        turso::named_params! {
+            ":entry_hash": signed.hash().as_slice(),
+            ":doc_id": header.doc_id.as_slice(),
+            ":parents": encode_parents(&header.parents),
+            ":title": header.title.as_str(),
+            ":body_hash": header.body_hash.as_slice(),
+            ":file_hash": header.file_hash.as_slice(),
+            ":format": header.format.map(|f| f as i64),
+            ":width": header.width.map(i64::from),
+            ":height": header.height.map(i64::from),
+            ":duration_ms": header.duration_ms.map(|d| d as i64),
+            ":thumb_hash": header.thumb_hash.map(|h| h.to_vec()),
+            ":preview_hash": header.preview_hash.map(|h| h.to_vec()),
+            ":timestamp_ms": signed.entry().timestamp_ms,
+            ":seq": signed.entry().seq as i64,
+            ":author_pubkey": hex::encode(signed.entry().chain.author),
+        },
+    )
+    .await
+    .context("folding doc version")
+    .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// Catch `doc_versions` up to the notes chains: fetch headers past each chain's watermark,
+/// open + fold each, advance watermarks. Same catch-up-on-read discipline and stall rule as the
+/// private store (record::private's module doc is the doctrine): a watermark never passes a
+/// header this key-set cannot open, so later reads retry it; openable headers past a stall
+/// still fold (idempotently) and stay visible. Returns how many fetched headers would not open,
+/// which - because watermarks never pass one - equals the count across the whole stored log.
+async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
+    let entries = crate::record::imaol::entries_past_watermarks(
         db,
         service::DOCUMENTS_PRIVATE,
         entry_type::DOC_HEADER,
     )
     .await?;
 
-    let mut view = DocumentsView::default();
+    let mut by_author: BTreeMap<String, Vec<SignedEntry>> = BTreeMap::new();
     for signed in entries {
-        let Payload::Inline(payload) = &signed.entry().payload else {
-            continue;
-        };
-        let Ok(record) = PrivateRecord::decode(payload) else {
-            tracing::warn!("skipping undecodable doc-header payload");
-            continue;
-        };
-        match decrypt_doc_header(&record, keys) {
-            Some(header) => {
-                let doc = view.docs.entry(header.doc_id).or_default();
-                doc.versions.insert(
-                    *signed.hash(),
-                    Version {
-                        hash: *signed.hash(),
-                        header,
-                        timestamp_ms: signed.entry().timestamp_ms,
-                        author: signed.entry().chain.author,
-                    },
-                );
+        by_author
+            .entry(hex::encode(signed.entry().chain.author))
+            .or_default()
+            .push(signed);
+    }
+
+    let mut undecryptable = 0usize;
+    for (author_hex, chain) in by_author {
+        let mut advance_to: Option<u64> = None;
+        let mut stalled = false;
+        for signed in chain {
+            let seq = signed.entry().seq;
+            let record = match &signed.entry().payload {
+                Payload::Inline(payload) => match PrivateRecord::decode(payload) {
+                    Ok(record) => Some(record),
+                    Err(_) => {
+                        tracing::warn!(seq, "skipping undecodable doc-header payload");
+                        None
+                    }
+                },
+                _ => None,
+            };
+            let opened = match record {
+                Some(record) => open_doc_header(&record, keys),
+                None => Opened::Garbage, // wrong shape from a buggy writer: never improves
+            };
+            match opened {
+                Opened::Plain(header) => {
+                    fold_header(db, &signed, &header).await?;
+                    if !stalled {
+                        advance_to = Some(seq);
+                    }
+                }
+                Opened::Garbage => {
+                    if !stalled {
+                        advance_to = Some(seq);
+                    }
+                }
+                Opened::NoKey => {
+                    undecryptable += 1;
+                    if !stalled {
+                        stalled = true;
+                        tracing::warn!(
+                            author = %author_hex,
+                            seq,
+                            "doc-header fold stalled: no key for this entry's epoch; \
+                             will retry (adoption resealing may deliver it)"
+                        );
+                    }
+                }
             }
-            None => view.undecryptable += 1,
         }
+        if let Some(folded_seq) = advance_to {
+            crate::record::imaol::advance_watermark(
+                db,
+                &author_hex,
+                service::DOCUMENTS_PRIVATE,
+                folded_seq,
+            )
+            .await?;
+        }
+    }
+    Ok(undecryptable)
+}
+
+/// The drop half of rebuild (`imaol::rebuild_views`): wipe the persisted document view. The
+/// next keyed materialize refolds it from the log.
+pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
+    db.execute("DELETE FROM doc_versions", ())
+        .await
+        .context("clearing doc versions")
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// Row shape of the doc_versions read, in SELECT order.
+type VersionRow = (
+    Vec<u8>,         // entry_hash
+    Vec<u8>,         // doc_id
+    Vec<u8>,         // parents (CBOR)
+    String,          // title
+    Vec<u8>,         // body_hash
+    Vec<u8>,         // file_hash
+    Option<i64>,     // format
+    Option<i64>,     // width
+    Option<i64>,     // height
+    Option<i64>,     // duration_ms
+    Option<Vec<u8>>, // thumb_hash
+    Option<Vec<u8>>, // preview_hash
+    i64,             // timestamp_ms
+    i64,             // seq (folded fact; the DAG doesn't use it)
+    String,          // author_pubkey
+);
+
+/// The notes view: catch the persisted fold up to the chains, then thread every stored version
+/// into per-document DAGs. All DAG judgment - heads, twin/echo folding, merge rungs - happens
+/// here in Rust over the fetched facts; SQL never holds an opinion.
+pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
+    let undecryptable = catch_up(db, keys).await?;
+
+    let rows: Vec<VersionRow> = db
+        .fetch_all(
+            "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
+                    height, duration_ms, thumb_hash, preview_hash, timestamp_ms, seq,
+                    author_pubkey
+             FROM doc_versions",
+            (),
+        )
+        .await
+        .context("reading doc versions")
+        .map_err(AppError::Internal)?;
+
+    fn hash32(bytes: &[u8]) -> Result<[u8; 32], AppError> {
+        bytes
+            .try_into()
+            .map_err(|_| AppError::Internal(anyhow!("corrupt 32-byte column in doc_versions")))
+    }
+
+    let mut view = DocumentsView {
+        undecryptable,
+        ..Default::default()
+    };
+    for (
+        entry_hash,
+        doc_id,
+        parents,
+        title,
+        body_hash,
+        file_hash,
+        format,
+        width,
+        height,
+        duration_ms,
+        thumb_hash,
+        preview_hash,
+        timestamp_ms,
+        _seq,
+        author_hex,
+    ) in rows
+    {
+        let hash = hash32(&entry_hash)?;
+        let doc_id: [u8; 16] = doc_id
+            .try_into()
+            .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_versions")))?;
+        let author = hash32(&hex::decode(&author_hex).unwrap_or_default())?;
+        let header = DocHeaderPlain {
+            doc_id,
+            parents: decode_parents(&parents)?,
+            file_hash: hash32(&file_hash)?,
+            body_hash: hash32(&body_hash)?,
+            title,
+            format: format.map(|f| f as u64),
+            width: width.map(|w| w as u32),
+            height: height.map(|h| h as u32),
+            duration_ms: duration_ms.map(|d| d as u64),
+            thumb_hash: thumb_hash.as_deref().map(hash32).transpose()?,
+            preview_hash: preview_hash.as_deref().map(hash32).transpose()?,
+        };
+        view.docs.entry(doc_id).or_default().versions.insert(
+            hash,
+            Version {
+                hash,
+                header,
+                timestamp_ms,
+                author,
+            },
+        );
     }
 
     // Heads: versions no other version of the same doc names as a parent. A parent hash we
@@ -2155,5 +2384,86 @@ mod tests {
         let view = materialize(&db, &wrong_keys).await.unwrap();
         assert!(view.docs.is_empty());
         assert_eq!(view.undecryptable, 1);
+    }
+
+    /// The persisted fold: one `doc_versions` row per version, the watermark stops refetching,
+    /// and a forced refold over the populated table (watermarks wiped, rows kept - the shape
+    /// two concurrent catch-ups produce) changes nothing: INSERT OR IGNORE is the idempotence.
+    #[tokio::test]
+    async fn persisted_fold_is_idempotent_and_watermarked() {
+        let db = test_db().await;
+        let key = signer(1);
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"one").await;
+        let v2 = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one two").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        assert_eq!(view.docs.get(&doc_id).unwrap().heads, vec![v2]);
+        assert_eq!(
+            crate::record::imaol::view_watermark(&db, &author_hex, service::DOCUMENTS_PRIVATE)
+                .await,
+            Some(1),
+            "both headers folded, watermark at the chain head"
+        );
+
+        async fn rows(db: &Db) -> Vec<(Vec<u8>,)> {
+            db.fetch_all(
+                "SELECT entry_hash FROM doc_versions ORDER BY entry_hash",
+                (),
+            )
+            .await
+            .unwrap()
+        }
+        let before = rows(&db).await;
+        assert_eq!(before.len(), 2, "one row per version");
+
+        crate::record::imaol::reset_watermarks_for_test(&db).await;
+        let again = materialize(&db, &keys).await.unwrap();
+        assert_eq!(again.docs.get(&doc_id).unwrap().heads, vec![v2]);
+        assert_eq!(rows(&db).await, before, "refold changed nothing");
+        assert_eq!(
+            crate::record::imaol::view_watermark(&db, &author_hex, service::DOCUMENTS_PRIVATE)
+                .await,
+            Some(1)
+        );
+    }
+
+    /// The stall rule for headers: a key-set that can't open the chain folds nothing and leaves
+    /// no watermark, so the read that CAN open it (the key arrived via adoption resealing)
+    /// starts from the top and completes.
+    #[tokio::test]
+    async fn stalled_header_fold_recovers_when_the_key_arrives() {
+        let db = test_db().await;
+        let key = signer(1);
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        let keys = EpochKeys::single(3, [9u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        save(&db, &key, &keys, &files, doc_id, vec![], "t", b"words").await;
+
+        let wrong_keys = EpochKeys::single(3, [1u8; 32]);
+        let view = materialize(&db, &wrong_keys).await.unwrap();
+        assert!(view.docs.is_empty());
+        assert_eq!(view.undecryptable, 1);
+        assert_eq!(
+            crate::record::imaol::view_watermark(&db, &author_hex, service::DOCUMENTS_PRIVATE)
+                .await,
+            None,
+            "stalled at the chain's first entry: no watermark row at all"
+        );
+
+        let view = materialize(&db, &keys).await.unwrap();
+        assert_eq!(view.docs.get(&doc_id).unwrap().versions.len(), 1);
+        assert_eq!(view.undecryptable, 0);
+        assert_eq!(
+            crate::record::imaol::view_watermark(&db, &author_hex, service::DOCUMENTS_PRIVATE)
+                .await,
+            Some(0)
+        );
     }
 }

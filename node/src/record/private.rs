@@ -9,14 +9,23 @@
 //! forever and nothing after. Adoption is the reverse gesture: the granting node re-seals every
 //! historical epoch key to the newcomer, so a new device materializes the full private state.
 //!
-//! Views are computed in memory on demand, never persisted: the entries table already holds the
-//! ciphertext, private state is small (contact names, follows, settings), and a decrypted view
-//! on disk would be a second secret to manage for zero read-path benefit at this scale.
+//! Views persist now (PROJECT_PLAN, The Substrate: "Views persist now"): the decrypted state
+//! folds into ordinary tables (`private_registers`, `private_set_elements`) in the per-user
+//! database, which is itself encrypted at rest - so a persisted view is no longer a second
+//! secret. Folding is **catch-up-on-read**, not fold-on-ingest: decrypting takes epoch keys,
+//! which the read paths hold and sync ingest deliberately does not. Each `materialize`
+//! fast-forwards from a per-`(author, service)` watermark (`view_watermarks`), folds what it
+//! can open with statement-atomic stamp-compare upserts (the `apply_profile_set` discipline, so
+//! concurrent catch-ups are benign), and advances the watermark. **The stall rule**: a
+//! watermark never advances past an entry this key-set cannot decrypt - an epoch key may still
+//! arrive via adoption resealing, so every later read retries from the stall. Entries past the
+//! stall are still folded when they open (idempotent, just re-attempted per read), which keeps
+//! the old decrypt-everything semantics exact for mixed-era readers.
 
 use std::collections::BTreeMap;
 
 use crate::db::Db;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use ringtome_proto::registry::{entry_type, service};
@@ -328,22 +337,66 @@ pub fn encrypt_record(
     })
 }
 
-/// Decrypt a record with whichever key of its epoch authenticates. `None` means we hold no
-/// working key for that epoch - the normal state of a revoked-then-rotated-away member looking
-/// at the future, or a newcomer not yet re-sealed into the past.
-pub fn decrypt_record(record: &PrivateRecord, keys: &EpochKeys) -> Option<PrivatePlain> {
+/// The outcome of opening one encrypted record against a key-set. The persisted-view fold
+/// needs a distinction a plain `Option` can't carry: `NoKey` stalls the fold watermark (an
+/// epoch key may still arrive via adoption resealing - retry forever), while `Garbage`
+/// (a key authenticated, but the plaintext doesn't decode) is skipped and passed - stored
+/// bytes never improve.
+pub(crate) enum Opened<T> {
+    Plain(T),
+    NoKey,
+    Garbage,
+}
+
+/// Try every key of the record's epoch; on the one that authenticates, decode the plaintext.
+fn open_with<T>(
+    record: &PrivateRecord,
+    keys: &EpochKeys,
+    aad: &[u8],
+    decode: impl Fn(&[u8]) -> Option<T>,
+) -> Opened<T> {
     for key in keys.for_epoch(record.epoch) {
         if let Ok(plaintext) = cipher(key).decrypt(
             XNonce::from_slice(&record.nonce),
             chacha20poly1305::aead::Payload {
                 msg: &record.ciphertext,
-                aad: RECORD_AAD,
+                aad,
             },
         ) {
-            return PrivatePlain::decode(&plaintext).ok();
+            return match decode(&plaintext) {
+                Some(plain) => Opened::Plain(plain),
+                None => Opened::Garbage,
+            };
         }
     }
-    None
+    Opened::NoKey
+}
+
+/// Open one private record. `NoKey` is the normal state of a revoked-then-rotated-away member
+/// looking at the future, or a newcomer not yet re-sealed into the past.
+pub(crate) fn open_record(record: &PrivateRecord, keys: &EpochKeys) -> Opened<PrivatePlain> {
+    open_with(record, keys, RECORD_AAD, |p| PrivatePlain::decode(p).ok())
+}
+
+/// Open one doc header (its own AAD domain - see [`encrypt_doc_header`]).
+pub(crate) fn open_doc_header(
+    record: &PrivateRecord,
+    keys: &EpochKeys,
+) -> Opened<ringtome_proto::DocHeaderPlain> {
+    open_with(record, keys, DOC_AAD, |p| {
+        ringtome_proto::DocHeaderPlain::decode(p).ok()
+    })
+}
+
+/// Decrypt a record with whichever key of its epoch authenticates; `None` on no working key
+/// (or an undecodable plaintext). Production reads go through [`open_record`], which keeps the
+/// distinction; this collapse survives for the crypto round-trip tests.
+#[cfg(test)]
+pub(crate) fn decrypt_record(record: &PrivateRecord, keys: &EpochKeys) -> Option<PrivatePlain> {
+    match open_record(record, keys) {
+        Opened::Plain(plain) => Some(plain),
+        Opened::NoKey | Opened::Garbage => None,
+    }
 }
 
 /// Encrypt one doc header under an epoch key, into the same `{epoch, nonce, ciphertext}`
@@ -375,25 +428,6 @@ pub fn encrypt_doc_header(
         nonce,
         ciphertext,
     })
-}
-
-/// Decrypt a doc header with whichever key of its epoch authenticates; `None` on no working key.
-pub fn decrypt_doc_header(
-    record: &PrivateRecord,
-    keys: &EpochKeys,
-) -> Option<ringtome_proto::DocHeaderPlain> {
-    for key in keys.for_epoch(record.epoch) {
-        if let Ok(plaintext) = cipher(key).decrypt(
-            XNonce::from_slice(&record.nonce),
-            chacha20poly1305::aead::Payload {
-                msg: &record.ciphertext,
-                aad: DOC_AAD,
-            },
-        ) {
-            return ringtome_proto::DocHeaderPlain::decode(&plaintext).ok();
-        }
-    }
-    None
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -482,7 +516,7 @@ pub async fn write_record(
 }
 
 // ---------------------------------------------------------------------------------------------
-// The in-memory view
+// The persisted view (the fold rules live in the module doc above)
 
 /// LWW stamp, same total order the profile view uses: claimed timestamp, then seq, then hash.
 type Stamp = (i64, u64, [u8; 32]);
@@ -536,64 +570,226 @@ impl PrivateView {
             })
             .collect()
     }
-
-    fn fold(&mut self, plain: PrivatePlain, stamp: Stamp) {
-        match plain.kind {
-            PrivateKind::Register => {
-                let slot = (plain.collection, plain.key);
-                let value = plain.value.unwrap_or_default();
-                match self.registers.get(&slot) {
-                    Some((_, existing)) if *existing >= stamp => {}
-                    _ => {
-                        self.registers.insert(slot, (value, stamp));
-                    }
-                }
-            }
-            PrivateKind::SetAdd | PrivateKind::SetRemove => {
-                let present = plain.kind == PrivateKind::SetAdd;
-                let slot = (plain.collection, plain.key);
-                match self.sets.get(&slot) {
-                    Some((_, _, existing)) if *existing >= stamp => {}
-                    _ => {
-                        self.sets.insert(slot, (present, plain.value, stamp));
-                    }
-                }
-            }
-        }
-    }
 }
 
-/// Fold every stored private record we can decrypt into a fresh view. Recomputed per read:
-/// private state is small by design, and this is exactly the disposable-view discipline with the
-/// persistence dial at zero.
-pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppError> {
-    let records = crate::record::imaol::entries_of_type(
-        db,
-        service::GENERAL_PRIVATE,
-        entry_type::PRIVATE_RECORD,
-    )
-    .await?;
-
-    let mut view = PrivateView::default();
-    for signed in records {
-        let Payload::Inline(payload) = &signed.entry().payload else {
-            continue;
-        };
-        let Ok(record) = PrivateRecord::decode(payload) else {
-            tracing::warn!("skipping undecodable private-record payload");
-            continue;
-        };
-        match decrypt_record(&record, keys) {
-            Some(plain) => {
-                let stamp = (
-                    signed.entry().timestamp_ms,
-                    signed.entry().seq,
-                    *signed.hash(),
-                );
-                view.fold(plain, stamp);
-            }
-            None => view.undecryptable += 1,
+/// Fold one decrypted record into the persisted tables. The LWW judgment is the statement's
+/// WHERE clause - the same statement-atomic stamp-compare upsert as `imaol::apply_profile_set`,
+/// so a rebuild replaying old entries can race a live catch-up and the row stays monotone in
+/// the stamp tuple regardless of interleaving.
+async fn fold_record(
+    db: &Db,
+    service_id: u32,
+    signed: &SignedEntry,
+    plain: PrivatePlain,
+) -> Result<(), AppError> {
+    // The arms await individually: each generic `execute` call is its own future type.
+    let folded = match plain.kind {
+        PrivateKind::Register => {
+            db.execute(
+                "INSERT INTO private_registers
+               (service, collection, key, value, timestamp_ms, seq, entry_hash)
+             VALUES (:service, :collection, :key, :value, :timestamp_ms, :seq, :entry_hash)
+             ON CONFLICT(service, collection, key) DO UPDATE SET
+               value = excluded.value,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (private_registers.timestamp_ms, private_registers.seq,
+                    private_registers.entry_hash)",
+                turso::named_params! {
+                    ":service": i64::from(service_id),
+                    ":collection": plain.collection,
+                    ":key": plain.key,
+                    // BLOB column: bind bytes, not Text
+                    ":value": plain.value.map(String::into_bytes),
+                    ":timestamp_ms": signed.entry().timestamp_ms,
+                    ":seq": signed.entry().seq as i64,
+                    ":entry_hash": signed.hash().as_slice(),
+                },
+            )
+            .await
         }
+        PrivateKind::SetAdd | PrivateKind::SetRemove => {
+            db.execute(
+                "INSERT INTO private_set_elements
+               (service, collection, element, present, value, timestamp_ms, seq, entry_hash)
+             VALUES (:service, :collection, :element, :present, :value, :timestamp_ms, :seq,
+                     :entry_hash)
+             ON CONFLICT(service, collection, element) DO UPDATE SET
+               present = excluded.present,
+               value = excluded.value,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (private_set_elements.timestamp_ms, private_set_elements.seq,
+                    private_set_elements.entry_hash)",
+                turso::named_params! {
+                    ":service": i64::from(service_id),
+                    ":collection": plain.collection,
+                    ":element": plain.key,
+                    ":present": i64::from(plain.kind == PrivateKind::SetAdd),
+                    // BLOB column: bind bytes, not Text
+                    ":value": plain.value.map(String::into_bytes),
+                    ":timestamp_ms": signed.entry().timestamp_ms,
+                    ":seq": signed.entry().seq as i64,
+                    ":entry_hash": signed.hash().as_slice(),
+                },
+            )
+            .await
+        }
+    };
+    folded
+        .context("folding private record into view")
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// Catch the persisted tables up to one service's chains: fetch entries past each chain's
+/// watermark, open + fold each, advance watermarks (stall rule in the module doc). Returns how
+/// many fetched records this key-set could not open - which, because a watermark never passes
+/// an unopenable record, equals the count across the whole stored log.
+async fn catch_up(db: &Db, keys: &EpochKeys, service_id: u32) -> Result<u64, AppError> {
+    let entries =
+        crate::record::imaol::entries_past_watermarks(db, service_id, entry_type::PRIVATE_RECORD)
+            .await?;
+
+    let mut by_author: BTreeMap<String, Vec<SignedEntry>> = BTreeMap::new();
+    for signed in entries {
+        by_author
+            .entry(hex::encode(signed.entry().chain.author))
+            .or_default()
+            .push(signed);
+    }
+
+    let mut undecryptable = 0u64;
+    for (author_hex, chain) in by_author {
+        let mut advance_to: Option<u64> = None;
+        let mut stalled = false;
+        for signed in chain {
+            let seq = signed.entry().seq;
+            let record = match &signed.entry().payload {
+                Payload::Inline(payload) => match PrivateRecord::decode(payload) {
+                    Ok(record) => Some(record),
+                    Err(_) => {
+                        tracing::warn!(seq, "skipping undecodable private-record payload");
+                        None
+                    }
+                },
+                _ => None,
+            };
+            let opened = match record {
+                Some(record) => open_record(&record, keys),
+                None => Opened::Garbage, // wrong shape from a buggy writer: never improves
+            };
+            match opened {
+                Opened::Plain(plain) => {
+                    fold_record(db, service_id, &signed, plain).await?;
+                    if !stalled {
+                        advance_to = Some(seq);
+                    }
+                }
+                Opened::Garbage => {
+                    if !stalled {
+                        advance_to = Some(seq);
+                    }
+                }
+                Opened::NoKey => {
+                    undecryptable += 1;
+                    if !stalled {
+                        stalled = true;
+                        tracing::warn!(
+                            author = %author_hex,
+                            seq,
+                            "private fold stalled: no key for this entry's epoch; \
+                             will retry (adoption resealing may deliver it)"
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(folded_seq) = advance_to {
+            crate::record::imaol::advance_watermark(db, &author_hex, service_id, folded_seq)
+                .await?;
+        }
+    }
+    Ok(undecryptable)
+}
+
+/// The drop half of rebuild (`imaol::rebuild_views`): wipe the persisted private tables; the
+/// next keyed materialize refolds them from the log.
+pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
+    for sql in [
+        "DELETE FROM private_registers",
+        "DELETE FROM private_set_elements",
+    ] {
+        db.execute(sql, ())
+            .await
+            .context("clearing private view tables")
+            .map_err(AppError::Internal)?;
+    }
+    Ok(())
+}
+
+/// Register row shape, in SELECT order: collection, key, value, timestamp_ms, seq, entry_hash.
+type RegisterRow = (String, String, Option<Vec<u8>>, i64, i64, Vec<u8>);
+/// Set-element row shape: collection, element, present, value, timestamp_ms, seq, entry_hash.
+type SetElementRow = (String, String, i64, Option<Vec<u8>>, i64, i64, Vec<u8>);
+
+/// The private store's view: catch the persisted tables up to the chains, then read them back.
+pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppError> {
+    let undecryptable = catch_up(db, keys, service::GENERAL_PRIVATE).await?;
+    let mut view = PrivateView {
+        undecryptable,
+        ..Default::default()
+    };
+
+    fn stamp(timestamp_ms: i64, seq: i64, hash: Vec<u8>) -> Result<Stamp, AppError> {
+        let hash: [u8; 32] = hash
+            .try_into()
+            .map_err(|_| AppError::Internal(anyhow!("corrupt entry_hash in private view row")))?;
+        Ok((timestamp_ms, seq as u64, hash))
+    }
+    let utf8 = |v: Vec<u8>| String::from_utf8_lossy(&v).into_owned();
+
+    let registers: Vec<RegisterRow> = db
+        .fetch_all(
+            "SELECT collection, key, value, timestamp_ms, seq, entry_hash
+             FROM private_registers WHERE service = ?1",
+            (i64::from(service::GENERAL_PRIVATE),),
+        )
+        .await
+        .context("reading private registers")
+        .map_err(AppError::Internal)?;
+    for (collection, key, value, timestamp_ms, seq, hash) in registers {
+        view.registers.insert(
+            (collection, key),
+            (
+                value.map(utf8).unwrap_or_default(),
+                stamp(timestamp_ms, seq, hash)?,
+            ),
+        );
+    }
+
+    let elements: Vec<SetElementRow> = db
+        .fetch_all(
+            "SELECT collection, element, present, value, timestamp_ms, seq, entry_hash
+             FROM private_set_elements WHERE service = ?1",
+            (i64::from(service::GENERAL_PRIVATE),),
+        )
+        .await
+        .context("reading private set elements")
+        .map_err(AppError::Internal)?;
+    for (collection, element, present, value, timestamp_ms, seq, hash) in elements {
+        view.sets.insert(
+            (collection, element),
+            (
+                present != 0,
+                value.map(utf8),
+                stamp(timestamp_ms, seq, hash)?,
+            ),
+        );
     }
     Ok(view)
 }
@@ -784,9 +980,14 @@ mod tests {
         assert_eq!(a_view.registers_in("contacts").len(), 2);
 
         // B holds only epoch 0: the pre-rotation record opens, the post-rotation one does not.
-        let b_keys = unseal_epoch_keys(&db, &b_leaf, &b_enc).await.unwrap();
+        // B reads from its OWN replica of the same chains - in production every member's node
+        // folds its own per-user DB with its own keys; two key-sets never share one folded view
+        // (A's fold above already persisted everything A could open).
+        let b_db = test_db().await;
+        crate::record::imaol::clone_entries_for_test(&db, &b_db).await;
+        let b_keys = unseal_epoch_keys(&b_db, &b_leaf, &b_enc).await.unwrap();
         assert_eq!(b_keys.current().unwrap().0, 0);
-        let b_view = materialize(&db, &b_keys).await.unwrap();
+        let b_view = materialize(&b_db, &b_keys).await.unwrap();
         let names: Vec<String> = b_view
             .registers_in("contacts")
             .into_iter()
@@ -855,5 +1056,125 @@ mod tests {
         let last = record.ciphertext.len() - 1;
         record.ciphertext[last] ^= 0xff;
         assert!(decrypt_record(&record, &keys).is_none());
+    }
+
+    /// The watermark does its job: the first materialize folds and advances; a second call
+    /// fetches nothing, refolds nothing, and the persisted rows are untouched. And a forced
+    /// refold over already-populated tables (watermarks wiped, rows kept - the shape two
+    /// concurrent catch-ups produce) changes nothing: the stamp-compare upsert is idempotent.
+    #[tokio::test]
+    async fn watermark_advances_and_refolds_are_idempotent() {
+        let db = test_db().await;
+        let key = signer(7);
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        let keys = EpochKeys::single(0, [8u8; 32]);
+
+        write_record(
+            &db,
+            &key,
+            &keys,
+            &plain_register("config", "theme", "hotdog"),
+        )
+        .await
+        .unwrap();
+        write_record(
+            &db,
+            &key,
+            &keys,
+            &plain_register("config", "theme", "plain"),
+        )
+        .await
+        .unwrap();
+
+        let view = materialize(&db, &keys).await.unwrap();
+        assert_eq!(view.registers_in("config")[0].value, "plain");
+        assert_eq!(
+            crate::record::imaol::view_watermark(&db, &author_hex, service::GENERAL_PRIVATE).await,
+            Some(1),
+            "both entries folded, watermark at the chain head"
+        );
+
+        type RegRow = (String, String, Option<Vec<u8>>, i64, i64, Vec<u8>);
+        async fn rows(db: &Db) -> Vec<RegRow> {
+            db.fetch_all(
+                "SELECT collection, key, value, timestamp_ms, seq, entry_hash
+                 FROM private_registers ORDER BY collection, key",
+                (),
+            )
+            .await
+            .unwrap()
+        }
+        let before = rows(&db).await;
+        assert_eq!(before.len(), 1, "LWW: one row per register");
+
+        // Second materialize: nothing new to fold, identical view and tables.
+        let again = materialize(&db, &keys).await.unwrap();
+        assert_eq!(again.registers_in("config")[0].value, "plain");
+        assert_eq!(rows(&db).await, before);
+        assert_eq!(
+            crate::record::imaol::view_watermark(&db, &author_hex, service::GENERAL_PRIVATE).await,
+            Some(1)
+        );
+
+        // Forced double-fold: same entries over the same rows land identically.
+        crate::record::imaol::reset_watermarks_for_test(&db).await;
+        materialize(&db, &keys).await.unwrap();
+        assert_eq!(rows(&db).await, before);
+    }
+
+    /// The stall rule end to end: a record under an epoch this reader doesn't hold pins the
+    /// watermark BEFORE it (later reads retry), while records past it that DO open stay
+    /// visible; when the missing key arrives (adoption resealing), the fold completes.
+    #[tokio::test]
+    async fn watermark_stalls_on_undecryptable_and_recovers_when_the_key_arrives() {
+        let db = test_db().await;
+        let key = signer(9);
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        let (k0, k1) = ([1u8; 32], [2u8; 32]);
+        let era0 = EpochKeys::single(0, k0);
+        let era1 = EpochKeys::single(1, k1);
+
+        // seq 0 and 2 under epoch 0, seq 1 under epoch 1.
+        write_record(&db, &key, &era0, &plain_register("c", "before", "x"))
+            .await
+            .unwrap();
+        write_record(&db, &key, &era1, &plain_register("c", "hidden", "y"))
+            .await
+            .unwrap();
+        write_record(&db, &key, &era0, &plain_register("c", "after", "z"))
+            .await
+            .unwrap();
+
+        // A reader holding only epoch 0, twice (the second call is the retry).
+        for _ in 0..2 {
+            let view = materialize(&db, &era0).await.unwrap();
+            let names: Vec<String> = view.registers_in("c").into_iter().map(|r| r.key).collect();
+            assert_eq!(
+                names,
+                vec!["after", "before"],
+                "everything openable is visible, even past the stall"
+            );
+            assert_eq!(
+                view.undecryptable, 1,
+                "counted once per read, never inflated"
+            );
+            assert_eq!(
+                crate::record::imaol::view_watermark(&db, &author_hex, service::GENERAL_PRIVATE)
+                    .await,
+                Some(0),
+                "the watermark holds before the sealed entry"
+            );
+        }
+
+        // The epoch-1 key arrives: the stalled entry folds and the watermark completes.
+        let mut both = EpochKeys::single(0, k0);
+        both.insert(1, k1);
+        let view = materialize(&db, &both).await.unwrap();
+        assert_eq!(view.registers_in("c").len(), 3);
+        assert_eq!(view.undecryptable, 0);
+        assert_eq!(
+            crate::record::imaol::view_watermark(&db, &author_hex, service::GENERAL_PRIVATE).await,
+            Some(2)
+        );
     }
 }

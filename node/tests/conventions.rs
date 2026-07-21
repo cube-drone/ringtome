@@ -29,6 +29,12 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.
         ("entries", vec!["record/imaol.rs", "net/sync.rs"]),
         ("profile_view", vec!["record/imaol.rs"]),
+        // persisted materialized views: each fold's SQL lives with the code
+        // that owns the decrypted domain; the shared watermark bookkeeping lives in imaol.
+        ("doc_versions", vec!["record/documents.rs"]),
+        ("private_registers", vec!["record/private.rs"]),
+        ("private_set_elements", vec!["record/private.rs"]),
+        ("view_watermarks", vec!["record/imaol.rs"]),
     ])
 }
 

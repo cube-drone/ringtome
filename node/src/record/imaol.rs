@@ -215,11 +215,23 @@ pub async fn get_profile(db: &Db) -> Result<Vec<ProfileField>, AppError> {
 /// full chain as it goes: strict decode, signature, dense seqs, hash links. Returns the number of
 /// entries replayed. This is the M1 exit demo and the standing proof that the views are caches,
 /// not truth.
+///
+/// The encrypted views (doc versions, private registers/sets) cannot be refolded here - replay
+/// has no epoch keys - so for them rebuild is the *drop* half: clearing the tables and their
+/// watermarks makes the next keyed read (`documents::materialize`, `private::materialize`)
+/// refold the whole log. Drop + replay still holds everywhere; the replay is just deferred to
+/// the first reader that can decrypt.
 pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
     db.execute("DELETE FROM profile_view", ())
         .await
         .context("clearing profile view")
         .map_err(AppError::Internal)?;
+    db.execute("DELETE FROM view_watermarks", ())
+        .await
+        .context("clearing view watermarks")
+        .map_err(AppError::Internal)?;
+    crate::record::documents::clear_view(db).await?;
+    crate::record::private::clear_view(db).await?;
 
     let rows: Vec<(String, i64, Vec<u8>)> = db
         .fetch_all(
@@ -320,6 +332,110 @@ pub async fn entries_of_type(
                 .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))
         })
         .collect()
+}
+
+/// Every stored entry of one `(service, entry_type)` that each author's view watermark has not
+/// yet folded, decoded, in `(author, seq)` order - the catch-up-on-read fetch for the persisted
+/// views (`documents::materialize`, `private::materialize`). A chain with no watermark row is
+/// unfolded from seq 0.
+pub(crate) async fn entries_past_watermarks(
+    db: &Db,
+    service_id: u32,
+    type_id: u32,
+) -> Result<Vec<SignedEntry>, AppError> {
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries e
+         WHERE service = ?1 AND entry_type = ?2
+           AND seq > COALESCE((SELECT folded_seq FROM view_watermarks w
+                               WHERE w.author_pubkey = e.author_pubkey
+                                 AND w.service = e.service), -1)
+         ORDER BY author_pubkey, seq",
+            (i64::from(service_id), i64::from(type_id)),
+        )
+        .await
+        .context("reading entries past view watermarks")
+        .map_err(AppError::Internal)?;
+
+    rows.into_iter()
+        .map(|(bytes,)| {
+            SignedEntry::decode(&bytes)
+                .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))
+        })
+        .collect()
+}
+
+/// Advance one chain's view watermark, monotonically. The comparison lives inside the upsert's
+/// WHERE clause (the `apply_profile_set` discipline): concurrent catch-ups may interleave
+/// freely, and the row only ever moves forward - a racing fold that finished earlier can never
+/// drag the watermark back.
+pub(crate) async fn advance_watermark(
+    db: &Db,
+    author_hex: &str,
+    service_id: u32,
+    folded_seq: u64,
+) -> Result<(), AppError> {
+    db.execute(
+        "INSERT INTO view_watermarks (author_pubkey, service, folded_seq)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(author_pubkey, service) DO UPDATE SET
+           folded_seq = excluded.folded_seq
+         WHERE excluded.folded_seq > view_watermarks.folded_seq",
+        (author_hex, i64::from(service_id), folded_seq as i64),
+    )
+    .await
+    .context("advancing view watermark")
+    .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// Test-only: one chain's stored view watermark - how tests observe that a fold advanced (or
+/// deliberately stalled).
+#[cfg(test)]
+pub(crate) async fn view_watermark(db: &Db, author_hex: &str, service_id: u32) -> Option<i64> {
+    db.fetch_optional::<(i64,)>(
+        "SELECT folded_seq FROM view_watermarks WHERE author_pubkey = ?1 AND service = ?2",
+        (author_hex, i64::from(service_id)),
+    )
+    .await
+    .unwrap()
+    .map(|(seq,)| seq)
+}
+
+/// Test-only: forget every fold watermark while keeping the folded rows - which forces the next
+/// materialize to refold entries over an already-populated view, the exact shape two concurrent
+/// catch-ups produce. The idempotence tests pin that this changes nothing.
+#[cfg(test)]
+pub(crate) async fn reset_watermarks_for_test(db: &Db) {
+    db.execute("DELETE FROM view_watermarks", ()).await.unwrap();
+}
+
+/// Test-only: copy every entry row of one database into another - a second replica that holds
+/// the same chains, without standing up the sync path (which is exercised in `net::sync`'s own
+/// tests). Raw `entries` SQL is legal here and only here: imaol owns the table.
+#[cfg(test)]
+pub(crate) async fn clone_entries_for_test(src: &Db, dst: &Db) {
+    type Row = (String, i64, i64, Vec<u8>, Vec<u8>, i64, i64, i64, Vec<u8>);
+    let rows: Vec<Row> = src
+        .fetch_all(
+            "SELECT author_pubkey, service, seq, entry_hash, prev_hash, entry_type,
+                    timestamp_ms, received_at_ms, bytes
+             FROM entries",
+            (),
+        )
+        .await
+        .unwrap();
+    for row in rows {
+        dst.execute(
+            "INSERT INTO entries
+               (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
+                received_at_ms, bytes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            row,
+        )
+        .await
+        .unwrap();
+    }
 }
 
 /// One page of a service's entries across all authors, newest first by
