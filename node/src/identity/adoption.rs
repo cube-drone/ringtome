@@ -61,16 +61,15 @@ pub async fn begin(state: &AppState, account_id: &Uuid) -> Result<RequestCode, A
     crate::record::private::store_enc_keypair(&state.keystore, &leaf_hex, &leaf_enc)
         .context("sealing adoption encryption key")
         .map_err(AppError::Internal)?;
-    sqlx::query(
-        "INSERT INTO pending_adoptions (leaf_pubkey, account_id, created_at_ms) VALUES (?1, ?2, ?3)",
-    )
-    .bind(&leaf_hex)
-    .bind(account_id.to_string())
-    .bind(now_ms())
-    .execute(&state.node_db)
-    .await
-    .context("recording pending adoption")
-    .map_err(AppError::Internal)?;
+    state
+        .node_db
+        .execute(
+            "INSERT INTO pending_adoptions (leaf_pubkey, account_id, created_at_ms) VALUES (?1, ?2, ?3)",
+            (leaf_hex.as_str(), account_id.to_string(), now_ms()),
+        )
+        .await
+        .context("recording pending adoption")
+        .map_err(AppError::Internal)?;
 
     Ok(RequestCode {
         v: 0,
@@ -147,7 +146,8 @@ pub async fn authorize_node(
         .map_err(AppError::Internal)?;
     let epoch_keys = crate::record::private::unseal_epoch_keys(&db, &root, &our_enc).await?;
     let resealed =
-        crate::record::private::reseal_epochs_to(&db, &signer, &leaf, &leaf_enc, &epoch_keys).await?;
+        crate::record::private::reseal_epochs_to(&db, &signer, &leaf, &leaf_enc, &epoch_keys)
+            .await?;
     tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, resealed, "sealed epoch history");
 
     // Remember the joining node as a peer so future syncs reach it.
@@ -177,13 +177,15 @@ pub async fn complete(
         return Err(AppError::BadRequest("not an adoption grant code".into()));
     }
     // The pending leaf must belong to this account (uniform 404 otherwise).
-    let pending: Option<(String,)> =
-        sqlx::query_as("SELECT account_id FROM pending_adoptions WHERE leaf_pubkey = ?1")
-            .bind(&code.leaf_pubkey)
-            .fetch_optional(&state.node_db)
-            .await
-            .context("checking pending adoption")
-            .map_err(AppError::Internal)?;
+    let pending: Option<(String,)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT account_id FROM pending_adoptions WHERE leaf_pubkey = ?1",
+            (code.leaf_pubkey.as_str(),),
+        )
+        .await
+        .context("checking pending adoption")
+        .map_err(AppError::Internal)?;
     if pending.map(|(a,)| a) != Some(account_id.to_string()) {
         return Err(AppError::NotFound(
             "no pending adoption for that key".into(),
@@ -229,9 +231,12 @@ pub async fn complete(
         created_at_ms,
     )
     .await?;
-    sqlx::query("DELETE FROM pending_adoptions WHERE leaf_pubkey = ?1")
-        .bind(&code.leaf_pubkey)
-        .execute(&state.node_db)
+    state
+        .node_db
+        .execute(
+            "DELETE FROM pending_adoptions WHERE leaf_pubkey = ?1",
+            (code.leaf_pubkey.as_str(),),
+        )
         .await
         .context("clearing pending adoption")
         .map_err(AppError::Internal)?;

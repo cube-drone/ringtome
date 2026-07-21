@@ -20,10 +20,10 @@
 //! choices, not oversights.
 
 use anyhow::{anyhow, Context};
-use sqlx::SqlitePool;
 use std::path::PathBuf;
 
 use crate::clock::now_ms;
+use crate::db::Db;
 use crate::media::CrushError;
 use crate::record::documents::{save_version, MediaMeta, Save};
 use crate::AppError;
@@ -67,7 +67,7 @@ impl Ingest {
     /// caller for a create, or an existing document's id for a new version). Writes the raw bytes
     /// to disk and inserts the row; does NOT transcode or touch the record - that's the worker's
     /// job. Returns the `job_id` to poll by.
-    pub async fn enqueue(&self, node_db: &SqlitePool, up: Upload<'_>) -> Result<String, AppError> {
+    pub async fn enqueue(&self, node_db: &Db, up: Upload<'_>) -> Result<String, AppError> {
         let job_id = {
             use rand::RngCore;
             let mut b = [0u8; 16];
@@ -87,23 +87,25 @@ impl Ingest {
             .map(hex::encode)
             .collect::<Vec<_>>()
             .join(",");
-        sqlx::query(
-            "INSERT INTO ingest_job \
+        node_db
+            .execute(
+                "INSERT INTO ingest_job \
              (job_id, account, root, doc_id, parents, title, quarantine_path, status, bytes_in, created_ms) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?9)",
-        )
-        .bind(&job_id)
-        .bind(up.account)
-        .bind(up.root)
-        .bind(hex::encode(up.doc_id))
-        .bind(&parents_csv)
-        .bind(up.title)
-        .bind(path.to_string_lossy().as_ref())
-        .bind(up.bytes.len() as i64)
-        .bind(now_ms())
-        .execute(node_db)
-        .await
-        .map_err(|e| AppError::Internal(anyhow!("recording ingest job: {e}")))?;
+                (
+                    job_id.as_str(),
+                    up.account,
+                    up.root,
+                    hex::encode(up.doc_id),
+                    parents_csv.as_str(),
+                    up.title,
+                    path.to_string_lossy().as_ref(),
+                    up.bytes.len() as i64,
+                    now_ms(),
+                ),
+            )
+            .await
+            .map_err(|e| AppError::Internal(anyhow!("recording ingest job: {e}")))?;
 
         Ok(job_id)
     }
@@ -137,15 +139,18 @@ pub async fn worker_pass(state: crate::AppState) -> anyhow::Result<()> {
 }
 
 /// Atomically claim the oldest pending job (`pending` -> `processing`) and return it decoded.
-async fn claim_next(node_db: &SqlitePool) -> anyhow::Result<Option<Job>> {
-    let row: Option<(String, String, String, String, String, String)> = sqlx::query_as(
-        "UPDATE ingest_job SET status = 'processing' \
+async fn claim_next(node_db: &Db) -> anyhow::Result<Option<Job>> {
+    // fetch_optional drains the RETURNING statement to completion, which is what actually
+    // commits the claim before anything else touches the connection.
+    let row: Option<(String, String, String, String, String, String)> = node_db
+        .fetch_optional(
+            "UPDATE ingest_job SET status = 'processing' \
          WHERE seq = (SELECT seq FROM ingest_job WHERE status = 'pending' ORDER BY seq LIMIT 1) \
          RETURNING job_id, root, doc_id, parents, title, quarantine_path",
-    )
-    .fetch_optional(node_db)
-    .await
-    .context("claiming next ingest job")?;
+            (),
+        )
+        .await
+        .context("claiming next ingest job")?;
 
     let Some((job_id, root, doc_id, parents, title, quarantine_path)) = row else {
         return Ok(None);
@@ -257,20 +262,23 @@ fn tombstone(te: &CrushError) -> String {
     }
 }
 
-async fn finish_job(node_db: &SqlitePool, job_id: &str) -> anyhow::Result<()> {
-    sqlx::query("UPDATE ingest_job SET status = 'done', error = NULL WHERE job_id = ?1")
-        .bind(job_id)
-        .execute(node_db)
+async fn finish_job(node_db: &Db, job_id: &str) -> anyhow::Result<()> {
+    node_db
+        .execute(
+            "UPDATE ingest_job SET status = 'done', error = NULL WHERE job_id = ?1",
+            (job_id,),
+        )
         .await
         .context("marking ingest job done")?;
     Ok(())
 }
 
-async fn fail_job(node_db: &SqlitePool, job_id: &str, error: &str) -> anyhow::Result<()> {
-    sqlx::query("UPDATE ingest_job SET status = 'failed', error = ?2 WHERE job_id = ?1")
-        .bind(job_id)
-        .bind(error)
-        .execute(node_db)
+async fn fail_job(node_db: &Db, job_id: &str, error: &str) -> anyhow::Result<()> {
+    node_db
+        .execute(
+            "UPDATE ingest_job SET status = 'failed', error = ?2 WHERE job_id = ?1",
+            (job_id, error),
+        )
         .await
         .context("marking ingest job failed")?;
     Ok(())
@@ -280,20 +288,23 @@ async fn fail_job(node_db: &SqlitePool, job_id: &str, error: &str) -> anyhow::Re
 /// resumable - its quarantine file survives, so back to `pending` - or dead: the file is gone, so
 /// fail it. Without this, a job claimed-but-not-finished before a restart is stranded at
 /// `processing` forever.
-pub async fn reconcile_on_boot(node_db: &SqlitePool) -> anyhow::Result<()> {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT job_id, quarantine_path FROM ingest_job WHERE status IN ('pending', 'processing')",
-    )
-    .fetch_all(node_db)
-    .await
-    .context("reading in-flight ingest jobs")?;
+pub async fn reconcile_on_boot(node_db: &Db) -> anyhow::Result<()> {
+    let rows: Vec<(String, String)> = node_db
+        .fetch_all(
+            "SELECT job_id, quarantine_path FROM ingest_job WHERE status IN ('pending', 'processing')",
+            (),
+        )
+        .await
+        .context("reading in-flight ingest jobs")?;
 
     let (mut requeued, mut lost) = (0u32, 0u32);
     for (job_id, path) in rows {
         if tokio::fs::try_exists(&path).await.unwrap_or(false) {
-            sqlx::query("UPDATE ingest_job SET status = 'pending' WHERE job_id = ?1")
-                .bind(&job_id)
-                .execute(node_db)
+            node_db
+                .execute(
+                    "UPDATE ingest_job SET status = 'pending' WHERE job_id = ?1",
+                    (job_id.as_str(),),
+                )
                 .await?;
             requeued += 1;
         } else {
@@ -326,18 +337,15 @@ type JobRow = (String, String, String, String, Option<String>, i64, i64);
 
 /// Every ingest job this account has queued, newest first - the "how long until my uploads are
 /// usable" view. Failures show here (with their message); they never appear as ghost documents.
-pub async fn jobs_for_account(
-    node_db: &SqlitePool,
-    account: &str,
-) -> Result<Vec<JobStatus>, AppError> {
-    let rows: Vec<JobRow> = sqlx::query_as(
-        "SELECT job_id, doc_id, title, status, error, bytes_in, created_ms \
+pub async fn jobs_for_account(node_db: &Db, account: &str) -> Result<Vec<JobStatus>, AppError> {
+    let rows: Vec<JobRow> = node_db
+        .fetch_all(
+            "SELECT job_id, doc_id, title, status, error, bytes_in, created_ms \
          FROM ingest_job WHERE account = ?1 ORDER BY seq DESC",
-    )
-    .bind(account)
-    .fetch_all(node_db)
-    .await
-    .map_err(|e| AppError::Internal(anyhow!("listing ingest jobs: {e}")))?;
+            (account,),
+        )
+        .await
+        .map_err(|e| AppError::Internal(anyhow!("listing ingest jobs: {e}")))?;
 
     Ok(rows
         .into_iter()
@@ -359,19 +367,18 @@ pub async fn jobs_for_account(
 /// anything under it. Lets the body endpoint explain a version-less doc_id (still processing, or
 /// failed with a tombstone) instead of a bare 404.
 pub async fn latest_job_for_doc(
-    node_db: &SqlitePool,
+    node_db: &Db,
     account: &str,
     doc_id: &str,
 ) -> Result<Option<(String, Option<String>)>, AppError> {
-    sqlx::query_as(
-        "SELECT status, error FROM ingest_job \
+    node_db
+        .fetch_optional(
+            "SELECT status, error FROM ingest_job \
          WHERE account = ?1 AND doc_id = ?2 ORDER BY seq DESC LIMIT 1",
-    )
-    .bind(account)
-    .bind(doc_id)
-    .fetch_optional(node_db)
-    .await
-    .map_err(|e| AppError::Internal(anyhow!("looking up ingest job for doc: {e}")))
+            (account, doc_id),
+        )
+        .await
+        .map_err(|e| AppError::Internal(anyhow!("looking up ingest job for doc: {e}")))
 }
 
 fn parse_doc_id(s: &str) -> anyhow::Result<[u8; 16]> {
@@ -402,10 +409,8 @@ mod tests {
     // The queue and its bookkeeping are testable with just a node DB + a scratch quarantine dir;
     // the transcode-and-land path (worker_pass -> process_job) needs a fully-agented identity with
     // sealed epoch keys and is exercised end-to-end by the integration tests instead.
-    async fn node_db() -> SqlitePool {
-        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::node_migrator_for_test(&pool).await;
-        pool
+    async fn node_db() -> Db {
+        crate::db::test_node_db().await
     }
 
     fn scratch_dir(name: &str) -> PathBuf {
@@ -497,8 +502,7 @@ mod tests {
 
         // Simulate a crash mid-run: both were claimed (processing), and one quarantine file was
         // wiped (a /tmp reboot, say) while the other survived.
-        sqlx::query("UPDATE ingest_job SET status = 'processing'")
-            .execute(&db)
+        db.execute("UPDATE ingest_job SET status = 'processing'", ())
             .await
             .unwrap();
         tokio::fs::remove_file(dir.join(&lost)).await.unwrap();

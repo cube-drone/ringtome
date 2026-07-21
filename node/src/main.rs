@@ -7,7 +7,6 @@
 use std::net::SocketAddr;
 
 use axum::{extract::State, routing::get, Json, Router};
-use sqlx::SqlitePool;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -41,7 +40,7 @@ use error::AppError;
 pub struct AppState {
     pub config: Config,
     /// The node-level database (`node.db`): node config, known peers, replication state.
-    pub node_db: SqlitePool,
+    pub node_db: db::Db,
     /// Opens/migrates/caches the per-identity databases.
     pub user_dbs: db::UserDbManager,
     /// Per-node in-memory rate limiter (disabled in local-test mode).
@@ -67,10 +66,12 @@ struct Health {
 /// Liveness check. Verifies the node database is actually reachable, not just that HTTP responds -
 /// a node whose database is wedged is not healthy.
 async fn health(State(state): State<AppState>) -> Result<Json<Health>, AppError> {
-    sqlx::query("SELECT 1")
-        .execute(&state.node_db)
+    // fetch, not execute: turso's execute refuses statements that return rows.
+    state
+        .node_db
+        .fetch_one::<(i64,)>("SELECT 1", ())
         .await
-        .map_err(|e| AppError::Internal(e.into()))?;
+        .map_err(AppError::Internal)?;
 
     Ok(Json(Health {
         status: "ok",
@@ -131,13 +132,16 @@ async fn main() -> anyhow::Result<()> {
 
     std::fs::create_dir_all(&config.data_directory)?;
 
-    let node_db = db::open_node_db(&config.data_directory).await?;
+    // The keystore comes first: the databases need it for their at-rest encryption keys.
+    let keystore = keystore::Keystore::load(&config.data_directory)?;
+
+    let node_db = db::open_node_db(&config.data_directory, &keystore).await?;
     db::record_boot(&node_db, &config.app_version).await?;
     tracing::info!(data_dir = %config.data_directory.display(), "opened node database");
 
     // Bound on simultaneously-open per-user DB handles. A placeholder default for now; will move to
     // config when it matters (many-user nodes tuning against file-handle limits).
-    let user_dbs = db::UserDbManager::new(&config.data_directory, 128);
+    let user_dbs = db::UserDbManager::new(&config.data_directory, keystore.clone(), 128);
 
     let bind = format!("{}:{}", config.bind_address, config.port);
     let local_test = config.local_test;
@@ -147,7 +151,6 @@ async fn main() -> anyhow::Result<()> {
     };
     // Rate limiting is off in local-test mode so integration tests don't trip it.
     let rate_limiter = rate_limit::RateLimiter::new(!local_test);
-    let keystore = keystore::Keystore::load(&config.data_directory)?;
     let endpoint = net::p2p::build_endpoint(&keystore, &config.discovery).await?;
     let directory = net::discovery::Directory::build(&config.discovery)?;
     // The blob-layer size invariant tracks the document cap (plus a little AEAD/framing headroom),

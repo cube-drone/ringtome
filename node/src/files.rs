@@ -238,19 +238,22 @@ mod tests {
 
         // Node A, assembled from the same constructors main() uses.
         let keystore = crate::keystore::Keystore::load(&dir).unwrap();
-        let ep_a = crate::net::p2p::build_endpoint(&keystore, &crate::net::discovery::DiscoveryMode::Off)
-            .await
-            .unwrap();
+        let ep_a =
+            crate::net::p2p::build_endpoint(&keystore, &crate::net::discovery::DiscoveryMode::Off)
+                .await
+                .unwrap();
         let files_a = std::sync::Arc::new(FileStore::memory());
         let state = crate::AppState {
             config: crate::config::Config::from_env(),
-            node_db: crate::db::open_node_db(&dir).await.unwrap(),
-            user_dbs: crate::db::UserDbManager::new(&dir, 8),
+            node_db: crate::db::open_node_db(&dir, &keystore).await.unwrap(),
+            user_dbs: crate::db::UserDbManager::new(&dir, keystore.clone(), 8),
             rate_limiter: crate::rate_limit::RateLimiter::new(false),
             keystore,
             endpoint: ep_a.clone(),
-            directory: crate::net::discovery::Directory::build(&crate::net::discovery::DiscoveryMode::Off)
-                .unwrap(),
+            directory: crate::net::discovery::Directory::build(
+                &crate::net::discovery::DiscoveryMode::Off,
+            )
+            .unwrap(),
             files: files_a.clone(),
             ingest: crate::ingest::Ingest::new(dir.join("quarantine")),
         };
@@ -259,11 +262,16 @@ mod tests {
         let epoch = 5u64;
         let key = [7u8; 32];
         let plaintext = b"served by the real accept loop".to_vec();
-        let hash = files_a.put_encrypted(epoch, &key, &plaintext).await.unwrap();
+        let hash = files_a
+            .put_encrypted(epoch, &key, &plaintext)
+            .await
+            .unwrap();
 
-        let addr_a =
-            crate::net::sync::endpoint_addr(&ep_a.id().to_string(), &crate::net::p2p::addr_strings(&ep_a))
-                .unwrap();
+        let addr_a = crate::net::sync::endpoint_addr(
+            &ep_a.id().to_string(),
+            &crate::net::p2p::addr_strings(&ep_a),
+        )
+        .unwrap();
 
         // Node B fetches through A's accept loop.
         let ep_b = test_endpoint().await;
@@ -286,15 +294,20 @@ mod tests {
         // Node A stores the encrypted body and serves blobs on its endpoint.
         let ep_a = test_endpoint().await;
         let store_a = FileStore::memory();
-        let hash = store_a.put_encrypted(epoch, &key, &plaintext).await.unwrap();
+        let hash = store_a
+            .put_encrypted(epoch, &key, &plaintext)
+            .await
+            .unwrap();
         let _router_a = Router::builder(ep_a.clone())
             .accept(BLOB_ALPN, store_a.protocol())
             .spawn();
 
         // A's connectable address, built with the same helpers the sync path uses.
-        let addr_a =
-            crate::net::sync::endpoint_addr(&ep_a.id().to_string(), &crate::net::p2p::addr_strings(&ep_a))
-                .unwrap();
+        let addr_a = crate::net::sync::endpoint_addr(
+            &ep_a.id().to_string(),
+            &crate::net::p2p::addr_strings(&ep_a),
+        )
+        .unwrap();
 
         // Node B has never seen the blob; fetch it by hash and decrypt with the same epoch key.
         let ep_b = test_endpoint().await;
@@ -317,7 +330,10 @@ mod tests {
             "an over-cap body is refused at put"
         );
         // Under the cap still stores fine.
-        let hash = store.put_encrypted(1, &[0u8; 32], b"a small body").await.unwrap();
+        let hash = store
+            .put_encrypted(1, &[0u8; 32], b"a small body")
+            .await
+            .unwrap();
         assert!(store.has(hash).await);
     }
 
@@ -326,9 +342,15 @@ mod tests {
     /// (public-domain / CC, hence distributable) 34.6MB video - genuinely over any document cap.
     #[tokio::test]
     async fn fetch_refuses_a_blob_over_the_cap() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../sample_media/buck-twenty.mp4");
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../sample_media/buck-twenty.mp4"
+        );
         let big = std::fs::read(path).expect("corpus fixture sample_media/buck-twenty.mp4");
-        assert!(big.len() as u64 > 10 * 1024 * 1024, "fixture must be over-cap");
+        assert!(
+            big.len() as u64 > 10 * 1024 * 1024,
+            "fixture must be over-cap"
+        );
 
         let epoch = 1u64;
         let key = [3u8; 32];
@@ -340,9 +362,11 @@ mod tests {
         let _router_a = Router::builder(ep_a.clone())
             .accept(BLOB_ALPN, store_a.protocol())
             .spawn();
-        let addr_a =
-            crate::net::sync::endpoint_addr(&ep_a.id().to_string(), &crate::net::p2p::addr_strings(&ep_a))
-                .unwrap();
+        let addr_a = crate::net::sync::endpoint_addr(
+            &ep_a.id().to_string(),
+            &crate::net::p2p::addr_strings(&ep_a),
+        )
+        .unwrap();
 
         // Our node caps blobs at 10MB and refuses to pull the whole thing.
         let ep_b = test_endpoint().await;

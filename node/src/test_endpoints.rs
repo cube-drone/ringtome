@@ -12,7 +12,6 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{Column, Row};
 
 use crate::error::AppError;
 use crate::AppState;
@@ -41,12 +40,21 @@ pub async fn raw_sql(
 ) -> Result<Json<SqlResponse>, AppError> {
     tracing::warn!(sql = %req.sql, "LOCAL_TEST raw SQL passthrough");
 
-    let fetched = sqlx::query(&req.sql)
-        .fetch_all(&state.node_db)
+    let mut fetched = state
+        .node_db
+        .query(&req.sql, ())
         .await
         .map_err(|e| AppError::BadRequest(format!("sql error: {e}")))?;
+    let column_names = fetched.column_names();
 
-    let rows = fetched.iter().map(row_to_json).collect::<Vec<_>>();
+    let mut rows = Vec::new();
+    loop {
+        match fetched.next().await {
+            Ok(Some(row)) => rows.push(row_to_json(&row, &column_names)),
+            Ok(None) => break,
+            Err(e) => return Err(AppError::BadRequest(format!("sql error: {e}"))),
+        }
+    }
 
     Ok(Json(SqlResponse {
         rows,
@@ -54,31 +62,20 @@ pub async fn raw_sql(
     }))
 }
 
-/// Convert a SQLite row into a JSON object.
-///
-/// Decodes each column by *attempting* concrete types in turn rather than trusting the declared
-/// column type - computed expressions like `COUNT(*)` have no declared type, so a
-/// type-name-sniffing approach silently yields null for them. Order matters: integer before float
-/// (so whole numbers stay integers), then string, then null.
-fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> serde_json::Map<String, Value> {
+/// Convert a database row into a JSON object. The stored value's own type drives the JSON shape
+/// (SQLite values are self-describing, so computed expressions like `COUNT(*)` come through as
+/// what they are); blobs become arrays of byte values, since JSON has no bytes type.
+fn row_to_json(row: &turso::Row, column_names: &[String]) -> serde_json::Map<String, Value> {
     let mut obj = serde_json::Map::new();
-    for col in row.columns() {
-        let idx = col.ordinal();
-
-        let value = if let Ok(v) = row.try_get::<Option<i64>, _>(idx) {
-            v.map(Value::from).unwrap_or(Value::Null)
-        } else if let Ok(v) = row.try_get::<Option<f64>, _>(idx) {
-            v.map(Value::from).unwrap_or(Value::Null)
-        } else if let Ok(v) = row.try_get::<Option<String>, _>(idx) {
-            v.map(Value::from).unwrap_or(Value::Null)
-        } else if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(idx) {
-            // Blob: represent as an array of byte values (JSON has no bytes type).
-            v.map(Value::from).unwrap_or(Value::Null)
-        } else {
-            Value::Null
+    for (idx, name) in column_names.iter().enumerate() {
+        let value = match row.get_value(idx) {
+            Ok(turso::Value::Integer(i)) => Value::from(i),
+            Ok(turso::Value::Real(f)) => Value::from(f),
+            Ok(turso::Value::Text(s)) => Value::from(s),
+            Ok(turso::Value::Blob(b)) => Value::from(b),
+            Ok(turso::Value::Null) | Err(_) => Value::Null,
         };
-
-        obj.insert(col.name().to_string(), value);
+        obj.insert(name.clone(), value);
     }
     obj
 }

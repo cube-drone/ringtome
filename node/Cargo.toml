@@ -45,8 +45,9 @@ uuid = { version = "1", features = ["v4", "fast-rng", "serde"] }
 # secure randomness (session tokens)
 rand = "0.8"
 
-# local database
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+# local database: Turso (SQLite-compatible rewrite) with native at-rest encryption. Exact pin -
+# the crate is pre-1.0 and the encryption surface is experimental; upgrades are deliberate acts.
+turso = "=0.7.0"
 
 # bounded cache of open per-user database handles
 moka = { version = "0.12", features = ["future"] }

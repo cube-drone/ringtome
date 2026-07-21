@@ -24,9 +24,9 @@ use ringtome_proto::crown::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::sync::{Frontier, MemberProof, SyncMessage};
 use ringtome_proto::{validate_next, Ceiling, Crown, SignedEntry, ZERO_HASH};
-use sqlx::SqlitePool;
 
 use crate::clock::now_ms;
+use crate::db::Db;
 use crate::net::p2p::{read_frame, write_frame};
 use crate::pubkey;
 use crate::AppState;
@@ -54,14 +54,15 @@ fn is_private_service(svc: u32) -> bool {
 
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer
 /// has proven membership.
-pub async fn local_frontiers(db: &SqlitePool, include_private: bool) -> Result<Vec<Frontier>> {
-    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
-        "SELECT author_pubkey, service, MIN(seq), MAX(seq) FROM entries
+pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Frontier>> {
+    let rows: Vec<(String, i64, i64, i64)> = db
+        .fetch_all(
+            "SELECT author_pubkey, service, MIN(seq), MAX(seq) FROM entries
          GROUP BY author_pubkey, service",
-    )
-    .fetch_all(db)
-    .await
-    .context("reading local frontiers")?;
+            (),
+        )
+        .await
+        .context("reading local frontiers")?;
 
     rows.into_iter()
         .filter(|(_, svc, _, _)| include_private || !is_private_service(*svc as u32))
@@ -82,7 +83,7 @@ pub async fn local_frontiers(db: &SqlitePool, include_private: bool) -> Result<V
 /// ascending puts service 0 at the front), each chain in seq order. Returns entries sent.
 /// Private chains are streamed only to member-proven peers.
 async fn send_missing(
-    db: &SqlitePool,
+    db: &Db,
     peer_frontiers: &[Frontier],
     send: &mut SendStream,
     include_private: bool,
@@ -92,12 +93,13 @@ async fn send_missing(
         .map(|f| ((f.author, f.service), f.head))
         .collect();
 
-    let chains: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT DISTINCT author_pubkey, service FROM entries ORDER BY service, author_pubkey",
-    )
-    .fetch_all(db)
-    .await
-    .context("listing chains")?;
+    let chains: Vec<(String, i64)> = db
+        .fetch_all(
+            "SELECT DISTINCT author_pubkey, service FROM entries ORDER BY service, author_pubkey",
+            (),
+        )
+        .await
+        .context("listing chains")?;
 
     let mut sent = 0u64;
     for (author_hex, svc) in chains {
@@ -111,16 +113,14 @@ async fn send_missing(
             .map(|head| head + 1)
             .unwrap_or(0);
 
-        let rows: Vec<(Vec<u8>,)> = sqlx::query_as(
-            "SELECT bytes FROM entries
+        let rows: Vec<(Vec<u8>,)> = db
+            .fetch_all(
+                "SELECT bytes FROM entries
              WHERE author_pubkey = ?1 AND service = ?2 AND seq >= ?3 ORDER BY seq",
-        )
-        .bind(&author_hex)
-        .bind(svc)
-        .bind(start as i64)
-        .fetch_all(db)
-        .await
-        .context("reading entries to send")?;
+                (author_hex.as_str(), svc, start as i64),
+            )
+            .await
+            .context("reading entries to send")?;
 
         for (bytes,) in rows {
             write_frame(send, &SyncMessage::Entry(bytes)).await?;
@@ -145,7 +145,7 @@ async fn send_missing(
 /// unproven peer are rejected outright - an honest stranger never sends them (we withheld those
 /// frontiers), so their arrival is either a bug or a probe, and either way the answer is no.
 async fn ingest_batch(
-    db: &SqlitePool,
+    db: &Db,
     root: [u8; 32],
     raw: Vec<Vec<u8>>,
     peer_proven: bool,
@@ -324,7 +324,7 @@ async fn ingest_batch(
 /// Incomplete-but-consistent stored prefixes are left alone - nothing is proven against them,
 /// they may yet complete honestly on a later sync, and the seal-or-nothing gate keeps them from
 /// being over-trusted meanwhile.
-async fn evict_disproven_chains(db: &SqlitePool, tree: &Crown) -> Result<u64> {
+async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
     let mut evicted = 0u64;
     for ((key, svc), c) in tree.ceilings() {
         // A final_seq beyond i64 can have no stored row at all; nothing to disprove.
@@ -332,34 +332,33 @@ async fn evict_disproven_chains(db: &SqlitePool, tree: &Crown) -> Result<u64> {
             continue;
         };
         let author_hex = hex::encode(key);
-        let row: Option<(Vec<u8>,)> = sqlx::query_as(
-            "SELECT entry_hash FROM entries
+        let row: Option<(Vec<u8>,)> = db
+            .fetch_optional(
+                "SELECT entry_hash FROM entries
              WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
-        )
-        .bind(&author_hex)
-        .bind(i64::from(*svc))
-        .bind(final_seq)
-        .fetch_optional(db)
-        .await
-        .context("checking stored chain against revocation anchor")?;
+                (author_hex.as_str(), i64::from(*svc), final_seq),
+            )
+            .await
+            .context("checking stored chain against revocation anchor")?;
         let Some((hash,)) = row else {
             continue; // incomplete: unproven either way, leave it
         };
         if hash.as_slice() == c.head_hash {
             continue; // sealed: the stored prefix is the anchored one
         }
-        let res = sqlx::query("DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2")
-            .bind(&author_hex)
-            .bind(i64::from(*svc))
-            .execute(db)
+        let rows_affected = db
+            .execute(
+                "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2",
+                (author_hex.as_str(), i64::from(*svc)),
+            )
             .await
             .context("evicting disproven chain")?;
-        evicted += res.rows_affected();
+        evicted += rows_affected;
         tracing::warn!(
             author = %author_hex,
             service = *svc,
             final_seq = c.final_seq,
-            rows = res.rows_affected(),
+            rows = rows_affected,
             "stored chain contradicts its revocation anchor; evicted proven-forged rows"
         );
     }
@@ -382,7 +381,7 @@ async fn evict_disproven_chains(db: &SqlitePool, tree: &Crown) -> Result<u64> {
 ///
 /// Returns (entries newly stored, incoming refused, stored rows evicted).
 async fn admit_ceilinged_chain(
-    db: &SqlitePool,
+    db: &Db,
     author: &[u8; 32],
     svc: u32,
     ceiling: &Ceiling,
@@ -431,13 +430,10 @@ async fn admit_ceilinged_chain(
         match stored_by_seq.get(&e.entry().seq) {
             Some(held) if held.hash() == e.hash() => {} // already held
             Some(_) => {
-                sqlx::query(
+                db.execute(
                     "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
+                    (hex::encode(author), i64::from(svc), e.entry().seq as i64),
                 )
-                .bind(hex::encode(author))
-                .bind(i64::from(svc))
-                .bind(e.entry().seq as i64)
-                .execute(db)
                 .await
                 .context("evicting row displaced by the sealed prefix")?;
                 evicted += 1;
@@ -466,74 +462,70 @@ async fn admit_ceilinged_chain(
 }
 
 /// Every stored entry of one chain, in seq order.
-async fn stored_chain(db: &SqlitePool, author: &[u8; 32], svc: u32) -> Result<Vec<SignedEntry>> {
-    let rows: Vec<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 ORDER BY seq",
-    )
-    .bind(hex::encode(author))
-    .bind(i64::from(svc))
-    .fetch_all(db)
-    .await
-    .context("reading stored chain")?;
+async fn stored_chain(db: &Db, author: &[u8; 32], svc: u32) -> Result<Vec<SignedEntry>> {
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 ORDER BY seq",
+            (hex::encode(author), i64::from(svc)),
+        )
+        .await
+        .context("reading stored chain")?;
     rows.into_iter()
         .map(|(b,)| SignedEntry::decode(&b).map_err(|e| anyhow!("stored entry fails decode: {e}")))
         .collect()
 }
 
-async fn load_identity_entries(db: &SqlitePool) -> Result<Vec<SignedEntry>> {
-    let rows: Vec<(Vec<u8>,)> =
-        sqlx::query_as("SELECT bytes FROM entries WHERE service = ?1 ORDER BY author_pubkey, seq")
-            .bind(i64::from(service::IDENTITY_PUBLIC))
-            .fetch_all(db)
-            .await
-            .context("loading identity chains")?;
+async fn load_identity_entries(db: &Db) -> Result<Vec<SignedEntry>> {
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries WHERE service = ?1 ORDER BY author_pubkey, seq",
+            (i64::from(service::IDENTITY_PUBLIC),),
+        )
+        .await
+        .context("loading identity chains")?;
     rows.into_iter()
         .map(|(b,)| SignedEntry::decode(&b).map_err(|e| anyhow!("stored entry fails decode: {e}")))
         .collect()
 }
 
-async fn stored_chain_head(
-    db: &SqlitePool,
-    author: &[u8; 32],
-    svc: u32,
-) -> Result<Option<SignedEntry>> {
-    let row: Option<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2
+async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32) -> Result<Option<SignedEntry>> {
+    let row: Option<(Vec<u8>,)> = db
+        .fetch_optional(
+            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2
          ORDER BY seq DESC LIMIT 1",
-    )
-    .bind(hex::encode(author))
-    .bind(i64::from(svc))
-    .fetch_optional(db)
-    .await
-    .context("reading stored chain head")?;
+            (hex::encode(author), i64::from(svc)),
+        )
+        .await
+        .context("reading stored chain head")?;
     row.map(|(b,)| SignedEntry::decode(&b).map_err(|e| anyhow!("stored entry fails decode: {e}")))
         .transpose()
 }
 
-async fn store_entry(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
-    sqlx::query(
+async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
+    db.execute(
         "INSERT INTO entries
            (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
             received_at_ms, bytes)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        (
+            hex::encode(e.entry().chain.author),
+            i64::from(e.entry().chain.service),
+            e.entry().seq as i64,
+            e.hash().as_slice(),
+            e.entry().prev_hash.as_slice(),
+            i64::from(e.entry().entry_type),
+            e.entry().timestamp_ms,
+            now_ms(),
+            e.bytes(),
+        ),
     )
-    .bind(hex::encode(e.entry().chain.author))
-    .bind(i64::from(e.entry().chain.service))
-    .bind(e.entry().seq as i64)
-    .bind(e.hash().as_slice())
-    .bind(e.entry().prev_hash.as_slice())
-    .bind(i64::from(e.entry().entry_type))
-    .bind(e.entry().timestamp_ms)
-    .bind(now_ms())
-    .bind(e.bytes())
-    .execute(db)
     .await
     .context("storing synced entry")?;
     Ok(())
 }
 
 /// Fold a freshly-admitted content entry into the materialized views.
-async fn apply_content_views(db: &SqlitePool, e: &SignedEntry) -> Result<()> {
+async fn apply_content_views(db: &Db, e: &SignedEntry) -> Result<()> {
     if e.entry().chain.service == service::PROFILE_PUBLIC
         && e.entry().entry_type == entry_type::PROFILE_SET
     {
@@ -576,7 +568,7 @@ async fn our_member_proof(
 /// resolved tree. The transport authenticates the endpoints; the tree makes it authorization.
 /// Everything fails toward "stranger."
 async fn peer_is_member(
-    db: &SqlitePool,
+    db: &Db,
     root: [u8; 32],
     proof: &Option<MemberProof>,
     prover_endpoint: &[u8; 32],
@@ -757,28 +749,27 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 
 /// Remember a peer for an identity. Endpoint ids only - addresses are the discovery layer's
 /// problem, resolved at dial time (hints are keys, never addresses).
-pub async fn add_peer(node_db: &SqlitePool, root_hex: &str, endpoint_id: &str) -> Result<()> {
-    sqlx::query(
-        "INSERT OR IGNORE INTO identity_peers (root_pubkey, endpoint_id, added_at_ms)
+pub async fn add_peer(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT OR IGNORE INTO identity_peers (root_pubkey, endpoint_id, added_at_ms)
          VALUES (?1, ?2, ?3)",
-    )
-    .bind(root_hex)
-    .bind(endpoint_id)
-    .bind(now_ms())
-    .execute(node_db)
-    .await
-    .context("recording peer")?;
+            (root_hex, endpoint_id, now_ms()),
+        )
+        .await
+        .context("recording peer")?;
     Ok(())
 }
 
 /// Known peer endpoint ids for an identity.
-pub async fn peers_for(node_db: &SqlitePool, root_hex: &str) -> Result<Vec<String>> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT endpoint_id FROM identity_peers WHERE root_pubkey = ?1")
-            .bind(root_hex)
-            .fetch_all(node_db)
-            .await
-            .context("listing peers")?;
+pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM identity_peers WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("listing peers")?;
     Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
@@ -813,16 +804,14 @@ pub fn endpoint_addr(endpoint_id: &str, addrs: &[String]) -> Result<EndpointAddr
     Ok(ea)
 }
 
-pub async fn mark_synced(node_db: &SqlitePool, root_hex: &str, endpoint_id: &str) -> Result<()> {
-    sqlx::query(
-        "UPDATE identity_peers SET last_synced_ms = ?1 WHERE root_pubkey = ?2 AND endpoint_id = ?3",
-    )
-    .bind(now_ms())
-    .bind(root_hex)
-    .bind(endpoint_id)
-    .execute(node_db)
-    .await
-    .context("marking peer synced")?;
+pub async fn mark_synced(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Result<()> {
+    node_db
+        .execute(
+            "UPDATE identity_peers SET last_synced_ms = ?1 WHERE root_pubkey = ?2 AND endpoint_id = ?3",
+            (now_ms(), root_hex, endpoint_id),
+        )
+        .await
+        .context("marking peer synced")?;
     Ok(())
 }
 
@@ -840,10 +829,8 @@ mod tests {
         Anchor, Authorize, ChainId, Disposition, Entry, Payload, Revoke, SigningKey, ENTRY_VERSION,
     };
 
-    async fn test_db() -> SqlitePool {
-        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::user_migrator_for_test(&pool).await;
-        pool
+    async fn test_db() -> Db {
+        crate::db::test_user_db().await
     }
 
     /// One (key, service) chain under construction - dense seqs, real hash links.
@@ -948,12 +935,12 @@ mod tests {
         }
     }
 
-    async fn ingest(db: &SqlitePool, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
+    async fn ingest(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
         let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
         ingest_batch(db, root, raw, false).await.unwrap()
     }
 
-    async fn stored_hashes(db: &SqlitePool, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {
+    async fn stored_hashes(db: &Db, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {
         stored_chain(db, author, svc)
             .await
             .unwrap()

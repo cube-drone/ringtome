@@ -198,7 +198,7 @@ async fn revoke_handler(
 /// The tag rule: an `AdminSession` may act on any tag *except* `node_admin`, which requires the
 /// actor to actually hold `node_admin`.
 async fn authorize_tag_change(
-    db: &sqlx::SqlitePool,
+    db: &crate::db::Db,
     admin: &AdminSession,
     tag: &str,
 ) -> Result<(), AppError> {

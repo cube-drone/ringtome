@@ -20,10 +20,10 @@ use argon2::password_hash::{
 };
 use argon2::{Algorithm, Argon2, Params, Version};
 use rand::RngCore;
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::clock::now_ms;
+use crate::db::Db;
 use crate::error::AppError;
 
 /// Full node administrator: may grant/revoke any tag, including `node_admin` itself. The first
@@ -142,7 +142,7 @@ pub fn normalize_username(input: &str) -> Result<String, AppError> {
 ///   would otherwise make a freshly-registered user's tag state depend on registration order
 ///   across the shared test node.
 pub async fn register(
-    db: &SqlitePool,
+    db: &Db,
     username: &str,
     password: &str,
     local_test: bool,
@@ -157,15 +157,12 @@ pub async fn register(
     let id = Uuid::new_v4();
     let phc = hash_password(password, local_test).map_err(AppError::Internal)?;
 
-    let result = sqlx::query(
-        "INSERT INTO accounts (id, username, password_hash, created_at_ms) VALUES (?1, ?2, ?3, ?4)",
-    )
-    .bind(id.to_string())
-    .bind(&username)
-    .bind(&phc)
-    .bind(now_ms())
-    .execute(db)
-    .await;
+    let result = db
+        .execute(
+            "INSERT INTO accounts (id, username, password_hash, created_at_ms) VALUES (?1, ?2, ?3, ?4)",
+            (id.to_string(), username.as_str(), phc.as_str(), now_ms()),
+        )
+        .await;
 
     if let Err(e) = result {
         if e.to_string().contains("UNIQUE constraint failed") {
@@ -181,8 +178,8 @@ pub async fn register(
     // tag both, but node bootstrap is a single-operator action, not an adversarial race.) Skipped
     // in local-test mode, where tests grant tags explicitly via the SQL passthrough.
     if !local_test {
-        let (account_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
-            .fetch_one(db)
+        let (account_count,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM accounts", ())
             .await
             .context("counting accounts")
             .map_err(AppError::Internal)?;
@@ -199,17 +196,18 @@ pub async fn register(
 }
 
 /// Verify credentials and, on success, create a session; returns the session token.
-pub async fn login(db: &SqlitePool, username: &str, password: &str) -> Result<String, AppError> {
+pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, AppError> {
     // Match the stored slug regardless of the case/whitespace typed. A username that isn't even a
     // valid slug simply won't match any row - fall through to the uniform "invalid credentials".
     let lookup = username.trim().to_ascii_lowercase();
-    let row: Option<(String, String)> =
-        sqlx::query_as("SELECT id, password_hash FROM accounts WHERE username = ?1")
-            .bind(&lookup)
-            .fetch_optional(db)
-            .await
-            .context("looking up account")
-            .map_err(AppError::Internal)?;
+    let row: Option<(String, String)> = db
+        .fetch_optional(
+            "SELECT id, password_hash FROM accounts WHERE username = ?1",
+            (lookup,),
+        )
+        .await
+        .context("looking up account")
+        .map_err(AppError::Internal)?;
 
     // Uniform failure whether the account is missing or the password is wrong (no user enumeration).
     let (account_id, phc) =
@@ -220,14 +218,10 @@ pub async fn login(db: &SqlitePool, username: &str, password: &str) -> Result<St
 
     let token = generate_token();
     let now = now_ms();
-    sqlx::query(
+    db.execute(
         "INSERT INTO sessions (token, account_id, created_at_ms, expires_at_ms) VALUES (?1, ?2, ?3, ?4)",
+        (token.as_str(), account_id.as_str(), now, now + SESSION_TTL_MS),
     )
-    .bind(&token)
-    .bind(&account_id)
-    .bind(now)
-    .bind(now + SESSION_TTL_MS)
-    .execute(db)
     .await
     .context("creating session")
     .map_err(AppError::Internal)?;
@@ -236,17 +230,17 @@ pub async fn login(db: &SqlitePool, username: &str, password: &str) -> Result<St
 }
 
 /// Resolve a session token to its account, if the token exists and has not expired.
-pub async fn account_for_token(db: &SqlitePool, token: &str) -> Result<Option<Account>, AppError> {
-    let row: Option<(String, String, i64)> = sqlx::query_as(
-        "SELECT a.id, a.username, s.expires_at_ms
+pub async fn account_for_token(db: &Db, token: &str) -> Result<Option<Account>, AppError> {
+    let row: Option<(String, String, i64)> = db
+        .fetch_optional(
+            "SELECT a.id, a.username, s.expires_at_ms
          FROM sessions s JOIN accounts a ON a.id = s.account_id
          WHERE s.token = ?1",
-    )
-    .bind(token)
-    .fetch_optional(db)
-    .await
-    .context("resolving session")
-    .map_err(AppError::Internal)?;
+            (token,),
+        )
+        .await
+        .context("resolving session")
+        .map_err(AppError::Internal)?;
 
     match row {
         Some((id, username, expires_at_ms)) if expires_at_ms > now_ms() => {
@@ -264,10 +258,8 @@ pub async fn account_for_token(db: &SqlitePool, token: &str) -> Result<Option<Ac
 }
 
 /// Delete a session (logout).
-pub async fn delete_session(db: &SqlitePool, token: &str) -> Result<()> {
-    sqlx::query("DELETE FROM sessions WHERE token = ?1")
-        .bind(token)
-        .execute(db)
+pub async fn delete_session(db: &Db, token: &str) -> Result<()> {
+    db.execute("DELETE FROM sessions WHERE token = ?1", (token,))
         .await
         .context("deleting session")?;
     Ok(())
@@ -275,11 +267,10 @@ pub async fn delete_session(db: &SqlitePool, token: &str) -> Result<()> {
 
 /// Whether a username is already taken. The input is normalized first, so an invalid slug returns
 /// a validation error (the caller can surface "not a valid username" distinctly from "taken").
-pub async fn is_username_taken(db: &SqlitePool, username: &str) -> Result<bool, AppError> {
+pub async fn is_username_taken(db: &Db, username: &str) -> Result<bool, AppError> {
     let name = normalize_username(username)?;
-    let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM accounts WHERE username = ?1")
-        .bind(&name)
-        .fetch_optional(db)
+    let row: Option<(i64,)> = db
+        .fetch_optional("SELECT 1 FROM accounts WHERE username = ?1", (name,))
         .await
         .context("checking username")
         .map_err(AppError::Internal)?;
@@ -287,40 +278,38 @@ pub async fn is_username_taken(db: &SqlitePool, username: &str) -> Result<bool, 
 }
 
 /// Add a tag to an account (idempotent - re-adding an existing tag is a no-op).
-pub async fn add_tag(db: &SqlitePool, account_id: &Uuid, tag: &str) -> Result<()> {
-    sqlx::query("INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES (?1, ?2)")
-        .bind(account_id.to_string())
-        .bind(tag)
-        .execute(db)
-        .await
-        .context("adding account tag")?;
+pub async fn add_tag(db: &Db, account_id: &Uuid, tag: &str) -> Result<()> {
+    db.execute(
+        "INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES (?1, ?2)",
+        (account_id.to_string(), tag),
+    )
+    .await
+    .context("adding account tag")?;
     Ok(())
 }
 
 /// Remove a tag from an account.
-pub async fn remove_tag(db: &SqlitePool, account_id: &Uuid, tag: &str) -> Result<()> {
-    sqlx::query("DELETE FROM account_tags WHERE account_id = ?1 AND tag = ?2")
-        .bind(account_id.to_string())
-        .bind(tag)
-        .execute(db)
-        .await
-        .context("removing account tag")?;
+pub async fn remove_tag(db: &Db, account_id: &Uuid, tag: &str) -> Result<()> {
+    db.execute(
+        "DELETE FROM account_tags WHERE account_id = ?1 AND tag = ?2",
+        (account_id.to_string(), tag),
+    )
+    .await
+    .context("removing account tag")?;
     Ok(())
 }
 
 /// Look up an account by (normalized) username.
-pub async fn account_by_username(
-    db: &SqlitePool,
-    username: &str,
-) -> Result<Option<Account>, AppError> {
+pub async fn account_by_username(db: &Db, username: &str) -> Result<Option<Account>, AppError> {
     let lookup = username.trim().to_ascii_lowercase();
-    let row: Option<(String, String)> =
-        sqlx::query_as("SELECT id, username FROM accounts WHERE username = ?1")
-            .bind(&lookup)
-            .fetch_optional(db)
-            .await
-            .context("looking up account by username")
-            .map_err(AppError::Internal)?;
+    let row: Option<(String, String)> = db
+        .fetch_optional(
+            "SELECT id, username FROM accounts WHERE username = ?1",
+            (lookup,),
+        )
+        .await
+        .context("looking up account by username")
+        .map_err(AppError::Internal)?;
 
     match row {
         Some((id, username)) => {
@@ -333,27 +322,28 @@ pub async fn account_by_username(
 }
 
 /// Whether an account carries a given tag.
-pub async fn has_tag(db: &SqlitePool, account_id: &Uuid, tag: &str) -> Result<bool, AppError> {
-    let row: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM account_tags WHERE account_id = ?1 AND tag = ?2")
-            .bind(account_id.to_string())
-            .bind(tag)
-            .fetch_optional(db)
-            .await
-            .context("checking account tag")
-            .map_err(AppError::Internal)?;
+pub async fn has_tag(db: &Db, account_id: &Uuid, tag: &str) -> Result<bool, AppError> {
+    let row: Option<(i64,)> = db
+        .fetch_optional(
+            "SELECT 1 FROM account_tags WHERE account_id = ?1 AND tag = ?2",
+            (account_id.to_string(), tag),
+        )
+        .await
+        .context("checking account tag")
+        .map_err(AppError::Internal)?;
     Ok(row.is_some())
 }
 
 /// All tags on an account.
-pub async fn tags_for(db: &SqlitePool, account_id: &Uuid) -> Result<Vec<String>, AppError> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT tag FROM account_tags WHERE account_id = ?1 ORDER BY tag")
-            .bind(account_id.to_string())
-            .fetch_all(db)
-            .await
-            .context("reading account tags")
-            .map_err(AppError::Internal)?;
+pub async fn tags_for(db: &Db, account_id: &Uuid) -> Result<Vec<String>, AppError> {
+    let rows: Vec<(String,)> = db
+        .fetch_all(
+            "SELECT tag FROM account_tags WHERE account_id = ?1 ORDER BY tag",
+            (account_id.to_string(),),
+        )
+        .await
+        .context("reading account tags")
+        .map_err(AppError::Internal)?;
     Ok(rows.into_iter().map(|(t,)| t).collect())
 }
 
@@ -405,8 +395,7 @@ mod tests {
 
     #[tokio::test]
     async fn first_account_becomes_node_admin() {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::node_migrator_for_test(&pool).await;
+        let pool = crate::db::test_node_db().await;
 
         let first = register(&pool, "founder", "password123", false)
             .await
@@ -421,8 +410,7 @@ mod tests {
 
     #[tokio::test]
     async fn tags_round_trip() {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::node_migrator_for_test(&pool).await;
+        let pool = crate::db::test_node_db().await;
 
         // Skip the admin bootstrap so this account starts with a clean tag set.
         let account = register(&pool, "tag_tester", "password123", true)

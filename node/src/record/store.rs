@@ -43,9 +43,9 @@
 // allow comes off when the first 4S route lands.
 #![allow(dead_code)]
 
+use crate::db::Db;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Payload, PrivateKind, PrivatePlain, SignedEntry, SigningKey};
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::AppError;
@@ -65,7 +65,7 @@ struct Authorship {
 
 /// An identity's data, opened read-write by its owner. Handles hang off this.
 pub struct Store {
-    db: SqlitePool,
+    db: Db,
     authorship: Authorship,
     /// The node's file layer (document bodies live there, headers on the chain).
     files: std::sync::Arc<crate::files::FileStore>,
@@ -74,7 +74,7 @@ pub struct Store {
 /// The public slice of an identity's data, opened without credentials - for serving readers who
 /// aren't the owner (4S). Only public, read-only handles exist on it; the type is the gate.
 pub struct PublicView {
-    db: SqlitePool,
+    db: Db,
 }
 
 /// Open an identity's data for a logged-in owner: ownership check, signing key, epoch keys, and
@@ -311,12 +311,16 @@ impl Documents<'_> {
 
     /// The materialized view: every document, its version DAG, heads, and divergence state.
     pub async fn all(&self) -> Result<crate::record::documents::DocumentsView, AppError> {
-        crate::record::documents::materialize(&self.store.db, &self.store.authorship.epoch_keys).await
+        crate::record::documents::materialize(&self.store.db, &self.store.authorship.epoch_keys)
+            .await
     }
 
     /// Read and decrypt one version's body. `Ok(None)` when we hold no key for its era or the
     /// body hasn't been fetched to this node yet.
-    pub async fn body(&self, version: &crate::record::documents::Version) -> Result<Option<Vec<u8>>, AppError> {
+    pub async fn body(
+        &self,
+        version: &crate::record::documents::Version,
+    ) -> Result<Option<Vec<u8>>, AppError> {
         crate::record::documents::read_body(
             &self.store.files,
             &self.store.authorship.epoch_keys,
@@ -344,7 +348,8 @@ impl Documents<'_> {
         &self,
         doc: &crate::record::documents::Doc,
     ) -> Result<crate::record::documents::ResolvedDoc, AppError> {
-        crate::record::documents::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc).await
+        crate::record::documents::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc)
+            .await
     }
 }
 
@@ -373,7 +378,7 @@ pub struct LogItem {
 }
 
 pub struct AppendLog<'s> {
-    db: &'s SqlitePool,
+    db: &'s Db,
 }
 
 impl AppendLog<'_> {
@@ -442,8 +447,7 @@ mod tests {
     /// Build a Store directly against an in-memory db - no AppState, no HTTP. The unit tests
     /// exercise handle semantics; the integration suite exercises the full plumbing via routes.
     async fn test_store() -> Store {
-        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::user_migrator_for_test(&db).await;
+        let db = crate::db::test_user_db().await;
 
         let signer = SigningKey::from_bytes(&[11u8; 32]);
         let leaf = signer.verifying_key().to_bytes();

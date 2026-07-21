@@ -7,33 +7,31 @@
 //! promise the per-user databases are built on. In M3 the entries table is also exactly what
 //! replicates between nodes; nothing in this module may trust a row without re-validating it.
 
+use crate::db::Db;
+use crate::error::AppError;
+use crate::pubkey;
 use anyhow::{anyhow, Context};
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{
     ChainId, Entry, Payload, ProfileSet, SignedEntry, SigningKey, ENTRY_VERSION, ZERO_HASH,
 };
-use sqlx::SqlitePool;
-
-use crate::error::AppError;
-use crate::pubkey;
 
 /// The stored head of one chain: highest seq, that entry's hash, and its claimed timestamp.
 async fn chain_head(
-    db: &SqlitePool,
+    db: &Db,
     author_hex: &str,
     service_id: u32,
 ) -> Result<Option<(u64, [u8; 32], i64)>, AppError> {
-    let row: Option<(i64, Vec<u8>, i64)> = sqlx::query_as(
-        "SELECT seq, entry_hash, timestamp_ms FROM entries
+    let row: Option<(i64, Vec<u8>, i64)> = db
+        .fetch_optional(
+            "SELECT seq, entry_hash, timestamp_ms FROM entries
          WHERE author_pubkey = ?1 AND service = ?2
          ORDER BY seq DESC LIMIT 1",
-    )
-    .bind(author_hex)
-    .bind(i64::from(service_id))
-    .fetch_optional(db)
-    .await
-    .context("reading chain head")
-    .map_err(AppError::Internal)?;
+            (author_hex, i64::from(service_id)),
+        )
+        .await
+        .context("reading chain head")
+        .map_err(AppError::Internal)?;
 
     match row {
         None => Ok(None),
@@ -49,7 +47,7 @@ async fn chain_head(
 /// Append one entry to this key's (service) chain: derive seq and prev_hash from the stored
 /// head, sign, store the exact envelope bytes.
 pub async fn append(
-    db: &SqlitePool,
+    db: &Db,
     key: &SigningKey,
     service_id: u32,
     type_id: u32,
@@ -84,22 +82,23 @@ pub async fn append(
 
     // Two concurrent appends to one chain race to the same seq; the (author, service, seq)
     // primary key makes the loser fail loudly instead of forking the chain.
-    sqlx::query(
+    db.execute(
         "INSERT INTO entries
            (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
             received_at_ms, bytes)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        (
+            author_hex.as_str(),
+            i64::from(service_id),
+            seq as i64,
+            signed.hash().as_slice(),
+            signed.entry().prev_hash.as_slice(),
+            i64::from(type_id),
+            signed.entry().timestamp_ms,
+            crate::clock::now_ms(),
+            signed.bytes(),
+        ),
     )
-    .bind(&author_hex)
-    .bind(i64::from(service_id))
-    .bind(seq as i64)
-    .bind(signed.hash().as_slice())
-    .bind(signed.entry().prev_hash.as_slice())
-    .bind(i64::from(type_id))
-    .bind(signed.entry().timestamp_ms)
-    .bind(crate::clock::now_ms())
-    .bind(signed.bytes())
-    .execute(db)
     .await
     .context("storing entry")
     .map_err(AppError::Internal)?;
@@ -110,7 +109,7 @@ pub async fn append(
 /// Set one field of the identity's public profile: append a `profile-set` entry, then fold it
 /// into the materialized view.
 pub async fn set_profile_field(
-    db: &SqlitePool,
+    db: &Db,
     key: &SigningKey,
     field: &str,
     value: &str,
@@ -145,10 +144,7 @@ pub async fn set_profile_field(
 /// has a lost-update window when a rebuild replaying old entries races a live write: both read,
 /// both "win," and the old value can land last. Statement-level atomicity closes it - the row is
 /// monotone in the tuple no matter how appliers interleave.
-pub(crate) async fn apply_profile_set(
-    db: &SqlitePool,
-    signed: &SignedEntry,
-) -> Result<(), AppError> {
+pub(crate) async fn apply_profile_set(db: &Db, signed: &SignedEntry) -> Result<(), AppError> {
     let Payload::Inline(bytes) = &signed.entry().payload else {
         return Err(AppError::Internal(anyhow!(
             "profile-set payload must be inline"
@@ -157,7 +153,7 @@ pub(crate) async fn apply_profile_set(
     let ps = ProfileSet::decode(bytes)
         .map_err(|e| AppError::Internal(anyhow!("undecodable profile-set payload: {e}")))?;
 
-    sqlx::query(
+    db.execute(
         "INSERT INTO profile_view (field, value, updated_at_ms, seq, entry_hash)
          VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(field) DO UPDATE SET
@@ -167,13 +163,14 @@ pub(crate) async fn apply_profile_set(
            entry_hash = excluded.entry_hash
          WHERE (excluded.updated_at_ms, excluded.seq, excluded.entry_hash)
              > (profile_view.updated_at_ms, profile_view.seq, profile_view.entry_hash)",
+        (
+            ps.field.as_str(),
+            ps.value.as_str(),
+            signed.entry().timestamp_ms,
+            signed.entry().seq as i64,
+            signed.hash().as_slice(),
+        ),
     )
-    .bind(&ps.field)
-    .bind(&ps.value)
-    .bind(signed.entry().timestamp_ms)
-    .bind(signed.entry().seq as i64)
-    .bind(signed.hash().as_slice())
-    .execute(db)
     .await
     .context("updating profile view")
     .map_err(AppError::Internal)?;
@@ -188,13 +185,15 @@ pub struct ProfileField {
 }
 
 /// The identity's current public profile, as materialized.
-pub async fn get_profile(db: &SqlitePool) -> Result<Vec<ProfileField>, AppError> {
-    let rows: Vec<(String, String, i64)> =
-        sqlx::query_as("SELECT field, value, updated_at_ms FROM profile_view ORDER BY field")
-            .fetch_all(db)
-            .await
-            .context("reading profile view")
-            .map_err(AppError::Internal)?;
+pub async fn get_profile(db: &Db) -> Result<Vec<ProfileField>, AppError> {
+    let rows: Vec<(String, String, i64)> = db
+        .fetch_all(
+            "SELECT field, value, updated_at_ms FROM profile_view ORDER BY field",
+            (),
+        )
+        .await
+        .context("reading profile view")
+        .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
         .map(|(field, value, updated_at_ms)| ProfileField {
@@ -209,20 +208,20 @@ pub async fn get_profile(db: &SqlitePool) -> Result<Vec<ProfileField>, AppError>
 /// full chain as it goes: strict decode, signature, dense seqs, hash links. Returns the number of
 /// entries replayed. This is the M1 exit demo and the standing proof that the views are caches,
 /// not truth.
-pub async fn rebuild_views(db: &SqlitePool) -> Result<u64, AppError> {
-    sqlx::query("DELETE FROM profile_view")
-        .execute(db)
+pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
+    db.execute("DELETE FROM profile_view", ())
         .await
         .context("clearing profile view")
         .map_err(AppError::Internal)?;
 
-    let rows: Vec<(String, i64, Vec<u8>)> = sqlx::query_as(
-        "SELECT author_pubkey, service, bytes FROM entries ORDER BY author_pubkey, service, seq",
-    )
-    .fetch_all(db)
-    .await
-    .context("reading entries log")
-    .map_err(AppError::Internal)?;
+    let rows: Vec<(String, i64, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT author_pubkey, service, bytes FROM entries ORDER BY author_pubkey, service, seq",
+            (),
+        )
+        .await
+        .context("reading entries log")
+        .map_err(AppError::Internal)?;
 
     let mut prev: Option<SignedEntry> = None;
     let mut prev_chain: Option<(String, i64)> = None;
@@ -268,19 +267,17 @@ pub struct StoredEntry {
 
 /// Load and resolve the identity's key tree from its stored identity-public chains. The tree is
 /// tiny (design center: 2-5 keys), so recomputing on demand beats maintaining a view.
-pub async fn load_key_tree(
-    db: &SqlitePool,
-    root_hex: &str,
-) -> Result<ringtome_proto::Crown, AppError> {
+pub async fn load_key_tree(db: &Db, root_hex: &str) -> Result<ringtome_proto::Crown, AppError> {
     let root = pubkey::require(root_hex, "root pubkey")?;
 
-    let rows: Vec<(Vec<u8>,)> =
-        sqlx::query_as("SELECT bytes FROM entries WHERE service = ?1 ORDER BY author_pubkey, seq")
-            .bind(i64::from(service::IDENTITY_PUBLIC))
-            .fetch_all(db)
-            .await
-            .context("reading identity chains")
-            .map_err(AppError::Internal)?;
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries WHERE service = ?1 ORDER BY author_pubkey, seq",
+            (i64::from(service::IDENTITY_PUBLIC),),
+        )
+        .await
+        .context("reading identity chains")
+        .map_err(AppError::Internal)?;
 
     let entries = rows
         .into_iter()
@@ -296,20 +293,19 @@ pub async fn load_key_tree(
 /// read path for chain-scanning consumers (the private-chain machinery reads `key-epoch`,
 /// `authorize`, and `private-record` entries through this).
 pub async fn entries_of_type(
-    db: &SqlitePool,
+    db: &Db,
     service_id: u32,
     type_id: u32,
 ) -> Result<Vec<SignedEntry>, AppError> {
-    let rows: Vec<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
          ORDER BY author_pubkey, seq",
-    )
-    .bind(i64::from(service_id))
-    .bind(i64::from(type_id))
-    .fetch_all(db)
-    .await
-    .context("reading entries by type")
-    .map_err(AppError::Internal)?;
+            (i64::from(service_id), i64::from(type_id)),
+        )
+        .await
+        .context("reading entries by type")
+        .map_err(AppError::Internal)?;
 
     rows.into_iter()
         .map(|(bytes,)| {
@@ -328,35 +324,39 @@ pub async fn entries_of_type(
 /// the read-path posture suffix sync needs (PROJECT_PLAN, Shallow Sync).
 #[allow(dead_code)] // consumer: the store's AppendLog, routed in Tier 4S (plan-in-hand)
 pub async fn entries_page(
-    db: &SqlitePool,
+    db: &Db,
     service_id: u32,
     limit: u32,
     before: Option<(i64, u64, [u8; 32])>,
 ) -> Result<Vec<(SignedEntry, i64)>, AppError> {
-    let query = match before {
-        Some((timestamp_ms, seq, hash)) => sqlx::query_as(
-            "SELECT bytes, received_at_ms FROM entries
+    let rows: Vec<(Vec<u8>, i64)> = match before {
+        Some((timestamp_ms, seq, hash)) => {
+            db.fetch_all(
+                "SELECT bytes, received_at_ms FROM entries
              WHERE service = ?1 AND (timestamp_ms, seq, entry_hash) < (?2, ?3, ?4)
              ORDER BY timestamp_ms DESC, seq DESC, entry_hash DESC LIMIT ?5",
-        )
-        .bind(i64::from(service_id))
-        .bind(timestamp_ms)
-        .bind(seq as i64)
-        .bind(hash.to_vec())
-        .bind(i64::from(limit)),
-        None => sqlx::query_as(
-            "SELECT bytes, received_at_ms FROM entries
+                (
+                    i64::from(service_id),
+                    timestamp_ms,
+                    seq as i64,
+                    hash.to_vec(),
+                    i64::from(limit),
+                ),
+            )
+            .await
+        }
+        None => {
+            db.fetch_all(
+                "SELECT bytes, received_at_ms FROM entries
              WHERE service = ?1
              ORDER BY timestamp_ms DESC, seq DESC, entry_hash DESC LIMIT ?2",
-        )
-        .bind(i64::from(service_id))
-        .bind(i64::from(limit)),
-    };
-    let rows: Vec<(Vec<u8>, i64)> = query
-        .fetch_all(db)
-        .await
-        .context("paging entries")
-        .map_err(AppError::Internal)?;
+                (i64::from(service_id), i64::from(limit)),
+            )
+            .await
+        }
+    }
+    .context("paging entries")
+    .map_err(AppError::Internal)?;
 
     rows.into_iter()
         .map(|(bytes, received_at_ms)| {
@@ -370,20 +370,20 @@ pub async fn entries_page(
 /// The stored head of every chain a key has written: `(service, seq, head_hash)` triples -
 /// exactly the shape revocation anchors want.
 pub async fn chain_heads_for_author(
-    db: &SqlitePool,
+    db: &Db,
     author_hex: &str,
 ) -> Result<Vec<(u32, u64, [u8; 32])>, AppError> {
-    let rows: Vec<(i64, i64, Vec<u8>)> = sqlx::query_as(
-        "SELECT service, seq, entry_hash FROM entries e
+    let rows: Vec<(i64, i64, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT service, seq, entry_hash FROM entries e
          WHERE author_pubkey = ?1
            AND seq = (SELECT MAX(seq) FROM entries
                       WHERE author_pubkey = e.author_pubkey AND service = e.service)",
-    )
-    .bind(author_hex)
-    .fetch_all(db)
-    .await
-    .context("reading chain heads")
-    .map_err(AppError::Internal)?;
+            (author_hex,),
+        )
+        .await
+        .context("reading chain heads")
+        .map_err(AppError::Internal)?;
 
     rows.into_iter()
         .map(|(svc, seq, hash)| {
@@ -400,15 +400,16 @@ pub async fn chain_heads_for_author(
 type EntryRow = (i64, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
 
 /// The raw log, hex-encoded - the debug/inspect surface (pipe an entry into `ringtome inspect`).
-pub async fn list_entries(db: &SqlitePool) -> Result<Vec<StoredEntry>, AppError> {
-    let rows: Vec<EntryRow> = sqlx::query_as(
-        "SELECT service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes
+pub async fn list_entries(db: &Db) -> Result<Vec<StoredEntry>, AppError> {
+    let rows: Vec<EntryRow> = db
+        .fetch_all(
+            "SELECT service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes
          FROM entries ORDER BY service, seq",
-    )
-    .fetch_all(db)
-    .await
-    .context("listing entries")
-    .map_err(AppError::Internal)?;
+            (),
+        )
+        .await
+        .context("listing entries")
+        .map_err(AppError::Internal)?;
 
     Ok(rows
         .into_iter()
@@ -428,10 +429,8 @@ pub async fn list_entries(db: &SqlitePool) -> Result<Vec<StoredEntry>, AppError>
 mod tests {
     use super::*;
 
-    async fn test_db() -> SqlitePool {
-        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::user_migrator_for_test(&pool).await;
-        pool
+    async fn test_db() -> Db {
+        crate::db::test_user_db().await
     }
 
     fn test_key() -> SigningKey {
@@ -488,14 +487,10 @@ mod tests {
             .await
             .unwrap();
         let year_ahead = crate::clock::now_ms() + 365 * 24 * 60 * 60 * 1000;
-        sqlx::query("UPDATE entries SET timestamp_ms = ?1")
-            .bind(year_ahead)
-            .execute(&db)
+        db.execute("UPDATE entries SET timestamp_ms = ?1", (year_ahead,))
             .await
             .unwrap();
-        sqlx::query("UPDATE profile_view SET updated_at_ms = ?1")
-            .bind(year_ahead)
-            .execute(&db)
+        db.execute("UPDATE profile_view SET updated_at_ms = ?1", (year_ahead,))
             .await
             .unwrap();
 
@@ -563,11 +558,12 @@ mod tests {
             .await
             .unwrap();
         }
-        sqlx::query("DELETE FROM entries WHERE service = ?1 AND seq < 2")
-            .bind(i64::from(service::POSTS))
-            .execute(&db)
-            .await
-            .unwrap();
+        db.execute(
+            "DELETE FROM entries WHERE service = ?1 AND seq < 2",
+            (i64::from(service::POSTS),),
+        )
+        .await
+        .unwrap();
 
         let page = entries_page(&db, service::POSTS, 10, None).await.unwrap();
         let seqs: Vec<u64> = page.iter().map(|(signed, _)| signed.entry().seq).collect();
@@ -596,8 +592,7 @@ mod tests {
         let before = get_profile(&db).await.unwrap();
 
         // Sabotage the view, then rebuild from the log.
-        sqlx::query("UPDATE profile_view SET value = 'CLOBBERED'")
-            .execute(&db)
+        db.execute("UPDATE profile_view SET value = 'CLOBBERED'", ())
             .await
             .unwrap();
         let replayed = rebuild_views(&db).await.unwrap();
@@ -620,16 +615,14 @@ mod tests {
             .unwrap();
 
         // Corrupt one byte of the stored envelope: rebuild must refuse, not shrug.
-        let (bytes,): (Vec<u8>,) = sqlx::query_as("SELECT bytes FROM entries LIMIT 1")
-            .fetch_one(&db)
+        let (bytes,): (Vec<u8>,) = db
+            .fetch_one("SELECT bytes FROM entries LIMIT 1", ())
             .await
             .unwrap();
         let mut tampered = bytes.clone();
         let last = tampered.len() - 1;
         tampered[last] ^= 0xff;
-        sqlx::query("UPDATE entries SET bytes = ?1")
-            .bind(&tampered)
-            .execute(&db)
+        db.execute("UPDATE entries SET bytes = ?1", (tampered,))
             .await
             .unwrap();
 

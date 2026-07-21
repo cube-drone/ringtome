@@ -15,15 +15,15 @@
 
 use std::collections::BTreeMap;
 
+use crate::db::Db;
 use anyhow::{anyhow, Result};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{
-    Authorize, KeyEpoch, Crown, Payload, PrivateKind, PrivatePlain, PrivateRecord, SignedEntry,
+    Authorize, Crown, KeyEpoch, Payload, PrivateKind, PrivatePlain, PrivateRecord, SignedEntry,
     SigningKey,
 };
-use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::keystore::Keystore;
@@ -112,9 +112,10 @@ impl EpochKeys {
 }
 
 /// Every decodable `key-epoch` entry stored on the identity-public chains.
-async fn load_epoch_entries(db: &SqlitePool) -> Result<Vec<KeyEpoch>, AppError> {
+async fn load_epoch_entries(db: &Db) -> Result<Vec<KeyEpoch>, AppError> {
     let entries =
-        crate::record::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::KEY_EPOCH).await?;
+        crate::record::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::KEY_EPOCH)
+            .await?;
     let mut out = Vec::with_capacity(entries.len());
     for signed in entries {
         let Payload::Inline(payload) = &signed.entry().payload else {
@@ -132,7 +133,7 @@ async fn load_epoch_entries(db: &SqlitePool) -> Result<Vec<KeyEpoch>, AppError> 
 
 /// Walk the chain's `key-epoch` entries and unseal every box addressed to our leaf.
 pub async fn unseal_epoch_keys(
-    db: &SqlitePool,
+    db: &Db,
     our_leaf: &[u8; 32],
     our_enc: &EncKeyPair,
 ) -> Result<EpochKeys, AppError> {
@@ -160,7 +161,7 @@ pub async fn unseal_epoch_keys(
 
 /// The highest epoch number anyone has published, openable by us or not - what a rotation must
 /// step past.
-pub async fn max_epoch(db: &SqlitePool) -> Result<Option<u64>, AppError> {
+pub async fn max_epoch(db: &Db) -> Result<Option<u64>, AppError> {
     Ok(load_epoch_entries(db)
         .await?
         .iter()
@@ -170,11 +171,12 @@ pub async fn max_epoch(db: &SqlitePool) -> Result<Option<u64>, AppError> {
 
 /// Every member encryption pubkey learnable from the chain: authorize stamps (field 2) plus the
 /// recipient lists of past epochs. This is how a rotator seals to members it never met.
-pub async fn enc_roster(db: &SqlitePool) -> Result<BTreeMap<[u8; 32], [u8; 32]>, AppError> {
+pub async fn enc_roster(db: &Db) -> Result<BTreeMap<[u8; 32], [u8; 32]>, AppError> {
     let mut roster = BTreeMap::new();
 
     let authorizes =
-        crate::record::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::AUTHORIZE).await?;
+        crate::record::imaol::entries_of_type(db, service::IDENTITY_PUBLIC, entry_type::AUTHORIZE)
+            .await?;
     for signed in authorizes {
         let Payload::Inline(payload) = &signed.entry().payload else {
             continue;
@@ -205,7 +207,7 @@ pub fn fresh_epoch_key() -> [u8; 32] {
 /// Publish one epoch key sealed to a set of recipients, as a `key-epoch` entry signed by this
 /// node's key. Used for genesis (epoch 0), rotation, and adoption re-seals alike.
 pub async fn mint_epoch(
-    db: &SqlitePool,
+    db: &Db,
     signer: &SigningKey,
     epoch: u64,
     epoch_key: &[u8; 32],
@@ -236,7 +238,7 @@ pub async fn mint_epoch(
 /// Adoption's second half: re-seal every epoch key this node holds to the newcomer, so its
 /// private view reaches back to epoch 0. One `key-epoch` entry per (epoch, key) we hold.
 pub async fn reseal_epochs_to(
-    db: &SqlitePool,
+    db: &Db,
     signer: &SigningKey,
     newcomer_leaf: &[u8; 32],
     newcomer_enc: &[u8; 32],
@@ -255,7 +257,7 @@ pub async fn reseal_epochs_to(
 /// chain never learned are skipped (they fail closed: they keep reading their old era and a
 /// later re-seal can catch them up) - never silently, though.
 pub async fn rotate_epoch(
-    db: &SqlitePool,
+    db: &Db,
     signer: &SigningKey,
     tree: &Crown,
     exclude: &[u8; 32],
@@ -405,7 +407,11 @@ pub fn decrypt_doc_header(
 // ungated (NOTES_APP, The file layer). No size cap - file bodies are not register-sized facts.
 
 /// Encrypt a file body under a specific epoch key into a self-describing blob.
-pub fn encrypt_file(epoch: u64, epoch_key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, AppError> {
+pub fn encrypt_file(
+    epoch: u64,
+    epoch_key: &[u8; 32],
+    plaintext: &[u8],
+) -> Result<Vec<u8>, AppError> {
     let mut nonce = [0u8; 24];
     {
         use rand::RngCore;
@@ -453,7 +459,7 @@ pub fn decrypt_file(blob: &[u8], keys: &EpochKeys) -> Option<Vec<u8>> {
 
 /// Append one private record under the current epoch.
 pub async fn write_record(
-    db: &SqlitePool,
+    db: &Db,
     signer: &SigningKey,
     keys: &EpochKeys,
     plain: &PrivatePlain,
@@ -560,9 +566,13 @@ impl PrivateView {
 /// Fold every stored private record we can decrypt into a fresh view. Recomputed per read:
 /// private state is small by design, and this is exactly the disposable-view discipline with the
 /// persistence dial at zero.
-pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<PrivateView, AppError> {
-    let records =
-        crate::record::imaol::entries_of_type(db, service::GENERAL_PRIVATE, entry_type::PRIVATE_RECORD).await?;
+pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppError> {
+    let records = crate::record::imaol::entries_of_type(
+        db,
+        service::GENERAL_PRIVATE,
+        entry_type::PRIVATE_RECORD,
+    )
+    .await?;
 
     let mut view = PrivateView::default();
     for signed in records {
@@ -592,10 +602,8 @@ pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<PrivateVie
 mod tests {
     use super::*;
 
-    async fn test_db() -> SqlitePool {
-        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::user_migrator_for_test(&pool).await;
-        pool
+    async fn test_db() -> Db {
+        crate::db::test_user_db().await
     }
 
     fn signer(byte: u8) -> SigningKey {

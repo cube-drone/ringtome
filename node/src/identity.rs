@@ -24,10 +24,10 @@ use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Anchor, Authorize, Disposition, Payload, Revoke};
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::clock::now_ms;
+use crate::db::Db;
 use crate::error::AppError;
 use crate::keystore::Keystore;
 use crate::pubkey;
@@ -61,7 +61,7 @@ pub struct CreatedIdentity {
 /// key** - a fresh keypair authorized as the root's first child (rank path `[0]`), structurally
 /// senior to every key added afterward, forever (PROJECT_PLAN, Recovery Planning).
 pub async fn create(
-    node_db: &SqlitePool,
+    node_db: &Db,
     keystore: &Keystore,
     user_dbs: &crate::db::UserDbManager,
     account_id: &Uuid,
@@ -162,40 +162,39 @@ pub async fn create(
 /// Record that this node agents `root_pubkey` for `account_id`, signing with the key named
 /// `leaf_key_name` - the root itself at creation, a granted leaf after adoption.
 pub async fn record_identity(
-    node_db: &SqlitePool,
+    node_db: &Db,
     account_id: &Uuid,
     root_pubkey: &str,
     leaf_key_name: &str,
     created_at_ms: i64,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "INSERT INTO identities (root_pubkey, account_id, created_at_ms, leaf_pubkey)
+    node_db
+        .execute(
+            "INSERT INTO identities (root_pubkey, account_id, created_at_ms, leaf_pubkey)
          VALUES (?1, ?2, ?3, ?4)",
-    )
-    .bind(root_pubkey)
-    .bind(account_id.to_string())
-    .bind(created_at_ms)
-    .bind(leaf_key_name)
-    .execute(node_db)
-    .await
-    .context("recording identity")
-    .map_err(AppError::Internal)?;
+            (
+                root_pubkey,
+                account_id.to_string(),
+                created_at_ms,
+                leaf_key_name,
+            ),
+        )
+        .await
+        .context("recording identity")
+        .map_err(AppError::Internal)?;
     Ok(())
 }
 
 /// List the identities owned by an account.
-pub async fn list_for_account(
-    node_db: &SqlitePool,
-    account_id: &Uuid,
-) -> Result<Vec<Identity>, AppError> {
-    let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT root_pubkey, created_at_ms FROM identities WHERE account_id = ?1 ORDER BY created_at_ms ASC",
-    )
-    .bind(account_id.to_string())
-    .fetch_all(node_db)
-    .await
-    .context("listing identities")
-    .map_err(AppError::Internal)?;
+pub async fn list_for_account(node_db: &Db, account_id: &Uuid) -> Result<Vec<Identity>, AppError> {
+    let rows: Vec<(String, i64)> = node_db
+        .fetch_all(
+            "SELECT root_pubkey, created_at_ms FROM identities WHERE account_id = ?1 ORDER BY created_at_ms ASC",
+            (account_id.to_string(),),
+        )
+        .await
+        .context("listing identities")
+        .map_err(AppError::Internal)?;
 
     Ok(rows
         .into_iter()
@@ -208,10 +207,12 @@ pub async fn list_for_account(
 
 /// Whether this node agents the identity at all (any account). The sync server consults this -
 /// per the data-access convention, `identities` SQL lives only in this module.
-pub async fn is_agented(node_db: &SqlitePool, root_pubkey: &str) -> Result<bool, AppError> {
-    let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM identities WHERE root_pubkey = ?1")
-        .bind(root_pubkey)
-        .fetch_optional(node_db)
+pub async fn is_agented(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM identities WHERE root_pubkey = ?1",
+            (root_pubkey,),
+        )
         .await
         .context("checking identity")
         .map_err(AppError::Internal)?;
@@ -219,23 +220,26 @@ pub async fn is_agented(node_db: &SqlitePool, root_pubkey: &str) -> Result<bool,
 }
 
 /// Roots of every identity marked served - the republish loop's worklist.
-pub async fn served_roots(node_db: &SqlitePool) -> Result<Vec<String>, AppError> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL")
-            .fetch_all(node_db)
-            .await
-            .context("listing served identities")
-            .map_err(AppError::Internal)?;
+pub async fn served_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL",
+            (),
+        )
+        .await
+        .context("listing served identities")
+        .map_err(AppError::Internal)?;
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
 /// Stamp an identity as served. The flow around it (ownership check, immediate publication)
 /// lives in `serving`; this is just the identities-table write.
-pub(crate) async fn record_served(node_db: &SqlitePool, root_pubkey: &str) -> Result<(), AppError> {
-    sqlx::query("UPDATE identities SET served_at_ms = ?1 WHERE root_pubkey = ?2")
-        .bind(now_ms())
-        .bind(root_pubkey)
-        .execute(node_db)
+pub(crate) async fn record_served(node_db: &Db, root_pubkey: &str) -> Result<(), AppError> {
+    node_db
+        .execute(
+            "UPDATE identities SET served_at_ms = ?1 WHERE root_pubkey = ?2",
+            (now_ms(), root_pubkey),
+        )
         .await
         .context("marking identity served")
         .map_err(AppError::Internal)?;
@@ -245,18 +249,18 @@ pub(crate) async fn record_served(node_db: &SqlitePool, root_pubkey: &str) -> Re
 /// Verify that `account_id` owns the identity `root_pubkey`, uniformly 404ing otherwise (an
 /// existing-but-not-yours identity is indistinguishable from a nonexistent one).
 pub async fn require_owned(
-    node_db: &SqlitePool,
+    node_db: &Db,
     account_id: &Uuid,
     root_pubkey: &str,
 ) -> Result<(), AppError> {
-    let owned: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM identities WHERE root_pubkey = ?1 AND account_id = ?2")
-            .bind(root_pubkey)
-            .bind(account_id.to_string())
-            .fetch_optional(node_db)
-            .await
-            .context("checking identity ownership")
-            .map_err(AppError::Internal)?;
+    let owned: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM identities WHERE root_pubkey = ?1 AND account_id = ?2",
+            (root_pubkey, account_id.to_string()),
+        )
+        .await
+        .context("checking identity ownership")
+        .map_err(AppError::Internal)?;
     if owned.is_none() {
         return Err(AppError::NotFound("identity not found".into()));
     }
@@ -279,20 +283,19 @@ fn signing_key_named(keystore: &Keystore, key_name: &str) -> Result<SigningKey, 
 /// Load *this node's* signing key for an identity - the root on the creating node, a granted
 /// leaf on adopted nodes. Verifies the account owns the identity first.
 pub async fn load_signing_key(
-    node_db: &SqlitePool,
+    node_db: &Db,
     keystore: &Keystore,
     account_id: &Uuid,
     root_pubkey: &str,
 ) -> Result<SigningKey, AppError> {
-    let row: Option<(Option<String>,)> = sqlx::query_as(
-        "SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1 AND account_id = ?2",
-    )
-    .bind(root_pubkey)
-    .bind(account_id.to_string())
-    .fetch_optional(node_db)
-    .await
-    .context("checking identity ownership")
-    .map_err(AppError::Internal)?;
+    let row: Option<(Option<String>,)> = node_db
+        .fetch_optional(
+            "SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1 AND account_id = ?2",
+            (root_pubkey, account_id.to_string()),
+        )
+        .await
+        .context("checking identity ownership")
+        .map_err(AppError::Internal)?;
     let Some((leaf,)) = row else {
         return Err(AppError::NotFound("identity not found".into()));
     };
@@ -305,17 +308,18 @@ pub async fn load_signing_key(
 /// sync engine's loader (a member proof speaks for the node, not for a login session). `None`
 /// when the node doesn't agent the identity.
 pub async fn load_node_leaf_key(
-    node_db: &SqlitePool,
+    node_db: &Db,
     keystore: &Keystore,
     root_pubkey: &str,
 ) -> Result<Option<SigningKey>, AppError> {
-    let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1")
-            .bind(root_pubkey)
-            .fetch_optional(node_db)
-            .await
-            .context("looking up identity leaf")
-            .map_err(AppError::Internal)?;
+    let row: Option<(Option<String>,)> = node_db
+        .fetch_optional(
+            "SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1",
+            (root_pubkey,),
+        )
+        .await
+        .context("looking up identity leaf")
+        .map_err(AppError::Internal)?;
     let Some((leaf,)) = row else {
         return Ok(None);
     };

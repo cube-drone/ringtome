@@ -11,10 +11,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use crate::db::Db;
 use anyhow::anyhow;
 use ringtome_proto::registry::{doc_format, entry_type, service};
 use ringtome_proto::{DocHeaderPlain, Payload, PrivateRecord, SigningKey};
-use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::files::FileStore;
@@ -308,7 +308,7 @@ pub struct MediaMeta {
 /// bounce is the node-side floor under impolite clients. (A save matching a *deeper* ancestor is
 /// NOT bounced: an edit-then-revert is a real event the user performed, and its parent differs.)
 pub async fn save_version(
-    db: &SqlitePool,
+    db: &Db,
     signer: &SigningKey,
     keys: &EpochKeys,
     files: &FileStore,
@@ -387,7 +387,7 @@ pub fn new_doc_id() -> [u8; 16] {
 
 /// Fold every stored doc-header we can decrypt into per-document DAGs. Recomputed per read,
 /// same disposable-view discipline as the private store.
-pub async fn materialize(db: &SqlitePool, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
+pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, AppError> {
     let entries = crate::record::imaol::entries_of_type(
         db,
         service::DOCUMENTS_PRIVATE,
@@ -751,10 +751,8 @@ pub async fn read_body(
 mod tests {
     use super::*;
 
-    async fn test_db() -> SqlitePool {
-        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::db::user_migrator_for_test(&pool).await;
-        pool
+    async fn test_db() -> Db {
+        crate::db::test_user_db().await
     }
 
     fn signer(byte: u8) -> SigningKey {
@@ -762,7 +760,7 @@ mod tests {
     }
 
     async fn save(
-        db: &SqlitePool,
+        db: &Db,
         key: &SigningKey,
         keys: &EpochKeys,
         files: &FileStore,
@@ -791,7 +789,7 @@ mod tests {
 
     /// Save helper that lets a test pick the format (for the Marquee conflict tests).
     async fn save_fmt(
-        db: &SqlitePool,
+        db: &Db,
         key: &SigningKey,
         keys: &EpochKeys,
         files: &FileStore,
@@ -1216,7 +1214,7 @@ mod tests {
     }
 
     async fn resolve_doc(
-        db: &SqlitePool,
+        db: &Db,
         keys: &EpochKeys,
         files: &FileStore,
         doc_id: &[u8; 16],
