@@ -427,12 +427,17 @@ user can hold in one sentence.
 
 - Each node generates and stores **only its own private key**, never a root key or any other node's key.
 - **No private keys are ever transferred between nodes.** Only public keys and the chain of signatures (proving tree membership) replicate across the network.
-- **Encrypt the key, not the database.** The per-user SQLite database is a mostly-public materialized view (public
-  chains are public by definition; private-chain payloads are *already* ciphertext), so full-DB encryption
-  (SQLCipher etc.) is the wrong tool - it taxes a public view to protect one small secret. Instead the leaf private
-  key is stored as a **small, separately-stored, envelope-encrypted key file** (more like `~/.ssh/id_ed25519` than a
-  DB row). Keeping it out of the DB is deliberate: the DB stays safe to back up and replicate freely, and the one
-  genuine secret is handled directly.
+- **Encrypt the key - and now the database too** (amended 2026-07-20). The original rule here ("encrypt the key,
+  not the database") held while the per-user database was a mostly-public materialized view - public chains public
+  by definition, private-chain payloads *already* ciphertext - so full-DB encryption would have taxed a public view
+  to protect one small secret. The persisted-views ruling (Data Layer, The Substrate) changes what the database
+  *contains*: it now holds decrypted private views (document tables, annotations, search indexes), so at-rest
+  encryption stops being a tax and becomes the load-bearing boundary. Every database is encrypted at rest (the
+  engine's native encryption), its key a random per-database secret sealed through the keystore under the envelope
+  key. The leaf private key still never moves into the database: it stays a **small, separately-stored,
+  envelope-encrypted key file** (more like `~/.ssh/id_ed25519` than a DB row), and the envelope-key residence rules
+  below are unchanged - the database encryption is exactly as strong as envelope-key residence, no more, and claims
+  no more.
 - **The envelope key must be readable unattended on boot** - this is a hard requirement, not a preference. Network
   resilience demands nodes be **trivially restartable** (a node in a bad environment may reboot several times a day
   and must come back *signing* with no human present), so **no human secret can be required at boot.** Autonomous
@@ -962,6 +967,8 @@ Key K1 (the leaf on your VPS) maintains:
   ├── posts chain              (public content)
   ├── public-follows chain     (serving-follows, vouch publications)
   ├── private chain            (encrypted: quiet follows, trust edges, settings)
+  ├── documents chain          (encrypted: versioned document headers - the notes app's spine)
+  ├── doc-meta chain           (encrypted: annotations + tags - private facts about documents)
   └── ...future services get their own chains
 ```
 
@@ -1722,13 +1729,13 @@ self-hosted node it was theater, since the proxy's IP is the reader's IP.)*
 
 ## Data Layer
 
-### SQLite Strategy
+### Local Database Strategy
 
 Each connector node maintains:
 
 - **Node database** (`node.db`): Node configuration, known peers, replication state, network metadata.
-- **Per-user databases** (`users/<pubkey>.db`): Each user's data lives in their own SQLite file — a **local
-  materialized view** of that user's signed sync entries. The SQLite file itself is never transmitted: when a user
+- **Per-user databases** (`users/<pubkey>.db`): Each user's data lives in their own database file — a **local
+  materialized view** of that user's signed sync entries. The database file itself is never transmitted: when a user
   connects to a new node, the node syncs the user's entries via the Ringtome sync protocol (validating each against the
   key tree as it arrives) and builds its own database from them.
 
@@ -1739,8 +1746,57 @@ Each connector node maintains:
   or fronts.
 - **Disposability:** because the database is a materialized view, it can be rebuilt at any time from the signed
   entries — after a schema migration, a corruption, or a Repudiation Revocation that retroactively quarantines
-  entries. The signed entry log is the source of truth; SQLite is a query-shaped cache of it.
+  entries. The signed entry log is the source of truth; the database is a query-shaped cache of it.
 - **Offline-friendly:** a user's database is fully self-contained for serving and authoring while disconnected.
+
+### The Substrate: Turso, Encrypted at Rest (settled 2026-07-20)
+
+The database engine is **Turso** - SQLite rewritten from scratch in Rust (SQLite's dialect and
+file format, MVCC, native at-rest encryption, Tantivy-backed full-text search). The move from C
+SQLite + sqlx is a substrate swap, not a model change: everything above about what the databases
+*are* survives verbatim. Why, honestly ranked:
+
+- **Encrypted at rest, natively.** The persisted-views ruling (below) puts decrypted private
+  state on disk; Turso encrypts the whole database file, with keys we wrap through the keystore.
+  The alternatives were SQLCipher (a C fork of SQLite plus vendored OpenSSL - rejected on
+  dependency grounds, explicitly not quality grounds) and hand-rolled sealed snapshots of
+  in-memory databases (rejected: fails multi-tenant memory, next bullet).
+- **Memory becomes cache-shaped, not dataset-shaped.** Views live on disk behind a page cache.
+  Any design that materializes views into RAM - recomputed per read, or in-memory databases
+  sealed to disk - holds every resident's *full* view in memory simultaneously, and a
+  multi-account node on small hardware dies exactly there.
+- **One toolchain.** The stack becomes Rust end to end; the database stops being the one C
+  dependency the no-new-toolchains instinct had grandfathered in.
+
+**The risk posture, stated plainly.** Turso is beta. This stack ships iroh and a from-scratch
+media pipeline, so "experimental" is a consistent appetite - but beta is only acceptable in
+front of *recoverable* state, and that is made true by construction rather than assumed:
+
+- **The raw-entry journal.** Every entry accepted into a database is also appended, verbatim, to
+  a flat per-identity journal file. Entries are already immutable signed CBOR envelopes (private
+  payloads already ciphertext) - the journal is just what sync would send, written down, so it is
+  nearly free. With it the entire SQL layer is derived state: entries tables, views, everything
+  rebuilds by replay. This is what covers the **single-device user**, whose chains would
+  otherwise have exactly one copy sitting on a beta engine. Node-local non-chain state (accounts,
+  password hashes, the ingest queue) is tiny and low-write: journaled or periodically dumped,
+  same discipline.
+- **The escape hatch is the export tool, not the file format.** Encryption voids "worst case,
+  open the file with real SQLite" - stock SQLite cannot read an encrypted Turso database. A
+  decrypt-and-dump tool exists from day one; Turso's version is pinned; upgrades are gated on a
+  dump/restore round-trip in CI (beta file formats churn).
+
+**Views persist now (the persistence dial, revisited).** The store's original discipline - views
+recomputed in memory per read, never persisted, because "a decrypted view on disk would be a
+second secret" - was always an argument about *plaintext at rest*, not about persistence. With
+the database itself encrypted, that objection is answered structurally, and views become
+ordinary tables: normalized and query-shaped (per-document version facts, annotations, tag
+membership, full-text indexes over titles and descriptions), folded **incrementally** by
+statement-atomic stamp-compare upserts (the `profile_view` pattern, generalized), watermarked
+per chain (`(author, service) → seq`) so boot fast-forwards from the last fold instead of
+replaying history. What survives untouched is the deeper invariant: **views are disposable** -
+pure functions of the log, rebuilt by drop-and-replay, never a source of truth. And version-DAG
+*resolution* (heads, logical-head folding, the merge rungs) stays in Rust: SQL holds facts, not
+judgment - graph-shaped, rung-ordered logic is miserable as SQL and lives in code.
 
 ### The Store Layer (IMPLEMENTED)
 
@@ -1865,11 +1921,18 @@ and Marquee's computed widgets all consume it.)
   server filters on them without access to anyone's taxonomies. Same-looking strings, opposite
   transport requirements, permanently separate fields.
 - **Two shapes, chosen by merge semantics.** Unordered membership (tags) is an
-  **LWW-element-set** - concurrent tagging merges automatically. Ordered structure (trees,
-  curated sequences) is a **taxonomy document** - a body of ordered references, inheriting the
-  full document machinery (versioning, divergence handling, the publication moment when a
-  knowledge base goes public). Chronological streams are usually no artifact at all: a
-  derivable view.
+  **LWW-element-set** whose merge unit is the single `(doc, tag)` pair - concurrent tagging
+  merges automatically, and no shape that stores a document's tags as one value survives two
+  devices (whole-list LWW eats one side's tags: the stale-tab failure in miniature). Since
+  2026-07-20 tags *live* in the annotation layer, grouped per-document on the doc-meta chain
+  (Annotations, below) - "all docs tagged X" vs "all of D's tags" turned out to be a false
+  choice, since both directions are indexes over the same materialized table. Ordered structure
+  (trees, curated sequences) is a **taxonomy document** - a body of ordered references,
+  inheriting the full document machinery (versioning, divergence handling, the publication
+  moment when a knowledge base goes public) - and that is now taxonomy documents' *entire*
+  jurisdiction: ordered, curated, shareable structure with identity of its own. An album is a
+  taxonomy document, full stop - not metadata on its tracks. Chronological streams are usually
+  no artifact at all: a derivable view.
 - **References are `(root, doc_id)`** - stable identities, never version hashes (an edit must
   not shatter every tree pointing at the document). Relative forms elide the root via base-URI
   resolution (see Addressing); cross-identity references are fully qualified.
@@ -1877,6 +1940,67 @@ and Marquee's computed widgets all consume it.)
   (`index` | `latest` | ...), and the view vocabulary (`latest`, `earliest`, `root`, `index`,
   `next-in-stream`, ...) is one function family consumed by slug URLs (Addressing) and
   Marquee's `:::computed` roles alike.
+
+### Annotations: Private Facts About Documents (settled 2026-07-20)
+
+Where does a description go? Audio's artist and album? The question forced a third category into
+existence, and with it **the placement test** that decides every future "where does field X
+live":
+
+- **A function of the version's bytes → the header.** Width, height, duration, format, hashes:
+  derivable from the file, changing exactly when the bytes change, riding free on the version
+  save that is already happening. `title` is the single blessed human exception (listings need
+  it without a second lookup) - and it is the cautionary precedent, not a pattern: every
+  human-editable header field must buy its own answer to concurrent editing inside machinery
+  built for body divergence (title's answer is its own field-wise merge rung). No second
+  exception.
+- **Cross-document structure → taxonomy** (above). An album is an ordered taxonomy document;
+  artist-as-grouping is a tag, or a taxonomy document when someone curates a discography.
+- **A human assertion about one document → an annotation.** Per-doc, singular, editable, and
+  decoupled from the version lifecycle: a description is edited without minting a version, and a
+  new version never re-asks for it. It fails the header test (prose bloats every entry; edits
+  must not write versions) and the taxonomy test (nothing cross-document about it) - so it is
+  its own thing.
+
+**The shape: the private store's CRDTs, grouped per document.** Annotations reuse `PrivatePlain`
+wholesale - registers for fields, set-elements for tags - with everything the user asserts about
+doc D in one collection, `annot:<root>/<doc_id>` (the full `(root, doc_id)` reference form, so
+privately annotating *someone else's* document stays representable). `key` is the field name -
+`description`, `artist`, `album`, `source`, `rating`, ... - a conventional vocabulary that is
+client custom, never protocol; absent value means cleared; tags are set elements in the same
+collection. Values inherit PrivatePlain's caps, with an annotations-layer cap of **2 KiB** on
+descriptions: past a few hundred characters a "description" is becoming another document - write
+one and reference it. Merge is the existing LWW stamp `(timestamp, seq, hash)` under the
+authoring clamp, and last-writer-wins is the *correct* contract for a prose blurb precisely
+because history stays recoverable - no new merge rungs, which is exactly what staying out of the
+header buys.
+
+**Its own chain, pre-graduated: `doc-meta` (service 7).** The graduation rule (features scribble
+on `general-private` until cadence earns them a chain) gains a refinement: **skip the scribble
+phase when the cadence is forecastable.** Here it is, twice over. (1) Annotation volume scales
+with **library size**, not human decision count - a bulk media import writes tens of thousands
+of registers in an afternoon, exactly the ingest-shaped traffic documents were evicted from
+`general-private` for. (2) On an encrypted chain, **`service` is the only cleartext partition
+key** - collections live inside the ciphertext, so co-located annotations would tax every
+small-fact read with decrypt-everything, forever; and un-graduating later means re-asserting
+state on a new chain and dual-reading the old one permanently. Mandatory mechanics, named so
+they are not missed: a fresh AAD constant (domain separation from general-private records), the
+`is_private_service()` line in sync (miss it and annotations leak to unproven strangers), and
+the withheld-from-strangers test cloned for the new service.
+
+**The ingest membrane holds.** The media pipeline strips embedded metadata (EXIF, ID3, OpusTags)
+at ingest, forever - harvested metadata is a privacy leak and mostly junk. The authoring client
+may *read* artist/album/title from the file before the bytes are laundered and offer them as
+pre-filled annotations; persisting them is a deliberate user act (bulk import consents once per
+batch, never silently per file). The pipeline launders; the user asserts - copy-don't-flip,
+extended to metadata a second time.
+
+**Rejected, so they stay rejected:** descriptive fields in the version header (the merge-rung
+tax, above); a document's tags as one register value (whole-list LWW eats concurrent tagging);
+tag collections grouped per-tag rather than per-doc (read direction is the materializer's job;
+per-doc keeps a document's assertions, deletions, and exports single-collection); SQLCipher and
+sealed-snapshot views (see The Substrate - dependency and multi-tenant-memory grounds
+respectively).
 
 ### Replication over Iroh
 
@@ -2411,9 +2535,9 @@ itself does much of the work the scanner would.
 | Content storage | **iroh-blobs** | Content-addressed blob storage (BLAKE3) |
 | Real-time | **iroh-gossip** | Epidemic broadcast for live notifications |
 | Discovery | **pkarr** / Mainline DHT | Decentralized identity lookup |
-| Local database | **SQLite** via **sqlx** | Per-user local materialized views |
+| Local database | **Turso** (SQLite rewritten in Rust) | Per-user local materialized views, encrypted at rest — settled 2026-07-20, see The Substrate |
 | Login auth | **Argon2** | Node-login password hashing (verify user, then grant access to their key) |
-| Key at rest | **envelope-encrypted key file** | Machine keychain (always-on) or Argon2-derived (cold device); DB itself unencrypted - see Key Storage |
+| Key at rest | **envelope-encrypted key file** | Machine keychain (always-on) or Argon2-derived (cold device); databases separately encrypted under keystore-wrapped keys - see Key Storage |
 | Signing / hashing | **ed25519** + **BLAKE3** | Identity keypairs, entry signatures, chain/blob hashes |
 | Symmetric AEAD | **XChaCha20-Poly1305** | Key files at rest; reused wherever symmetric encryption is needed |
 | Private-chain sealing | **NaCl sealed box** (X25519), via **dryoc** | Epoch keys sealed to members' encryption pubkeys (see Private Chains) |
@@ -2428,7 +2552,9 @@ crates we tried to add (pkarr, then the sealing libraries). The byte boundary ma
 keeps both - so iroh's version weather stops at the edge of our types. This is the same bytes-not-structure
 discipline the entry format uses for forgery-proofing, doing a second job. New crypto boundaries are rare (sealing
 now; WebAuthn maybe later); reaching for a *third* new crypto crate to do a job the existing ones cover is the smell
-to stop on.
+to stop on. (Turso's at-rest encryption is engine-internal and does not open one: its cipher never crosses our type
+boundary - we only wrap its per-database keys in the keystore, which is the existing XChaCha envelope doing its
+existing job.)
 
 ### Removed Dependencies (vs. old codebase)
 

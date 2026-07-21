@@ -58,8 +58,14 @@ are ever allowed to meet, and in what costume.
   One logical value, exactly one accepted byte encoding; strict readers reject everything else.
 - **type registry** — the append-only namespace of service ids and entry-type ids
   (`proto::registry`).
-- **materialized view** — a query-shaped projection of the log (e.g. `profile_view`). Disposable
-  by design; **rebuild** wipes views and replays the log, re-validating every link.
+- **materialized view** — a query-shaped projection of the log (e.g. `profile_view`, the
+  document/annotation tables). Persisted in the encrypted local database (since 2026-07-20) but
+  **disposable by design**; **rebuild** wipes views and replays the log, re-validating every
+  link. Views hold facts; judgment (DAG resolution, merge rungs) stays in code.
+- **journal** *(planned)* — the flat per-identity file of raw accepted entries, appended verbatim
+  at ingest (entries are already signed immutable envelopes; private payloads already ciphertext).
+  Makes every database fully derived state — rebuild = replay — including for single-device
+  identities; the insurance that lets a beta database engine sit under the views.
 
 ## Files & documents
 
@@ -99,9 +105,19 @@ are ever allowed to meet, and in what costume.
   one identity. An identity's pin set always equals the live set computed from its views —
   reconciled idempotently, rebuildable, prefix-droppable. The IPFS sense of the word;
   implemented atop iroh-blobs' "tags," but **never called a tag here**, because:
-- **tag** — a user's plural, plain-string organizing labels on documents (taxonomy layer;
-  LWW-element-sets, external to what they organize). Tags organize; pins retain. The two never
+- **tag** — a user's plural, plain-string organizing labels on documents (annotation layer:
+  LWW set-elements grouped per-document on the doc-meta chain, external to what they organize;
+  merge unit is the single `(doc, tag)` pair). Tags organize; pins retain. The two never
   meet.
+- **annotation** *(planned)* — a private human assertion about one document (`description`,
+  `artist`, `album`, `source`, …): a key→value LWW register in the doc's collection
+  (`annot:<root>/<doc_id>`) on the doc-meta chain. The placement test's third category: measured
+  facts ride the version header, ordered curation is a taxonomy document, per-doc assertions are
+  annotations.
+- **doc-meta chain** *(planned)* — the private chain (service 7) carrying annotations and tags:
+  every private fact *about* documents. Its own chain, pre-graduated off `general-private`,
+  because annotation volume scales with library size and `service` is the only cleartext
+  partition key on an encrypted chain.
 
 ## The network
 

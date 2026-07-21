@@ -48,6 +48,28 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   convergent but unlovely); requesters re-offer private chains each exchange (duplicate-skip
   absorbs it; revisit if private chains get big).
 
+## The data-layer rewrite (settled 2026-07-20; sequenced, pre-tier)
+
+Infrastructure decided in the annotations design (PROJECT_PLAN: The Substrate; Annotations).
+Order matters — the substrate lands first so nothing interim is built to be thrown away:
+
+1. **Turso migration**: swap C SQLite + sqlx for Turso with at-rest encryption (per-DB keys
+   sealed through the keystore); the **raw-entry journal** (accepted entries appended verbatim
+   to a flat file — makes every database derived state; covers the single-device user); the
+   **decrypt-and-dump export tool** (the escape hatch encryption costs us, and the
+   version-upgrade gate, round-tripped in CI); a COMPAT.md audit of the actual SQL surface
+   before committing — `apply_profile_set`'s atomic stamp-compare upsert is the load-bearing
+   check.
+2. **The doc-meta chain** (service 7): `PrivatePlain` reused wholesale — registers for
+   annotations, set-elements for tags, grouped per-doc — new AAD, the `is_private_service()`
+   line, the withheld-from-strangers test cloned.
+3. **The materializer**: persisted normalized views (version facts, annotations, tags, FTS over
+   titles + descriptions), stamp-compare upsert folds, per-chain watermarks, DAG resolution
+   staying in Rust.
+
+Client-side prefill (artist/album read pre-launder, persisted only as a deliberate act) rides
+whichever 4C/4M surface uploads media — the pipeline itself never keeps embedded metadata.
+
 ## The ladder becomes tiers (restructured 2026-07-07)
 
 M1-M3.5 were genuinely sequential: each rung consumed the previous one's output. What remains is

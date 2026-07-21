@@ -175,8 +175,13 @@ manufactures a divergence conflict with a concurrent prose edit.
 **Two shapes, chosen by the merge semantics each wants:**
 
 - **Unordered membership (tags, streams-by-tag): LWW-element-sets** - the store's existing set
-  collections, one per tag. Concurrent tagging from two devices merges automatically; membership
-  has no ordering to fight over. Zero new machinery.
+  collections. Concurrent tagging from two devices merges automatically because the merge unit
+  is the single `(doc, tag)` pair; membership has no ordering to fight over. Zero new machinery.
+  *(Amended 2026-07-20: tags live in the annotation layer, grouped per-document on the `doc-meta`
+  chain - not one collection per tag on `general-private` as first sketched here. "One
+  ever-growing set per tag" vs "a search over annotations" turned out to be a false choice: both
+  read directions are indexes over the same materialized table, so the wire shape is chosen on
+  merge grounds alone. See PROJECT_PLAN, Annotations.)*
 - **Ordered structure (trees, curated sequences, "BOOK ABOUT HORSES"): taxonomy documents** - a
   body that is an ordered arrangement of references, inheriting the full single-document
   machinery above: versioning, the divergence DAG (reorganizing a tree on two devices *is*
