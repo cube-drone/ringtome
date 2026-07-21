@@ -210,6 +210,8 @@ async fn main() -> anyhow::Result<()> {
         // Versioned static assets (CDN cache-safe)
         .route("/static/{version}/app.js", get(ui::app_js))
         .route("/static/{version}/app.css", get(ui::app_css))
+        // Marquee font files (embedded in binary, read from disk in dev)
+        .route("/fonts/{filename}", get(ui::font))
         // API routes
         .route("/health", get(health))
         .route("/api/config", get(get_config))
