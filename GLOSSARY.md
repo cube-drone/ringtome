@@ -62,10 +62,13 @@ are ever allowed to meet, and in what costume.
   document/annotation tables). Persisted in the encrypted local database (since 2026-07-20) but
   **disposable by design**; **rebuild** wipes views and replays the log, re-validating every
   link. Views hold facts; judgment (DAG resolution, merge rungs) stays in code.
-- **journal** *(planned)* — the flat per-identity file of raw accepted entries, appended verbatim
-  at ingest (entries are already signed immutable envelopes; private payloads already ciphertext).
-  Makes every database fully derived state — rebuild = replay — including for single-device
-  identities; the insurance that lets a beta database engine sit under the views.
+- **journal** — the flat per-identity file (`journals/<root>.jnl`) of raw accepted entries,
+  appended verbatim at ingest as plaintext length-prefixed frames — deliberately unencrypted,
+  because entries are already signed immutable envelopes (private payloads already ciphertext)
+  and a recovery artifact must be readable with zero key material. Written ahead of the database
+  insert (journal ⊇ database, always); makes every database fully derived state — rebuild =
+  replay through the sync gate — including for single-device identities; the insurance that lets
+  a beta database engine sit under the views.
 
 ## Files & documents
 

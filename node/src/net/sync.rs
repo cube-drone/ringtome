@@ -144,7 +144,11 @@ async fn send_missing(
 /// `peer_proven`: whether the sending peer proved membership. Private-chain entries from an
 /// unproven peer are rejected outright - an honest stranger never sends them (we withheld those
 /// frontiers), so their arrival is either a bug or a probe, and either way the answer is no.
-async fn ingest_batch(
+///
+/// Also the raw-entry journal's replay path (`record::journal::rebuild_from_journal`): the
+/// journal is just what sync would send, written down, so rebuild enters through this same gate
+/// rather than growing a second insert path.
+pub(crate) async fn ingest_batch(
     db: &Db,
     root: [u8; 32],
     raw: Vec<Vec<u8>>,
@@ -502,6 +506,10 @@ async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32) -> Result<Optio
 }
 
 async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
+    // Write-ahead: the journal frame lands (fsynced) before the row does, so journal ⊇ database
+    // survives a crash between the two (record::journal).
+    db.journal_append(e.bytes())
+        .context("journaling synced entry")?;
     db.execute(
         "INSERT INTO entries
            (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,

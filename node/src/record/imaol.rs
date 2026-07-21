@@ -80,6 +80,13 @@ pub async fn append(
     let signed = SignedEntry::create(&entry, key)
         .map_err(|e| AppError::Internal(anyhow!("signing entry: {e}")))?;
 
+    // Write-ahead: the journal frame lands (fsynced) before the row does, so journal ⊇ database
+    // survives a crash between the two (record::journal). If the seq race below then loses, the
+    // loser's frame stays behind - a dead sibling replay's validation gate has to arbitrate.
+    db.journal_append(signed.bytes())
+        .context("journaling entry")
+        .map_err(AppError::Internal)?;
+
     // Two concurrent appends to one chain race to the same seq; the (author, service, seq)
     // primary key makes the loser fail loudly instead of forking the chain.
     db.execute(
@@ -393,6 +400,20 @@ pub async fn chain_heads_for_author(
             Ok((svc as u32, seq as u64, head_hash))
         })
         .collect()
+}
+
+/// Every stored entry's exact envelope bytes, ordered by `(author, service, seq)` - the
+/// deterministic order journal backfill writes frames in (replay revalidates regardless).
+pub async fn all_entry_bytes(db: &Db) -> Result<Vec<Vec<u8>>, AppError> {
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries ORDER BY author_pubkey, service, seq",
+            (),
+        )
+        .await
+        .context("reading entry bytes")
+        .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().map(|(bytes,)| bytes).collect())
 }
 
 /// Row shape of the raw-log query:

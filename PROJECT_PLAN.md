@@ -1776,10 +1776,13 @@ front of *recoverable* state, and that is made true by construction rather than 
   a flat per-identity journal file. Entries are already immutable signed CBOR envelopes (private
   payloads already ciphertext) - the journal is just what sync would send, written down, so it is
   nearly free. With it the entire SQL layer is derived state: entries tables, views, everything
-  rebuilds by replay. This is what covers the **single-device user**, whose chains would
-  otherwise have exactly one copy sitting on a beta engine. Node-local non-chain state (accounts,
-  password hashes, the ingest queue) is tiny and low-write: journaled or periodically dumped,
-  same discipline.
+  rebuilds by replay. The journal is deliberately plaintext: entries self-protect (signatures
+  for integrity, epoch ciphertext for payloads), and a recovery artifact must be readable with
+  zero key material - its confidentiality posture is the disk's, an accepted, named trade (the
+  at-rest metadata of private activity). This is what covers the **single-device user**, whose
+  chains would otherwise have exactly one copy sitting on a beta engine. Node-local non-chain
+  state (accounts, password hashes, the ingest queue) is tiny and low-write: journaled or
+  periodically dumped, same discipline.
 - **The escape hatch is the export tool, not the file format.** Encryption voids "worst case,
   open the file with real SQLite" - stock SQLite cannot read an encrypted Turso database. A
   decrypt-and-dump tool exists from day one; Turso's version is pinned; upgrades are gated on a

@@ -25,6 +25,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use turso::{Builder, EncryptionOpts, IntoParams, Value};
 
 use crate::keystore::Keystore;
+use crate::record::journal::Journal;
 
 /// Schema for `node.db`, embedded into the binary at compile time.
 const NODE_SCHEMA: &str = include_str!("../migrations/node/0001_schema.sql");
@@ -122,6 +123,10 @@ pub struct Db {
     /// Kept so the database outlives any moment where no query is in flight.
     _database: turso::Database,
     conn: turso::Connection,
+    /// The identity's raw-entry journal, attached when this is a per-user database opened
+    /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
+    /// mechanism - sealed dumps) and for in-memory test databases.
+    journal: Option<Journal>,
 }
 
 impl Db {
@@ -176,6 +181,24 @@ impl Db {
         self.fetch_optional(sql, params)
             .await?
             .ok_or_else(|| anyhow!("query returned no rows"))
+    }
+
+    /// Frame `envelope` into this database's raw-entry journal, fsynced - the write-ahead half
+    /// of the journal ⊇ database invariant. The two entry-insert sites (`imaol::append`, sync's
+    /// store path) call this *before* the row lands. No-op for databases without a journal.
+    pub fn journal_append(&self, envelope: &[u8]) -> Result<()> {
+        match &self.journal {
+            Some(journal) => journal.append(envelope),
+            None => Ok(()),
+        }
+    }
+
+    /// This handle (and every clone made from it) with the journal attached.
+    fn with_journal(self, journal: Journal) -> Db {
+        Db {
+            journal: Some(journal),
+            ..self
+        }
     }
 }
 
@@ -271,6 +294,7 @@ fn connect(database: turso::Database) -> Result<Db> {
     Ok(Db {
         _database: database,
         conn,
+        journal: None,
     })
 }
 
@@ -340,6 +364,13 @@ pub async fn test_user_db() -> Db {
     db
 }
 
+/// A fresh in-memory per-user database with a raw-entry journal attached - for tests exercising
+/// the write-ahead path without a [`UserDbManager`].
+#[cfg(test)]
+pub async fn test_user_db_with_journal(journal: Journal) -> Db {
+    test_user_db().await.with_journal(journal)
+}
+
 #[cfg(test)]
 async fn test_memory_db() -> Db {
     let database = Builder::new_local(":memory:").build().await.unwrap();
@@ -369,16 +400,19 @@ pub async fn record_boot(db: &Db, app_version: &str) -> Result<()> {
 #[derive(Clone)]
 pub struct UserDbManager {
     users_directory: PathBuf,
+    journals_directory: PathBuf,
     keystore: Keystore,
     handles: moka::future::Cache<String, Db>,
 }
 
 impl UserDbManager {
-    /// `data_directory` is the node's data dir; per-user DBs live in `<data_dir>/users/`.
-    /// `max_open` bounds how many per-user handles stay open simultaneously.
+    /// `data_directory` is the node's data dir; per-user DBs live in `<data_dir>/users/`, their
+    /// raw-entry journals in `<data_dir>/journals/`. `max_open` bounds how many per-user handles
+    /// stay open simultaneously.
     pub fn new(data_directory: &Path, keystore: Keystore, max_open: u64) -> Self {
         Self {
             users_directory: data_directory.join("users"),
+            journals_directory: data_directory.join("journals"),
             keystore,
             handles: moka::future::Cache::new(max_open),
         }
@@ -388,7 +422,12 @@ impl UserDbManager {
         self.users_directory.join(format!("{root_pubkey}.db"))
     }
 
-    /// Get (opening and migrating if necessary) the database for one identity.
+    fn journal_path_for(&self, root_pubkey: &str) -> PathBuf {
+        self.journals_directory.join(format!("{root_pubkey}.jnl"))
+    }
+
+    /// Get (opening and migrating if necessary) the database for one identity, its raw-entry
+    /// journal attached.
     pub async fn get(&self, root_pubkey: &str) -> Result<Db> {
         if let Some(db) = self.handles.get(root_pubkey).await {
             return Ok(db);
@@ -399,6 +438,28 @@ impl UserDbManager {
         migrate(&db, USER_SCHEMA, "user")
             .await
             .with_context(|| format!("running user migrations for {root_pubkey}"))?;
+
+        // Open (torn-tail-validating) the journal, and initialize the journal ⊇ database
+        // invariant: an empty journal over a non-empty entries table gets every stored entry
+        // backfilled as frames, or rebuild-by-replay would silently lose the prefix.
+        let journal = Journal::open(&self.journal_path_for(root_pubkey))
+            .with_context(|| format!("opening journal for {root_pubkey}"))?;
+        if journal
+            .is_empty()
+            .with_context(|| format!("checking journal for {root_pubkey}"))?
+        {
+            let existing = crate::record::imaol::all_entry_bytes(&db)
+                .await
+                .with_context(|| {
+                    format!("reading entries for journal backfill of {root_pubkey}")
+                })?;
+            if !existing.is_empty() {
+                journal
+                    .append_all(&existing)
+                    .with_context(|| format!("backfilling journal for {root_pubkey}"))?;
+            }
+        }
+        let db = db.with_journal(journal);
 
         self.handles
             .insert(root_pubkey.to_string(), db.clone())
@@ -539,6 +600,39 @@ mod tests {
         // Two files on disk, one per identity, each with its own key file.
         assert!(dir.join("users").join("alice_pubkey.db").exists());
         assert!(dir.join("users").join("bob_pubkey.db").exists());
+
+        tokio::fs::remove_dir_all(&dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn user_db_journal_writes_ahead_and_backfills_when_missing() {
+        let dir = temp_dir().await;
+        let ks = temp_keystore(&dir);
+        let mgr = UserDbManager::new(&dir, ks, 8);
+
+        let db = mgr.get("alice_pubkey").await.unwrap();
+        let key = ringtome_proto::SigningKey::from_bytes(&[5u8; 32]);
+        let signed = crate::record::imaol::set_profile_field(&db, &key, "name", "Hats Ahoy")
+            .await
+            .unwrap();
+
+        // The manager attached the journal, and the append rode through it write-ahead.
+        let journal_path = dir.join("journals").join("alice_pubkey.jnl");
+        assert_eq!(
+            crate::record::journal::read_journal(&journal_path).unwrap(),
+            vec![signed.bytes().to_vec()]
+        );
+
+        // A vanished journal over a non-empty database: a fresh manager (same files, same
+        // keystore) backfills the invariant on open.
+        std::fs::remove_file(&journal_path).unwrap();
+        let mgr2 = UserDbManager::new(&dir, temp_keystore(&dir), 8);
+        mgr2.get("alice_pubkey").await.unwrap();
+        assert_eq!(
+            crate::record::journal::read_journal(&journal_path).unwrap(),
+            vec![signed.bytes().to_vec()],
+            "backfill restored journal ⊇ database"
+        );
 
         tokio::fs::remove_dir_all(&dir).await.ok();
     }
