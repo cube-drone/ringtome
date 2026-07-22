@@ -161,7 +161,7 @@ fn check_version(requested: &str, current: &str) -> Result<(), AppError> {
     let req = semver::semver_to_comparable_integer(requested)
         .map_err(|_| AppError::BadRequest(format!("invalid version: {requested}")))?;
     let cur = semver::semver_to_comparable_integer(current)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     if req > cur {
         return Err(AppError::BadRequest(format!(
