@@ -155,6 +155,23 @@ integration: build kill
     RINGTOME_TEST_HOST="127.0.0.1:{{port}}" RINGTOME_TEST_HOST_B="127.0.0.1:{{port_b}}" \
         RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" npm test
 
+# The mainline field test: two local nodes on RINGTOME_DISCOVERY=mainline, talking to the REAL
+# public mainline DHT and n0 relay/DNS infrastructure. Seconds when that infrastructure is
+# healthy (pkarr relays + n0 DNS answer in one round trip), with multi-minute retry ceilings for
+# when it isn't; needs the open internet, and publishes throwaway records - including this
+# machine's public IP - to the public DHT. On demand only (here or the dispatch-only GitHub
+# action); never part of `just ci`.
+# The test spawns and restarts its own node processes; see test/mainline.cjs for why.
+mainline-smoke: build kill integration-install
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{workspace}}"
+    rm -rf ./data/test-mainline
+    cd node/integration
+    # --no-config: .mocharc.json's test/**/* spec glob merges with (rather than yields to) CLI
+    # file args, which would run the whole suite against nodes this recipe never booted.
+    RINGTOME_TEST_MAINLINE=1 npx mocha --no-config test/mainline.cjs --timeout 900000
+
 # --- everything ------------------------------------------------------------
 
 # Full local check: format check, lint, unit tests, integration tests.

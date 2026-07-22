@@ -9,7 +9,10 @@
 //! node the path simply does not exist (404), rather than existing-but-forbidden. There is no code
 //! path from the router to the SQL executor unless the node was deliberately armed.
 
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -59,6 +62,59 @@ pub async fn raw_sql(
     Ok(Json(SqlResponse {
         rows,
         rows_affected: None,
+    }))
+}
+
+#[derive(Serialize)]
+pub struct ResolveServingResponse {
+    pub found: bool,
+    /// Fields of the resolved record, hex-encoded; absent when `found` is false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_key: Option<String>,
+    /// The serving node's iroh endpoint id, in iroh's own string form (comparable with
+    /// `/api/node`'s `endpoint_id`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp_ms: Option<i64>,
+}
+
+/// Resolve a serving record through this node's directory (the same path a stranger node would
+/// take). The mainline field test uses this to prove records published by one node come back
+/// out of the real DHT through another node's client; `resolve_serving` has no production
+/// caller yet, so without this route the resolve half of the directory is unreachable from
+/// outside.
+pub async fn resolve_serving(
+    State(state): State<AppState>,
+    Path(leaf_hex): Path<String>,
+) -> Result<Json<ResolveServingResponse>, AppError> {
+    let leaf = crate::pubkey::require(&leaf_hex, "leaf pubkey")?;
+    let resolved = state
+        .directory
+        .resolve_serving(&leaf)
+        .await
+        .map_err(AppError::Internal)?;
+    let Some(signed) = resolved else {
+        return Ok(Json(ResolveServingResponse {
+            found: false,
+            root: None,
+            node_key: None,
+            endpoint_id: None,
+            timestamp_ms: None,
+        }));
+    };
+    let record = signed.record();
+    let endpoint_id = iroh::PublicKey::from_bytes(&record.endpoint_id)
+        .map(|k| k.to_string())
+        .unwrap_or_else(|_| hex::encode(record.endpoint_id));
+    Ok(Json(ResolveServingResponse {
+        found: true,
+        root: Some(hex::encode(record.root)),
+        node_key: Some(hex::encode(record.node_key)),
+        endpoint_id: Some(endpoint_id),
+        timestamp_ms: Some(record.timestamp_ms),
     }))
 }
 

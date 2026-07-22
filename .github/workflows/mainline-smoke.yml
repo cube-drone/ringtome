@@ -1,0 +1,49 @@
+# The mainline field test, as a button: `just mainline-smoke` on a runner. Two nodes talk to
+# the REAL public mainline DHT and n0 relay/DNS infrastructure - fast when that infrastructure
+# is healthy, minutes of retries when it isn't, and dependent on it either way - so dispatch it
+# after touching discovery code or to check for upstream drift; it is never a push gate. Each run publishes throwaway records (including the
+# runner's public IP) to the public DHT.
+
+name: Mainline smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  mainline-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            node/js/package-lock.json
+            node/integration/package-lock.json
+
+      - name: Build UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
+
+      - name: Mainline smoke test
+        working-directory: node
+        run: just mainline-smoke
+
+      # The per-node logs are the only way to tell "our bug" from "upstream infra drift" from
+      # "runner network weirdness" after the fact; keep them either way.
+      - name: Upload node logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mainline-node-logs
+          path: data/test-mainline/*.log
+          if-no-files-found: ignore

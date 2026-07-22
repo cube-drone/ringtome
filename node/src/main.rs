@@ -229,7 +229,12 @@ async fn main() -> anyhow::Result<()> {
             "RINGTOME_LOCAL_TEST is enabled: mounting raw SQL passthrough at /test/sql. \
              This is an extreme security hole - use only on a local test node."
         );
-        app = app.route("/test/sql", axum::routing::post(test_endpoints::raw_sql));
+        app = app
+            .route("/test/sql", axum::routing::post(test_endpoints::raw_sql))
+            .route(
+                "/test/resolve-serving/{leaf}",
+                axum::routing::get(test_endpoints::resolve_serving),
+            );
     }
 
     let app = app
