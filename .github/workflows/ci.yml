@@ -30,7 +30,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: node/integration/package-lock.json
+          cache-dependency-path: |
+            node/js/package-lock.json
+            node/integration/package-lock.json
+
+      - name: Build UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
 
       - name: Install integration-test dependencies
         working-directory: node

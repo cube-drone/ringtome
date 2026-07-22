@@ -18,6 +18,12 @@ federated, unapologetically Old Internet.
 ## Quickstart
 
 ```sh
+cd node && just start       # server + UI watchers in one terminal (Ctrl-C stops everything)
+```
+
+Other useful commands:
+
+```sh
 cargo build                 # everything
 cargo test                  # all Rust tests (proto is the fast loop: cargo test -p ringtome-proto)
 cd node && just integration # boot two throwaway nodes, run the full JS integration suite

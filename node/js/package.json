@@ -1,0 +1,30 @@
+{
+  "name": "ringtome-ui",
+  "version": "1.0.0",
+  "description": "Ringtome node UI (Preact)",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild index.js --bundle --tree-shaking=true --metafile=target/js/meta.json --outfile=target/js/bundle.js --platform=browser --minify",
+    "watch": "esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser --watch --sourcemap --keep-names --define:process.env.NODE_ENV=\\\"development\\\" --log-level=info --legal-comments=inline",
+    "css": "esbuild index.css --bundle --outfile=target/css/bundle.css --external:*.woff2 --external:*.woff --external:*.ttf --external:*.png",
+    "csswatch": "esbuild index.css --bundle --outfile=target/css/bundle.css --external:*.woff2 --external:*.woff --external:*.ttf --external:*.png --watch",
+    "copy-fonts": "node -e \"const fs=require('fs');const p=require('path');const src=p.join('node_modules','@cube-drone','marquee-fonts','fonts');const dst=p.join('target','fonts');fs.mkdirSync(dst,{recursive:true});fs.readdirSync(src).filter(f=>f.endsWith('.woff2')).forEach(f=>fs.copyFileSync(p.join(src,f),p.join(dst,f)));console.log('fonts copied to target/fonts')\""
+  },
+  "author": "Curtis Lassam",
+  "license": "ISC",
+  "dependencies": {
+    "@cube-drone/marquee-react-renderer": "^0.6.0",
+    "@cube-drone/marquee-css": "^0.6.0",
+    "@cube-drone/marquee-fonts": "^0.6.0",
+    "htm": "^3.1.1",
+    "preact": "^10.26.2",
+    "preact-iso": "^2.9.0"
+  },
+  "browser": {
+    "react": "preact/compat",
+    "react-dom": "preact/compat"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
