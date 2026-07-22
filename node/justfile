@@ -117,12 +117,16 @@ integration: build kill
     set -uo pipefail
     cd "{{workspace}}"
     rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-dht"
+    # Fast eager-push debounce so eagersync.cjs observes propagation quickly; the anti-entropy
+    # interval deliberately stays at its 5-minute default so the eager path is what gets tested.
     RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="{{test_data}}" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
+        RINGTOME_SYNC_DEBOUNCE_MS=250 \
         ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
     NODE_PID=$!
     RINGTOME_PORT={{port_b}} RINGTOME_DATA_DIRECTORY="{{test_data}}-b" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
+        RINGTOME_SYNC_DEBOUNCE_MS=250 \
         ./target/debug/ringtome > /tmp/ringtome-integration-b.log 2>&1 &
     NODE_B_PID=$!
     cleanup() {

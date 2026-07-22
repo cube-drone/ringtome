@@ -32,15 +32,23 @@ Work that survived its milestone lives here until delivered (then it moves to HI
 - **Fork-aftermath dragon** (owed since M3): schema room for fork *evidence* plus the re-signing
   recovery flow - due before or with whatever first shows a fork to a human (4C's key screens
   are the likely trigger).
-- **Background sync + eager push** (owed since M3): sync is manual + adoption-time today. Now
-  cheap - the loops.rs registry exists, so this is a one-pass function and a registration line.
+- **Sync-request flooding bounds** (opened with background sync's ship): exchange initiation is
+  open by default (sync triggering is network maintenance, not a hosting decision), so a
+  malicious operator can spray sync requests. Today's bounds: `is_agented` short-circuits
+  unknown identities with an empty Hello, an up-to-date exchange is a kilobyte frontier swap,
+  and the gate validates before any write - exposure is connection/CPU churn, not data. No
+  accept-side rate limiting exists (the HTTP limiter doesn't cover iroh). Explore per-endpoint
+  accept throttling / cost caps; per-identity refusal of contact is the adjacent operator
+  policy hook.
 - **Monotonic memory for remote identities** (owed since M2's status note): for *synced*
   identities the append-only entries table is structurally sufficient; for stranger resolution
   it does not exist yet. Lands with 4S's public serving surface.
 - **Root-only adoption grants** (M3 trim): v1 only the root's node can authorize new nodes;
   relax when a real multi-node household hits it.
-- **Mainline field test** (M3.5 residual; also a Tier 6 item): `RINGTOME_DISCOVERY=mainline`
-  has never touched the real DHT.
+- **Mainline NAT rung** (what remains of the M3.5 mainline residual after the 2026-07-22
+  same-box field test - see HISTORY): the relay-assisted discovery path is proven against the
+  real DHT; still owed are NAT traversal (two real houses, the Tier 6 distributed run) and the
+  raw-DHT fallback (pkarr relays down), which the smoke test budgets for but has never hit.
 - **PrivatePlain size caps** (4 KiB value / 6 KiB ciphertext): likely resolution - the caps are
   *correct*, because note/post bodies ride blobs, never inline records (NOTES_APP.md). Confirm
   and close when the blob lane lands; until then the caps stay unshipped-soft.
@@ -142,7 +150,7 @@ reading view/feed = 4C + 4S; rendering a *stranger's* page = all three. **Tier e
 users on two nodes follow each other and read each other's marquee-infested pages through the
 fake OS. The project becomes showable to a non-nerd.
 
-## Tier 5 — Trust (re-prioritized 2026-07-09: launch-critical, not post-launch)
+## Tier 5 — Trust
 
 Trust is the thesis, not a feature to retrofit - a social launch without at least the floor is
 a different, worse product. The corrected read: only the final *wiring* step depends on 4S; the
@@ -185,9 +193,10 @@ Arrive"). What stays later is refinements of a running system, labeled honestly.
   against hosted-first calcifying.
 - **Desktop packaging** (deps: 4C, weakly - the tray needs a UI to open): tray sidecar, autostart,
   app-mode window, single installer, signing/notarization. The Ollama shape.
-- **Mainline field test** (deps: none, startable any weekend): two internet-connected nodes on
-  `RINGTOME_DISCOVERY=mainline` - the first genuinely-distributed run, and the opt-in live test
-  tier it leaves behind.
+- **Mainline field test, distributed rung** (deps: none, startable any weekend): two
+  internet-connected nodes on `RINGTOME_DISCOVERY=mainline` - the first genuinely-distributed
+  run, exercising the NAT rung the 2026-07-22 same-box smoke test (see HISTORY) cannot. The
+  opt-in live tier already exists: `just mainline-smoke` + the dispatch-only GitHub action.
 - **Abuse tooling for public roles** (deps: none to build; **gates open/gateway modes** the same
   way the security pass gates exposure): the blob-layer scanner trait with the Shield by Project
   Arachnid backend (PDQ computed locally, hash-only queries, per-operator API keys), the

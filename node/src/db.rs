@@ -132,6 +132,16 @@ pub struct Db {
     /// Kept so the database outlives any moment where no query is in flight.
     _database: turso::Database,
     conn: turso::Connection,
+    /// One statement at a time. Turso's `Connection` refuses overlapping statements
+    /// ("concurrent use forbidden"), and every clone of a `Db` shares one connection - a race
+    /// that stayed theoretical while all traffic was request-driven and became real the moment
+    /// background sync started polling on a tick. Every statement path locks, runs to
+    /// completion, and releases; safe to hold across the whole helper because the `fetch_*`
+    /// helpers always drain before returning (the open-statement rule above).
+    stmt_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    /// One sync-gate ingest at a time (see [`Db::lock_ingest`]). Distinct from `stmt_lock`,
+    /// which serializes single statements: this serializes a whole validate-and-store batch.
+    ingest_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
     /// The identity's raw-entry journal, attached when this is a per-user database opened
     /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
     /// mechanism - sealed dumps) and for in-memory test databases.
@@ -141,17 +151,22 @@ pub struct Db {
 impl Db {
     /// Execute one statement to completion; returns rows affected.
     pub async fn execute(&self, sql: &str, params: impl IntoParams) -> Result<u64> {
+        let _guard = self.stmt_lock.lock().await;
         Ok(self.conn.execute(sql, params).await?)
     }
 
     /// Run a script of semicolon-separated statements.
     pub async fn execute_batch(&self, sql: &str) -> Result<()> {
+        let _guard = self.stmt_lock.lock().await;
         Ok(self.conn.execute_batch(sql).await?)
     }
 
     /// Raw row stream, for the callers that must inspect columns dynamically (the local-test SQL
-    /// passthrough). Everyone else goes through the typed `fetch_*` helpers.
+    /// passthrough). Everyone else goes through the typed `fetch_*` helpers. The lock only
+    /// covers issuing the statement - the returned stream outlives it - so this stays a
+    /// test-passthrough affordance, never a production path.
     pub async fn query(&self, sql: &str, params: impl IntoParams) -> Result<turso::Rows> {
+        let _guard = self.stmt_lock.lock().await;
         Ok(self.conn.query(sql, params).await?)
     }
 
@@ -161,6 +176,7 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Vec<T>> {
+        let _guard = self.stmt_lock.lock().await;
         let mut rows = self.conn.query(sql, params).await?;
         let mut out = Vec::new();
         while let Some(row) = rows.next().await? {
@@ -176,6 +192,7 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Option<T>> {
+        let _guard = self.stmt_lock.lock().await;
         let mut rows = self.conn.query(sql, params).await?;
         let first = match rows.next().await? {
             Some(row) => Some(T::from_row(&row)?),
@@ -190,6 +207,17 @@ impl Db {
         self.fetch_optional(sql, params)
             .await?
             .ok_or_else(|| anyhow!("query returned no rows"))
+    }
+
+    /// Hold this identity's ingest gate for the duration of one sync-gate batch. Under eager
+    /// push, simultaneous bidirectional exchanges on one root are routine (A pushes to B while
+    /// B pushes to A, both carrying the same re-offered entries); two concurrent ingests race
+    /// between the head-read and the insert, and the loser dies on the `entry_hash` UNIQUE
+    /// constraint instead of duplicate-skipping. One batch at a time per identity closes that
+    /// window; local authorship (`imaol::append`) is unaffected - it writes only this node's
+    /// own chains, which no ingest batch contests.
+    pub async fn lock_ingest(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.ingest_lock.clone().lock_owned().await
     }
 
     /// Frame `envelope` into this database's raw-entry journal, fsynced - the write-ahead half
@@ -303,6 +331,8 @@ fn connect(database: turso::Database) -> Result<Db> {
     Ok(Db {
         _database: database,
         conn,
+        stmt_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        ingest_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         journal: None,
     })
 }

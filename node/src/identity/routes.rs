@@ -314,55 +314,20 @@ async fn adopt_complete_handler(
     Ok(Json(identity.into()))
 }
 
-#[derive(Serialize)]
-struct PeerSyncResult {
-    peer: String,
-    ok: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stats: Option<crate::net::sync::ExchangeStats>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
 /// Run a full exchange with every known peer of this identity. Per-peer failures are reported,
 /// not fatal - an unreachable peer is a normal day on a p2p network.
 async fn sync_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
-) -> Result<Json<Vec<PeerSyncResult>>, AppError> {
+) -> Result<Json<Vec<crate::net::sync::PeerSyncResult>>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let peers = crate::net::sync::peers_for(&state.node_db, &root)
         .await
         .map_err(AppError::Internal)?;
-
-    let mut results = Vec::new();
-    for peer_id in peers {
-        // Resolve at dial time: id -> addresses via the directory (or iroh's own discovery).
-        let attempt = async {
-            let addr = crate::net::sync::dial_addr(&state, &peer_id).await?;
-            crate::net::sync::sync_with_peer(&state, &root, addr).await
-        };
-        match attempt.await {
-            Ok(stats) => {
-                crate::net::sync::mark_synced(&state.node_db, &root, &peer_id)
-                    .await
-                    .map_err(AppError::Internal)?;
-                results.push(PeerSyncResult {
-                    peer: peer_id,
-                    ok: true,
-                    stats: Some(stats),
-                    error: None,
-                });
-            }
-            Err(e) => results.push(PeerSyncResult {
-                peer: peer_id,
-                ok: false,
-                stats: None,
-                error: Some(format!("{e:#}")),
-            }),
-        }
-    }
+    let results = crate::net::sync::sync_peers(&state, &root, &peers)
+        .await
+        .map_err(AppError::Internal)?;
     Ok(Json(results))
 }
 
@@ -566,8 +531,9 @@ fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
 fn parse_format(s: &Option<String>) -> Result<crate::record::documents::Format, AppError> {
     match s {
         None => Ok(crate::record::documents::Format::Plaintext),
-        Some(s) => crate::record::documents::Format::parse(s)
-            .ok_or_else(|| AppError::BadRequest(format!("unknown format {s:?} (plaintext | marquee)"))),
+        Some(s) => crate::record::documents::Format::parse(s).ok_or_else(|| {
+            AppError::BadRequest(format!("unknown format {s:?} (plaintext | marquee)"))
+        }),
     }
 }
 
@@ -760,7 +726,8 @@ async fn docs_ingest_status_handler(
 ) -> Result<Json<Vec<crate::ingest::JobStatus>>, AppError> {
     // Owner gate before exposing this account's queue.
     store::open(&state, &session.account.id, &root).await?;
-    let jobs = crate::ingest::jobs_for_account(&state.node_db, &session.account.id.to_string()).await?;
+    let jobs =
+        crate::ingest::jobs_for_account(&state.node_db, &session.account.id.to_string()).await?;
     Ok(Json(jobs))
 }
 
@@ -1169,7 +1136,14 @@ mod media_info_tests {
     /// A still image (the AVIF lane): dimensions and a thumbnail, no duration, no preview.
     #[test]
     fn still_image_facts() {
-        let v = header(Some(doc_format::AVIF), Some(800), Some(600), None, Some([1u8; 32]), None);
+        let v = header(
+            Some(doc_format::AVIF),
+            Some(800),
+            Some(600),
+            None,
+            Some([1u8; 32]),
+            None,
+        );
         let m = MediaInfo::of(&v).expect("image is media");
         assert_eq!((m.width, m.height), (Some(800), Some(600)));
         assert_eq!(m.duration_ms, None);
@@ -1180,7 +1154,14 @@ mod media_info_tests {
     /// Audio (the Opus lane): a duration and a waveform thumbnail, but no dimensions and no preview.
     #[test]
     fn audio_facts() {
-        let v = header(Some(doc_format::OGG_OPUS), None, None, Some(90_000), Some([2u8; 32]), None);
+        let v = header(
+            Some(doc_format::OGG_OPUS),
+            None,
+            None,
+            Some(90_000),
+            Some([2u8; 32]),
+            None,
+        );
         let m = MediaInfo::of(&v).expect("audio is media");
         assert_eq!((m.width, m.height), (None, None), "audio has no dimensions");
         assert_eq!(m.duration_ms, Some(90_000));
@@ -1202,15 +1183,28 @@ mod media_info_tests {
         let m = MediaInfo::of(&v).expect("video is media");
         assert_eq!(m.duration_ms, Some(12_000));
         assert!(m.has_thumb, "video fills the thumbnail slot with a poster");
-        assert!(m.has_preview, "WebM-output video carries a hover-preview clip");
+        assert!(
+            m.has_preview,
+            "WebM-output video carries a hover-preview clip"
+        );
     }
 
     /// A self-animating APNG (transparent silent animation): a poster, but never a preview clip.
     #[test]
     fn apng_has_poster_no_preview() {
-        let v = header(Some(doc_format::APNG), Some(256), Some(256), Some(3_000), Some([5u8; 32]), None);
+        let v = header(
+            Some(doc_format::APNG),
+            Some(256),
+            Some(256),
+            Some(3_000),
+            Some([5u8; 32]),
+            None,
+        );
         let m = MediaInfo::of(&v).expect("apng is media");
         assert!(m.has_thumb, "the APNG lane still produces a poster");
-        assert!(!m.has_preview, "APNG animates itself; no separate preview clip");
+        assert!(
+            !m.has_preview,
+            "APNG animates itself; no separate preview clip"
+        );
     }
 }

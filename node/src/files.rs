@@ -256,6 +256,7 @@ mod tests {
             .unwrap(),
             files: files_a.clone(),
             ingest: crate::ingest::Ingest::new(dir.join("quarantine")),
+            resync: crate::net::resync::ResyncTracker::default(),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

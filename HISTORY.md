@@ -263,3 +263,158 @@ CRDT's legal operations - profile LWW register, private registers/sets, the post
 application code stopped touching `imaol`/`private` directly. Same day: timestamps unified to
 `i64` end to end (strict decoder rejects the absurd range), `received_at_ms` per replica, and
 the authoring clamp closing the fast-clock LWW wedge.
+
+---
+
+## Doctrine interlude + a license (2026-07-09 → 07-14)
+
+A documentation stretch between build pushes: NOTES_APP.md born (07-09) - the first application
+spec, multi-device encrypted notes as the proving tenant for the private store. Slug/address-bar
+resolution designed into the plan (07-11), groups planning sketched (07-14), and the PROJECT_PLAN
+rewritten in place up through Recovery Planning (07-14). License settled: **AGPL-3.0 for now**
+(07-12).
+
+---
+
+## The file layer + CI (2026-07-15)
+
+`files.rs`: encrypted, content-addressed file bodies, stored and transferred by iroh-blobs over
+a second ALPN on the same endpoint. A "file" is XChaCha ciphertext under the epoch key with a
+random nonce, content-addressed by the BLAKE3 of the *ciphertext* - unlinkable, which is why
+serving needs no gate: holding the hash is the capability. One content-agnostic layer for note
+bodies, posts, and media alike.
+
+Same day, **CI**: a GitHub Actions workflow that runs `just ci` verbatim - the push gate is
+byte-identical to the local gate, so the two cannot drift.
+
+---
+
+## Versioned documents - the notes lane (2026-07-15 → 07-17)
+
+The notes app's storage, per NOTES_APP: a document is a stable `doc_id` whose versions form a
+DAG. Each save appends one encrypted `doc-header` entry to the notes chain (the version's
+identity is the entry's own hash; `parents` are the hashes it was edited from) with the body as
+an encrypted file in the file layer. The materializer folds headers into per-document DAGs and
+**detects** divergence rather than resolving it - keep-both is the universal never-lose answer;
+merge is a per-format capability dispatched on the document's type. Shipped across "basic note
+merging machinery" → "merging behaviors" → the DAG proper (07-16), then two text formats -
+marquee AND plaintext - with the conflict format dispatching on type (07-17).
+
+---
+
+## Media ingest (2026-07-18 → 07-20)
+
+The binary-documents lane, one weekend of escalation: WebP as the first media format (binary
+body endpoints, keep-both divergence, nosniff+sandbox isolation on serving; `notes.rs` renamed
+`documents.rs`) → stills AVIF-ified (animated exempt) → size caps split into their two honest
+meanings (the pre-crunch upload ceiling vs. the ~10MB nothing-bigger-moves-on-the-network
+distribution cap) → a single deliberately-low output quality tier → video ("IT IS TIME TO
+CRUSHA DA VIDEO"): browser playback verified, WebM canonical output with poster frame and
+silent micro-preview, then audio through the same crush. Ingest became one async pipeline for
+all of it: raw upload lands in a disposable quarantine directory, a `pending` row goes into
+`ingest_job`, the caller gets a version-less `doc_id` back immediately (version-less IS the
+pending state), and a background worker drains the queue FIFO, transcoding on `spawn_blocking`;
+terminal failures surface as tombstones in the queue, never ghost documents. Capped by "give it
+pretty much anything" unification, video thumbnails, and a structural pass enforcing parallels
+across the audio/video/media modules (07-20).
+
+---
+
+## Crown hardening: revocation anchors by hash (2026-07-20)
+
+A revoked-but-still-held key could forge an alternative under-ceiling prefix that fresh or
+late-syncing nodes would accept - enforcement was seq-only, because the crown discarded the
+anchor's `head_hash` and every test used zeroed hashes. Now: **sealed-prefix-as-unit** crediting
+in the crown, **seal-or-nothing** admission at the sync gate (the prefix walked by hash-link
+from the anchor down to `ZERO_HASH`), and **proven-forgery eviction** for the race where the
+forged prefix arrived first. The adversarial tests were verified to fail against the old
+seq-only behavior before the fix landed.
+
+---
+
+## The substrate: Turso, the journal, materialized views (2026-07-20 → 07-21)
+
+The data-layer rewrite, in the order the plan sequenced it so nothing interim was built to be
+thrown away:
+
+- **Turso** (07-20): the database engine swap, with page-level at-rest encryption (AEGIS-256) -
+  every database gets its own random key sealed in the node keystore, and there is no
+  unencrypted mode (a database file with no key file refuses to open rather than minting a key
+  over the tell). Schema policy pre-launch: squash into `0001`, generation-stamped, rebuild
+  never migrate-in-place.
+- **The journal** (07-20): the insurance that lets a beta database engine sit under the views.
+  One append-only flat file per identity - length-framed signed envelopes, no checksums, no
+  timestamps, because replay re-runs the full validation gate and integrity rides the
+  signatures. Write-ahead at both entry-insert sites; journal ⊇ database is the invariant.
+- **Materialized views** (07-21): the private register/set views moved from in-memory to
+  persistent tables with per-chain watermarks, catch-up-on-read, and the stall rule (a
+  watermark never passes an entry this key-set can't decrypt). Everything in a per-user DB
+  outside `entries` is now a disposable projection, rebuildable by replay - and the conventions
+  cop's table-ownership map grew to enforce the new tables' single owners.
+
+---
+
+## The embedded UI (2026-07-21)
+
+The Preact SPA, served by the node itself: esbuild bundles and the HTML shell baked into the
+binary at compile time (`include_str!`, fonts and all), versioned static asset paths, so the
+deployed binary is fully self-contained. `just start` boots server + JS/CSS watchers in one
+terminal with one Ctrl-C teardown.
+
+---
+
+## Mainline field test (2026-07-22)
+
+`RINGTOME_DISCOVERY=mainline` touched the real DHT for the first time - the M3.5 "untested
+residual" closed. Two nodes on one box against the actual public infrastructure: a serving
+record published under the leaf key and resolved back out of the DHT through the *other* node's
+pkarr client (via a LOCAL_TEST-gated resolve passthrough - notably the first caller the mainline
+resolve path has ever had), the adoption ceremony, then both nodes restarted - address caches
+gone, fresh UDP ports - and a re-sync driven by nothing but a bare endpoint id through iroh's N0
+discovery (n0 DNS + pkarr publishing; the preset contains no same-box shortcut, verified in
+iroh's source). Healthy-infrastructure runs complete in ~7 seconds because pkarr relays and
+`iroh.link` answer in one round trip; the test budgets minutes as retry ceilings for when they
+don't. Shipped as `just mainline-smoke` plus a dispatch-only GitHub action ("Mainline smoke")
+that uploads per-node logs win or lose. *Residuals:* what's been observed passing is the
+relay-assisted path - the raw-DHT fallback (relays down) has never been exercised; and same-box
+means the NAT-traversal rung stays owed to the eventual two-real-houses run. Each run publishes
+throwaway records (and the runner's IP) to the public DHT, by design.
+
+---
+
+## Background sync + eager push (2026-07-22)
+
+The M3 residual delivered: sync stops being manual. `net/resync.rs`, two registered passes over
+the existing point-to-point exchange - **eager push** (2s tick: per-root frontier fingerprints
+compared across ticks, a debounce that waits for the write burst to quiet plus a 30s
+max-latency cap, then a full exchange with every known peer) and **anti-entropy**
+(5-minute default: up to 3 randomly chosen peers per identity, dirty or not, first pass at
+boot). Entries *received* by sync re-dirty the frontier and relay onward next tick - epidemic
+spread over the peer graph, converging because an up-to-date exchange moves nothing. Privacy
+needed zero new logic: member proofs inside the exchange decide disclosure regardless of who
+dials. Doctrine clarified along the way: "Rehosting: Pull, Not Push" governs *hosting*, not
+sync initiation - hosts holding tradeable information SHOULD sync unprompted (scope note now in
+the plan). Knobs: `RINGTOME_SYNC_DEBOUNCE_MS` (3000), `RINGTOME_RESYNC_INTERVAL_SECS` (300).
+Proven by `eagersync.cjs`: public and private writes surface on the peer node in ~4s with the
+sync route never called, both directions.
+
+The feature flushed out two latent concurrency defects, both fixed:
+
+- **Turso connections refuse overlapping statements** ("concurrent use forbidden") - every `Db`
+  clone shares one connection, a race that stayed theoretical while traffic was request-driven
+  and became constant under a 2s poll. Fix: a per-statement async lock inside `Db` (safe
+  because every helper drains its statement before returning).
+- **Concurrent sync-gate ingests raced between head-read and insert**: eager push makes
+  simultaneous bidirectional exchanges routine, both carrying the same re-offered private
+  entries; the losing batch died on the `entry_hash` UNIQUE constraint instead of
+  duplicate-skipping, and the spurious failure armed the retry backoff. Fix: a per-identity
+  ingest gate (`Db::lock_ingest`) held across each validate-and-store batch.
+
+*Design note:* the tracker seeds newly-observed roots **dirty** - seeding clean was empirically
+shown to swallow writes landing between adoption's peer-add and the loop's first look; the
+price is one no-op frontier exchange per root per boot. *Residuals:* offline peers get one warn
++ a 30s lazy retry (anti-entropy is the reliability layer); a slow-failing dial can stall one
+eager pass (bounded, `tokio::time::timeout` is the follow-up if it bites); the "requesters
+re-offer private chains each exchange" watched-item is now load-bearing on every eager cycle -
+its "revisit if private chains get big" may come due sooner; and open-by-default sync
+initiation opens the sync-request-flooding question, now a NEXT_STEPS exploration item.

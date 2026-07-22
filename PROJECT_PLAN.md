@@ -662,6 +662,13 @@ Two consequences:
 - **This bounds operator liability.** A node operator's exposure is limited to what their own accountable users
   pulled in - a defensible position in a way "we rebroadcast whatever arrives" is not.
 
+**Scope note (clarified 2026-07-22): this policy governs *hosting*, not sync initiation.** "Pull, not push" decides
+what a node fronts - it does not require an invitation before two nodes that already hold an identity exchange
+entries. Triggering a sync is network maintenance: the baseline is that hosts holding information they might want
+to trade SHOULD sync, unprompted (the eager-push and anti-entropy loops do exactly this). Refusing contact for
+specific identities is a legitimate future per-operator policy dial, not the default posture; the open question it
+raises - a malicious operator spraying sync requests - is tracked in NEXT_STEPS (sync-request flooding bounds).
+
 ---
 
 ## Follows, Friendship, and Invitation
@@ -1009,10 +1016,10 @@ chains. **The identity's history is the merged view of all its keys' chains**, r
 replicas; losing a device costs a keypair, never a history.
 
 **The genuinely fragile window: authored-but-never-replicated entries.** Posts written offline that never synced
-die with the device - irreducible in any offline-first design. Mitigations: **eager push** (a node offers new
-entries to every reachable peer immediately, shrinking the window to seconds-while-connected) and an **unsynced
-indicator** (the authoring device knows which of its entries no peer has acknowledged - surface it like an unsaved
-document). Before retiring a lost key, survivors run a **straggler sweep** - gossip for entries above their known
+die with the device - irreducible in any offline-first design. Mitigations: **eager push** (implemented 2026-07-22,
+`net::resync`: a node pushes fresh local writes to every known peer after a short debounce, shrinking the window to
+seconds-while-connected) and an **unsynced indicator** (the authoring device knows which of its entries no peer has
+acknowledged - surface it like an unsaved document; still future). Before retiring a lost key, survivors run a **straggler sweep** - gossip for entries above their known
 frontiers - so retirement does not guillotine entries sitting one hop away.
 
 ### The Ordering Contract
@@ -2106,7 +2113,9 @@ known peer set - never a fixed subset.** Anti-entropy between up-to-date peers i
 epidemic spread reaches every node in O(log n) rounds, so this keeps traffic linear rather than n^2 even for
 absurdly node-rich identities (the design center is 2-5 nodes). The random selection is not just a traffic rule: it
 keeps the sync graph well-connected so no node ossifies into a chokepoint by habit - the traffic discipline and the
-security property below are one mechanism seen from two sides.
+security property below are one mechanism seen from two sides. (Implemented 2026-07-22 as `net::resync`'s two
+background passes: debounced eager push on local change, plus a periodic anti-entropy exchange with up to k=3
+randomly chosen peers per identity, first pass at boot.)
 
 **The adversary in the mesh lies only by omission.** A malicious-but-not-yet-repudiated node cannot forge others'
 entries (signatures), cannot truncate chains undetectably (hash chain + dense seqs), and cannot lie about its own

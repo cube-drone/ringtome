@@ -57,6 +57,9 @@ pub struct AppState {
     pub files: std::sync::Arc<files::FileStore>,
     /// Media ingest: quarantine + enqueue handle for the async transcode pipeline.
     pub ingest: ingest::Ingest,
+    /// In-memory eager-push debounce state (which identities changed, when last pushed).
+    /// Rebuilt empty each boot: roots re-seed dirty and re-push once, cheaply.
+    pub resync: net::resync::ResyncTracker,
 }
 
 #[derive(serde::Serialize)]
@@ -178,6 +181,7 @@ async fn main() -> anyhow::Result<()> {
         directory,
         files,
         ingest,
+        resync: net::resync::ResyncTracker::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
 
@@ -203,6 +207,21 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(2),
         state.clone(),
         ingest::worker_pass,
+    );
+    // Background sync (net::resync): eager push notices fresh local writes and delivers them to
+    // peers after a short debounce; anti-entropy periodically exchanges with random peers dirty
+    // or not - and its immediate first pass is the boot catch-up.
+    loops::periodic(
+        "sync-eager-push",
+        net::resync::EAGER_TICK,
+        state.clone(),
+        net::resync::eager_pass,
+    );
+    loops::periodic(
+        "sync-anti-entropy",
+        std::time::Duration::from_secs(state.config.resync_interval_secs),
+        state.clone(),
+        net::resync::anti_entropy_pass,
     );
 
     let mut app = Router::new()

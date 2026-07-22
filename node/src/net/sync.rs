@@ -154,6 +154,11 @@ pub(crate) async fn ingest_batch(
     raw: Vec<Vec<u8>>,
     peer_proven: bool,
 ) -> Result<(u64, u64)> {
+    // One batch at a time per identity: concurrent exchanges (eager push makes simultaneous
+    // bidirectional syncs routine) would race between head-read and insert and die on the
+    // entry_hash UNIQUE constraint instead of duplicate-skipping. See Db::lock_ingest.
+    let _gate = db.lock_ingest().await;
+
     let mut rejected = 0u64;
     let mut received = 0u64;
     let mut evicted_rows = 0u64;
@@ -781,6 +786,64 @@ pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
     Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
+/// Distinct roots that have at least one known peer - the background sync worklist.
+pub async fn roots_with_peers(node_db: &Db) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all("SELECT DISTINCT root_pubkey FROM identity_peers", ())
+        .await
+        .context("listing roots with peers")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
+/// Outcome of one peer's exchange within a multi-peer sync, shaped for logs and the sync route's
+/// JSON response.
+#[derive(Debug, serde::Serialize)]
+pub struct PeerSyncResult {
+    pub peer: String,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stats: Option<ExchangeStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Full exchange with the given peers of one identity: dial, sync, mark synced. Per-peer
+/// failures land in the results, never in `Err` - an unreachable peer is a normal day on a p2p
+/// network. Callers choose the peer set (the sync route and eager push: all known peers;
+/// anti-entropy: a random sample).
+pub async fn sync_peers(
+    state: &AppState,
+    root_hex: &str,
+    peers: &[String],
+) -> Result<Vec<PeerSyncResult>> {
+    let mut results = Vec::new();
+    for peer_id in peers {
+        // Resolve at dial time: id -> addresses via the directory (or iroh's own discovery).
+        let attempt = async {
+            let addr = dial_addr(state, peer_id).await?;
+            sync_with_peer(state, root_hex, addr).await
+        };
+        match attempt.await {
+            Ok(stats) => {
+                mark_synced(&state.node_db, root_hex, peer_id).await?;
+                results.push(PeerSyncResult {
+                    peer: peer_id.clone(),
+                    ok: true,
+                    stats: Some(stats),
+                    error: None,
+                });
+            }
+            Err(e) => results.push(PeerSyncResult {
+                peer: peer_id.clone(),
+                ok: false,
+                stats: None,
+                error: Some(format!("{e:#}")),
+            }),
+        }
+    }
+    Ok(results)
+}
+
 /// Build a dialable address for a peer: the endpoint id, plus whatever addresses the directory
 /// knows. In mainline mode the address set is usually empty and iroh's own discovery fills it
 /// in; in local mode the stub's endpoint record supplies it; in Off mode a bare id only works if
@@ -1146,5 +1209,17 @@ mod tests {
             stored_hashes(&db, &k, service::IDENTITY_PUBLIC).await,
             vec![*honest_auth.hash()]
         );
+    }
+
+    #[tokio::test]
+    async fn roots_with_peers_lists_each_root_once() {
+        let node_db = crate::db::test_node_db().await;
+        add_peer(&node_db, "aa11", "endpoint-one").await.unwrap();
+        add_peer(&node_db, "aa11", "endpoint-two").await.unwrap();
+        add_peer(&node_db, "bb22", "endpoint-one").await.unwrap();
+
+        let mut roots = roots_with_peers(&node_db).await.unwrap();
+        roots.sort();
+        assert_eq!(roots, vec!["aa11".to_string(), "bb22".to_string()]);
     }
 }
