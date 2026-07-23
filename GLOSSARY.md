@@ -123,9 +123,12 @@ are ever allowed to meet, and in what costume.
   `record/rank.rs`), order assembled at read time — rank ascending, element tiebreak.
   Existence is a roster fact (`taxonomies` set), so an empty list exists and deletion is one
   remove; titles are ordinary annotations on the taxonomy's own id. External to what it
-  organizes, always. v1 is flat lists; trees *(planned)* add `parent` to the value with a
-  fold-time cycle rule. Published form *(planned)*: a taxonomy *document* — the collection
-  folded into an ordered-references body at the membrane crossing (PROJECT_PLAN, Taxonomies).
+  organizes, always. Trees are **composition**: a taxonomy placed as a member of another IS
+  the tree — interior nodes are titled sub-lists, multi-parent is allowed (a DAG), and a
+  cycle never corrupts storage: `place` refuses the locally-visible one, and the tree read's
+  visited set renders any merge-created loop (or a diamond's second visit) as a titled
+  stub-link. Published form *(planned)*: a taxonomy *document* — the tree folded into an
+  ordered-references body at the membrane crossing (PROJECT_PLAN, Taxonomies).
 - **doc-meta chain** — the private chain (service 7) carrying annotations, tags, and
   taxonomies: every private fact *about* documents. Its own chain, pre-graduated off
   `general-private`, because annotation volume scales with library size and `service` is the

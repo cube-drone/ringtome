@@ -46,7 +46,9 @@ HISTORY.md.
   data-layer rewrite sequence (substrate → doc-meta → materializer).
 - **Taxonomies, v1 lists** (2026-07-22): ordered document lists as per-element ranked facts
   (`tax:` collections, fractional ranks, roster existence); place-is-add-and-move over HTTP.
-  Trees (the cycle rule) and the published form still designed-ahead.
+- **Taxonomy trees as composition** (2026-07-23): nesting a list in a list IS the tree -
+  local cycle refusal at `place`, visited-set stubs in the tree read, the `parent` slot and
+  its fold-time cycle rule retired unused. The published form is still designed-ahead.
 
 ## Standing residuals (owed, with triggers)
 

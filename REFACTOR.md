@@ -24,11 +24,14 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead
   of need otherwise. The compact-append `after()` already keeps the common bulk-import case
   cheap.
-- [ ] **An unidentified once-in-several-runs unit-test flake** (node suite; seen twice
-  2026-07-22, never on a rerun, name never captured - both sightings only showed the count
-  line). Four consecutive clean full runs failed to reproduce. Next sighting: scroll for the
-  `failures:` block and record the test name here; suspicion points at a timing-sensitive
-  net/loops test, not the data layer.
+- [ ] **An unidentified once-in-several-runs unit-test flake** (node suite; seen three times
+  2026-07-22/23, never on a rerun, name never captured - every sighting only showed the count
+  line). ~22 deliberate reproduction runs all clean, including a 12-run `just test-unit` loop;
+  all three sightings happened inside larger composite invocations (`cargo test` workspace,
+  `just ci`), suggesting load- or contention-sensitivity - a timing-sensitive net/loops test,
+  not the data layer. Next sighting: capture the `failures:` block FIRST, before any rerun,
+  and record the test name here. A `--no-fail-fast -- --nocapture 2>&1 | tee` wrapper on CI's
+  test-unit step would make the capture automatic; worth adding if a fourth sighting escapes.
 
 ## Reviewed and left alone (standing decisions, not history)
 
@@ -40,3 +43,8 @@ Re-litigating these costs more than reading this list:
 - anyhow in leaf modules / `AppError` at the HTTP boundary: a consistent convention.
 - `seq` stays `u64` end to end: a counter compared only to other counters, never to a clock;
   its sign casts at the SQL boundary would need a 9-quintillion-entry chain to misbehave.
+- No memoized per-root taxonomy-tree view: the doc-meta view is already persisted and
+  incremental, and tree expansion is an in-memory walk over human-scale lists - well inside
+  good-enough speed. A baked tree would buy recursive invalidation machinery (every descendant
+  write dirtying every ancestor's row) for a read that is one view + one query. Revisit if 4S
+  ever serves trees to strangers at volume.

@@ -484,3 +484,41 @@ taxonomy document stay designed-ahead in the plan; rank rebalancing deferred (RE
 concurrent same-spot placement across devices converges adjacent-in-tiebreak-order by design
 but has no two-node integration test yet - the chain-level set semantics it rides on are
 covered by `private.cjs` adoption.
+
+---
+
+## Taxonomy trees as composition (2026-07-23)
+
+The trees residual closed a day after the lists shipped, by a design comparison instead of a
+build: the planned formal structure (a `parent` slot in the member value, a deterministic
+fold-time cycle rule) versus composition (a taxonomy placed as a member of another taxonomy -
+a capability the lists ship had already created by accident). Composition won on one decisive
+ground: parent pointers put a merge-created cycle IN the storage structure, broken until an
+algorithm silently rewrites someone's move - exactly what the notes design refused - while
+composition cycles are independent membership facts that never corrupt anything and reduce to
+a render concern. The plan's Taxonomies section carries the full comparison (amendment three);
+the `parent` slot retired unused, the cycle-rule dragon retired unslain.
+
+What actually shipped, because "trees are free" still owed two pieces:
+
+- **Local cycle refusal in `place`**: placing one of our own taxonomies is refused when the
+  destination is already reachable inside it (BFS over the local view, self-placement
+  included; foreign taxonomies aren't walkable and aren't refused). A courtesy, not a
+  guarantee - two locally-innocent placements can still merge into a loop.
+- **The tree read**: `Taxonomies::tree` expands nested own-taxonomies depth-first in list
+  order under a visited set; the second encounter of any taxonomy - a diamond's other parent
+  or a merge-created cycle - is a titled stub (`members: null`), never re-expanded, which also
+  bounds the walk linearly. The GET-one-taxonomy route now returns this shape (a flat list is
+  the depth-1 degenerate case), with every reachable own document joined against `doc_heads`
+  in one query - `get`, not `remove`, on the summary map, because composition legitimately
+  shows one document in two sections.
+
+Deliberately NOT built: the memoized per-root tree view (REFACTOR.md, reviewed-and-left-alone:
+the doc-meta view is already persisted + incremental and expansion is an in-memory walk;
+baking it buys recursive invalidation machinery for a read that is one view + one query).
+Proven by three new store tests (refusal names the cycle; nests expand and diamonds stub; a
+forced merge-created loop renders as a stub, not a hang) and two integration tests (nested
+expansion over HTTP; the 400 that names the cycle). *Residuals:* the published taxonomy
+document (now folding a tree closure, visited-set included) stays designed-ahead; roster-aware
+reads (a tagged taxonomy is invisible in docs-by-tag; sub-lists appear at top level in the
+roster listing) are UI-adjacent and unowned.

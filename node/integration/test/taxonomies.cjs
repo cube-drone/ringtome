@@ -184,6 +184,41 @@ describe("taxonomies: ordered lists of documents", function () {
         assert.equal(docs.docs.length, 1, "the document is not");
     });
 
+    it("expands nested lists in place - trees are composition", async function () {
+        const { user, root } = await makeIdentity("taxtree");
+        const book = await createTaxonomy(user, root, "BOOK ABOUT HORSES");
+        const anatomy = await createTaxonomy(user, root, "Horse Anatomy");
+        const intro = await createDoc(user, root, "intro", "a horse is a horse");
+        const skeleton = await createDoc(user, root, "skeleton", "many bones");
+
+        await place(user, root, book, intro.doc_id);
+        await place(user, root, book, anatomy, {});
+        await place(user, root, anatomy, skeleton.doc_id);
+
+        const tree = await getTaxonomy(user, root, book);
+        assert.equal(tree.members.length, 2);
+        assert.equal(tree.members[0].doc.title, "intro", "plain doc, summarized");
+        const nested = tree.members[1].taxonomy;
+        assert.equal(nested.title, "Horse Anatomy", "nested list, titled");
+        assert.equal(nested.members.length, 1);
+        assert.equal(nested.members[0].doc.title, "skeleton", "nested docs get summaries too");
+    });
+
+    it("refuses a locally visible cycle with a 400 that names it", async function () {
+        const { user, root } = await makeIdentity("taxcycle");
+        const outer = await createTaxonomy(user, root, "outer");
+        const inner = await createTaxonomy(user, root, "inner");
+        await place(user, root, outer, inner);
+
+        const res = await user(`api/identity/${root}/taxonomies/${inner}/members/${outer}`, {
+            method: "PUT",
+            body: JSON.stringify({}),
+        });
+        assert.equal(res.status, 400);
+        const body = await res.json();
+        assert.ok(JSON.stringify(body).includes("cycle"), "the refusal names the cycle");
+    });
+
     it("refuses unauthenticated taxonomy requests", async function () {
         const { user, root } = await makeIdentity("taxauth");
         const taxId = await createTaxonomy(user, root, "private business");

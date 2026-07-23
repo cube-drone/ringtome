@@ -602,8 +602,16 @@ impl Store {
 // facts exactly as tags did, because a list's commonest concurrent edit is two devices each
 // adding an item, and any whole-value shape turns that obvious union into a manufactured
 // conflict. Order is never stored; it is assembled at read time from each member's rank
-// (`record::rank`), with the element string as deterministic tiebreak. v1 is flat lists -
-// cycles unrepresentable; trees arrive with the fold-time cycle rule they require.
+// (`record::rank`), with the element string as deterministic tiebreak.
+//
+// Trees are COMPOSITION, not structure (amended 2026-07-23): a taxonomy placed as a member of
+// another taxonomy IS the tree - interior nodes are themselves taxonomies (titled, taggable
+// for free), a sub-list can live under two parents, and cycles never corrupt storage because
+// membership facts are independent. A merge-created loop is a *render* concern: `tree` walks
+// with a visited set and a repeat visit becomes a stub - the conflict-markers philosophy
+// holding for shape. Prevention where cheap, recoverability always: `place` refuses the
+// locally-visible cycle (the single-device mistake); the visited set absorbs what merge can
+// still mint.
 
 /// The collection naming convention for a taxonomy's members - a client-of-the-store
 /// convention, never protocol: `tax:<taxonomy_id_hex>`. No root in the name (a taxonomy is
@@ -751,6 +759,11 @@ impl Taxonomies<'_> {
     /// so a concurrent read on another device sees the member somewhere, never nowhere.
     /// `index` counts positions in the list *without* the member (the arrive-at semantics a
     /// drag-and-drop produces); out-of-range clamps to append.
+    ///
+    /// Placing one of our own taxonomies is how trees are built - and is refused when this
+    /// device can already see that the destination lives *inside* the placed list (a cycle).
+    /// The check is a courtesy, not a guarantee: two devices can each make a locally-innocent
+    /// placement that merges into a loop, which `tree`'s visited set then renders as a stub.
     pub async fn place(
         &self,
         taxonomy_id: &[u8; 16],
@@ -758,8 +771,21 @@ impl Taxonomies<'_> {
         doc_id: &[u8; 16],
         index: Option<usize>,
     ) -> Result<SignedEntry, AppError> {
+        let view = self.store.doc_meta_view().await?;
+
+        if *root == self.store.root
+            && Self::is_on_roster(&view, doc_id)
+            && Self::reaches(&view, &self.store.root, doc_id, taxonomy_id)
+        {
+            return Err(AppError::BadRequest(
+                "placing this list here would create a cycle: the destination is already \
+                 inside it (directly or through nested lists)"
+                    .into(),
+            ));
+        }
+
         let element = member_element(root, doc_id);
-        let mut list = self.members(taxonomy_id).await?;
+        let mut list = Self::members_of(&view, taxonomy_id);
         list.retain(|m| !(m.root == *root && m.doc_id == *doc_id));
 
         let at = index.unwrap_or(list.len()).min(list.len());
@@ -783,6 +809,40 @@ impl Taxonomies<'_> {
             .await
     }
 
+    fn is_on_roster(view: &private::PrivateView, id: &[u8; 16]) -> bool {
+        let id_hex = hex::encode(id);
+        view.set_elements(TAXONOMY_ROSTER)
+            .iter()
+            .any(|e| e.element == id_hex)
+    }
+
+    /// Is `target` reachable from `from` through this identity's own membership edges, in the
+    /// local view? (`from == target` counts: a list contains itself.) Only own-root taxonomy
+    /// members are walkable - a foreign taxonomy's contents aren't ours to know here.
+    fn reaches(
+        view: &private::PrivateView,
+        own_root: &[u8; 32],
+        from: &[u8; 16],
+        target: &[u8; 16],
+    ) -> bool {
+        let mut stack = vec![*from];
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(id) = stack.pop() {
+            if id == *target {
+                return true;
+            }
+            if !seen.insert(id) {
+                continue;
+            }
+            for m in Self::members_of(view, &id) {
+                if m.root == *own_root && Self::is_on_roster(view, &m.doc_id) {
+                    stack.push(m.doc_id);
+                }
+            }
+        }
+        false
+    }
+
     /// Remove a member (LWW set-element remove: a remove/place race resolves by timestamp -
     /// one intent wins whole, the member is in the list or out of it, never half-placed).
     pub async fn remove(
@@ -803,6 +863,83 @@ impl Taxonomies<'_> {
             )
             .await
     }
+
+    /// The tree read: this taxonomy's members with every own-root member taxonomy expanded in
+    /// place, depth-first in list order. The walk carries a visited set - the SECOND encounter
+    /// of any taxonomy (a diamond's other parent, or a merge-created cycle) is a **stub**
+    /// (`members: None`): present, titled, navigable as a link, never re-expanded. Stubbing
+    /// diamonds too is deliberate - it is what bounds the walk (and the response) linearly in
+    /// the number of taxonomies, and a renderer links to the first occurrence either way.
+    pub async fn tree(&self, taxonomy_id: &[u8; 16]) -> Result<TaxonomyNode, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        let mut visited = std::collections::BTreeSet::from([*taxonomy_id]);
+        Ok(TaxonomyNode {
+            taxonomy_id: *taxonomy_id,
+            title: Self::title_of(&view, &self.store.root, taxonomy_id),
+            members: Some(Self::expand(
+                &view,
+                &self.store.root,
+                taxonomy_id,
+                &mut visited,
+            )),
+        })
+    }
+
+    fn title_of(view: &private::PrivateView, own_root: &[u8; 32], id: &[u8; 16]) -> String {
+        view.registers_in(&annot_collection(own_root, id))
+            .into_iter()
+            .find(|r| r.key == "title" && !r.value.is_empty())
+            .map(|r| r.value)
+            .unwrap_or_default()
+    }
+
+    fn expand(
+        view: &private::PrivateView,
+        own_root: &[u8; 32],
+        taxonomy_id: &[u8; 16],
+        visited: &mut std::collections::BTreeSet<[u8; 16]>,
+    ) -> Vec<TreeMember> {
+        Self::members_of(view, taxonomy_id)
+            .into_iter()
+            .map(|m| {
+                let taxonomy =
+                    (m.root == *own_root && Self::is_on_roster(view, &m.doc_id)).then(|| {
+                        let members = visited
+                            .insert(m.doc_id)
+                            .then(|| Self::expand(view, own_root, &m.doc_id, visited));
+                        TaxonomyNode {
+                            taxonomy_id: m.doc_id,
+                            title: Self::title_of(view, own_root, &m.doc_id),
+                            members,
+                        }
+                    });
+                TreeMember {
+                    root: m.root,
+                    doc_id: m.doc_id,
+                    taxonomy,
+                }
+            })
+            .collect()
+    }
+}
+
+/// One expanded taxonomy in a tree read. `members: None` marks a stub: this taxonomy appears
+/// (again) here, but its expansion lives at its first encounter - a cycle or a diamond,
+/// rendered as a link either way.
+#[derive(Debug, Clone)]
+pub struct TaxonomyNode {
+    pub taxonomy_id: [u8; 16],
+    pub title: String,
+    pub members: Option<Vec<TreeMember>>,
+}
+
+/// One member in a tree read: a document reference, plus its expansion when it is one of our
+/// own taxonomies.
+#[derive(Debug, Clone)]
+pub struct TreeMember {
+    pub root: [u8; 32],
+    pub doc_id: [u8; 16],
+    pub taxonomy: Option<TaxonomyNode>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1320,6 +1457,150 @@ mod tests {
         assert_eq!(
             store.taxonomies().all().await.unwrap()[0].title,
             "flood insurance"
+        );
+    }
+
+    #[tokio::test]
+    async fn locally_visible_cycles_are_refused_at_place() {
+        let store = test_store().await;
+        let root = store.root;
+        let a = store.taxonomies().create("A").await.unwrap();
+        let b = store.taxonomies().create("B").await.unwrap();
+        let c = store.taxonomies().create("C").await.unwrap();
+
+        // Build A > B > C, each placement legal.
+        store.taxonomies().place(&a, &root, &b, None).await.unwrap();
+        store.taxonomies().place(&b, &root, &c, None).await.unwrap();
+
+        // Self, inverse, and transitive-inverse placements all name the cycle.
+        for (list, member) in [(&a, &a), (&b, &a), (&c, &a), (&c, &b)] {
+            let err = store
+                .taxonomies()
+                .place(list, &root, member, None)
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("cycle"),
+                "refusal names the cycle: {err}"
+            );
+        }
+
+        // A foreign taxonomy's contents aren't ours to walk: placing one is never refused.
+        store
+            .taxonomies()
+            .place(&c, &[0xEE; 32], &a, None)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_tree_read_expands_nests_and_stubs_repeats() {
+        let store = test_store().await;
+        let root = store.root;
+        let book = store
+            .taxonomies()
+            .create("BOOK ABOUT HORSES")
+            .await
+            .unwrap();
+        let anatomy = store.taxonomies().create("Horse Anatomy").await.unwrap();
+        let doc = [7u8; 16];
+
+        store
+            .taxonomies()
+            .place(&book, &root, &doc, None)
+            .await
+            .unwrap();
+        store
+            .taxonomies()
+            .place(&book, &root, &anatomy, None)
+            .await
+            .unwrap();
+        store
+            .taxonomies()
+            .place(&anatomy, &root, &[8u8; 16], None)
+            .await
+            .unwrap();
+
+        let tree = store.taxonomies().tree(&book).await.unwrap();
+        assert_eq!(tree.title, "BOOK ABOUT HORSES");
+        let members = tree.members.as_ref().unwrap();
+        assert_eq!(members.len(), 2);
+        assert!(members[0].taxonomy.is_none(), "a plain doc is not expanded");
+        let nested = members[1].taxonomy.as_ref().unwrap();
+        assert_eq!(nested.title, "Horse Anatomy");
+        assert_eq!(
+            nested.members.as_ref().unwrap().len(),
+            1,
+            "expanded in place"
+        );
+
+        // A diamond: a second list also containing Anatomy. First encounter (list order)
+        // expands; the second is a stub - present and titled, members: None.
+        let vet = store.taxonomies().create("Vet Notes").await.unwrap();
+        store
+            .taxonomies()
+            .place(&vet, &root, &anatomy, None)
+            .await
+            .unwrap();
+        store
+            .taxonomies()
+            .place(&book, &root, &vet, None)
+            .await
+            .unwrap();
+        let tree = store.taxonomies().tree(&book).await.unwrap();
+        let members = tree.members.as_ref().unwrap();
+        let first = members[1].taxonomy.as_ref().unwrap();
+        let via_vet = members[2]
+            .taxonomy
+            .as_ref()
+            .unwrap()
+            .members
+            .as_ref()
+            .unwrap()[0]
+            .taxonomy
+            .as_ref()
+            .unwrap();
+        assert!(first.members.is_some());
+        assert_eq!(via_vet.title, "Horse Anatomy", "the stub keeps its title");
+        assert!(
+            via_vet.members.is_none(),
+            "the diamond's second visit is a stub"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_merge_created_cycle_renders_as_a_stub_not_a_hang() {
+        let store = test_store().await;
+        let root = store.root;
+        let a = store.taxonomies().create("A").await.unwrap();
+        let b = store.taxonomies().create("B").await.unwrap();
+        store.taxonomies().place(&a, &root, &b, None).await.unwrap();
+
+        // The other device's half of the loop: B > A, written directly past the local check
+        // (exactly what a sync merge delivers - each side's write was locally innocent).
+        store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: tax_collection(&b),
+                    key: member_element(&root, &a),
+                    value: Some("i".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+
+        let tree = store.taxonomies().tree(&a).await.unwrap();
+        let b_node = tree.members.as_ref().unwrap()[0].taxonomy.as_ref().unwrap();
+        let a_again = b_node.members.as_ref().unwrap()[0]
+            .taxonomy
+            .as_ref()
+            .unwrap();
+        assert_eq!(a_again.taxonomy_id, a);
+        assert!(
+            a_again.members.is_none(),
+            "the loop closes as a stub, visibly"
         );
     }
 

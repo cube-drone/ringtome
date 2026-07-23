@@ -1919,7 +1919,7 @@ a tileset, anything with rolling states.
   private, multi-device drafting problem; public edit semantics are tombstone/replace (4M's
   problem).
 
-### Taxonomies: Documents About Documents (amended 2026-07-22; lists IMPLEMENTED)
+### Taxonomies: Documents About Documents (amended 2026-07-22/23; lists + trees IMPLEMENTED)
 
 Everything that *organizes* documents - tags, streams, folders, knowledge-base trees, reading
 lists - is itself ordinary data, external to what it organizes. (Born in the notes design; see
@@ -1941,25 +1941,44 @@ and Marquee's computed widgets all consume it.)
   2026-07-20 tags *live* in the annotation layer, grouped per-document on the doc-meta chain
   (Annotations, below) - "all docs tagged X" vs "all of D's tags" turned out to be a false
   choice, since both directions are indexes over the same materialized table. Ordered
-  structure (trees, curated sequences, "BOOK ABOUT HORSES") decomposes the same way -
+  structure (curated sequences, "BOOK ABOUT HORSES") decomposes the same way -
   **per-element facts, never a document body**: a taxonomy is a stable minted id whose members
   are set elements in its `tax:<taxonomy_id>` collection on the same doc-meta chain, each
-  element the `(root, doc_id)` reference, each value the member's `(parent, rank)` (parent
-  absent in a flat list; rank a fractional index - client convention, rebalanced by a burst of
-  rewrites when it bloats). Order is assembled by the materializer (`parent, rank`,
-  deterministic tiebreak), never stored as one value, because a taxonomy's commonest
-  concurrent edit is two devices each adding an item, and any whole-value shape turns that
-  obvious union into a manufactured conflict - the tags argument, verbatim. Same-element
-  position races resolve LWW: one position wins, nothing leaves the list, history stays on the
-  chain. Concurrent same-spot inserts land adjacent in tiebreak order - harmless for a curated
-  list, which is exactly why NOTES_APP's no-text-CRDT ruling doesn't apply here: interleaving
-  destroys prose, not reading lists, and no op-log wire format enters the conformance boundary
-  (on the wire these are ordinary private records). **v1 is flat lists**, where cycles are
-  unrepresentable; trees arrive with their one real dragon named - a deterministic fold-time
-  cycle rule for concurrent moves (apply parent-writes in stamp order, skip cycle-creators;
-  property-test it). Taxonomy-level facts (title, `default_view`, description) are annotations
-  on the taxonomy's own id. An album is a `tax:` collection, full stop - still never metadata
-  on its tracks. Chronological streams are usually no artifact at all: a derivable view.
+  element the `(root, doc_id)` reference, each value the member's **rank** (a fractional
+  base-36 index - client convention, rebalanced by a burst of rewrites when it bloats;
+  `record/rank.rs`). Order is assembled at read time (rank, element tiebreak), never stored as
+  one value, because a taxonomy's commonest concurrent edit is two devices each adding an
+  item, and any whole-value shape turns that obvious union into a manufactured conflict - the
+  tags argument, verbatim. Same-element position races resolve LWW: one position wins, nothing
+  leaves the list, history stays on the chain. Concurrent same-spot inserts land adjacent in
+  tiebreak order - harmless for a curated list, which is exactly why NOTES_APP's no-text-CRDT
+  ruling doesn't apply here: interleaving destroys prose, not reading lists, and no op-log
+  wire format enters the conformance boundary (on the wire these are ordinary private
+  records). Existence is a roster fact (the `taxonomies` set): an empty list exists, deletion
+  is one remove, re-creating an id resurrects its members. Taxonomy-level facts (title,
+  `default_view`, description) are annotations on the taxonomy's own id. An album is a `tax:`
+  collection, full stop - still never metadata on its tracks. Chronological streams are
+  usually no artifact at all: a derivable view.
+- **Trees are composition, not structure (amended 2026-07-23).** A taxonomy placed as a
+  member of another taxonomy IS the tree - the design considered a formal alternative (a
+  `parent` slot in the member value, tree shape internal to one collection) and rejected it on
+  one decisive ground: *where the cycle lives*. Parent pointers put a merge-created cycle **in
+  the storage structure** - broken until a deterministic fold-time resolver repairs it, and
+  that resolver silently rewrites someone's move: exactly the move the notes design refused.
+  Composition cycles are just independent membership facts - storage never corrupts, and a
+  loop is a *render* concern: traversal carries a visited set, and a repeat visit (a cycle, or
+  a diamond's second parent) renders as a titled **stub-link**, the conflict-markers
+  philosophy holding for shape. Prevention where cheap, recoverability always: `place` refuses
+  the locally-visible cycle (the single-device mistake, including self-placement); the visited
+  set absorbs what concurrent placement can still mint. What composition buys beyond the
+  cycle story: interior nodes are themselves taxonomies (titled, describable, taggable for
+  free - a "section heading" is a small titled list, no pseudo-documents); a sub-list can live
+  under two parents (a DAG - the appendix cited from two chapters); and the same document can
+  appear in two sections, because sections are separate collections. The honest costs, named:
+  a cross-section move is two writes (remove + place; the race loses the remove and leaves a
+  *visible, recoverable* duplicate - chosen over the parent-pointer model's atomic move that
+  can corrupt), and multi-parent makes "the" breadcrumb path a UI arrived-from concern. The
+  `parent` slot is retired **unused**; the fold-time cycle rule is retired *unslain*.
 - **Taxonomy documents are the publication form** - now their *entire* jurisdiction.
   Publishing a knowledge base is the standard membrane crossing (**Copy, Don't Flip**,
   Doctrine): fold the collection, encode an ordered-references body, sign it public under a

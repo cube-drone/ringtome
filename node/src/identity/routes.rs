@@ -406,7 +406,7 @@ async fn revoke_key_handler(
         other => {
             return Err(AppError::BadRequest(format!(
                 "unknown disposition {other:?} (retirement | repudiation)"
-            )))
+            )));
         }
     };
     let entry_hash =
@@ -918,7 +918,7 @@ async fn docs_preview_handler(
 /// The media facts a client needs to render a document's body: the element to emit (`<img>` vs
 /// `<video>` vs `<audio>` follows from `format`), its intrinsic size, its duration, and whether the
 /// sibling `/thumb` and `/preview` blobs exist. `None` for a text document - it has no media.
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct MediaInfo {
     /// Intrinsic pixel width of the body (image/video); `None` for audio.
     width: Option<u32>,
@@ -965,7 +965,7 @@ impl MediaInfo {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct DocSummary {
     doc_id: String,
     title: String,
@@ -1242,7 +1242,7 @@ async fn docs_by_tag_handler(
         Some(other) => {
             return Err(AppError::BadRequest(format!(
                 "unknown order {other:?} (modified | created)"
-            )))
+            )));
         }
     };
     let data = store::open(&state, &session.account.id, &root).await?;
@@ -1326,18 +1326,27 @@ struct TaxonomyMemberEntry {
     root: String,
     doc_id: String,
     /// The docs-list summary for members whose documents this node holds; `null` for another
-    /// identity's document (representable in the list, renderable when 4S serves it).
+    /// identity's document (representable in the list, renderable when 4S serves it) - and for
+    /// a member that is a taxonomy (see `taxonomy`).
     doc: Option<DocSummary>,
+    /// Present when this member is one of the identity's own taxonomies: the tree, expanded in
+    /// place (trees are composition - PROJECT_PLAN, Taxonomies).
+    taxonomy: Option<TaxonomyResponse>,
 }
 
+/// One taxonomy in a tree read. `members: null` marks a stub: this taxonomy appears (again)
+/// at this position - a diamond's other parent, or a merge-created cycle - and its expansion
+/// lives at its first encounter. Render a stub as a link.
 #[derive(Serialize)]
 struct TaxonomyResponse {
     taxonomy_id: String,
     title: String,
-    members: Vec<TaxonomyMemberEntry>,
+    members: Option<Vec<TaxonomyMemberEntry>>,
 }
 
-/// One taxonomy, members in list order, joined against the memoized doc rows.
+/// One taxonomy as its expanded tree: members in list order, nested taxonomies expanded in
+/// place (visited-set stubbed), every reachable own document joined against the memoized doc
+/// rows in one query. A flat list is just the depth-1 case of this response.
 async fn taxonomy_get_handler(
     session: Session,
     State(state): State<AppState>,
@@ -1345,22 +1354,15 @@ async fn taxonomy_get_handler(
 ) -> Result<Json<TaxonomyResponse>, AppError> {
     let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let members = data.taxonomies().members(&taxonomy_id).await?;
-    let title = data
-        .annotations()
-        .fields(&taxonomy_id)
-        .await?
-        .remove("title")
-        .unwrap_or_default();
-
     let own_root = crate::pubkey::decode(&root)
         .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?;
-    let own_ids: Vec<[u8; 16]> = members
-        .iter()
-        .filter(|m| m.root == own_root)
-        .map(|m| m.doc_id)
-        .collect();
-    let mut rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
+
+    let tree = data.taxonomies().tree(&taxonomy_id).await?;
+
+    // One summaries query for every own document in the whole tree.
+    let mut own_ids = Vec::new();
+    collect_doc_ids(&tree, &own_root, &mut own_ids);
+    let rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
         .documents()
         .summaries_for(&own_ids)
         .await?
@@ -1368,18 +1370,48 @@ async fn taxonomy_get_handler(
         .map(|r| (r.doc_id, summarize(r)))
         .collect();
 
-    Ok(Json(TaxonomyResponse {
-        taxonomy_id: hex::encode(taxonomy_id),
-        title,
-        members: members
-            .into_iter()
-            .map(|m| TaxonomyMemberEntry {
-                root: hex::encode(m.root),
-                doc_id: hex::encode(m.doc_id),
-                doc: rows.remove(&m.doc_id),
-            })
-            .collect(),
-    }))
+    Ok(Json(render_tree(tree, &rows)))
+}
+
+/// Every own-root, non-taxonomy member id in the tree - the ids `doc_heads` can answer for.
+fn collect_doc_ids(
+    node: &crate::record::store::TaxonomyNode,
+    own_root: &[u8; 32],
+    out: &mut Vec<[u8; 16]>,
+) {
+    for m in node.members.iter().flatten() {
+        match &m.taxonomy {
+            Some(nested) => collect_doc_ids(nested, own_root, out),
+            None if m.root == *own_root => out.push(m.doc_id),
+            None => {}
+        }
+    }
+}
+
+fn render_tree(
+    node: crate::record::store::TaxonomyNode,
+    rows: &std::collections::BTreeMap<[u8; 16], DocSummary>,
+) -> TaxonomyResponse {
+    TaxonomyResponse {
+        taxonomy_id: hex::encode(node.taxonomy_id),
+        title: node.title,
+        members: node.members.map(|members| {
+            members
+                .into_iter()
+                .map(|m| TaxonomyMemberEntry {
+                    root: hex::encode(m.root),
+                    doc_id: hex::encode(m.doc_id),
+                    doc: match m.taxonomy {
+                        Some(_) => None,
+                        // get, not remove: composition allows the same document in two
+                        // sections, and both occurrences deserve their summary.
+                        None => rows.get(&m.doc_id).cloned(),
+                    },
+                    taxonomy: m.taxonomy.map(|t| render_tree(t, rows)),
+                })
+                .collect()
+        }),
+    }
 }
 
 /// Delete a taxonomy: one roster remove; the member facts stay on the chain unsurfaced.
