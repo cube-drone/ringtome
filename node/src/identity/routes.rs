@@ -115,6 +115,26 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/ingest",
             get(docs_ingest_status_handler),
         )
+        // Annotations: private facts about documents - per-doc fields (LWW registers) and tags
+        // (LWW set-elements) on the doc-meta chain, read/written through the store handle.
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/annotations",
+            get(annotations_get_handler),
+        )
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/annotations/fields/{field}",
+            put(annotation_field_put_handler).delete(annotation_field_delete_handler),
+        )
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/annotations/tags/{tag}",
+            put(annotation_tag_put_handler).delete(annotation_tag_delete_handler),
+        )
+        // The inverted read: this identity's documents currently carrying a tag, in the docs-list
+        // per-doc shape. (`tagged` is a static segment, so it never shadows a 32-hex doc_id.)
+        .route(
+            "/api/identity/{root}/docs/tagged/{tag}",
+            get(docs_by_tag_handler),
+        )
 }
 
 #[derive(Serialize)]
@@ -913,6 +933,21 @@ impl MediaInfo {
             has_preview: head.header.preview_hash.is_some(),
         })
     }
+
+    /// The same facts off a memoized `doc_heads` row (which carries the display head's fields).
+    fn of_row(row: &crate::record::documents::DocHeadRow) -> Option<Self> {
+        let format = crate::record::documents::Format::from_wire(row.format);
+        if format.is_mergeable_text() {
+            return None;
+        }
+        Some(MediaInfo {
+            width: row.width,
+            height: row.height,
+            duration_ms: row.duration_ms,
+            has_thumb: row.thumb_hash.is_some(),
+            has_preview: row.preview_hash.is_some(),
+        })
+    }
 }
 
 #[derive(Serialize)]
@@ -937,35 +972,33 @@ struct DocListResponse {
     undecryptable: usize,
 }
 
-/// Every document, newest first: the note list.
+/// One list entry off a memoized `doc_heads` row - the same shape the full-fold path produced,
+/// now read back rather than re-derived.
+fn summarize(row: crate::record::documents::DocHeadRow) -> DocSummary {
+    DocSummary {
+        media: MediaInfo::of_row(&row),
+        doc_id: hex::encode(row.doc_id),
+        title: row.title,
+        head: hex::encode(row.head),
+        format: crate::record::documents::Format::from_wire(row.format).as_str(),
+        heads: row.logical_heads,
+        diverged: row.diverged,
+        updated_ms: row.head_ms,
+    }
+}
+
+/// Every document, newest first: the note list. Reads the memoized `doc_heads` rows (one query
+/// after catch-up) instead of folding the full view; the response shape is unchanged.
 async fn docs_list_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<DocListResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let view = data.documents().all().await?;
-    let mut docs: Vec<DocSummary> = view
-        .docs
-        .iter()
-        .filter_map(|(id, doc)| {
-            let head = doc.display_head()?;
-            Some(DocSummary {
-                doc_id: hex::encode(id),
-                title: head.header.title.clone(),
-                head: hex::encode(head.hash),
-                format: crate::record::documents::Format::from_wire(head.header.format).as_str(),
-                media: MediaInfo::of(head),
-                heads: doc.logical_heads.len(),
-                diverged: doc.diverged(),
-                updated_ms: head.timestamp_ms,
-            })
-        })
-        .collect();
-    docs.sort_by_key(|d| std::cmp::Reverse(d.updated_ms));
+    let (rows, undecryptable) = data.documents().summaries().await?;
     Ok(Json(DocListResponse {
-        docs,
-        undecryptable: view.undecryptable,
+        docs: rows.into_iter().map(summarize).collect(),
+        undecryptable,
     }))
 }
 
@@ -1065,6 +1098,152 @@ async fn docs_get_handler(
         },
         heads,
         save_parents,
+    }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Annotations: private facts about documents - per-doc fields (LWW registers) and tags (LWW
+// set-elements) on the doc-meta chain. The store's Annotations handle owns the semantics (the
+// per-doc collection convention, the value cap); these routes are plumbing.
+
+#[derive(Serialize)]
+struct AnnotationsResponse {
+    /// Every set field, merged (cleared/empty fields absent).
+    fields: std::collections::BTreeMap<String, String>,
+    /// Every present tag, sorted.
+    tags: Vec<String>,
+}
+
+/// One document's annotations: fields and tags in one response.
+async fn annotations_get_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<AnnotationsResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let fields = data.annotations().fields(&doc_id).await?;
+    let tags = data.annotations().tags(&doc_id).await?;
+    Ok(Json(AnnotationsResponse { fields, tags }))
+}
+
+#[derive(Deserialize)]
+struct AnnotationFieldPut {
+    value: String,
+}
+
+/// Set one annotation field (LWW per field). The handle enforces the value cap; past it, the
+/// refusal (400) says the description should become a document.
+async fn annotation_field_put_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id, field)): Path<(String, String, String)>,
+    Json(req): Json<AnnotationFieldPut>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data
+        .annotations()
+        .set_field(&doc_id, &field, &req.value)
+        .await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Clear one annotation field - itself an LWW write (absent value), so it beats older sets.
+async fn annotation_field_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id, field)): Path<(String, String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.annotations().clear_field(&doc_id, &field).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Tag a document (LWW set-element add; the merge unit is the `(doc, tag)` pair).
+async fn annotation_tag_put_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id, tag)): Path<(String, String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.annotations().tag(&doc_id, &tag).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Untag a document (LWW set-element remove: a tag/untag race resolves by timestamp).
+async fn annotation_tag_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id, tag)): Path<(String, String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.annotations().untag(&doc_id, &tag).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+#[derive(Deserialize)]
+struct TaggedQuery {
+    /// "modified" (display head's claimed stamp, default) or "created" (genesis claimed stamp).
+    order: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TaggedDocsResponse {
+    docs: Vec<DocSummary>,
+}
+
+/// This identity's documents currently tagged `tag`, in the docs-list per-doc shape. Ordering
+/// is over claimed stamps only - received_at is not replay-stable and the sync model must not
+/// leak into display ordering.
+async fn docs_by_tag_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, tag)): Path<(String, String)>,
+    Query(query): Query<TaggedQuery>,
+) -> Result<Json<TaggedDocsResponse>, AppError> {
+    enum Order {
+        Modified,
+        Created,
+    }
+    let order = match query.order.as_deref() {
+        None | Some("modified") => Order::Modified,
+        Some("created") => Order::Created,
+        Some(other) => {
+            return Err(AppError::BadRequest(format!(
+                "unknown order {other:?} (modified | created)"
+            )))
+        }
+    };
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let doc_ids = data.annotations().own_docs_tagged(&tag).await?;
+    let mut rows = data.documents().summaries_for(&doc_ids).await?;
+    rows.sort_by_key(|r| {
+        (
+            std::cmp::Reverse(match order {
+                Order::Modified => r.head_ms,
+                Order::Created => r.genesis_ms,
+            }),
+            r.doc_id,
+        )
+    });
+    Ok(Json(TaggedDocsResponse {
+        docs: rows.into_iter().map(summarize).collect(),
     }))
 }
 

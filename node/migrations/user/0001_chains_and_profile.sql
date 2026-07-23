@@ -65,6 +65,29 @@ CREATE TABLE doc_versions (
 );
 CREATE INDEX doc_versions_by_doc ON doc_versions (doc_id);
 
+-- Memoized per-document display state: one row per document, the docs-list read. This is NOT
+-- judgment-in-SQL - every value here is the output of the same Rust resolver every read runs
+-- (record::documents: DAG heads, twin/echo folding, display-head choice). The table only
+-- remembers that resolver's latest answer, recomputed after each fold pass for exactly the
+-- documents whose doc_versions inputs changed. Disposable like every view: rebuild_views wipes
+-- it and the next keyed read re-derives it from doc_versions.
+CREATE TABLE doc_heads (
+    doc_id        BLOB    PRIMARY KEY,  -- 16-byte stable document id
+    entry_hash    BLOB    NOT NULL,     -- the display head's version hash (Rust's display_head)
+    title         TEXT    NOT NULL,     -- display head's title
+    format        INTEGER,              -- doc_format id; NULL = plaintext (wire absence)
+    file_hash     BLOB    NOT NULL,     -- display head's body blob hash (file layer)
+    width         INTEGER,              -- display head's media facts, all NULL for text
+    height        INTEGER,
+    duration_ms   INTEGER,
+    thumb_hash    BLOB,
+    preview_hash  BLOB,
+    logical_heads INTEGER NOT NULL,     -- how many logical heads the resolver kept
+    diverged      INTEGER NOT NULL,     -- logical_heads > 1, precomputed for the list read
+    genesis_ms    INTEGER NOT NULL,     -- claimed stamp of the parentless/earliest version
+    head_ms       INTEGER NOT NULL      -- display head's claimed stamp (modified ordering)
+);
+
 -- The private key/value store's LWW registers, persisted. `service` rides in the primary key so
 -- the future doc-meta chain (service 7) reuses this table with zero schema change. Fold rule:
 -- the same statement-atomic stamp-compare upsert as profile_view (imaol::apply_profile_set).

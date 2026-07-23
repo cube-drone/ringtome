@@ -14,6 +14,7 @@
 //! | `private_set(c)`            | general-private (5)| LWW-element-set    | your own nodes only | in-memory, on read | full      |
 //! | `posts()`                   | posts (3)       | append-only log    | everyone (public)   | none (log is view) | suffix*   |
 //! | `documents()`               | documents-private (6)| version DAG        | your own nodes only | in-memory, on read | full      |
+//! | `annotations()`             | doc-meta-private (7)| LWW register + LWW-element-set per doc | your own nodes only | persisted, catch-up | full      |
 //!
 //! (*) Declared, not yet implemented: append-only chains are the suffix-sync candidates
 //! (PROJECT_PLAN, Shallow Sync), and `page()` already tolerates incomplete history, but the
@@ -43,6 +44,8 @@
 // allow comes off when the first 4S route lands.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
+
 use crate::db::Db;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Payload, PrivateKind, PrivatePlain, SignedEntry, SigningKey};
@@ -66,6 +69,8 @@ struct Authorship {
 /// An identity's data, opened read-write by its owner. Handles hang off this.
 pub struct Store {
     db: Db,
+    /// The identity's root key - the identity's name in reference forms (`annot:<root>/...`).
+    root: [u8; 32],
     authorship: Authorship,
     /// The node's file layer (document bodies live there, headers on the chain).
     files: std::sync::Arc<crate::files::FileStore>,
@@ -80,6 +85,8 @@ pub struct PublicView {
 /// Open an identity's data for a logged-in owner: ownership check, signing key, epoch keys, and
 /// the per-identity database, assembled once.
 pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result<Store, AppError> {
+    let root = crate::pubkey::decode(root_hex)
+        .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?;
     let signer =
         crate::identity::load_signing_key(&state.node_db, &state.keystore, account_id, root_hex)
             .await?;
@@ -94,6 +101,7 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
     let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
     Ok(Store {
         db,
+        root,
         authorship: Authorship { signer, epoch_keys },
         files: state.files.clone(),
     })
@@ -143,6 +151,12 @@ impl Store {
     /// layer, divergence detected and kept - never LWW'd away.
     pub fn documents(&self) -> Documents<'_> {
         Documents { store: self }
+    }
+
+    /// Private facts about documents: descriptions and other per-doc fields (LWW registers),
+    /// tags (LWW set-elements), grouped per document on the doc-meta chain.
+    pub fn annotations(&self) -> Annotations<'_> {
+        Annotations { store: self }
     }
 }
 
@@ -196,12 +210,15 @@ impl PrivateRegisters<'_> {
     /// Set one register (LWW per key).
     pub async fn set(&self, key: &str, value: &str) -> Result<SignedEntry, AppError> {
         self.store
-            .write_private(PrivatePlain {
-                kind: PrivateKind::Register,
-                collection: self.collection.to_string(),
-                key: key.to_string(),
-                value: Some(value.to_string()),
-            })
+            .write_private(
+                service::GENERAL_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::Register,
+                    collection: self.collection.to_string(),
+                    key: key.to_string(),
+                    value: Some(value.to_string()),
+                },
+            )
             .await
     }
 
@@ -222,24 +239,30 @@ impl PrivateSet<'_> {
     /// Add an element (LWW-element-set: an add/remove race resolves by timestamp).
     pub async fn add(&self, element: &str, value: Option<String>) -> Result<SignedEntry, AppError> {
         self.store
-            .write_private(PrivatePlain {
-                kind: PrivateKind::SetAdd,
-                collection: self.collection.to_string(),
-                key: element.to_string(),
-                value,
-            })
+            .write_private(
+                service::GENERAL_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: self.collection.to_string(),
+                    key: element.to_string(),
+                    value,
+                },
+            )
             .await
     }
 
     /// Remove an element.
     pub async fn remove(&self, element: &str) -> Result<SignedEntry, AppError> {
         self.store
-            .write_private(PrivatePlain {
-                kind: PrivateKind::SetRemove,
-                collection: self.collection.to_string(),
-                key: element.to_string(),
-                value: None,
-            })
+            .write_private(
+                service::GENERAL_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetRemove,
+                    collection: self.collection.to_string(),
+                    key: element.to_string(),
+                    value: None,
+                },
+            )
             .await
     }
 
@@ -251,11 +274,16 @@ impl PrivateSet<'_> {
 }
 
 impl Store {
-    async fn write_private(&self, plain: PrivatePlain) -> Result<SignedEntry, AppError> {
+    async fn write_private(
+        &self,
+        service_id: u32,
+        plain: PrivatePlain,
+    ) -> Result<SignedEntry, AppError> {
         private::write_record(
             &self.db,
             &self.authorship.signer,
             &self.authorship.epoch_keys,
+            service_id,
             &plain,
         )
         .await
@@ -315,6 +343,29 @@ impl Documents<'_> {
             .await
     }
 
+    /// The docs-list read: every document's memoized display row (`doc_heads`), newest head
+    /// first, plus the undecryptable count - one query after catch-up, no full-view fold.
+    pub async fn summaries(
+        &self,
+    ) -> Result<(Vec<crate::record::documents::DocHeadRow>, usize), AppError> {
+        crate::record::documents::list_heads(&self.store.db, &self.store.authorship.epoch_keys)
+            .await
+    }
+
+    /// Memoized display rows for a specific set of documents (the docs-by-tag read). Doc ids
+    /// with no local row (annotated but never held) are simply absent; ordering is the caller's.
+    pub async fn summaries_for(
+        &self,
+        doc_ids: &[[u8; 16]],
+    ) -> Result<Vec<crate::record::documents::DocHeadRow>, AppError> {
+        crate::record::documents::heads_for(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            doc_ids,
+        )
+        .await
+    }
+
     /// Read and decrypt one version's body. `Ok(None)` when we hold no key for its era or the
     /// body hasn't been fetched to this node yet.
     pub async fn body(
@@ -350,6 +401,190 @@ impl Documents<'_> {
     ) -> Result<crate::record::documents::ResolvedDoc, AppError> {
         crate::record::documents::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc)
             .await
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// LWW register + LWW-element-set, private, grouped per document: annotations (PROJECT_PLAN,
+// Annotations: Private Facts About Documents). The placement test's third category - a human
+// assertion about one document, editable without minting a version - so it is neither header
+// data nor a taxonomy. Everything the user asserts about doc D lives in ONE collection (the
+// per-doc grouping keeps a document's assertions, deletions, and exports single-collection);
+// read direction is the materializer's job, not the storage shape's.
+
+/// The collection naming convention for annotations - a client-of-the-store convention, never
+/// protocol: `annot:<root_hex>/<doc_id_hex>`, the full `(root, doc_id)` reference form, so
+/// privately annotating *someone else's* document stays representable.
+pub fn annot_collection(root: &[u8; 32], doc_id: &[u8; 16]) -> String {
+    format!("annot:{}/{}", hex::encode(root), hex::encode(doc_id))
+}
+
+/// The convention read back: `(root, doc_id)` from a collection name, `None` for anything that
+/// isn't a well-formed annotation collection.
+fn parse_annot_collection(name: &str) -> Option<([u8; 32], [u8; 16])> {
+    let (root_hex, doc_id_hex) = name.strip_prefix("annot:")?.split_once('/')?;
+    let root = crate::pubkey::decode(root_hex)?;
+    let doc_id: [u8; 16] = hex::decode(doc_id_hex).ok()?.try_into().ok()?;
+    Some((root, doc_id))
+}
+
+pub struct Annotations<'s> {
+    store: &'s Store,
+}
+
+impl Annotations<'_> {
+    /// Cap on one annotation value. Doctrine, enforced at the handle: past a couple of KiB a
+    /// "description" is becoming another document - write one and reference it.
+    pub const MAX_VALUE_BYTES: usize = 2048;
+
+    /// The identity's own documents are the common case; the store's authorship context
+    /// supplies the root. Annotating another identity's document is `annot_collection` with its
+    /// root - a caller-built collection, when a handle for it is earned.
+    fn collection(&self, doc_id: &[u8; 16]) -> String {
+        annot_collection(&self.store.root, doc_id)
+    }
+
+    /// Set one field of a document's annotations (`description`, `artist`, ... - a conventional
+    /// vocabulary, client custom, never protocol). LWW per field.
+    pub async fn set_field(
+        &self,
+        doc_id: &[u8; 16],
+        field: &str,
+        value: &str,
+    ) -> Result<SignedEntry, AppError> {
+        if value.len() > Self::MAX_VALUE_BYTES {
+            return Err(AppError::BadRequest(format!(
+                "annotation value exceeds {} bytes: past that, a description is becoming \
+                 another document - write one and reference it",
+                Self::MAX_VALUE_BYTES
+            )));
+        }
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::Register,
+                    collection: self.collection(doc_id),
+                    key: field.to_string(),
+                    value: Some(value.to_string()),
+                },
+            )
+            .await
+    }
+
+    /// Clear one field: a register write with an absent value (absent value means cleared -
+    /// PROJECT_PLAN, Annotations), so the clear is itself an LWW write that beats older sets.
+    pub async fn clear_field(
+        &self,
+        doc_id: &[u8; 16],
+        field: &str,
+    ) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::Register,
+                    collection: self.collection(doc_id),
+                    key: field.to_string(),
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// Every set field of one document, merged. Cleared fields (absent value) do not appear -
+    /// and an empty value reads as cleared too: an empty description is no description.
+    pub async fn fields(&self, doc_id: &[u8; 16]) -> Result<BTreeMap<String, String>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        Ok(view
+            .registers_in(&self.collection(doc_id))
+            .into_iter()
+            .filter(|r| !r.value.is_empty())
+            .map(|r| (r.key, r.value))
+            .collect())
+    }
+
+    /// Tag a document. Tags are set elements in the same per-doc collection as the fields; the
+    /// merge unit is the single `(doc, tag)` pair, so concurrent tagging merges automatically.
+    pub async fn tag(&self, doc_id: &[u8; 16], tag: &str) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: self.collection(doc_id),
+                    key: tag.to_string(),
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// Untag a document (LWW-element-set remove: a tag/untag race resolves by timestamp).
+    pub async fn untag(&self, doc_id: &[u8; 16], tag: &str) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetRemove,
+                    collection: self.collection(doc_id),
+                    key: tag.to_string(),
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// All of one document's tags, merged.
+    pub async fn tags(&self, doc_id: &[u8; 16]) -> Result<Vec<String>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        Ok(view
+            .set_elements(&self.collection(doc_id))
+            .into_iter()
+            .map(|e| e.element)
+            .collect())
+    }
+
+    /// The inverted read: every `(root, doc_id)` currently tagged `tag`, across every identity
+    /// whose documents this user has annotated. Both read directions are indexes over the same
+    /// materialized table; neither is privileged - which is why tags could group per-doc
+    /// without sacrificing this query (PROJECT_PLAN, Annotations).
+    pub async fn docs_tagged(&self, tag: &str) -> Result<Vec<([u8; 32], [u8; 16])>, AppError> {
+        let collections = private::collections_with_element(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            tag,
+        )
+        .await?;
+        Ok(collections
+            .iter()
+            .filter_map(|name| parse_annot_collection(name))
+            .collect())
+    }
+
+    /// The identity's OWN documents currently tagged `tag` - the docs-by-tag listing's spine.
+    /// (`docs_tagged` can also name other identities' documents; those have no local `doc_heads`
+    /// row and belong to a later cross-identity surface.)
+    pub async fn own_docs_tagged(&self, tag: &str) -> Result<Vec<[u8; 16]>, AppError> {
+        Ok(self
+            .docs_tagged(tag)
+            .await?
+            .into_iter()
+            .filter(|(root, _)| *root == self.store.root)
+            .map(|(_, doc_id)| doc_id)
+            .collect())
+    }
+}
+
+impl Store {
+    async fn doc_meta_view(&self) -> Result<private::PrivateView, AppError> {
+        private::materialize_service(
+            &self.db,
+            &self.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+        )
+        .await
     }
 }
 
@@ -465,6 +700,8 @@ mod tests {
 
         Store {
             db,
+            // A single-key test identity: the leaf doubles as the root.
+            root: leaf,
             authorship: Authorship { signer, epoch_keys },
             files: std::sync::Arc::new(crate::files::FileStore::memory()),
         }
@@ -546,6 +783,167 @@ mod tests {
             .map(|item| item.seq)
             .collect();
         assert_eq!(all, vec![4, 3, 2, 1, 0], "newest first");
+    }
+
+    #[tokio::test]
+    async fn annotations_round_trip_and_the_later_write_wins() {
+        let store = test_store().await;
+        let doc_id = [7u8; 16];
+
+        // Round trip: a description in, the same description out.
+        store
+            .annotations()
+            .set_field(&doc_id, "description", "a sunset over the pier")
+            .await
+            .unwrap();
+        // LWW conflict: two writes to the same field; the later stamp wins (the authoring
+        // clamp guarantees same-chain successors never stamp backwards).
+        store
+            .annotations()
+            .set_field(&doc_id, "artist", "someone")
+            .await
+            .unwrap();
+        store
+            .annotations()
+            .set_field(&doc_id, "artist", "Corff Burblepunk")
+            .await
+            .unwrap();
+
+        let fields = store.annotations().fields(&doc_id).await.unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields["description"], "a sunset over the pier");
+        assert_eq!(fields["artist"], "Corff Burblepunk", "later write wins");
+
+        // Clearing is an LWW write of an absent value: the field disappears from reads.
+        store
+            .annotations()
+            .clear_field(&doc_id, "artist")
+            .await
+            .unwrap();
+        let fields = store.annotations().fields(&doc_id).await.unwrap();
+        assert_eq!(fields.len(), 1);
+        assert!(!fields.contains_key("artist"));
+
+        // Another document's collection is untouched throughout.
+        let other = store.annotations().fields(&[8u8; 16]).await.unwrap();
+        assert!(other.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tags_answer_in_both_directions() {
+        let store = test_store().await;
+        let (pier, cat) = ([1u8; 16], [2u8; 16]);
+
+        store.annotations().tag(&pier, "sunset").await.unwrap();
+        store.annotations().tag(&pier, "beach").await.unwrap();
+        store.annotations().tag(&cat, "sunset").await.unwrap();
+
+        // Per-doc direction.
+        let tags = store.annotations().tags(&pier).await.unwrap();
+        assert_eq!(tags, vec!["beach", "sunset"]);
+
+        // Inverted direction: same table, other index. Doc refs parse back out of the
+        // collection names, root and all.
+        let tagged = store.annotations().docs_tagged("sunset").await.unwrap();
+        assert_eq!(tagged, vec![(store.root, pier), (store.root, cat)]);
+
+        // Untag, then re-tag: the LWW element flips present-absent-present, both directions
+        // agreeing at every step.
+        store.annotations().untag(&pier, "sunset").await.unwrap();
+        assert_eq!(store.annotations().tags(&pier).await.unwrap(), ["beach"]);
+        assert_eq!(
+            store.annotations().docs_tagged("sunset").await.unwrap(),
+            vec![(store.root, cat)]
+        );
+        store.annotations().tag(&pier, "sunset").await.unwrap();
+        assert_eq!(
+            store.annotations().docs_tagged("sunset").await.unwrap(),
+            vec![(store.root, pier), (store.root, cat)]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_oversized_annotation_is_told_to_become_a_document() {
+        let store = test_store().await;
+        let doc_id = [3u8; 16];
+
+        // Exactly at the cap is fine; one byte past it is refused, and the error says why.
+        let at_cap = "d".repeat(Annotations::MAX_VALUE_BYTES);
+        store
+            .annotations()
+            .set_field(&doc_id, "description", &at_cap)
+            .await
+            .unwrap();
+        let err = store
+            .annotations()
+            .set_field(&doc_id, "description", &format!("{at_cap}!"))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("another document"),
+            "the refusal names the alternative: {err}"
+        );
+    }
+
+    /// The doc-meta clone of the notes-chain test: annotations are private, so their entries
+    /// AND their frontiers stay behind the member proof. A stranger syncing public chains must
+    /// see no evidence the doc-meta chain exists.
+    #[tokio::test]
+    async fn doc_meta_chains_are_withheld_from_unproven_peers() {
+        let store = test_store().await;
+        store
+            .annotations()
+            .set_field(&[9u8; 16], "description", "secret assertions")
+            .await
+            .unwrap();
+
+        let public = crate::net::sync::local_frontiers(&store.db, false)
+            .await
+            .unwrap();
+        assert!(
+            !public
+                .iter()
+                .any(|f| f.service == service::DOC_META_PRIVATE),
+            "doc-meta frontiers must not be offered to unproven peers"
+        );
+        let member = crate::net::sync::local_frontiers(&store.db, true)
+            .await
+            .unwrap();
+        assert!(member
+            .iter()
+            .any(|f| f.service == service::DOC_META_PRIVATE));
+    }
+
+    /// Annotations are a view over the log, so they survive drop + refold: `rebuild_views`
+    /// wipes the private tables and watermarks, and the next keyed read reconstructs the exact
+    /// same state from the entries.
+    #[tokio::test]
+    async fn annotations_survive_rebuild_views() {
+        let store = test_store().await;
+        let doc_id = [4u8; 16];
+        store
+            .annotations()
+            .set_field(&doc_id, "description", "still here after the flood")
+            .await
+            .unwrap();
+        store.annotations().tag(&doc_id, "ark").await.unwrap();
+        let fields_before = store.annotations().fields(&doc_id).await.unwrap();
+        let tags_before = store.annotations().tags(&doc_id).await.unwrap();
+
+        imaol::rebuild_views(&store.db).await.unwrap();
+
+        assert_eq!(
+            store.annotations().fields(&doc_id).await.unwrap(),
+            fields_before
+        );
+        assert_eq!(
+            store.annotations().tags(&doc_id).await.unwrap(),
+            tags_before
+        );
+        assert_eq!(
+            store.annotations().docs_tagged("ark").await.unwrap(),
+            vec![(store.root, doc_id)]
+        );
     }
 
     #[tokio::test]

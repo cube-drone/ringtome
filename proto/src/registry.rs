@@ -31,6 +31,15 @@ pub mod service {
     /// bodies live in the file layer. Its own chain so save cadence never interleaves with the
     /// small-fact traffic on `general-private`.
     pub const DOCUMENTS_PRIVATE: u32 = 6;
+    /// Private facts *about* documents (PROJECT_PLAN, Annotations): per-doc human assertions
+    /// (`description`, `artist`, ...) as LWW registers, tags as LWW set-elements, everything
+    /// about one document grouped in its `annot:<root>/<doc_id>` collection. Its own chain,
+    /// **pre-graduated** off `general-private` - the scribble phase is skipped when the cadence
+    /// is forecastable, and here it is twice over: annotation volume scales with library size
+    /// (a bulk import writes tens of thousands of registers in an afternoon), and on an
+    /// encrypted chain `service` is the only cleartext partition key, so co-located annotations
+    /// would tax every small-fact read with decrypt-everything, forever.
+    pub const DOC_META_PRIVATE: u32 = 7;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -41,6 +50,7 @@ pub mod service {
             FOLLOWS_PUBLIC => "follows-public",
             GENERAL_PRIVATE => "general-private",
             DOCUMENTS_PRIVATE => "documents-private",
+            DOC_META_PRIVATE => "doc-meta-private",
             _ => "unknown-service",
         }
     }
@@ -57,7 +67,10 @@ pub mod entry_type {
     /// revocations anyway; the boxes are opaque).
     pub const KEY_EPOCH: u32 = 5;
     /// An encrypted private-chain record (outer: epoch + nonce + ciphertext; inner:
-    /// [`PrivatePlain`], readable only by members holding the epoch key).
+    /// [`PrivatePlain`], readable only by members holding the epoch key). Rides the
+    /// general-private chain and, since annotations, the doc-meta-private chain too - same
+    /// codec, same LWW semantics, different chain (each chain's AAD binds its ciphertexts to
+    /// its own domain, node-side).
     pub const PRIVATE_RECORD: u32 = 6;
     /// One version of a versioned document (outer: the same epoch + nonce + ciphertext envelope
     /// as `private-record`, under its own AAD; inner: [`DocHeaderPlain`]). The entry's own hash
@@ -825,6 +838,7 @@ mod tests {
     #[test]
     fn registry_names_cover_known_ids() {
         assert_eq!(service::name(service::PROFILE_PUBLIC), "profile-public");
+        assert_eq!(service::name(service::DOC_META_PRIVATE), "doc-meta-private");
         assert_eq!(entry_type::name(entry_type::PROFILE_SET), "profile-set");
         assert_eq!(service::name(999), "unknown-service");
     }

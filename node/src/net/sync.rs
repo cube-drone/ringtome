@@ -50,6 +50,7 @@ fn is_private_service(svc: u32) -> bool {
     svc == service::IDENTITY_PRIVATE
         || svc == service::GENERAL_PRIVATE
         || svc == service::DOCUMENTS_PRIVATE
+        || svc == service::DOC_META_PRIVATE
 }
 
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer

@@ -9,7 +9,7 @@
 //! model). Deliberately NOT a naive LWW fold: LWW-by-doc-id is the stale-tab failure that
 //! silently destroys an afternoon of writing.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use crate::db::Db;
 use anyhow::anyhow;
@@ -151,6 +151,25 @@ impl Doc {
             .max_by_key(|v| (v.timestamp_ms, v.hash))
     }
 
+    /// Thread the loaded versions into the DAG: heads are versions no other version of the same
+    /// doc names as a parent (a parent hash we don't hold - retention, or not yet synced - still
+    /// counts as claimed: the child is a head either way), then the read-time mop-up decides
+    /// which heads carry distinct words.
+    fn thread(&mut self) {
+        let claimed: HashSet<[u8; 32]> = self
+            .versions
+            .values()
+            .flat_map(|v| v.header.parents.iter().copied())
+            .collect();
+        self.heads = self
+            .versions
+            .keys()
+            .filter(|h| !claimed.contains(*h))
+            .copied()
+            .collect();
+        self.compute_logical_heads();
+    }
+
     /// A version's substance: what the mop-up rungs compare. Body fingerprint AND title - a
     /// rename is real content, so a head that only renamed never folds.
     fn content_of(&self, hash: &[u8; 32]) -> Option<([u8; 32], &str)> {
@@ -262,6 +281,9 @@ impl Doc {
 pub struct DocumentsView {
     pub docs: BTreeMap<[u8; 16], Doc>,
     /// Headers we hold but cannot decrypt (wrong era for this device) - surfaced, not hidden.
+    /// The HTTP list path now reports this via `list_heads` (same count, same reason); the
+    /// field stays for full-view readers, so the number is never derivable-but-dropped.
+    #[allow(dead_code)]
     pub undecryptable: usize,
 }
 
@@ -488,6 +510,8 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
     }
 
     let mut undecryptable = 0usize;
+    let mut changed: BTreeSet<[u8; 16]> = BTreeSet::new();
+    let mut advances: Vec<(String, u64)> = Vec::new();
     for (author_hex, chain) in by_author {
         let mut advance_to: Option<u64> = None;
         let mut stalled = false;
@@ -509,6 +533,7 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
             };
             match opened {
                 Opened::Plain(header) => {
+                    changed.insert(header.doc_id);
                     fold_header(db, &signed, &header).await?;
                     if !stalled {
                         advance_to = Some(seq);
@@ -534,26 +559,115 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
             }
         }
         if let Some(folded_seq) = advance_to {
-            crate::record::imaol::advance_watermark(
-                db,
-                &author_hex,
-                service::DOCUMENTS_PRIVATE,
-                folded_seq,
-            )
-            .await?;
+            advances.push((author_hex, folded_seq));
         }
+    }
+
+    // Re-memoize doc_heads for exactly the documents whose inputs changed this pass, BEFORE the
+    // watermarks advance: a crash between the two re-runs the fold (idempotent) and re-derives
+    // the memo, so doc_heads can lag the log only transiently, never permanently.
+    refresh_doc_heads(db, &changed).await?;
+    for (author_hex, folded_seq) in advances {
+        crate::record::imaol::advance_watermark(
+            db,
+            &author_hex,
+            service::DOCUMENTS_PRIVATE,
+            folded_seq,
+        )
+        .await?;
     }
     Ok(undecryptable)
 }
 
-/// The drop half of rebuild (`imaol::rebuild_views`): wipe the persisted document view. The
-/// next keyed materialize refolds it from the log.
-pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
-    db.execute("DELETE FROM doc_versions", ())
+/// Re-resolve and upsert one `doc_heads` row per changed document. NOT judgment-in-SQL: every
+/// value written here is the output of the same Rust resolver every keyed read runs
+/// (`Doc::thread` + `display_head`) - this is that resolution *memoized*, recomputed only for
+/// documents whose `doc_versions` inputs changed, and disposable like every view.
+async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), AppError> {
+    for doc_id in changed {
+        let doc = load_doc(db, doc_id).await?;
+        // No display head (nothing decrypted for this doc yet): nothing to memoize.
+        let Some(head) = doc.display_head() else {
+            continue;
+        };
+        // The claimed stamp of the document's genesis: its parentless version(s) - earliest
+        // wins if retention/criss-cross left several - falling back to the earliest version we
+        // hold when the true genesis is outside retention.
+        let earliest = doc
+            .versions
+            .values()
+            .map(|v| v.timestamp_ms)
+            .min()
+            .unwrap_or(head.timestamp_ms);
+        let genesis_ms = doc
+            .versions
+            .values()
+            .filter(|v| v.header.parents.is_empty())
+            .map(|v| v.timestamp_ms)
+            .min()
+            .unwrap_or(earliest);
+        db.execute(
+            "INSERT INTO doc_heads
+               (doc_id, entry_hash, title, format, file_hash, width, height, duration_ms,
+                thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms)
+             VALUES (:doc_id, :entry_hash, :title, :format, :file_hash, :width, :height,
+                     :duration_ms, :thumb_hash, :preview_hash, :logical_heads, :diverged,
+                     :genesis_ms, :head_ms)
+             ON CONFLICT(doc_id) DO UPDATE SET
+               entry_hash = excluded.entry_hash,
+               title = excluded.title,
+               format = excluded.format,
+               file_hash = excluded.file_hash,
+               width = excluded.width,
+               height = excluded.height,
+               duration_ms = excluded.duration_ms,
+               thumb_hash = excluded.thumb_hash,
+               preview_hash = excluded.preview_hash,
+               logical_heads = excluded.logical_heads,
+               diverged = excluded.diverged,
+               genesis_ms = excluded.genesis_ms,
+               head_ms = excluded.head_ms",
+            turso::named_params! {
+                ":doc_id": doc_id.as_slice(),
+                ":entry_hash": head.hash.as_slice(),
+                ":title": head.header.title.as_str(),
+                ":format": head.header.format.map(|f| f as i64),
+                ":file_hash": head.header.file_hash.as_slice(),
+                ":width": head.header.width.map(i64::from),
+                ":height": head.header.height.map(i64::from),
+                ":duration_ms": head.header.duration_ms.map(|d| d as i64),
+                ":thumb_hash": head.header.thumb_hash.map(|h| h.to_vec()),
+                ":preview_hash": head.header.preview_hash.map(|h| h.to_vec()),
+                ":logical_heads": doc.logical_heads.len() as i64,
+                ":diverged": i64::from(doc.diverged()),
+                ":genesis_ms": genesis_ms,
+                ":head_ms": head.timestamp_ms,
+            },
+        )
         .await
-        .context("clearing doc versions")
+        .context("memoizing doc head")
         .map_err(AppError::Internal)?;
+    }
     Ok(())
+}
+
+/// The drop half of rebuild (`imaol::rebuild_views`): wipe the persisted document view - the
+/// folded facts AND the memoized resolutions. The next keyed materialize refolds both from the
+/// log (a refold re-derives every doc's `doc_heads` row, since every doc changes in that pass).
+pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
+    for sql in ["DELETE FROM doc_versions", "DELETE FROM doc_heads"] {
+        db.execute(sql, ())
+            .await
+            .context("clearing document views")
+            .map_err(AppError::Internal)?;
+    }
+    Ok(())
+}
+
+fn hash32(bytes: &[u8]) -> Result<[u8; 32], AppError> {
+    bytes
+        .try_into()
+        .map_err(|_| AppError::Internal(anyhow!("corrupt 32-byte column in doc_versions")))
 }
 
 /// Row shape of the doc_versions read, in SELECT order.
@@ -575,6 +689,77 @@ type VersionRow = (
     String,          // author_pubkey
 );
 
+/// Rehydrate one stored version from its `doc_versions` row.
+fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
+    let (
+        entry_hash,
+        doc_id,
+        parents,
+        title,
+        body_hash,
+        file_hash,
+        format,
+        width,
+        height,
+        duration_ms,
+        thumb_hash,
+        preview_hash,
+        timestamp_ms,
+        _seq,
+        author_hex,
+    ) = row;
+    let hash = hash32(&entry_hash)?;
+    let doc_id: [u8; 16] = doc_id
+        .try_into()
+        .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_versions")))?;
+    let author = hash32(&hex::decode(&author_hex).unwrap_or_default())?;
+    let header = DocHeaderPlain {
+        doc_id,
+        parents: decode_parents(&parents)?,
+        file_hash: hash32(&file_hash)?,
+        body_hash: hash32(&body_hash)?,
+        title,
+        format: format.map(|f| f as u64),
+        width: width.map(|w| w as u32),
+        height: height.map(|h| h as u32),
+        duration_ms: duration_ms.map(|d| d as u64),
+        thumb_hash: thumb_hash.as_deref().map(hash32).transpose()?,
+        preview_hash: preview_hash.as_deref().map(hash32).transpose()?,
+    };
+    Ok((
+        doc_id,
+        Version {
+            hash,
+            header,
+            timestamp_ms,
+            author,
+        },
+    ))
+}
+
+/// Load ONE document's DAG from the persisted fold and thread it - the memoizer's input,
+/// identical to `materialize`'s slice for that doc (same rows, same resolver).
+async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
+    let rows: Vec<VersionRow> = db
+        .fetch_all(
+            "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
+                    height, duration_ms, thumb_hash, preview_hash, timestamp_ms, seq,
+                    author_pubkey
+             FROM doc_versions WHERE doc_id = ?1",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading one document's versions")
+        .map_err(AppError::Internal)?;
+    let mut doc = Doc::default();
+    for row in rows {
+        let (_, version) = version_from_row(row)?;
+        doc.versions.insert(version.hash, version);
+    }
+    doc.thread();
+    Ok(doc)
+}
+
 /// The notes view: catch the persisted fold up to the chains, then thread every stored version
 /// into per-document DAGs. All DAG judgment - heads, twin/echo folding, merge rungs - happens
 /// here in Rust over the fetched facts; SQL never holds an opinion.
@@ -593,81 +778,161 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
         .context("reading doc versions")
         .map_err(AppError::Internal)?;
 
-    fn hash32(bytes: &[u8]) -> Result<[u8; 32], AppError> {
-        bytes
-            .try_into()
-            .map_err(|_| AppError::Internal(anyhow!("corrupt 32-byte column in doc_versions")))
-    }
-
     let mut view = DocumentsView {
         undecryptable,
         ..Default::default()
     };
-    for (
-        entry_hash,
+    for row in rows {
+        let (doc_id, version) = version_from_row(row)?;
+        view.docs
+            .entry(doc_id)
+            .or_default()
+            .versions
+            .insert(version.hash, version);
+    }
+
+    // Thread each doc's DAG: true heads, then the mop-up (which heads carry distinct words).
+    for doc in view.docs.values_mut() {
+        doc.thread();
+    }
+    Ok(view)
+}
+
+// ---------------------------------------------------------------------------------------------
+// The memoized list read (doc_heads). One row per document, written by refresh_doc_heads above;
+// these readers catch the fold up (which re-memoizes whatever changed) and then read rows back -
+// no full-view fold on the list path.
+
+/// One document's memoized display state, as `doc_heads` holds it. Claimed stamps only
+/// (`genesis_ms`, `head_ms`) - received_at never appears here: it isn't replay-stable and the
+/// sync model must not leak into display ordering.
+#[derive(Debug)]
+pub struct DocHeadRow {
+    pub doc_id: [u8; 16],
+    /// The display head's version hash.
+    pub head: [u8; 32],
+    pub title: String,
+    /// Raw wire format id (`Format::from_wire` reads it).
+    pub format: Option<u64>,
+    /// The display head's body blob hash in the file layer. No list endpoint serves it yet -
+    /// it rides the memo because the display head's serving needs are exactly these columns,
+    /// and the body-serving path is the next reader.
+    #[allow(dead_code)]
+    pub file_hash: [u8; 32],
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub duration_ms: Option<u64>,
+    pub thumb_hash: Option<[u8; 32]>,
+    pub preview_hash: Option<[u8; 32]>,
+    pub logical_heads: usize,
+    pub diverged: bool,
+    /// Claimed stamp of the parentless/earliest version (the `created` ordering).
+    pub genesis_ms: i64,
+    /// The display head's claimed stamp (the `modified` ordering).
+    pub head_ms: i64,
+}
+
+/// Row shape of the doc_heads read, in SELECT order.
+type HeadTuple = (
+    Vec<u8>,         // doc_id
+    Vec<u8>,         // entry_hash
+    String,          // title
+    Option<i64>,     // format
+    Vec<u8>,         // file_hash
+    Option<i64>,     // width
+    Option<i64>,     // height
+    Option<i64>,     // duration_ms
+    Option<Vec<u8>>, // thumb_hash
+    Option<Vec<u8>>, // preview_hash
+    i64,             // logical_heads
+    i64,             // diverged
+    i64,             // genesis_ms
+    i64,             // head_ms
+);
+
+const HEAD_COLUMNS: &str = "doc_id, entry_hash, title, format, file_hash, width, height, \
+                            duration_ms, thumb_hash, preview_hash, logical_heads, diverged, \
+                            genesis_ms, head_ms";
+
+fn head_row(tuple: HeadTuple) -> Result<DocHeadRow, AppError> {
+    let (
         doc_id,
-        parents,
+        entry_hash,
         title,
-        body_hash,
-        file_hash,
         format,
+        file_hash,
         width,
         height,
         duration_ms,
         thumb_hash,
         preview_hash,
-        timestamp_ms,
-        _seq,
-        author_hex,
-    ) in rows
-    {
-        let hash = hash32(&entry_hash)?;
-        let doc_id: [u8; 16] = doc_id
+        logical_heads,
+        diverged,
+        genesis_ms,
+        head_ms,
+    ) = tuple;
+    Ok(DocHeadRow {
+        doc_id: doc_id
             .try_into()
-            .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_versions")))?;
-        let author = hash32(&hex::decode(&author_hex).unwrap_or_default())?;
-        let header = DocHeaderPlain {
-            doc_id,
-            parents: decode_parents(&parents)?,
-            file_hash: hash32(&file_hash)?,
-            body_hash: hash32(&body_hash)?,
-            title,
-            format: format.map(|f| f as u64),
-            width: width.map(|w| w as u32),
-            height: height.map(|h| h as u32),
-            duration_ms: duration_ms.map(|d| d as u64),
-            thumb_hash: thumb_hash.as_deref().map(hash32).transpose()?,
-            preview_hash: preview_hash.as_deref().map(hash32).transpose()?,
-        };
-        view.docs.entry(doc_id).or_default().versions.insert(
-            hash,
-            Version {
-                hash,
-                header,
-                timestamp_ms,
-                author,
-            },
-        );
-    }
+            .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?,
+        head: hash32(&entry_hash)?,
+        title,
+        format: format.map(|f| f as u64),
+        file_hash: hash32(&file_hash)?,
+        width: width.map(|w| w as u32),
+        height: height.map(|h| h as u32),
+        duration_ms: duration_ms.map(|d| d as u64),
+        thumb_hash: thumb_hash.as_deref().map(hash32).transpose()?,
+        preview_hash: preview_hash.as_deref().map(hash32).transpose()?,
+        logical_heads: logical_heads as usize,
+        diverged: diverged != 0,
+        genesis_ms,
+        head_ms,
+    })
+}
 
-    // Heads: versions no other version of the same doc names as a parent. A parent hash we
-    // don't hold (retention dropped it, or it hasn't synced yet) still counts as claimed - the
-    // child is a head either way. Then the mop-up: which heads carry distinct words.
-    for doc in view.docs.values_mut() {
-        let claimed: HashSet<[u8; 32]> = doc
-            .versions
-            .values()
-            .flat_map(|v| v.header.parents.iter().copied())
-            .collect();
-        doc.heads = doc
-            .versions
-            .keys()
-            .filter(|h| !claimed.contains(*h))
-            .copied()
-            .collect();
-        doc.compute_logical_heads();
+/// The docs-list read: every document's memoized row, newest head first, current to the chains
+/// (the catch-up re-memoizes whatever changed first). Returns the rows plus the undecryptable
+/// count - the same figure `materialize` reports, for the same reason (watermarks never pass an
+/// unopenable header).
+pub async fn list_heads(db: &Db, keys: &EpochKeys) -> Result<(Vec<DocHeadRow>, usize), AppError> {
+    let undecryptable = catch_up(db, keys).await?;
+    let rows: Vec<HeadTuple> = db
+        .fetch_all(
+            &format!("SELECT {HEAD_COLUMNS} FROM doc_heads ORDER BY head_ms DESC, doc_id"),
+            (),
+        )
+        .await
+        .context("reading doc heads")
+        .map_err(AppError::Internal)?;
+    let rows = rows.into_iter().map(head_row).collect::<Result<_, _>>()?;
+    Ok((rows, undecryptable))
+}
+
+/// Memoized rows for a specific set of documents (the docs-by-tag read), current to the chains.
+/// Unknown doc_ids (annotated but never held, or nothing decrypted yet) are simply absent.
+/// Ordering is the caller's: the tag query decides `modified` vs `created` over claimed stamps.
+pub async fn heads_for(
+    db: &Db,
+    keys: &EpochKeys,
+    doc_ids: &[[u8; 16]],
+) -> Result<Vec<DocHeadRow>, AppError> {
+    catch_up(db, keys).await?;
+    let mut out = Vec::with_capacity(doc_ids.len());
+    for doc_id in doc_ids {
+        let tuple: Option<HeadTuple> = db
+            .fetch_optional(
+                &format!("SELECT {HEAD_COLUMNS} FROM doc_heads WHERE doc_id = ?1"),
+                (doc_id.to_vec(),),
+            )
+            .await
+            .context("reading one doc head")
+            .map_err(AppError::Internal)?;
+        if let Some(tuple) = tuple {
+            out.push(head_row(tuple)?);
+        }
     }
-    Ok(view)
+    Ok(out)
 }
 
 /// After a sync: fetch, from the peer we just exchanged with, every referenced body we lack.
@@ -2465,5 +2730,81 @@ mod tests {
                 .await,
             Some(0)
         );
+    }
+
+    /// doc_heads is the resolver memoized, not a second opinion: after saves (divergence
+    /// included) the row matches what materialize + display_head derive; rebuild_views wipes
+    /// it; the next keyed read re-derives the identical row from doc_versions.
+    #[tokio::test]
+    async fn doc_heads_memoizes_the_resolver_and_survives_rebuild() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"start").await;
+        save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, more",
+        )
+        .await;
+        save(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"start, other",
+        )
+        .await;
+
+        let (rows, undecryptable) = list_heads(&db, &keys).await.unwrap();
+        assert_eq!(undecryptable, 0);
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        let head = doc.display_head().unwrap();
+        assert_eq!(row.doc_id, doc_id);
+        assert_eq!(
+            row.head, head.hash,
+            "memo names the resolver's display head"
+        );
+        assert_eq!(row.title, head.header.title);
+        assert_eq!(row.file_hash, head.header.file_hash);
+        assert_eq!(row.logical_heads, doc.logical_heads.len());
+        assert!(row.diverged, "two distinct siblings: diverged is memoized");
+        assert_eq!(row.head_ms, head.timestamp_ms);
+        assert_eq!(
+            row.genesis_ms,
+            doc.versions.get(&v1).unwrap().timestamp_ms,
+            "genesis is the parentless version's claimed stamp"
+        );
+
+        // Rebuild wipes the memo (the disposability proof)...
+        crate::record::imaol::rebuild_views(&db).await.unwrap();
+        let (count,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM doc_heads", ())
+            .await
+            .unwrap();
+        assert_eq!(count, 0, "rebuild clears the memoized view");
+
+        // ...and the next keyed read re-derives the exact same answer from the log.
+        let (rows2, _) = list_heads(&db, &keys).await.unwrap();
+        assert_eq!(rows2.len(), 1);
+        assert_eq!(rows2[0].head, row.head);
+        assert_eq!(rows2[0].genesis_ms, row.genesis_ms);
+        assert_eq!(rows2[0].head_ms, row.head_ms);
+        assert_eq!(rows2[0].logical_heads, row.logical_heads);
     }
 }

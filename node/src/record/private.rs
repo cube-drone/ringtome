@@ -50,6 +50,24 @@ const FILE_AAD: &[u8] = b"ringtome-v0/file";
 /// domain.
 const DOC_AAD: &[u8] = b"ringtome-v0/doc-header";
 
+/// AAD for private records on the doc-meta chain (annotations, tags). Domain separation from
+/// general-private is mandatory mechanics, not hygiene (PROJECT_PLAN, Annotations): the two
+/// chains share an entry type, a codec, and their epoch keys, so the AAD is the only thing
+/// refusing a ciphertext transplanted from one chain to the other.
+const DOC_META_AAD: &[u8] = b"ringtome-v0/doc-meta-record";
+
+/// The AAD for one service's private-record ciphertexts. Unknown service = error: a service
+/// earns private records by being named here, never by default.
+fn aad_for_service(service_id: u32) -> Result<&'static [u8], AppError> {
+    match service_id {
+        service::GENERAL_PRIVATE => Ok(RECORD_AAD),
+        service::DOC_META_PRIVATE => Ok(DOC_META_AAD),
+        _ => Err(AppError::Internal(anyhow!(
+            "service {service_id} carries no private records"
+        ))),
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Encryption keypairs in the keystore
 
@@ -307,12 +325,14 @@ fn cipher(key: &[u8; 32]) -> XChaCha20Poly1305 {
     XChaCha20Poly1305::new(key.into())
 }
 
-/// Encrypt one plaintext record under an epoch key.
+/// Encrypt one plaintext record under an epoch key, bound to `service_id`'s AAD domain.
 pub fn encrypt_record(
     epoch: u64,
     epoch_key: &[u8; 32],
+    service_id: u32,
     plain: &PrivatePlain,
 ) -> Result<PrivateRecord, AppError> {
+    let aad = aad_for_service(service_id)?;
     let plaintext = plain
         .encode()
         .map_err(|e| AppError::BadRequest(format!("invalid private record: {e}")))?;
@@ -326,7 +346,7 @@ pub fn encrypt_record(
             XNonce::from_slice(&nonce),
             chacha20poly1305::aead::Payload {
                 msg: &plaintext,
-                aad: RECORD_AAD,
+                aad,
             },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting private record: {e}")))?;
@@ -372,10 +392,16 @@ fn open_with<T>(
     Opened::NoKey
 }
 
-/// Open one private record. `NoKey` is the normal state of a revoked-then-rotated-away member
-/// looking at the future, or a newcomer not yet re-sealed into the past.
-pub(crate) fn open_record(record: &PrivateRecord, keys: &EpochKeys) -> Opened<PrivatePlain> {
-    open_with(record, keys, RECORD_AAD, |p| PrivatePlain::decode(p).ok())
+/// Open one private record under the given service's AAD domain. `NoKey` is the normal state of
+/// a revoked-then-rotated-away member looking at the future, or a newcomer not yet re-sealed
+/// into the past - and also of a ciphertext offered under the wrong domain (the AEAD cannot
+/// tell "no key" from "right key, wrong AAD"; both simply refuse).
+pub(crate) fn open_record(
+    record: &PrivateRecord,
+    keys: &EpochKeys,
+    aad: &[u8],
+) -> Opened<PrivatePlain> {
+    open_with(record, keys, aad, |p| PrivatePlain::decode(p).ok())
 }
 
 /// Open one doc header (its own AAD domain - see [`encrypt_doc_header`]).
@@ -392,8 +418,12 @@ pub(crate) fn open_doc_header(
 /// (or an undecodable plaintext). Production reads go through [`open_record`], which keeps the
 /// distinction; this collapse survives for the crypto round-trip tests.
 #[cfg(test)]
-pub(crate) fn decrypt_record(record: &PrivateRecord, keys: &EpochKeys) -> Option<PrivatePlain> {
-    match open_record(record, keys) {
+pub(crate) fn decrypt_record(
+    record: &PrivateRecord,
+    keys: &EpochKeys,
+    aad: &[u8],
+) -> Option<PrivatePlain> {
+    match open_record(record, keys, aad) {
         Opened::Plain(plain) => Some(plain),
         Opened::NoKey | Opened::Garbage => None,
     }
@@ -491,24 +521,26 @@ pub fn decrypt_file(blob: &[u8], keys: &EpochKeys) -> Option<Vec<u8>> {
     None
 }
 
-/// Append one private record under the current epoch.
+/// Append one private record under the current epoch, onto `service_id`'s chain (general-private
+/// and doc-meta share this one append path; the service picks the chain and its AAD domain).
 pub async fn write_record(
     db: &Db,
     signer: &SigningKey,
     keys: &EpochKeys,
+    service_id: u32,
     plain: &PrivatePlain,
 ) -> Result<SignedEntry, AppError> {
     let (epoch, key) = keys.current().ok_or_else(|| {
         AppError::Internal(anyhow!("this node holds no epoch key for the identity"))
     })?;
-    let record = encrypt_record(epoch, &key, plain)?;
+    let record = encrypt_record(epoch, &key, service_id, plain)?;
     let payload = record
         .encode()
         .map_err(|e| AppError::Internal(anyhow!("encoding private record: {e}")))?;
     crate::record::imaol::append(
         db,
         signer,
-        service::GENERAL_PRIVATE,
+        service_id,
         entry_type::PRIVATE_RECORD,
         Payload::Inline(payload),
     )
@@ -651,6 +683,7 @@ async fn fold_record(
 /// many fetched records this key-set could not open - which, because a watermark never passes
 /// an unopenable record, equals the count across the whole stored log.
 async fn catch_up(db: &Db, keys: &EpochKeys, service_id: u32) -> Result<u64, AppError> {
+    let aad = aad_for_service(service_id)?;
     let entries =
         crate::record::imaol::entries_past_watermarks(db, service_id, entry_type::PRIVATE_RECORD)
             .await?;
@@ -680,7 +713,7 @@ async fn catch_up(db: &Db, keys: &EpochKeys, service_id: u32) -> Result<u64, App
                 _ => None,
             };
             let opened = match record {
-                Some(record) => open_record(&record, keys),
+                Some(record) => open_record(&record, keys, aad),
                 None => Opened::Garbage, // wrong shape from a buggy writer: never improves
             };
             match opened {
@@ -737,9 +770,21 @@ type RegisterRow = (String, String, Option<Vec<u8>>, i64, i64, Vec<u8>);
 /// Set-element row shape: collection, element, present, value, timestamp_ms, seq, entry_hash.
 type SetElementRow = (String, String, i64, Option<Vec<u8>>, i64, i64, Vec<u8>);
 
-/// The private store's view: catch the persisted tables up to the chains, then read them back.
+/// The general private store's view (see [`materialize_service`]).
 pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppError> {
-    let undecryptable = catch_up(db, keys, service::GENERAL_PRIVATE).await?;
+    materialize_service(db, keys, service::GENERAL_PRIVATE).await
+}
+
+/// One private-record service's view: catch the persisted tables up to that service's chains
+/// (with its AAD domain), then read its rows back. General-private and doc-meta are the same
+/// machinery pointed at different chains; the watermark table is keyed `(author, service)`, so
+/// their folds never see each other.
+pub async fn materialize_service(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+) -> Result<PrivateView, AppError> {
+    let undecryptable = catch_up(db, keys, service_id).await?;
     let mut view = PrivateView {
         undecryptable,
         ..Default::default()
@@ -757,7 +802,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppEr
         .fetch_all(
             "SELECT collection, key, value, timestamp_ms, seq, entry_hash
              FROM private_registers WHERE service = ?1",
-            (i64::from(service::GENERAL_PRIVATE),),
+            (i64::from(service_id),),
         )
         .await
         .context("reading private registers")
@@ -776,7 +821,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppEr
         .fetch_all(
             "SELECT collection, element, present, value, timestamp_ms, seq, entry_hash
              FROM private_set_elements WHERE service = ?1",
-            (i64::from(service::GENERAL_PRIVATE),),
+            (i64::from(service_id),),
         )
         .await
         .context("reading private set elements")
@@ -792,6 +837,31 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppEr
         );
     }
     Ok(view)
+}
+
+/// The inverted set-element read: every collection on one service whose LWW-element-set
+/// currently contains `element`, after catching that service's fold up. Both read directions -
+/// "this collection's elements" and "the collections holding this element" - are indexes over
+/// the same materialized table; neither is privileged (PROJECT_PLAN, Annotations: which is how
+/// "all of D's tags" vs "all docs tagged X" turned out to be a false choice).
+pub async fn collections_with_element(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+    element: &str,
+) -> Result<Vec<String>, AppError> {
+    catch_up(db, keys, service_id).await?;
+    let rows: Vec<(String,)> = db
+        .fetch_all(
+            "SELECT collection FROM private_set_elements
+             WHERE service = ?1 AND element = ?2 AND present = 1
+             ORDER BY collection",
+            (i64::from(service_id), element),
+        )
+        .await
+        .context("reading collections holding a set element")
+        .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().map(|(collection,)| collection).collect())
 }
 
 #[cfg(test)]
@@ -863,6 +933,7 @@ mod tests {
             &db,
             &root_key,
             &keys,
+            service::GENERAL_PRIVATE,
             &plain_register("config", "theme", "hotdog"),
         )
         .await
@@ -871,6 +942,7 @@ mod tests {
             &db,
             &root_key,
             &keys,
+            service::GENERAL_PRIVATE,
             &plain_register("config", "theme", "plain"),
         )
         .await
@@ -907,12 +979,18 @@ mod tests {
             value: None,
         };
 
-        write_record(&db, &key, &keys, &add("alice")).await.unwrap();
-        write_record(&db, &key, &keys, &add("bob")).await.unwrap();
-        write_record(&db, &key, &keys, &remove("alice"))
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("alice"))
             .await
             .unwrap();
-        write_record(&db, &key, &keys, &add("alice")).await.unwrap();
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("bob"))
+            .await
+            .unwrap();
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &remove("alice"))
+            .await
+            .unwrap();
+        write_record(&db, &key, &keys, service::GENERAL_PRIVATE, &add("alice"))
+            .await
+            .unwrap();
 
         let view = materialize(&db, &keys).await.unwrap();
         let elements: Vec<String> = view
@@ -949,6 +1027,7 @@ mod tests {
             &db,
             &a_key,
             &a_keys,
+            service::GENERAL_PRIVATE,
             &plain_register("contacts", "dave", "Dave"),
         )
         .await
@@ -970,6 +1049,7 @@ mod tests {
             &db,
             &a_key,
             &a_keys,
+            service::GENERAL_PRIVATE,
             &plain_register("contacts", "eve", "Eve"),
         )
         .await
@@ -1015,9 +1095,15 @@ mod tests {
         .await
         .unwrap();
         let keys = unseal_epoch_keys(&db, &a_leaf, &a_enc).await.unwrap();
-        write_record(&db, &a_key, &keys, &plain_register("config", "old", "era0"))
-            .await
-            .unwrap();
+        write_record(
+            &db,
+            &a_key,
+            &keys,
+            service::GENERAL_PRIVATE,
+            &plain_register("config", "old", "era0"),
+        )
+        .await
+        .unwrap();
         mint_epoch(
             &db,
             &a_key,
@@ -1028,9 +1114,15 @@ mod tests {
         .await
         .unwrap();
         let keys = unseal_epoch_keys(&db, &a_leaf, &a_enc).await.unwrap();
-        write_record(&db, &a_key, &keys, &plain_register("config", "new", "era1"))
-            .await
-            .unwrap();
+        write_record(
+            &db,
+            &a_key,
+            &keys,
+            service::GENERAL_PRIVATE,
+            &plain_register("config", "new", "era1"),
+        )
+        .await
+        .unwrap();
 
         let n_enc = EncKeyPair::generate();
         let n_leaf = signer(6).verifying_key().to_bytes();
@@ -1045,17 +1137,48 @@ mod tests {
         assert_eq!(n_view.undecryptable, 0);
     }
 
+    /// Domain separation between the two private-record chains: the same epoch key, and the AAD
+    /// alone refuses a ciphertext transplanted from one chain to the other. If this ever passes
+    /// cross-domain, a member could replay a general-private fact as a doc-meta one (or vice
+    /// versa) without holding anything it wasn't given.
+    #[test]
+    fn record_aads_are_domain_separated() {
+        let epoch_key = fresh_epoch_key();
+        let keys = EpochKeys::single(0, epoch_key);
+        let plain = plain_register("c", "k", "v");
+
+        let general = encrypt_record(0, &epoch_key, service::GENERAL_PRIVATE, &plain).unwrap();
+        let doc_meta = encrypt_record(0, &epoch_key, service::DOC_META_PRIVATE, &plain).unwrap();
+
+        // Each opens in its own domain...
+        assert!(decrypt_record(&general, &keys, RECORD_AAD).is_some());
+        assert!(decrypt_record(&doc_meta, &keys, DOC_META_AAD).is_some());
+        // ...and refuses in the other, with the very key that encrypted it.
+        assert!(decrypt_record(&general, &keys, DOC_META_AAD).is_none());
+        assert!(decrypt_record(&doc_meta, &keys, RECORD_AAD).is_none());
+
+        // A service without private records has no AAD at all - encrypting for it is an error,
+        // not a default domain.
+        assert!(encrypt_record(0, &epoch_key, service::POSTS, &plain).is_err());
+    }
+
     #[test]
     fn tampered_ciphertext_fails_closed() {
         let epoch_key = fresh_epoch_key();
-        let mut record = encrypt_record(0, &epoch_key, &plain_register("c", "k", "v")).unwrap();
+        let mut record = encrypt_record(
+            0,
+            &epoch_key,
+            service::GENERAL_PRIVATE,
+            &plain_register("c", "k", "v"),
+        )
+        .unwrap();
         let mut keys = EpochKeys::default();
         keys.insert(0, epoch_key);
 
-        assert!(decrypt_record(&record, &keys).is_some());
+        assert!(decrypt_record(&record, &keys, RECORD_AAD).is_some());
         let last = record.ciphertext.len() - 1;
         record.ciphertext[last] ^= 0xff;
-        assert!(decrypt_record(&record, &keys).is_none());
+        assert!(decrypt_record(&record, &keys, RECORD_AAD).is_none());
     }
 
     /// The watermark does its job: the first materialize folds and advances; a second call
@@ -1073,6 +1196,7 @@ mod tests {
             &db,
             &key,
             &keys,
+            service::GENERAL_PRIVATE,
             &plain_register("config", "theme", "hotdog"),
         )
         .await
@@ -1081,6 +1205,7 @@ mod tests {
             &db,
             &key,
             &keys,
+            service::GENERAL_PRIVATE,
             &plain_register("config", "theme", "plain"),
         )
         .await
@@ -1135,15 +1260,33 @@ mod tests {
         let era1 = EpochKeys::single(1, k1);
 
         // seq 0 and 2 under epoch 0, seq 1 under epoch 1.
-        write_record(&db, &key, &era0, &plain_register("c", "before", "x"))
-            .await
-            .unwrap();
-        write_record(&db, &key, &era1, &plain_register("c", "hidden", "y"))
-            .await
-            .unwrap();
-        write_record(&db, &key, &era0, &plain_register("c", "after", "z"))
-            .await
-            .unwrap();
+        write_record(
+            &db,
+            &key,
+            &era0,
+            service::GENERAL_PRIVATE,
+            &plain_register("c", "before", "x"),
+        )
+        .await
+        .unwrap();
+        write_record(
+            &db,
+            &key,
+            &era1,
+            service::GENERAL_PRIVATE,
+            &plain_register("c", "hidden", "y"),
+        )
+        .await
+        .unwrap();
+        write_record(
+            &db,
+            &key,
+            &era0,
+            service::GENERAL_PRIVATE,
+            &plain_register("c", "after", "z"),
+        )
+        .await
+        .unwrap();
 
         // A reader holding only epoch 0, twice (the second call is the retry).
         for _ in 0..2 {

@@ -112,12 +112,12 @@ are ever allowed to meet, and in what costume.
   LWW set-elements grouped per-document on the doc-meta chain, external to what they organize;
   merge unit is the single `(doc, tag)` pair). Tags organize; pins retain. The two never
   meet.
-- **annotation** *(planned)* — a private human assertion about one document (`description`,
+- **annotation** — a private human assertion about one document (`description`,
   `artist`, `album`, `source`, …): a key→value LWW register in the doc's collection
   (`annot:<root>/<doc_id>`) on the doc-meta chain. The placement test's third category: measured
   facts ride the version header, ordered curation is a taxonomy document, per-doc assertions are
   annotations.
-- **doc-meta chain** *(planned)* — the private chain (service 7) carrying annotations and tags:
+- **doc-meta chain** — the private chain (service 7) carrying annotations and tags:
   every private fact *about* documents. Its own chain, pre-graduated off `general-private`,
   because annotation volume scales with library size and `service` is the only cleartext
   partition key on an encrypted chain.
