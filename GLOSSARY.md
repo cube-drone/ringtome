@@ -82,7 +82,7 @@ are ever allowed to meet, and in what costume.
 - **file hash** — a file's BLAKE3 name. For private files it is unforgeable and unlinkable: it
   depends on the secret epoch key *and* a random per-file nonce, so nobody — member or not — can
   precompute a target's hash or reverse one to known content. Why serving needs no gate.
-- **document** *(planned)* — a stable identity whose versions form a DAG, bodies in the file
+- **document** — a stable identity whose versions form a DAG, bodies in the file
   layer. Format-agnostic: a note is a document with a text body; the same machinery versions
   anything with rolling states. **A document is a history of files wearing a name**: each version
   points at the file that is its frozen body; every edit mints a new file and repoints. What the
@@ -90,16 +90,16 @@ are ever allowed to meet, and in what costume.
   *file* is invisible plumbing beneath it. Documenthood is opt-in — an image baked into a note
   body is a file with no document (no id, no history); the same image *versioned in its own
   right* is a document.
-- **doc_id** *(planned)* — a document's stable identity across all its versions; what taxonomies
+- **doc_id** — a document's stable identity across all its versions; what taxonomies
   and publication reference — never version hashes, or every edit would shatter every reference.
-- **version** *(planned)* — one save: a small CBOR **header** `{doc_id, parents, file_hash,
+- **version** — one save: a small CBOR **header** `{doc_id, parents, file_hash,
   title, format?, refs?}` appended to a chain. A version's identity is its entry hash. Whole-file
   snapshot, never a diff.
-- **parents** *(planned)* — the DAG edges: entry hashes this version was edited from. A list from
+- **parents** — the DAG edges: entry hashes this version was edited from. A list from
   day one (git's model): zero at genesis, one for a save, two-plus for a merge. Two saves sharing
   a parent are **divergence**; keep-both is the universal resolution, auto-merge a per-format
   capability.
-- **format** *(planned)* — which closed-enum interpretation the body bytes get (plaintext,
+- **format** — which closed-enum interpretation the body bytes get (plaintext,
   Marquee, …). Never a free MIME string: the declared type is enforced, never trusted.
 - **refs** *(planned)* — a *derived* index of what a version's body references (file hashes,
   doc-ids), extracted at save time so GC and backlinks never decrypt every body. The body stays
@@ -115,12 +115,18 @@ are ever allowed to meet, and in what costume.
 - **annotation** — a private human assertion about one document (`description`,
   `artist`, `album`, `source`, …): a key→value LWW register in the doc's collection
   (`annot:<root>/<doc_id>`) on the doc-meta chain. The placement test's third category: measured
-  facts ride the version header, ordered curation is a taxonomy document, per-doc assertions are
+  facts ride the version header, ordered curation is a taxonomy, per-doc assertions are
   annotations.
-- **doc-meta chain** — the private chain (service 7) carrying annotations and tags:
-  every private fact *about* documents. Its own chain, pre-graduated off `general-private`,
-  because annotation volume scales with library size and `service` is the only cleartext
-  partition key on an encrypted chain.
+- **taxonomy** *(planned)* — user-defined ordered structure over documents (reading lists,
+  albums, knowledge-base trees): a `tax:<taxonomy_id>` collection on the doc-meta chain whose
+  set elements are `(root, doc_id)` references carrying `(parent, rank)` values, order
+  assembled by the materializer. External to what it organizes, always. Published form: a
+  taxonomy *document* — the collection folded into an ordered-references body at the membrane
+  crossing (PROJECT_PLAN, Taxonomies).
+- **doc-meta chain** — the private chain (service 7) carrying annotations, tags, and (planned)
+  taxonomies: every private fact *about* documents. Its own chain, pre-graduated off
+  `general-private`, because annotation volume scales with library size and `service` is the
+  only cleartext partition key on an encrypted chain.
 
 ## The network
 

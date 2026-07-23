@@ -102,6 +102,16 @@ weeks; every rule here is a defense against that prison of context.
   disciplinary** (the COSE-style envelope that makes re-serialization impossible; a map reader
   that makes canonicality unforgettable). Security invariants may buy machinery; convenience may
   not.
+- **Until User 1, there is no install base — and no ceremony for one.** Before anything ships,
+  there is no data to lose and nobody to migrate: breaking changes are always on the table,
+  schema changes squash into `0001` (rebuild, never migrate-in-place), file formats may churn,
+  and safe-update machinery — migration paths, compat shims, upgrade gates — is deferred until
+  an install base exists to be safe *for*. Any invariant whose justification quietly assumes
+  active users ("upgrades must round-trip", "we can't change that column") should be challenged
+  on sight. Two things this rule does **not** license: sloppy *design* of formats (they are
+  still designed to last, because ship day freezes them — the wire format gets test vectors
+  precisely so it can survive its own success), and forgetting that **ship day flips this rule
+  permanently** — the same discipline that squashes migrations today writes them forever after.
 - **Tech debt is a mortgage**: taking it on to ship is correct and normal, as long as the balance
   is recorded and serviced. REFACTOR.md is the mortgage statement — known compromises live there
   with reasons, not in anyone's memory. Purity is not a goal; *managed* imperfection is.

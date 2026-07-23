@@ -186,6 +186,12 @@ manufactures a divergence conflict with a concurrent prose edit.
   body that is an ordered arrangement of references, inheriting the full single-document
   machinery above: versioning, the divergence DAG (reorganizing a tree on two devices *is*
   editing a note on two devices), and the publication moment when a knowledge base goes public.
+  *(Amended 2026-07-22: ordered structure decomposed to per-element facts too - a `tax:`
+  collection on the doc-meta chain, each member a set element carrying `(parent, rank)`, order
+  assembled by the materializer; taxonomy documents remain as the publication form. Same
+  grounds as the tags amendment below: the wire shape is chosen on merge grounds alone, and
+  two devices each adding to one list must union, not conflict - the "reorganizing *is*
+  editing" analogy above is the part that didn't survive. See PROJECT_PLAN, Taxonomies.)*
 - Chronological streams are usually no artifact at all: a derivable view over a set.
 
 **Reservations that hold from day one:**

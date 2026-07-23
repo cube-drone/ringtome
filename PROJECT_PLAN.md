@@ -1791,9 +1791,13 @@ front of *recoverable* state, and that is made true by construction rather than 
   state (accounts, password hashes, the ingest queue) is tiny and low-write: journaled or
   periodically dumped, same discipline.
 - **The escape hatch is the export tool, not the file format.** Encryption voids "worst case,
-  open the file with real SQLite" - stock SQLite cannot read an encrypted Turso database. A
-  decrypt-and-dump tool exists from day one; Turso's version is pinned; upgrades are gated on a
-  dump/restore round-trip in CI (beta file formats churn).
+  open the file with real SQLite" - stock SQLite cannot read an encrypted Turso database. The
+  decrypt-and-dump tool and its CI dump/restore upgrade gate are **ship gates, not current
+  invariants** (re-scoped 2026-07-22 by the User-1 rule, STYLE.md: until an install base
+  exists there is no data to protect, and a Turso bump today may simply wipe and rebuild from
+  the journal - which is what recovery actually rides anyway). Turso's version is pinned
+  (`=0.7.0`) for reproducibility, not safety; the tool lands with Tier 6, before User 1's data
+  exists to lose.
 
 **Views persist now (the persistence dial, revisited).** The store's original discipline - views
 recomputed in memory per read, never persisted, because "a decrypted view on disk would be a
@@ -1930,28 +1934,54 @@ and Marquee's computed widgets all consume it.)
   crossing). One deliberate exception rides the payload: consent **labels** - a stranger's
   server filters on them without access to anyone's taxonomies. Same-looking strings, opposite
   transport requirements, permanently separate fields.
-- **Two shapes, chosen by merge semantics.** Unordered membership (tags) is an
+- **One merge shape, chosen twice (amended 2026-07-22).** Unordered membership (tags) is an
   **LWW-element-set** whose merge unit is the single `(doc, tag)` pair - concurrent tagging
   merges automatically, and no shape that stores a document's tags as one value survives two
   devices (whole-list LWW eats one side's tags: the stale-tab failure in miniature). Since
   2026-07-20 tags *live* in the annotation layer, grouped per-document on the doc-meta chain
   (Annotations, below) - "all docs tagged X" vs "all of D's tags" turned out to be a false
-  choice, since both directions are indexes over the same materialized table. Ordered structure
-  (trees, curated sequences) is a **taxonomy document** - a body of ordered references,
-  inheriting the full document machinery (versioning, divergence handling, the publication
-  moment when a knowledge base goes public) - and that is now taxonomy documents' *entire*
-  jurisdiction: ordered, curated, shareable structure with identity of its own. An album is a
-  taxonomy document, full stop - not metadata on its tracks. Chronological streams are usually
-  no artifact at all: a derivable view.
+  choice, since both directions are indexes over the same materialized table. Ordered
+  structure (trees, curated sequences, "BOOK ABOUT HORSES") decomposes the same way -
+  **per-element facts, never a document body**: a taxonomy is a stable minted id whose members
+  are set elements in its `tax:<taxonomy_id>` collection on the same doc-meta chain, each
+  element the `(root, doc_id)` reference, each value the member's `(parent, rank)` (parent
+  absent in a flat list; rank a fractional index - client convention, rebalanced by a burst of
+  rewrites when it bloats). Order is assembled by the materializer (`parent, rank`,
+  deterministic tiebreak), never stored as one value, because a taxonomy's commonest
+  concurrent edit is two devices each adding an item, and any whole-value shape turns that
+  obvious union into a manufactured conflict - the tags argument, verbatim. Same-element
+  position races resolve LWW: one position wins, nothing leaves the list, history stays on the
+  chain. Concurrent same-spot inserts land adjacent in tiebreak order - harmless for a curated
+  list, which is exactly why NOTES_APP's no-text-CRDT ruling doesn't apply here: interleaving
+  destroys prose, not reading lists, and no op-log wire format enters the conformance boundary
+  (on the wire these are ordinary private records). **v1 is flat lists**, where cycles are
+  unrepresentable; trees arrive with their one real dragon named - a deterministic fold-time
+  cycle rule for concurrent moves (apply parent-writes in stamp order, skip cycle-creators;
+  property-test it). Taxonomy-level facts (title, `default_view`, description) are annotations
+  on the taxonomy's own id. An album is a `tax:` collection, full stop - still never metadata
+  on its tracks. Chronological streams are usually no artifact at all: a derivable view.
+- **Taxonomy documents are the publication form** - now their *entire* jurisdiction.
+  Publishing a knowledge base is the standard membrane crossing (**Copy, Don't Flip**,
+  Doctrine): fold the collection, encode an ordered-references body, sign it public under a
+  stable `doc_id` with a history of one; re-publish is another explicit act.
+  Private/mutable collection and public/mostly-immutable document mirror the note → post
+  reflection exactly. The honest cost of the working form, named: the version DAG's
+  user-facing rollback ("restore yesterday's arrangement") is given up - the chain retains
+  every edit in principle, and restore points can ride the snapshot machinery if a real need
+  names itself. What this amendment retires is the analogy that chose documents first -
+  "reorganizing a tree on two devices *is* editing a note on two devices" - retired because
+  taxonomy edits decompose into element facts with obvious merge semantics, and prose does
+  not. Third-party curation is unchanged: their chain, their collection, their published list.
 - **References are `(root, doc_id)`** - stable identities, never version hashes (an edit must
   not shatter every tree pointing at the document). Relative forms elide the root via base-URI
   resolution (see Addressing); cross-identity references are fully qualified.
-- **Taxonomies answer queries.** A taxonomy document carries an author-declared `default_view`
-  (`index` | `latest` | ...), and the view vocabulary (`latest`, `earliest`, `root`, `index`,
+- **Taxonomies answer queries.** A taxonomy carries an author-declared `default_view`
+  (`index` | `latest` | ...) - an annotation on the private working form, a payload field on
+  the published document - and the view vocabulary (`latest`, `earliest`, `root`, `index`,
   `next-in-stream`, ...) is one function family consumed by slug URLs (Addressing) and
   Marquee's `:::computed` roles alike.
 
-### Annotations: Private Facts About Documents (settled 2026-07-20)
+### Annotations: Private Facts About Documents (settled 2026-07-20; IMPLEMENTED)
 
 Where does a description go? Audio's artist and album? The question forced a third category into
 existence, and with it **the placement test** that decides every future "where does field X
@@ -1964,8 +1994,8 @@ live":
   human-editable header field must buy its own answer to concurrent editing inside machinery
   built for body divergence (title's answer is its own field-wise merge rung). No second
   exception.
-- **Cross-document structure → taxonomy** (above). An album is an ordered taxonomy document;
-  artist-as-grouping is a tag, or a taxonomy document when someone curates a discography.
+- **Cross-document structure → taxonomy** (above). An album is an ordered taxonomy;
+  artist-as-grouping is a tag, or an ordered taxonomy when someone curates a discography.
 - **A human assertion about one document → an annotation.** Per-doc, singular, editable, and
   decoupled from the version lifecycle: a description is edited without minting a version, and a
   new version never re-asks for it. It fails the header test (prose bloats every entry; edits

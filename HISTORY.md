@@ -418,3 +418,34 @@ eager pass (bounded, `tokio::time::timeout` is the follow-up if it bites); the "
 re-offer private chains each exchange" watched-item is now load-bearing on every eager cycle -
 its "revisit if private chains get big" may come due sooner; and open-by-default sync
 initiation opens the sync-request-flooding question, now a NEXT_STEPS exploration item.
+
+---
+
+## Annotations: the doc-meta chain (2026-07-22)
+
+The data-layer rewrite's remaining step, and the first tenant of the substrate the sequence was
+built around: `doc-meta-private` (service 7), the pre-graduated chain for private facts about
+documents (PROJECT_PLAN, Annotations). `annot:<root>/<doc_id>` collections on the existing
+`PrivatePlain` codec - LWW registers for fields (`description`, `artist`, ...; absent *or
+empty* reads as cleared), set-elements for tags, the 2 KiB value cap enforced at the handle
+with the refusal naming the alternative (a description that big is becoming another document -
+write one and reference it). The mandatory mechanics all present: a fresh AAD
+(`ringtome-v0/doc-meta-record`, with unknown-service-is-an-error dispatch), the
+`is_private_service()` line at the sync gate, and the withheld-from-strangers test cloned
+(`doc_meta_chains_are_withheld_from_unproven_peers`). The persisted view tables absorbed the
+new service with zero schema change - `service` rode their primary keys from day one, exactly
+as the migration comment promised - and the docs-list read gained `doc_heads`, a memoized
+per-document display row (not judgment-in-SQL: it remembers the Rust resolver's latest answer,
+recomputed for exactly the documents whose inputs changed; disposable like every view). Tags
+answer in both directions off the same table - all of D's tags, all docs tagged X - with
+`summaries`/`summaries_for` serving the docs-list and docs-by-tag reads as one query after
+catch-up. Proven by store unit tests plus `annotations.cjs` over HTTP: LWW convergence, both
+read directions, created/modified ordering (claimed stamps only), the oversized refusal, and
+annotations riding adoption's member-proven sync onto a second node.
+
+Same day, the taxonomies design was **amended in place** (PROJECT_PLAN, Taxonomies): ordered
+structure decomposed to per-element facts on the same doc-meta machinery - `tax:` collections
+whose set elements carry `(parent, rank)` values, order assembled by the materializer -
+retiring "a taxonomy is a document" for the private working form (taxonomy documents remain as
+the publication form). Same grounds as the 07-20 tags amendment: the wire shape is chosen on
+merge grounds alone, and two devices each adding to a list must union, not conflict.

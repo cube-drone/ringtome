@@ -24,6 +24,26 @@ HISTORY.md.
   prerequisite, pulled forward.
 - **The store layer** (2026-07-08): the data map + typed CRDT handles; application code stopped
   touching chains directly.
+- **Doctrine interlude + license** (2026-07-09 → 07-14): NOTES_APP.md born, slugs/address-bar
+  designed, groups sketched; AGPL-3.0.
+- **The file layer + CI** (2026-07-15): encrypted content-addressed bodies over iroh-blobs
+  (holding the hash is the capability); CI runs `just ci` verbatim.
+- **Versioned documents** (2026-07-15 → 07-17): the notes lane - stable `doc_id`, version DAG,
+  keep-both divergence, per-format merge with conflicts presented in-document.
+- **Media ingest** (2026-07-18 → 07-20): the async quarantine → transcode pipeline; AVIF
+  stills, WebM video/audio through one crush, thumbnails and micro-previews.
+- **Crown hardening** (2026-07-20): revocation anchors enforced by hash - sealed-prefix-as-unit
+  crediting, seal-or-nothing admission, proven-forgery eviction.
+- **The substrate** (2026-07-20 → 07-21): Turso with at-rest encryption, the raw-entry journal,
+  persisted materialized views with per-chain watermarks.
+- **The embedded UI** (2026-07-21): the Preact SPA baked into the binary; `just start`.
+- **Mainline field test** (2026-07-22): the real DHT touched - publish/resolve/adopt/re-sync,
+  same-box; `just mainline-smoke` + dispatch-only action.
+- **Background sync + eager push** (2026-07-22): sync stopped being manual - debounced eager
+  push plus periodic anti-entropy, epidemic relay across the peer graph.
+- **Annotations - the doc-meta chain** (2026-07-22): service 7; per-doc fields and tags on
+  `PrivatePlain`, both read directions, the `doc_heads` docs-list memo. Completes the
+  data-layer rewrite sequence (substrate → doc-meta → materializer).
 
 ## Standing residuals (owed, with triggers)
 
@@ -52,31 +72,22 @@ Work that survived its milestone lives here until delivered (then it moves to HI
 - **PrivatePlain size caps** (4 KiB value / 6 KiB ciphertext): likely resolution - the caps are
   *correct*, because note/post bodies ride blobs, never inline records (NOTES_APP.md). Confirm
   and close when the blob lane lands; until then the caps stay unshipped-soft.
+- **The decrypt-and-dump export tool** (a ship gate; re-scoped 2026-07-22 by the User-1 rule,
+  STYLE.md): stock SQLite cannot read an encrypted Turso file, so real users need the tool and
+  its CI dump/restore upgrade gate - but until User 1 there is no data to protect, and a Turso
+  bump may simply wipe and rebuild (the journal replays; worst case, test data dies). Lands
+  with Tier 6, alongside the security pass in the "gates ship" family. Turso stays pinned
+  (`=0.7.0`) for reproducibility meanwhile.
+- **FTS over titles + descriptions** (trimmed from the materializer's ship): the data-layer
+  plan named it; nothing consumes it yet. Lands with whichever 4C surface first offers search.
+- **Client-side annotation prefill** (deferred at annotations' ship, 2026-07-22): the authoring
+  client may read artist/album/title *before* the pipeline launders the bytes and offer them as
+  pre-filled annotations - persisting is a deliberate user act (bulk import consents once per
+  batch, never silently per file). Rides whichever 4C/4M surface uploads media; the pipeline
+  itself never keeps embedded metadata (PROJECT_PLAN, Annotations: the ingest membrane).
 - *Minor, watched:* concurrent epoch rotations can twin an epoch number (readers try all keys;
   convergent but unlovely); requesters re-offer private chains each exchange (duplicate-skip
   absorbs it; revisit if private chains get big).
-
-## The data-layer rewrite (settled 2026-07-20; sequenced, pre-tier)
-
-Infrastructure decided in the annotations design (PROJECT_PLAN: The Substrate; Annotations).
-Order matters — the substrate lands first so nothing interim is built to be thrown away:
-
-1. **Turso migration**: swap C SQLite + sqlx for Turso with at-rest encryption (per-DB keys
-   sealed through the keystore); the **raw-entry journal** (accepted entries appended verbatim
-   to a flat file — makes every database derived state; covers the single-device user); the
-   **decrypt-and-dump export tool** (the escape hatch encryption costs us, and the
-   version-upgrade gate, round-tripped in CI); a COMPAT.md audit of the actual SQL surface
-   before committing — `apply_profile_set`'s atomic stamp-compare upsert is the load-bearing
-   check.
-2. **The doc-meta chain** (service 7): `PrivatePlain` reused wholesale — registers for
-   annotations, set-elements for tags, grouped per-doc — new AAD, the `is_private_service()`
-   line, the withheld-from-strangers test cloned.
-3. **The materializer**: persisted normalized views (version facts, annotations, tags, FTS over
-   titles + descriptions), stamp-compare upsert folds, per-chain watermarks, DAG resolution
-   staying in Rust.
-
-Client-side prefill (artist/album read pre-launder, persisted only as a deliberate act) rides
-whichever 4C/4M surface uploads media — the pipeline itself never keeps embedded metadata.
 
 ## The ladder becomes tiers (restructured 2026-07-07)
 
