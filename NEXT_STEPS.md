@@ -44,6 +44,9 @@ HISTORY.md.
 - **Annotations - the doc-meta chain** (2026-07-22): service 7; per-doc fields and tags on
   `PrivatePlain`, both read directions, the `doc_heads` docs-list memo. Completes the
   data-layer rewrite sequence (substrate → doc-meta → materializer).
+- **Taxonomies, v1 lists** (2026-07-22): ordered document lists as per-element ranked facts
+  (`tax:` collections, fractional ranks, roster existence); place-is-add-and-move over HTTP.
+  Trees (the cycle rule) and the published form still designed-ahead.
 
 ## Standing residuals (owed, with triggers)
 

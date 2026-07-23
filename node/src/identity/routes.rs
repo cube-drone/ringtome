@@ -135,6 +135,21 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/tagged/{tag}",
             get(docs_by_tag_handler),
         )
+        // Taxonomies: user-defined ordered lists of document references on the doc-meta chain.
+        // Rename/describe ride the annotations routes above (a taxonomy id is annotatable like
+        // any doc id); membership and order live here.
+        .route(
+            "/api/identity/{root}/taxonomies",
+            post(taxonomy_create_handler).get(taxonomies_list_handler),
+        )
+        .route(
+            "/api/identity/{root}/taxonomies/{taxonomy_id}",
+            get(taxonomy_get_handler).delete(taxonomy_delete_handler),
+        )
+        .route(
+            "/api/identity/{root}/taxonomies/{taxonomy_id}/members/{doc_id}",
+            put(taxonomy_member_put_handler).delete(taxonomy_member_delete_handler),
+        )
 }
 
 #[derive(Serialize)]
@@ -1244,6 +1259,209 @@ async fn docs_by_tag_handler(
     });
     Ok(Json(TaggedDocsResponse {
         docs: rows.into_iter().map(summarize).collect(),
+    }))
+}
+
+#[derive(Deserialize)]
+struct TaxonomyCreate {
+    title: String,
+}
+
+#[derive(Serialize)]
+struct TaxonomyCreateResponse {
+    taxonomy_id: String,
+}
+
+/// Create a taxonomy (an ordered list of document references - PROJECT_PLAN, Taxonomies).
+/// Rename/describe afterwards ride the ordinary annotations routes: taxonomy-level facts are
+/// annotations on the taxonomy's own id.
+async fn taxonomy_create_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<TaxonomyCreate>,
+) -> Result<Json<TaxonomyCreateResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let taxonomy_id = data.taxonomies().create(&req.title).await?;
+    Ok(Json(TaxonomyCreateResponse {
+        taxonomy_id: hex::encode(taxonomy_id),
+    }))
+}
+
+#[derive(Serialize)]
+struct TaxonomyRow {
+    taxonomy_id: String,
+    title: String,
+    members: usize,
+}
+
+#[derive(Serialize)]
+struct TaxonomiesResponse {
+    taxonomies: Vec<TaxonomyRow>,
+}
+
+/// Every taxonomy on the roster, title-sorted.
+async fn taxonomies_list_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<TaxonomiesResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let taxonomies = data
+        .taxonomies()
+        .all()
+        .await?
+        .into_iter()
+        .map(|t| TaxonomyRow {
+            taxonomy_id: hex::encode(t.taxonomy_id),
+            title: t.title,
+            members: t.members,
+        })
+        .collect();
+    Ok(Json(TaxonomiesResponse { taxonomies }))
+}
+
+#[derive(Serialize)]
+struct TaxonomyMemberEntry {
+    root: String,
+    doc_id: String,
+    /// The docs-list summary for members whose documents this node holds; `null` for another
+    /// identity's document (representable in the list, renderable when 4S serves it).
+    doc: Option<DocSummary>,
+}
+
+#[derive(Serialize)]
+struct TaxonomyResponse {
+    taxonomy_id: String,
+    title: String,
+    members: Vec<TaxonomyMemberEntry>,
+}
+
+/// One taxonomy, members in list order, joined against the memoized doc rows.
+async fn taxonomy_get_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, taxonomy_id)): Path<(String, String)>,
+) -> Result<Json<TaxonomyResponse>, AppError> {
+    let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let members = data.taxonomies().members(&taxonomy_id).await?;
+    let title = data
+        .annotations()
+        .fields(&taxonomy_id)
+        .await?
+        .remove("title")
+        .unwrap_or_default();
+
+    let own_root = crate::pubkey::decode(&root)
+        .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?;
+    let own_ids: Vec<[u8; 16]> = members
+        .iter()
+        .filter(|m| m.root == own_root)
+        .map(|m| m.doc_id)
+        .collect();
+    let mut rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
+        .documents()
+        .summaries_for(&own_ids)
+        .await?
+        .into_iter()
+        .map(|r| (r.doc_id, summarize(r)))
+        .collect();
+
+    Ok(Json(TaxonomyResponse {
+        taxonomy_id: hex::encode(taxonomy_id),
+        title,
+        members: members
+            .into_iter()
+            .map(|m| TaxonomyMemberEntry {
+                root: hex::encode(m.root),
+                doc_id: hex::encode(m.doc_id),
+                doc: rows.remove(&m.doc_id),
+            })
+            .collect(),
+    }))
+}
+
+/// Delete a taxonomy: one roster remove; the member facts stay on the chain unsurfaced.
+async fn taxonomy_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, taxonomy_id)): Path<(String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.taxonomies().delete(&taxonomy_id).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+#[derive(Deserialize)]
+struct TaxonomyPlace {
+    /// Position to arrive at, counted without the member itself (drag-and-drop semantics);
+    /// absent or out-of-range appends.
+    index: Option<usize>,
+    /// The member document's identity; absent means the caller's own (the common case).
+    member_root: Option<String>,
+}
+
+/// Place a document in the list at an index - add and move are the same operation (a set
+/// re-add updates the rank under the same LWW stamp).
+async fn taxonomy_member_put_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, taxonomy_id, doc_id)): Path<(String, String, String)>,
+    Json(req): Json<TaxonomyPlace>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let member_root = match &req.member_root {
+        Some(hex) => crate::pubkey::decode(hex)
+            .ok_or_else(|| AppError::BadRequest("bad member root pubkey".into()))?,
+        None => crate::pubkey::decode(&root)
+            .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?,
+    };
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data
+        .taxonomies()
+        .place(&taxonomy_id, &member_root, &doc_id, req.index)
+        .await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+#[derive(Deserialize)]
+struct TaxonomyMemberQuery {
+    /// The member document's identity; absent means the caller's own (mirrors the PUT body).
+    member_root: Option<String>,
+}
+
+/// Remove a member from the list.
+async fn taxonomy_member_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, taxonomy_id, doc_id)): Path<(String, String, String)>,
+    Query(query): Query<TaxonomyMemberQuery>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let member_root = match &query.member_root {
+        Some(hex) => crate::pubkey::decode(hex)
+            .ok_or_else(|| AppError::BadRequest("bad member root pubkey".into()))?,
+        None => crate::pubkey::decode(&root)
+            .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?,
+    };
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data
+        .taxonomies()
+        .remove(&taxonomy_id, &member_root, &doc_id)
+        .await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
     }))
 }
 

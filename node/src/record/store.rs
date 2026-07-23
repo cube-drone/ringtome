@@ -15,6 +15,7 @@
 //! | `posts()`                   | posts (3)       | append-only log    | everyone (public)   | none (log is view) | suffix*   |
 //! | `documents()`               | documents-private (6)| version DAG        | your own nodes only | in-memory, on read | full      |
 //! | `annotations()`             | doc-meta-private (7)| LWW register + LWW-element-set per doc | your own nodes only | persisted, catch-up | full      |
+//! | `taxonomies()`              | doc-meta-private (7)| LWW-element-set per list, ranked values | your own nodes only | persisted, catch-up | full      |
 //!
 //! (*) Declared, not yet implemented: append-only chains are the suffix-sync candidates
 //! (PROJECT_PLAN, Shallow Sync), and `page()` already tolerates incomplete history, but the
@@ -157,6 +158,13 @@ impl Store {
     /// tags (LWW set-elements), grouped per document on the doc-meta chain.
     pub fn annotations(&self) -> Annotations<'_> {
         Annotations { store: self }
+    }
+
+    /// User-defined ordered structure over documents - reading lists, albums, curated
+    /// sequences: per-element ranked facts on the doc-meta chain, never document bodies
+    /// (PROJECT_PLAN, Taxonomies).
+    pub fn taxonomies(&self) -> Taxonomies<'_> {
+        Taxonomies { store: self }
     }
 }
 
@@ -589,6 +597,215 @@ impl Store {
 }
 
 // ---------------------------------------------------------------------------------------------
+// LWW-element-set with ranked values, private, one collection per list: taxonomies
+// (PROJECT_PLAN, Taxonomies - amended 2026-07-22). Ordered structure decomposes to per-element
+// facts exactly as tags did, because a list's commonest concurrent edit is two devices each
+// adding an item, and any whole-value shape turns that obvious union into a manufactured
+// conflict. Order is never stored; it is assembled at read time from each member's rank
+// (`record::rank`), with the element string as deterministic tiebreak. v1 is flat lists -
+// cycles unrepresentable; trees arrive with the fold-time cycle rule they require.
+
+/// The collection naming convention for a taxonomy's members - a client-of-the-store
+/// convention, never protocol: `tax:<taxonomy_id_hex>`. No root in the name (a taxonomy is
+/// this identity's own artifact, on its own chain); the *members* carry full `(root, doc_id)`
+/// references, so a reading list over someone else's documents stays representable.
+pub fn tax_collection(taxonomy_id: &[u8; 16]) -> String {
+    format!("tax:{}", hex::encode(taxonomy_id))
+}
+
+/// The roster: the LWW-element-set of this identity's taxonomies (elements are taxonomy id
+/// hex). Existence lives here - not in the member collections - so an empty list exists, and
+/// deleting a taxonomy is one remove instead of N. A member collection whose roster element is
+/// absent (deleted, or its create not yet synced) is simply not shown; the entries stay on the
+/// chain like everything else (Immutable Chains ≠ Immutable Content).
+const TAXONOMY_ROSTER: &str = "taxonomies";
+
+/// One member of a taxonomy, in list order once sorted by `(rank, element tiebreak)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxonomyMember {
+    pub root: [u8; 32],
+    pub doc_id: [u8; 16],
+    pub rank: String,
+}
+
+/// One roster row for the all-taxonomies listing.
+#[derive(Debug, Clone)]
+pub struct TaxonomySummary {
+    pub taxonomy_id: [u8; 16],
+    /// From the taxonomy's `title` annotation; empty when never titled.
+    pub title: String,
+    pub members: usize,
+}
+
+/// A member's set-element string: the full reference form, `<root_hex>/<doc_id_hex>` - the
+/// same shape `annot:` collections use after their prefix.
+fn member_element(root: &[u8; 32], doc_id: &[u8; 16]) -> String {
+    format!("{}/{}", hex::encode(root), hex::encode(doc_id))
+}
+
+fn parse_member_element(element: &str) -> Option<([u8; 32], [u8; 16])> {
+    let (root_hex, doc_id_hex) = element.split_once('/')?;
+    let root = crate::pubkey::decode(root_hex)?;
+    let doc_id: [u8; 16] = hex::decode(doc_id_hex).ok()?.try_into().ok()?;
+    Some((root, doc_id))
+}
+
+pub struct Taxonomies<'s> {
+    store: &'s Store,
+}
+
+impl Taxonomies<'_> {
+    /// Create a taxonomy: mint its id, add it to the roster, and (unless empty) write its
+    /// `title` annotation - taxonomy-level facts are ordinary annotations on the taxonomy's
+    /// own id, so rename/describe/default_view need no machinery here.
+    pub async fn create(&self, title: &str) -> Result<[u8; 16], AppError> {
+        let taxonomy_id = crate::record::documents::new_doc_id();
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: TAXONOMY_ROSTER.to_string(),
+                    key: hex::encode(taxonomy_id),
+                    value: None,
+                },
+            )
+            .await?;
+        if !title.is_empty() {
+            self.store
+                .annotations()
+                .set_field(&taxonomy_id, "title", title)
+                .await?;
+        }
+        Ok(taxonomy_id)
+    }
+
+    /// Delete a taxonomy: one roster remove. Member elements stay on the chain (the fact of
+    /// the list is permanent) but no read surfaces them; re-creating the same id un-hides them
+    /// by design - it is the same taxonomy coming back.
+    pub async fn delete(&self, taxonomy_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetRemove,
+                    collection: TAXONOMY_ROSTER.to_string(),
+                    key: hex::encode(taxonomy_id),
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// Every taxonomy on the roster, with title and member count - one view materialization,
+    /// however many lists. Sorted by title, id-tiebroken, for a stable listing.
+    pub async fn all(&self) -> Result<Vec<TaxonomySummary>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        let mut out: Vec<TaxonomySummary> = view
+            .set_elements(TAXONOMY_ROSTER)
+            .into_iter()
+            .filter_map(|e| {
+                let taxonomy_id: [u8; 16] = hex::decode(&e.element).ok()?.try_into().ok()?;
+                let title = view
+                    .registers_in(&annot_collection(&self.store.root, &taxonomy_id))
+                    .into_iter()
+                    .find(|r| r.key == "title" && !r.value.is_empty())
+                    .map(|r| r.value)
+                    .unwrap_or_default();
+                let members = view.set_elements(&tax_collection(&taxonomy_id)).len();
+                Some(TaxonomySummary {
+                    taxonomy_id,
+                    title,
+                    members,
+                })
+            })
+            .collect();
+        out.sort_by(|a, b| (&a.title, a.taxonomy_id).cmp(&(&b.title, b.taxonomy_id)));
+        Ok(out)
+    }
+
+    /// A taxonomy's members in list order: rank ascending, element string as the deterministic
+    /// tiebreak (equal ranks are the concurrent same-spot race - adjacent, arbitrary relative
+    /// order, every device agreeing; `record::rank`).
+    pub async fn members(&self, taxonomy_id: &[u8; 16]) -> Result<Vec<TaxonomyMember>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        Ok(Self::members_of(&view, taxonomy_id))
+    }
+
+    fn members_of(view: &private::PrivateView, taxonomy_id: &[u8; 16]) -> Vec<TaxonomyMember> {
+        let mut members: Vec<(TaxonomyMember, String)> = view
+            .set_elements(&tax_collection(taxonomy_id))
+            .into_iter()
+            .filter_map(|e| {
+                let (root, doc_id) = parse_member_element(&e.element)?;
+                let rank = e.value.unwrap_or_default();
+                Some((TaxonomyMember { root, doc_id, rank }, e.element))
+            })
+            .collect();
+        members.sort_by(|(a, ae), (b, be)| (&a.rank, ae).cmp(&(&b.rank, be)));
+        members.into_iter().map(|(m, _)| m).collect()
+    }
+
+    /// Place a member at `index` (`None` = append): add and move are one operation, because a
+    /// set re-add updates the element's value under the same LWW stamp - a move never removes,
+    /// so a concurrent read on another device sees the member somewhere, never nowhere.
+    /// `index` counts positions in the list *without* the member (the arrive-at semantics a
+    /// drag-and-drop produces); out-of-range clamps to append.
+    pub async fn place(
+        &self,
+        taxonomy_id: &[u8; 16],
+        root: &[u8; 32],
+        doc_id: &[u8; 16],
+        index: Option<usize>,
+    ) -> Result<SignedEntry, AppError> {
+        let element = member_element(root, doc_id);
+        let mut list = self.members(taxonomy_id).await?;
+        list.retain(|m| !(m.root == *root && m.doc_id == *doc_id));
+
+        let at = index.unwrap_or(list.len()).min(list.len());
+        let rank = if at == list.len() {
+            crate::record::rank::after(list.last().map(|m| m.rank.as_str()))
+        } else {
+            let lo = at.checked_sub(1).map(|i| list[i].rank.as_str());
+            crate::record::rank::between(lo, Some(list[at].rank.as_str()))
+        };
+
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: tax_collection(taxonomy_id),
+                    key: element,
+                    value: Some(rank),
+                },
+            )
+            .await
+    }
+
+    /// Remove a member (LWW set-element remove: a remove/place race resolves by timestamp -
+    /// one intent wins whole, the member is in the list or out of it, never half-placed).
+    pub async fn remove(
+        &self,
+        taxonomy_id: &[u8; 16],
+        root: &[u8; 32],
+        doc_id: &[u8; 16],
+    ) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetRemove,
+                    collection: tax_collection(taxonomy_id),
+                    key: member_element(root, doc_id),
+                    value: None,
+                },
+            )
+            .await
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Append-only log, public: posts. Additive content has no conflicts, so the only write is
 // `append` and there is deliberately no update or delete here (deletion is a future tombstone
 // type - PROJECT_PLAN, Open Items - not a log operation).
@@ -943,6 +1160,166 @@ mod tests {
         assert_eq!(
             store.annotations().docs_tagged("ark").await.unwrap(),
             vec![(store.root, doc_id)]
+        );
+    }
+
+    #[tokio::test]
+    async fn taxonomies_hold_their_order_through_the_crdt() {
+        let store = test_store().await;
+        let (a, b, c) = ([1u8; 16], [2u8; 16], [3u8; 16]);
+        let root = store.root;
+
+        let list = store
+            .taxonomies()
+            .create("BOOK ABOUT HORSES")
+            .await
+            .unwrap();
+
+        // Appends land in insertion order.
+        for doc in [&a, &b, &c] {
+            store
+                .taxonomies()
+                .place(&list, &root, doc, None)
+                .await
+                .unwrap();
+        }
+        let order = |ms: &[TaxonomyMember]| ms.iter().map(|m| m.doc_id).collect::<Vec<_>>();
+        assert_eq!(
+            order(&store.taxonomies().members(&list).await.unwrap()),
+            [a, b, c]
+        );
+
+        // Move: place c at the front. One write, nothing else renumbered.
+        store
+            .taxonomies()
+            .place(&list, &root, &c, Some(0))
+            .await
+            .unwrap();
+        assert_eq!(
+            order(&store.taxonomies().members(&list).await.unwrap()),
+            [c, a, b]
+        );
+
+        // Insert into the middle.
+        let d = [4u8; 16];
+        store
+            .taxonomies()
+            .place(&list, &root, &d, Some(1))
+            .await
+            .unwrap();
+        assert_eq!(
+            order(&store.taxonomies().members(&list).await.unwrap()),
+            [c, d, a, b]
+        );
+
+        // Remove.
+        store.taxonomies().remove(&list, &root, &a).await.unwrap();
+        assert_eq!(
+            order(&store.taxonomies().members(&list).await.unwrap()),
+            [c, d, b]
+        );
+
+        // The roster listing carries title and count.
+        let all = store.taxonomies().all().await.unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].title, "BOOK ABOUT HORSES");
+        assert_eq!(all[0].members, 3);
+
+        // Rename is just the title annotation - no taxonomy machinery involved.
+        store
+            .annotations()
+            .set_field(&list, "title", "EQUINE COMPENDIUM")
+            .await
+            .unwrap();
+        assert_eq!(
+            store.taxonomies().all().await.unwrap()[0].title,
+            "EQUINE COMPENDIUM"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_taxonomy_exists_and_a_deleted_one_does_not() {
+        let store = test_store().await;
+        let list = store.taxonomies().create("someday pile").await.unwrap();
+        assert_eq!(
+            store.taxonomies().all().await.unwrap().len(),
+            1,
+            "empty list exists"
+        );
+
+        store
+            .taxonomies()
+            .place(&list, &store.root, &[9u8; 16], None)
+            .await
+            .unwrap();
+        store.taxonomies().delete(&list).await.unwrap();
+        assert!(
+            store.taxonomies().all().await.unwrap().is_empty(),
+            "deleted list is gone"
+        );
+
+        // Deletion is a roster fact, so re-creating the id (LWW re-add) un-hides the members:
+        // it is the same taxonomy coming back, not a new one born clean.
+        store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: TAXONOMY_ROSTER.to_string(),
+                    key: hex::encode(list),
+                    value: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(store.taxonomies().all().await.unwrap()[0].members, 1);
+    }
+
+    #[tokio::test]
+    async fn a_taxonomy_can_reference_someone_elses_documents() {
+        let store = test_store().await;
+        let list = store
+            .taxonomies()
+            .create("their greatest hits")
+            .await
+            .unwrap();
+        let stranger_root = [0xEE; 32];
+        let their_doc = [7u8; 16];
+
+        store
+            .taxonomies()
+            .place(&list, &stranger_root, &their_doc, None)
+            .await
+            .unwrap();
+        let members = store.taxonomies().members(&list).await.unwrap();
+        assert_eq!(members[0].root, stranger_root);
+        assert_eq!(members[0].doc_id, their_doc);
+    }
+
+    #[tokio::test]
+    async fn taxonomies_survive_rebuild_views() {
+        let store = test_store().await;
+        let list = store.taxonomies().create("flood insurance").await.unwrap();
+        for doc in [[1u8; 16], [2u8; 16]] {
+            store
+                .taxonomies()
+                .place(&list, &store.root, &doc, None)
+                .await
+                .unwrap();
+        }
+        store
+            .taxonomies()
+            .place(&list, &store.root, &[2u8; 16], Some(0))
+            .await
+            .unwrap();
+        let before = store.taxonomies().members(&list).await.unwrap();
+
+        imaol::rebuild_views(&store.db).await.unwrap();
+
+        assert_eq!(store.taxonomies().members(&list).await.unwrap(), before);
+        assert_eq!(
+            store.taxonomies().all().await.unwrap()[0].title,
+            "flood insurance"
         );
     }
 

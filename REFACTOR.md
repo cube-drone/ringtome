@@ -19,6 +19,16 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   `dial_addr`) could split into its own module; it's also what `conventions.rs` maps
   `identity_peers` to. Deliberately deferred: not yet earning its churn. Revisit when background
   sync / eager push (the M3 residual) makes peer management grow real behavior.
+- [ ] **Taxonomy rank rebalancing** (`record/rank.rs` module doc names it): ranks grow ~one
+  digit per 18 appends / per same-spot insert hit; a bloated list is repaired by rewriting its
+  ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead
+  of need otherwise. The compact-append `after()` already keeps the common bulk-import case
+  cheap.
+- [ ] **An unidentified once-in-several-runs unit-test flake** (node suite; seen twice
+  2026-07-22, never on a rerun, name never captured - both sightings only showed the count
+  line). Four consecutive clean full runs failed to reproduce. Next sighting: scroll for the
+  `failures:` block and record the test name here; suspicion points at a timing-sensitive
+  net/loops test, not the data layer.
 
 ## Reviewed and left alone (standing decisions, not history)
 

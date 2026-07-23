@@ -10,4 +10,5 @@ pub mod documents;
 pub mod imaol;
 pub mod journal;
 pub mod private;
+pub mod rank;
 pub mod store;

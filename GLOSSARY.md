@@ -117,13 +117,16 @@ are ever allowed to meet, and in what costume.
   (`annot:<root>/<doc_id>`) on the doc-meta chain. The placement test's third category: measured
   facts ride the version header, ordered curation is a taxonomy, per-doc assertions are
   annotations.
-- **taxonomy** *(planned)* — user-defined ordered structure over documents (reading lists,
-  albums, knowledge-base trees): a `tax:<taxonomy_id>` collection on the doc-meta chain whose
-  set elements are `(root, doc_id)` references carrying `(parent, rank)` values, order
-  assembled by the materializer. External to what it organizes, always. Published form: a
-  taxonomy *document* — the collection folded into an ordered-references body at the membrane
-  crossing (PROJECT_PLAN, Taxonomies).
-- **doc-meta chain** — the private chain (service 7) carrying annotations, tags, and (planned)
+- **taxonomy** — user-defined ordered structure over documents (reading lists, albums,
+  knowledge-base trees): a `tax:<taxonomy_id>` collection on the doc-meta chain whose set
+  elements are `(root, doc_id)` references carrying rank values (fractional base-36 strings,
+  `record/rank.rs`), order assembled at read time — rank ascending, element tiebreak.
+  Existence is a roster fact (`taxonomies` set), so an empty list exists and deletion is one
+  remove; titles are ordinary annotations on the taxonomy's own id. External to what it
+  organizes, always. v1 is flat lists; trees *(planned)* add `parent` to the value with a
+  fold-time cycle rule. Published form *(planned)*: a taxonomy *document* — the collection
+  folded into an ordered-references body at the membrane crossing (PROJECT_PLAN, Taxonomies).
+- **doc-meta chain** — the private chain (service 7) carrying annotations, tags, and
   taxonomies: every private fact *about* documents. Its own chain, pre-graduated off
   `general-private`, because annotation volume scales with library size and `service` is the
   only cleartext partition key on an encrypted chain.

@@ -449,3 +449,38 @@ whose set elements carry `(parent, rank)` values, order assembled by the materia
 retiring "a taxonomy is a document" for the private working form (taxonomy documents remain as
 the publication form). Same grounds as the 07-20 tags amendment: the wire shape is chosen on
 merge grounds alone, and two devices each adding to a list must union, not conflict.
+
+---
+
+## Taxonomies, v1 lists (2026-07-22)
+
+The amended design built, same day: ordered document lists as per-element ranked facts on the
+doc-meta chain - zero new wire format, zero new tables (the service-keyed set table absorbs
+`tax:` collections as it absorbed `annot:`). The pieces:
+
+- **`record/rank.rs`** - fractional base-36 ranks, a client-of-the-store convention. `between`
+  for inserts, compact-append `after` (~one digit per 18 appends, so a bulk import stays
+  cheap). Review caught two real bugs before they shipped: gapless intervals (`"a" < x <
+  "a0"` has no base-36 solution) and same-digit-collapsing hostile bytes could each hang the
+  midpoint walk - both now terminate as deliberate rank duplicates, regression-tested, with
+  the module doc stating the contract (termination on arbitrary input; order only for
+  well-formed ranks). Rebalancing bloated lists is a named REFACTOR.md deferral.
+- **The `Taxonomies` store handle** - existence is a roster fact (`taxonomies` set: empty
+  lists exist, deletion is one remove, the member facts stay on the chain unsurfaced);
+  members are set elements in `tax:<id>` carrying rank values; **place is add AND move** (a
+  set re-add updates the value under the same LWW stamp - one write, drag-and-drop index
+  semantics, a mover is never transiently absent); titles are ordinary annotations on the
+  taxonomy's own id, so rename/describe needed no machinery and no routes. A foreign
+  identity's document is representable as a member from day one (third-party curation).
+- **Routes** - create/list/get/delete plus member put/delete; the get joins members against
+  the memoized `doc_heads` rows in list order (own docs get summaries, a stranger's doc rides
+  as `doc: null` until 4S serves it).
+
+Proven by the rank property tests, four store tests (order through the CRDT, empty-exists /
+deleted-does-not / same-id-resurrects, foreign-root members, rebuild survival), and six
+integration tests over HTTP (`taxonomies.cjs`), including rename-via-annotations and the auth
+boundary. *Residuals:* trees (the deterministic fold-time cycle rule) and the published
+taxonomy document stay designed-ahead in the plan; rank rebalancing deferred (REFACTOR.md);
+concurrent same-spot placement across devices converges adjacent-in-tiebreak-order by design
+but has no two-node integration test yet - the chain-level set semantics it rides on are
+covered by `private.cjs` adoption.

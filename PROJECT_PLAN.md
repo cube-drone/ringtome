@@ -1919,7 +1919,7 @@ a tileset, anything with rolling states.
   private, multi-device drafting problem; public edit semantics are tombstone/replace (4M's
   problem).
 
-### Taxonomies: Documents About Documents
+### Taxonomies: Documents About Documents (amended 2026-07-22; lists IMPLEMENTED)
 
 Everything that *organizes* documents - tags, streams, folders, knowledge-base trees, reading
 lists - is itself ordinary data, external to what it organizes. (Born in the notes design; see
