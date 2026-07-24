@@ -638,3 +638,38 @@ layer stays mechanism. Covered by a unit test (both floors, the empty-password r
 the config derivation including the fail-closed case) and the integration suite's loopback
 nodes, whose "rejects short passwords" test inverted into "allows short PINs" - the test
 suite updating to describe the new world is the change working as intended.
+
+---
+
+## Adoption in the UI: "invite this computer to be you" (2026-07-24)
+
+The cluster gets its front door: the null state's long-promised second path is real. On a new
+computer, "bring your persona from another computer" mints a leaf and shows the request code
+(keys are born where they live - only signed codes travel, never key material); on a computer
+that is already you, the new "your computers" screen renders the key tree in domestic clothing
+- device names where we labeled them, "the crown / your first computer" and "the spare key" by
+role, shortcodes beside everything because names are never authority - and "invite this
+computer to be you" turns a pasted request code into a grant code to carry back. Completion
+pulls the persona across and opens it. Design answers settled on the way, recorded where they
+belong: two nodes on one machine are simply two peers (the harness's daily shape - an identity
+never syncs "with itself"); adoption is a synchronous ceremony (both computers awake - the
+grant code's addresses are deliberately ephemeral, and completion dials the granter directly),
+with complete-via-any-peer as named headroom, not built; there is NO per-leaf recovery key -
+the spare key is tree-level, proven by the new two-node recovery test (a persona born on A,
+adopted to B, rescued on B by A's day-one seed, which B verifies purely from the synced tree);
+and spare-key succession after catastrophe is now settled doctrine (PROJECT_PLAN, Recovery
+Flows: the survivor mints its successor spare FIRST and owns the reachable future; the lost
+past stays dormant-senior forever; the designation upgrade must ship WITH Flow B). Root-only
+grants (the M3 trim) surface as the server's honest error on non-founding nodes. UI-only
+change plus one integration test; the ceremony endpoints were M3's, untouched.
+
+Field-tested immediately and caught red-handed: running both halves of the ceremony on one
+node sailed through grant and died at completion with iroh's raw "Connecting to ourself is
+not supported" - after authorizing a stray leaf per attempt. The guard now lives at the
+GRANT step (request endpoint == our endpoint → a clear 400 in words, zero tree pollution;
+"a second account on this node joining the same persona" is named as future account-linking,
+not adoption), with a belt-and-braces twin at complete for a grant pasted back where it was
+minted. The junior-grant test gained fidelity in passing (its request now comes from a
+genuinely different endpoint), and the phantom unit flake's FOURTH escape finally bought the
+promised capture wrapper: `just test-unit` tees full `--no-fail-fast` output to
+/tmp/ringtome-test-unit.log, so sighting five cannot vanish.

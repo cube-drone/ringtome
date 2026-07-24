@@ -159,8 +159,11 @@ async function profileValue(fetch, root, field) {
         });
 
         // Now a third would-be node asks B for authorization; B holds a leaf, not the root.
+        // (The request is minted on A - a different endpoint - so the self-adoption guard
+        // doesn't preempt the seniority refusal this test is about.)
+        const third = await makeUserFetch({ prefix: "grantthird" });
         const request2 = await (
-            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+            await third("api/identity/adopt/begin", { method: "POST" })
         ).json();
         const refused = await aliceOnB(`api/identity/${root}/nodes`, {
             method: "POST",

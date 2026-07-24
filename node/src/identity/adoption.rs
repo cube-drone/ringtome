@@ -93,6 +93,19 @@ pub async fn authorize_node(
     if code.kind != REQUEST_KIND {
         return Err(AppError::BadRequest("not an adoption request code".into()));
     }
+    // Refuse self-adoption HERE, before any tree pollution: granting a request minted by this
+    // very node would authorize a stray leaf and then die at completion's sync (iroh refuses
+    // self-dial - correctly, since the data is already local). Adoption is for bringing a
+    // persona to a computer that doesn't have it; a second account on THIS node joining the
+    // same persona is a different, future mechanism (account linking - no new keys, no sync).
+    if code.endpoint_id == state.endpoint.id().to_string() {
+        return Err(AppError::BadRequest(
+            "that request code comes from this very computer - it is already this persona. \
+             Adoption brings a persona to a NEW computer; run \"bring your persona\" there \
+             instead."
+                .into(),
+        ));
+    }
     super::require_owned(&state.node_db, account_id, root_hex).await?;
 
     let leaf = pubkey::require(&code.leaf_pubkey, "leaf pubkey in request code")?;
@@ -175,6 +188,15 @@ pub async fn complete(
 ) -> Result<super::Identity, AppError> {
     if code.kind != GRANT_KIND {
         return Err(AppError::BadRequest("not an adoption grant code".into()));
+    }
+    // Belt to the grant-side braces: a grant whose addresses point back at this same computer
+    // can only end in iroh's self-dial refusal - say so in words instead.
+    if code.endpoint_id == state.endpoint.id().to_string() {
+        return Err(AppError::BadRequest(
+            "that invite points back at this very computer - it was granted here. Paste it on \
+             the NEW computer instead."
+                .into(),
+        ));
     }
     // The pending leaf must belong to this account (uniform 404 otherwise).
     let pending: Option<(String,)> = state

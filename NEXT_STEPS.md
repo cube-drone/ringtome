@@ -66,7 +66,12 @@ HISTORY.md.
   designated-recovery-key-only, uniform refusals, session purge, "lost your password?" on the
   front door. Scoping split by account shape: single-persona resets in place (keeps the
   sign-in name); multi-persona **re-homes** the proven persona into a fresh account, old
-  account untouched. Challenge signing / rotation / cooling-off stay owed.
+  account untouched. Challenge signing / rotation / cooling-off stay owed. Proven tree-level
+  by the two-node test: the day-one spare key rescues accounts on any node that is the persona.
+- **Adoption in the UI** (2026-07-24): the null state's second door ("bring your persona from
+  another computer") and the "your computers" screen ("invite this computer to be you") -
+  request/grant codes over the M3 ceremony, key tree rendered with device names and roles.
+  Identity wiring in the UI is complete: create, name, recover, re-home, adopt.
 
 ## Standing residuals (owed, with triggers)
 
@@ -108,6 +113,12 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   strangers), post-use spare-key rotation, and the cooling-off window with logged-in cancel.
   Trigger: before any hosted/multi-tenant deployment; natural build home is 4C's key screens
   alongside Flow B. (Re-homing shipped 07-24 and left this list.)
+- **Spare-key succession ceremony** (designed 2026-07-24 - PROJECT_PLAN, Recovery Flows): a
+  sole-surviving junior rebuilds recovery by minting its successor spare *first* (seniority
+  over the identity's entire reachable future; lost seniors stay dormant-senior forever). A
+  small out-of-the-way flow in the key screens, and it forces the designation upgrade (`role`
+  attribute or strictly-senior reset rule) to ship WITH Flow B - v1's all-zeros-spine rule
+  can't see an off-spine spare.
 - **Client-side annotation prefill** (deferred at annotations' ship, 2026-07-22): the authoring
   client may read artist/album/title *before* the pipeline launders the bytes and offer them as
   pre-filled annotations - persisting is a deliberate user act (bulk import consents once per

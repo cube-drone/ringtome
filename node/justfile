@@ -35,8 +35,15 @@ fmt:
     cd "{{workspace}}" && cargo fmt
 
 # Rust unit tests.
+# Full output teed to /tmp so a flaky failure's `failures:` block survives the run - a
+# once-in-many-runs unit flake has now escaped capture four times (REFACTOR.md); when it fires,
+# the test name is in the log file even if the terminal scrolled or a pipe ate it.
 test-unit:
-    cd "{{workspace}}" && cargo test
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{workspace}}"
+    cargo test --no-fail-fast 2>&1 | tee /tmp/ringtome-test-unit.log
+    exit "${PIPESTATUS[0]}"
 
 # --- run -------------------------------------------------------------------
 
@@ -80,6 +87,55 @@ start: ui-install
 
     # Rust server (foreground — Ctrl-C lands here first)
     cargo run --bin ringtome
+
+# Two dev nodes on one machine, one Ctrl-C: the adoption-ceremony playground. Node A on :5281
+# (default data dir, hostname name), node B on :5282 (./data-b, named "second-brain"), sharing
+# a local discovery folder so post-adoption background sync can find addresses. Create a
+# persona at :5281, register a fresh account at :5282, carry the codes between tabs.
+start_two: ui-install
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{workspace}}"
+
+    mkdir -p node/js/target/js node/js/target/css
+
+    # initial build so the servers have bundles to include_str! on first compile
+    cd node/js && npx esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser --sourcemap --keep-names && \
+                  npx esbuild index.css --bundle --outfile=target/css/bundle.css --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png'
+    cd "{{workspace}}"
+
+    # JS watcher
+    (cd node/js && npx esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser \
+        --watch --sourcemap --keep-names --define:process.env.NODE_ENV=\"development\" \
+        --log-level=info --legal-comments=inline) &
+    JS_PID=$!
+
+    # CSS watcher
+    (cd node/js && npx esbuild index.css --bundle --outfile=target/css/bundle.css \
+        --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png' --watch) &
+    CSS_PID=$!
+
+    # Build once so the two `cargo run`s below don't race the compiler.
+    cargo build --bin ringtome
+
+    # Node B in the background, logs to /tmp (its terminal noise would interleave with A's).
+    RINGTOME_PORT=5282 RINGTOME_DATA_DIRECTORY=./data-b RINGTOME_NODE_NAME=second-brain \
+        RINGTOME_DISCOVERY=local:./data-dht \
+        cargo run --bin ringtome > /tmp/ringtome-second-brain.log 2>&1 &
+    NODE_B_PID=$!
+    echo "node B (second-brain) on http://localhost:5282 — logs: /tmp/ringtome-second-brain.log"
+
+    cleanup() {
+        echo ""
+        echo "shutting down..."
+        kill "$JS_PID" "$CSS_PID" "$NODE_B_PID" 2>/dev/null || true
+        wait "$JS_PID" "$CSS_PID" "$NODE_B_PID" 2>/dev/null || true
+        echo "done."
+    }
+    trap cleanup EXIT
+
+    # Node A in the foreground — Ctrl-C lands here and takes everything down.
+    RINGTOME_DISCOVERY=local:./data-dht cargo run --bin ringtome
 
 # --- ui -----------------------------------------------------------------------
 

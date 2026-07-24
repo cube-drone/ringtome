@@ -4,8 +4,11 @@
 *.pdb
 
 # local node data (per-user databases, key files, materialized views)
+# data-b + data-dht: `just start_two`'s second node and shared local discovery folder
 /data
 **/data/
+/data-b
+/data-dht
 
 # env / secrets
 .env

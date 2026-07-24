@@ -1,10 +1,19 @@
 import { h, render } from 'preact';
+import { useState } from 'preact/hooks';
 import htm from 'htm';
 import { LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso';
 import { Marquee } from '@cube-drone/marquee-react-renderer';
 
 import { useSession, Welcome } from './auth.js';
-import { usePersona, NullState, SpareKeyCeremony, NamePicker, PersonaBadge } from './persona.js';
+import {
+    usePersona,
+    NullState,
+    SpareKeyCeremony,
+    NamePicker,
+    JoinFlow,
+    PersonaBadge,
+} from './persona.js';
+import { Computers } from './computers.js';
 
 const html = htm.bind(h);
 
@@ -86,17 +95,26 @@ const Home = () => {
 // The signed-in shell: which persona is loaded decides everything past the session bar.
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
+    const [view, setView] = useState('home'); // 'home' | 'computers'
 
     // The bar shows the *persona* once one is open; the account username recedes into a
     // hover title - the account never gets a noun (GLOSSARY, Cozyweb language mapping).
+    const open = persona.state === 'open';
     const bar = html`
         <header class="session-bar">
             <span title="signed in as ${session.account.username}">
-                ${persona.state === 'open'
+                ${open
                     ? html`<${PersonaBadge} current=${persona.current} />`
                     : html`<span class="session-who">hi, ${session.account.username}</span>`}
             </span>
-            <button class="session-out" onClick=${session.logout}>head out</button>
+            <span class="session-actions">
+                ${open &&
+                html`<button
+                    class="session-out"
+                    onClick=${() => setView(view === 'computers' ? 'home' : 'computers')}
+                >${view === 'computers' ? 'back home' : 'your computers'}</button>`}
+                <button class="session-out" onClick=${session.logout}>head out</button>
+            </span>
         </header>
     `;
 
@@ -109,10 +127,16 @@ const Inside = ({ session }) => {
     if (persona.state === 'naming') {
         return html`${bar}<${NamePicker} persona=${persona} account=${session.account} />`;
     }
+    if (persona.state === 'join') {
+        return html`${bar}<${JoinFlow} persona=${persona} />`;
+    }
     if (persona.state === 'none') {
         return html`${bar}<${NullState} persona=${persona} />`;
     }
 
+    if (view === 'computers') {
+        return html`${bar}<${Computers} current=${persona.current} />`;
+    }
     return html`
         ${bar}
         <${Router}>

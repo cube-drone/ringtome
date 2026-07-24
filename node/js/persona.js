@@ -38,10 +38,12 @@ export const shortcode = (rootHex) => rootHex.slice(0, 4);
 // The persona layer, as a hook. `current` is null while checking, while the account has no
 // personas, and during the ceremony; the caller branches on `state`.
 export function usePersona(account) {
-    const [state, setState] = useState('checking'); // checking | none | ceremony | naming | open
+    // checking | none | ceremony | naming | join | open
+    const [state, setState] = useState('checking');
     const [current, setCurrent] = useState(null); // { root, name }
     const [ceremony, setCeremony] = useState(null); // { root, secret }
     const [naming, setNaming] = useState(null); // root awaiting its display name
+    const [join, setJoin] = useState(null); // { requestCode } - the outbound half of adoption
     const [error, setError] = useState(null);
 
     // Opening a persona = remembering its root and fetching its public name for display.
@@ -106,16 +108,54 @@ export function usePersona(account) {
         await open(root);
     };
 
-    return { state, current, ceremony, error, create, ceremonyDone, setDisplayName };
+    // The join flow - adoption's new-device half. This computer mints its own leaf key and
+    // gets a request code; the human carries it to a computer that's already the persona,
+    // brings back the grant code, and completion pulls the whole persona here. Private keys
+    // never travel - only these signed codes do.
+    const startJoin = async () => {
+        setError(null);
+        const res = await api('/api/identity/adopt/begin', { method: 'POST' });
+        setJoin({ requestCode: res.code });
+        setState('join');
+    };
+
+    const cancelJoin = () => {
+        setJoin(null);
+        setState('none');
+    };
+
+    const completeJoin = async (grantCode) => {
+        const identity = await api('/api/identity/adopt/complete', {
+            method: 'POST',
+            body: JSON.stringify({ code: grantCode.trim() }),
+        });
+        setJoin(null);
+        await open(identity.root_pubkey);
+    };
+
+    return {
+        state,
+        current,
+        ceremony,
+        join,
+        error,
+        create,
+        ceremonyDone,
+        setDisplayName,
+        startJoin,
+        cancelJoin,
+        completeJoin,
+    };
 }
 
-// The null state: a signed-in account with nobody in it yet.
+// The null state: a signed-in account with nobody in it yet. Two doors: make someone new,
+// or bring an existing you from another computer.
 export const NullState = ({ persona }) => {
     const [busy, setBusy] = useState(false);
-    const go = async () => {
+    const run = (fn) => async () => {
         setBusy(true);
         try {
-            await persona.create();
+            await fn();
         } finally {
             setBusy(false);
         }
@@ -128,9 +168,65 @@ export const NullState = ({ persona }) => {
                 You can have more than one, later.
             </p>
             ${persona.error && html`<p class="form-error">${persona.error}</p>`}
-            <button class="welcome-go" disabled=${busy} onClick=${go}>
+            <button class="welcome-go" disabled=${busy} onClick=${run(persona.create)}>
                 ${busy ? '…' : 'create a persona'}
             </button>
+            <button class="skip-link" disabled=${busy} onClick=${run(persona.startJoin)}>
+                or bring your persona from another computer
+            </button>
+        </div>
+    `;
+};
+
+// The join flow, new-computer side: show the request code to carry away, take the grant code
+// back. Both computers must be awake for the handshake - completion dials the inviting
+// computer directly to pull the persona across.
+export const JoinFlow = ({ persona }) => {
+    const [grantCode, setGrantCode] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+
+    const finish = async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+            await persona.completeJoin(grantCode);
+        } catch (err) {
+            setError(err.message);
+            setBusy(false);
+        }
+    };
+
+    return html`
+        <div class="ceremony">
+            <p class="null-title">Bring your persona here.</p>
+            <p class="null-sub">
+                On a computer that is already you: open <strong>your computers</strong>,
+                choose <strong>invite another computer</strong>, and give it this code:
+            </p>
+            <code class="spare-key">${persona.join.requestCode}</code>
+            <p class="null-sub">
+                It will answer with an invite code - paste that here. Keep both computers
+                awake: they talk to each other directly to bring your things across.
+            </p>
+            <form class="welcome-form" onSubmit=${finish}>
+                <textarea
+                    class="spare-paste"
+                    rows="4"
+                    placeholder="paste the invite code here"
+                    value=${grantCode}
+                    onInput=${(e) => setGrantCode(e.currentTarget.value)}
+                    required
+                ></textarea>
+                ${error && html`<p class="form-error">${error}</p>`}
+                <button class="welcome-go" type="submit" disabled=${busy}>
+                    ${busy ? 'bringing your things across…' : 'become me here'}
+                </button>
+                <button type="button" class="skip-link" onClick=${persona.cancelJoin}>
+                    never mind
+                </button>
+            </form>
         </div>
     `;
 };

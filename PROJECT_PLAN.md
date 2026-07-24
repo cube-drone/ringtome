@@ -431,6 +431,21 @@ implemented. A future relaxation exists if ever needed - "reset with any key str
 node holds" is escalation-free by the invariant - but "only the spare-key photo unlocks you" is the v1 story a
 user can hold in one sentence.
 
+**Spare-key succession after catastrophe (settled 2026-07-24).** Root dead, spare key lost, one junior node
+surviving: recovery is rebuildable, because rank-path order makes it so. Every future key must descend from the
+survivor (nothing else is left to sign), and a key's **first-authorized child outranks its every later child and
+all their descendants** - so the ceremony is Flow B's convention generalized: **the survivor mints its successor
+spare key first**, before any other post-catastrophe children, and that new spare is senior to the identity's
+entire reachable future. Precisely bounded, twice: (1) *nothing ever outranks the lost past* - the dead root and
+lost spare stay dormant-senior forever (juniors cannot revoke uphill, structurally, or any leaf could coup the
+crown), so if "lost" was ever actually "stolen", the resurfaced key outranks everything rebuilt - the ghost
+senior is permanent, named risk; (2) the guarantee is "first child of the apex of what remains" - an elder
+sibling branch that later resurfaces re-enters above the new spare. Consequence that binds two open items
+together: v1's all-zeros-spine designation **cannot see** a succeeded spare minted off-spine, so the `role`
+attribute (or the strictly-senior reset relaxation) must ship *with* Flow B, not after it - a rebuilt identity
+whose password recovery silently stopped working would be a cruel joke. Owed someday: a small, out-of-the-way
+"rebuild your spare key" ceremony in the key screens - rare by nature, load-bearing when it's needed at all.
+
 ### Key Storage
 
 - Each node generates and stores **only its own private key**, never a root key or any other node's key.

@@ -68,3 +68,29 @@ describe("identity listing", function () {
         assert.deepEqual(list, []);
     });
 });
+
+describe("self-adoption is refused before it pollutes the tree", function () {
+    this.timeout(30000);
+
+    it("granting a request minted by this very node is a clear 400", async function () {
+        const user = await makeUserFetch({ prefix: "selfadopt" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        // Both halves of the ceremony on one node: begin here, grant here - the mistake a
+        // same-machine tester makes naturally. The refusal must land at the GRANT step,
+        // before any authorize entry is written, in words rather than iroh's "Connecting to
+        // ourself is not supported" at completion.
+        const request = await (await user("api/identity/adopt/begin", { method: "POST" })).json();
+        const grant = await user(`api/identity/${root}/nodes`, {
+            method: "POST",
+            body: JSON.stringify({ code: request.code }),
+        });
+        assert.equal(grant.status, 400);
+        assert.match((await grant.json()).message, /this very computer/);
+
+        // No stray leaf entered the tree: still just the founding key and the spare.
+        const tree = await (await user(`api/identity/${root}/keys`)).json();
+        assert.equal(tree.keys.length, 2, "no tree pollution from the refused grant");
+    });
+});

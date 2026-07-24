@@ -13,7 +13,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch, HOST_B } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
 const PW = "hunter2hunter2";
@@ -179,5 +179,62 @@ describe("spare-key password reset (Flow A, scratch)", function () {
         });
         assert.equal(clash.status, 400);
         assert.match((await clash.json()).message, /taken/);
+    });
+});
+
+// The spare key is bound to the TREE, not a node - and the tree syncs everywhere (identity
+// chains: always full, always first). So the one spare key minted at creation rescues the
+// account on ANY node that agents the persona: sub nodes have the same recovery story as the
+// founding node, with the same single artifact.
+(HOST_B ? describe : describe.skip)("spare-key reset on an adopted node", function () {
+    this.timeout(60000);
+
+    it("the day-one spare key rescues the account on a node added later", async function () {
+        // Persona born on A; its one and only spare key captured at creation.
+        const alice = await makeUserFetch({ prefix: "rescueA" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        // A separate account on B adopts the persona (the standard ceremony).
+        const usernameB = `rescueb${Date.now().toString(36)}`;
+        const aliceOnB = await makeUserFetch({
+            prefix: "rescueB",
+            username: usernameB,
+            password: PW,
+            host: HOST_B,
+        });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        // Forget B's password. The spare key was minted on A, and B has never seen it - but
+        // B holds the synced key tree, so it can verify the seed all the same.
+        const anonB = makeFetch(HOST_B);
+        const res = await anonB("api/auth/recover", {
+            method: "POST",
+            body: JSON.stringify({
+                username: usernameB,
+                recovery_secret: created.recovery_secret,
+                new_password: NEW_PW,
+            }),
+        });
+        assert.equal(res.status, 200, "the tree-level spare key works on the adopted node");
+        assert.deepEqual(await res.json(), { ok: true, rehomed: false });
+
+        const login = await makeFetch(HOST_B)("api/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ username: usernameB, password: NEW_PW }),
+        });
+        assert.equal(login.status, 200, "and B's account opens with the new password");
     });
 });

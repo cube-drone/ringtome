@@ -24,14 +24,15 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead
   of need otherwise. The compact-append `after()` already keeps the common bulk-import case
   cheap.
-- [ ] **An unidentified once-in-several-runs unit-test flake** (node suite; seen three times
-  2026-07-22/23, never on a rerun, name never captured - every sighting only showed the count
-  line). ~22 deliberate reproduction runs all clean, including a 12-run `just test-unit` loop;
-  all three sightings happened inside larger composite invocations (`cargo test` workspace,
-  `just ci`), suggesting load- or contention-sensitivity - a timing-sensitive net/loops test,
-  not the data layer. Next sighting: capture the `failures:` block FIRST, before any rerun,
-  and record the test name here. A `--no-fail-fast -- --nocapture 2>&1 | tee` wrapper on CI's
-  test-unit step would make the capture automatic; worth adding if a fourth sighting escapes.
+- [ ] **An unidentified once-in-several-runs unit-test flake** (node suite; seen FOUR times
+  2026-07-22/23/24, never on a rerun, name never captured - every sighting only showed the
+  count line, including the fourth, eaten by a `| grep "test result"` pipe). ~25 deliberate
+  reproduction runs all clean; every sighting happened inside larger composite invocations
+  (`cargo test` workspace, `just ci`, compound shell commands), suggesting load- or
+  contention-sensitivity - a timing-sensitive net/loops test, not the data layer. The
+  promised wrapper is now in place: `just test-unit` runs `--no-fail-fast` and tees full
+  output to `/tmp/ringtome-test-unit.log`, so the next sighting's `failures:` block survives
+  regardless of what consumed the terminal. When it fires: read the log, record the name here.
 
 ## Reviewed and left alone (standing decisions, not history)
 
