@@ -78,9 +78,15 @@ describe("auth", function () {
         assert.equal(missing.status, 401, "nonexistent user should be 401");
     });
 
-    it("rejects short passwords at registration", async function () {
+    it("allows short PINs on a loopback node, rejects only empty", async function () {
+        // The integration node binds 127.0.0.1, so the password floor relaxes to a PIN:
+        // reaching this login prompt already required being at the machine
+        // (Config::password_min_len - a public bind keeps the 8-character floor, which the
+        // Rust unit test covers since this harness has no network-facing node).
         const fetch = makeFetch();
-        const resp = await register(fetch, uniqueUsername(), "short");
-        assert.equal(resp.status, 400);
+        const pin = await register(fetch, uniqueUsername(), "1234");
+        assert.equal(pin.status, 200, "a PIN is an honest posture on a local device");
+        const empty = await register(fetch, uniqueUsername(), "");
+        assert.equal(empty.status, 400, "empty is confusion, not a posture");
     });
 });

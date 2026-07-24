@@ -323,6 +323,7 @@ pub async fn recover_password(
             &state.node_db,
             new_username,
             new_password,
+            state.config.password_min_len(),
             state.config.local_test,
         )
         .await?;
@@ -343,6 +344,7 @@ pub async fn recover_password(
         &state.node_db,
         &account_id,
         new_password,
+        state.config.password_min_len(),
         state.config.local_test,
     )
     .await?;

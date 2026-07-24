@@ -620,3 +620,21 @@ node, the hosted-operator exposure is why the challenge flow exists), post-use r
 cooling-off window. Proven by `recovery.cjs`: in-place reset + session purge, uniform
 refusals, and the full re-home story - fresh account holds exactly the proven persona, old
 account keeps its password, sessions, and sibling, and a taken new name moves nothing.
+
+---
+
+## The password floor follows the bind address (2026-07-24)
+
+Short PINs for local devices: a node bound to loopback relaxes the 8-character password
+minimum to a 1-character floor ("password can't be empty" is the only refusal left), because
+reaching that login prompt already required physical access - breaching the machine is the
+rare case, and the lock should be priced accordingly. The load-bearing signal is
+**reachability, not tenancy**: `Config::password_min_len()` parses the bind address and
+relaxes only for loopback (v4 or v6) - a single-tenant node on `0.0.0.0` keeps the strict
+floor (remotely brute-forceable is remotely brute-forceable), and an unparseable bind
+(`localhost`) fails closed to strict. Threaded as an explicit `min_password_len` parameter
+through `register` and `set_password`, so the policy is decided once in config and the auth
+layer stays mechanism. Covered by a unit test (both floors, the empty-password refusal, and
+the config derivation including the fail-closed case) and the integration suite's loopback
+nodes, whose "rejects short passwords" test inverted into "allows short PINs" - the test
+suite updating to describe the new world is the change working as intended.

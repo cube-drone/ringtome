@@ -59,6 +59,9 @@ HISTORY.md.
   the name picker (pre-filled with the account username, skippable), auto-open of the first
   persona, the persona badge in the bar. "Persona" confirmed as the UI's single taught
   concept; the account never gets a noun.
+- **Password floor follows the bind address** (2026-07-24): loopback-only nodes accept short
+  PINs (physical access is the gate there); any network-facing bind keeps 8+ regardless of
+  tenancy; unparseable binds fail closed.
 - **Spare-key password reset, Flow A scratch** (2026-07-24): the seed as reset factor -
   designated-recovery-key-only, uniform refusals, session purge, "lost your password?" on the
   front door. Scoping split by account shape: single-persona resets in place (keeps the

@@ -801,6 +801,12 @@ surface); vouch payloads remain Tier 5 as planned.
   never leaves it.
 - **Password reset** is the recovery photo used as an authentication factor - recovery-key-only, per-identity
   scoped, cooling-off window; see Recovery Flows: Passwords vs. Keys in the Identity System section.
+- **The password floor follows the bind address** (settled 2026-07-24): a node listening only on loopback
+  relaxes the 8-character minimum to a 1-character PIN floor - reaching that login prompt already required
+  physical access to the machine, and short memorable blips are the honest posture for local device security.
+  Any non-loopback bind keeps the 8-character floor regardless of tenancy (a single-tenant node on `0.0.0.0`
+  is still remotely brute-forceable), and an unparseable bind address fails closed to strict. Reachability,
+  not tenancy, is the load-bearing signal.
 
 ### Registration Modes
 

@@ -206,6 +206,25 @@ impl Config {
         self.environment == Environment::Dev
     }
 
+    /// The minimum password length, derived from reachability rather than tenancy: a node
+    /// bound to loopback can only be reached by someone already at the machine, so a short
+    /// PIN is an honest posture there ("breaching physical access is the rare case") - while
+    /// any non-loopback bind faces the network and keeps the 8-character floor, regardless of
+    /// how many accounts it holds. An unparseable bind address (e.g. `localhost`) fails
+    /// closed to the strict floor; use `127.0.0.1` to get the relaxed one.
+    pub fn password_min_len(&self) -> usize {
+        let loopback = self
+            .bind_address
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false);
+        if loopback {
+            1
+        } else {
+            8
+        }
+    }
+
     pub fn public(&self) -> PublicConfig {
         PublicConfig {
             app_version: self.app_version.clone(),

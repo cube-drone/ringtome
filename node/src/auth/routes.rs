@@ -92,6 +92,7 @@ async fn register_handler(
         &state.node_db,
         &creds.username,
         &creds.password,
+        state.config.password_min_len(),
         state.config.local_test,
     )
     .await?;

@@ -75,6 +75,20 @@ fn hash_password(password: &str, fast: bool) -> Result<String> {
         .map_err(|e| anyhow!("hashing password: {e}"))
 }
 
+/// Enforce the node's password floor (`Config::password_min_len` - 8 facing the network, 1 on
+/// a loopback-only node, where a short PIN is an honest posture because reaching the prompt
+/// already required physical access).
+fn check_password_len(password: &str, min: usize) -> Result<(), AppError> {
+    if password.len() >= min {
+        return Ok(());
+    }
+    Err(AppError::BadRequest(if min <= 1 {
+        "password can't be empty".into()
+    } else {
+        format!("password must be at least {min} characters")
+    }))
+}
+
 fn verify_password(password: &str, phc: &str) -> bool {
     match PasswordHash::new(phc) {
         Ok(parsed) => Argon2::default()
@@ -145,14 +159,11 @@ pub async fn register(
     db: &Db,
     username: &str,
     password: &str,
+    min_password_len: usize,
     local_test: bool,
 ) -> Result<Account, AppError> {
     let username = normalize_username(username)?;
-    if password.len() < 8 {
-        return Err(AppError::BadRequest(
-            "password must be at least 8 characters".into(),
-        ));
-    }
+    check_password_len(password, min_password_len)?;
 
     let id = Uuid::new_v4();
     let phc = hash_password(password, local_test).map_err(AppError::Internal)?;
@@ -283,13 +294,10 @@ pub async fn set_password(
     db: &Db,
     account_id: &str,
     new_password: &str,
+    min_password_len: usize,
     local_test: bool,
 ) -> Result<(), AppError> {
-    if new_password.len() < 8 {
-        return Err(AppError::BadRequest(
-            "password must be at least 8 characters".into(),
-        ));
-    }
+    check_password_len(new_password, min_password_len)?;
     let phc = hash_password(new_password, local_test).map_err(AppError::Internal)?;
     db.execute(
         "UPDATE accounts SET password_hash = ?1 WHERE id = ?2",
@@ -440,13 +448,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_password_floor_follows_the_bind_address() {
+        let pool = crate::db::test_node_db().await;
+
+        // The network-facing floor: 8, with the count in the message.
+        let err = register(&pool, "cautious", "pin", 8, true).await.unwrap_err();
+        assert!(err.to_string().contains("8 characters"), "{err}");
+
+        // The loopback floor: a short PIN is an honest posture on a machine you can touch...
+        register(&pool, "cozy", "1234", 1, true).await.unwrap();
+
+        // ...but an empty password is confusion, not a posture.
+        let err = register(&pool, "voidling", "", 1, true).await.unwrap_err();
+        assert!(err.to_string().contains("empty"), "{err}");
+
+        // The config derivation itself: loopback relaxes, anything else doesn't - including
+        // an unparseable bind, which fails closed to the strict floor.
+        let mut config = crate::config::Config::from_env();
+        config.bind_address = "127.0.0.1".into();
+        assert_eq!(config.password_min_len(), 1);
+        config.bind_address = "::1".into();
+        assert_eq!(config.password_min_len(), 1);
+        config.bind_address = "0.0.0.0".into();
+        assert_eq!(config.password_min_len(), 8);
+        config.bind_address = "localhost".into();
+        assert_eq!(config.password_min_len(), 8, "unparseable fails closed");
+    }
+
+    #[tokio::test]
     async fn first_account_becomes_node_admin() {
         let pool = crate::db::test_node_db().await;
 
-        let first = register(&pool, "founder", "password123", false)
+        let first = register(&pool, "founder", "password123", 8, false)
             .await
             .unwrap();
-        let second = register(&pool, "latecomer", "password123", false)
+        let second = register(&pool, "latecomer", "password123", 8, false)
             .await
             .unwrap();
 
@@ -459,7 +495,7 @@ mod tests {
         let pool = crate::db::test_node_db().await;
 
         // Skip the admin bootstrap so this account starts with a clean tag set.
-        let account = register(&pool, "tag_tester", "password123", true)
+        let account = register(&pool, "tag_tester", "password123", 8, true)
             .await
             .unwrap();
 
