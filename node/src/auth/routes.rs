@@ -1,6 +1,8 @@
 //! HTTP routes for the auth substrate: register, login, logout, whoami.
 
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
@@ -17,6 +19,9 @@ use crate::AppState;
 
 /// New accounts allowed per IP per hour (when the caller's IP is visible). Deliberately low.
 const REGISTER_LIMIT: u32 = 2;
+/// Spare-key recovery attempts per IP per hour. Stricter than register: every attempt is a
+/// guess at a 256-bit secret, so honest users need one or two and everyone else is probing.
+const RECOVER_LIMIT: u32 = 5;
 const HOUR_MS: i64 = 60 * 60 * 1000;
 
 pub fn router() -> Router<AppState> {
@@ -26,6 +31,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/auth/logout", post(logout_handler))
         .route("/api/auth/whoami", get(whoami_handler))
         .route("/api/auth/check-username", get(check_username_handler))
+        .route("/api/auth/recover", post(recover_handler))
         // Tag administration.
         .route("/api/admin/grant", post(grant_handler))
         .route("/api/admin/revoke", post(revoke_handler))
@@ -103,6 +109,84 @@ async fn check_username_handler(
 ) -> Result<Json<UsernameAvailability>, AppError> {
     let taken = is_username_taken(&state.node_db, &q.username).await?;
     Ok(Json(UsernameAvailability { available: !taken }))
+}
+
+#[derive(Deserialize)]
+struct RecoverRequest {
+    username: String,
+    recovery_secret: String,
+    new_password: String,
+    /// Required only when the proven persona lives on a multi-persona account: the sign-in
+    /// name for the fresh account it re-homes into.
+    new_username: Option<String>,
+}
+
+#[derive(Serialize)]
+struct RecoverResponse {
+    ok: bool,
+    /// True when the persona moved to a fresh account (log in with the NEW name); false for
+    /// an in-place reset (same name, new password).
+    rehomed: bool,
+}
+
+#[derive(Serialize)]
+struct RecoverNeedsName {
+    message: String,
+    needs_new_username: bool,
+}
+
+/// Spare-key password reset (Flow A - see `identity::recover_password` for the rules and the
+/// named simplifications). No session is minted here: the caller logs in like anyone else
+/// afterwards. A 409 means the key proved out but the account holds siblings - resubmit with
+/// `new_username` to re-home the proven persona into a fresh account.
+async fn recover_handler(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Json(req): Json<RecoverRequest>,
+) -> Result<Response, AppError> {
+    state
+        .rate_limiter
+        .check(
+            "recover",
+            &ctx.rate_limit_identifier(),
+            RECOVER_LIMIT,
+            HOUR_MS,
+        )
+        .await?;
+
+    let outcome = crate::identity::recover_password(
+        &state,
+        &req.username,
+        &req.recovery_secret,
+        &req.new_password,
+        req.new_username.as_deref(),
+    )
+    .await?;
+
+    use crate::identity::Recovery;
+    Ok(match outcome {
+        Recovery::Reset => Json(RecoverResponse {
+            ok: true,
+            rehomed: false,
+        })
+        .into_response(),
+        Recovery::Rehomed => Json(RecoverResponse {
+            ok: true,
+            rehomed: true,
+        })
+        .into_response(),
+        Recovery::NeedsNewUsername => (
+            StatusCode::CONFLICT,
+            Json(RecoverNeedsName {
+                message: "this spare key is real, but the account holds more than one persona \
+                          - pick a new sign-in name and this one will move into a fresh \
+                          account of its own"
+                    .into(),
+                needs_new_username: true,
+            }),
+        )
+            .into_response(),
+    })
 }
 
 async fn login_handler(

@@ -381,7 +381,15 @@ everything below: **presenting key K may grant at most K's own authority.**
 **Flow A - forgot password (common): zero chain entries, zero new keys.** The recovery photo (QR code of the
 oldest-child recovery key) serves as the reset *authentication factor*: scan the QR, the node derives the pubkey, 
 confirms it is the identity's **designated recovery key**, and resets the account password. The key signs a login 
-challenge, never a statement; the tree is untouched.
+challenge, never a statement; the tree is untouched. *(Scratch version IMPLEMENTED 2026-07-24 -
+`identity::recover_password`: seed pasted to the node rather than a browser-side challenge signature (acceptable on
+your own node; the hosted-node exposure is exactly why the challenge flow and post-use rotation remain owed), no
+cooling-off window yet. Per-identity scoping is fully live, split by account shape: a single-persona account resets
+in place (keeping its sign-in name - re-homing every reset would cost the common case its username for nothing),
+and a multi-persona account **re-homes** - the proven persona moves to a freshly named account while the old
+account is left entirely alone (password, sessions, siblings all intact: if the key was stolen, the victim keeps
+everything but the persona the stolen key already owned outright). The ask-for-a-new-name signal discloses that
+siblings exist - post-proof only, count-not-names, the accepted trade for not stranding multi-persona users.)*
 
 - **Only the recovery key is reset-eligible - this is load-bearing, not convenience.** Access to a node is access
   to the keys that node holds, so

@@ -586,3 +586,37 @@ pre-filled with the account username (the one name this human already chose toda
 Verified against a live node: bundle → register → login → empty list → create (32-byte
 secret, once) → list of one → profile write and badge read-back → device names riding the
 keys response. UI-only change (~300 lines: persona.js, index.js gate, CSS).
+
+---
+
+## Spare-key password reset: Flow A, scratch (2026-07-24)
+
+"Give me your spare key and I'll let you reset your password" - the plan's Flow A (Recovery
+Flows: Passwords vs. Keys), built as the scratch version with the bells named and deferred
+but the lattice fully enforced. `identity::recover_password`: the pasted seed derives the
+recovery keypair (`seal::derive_recovery`), the pubkey must match the identity's **designated
+recovery key** (new `designated_recovery` helper: the unique Active key on the all-zeros rank
+path, failing closed if the leftmost-spine convention is ever violated) - an ordinary leaf,
+even a valid one, proves nothing. Per-identity scoping shipped fully, split by account shape
+after a design conversation worth its HISTORY sentence: "you've proven you're fairly likely
+to be the account creator" is true in the median case, but recovery is a credential-authority
+operation, not identity verification - the account is a bundle of authorities, spare keys are
+stolen individually, and the account's persona-list is itself the most sensitive linkage
+record the node holds. So: a single-persona account resets **in place** (keeping its sign-in
+name); a multi-persona account **re-homes** - a 409 asks for a new sign-in name (post-proof
+only; count-not-names, the accepted disclosure), then the proven persona moves to a freshly
+minted account while the old account is left entirely alone - password, sessions, siblings
+all intact, because if the key was stolen, the victim keeps everything except the persona the
+stolen key already owned outright. Every unprovable failure - wrong seed, unknown username,
+malformed hex, persona-less account - is the same uniform "recovery failed". In-place reset
+purges every session; rate-limited at 5/hour/IP (every attempt is a guess at a 256-bit
+secret). auth.rs stays identity-agnostic - it gained only `set_password` / `purge_sessions` /
+`account_id_by_username`; the evidence question lives in identity.rs. UI: "lost your
+password?" on the front door - username, spare key (paste the whole file; the client plucks
+the 64-hex seed out), new password; the new-name field appears only when the 409 asks for it,
+and login lands under whichever name applies. *Deferred, named in the plan text:*
+browser-side challenge signing (the seed currently transits to the node - fine for your own
+node, the hosted-operator exposure is why the challenge flow exists), post-use rotation, the
+cooling-off window. Proven by `recovery.cjs`: in-place reset + session purge, uniform
+refusals, and the full re-home story - fresh account holds exactly the proven persona, old
+account keeps its password, sessions, and sibling, and a taken new name moves nothing.

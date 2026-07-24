@@ -59,6 +59,11 @@ HISTORY.md.
   the name picker (pre-filled with the account username, skippable), auto-open of the first
   persona, the persona badge in the bar. "Persona" confirmed as the UI's single taught
   concept; the account never gets a noun.
+- **Spare-key password reset, Flow A scratch** (2026-07-24): the seed as reset factor -
+  designated-recovery-key-only, uniform refusals, session purge, "lost your password?" on the
+  front door. Scoping split by account shape: single-persona resets in place (keeps the
+  sign-in name); multi-persona **re-homes** the proven persona into a fresh account, old
+  account untouched. Challenge signing / rotation / cooling-off stay owed.
 
 ## Standing residuals (owed, with triggers)
 
@@ -95,6 +100,11 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   (`=0.7.0`) for reproducibility meanwhile.
 - **FTS over titles + descriptions** (trimmed from the materializer's ship): the data-layer
   plan named it; nothing consumes it yet. Lands with whichever 4C surface first offers search.
+- **Flow A's bells** (deferred at the scratch ship, 2026-07-24): browser-side challenge
+  signing (the pasted seed currently transits to the node - unacceptable once nodes host
+  strangers), post-use spare-key rotation, and the cooling-off window with logged-in cancel.
+  Trigger: before any hosted/multi-tenant deployment; natural build home is 4C's key screens
+  alongside Flow B. (Re-homing shipped 07-24 and left this list.)
 - **Client-side annotation prefill** (deferred at annotations' ship, 2026-07-22): the authoring
   client may read artist/album/title *before* the pipeline launders the bytes and offer them as
   pre-filled annotations - persisting is a deliberate user act (bulk import consents once per

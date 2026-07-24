@@ -212,6 +212,145 @@ pub async fn record_identity(
 }
 
 /// List the identities owned by an account.
+/// The designated recovery key: the unique Active key on the all-zeros rank path (the
+/// leftmost spine - PROJECT_PLAN, Recovery Flows: "Designating 'the' recovery key"). `None`
+/// when no such key exists; fails closed to `None` if the convention is somehow violated and
+/// two Active keys share the spine.
+fn designated_recovery(tree: &ringtome_proto::Crown) -> Option<[u8; 32]> {
+    use ringtome_proto::crown::KeyStatus;
+    let mut found: Option<[u8; 32]> = None;
+    for (pk, status) in tree.members() {
+        if status != KeyStatus::Active {
+            continue;
+        }
+        let Some(path) = tree.rank_path(pk) else {
+            continue;
+        };
+        if path.is_empty() || !path.iter().all(|&r| r == 0) {
+            continue; // the root ([]) and every off-spine key are never reset-eligible
+        }
+        if found.is_some() {
+            return None; // two Active spine keys: convention broken, fail closed
+        }
+        found = Some(*pk);
+    }
+    found
+}
+
+/// Flow A, scratch edition: the spare key as a password-reset factor (PROJECT_PLAN, Recovery
+/// Flows: Passwords vs. Keys). Zero chain entries, zero new keys - the seed proves control of
+/// the designated recovery key, and that alone. The scratch simplifications, named: the seed
+/// is presented to the node rather than signing a browser-side challenge (fine on your own
+/// node, a real exposure question for hosted nodes - the in-browser flow and post-use
+/// rotation are the bells this version deliberately lacks), and there is no cooling-off
+/// window yet. What is NOT simplified is the lattice: only the designated recovery key is
+/// reset-eligible, and per-identity scoping holds - a reset is allowed only when the account
+/// holds exactly the proven persona (the "proven-only account" case; re-homing a persona out
+/// of a multi-persona account arrives with the full flow).
+///
+/// Every failure that could leak is the same uniform "recovery failed": whether the username
+/// exists, whether it has personas, and whether the secret matched are all indistinguishable
+/// to a caller who hasn't proven anything.
+pub enum Recovery {
+    /// Password reset in place: the account held exactly the proven persona, and keeps its
+    /// sign-in name.
+    Reset,
+    /// The account holds siblings; the caller must pick a new sign-in name so the proven
+    /// persona can be re-homed (a side-effect-free answer - nothing has changed yet).
+    NeedsNewUsername,
+    /// The proven persona moved to a freshly minted account; the old account is untouched.
+    Rehomed,
+}
+
+pub async fn recover_password(
+    state: &crate::AppState,
+    username: &str,
+    recovery_secret_hex: &str,
+    new_password: &str,
+    new_username: Option<&str>,
+) -> Result<Recovery, AppError> {
+    let uniform = || AppError::Unauthorized("recovery failed".into());
+
+    let seed: [u8; 32] = hex::decode(recovery_secret_hex.trim())
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(uniform)?;
+    let (recovery_key, _enc) = crate::seal::derive_recovery(&seed);
+    let proven_pubkey = recovery_key.verifying_key().to_bytes();
+
+    let account_id = crate::auth::account_id_by_username(&state.node_db, username)
+        .await?
+        .ok_or_else(uniform)?;
+    let account_uuid = Uuid::parse_str(&account_id)
+        .map_err(|e| AppError::Internal(anyhow!("malformed account id: {e}")))?;
+    let identities = list_for_account(&state.node_db, &account_uuid).await?;
+
+    // Which of the account's personas does this seed prove? The match is against each tree's
+    // DESIGNATED recovery key - an ordinary leaf, even a valid one, proves nothing here
+    // (presenting key K grants at most K's authority, and only the spine key carries reset).
+    let mut proven: Option<String> = None;
+    for identity in &identities {
+        let db = state
+            .user_dbs
+            .get(&identity.root_pubkey)
+            .await
+            .map_err(AppError::Internal)?;
+        let tree = crate::record::imaol::load_key_tree(&db, &identity.root_pubkey).await?;
+        if designated_recovery(&tree) == Some(proven_pubkey) {
+            proven = Some(identity.root_pubkey.clone());
+            break;
+        }
+    }
+    let proven = proven.ok_or_else(uniform)?;
+
+    // Per-identity scoping: proof of one persona must not unlock its account-siblings.
+    //
+    // Single-persona account (the common case): reset in place - the account IS the proven
+    // persona's, and re-homing here would cost the user their sign-in name for nothing.
+    //
+    // Multi-persona account: RE-HOME - the proven persona moves to a freshly minted account
+    // the caller names, and the old account is left entirely alone: password intact, sessions
+    // intact, siblings intact. Deliberately untouched, because if the spare key was *stolen*,
+    // the old account belongs to the victim - the thief walks away with exactly the persona
+    // the stolen key already owned outright, and nothing else. (The needs-a-new-name signal
+    // below discloses that siblings exist - post-proof only, count-not-names, the accepted
+    // trade for not stranding legitimate multi-persona users.)
+    if identities.len() > 1 {
+        let Some(new_username) = new_username else {
+            return Ok(Recovery::NeedsNewUsername);
+        };
+        let account = crate::auth::register(
+            &state.node_db,
+            new_username,
+            new_password,
+            state.config.local_test,
+        )
+        .await?;
+        state
+            .node_db
+            .execute(
+                "UPDATE identities SET account_id = ?1 WHERE root_pubkey = ?2 AND account_id = ?3",
+                (account.id.to_string(), proven.as_str(), account_id.as_str()),
+            )
+            .await
+            .context("re-homing identity")
+            .map_err(AppError::Internal)?;
+        tracing::info!(root = %proven, "persona re-homed to a fresh account via spare key");
+        return Ok(Recovery::Rehomed);
+    }
+
+    crate::auth::set_password(
+        &state.node_db,
+        &account_id,
+        new_password,
+        state.config.local_test,
+    )
+    .await?;
+    crate::auth::purge_sessions(&state.node_db, &account_id).await?;
+    tracing::info!(root = %proven, "password reset via spare key");
+    Ok(Recovery::Reset)
+}
+
 pub async fn list_for_account(node_db: &Db, account_id: &Uuid) -> Result<Vec<Identity>, AppError> {
     let rows: Vec<(String, i64)> = node_db
         .fetch_all(

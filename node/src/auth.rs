@@ -265,6 +265,52 @@ pub async fn delete_session(db: &Db, token: &str) -> Result<()> {
     Ok(())
 }
 
+/// Look up an account id by username (login's normalization: trim + lowercase; an invalid slug
+/// matches no row). `None` is not an error - callers own their uniform-failure story.
+pub async fn account_id_by_username(db: &Db, username: &str) -> Result<Option<String>, AppError> {
+    let lookup = username.trim().to_ascii_lowercase();
+    let row: Option<(String,)> = db
+        .fetch_optional("SELECT id FROM accounts WHERE username = ?1", (lookup,))
+        .await
+        .context("looking up account")
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(id,)| id))
+}
+
+/// Replace an account's password. Identity-agnostic on purpose: *what evidence justifies this*
+/// is the caller's problem (today: the spare-key recovery flow, `identity::recover_password`).
+pub async fn set_password(
+    db: &Db,
+    account_id: &str,
+    new_password: &str,
+    local_test: bool,
+) -> Result<(), AppError> {
+    if new_password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "password must be at least 8 characters".into(),
+        ));
+    }
+    let phc = hash_password(new_password, local_test).map_err(AppError::Internal)?;
+    db.execute(
+        "UPDATE accounts SET password_hash = ?1 WHERE id = ?2",
+        (phc.as_str(), account_id),
+    )
+    .await
+    .context("updating password")
+    .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// Drop every session an account holds - standard hygiene after a password reset, so whoever
+/// prompted the reset is the only one still standing (with their fresh login).
+pub async fn purge_sessions(db: &Db, account_id: &str) -> Result<(), AppError> {
+    db.execute("DELETE FROM sessions WHERE account_id = ?1", (account_id,))
+        .await
+        .context("purging sessions")
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
 /// Whether a username is already taken. The input is normalized first, so an invalid slug returns
 /// a validation error (the caller can surface "not a valid username" distinctly from "taken").
 pub async fn is_username_taken(db: &Db, username: &str) -> Result<bool, AppError> {
