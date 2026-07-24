@@ -137,45 +137,9 @@ async function profileValue(fetch, root, field) {
         assert.ok(fs.statSync(recordPath).size < 512, "records stay within the pkarr budget");
     });
 
-    it("junior nodes cannot grant adoption in v1", async function () {
-        // A second joining node asks *B* (a leaf-holding node) to authorize it: refused.
-        const alice = await makeUserFetch({ prefix: "grantalice" });
-        const created = await (await alice("api/identity", { method: "POST" })).json();
-        const root = created.root_pubkey;
-
-        const aliceOnB = await makeUserFetch({ prefix: "grantaliceb", host: HOST_B });
-        const request = await (
-            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
-        ).json();
-        const grant = await (
-            await alice(`api/identity/${root}/nodes`, {
-                method: "POST",
-                body: JSON.stringify({ code: request.code }),
-            })
-        ).json();
-        await aliceOnB("api/identity/adopt/complete", {
-            method: "POST",
-            body: JSON.stringify({ code: grant.code }),
-        });
-
-        // Now a third would-be node asks B for authorization; B holds a leaf, not the root.
-        // (The request is minted on A - a different endpoint - so the self-adoption guard
-        // doesn't preempt the seniority refusal this test is about.)
-        const third = await makeUserFetch({ prefix: "grantthird" });
-        const request2 = await (
-            await third("api/identity/adopt/begin", { method: "POST" })
-        ).json();
-        const refused = await aliceOnB(`api/identity/${root}/nodes`, {
-            method: "POST",
-            body: JSON.stringify({ code: request2.code }),
-        });
-        assert.equal(refused.status, 403);
-        // The refusal is cozy and actionable: it names the founding computer (device names
-        // exist for exactly this sentence), never says "root node", and admits "for now".
-        const message = (await refused.json()).message;
-        assert.match(message, /try again from "alpha"/, message);
-        assert.doesNotMatch(message, /root node/, "engine-room words stay out of the UI");
-    });
+    // "junior nodes cannot grant adoption in v1" lived here until 2026-07-24, when the M3
+    // trim was un-trimmed: any Active key extends the tree now. The positive story - B
+    // granting C, rank paths, convergence - lives in daisychain.cjs.
 });
 
 (HOST_B ? describe : describe.skip)("one-trip adoption", function () {

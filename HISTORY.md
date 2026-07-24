@@ -717,3 +717,27 @@ and the bare-JSON form (cheap mid-upgrade tolerance, not a compatibility promise
 decompression at 64 KiB, and refuses garbage in every costume cleanly. The wire delivery frames
 and everything under them are untouched - this is strictly the human-visible layer. Tests peek
 inside codes via a shared `decodeCode` helper (node:zlib mirrors the server's unpack).
+
+---
+
+## Junior grants: the trim un-trimmed (2026-07-24)
+
+The last "v1:" in adoption is gone: any Active key can now sign a newcomer into the tree, so
+invitation chains daisy - A founds, B joins from A, C joins from B - and the rank paths record
+exactly who vouched for whom (C's path extends B's by one step). The missing piece was never
+doctrine (rank-path growth was always the model; spare-key succession depends on it) but one
+computation: the usurper stamp for a non-root parent. That now lives where it belongs, in the
+conformance crate - `Crown::usurper_stamp_for_new_child` walks the parent's rank path
+accumulating every senior and their earlier siblings, proven by a round-trip test at depths
+one and two (a stamp the validator's exact-match check accepts IS a correct stamp) plus the
+assertion that the day-one spare key outranks the deepest link. Node-side, `authorize_node`
+signs with its own leaf, appends the authorization to its own chain, and reseals epochs keyed
+by its own leaf's enc keypair (root-hex was a founding-node coincidence); a revoked leaf is
+refused in words up front (its grants would be quarantined anyway). The root-only refusal
+message we made cozy this very morning died young, as it deserved. Harness grew a third node
+("charlie", :5283) booted by every integration run, `just start_three` for the human
+playground, and `daisychain.cjs` proves the lot in one test: B's grant of C delivered by wire,
+the rank-path lineage, every key named from the deepest chair, a write on C converging to A
+through the epidemic relay with no manual syncs, and the founding spare key rescuing C's
+account password two hops from home. The old junior-refusal test retired with a headstone
+comment pointing here.

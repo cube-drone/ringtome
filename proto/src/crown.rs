@@ -564,6 +564,29 @@ impl Crown {
         self.children.get(key).map_or(&[], |v| v.as_slice())
     }
 
+    /// The complete usurper stamp for a new child of `parent` - the formula above, computed for
+    /// ANY member, not just the root: walk the parent's rank path from the root accumulating
+    /// each ancestor and its earlier siblings (everyone who outranks the parent), then append
+    /// the parent and its existing children. This is what un-trims junior grants: any Active
+    /// key can extend the tree, and this is the confession-of-seniors its new child must carry.
+    /// `None` when `parent` is not a member.
+    pub fn usurper_stamp_for_new_child(&self, parent: &Pubkey) -> Option<Vec<Pubkey>> {
+        let path = self.rank_path(parent)?;
+        let mut stamp = Vec::new();
+        let mut current = *self.root();
+        for &idx in path {
+            let kids = self.children_of(&current);
+            let idx = usize::try_from(idx).ok()?;
+            stamp.push(current);
+            stamp.extend_from_slice(kids.get(..idx)?);
+            current = *kids.get(idx)?;
+        }
+        debug_assert_eq!(&current, parent, "rank path must lead to the parent");
+        stamp.push(current);
+        stamp.extend_from_slice(self.children_of(&current));
+        Some(stamp)
+    }
+
     /// Validity ceiling for one of the key's chains, if a revocation has sealed it.
     pub fn ceiling(&self, key: &Pubkey, service_id: u32) -> Option<Ceiling> {
         self.ceilings.get(&(*key, service_id)).copied()
@@ -935,6 +958,55 @@ mod tests {
             == "revoke signed by a repudiated or invalid key"
             || r.reason == "revoke lies beyond the signer's own ceiling"
             || r.reason == "revoker is not senior to its target"));
+    }
+
+    /// `usurper_stamp_for_new_child` must agree with the stamp the validator recomputes - for
+    /// ANY member, not just the root. Proven by round trip: build a daisy chain
+    /// (root → recovery, root → B, B → C), ask the crown for C's-grandchild stamp at each
+    /// level, mint the authorization with it, and assert the extended tree accepts the child
+    /// as Active. A wrong stamp would be rejected by the validator's exact-match check, so
+    /// acceptance IS agreement.
+    #[test]
+    fn usurper_stamp_extends_the_tree_at_any_depth() {
+        let mut root = TestKey::new(1, vec![]);
+        let mut entries = Vec::new();
+        let (_recovery, e) = root.authorize(2);
+        entries.push(e);
+        let (mut leaf_b, e) = root.authorize(3);
+        entries.push(e);
+
+        // The crown's stamp for a new child of B matches what the honest helper computes.
+        let tree = Crown::build(root.pk(), &entries).unwrap();
+        let stamp = tree.usurper_stamp_for_new_child(&leaf_b.pk()).unwrap();
+        let mut expected = leaf_b.usurpers.clone();
+        expected.push(leaf_b.pk());
+        assert_eq!(stamp, expected, "junior stamp: seniors + parent + no siblings yet");
+
+        // And the validator accepts a child minted with it - at depth 1 (B → C)...
+        let (mut leaf_c, e) = leaf_b.authorize(4);
+        entries.push(e);
+        let tree = Crown::build(root.pk(), &entries).unwrap();
+        assert_eq!(tree.status(&leaf_c.pk()), KeyStatus::Active);
+        assert_eq!(tree.rank_path(&leaf_c.pk()).unwrap(), &[1, 0]);
+
+        // ...and at depth 2 (C → D), the full daisy chain, stamp from the crown itself.
+        let stamp = tree.usurper_stamp_for_new_child(&leaf_c.pk()).unwrap();
+        let d = TestKey::new(5, stamp.clone());
+        let payload = Authorize {
+            child: d.pk(),
+            usurpers: stamp,
+            enc_pubkey: None,
+        }
+        .encode()
+        .unwrap();
+        entries.push(leaf_c.append(entry_type::AUTHORIZE, payload));
+        let tree = Crown::build(root.pk(), &entries).unwrap();
+        assert_eq!(tree.status(&d.pk()), KeyStatus::Active);
+        assert_eq!(tree.rank_path(&d.pk()).unwrap(), &[1, 0, 0]);
+        assert!(tree.is_senior(&_recovery.pk(), &d.pk()), "the spare outranks the whole chain");
+
+        // A stranger has no stamp.
+        assert!(tree.usurper_stamp_for_new_child(&[0xEE; 32]).is_none());
     }
 
     /// The M2 exit property: arbitrary honest trees are always totally ordered, with no

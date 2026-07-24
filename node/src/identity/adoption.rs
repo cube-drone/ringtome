@@ -134,9 +134,11 @@ pub async fn begin(state: &AppState, account_id: &Uuid) -> Result<RequestCode, A
     })
 }
 
-/// Step 2, on the granting node: the identity's root signs the leaf into the tree and emits the
-/// grant code. v1: only the root's own node may grant (the root is the only key whose stamp we
-/// can compute as a parent here).
+/// Step 2, on the granting node: this node's leaf signs the newcomer into the tree as its own
+/// child and emits the grant code. ANY Active member may grant (the M3 root-only trim was
+/// un-trimmed 2026-07-24 - `Crown::usurper_stamp_for_new_child` computes the stamp at any
+/// depth), so invitation chains daisy: A founds, B joins from A, C joins from B, and the tree
+/// records exactly who vouched for whom in its rank paths.
 pub async fn authorize_node(
     state: &AppState,
     account_id: &Uuid,
@@ -163,36 +165,12 @@ pub async fn authorize_node(
 
     let leaf = pubkey::require(&code.leaf_pubkey, "leaf pubkey in request code")?;
     let leaf_enc = pubkey::require(&code.enc_pubkey, "encryption pubkey in request code")?;
-    let root = pubkey::require(root_hex, "root pubkey")?;
+    // Validate the root's shape even though the grant no longer signs with it.
+    pubkey::require(root_hex, "root pubkey")?;
 
     let signer =
         super::load_signing_key(&state.node_db, &state.keystore, account_id, root_hex).await?;
-    if signer.verifying_key().to_bytes() != root {
-        // The M3 trim (root-only grants) surfacing as UX. Not doctrine - the tree model lets
-        // any Active key authorize children, and junior grants arrive when a real household
-        // needs them (NEXT_STEPS, standing residuals) - so the refusal must be honest about
-        // "for now" and actionable about WHERE. Device names exist precisely for this
-        // sentence; "root node" is engine-room vocabulary and stays out of it.
-        let founder = match crate::record::store::open(state, account_id, root_hex).await {
-            Ok(data) => data
-                .devices()
-                .all()
-                .await
-                .ok()
-                .and_then(|names| names.get(root_hex).cloned()),
-            Err(_) => None,
-        };
-        let msg = match founder {
-            Some(name) => format!(
-                "for now, only this persona's first computer can invite new ones - try again \
-                 from \"{name}\"."
-            ),
-            None => "for now, only this persona's first computer - the one where it was \
-                     created - can invite new ones."
-                .to_string(),
-        };
-        return Err(AppError::Forbidden(msg));
-    }
+    let our_leaf = signer.verifying_key().to_bytes();
 
     let db = state
         .user_dbs
@@ -205,10 +183,23 @@ pub async fn authorize_node(
             "that key is already in the tree".into(),
         ));
     }
+    // Any Active member may extend the tree (the M3 root-only trim, un-trimmed 2026-07-24:
+    // rank-path growth was always the model - spare-key succession depends on it - and the
+    // crown computes the junior stamp now). A node whose own leaf has been revoked cannot
+    // grant: its authorize entries would be quarantined anyway, so refuse in words up front.
+    if tree.status(&our_leaf) != KeyStatus::Active {
+        return Err(AppError::Forbidden(
+            "this computer's key is no longer active for this persona - it can't invite new \
+             ones."
+                .into(),
+        ));
+    }
 
-    // The stamp: parent's usurpers ([] for the root) + parent + parent's prior children.
-    let mut stamp = vec![root];
-    stamp.extend_from_slice(tree.children_of(&root));
+    // The stamp: everyone who outranks the parent, then the parent, then its prior children -
+    // computed by the crown for any member, at any depth.
+    let stamp = tree
+        .usurper_stamp_for_new_child(&our_leaf)
+        .ok_or_else(|| AppError::Internal(anyhow!("active key has no rank path")))?;
     let payload = Authorize {
         child: leaf,
         usurpers: stamp,
@@ -227,11 +218,13 @@ pub async fn authorize_node(
 
     // Adoption's private half: re-seal every epoch key this node holds to the newcomer, so its
     // private view reaches all the way back. A member is a member of the whole history - the
-    // exclusion boundary is revocation's rotation, never adoption.
-    let our_enc = crate::record::private::load_enc_keypair(&state.keystore, root_hex)
+    // exclusion boundary is revocation's rotation, never adoption. (The enc keypair is keyed by
+    // OUR leaf - which is the root hex only on the founding node.)
+    let our_leaf_hex = hex::encode(our_leaf);
+    let our_enc = crate::record::private::load_enc_keypair(&state.keystore, &our_leaf_hex)
         .context("loading our encryption key")
         .map_err(AppError::Internal)?;
-    let epoch_keys = crate::record::private::unseal_epoch_keys(&db, &root, &our_enc).await?;
+    let epoch_keys = crate::record::private::unseal_epoch_keys(&db, &our_leaf, &our_enc).await?;
     let resealed =
         crate::record::private::reseal_epochs_to(&db, &signer, &leaf, &leaf_enc, &epoch_keys)
             .await?;
