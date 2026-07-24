@@ -13,7 +13,7 @@
 //! `identities` table (all of its SQL stays here, behind blunt accessors) and the keystore
 //! loaders. Revocation stays here too: it is key-tree lifecycle, and it is one function.
 
-mod adoption;
+pub mod adoption;
 mod routes;
 pub(crate) mod serving;
 
@@ -209,6 +209,48 @@ pub async fn record_identity(
         .context("recording identity")
         .map_err(AppError::Internal)?;
     Ok(())
+}
+
+/// The already-adopted identity for (account, root, leaf), if completion has run - the
+/// idempotency lookup adoption's complete path needs, kept here because this module owns the
+/// `identities` table.
+pub(crate) async fn adopted_identity(
+    node_db: &Db,
+    account_id: &Uuid,
+    root_pubkey: &str,
+    leaf_pubkey: &str,
+) -> Result<Option<Identity>, AppError> {
+    let row: Option<(String, i64)> = node_db
+        .fetch_optional(
+            "SELECT root_pubkey, created_at_ms FROM identities
+             WHERE account_id = ?1 AND leaf_pubkey = ?2 AND root_pubkey = ?3",
+            (account_id.to_string(), leaf_pubkey, root_pubkey),
+        )
+        .await
+        .context("checking completed adoption")
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(root_pubkey, created_at_ms)| Identity {
+        root_pubkey,
+        created_at_ms,
+    }))
+}
+
+/// Whether some account on this node already agents `root` with `leaf` - adoption's
+/// redelivery check (grant arrives again after the deal is done).
+pub(crate) async fn leaf_agents_root(
+    node_db: &Db,
+    root_pubkey: &str,
+    leaf_pubkey: &str,
+) -> Result<bool, AppError> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM identities WHERE leaf_pubkey = ?1 AND root_pubkey = ?2",
+            (leaf_pubkey, root_pubkey),
+        )
+        .await
+        .context("checking agenting leaf")
+        .map_err(AppError::Internal)?;
+    Ok(row.is_some())
 }
 
 /// List the identities owned by an account.

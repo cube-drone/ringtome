@@ -58,6 +58,7 @@ pub async fn build_endpoint(
         .alpns(vec![
             SYNC_ALPN.to_vec(),
             crate::files::BLOB_ALPN.to_vec(),
+            crate::net::adopt::ADOPT_ALPN.to_vec(),
         ])
         .bind()
         .await
@@ -111,6 +112,10 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                                 iroh::protocol::ProtocolHandler::accept(&blobs, conn).await
                             {
                                 tracing::warn!(%remote, "blob connection ended with error: {e}");
+                            }
+                        } else if conn.alpn() == crate::net::adopt::ADOPT_ALPN {
+                            if let Err(e) = crate::net::adopt::serve(conn, state).await {
+                                tracing::warn!(%remote, "adopt connection ended with error: {e:#}");
                             }
                         } else if let Err(e) = crate::net::sync::serve(conn, state).await {
                             tracing::warn!(%remote, "sync connection ended with error: {e:#}");

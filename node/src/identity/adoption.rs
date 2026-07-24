@@ -181,6 +181,34 @@ pub async fn authorize_node(
 
 /// Step 3, back on the joining node: sync the identity chains from the granter, verify our leaf
 /// actually landed in the tree, and start agenting the identity.
+/// Completion for an in-band-delivered grant (net::adopt): the pending row itself says which
+/// account minted the request, so no session is involved - possession of a matching pending
+/// leaf IS the authorization (the leaf pubkey is a 32-byte unguessable this node created).
+/// A grant for a leaf with no pending row is refused unless that exact adoption already
+/// completed (redelivery of a done deal acks ok).
+pub async fn complete_delivered(state: &AppState, code: GrantCode) -> Result<(), AppError> {
+    let pending: Option<(String,)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT account_id FROM pending_adoptions WHERE leaf_pubkey = ?1",
+            (code.leaf_pubkey.as_str(),),
+        )
+        .await
+        .context("checking pending adoption")
+        .map_err(AppError::Internal)?;
+    let Some((account_id,)) = pending else {
+        if super::leaf_agents_root(&state.node_db, &code.root_pubkey, &code.leaf_pubkey).await? {
+            return Ok(());
+        }
+        return Err(AppError::NotFound(
+            "no pending adoption for that key".into(),
+        ));
+    };
+    let account_uuid = Uuid::parse_str(&account_id)
+        .map_err(|e| AppError::Internal(anyhow!("malformed pending account id: {e}")))?;
+    complete(state, &account_uuid, code).await.map(|_| ())
+}
+
 pub async fn complete(
     state: &AppState,
     account_id: &Uuid,
@@ -198,7 +226,10 @@ pub async fn complete(
                 .into(),
         ));
     }
-    // The pending leaf must belong to this account (uniform 404 otherwise).
+    // The pending leaf must belong to this account (uniform 404 otherwise). One carve-out
+    // makes completion IDEMPOTENT: if there is no pending row but this account already agents
+    // the identity with this exact leaf, the adoption finished by another path (in-band grant
+    // delivery beat the human's paste) - confirm success instead of 404ing a done deal.
     let pending: Option<(String,)> = state
         .node_db
         .fetch_optional(
@@ -209,6 +240,16 @@ pub async fn complete(
         .context("checking pending adoption")
         .map_err(AppError::Internal)?;
     if pending.map(|(a,)| a) != Some(account_id.to_string()) {
+        if let Some(identity) = super::adopted_identity(
+            &state.node_db,
+            account_id,
+            &code.root_pubkey,
+            &code.leaf_pubkey,
+        )
+        .await?
+        {
+            return Ok(identity);
+        }
         return Err(AppError::NotFound(
             "no pending adoption for that key".into(),
         ));

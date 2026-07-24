@@ -495,7 +495,23 @@ Node B mints a fresh keypair and shows its **public key**; that pubkey travels t
 A's authorizing key (e.g. the root) signs it into the tree with the current usurper list; the signed authorization
 travels back. Node B now holds its own private key plus signed proof of membership, and the user sets an independent
 local password (the leaf sealed under B's own envelope key - see Key Storage). **The private key never leaves the
-node that generated it.** The shipped ceremony wraps this in two request/grant copy-pastes (NEXT_STEPS M3).
+node that generated it.**
+
+**One trip, not two (settled 2026-07-24).** Only the request code travels by human courier; the
+return leg goes over the wire. After authorizing, the granter dials the requester on a dedicated
+adoption ALPN (the request code carries the endpoint id and address hints) and delivers the grant
+directly; the requester completes on the spot and acks only when fully moved in. Safe without any
+bearer secret, twice over: iroh's channel is cryptographically pinned to the exact endpoint the
+request code named (the grant cannot reach an impostor), and the accept side only acts on grants
+matching a **pending adoption it minted itself** - the leaf pubkey is a 32-byte unguessable, so
+strangers cannot push personas onto a node unasked. (The rejected alternative - a granter-minted
+"invite code" the new device redeems - would have been a bearer capability: anyone holding the
+string joins the tree. Keeping the request direction keeps both codes non-bearer.) Delivery is
+best-effort: unreachable requester degrades to showing the grant code for the human to carry -
+the offline ceremony survives as the fallback - and completion is idempotent, so a code pasted
+after the wire already won confirms instead of failing. Wire format: the same node-level JSON
+artifacts as the codes themselves, length-prefix framed - deliberately one level above the entry
+conformance boundary, versioned by the codes' own `v` field.
 
 ### Threat Model
 

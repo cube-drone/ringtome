@@ -5,6 +5,7 @@
 //!   - [`resync`]: when to run that exchange unprompted - eager push + anti-entropy.
 //!   - [`discovery`]: publish/resolve of serving + endpoint records (off / local / mainline DHT).
 
+pub mod adopt;
 pub mod discovery;
 pub mod p2p;
 pub mod resync;

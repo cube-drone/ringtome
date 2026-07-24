@@ -328,14 +328,52 @@ async fn authorize_node_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
     Json(req): Json<CodeRequest>,
-) -> Result<Json<CodeResponse>, AppError> {
+) -> Result<Json<GrantResponse>, AppError> {
     let request: super::adoption::RequestCode = serde_json::from_str(&req.code)
         .map_err(|_| AppError::BadRequest("unparseable request code".into()))?;
+    let (requester_endpoint, requester_addrs) =
+        (request.endpoint_id.clone(), request.addrs.clone());
     let grant =
         super::adoption::authorize_node(&state, &session.account.id, &root, request).await?;
+
+    // One-trip: try to hand the grant straight to the requester over the wire. Best-effort by
+    // design - every failure (unreachable, timeout, refused) degrades identically to the
+    // carried-code ceremony. The ack arrives only after the requester fully completed, so
+    // `delivered: true` means the persona has already moved in.
+    let delivered = match tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        crate::net::adopt::deliver_grant(&state, &requester_endpoint, &requester_addrs, &grant),
+    )
+    .await
+    {
+        Ok(Ok(ack)) if ack.ok => true,
+        Ok(Ok(ack)) => {
+            tracing::info!(message = %ack.message, "grant delivery refused; falling back to code");
+            false
+        }
+        Ok(Err(e)) => {
+            tracing::info!("grant delivery failed; falling back to code: {e:#}");
+            false
+        }
+        Err(_) => {
+            tracing::info!("grant delivery timed out; falling back to code");
+            false
+        }
+    };
+
     let code = serde_json::to_string(&grant)
         .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding grant code: {e}")))?;
-    Ok(Json(CodeResponse { code }))
+    Ok(Json(GrantResponse { code, delivered }))
+}
+
+#[derive(Serialize)]
+struct GrantResponse {
+    /// The grant code - always present, so the carried-code ceremony survives as the fallback
+    /// (and as what tests exercise directly).
+    code: String,
+    /// True when the grant was handed to the requester over the wire and it completed - the
+    /// persona has already moved in; nobody needs to carry anything back.
+    delivered: bool,
 }
 
 /// Step 3 (joining node): sync from the granter, verify our authorization, start agenting.

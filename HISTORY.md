@@ -673,3 +673,32 @@ minted. The junior-grant test gained fidelity in passing (its request now comes 
 genuinely different endpoint), and the phantom unit flake's FOURTH escape finally bought the
 promised capture wrapper: `just test-unit` tees full `--no-fail-fast` output to
 /tmp/ringtome-test-unit.log, so sighting five cannot vanish.
+
+---
+
+## One-trip adoption (2026-07-24)
+
+The ceremony's second courier trip deleted: only the request code travels by human now; the
+grant goes over the wire. A dedicated adoption ALPN (`ringtome/adopt/0`) on the existing
+endpoint - after authorizing, the granter dials the requester (endpoint id + address hints
+from the request code) and hands the grant straight to the pending node, which completes
+inline and acks only when fully moved in, so the granter's HTTP response saying
+`delivered: true` means the persona is already home on the other machine: synced, self-named,
+ready to open. The design choice worth its ink: the inverted alternative (a granter-minted
+invite code) was rejected because it is a bearer capability - anyone holding the string joins
+the tree - while keeping the request direction keeps both codes non-bearer: the delivery
+channel is pinned to the exact endpoint the request named, and the accept side only honors
+grants matching a pending adoption it minted itself (a 32-byte unguessable leaf). Delivery is
+best-effort with the carried code as graceful fallback (the response always includes it), and
+completion became idempotent - the wire beating the human's paste is now the common case, so
+a pasted code after delivery confirms instead of 404ing; every pre-existing adoption test
+passes unchanged through the new path because of exactly that. Wire format: the codes' own
+node-level JSON, length-prefix framed - deliberately one level above the entry conformance
+boundary, so proto and its vectors are untouched. UI: the join screen waits with a pulse
+("your persona walks in here on its own"), polling until the persona arrives, paste box demoted
+to fallback; the invite screen answers "it moved right in - nothing to carry back" when the
+wire wins. The conventions cop earned its keep mid-build (adoption.rs reached into the
+identities table; the queries moved home to identity.rs as owned helpers), and the fresh
+test-unit tee caught the failure block on first firing. Proven by the one-trip integration
+test: delivered:true, persona present on B with zero complete calls, new key self-named, and
+the fallback code confirming idempotently afterward.

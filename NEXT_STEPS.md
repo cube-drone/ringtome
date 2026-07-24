@@ -72,6 +72,9 @@ HISTORY.md.
   another computer") and the "your computers" screen ("invite this computer to be you") -
   request/grant codes over the M3 ceremony, key tree rendered with device names and roles.
   Identity wiring in the UI is complete: create, name, recover, re-home, adopt.
+- **One-trip adoption** (2026-07-24): the grant travels by wire (dedicated adopt ALPN,
+  channel pinned to the requested endpoint, no bearer secrets), carried code demoted to
+  fallback, completion idempotent. One human trip; the persona "walks in on its own."
 
 ## Standing residuals (owed, with triggers)
 

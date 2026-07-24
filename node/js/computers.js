@@ -45,6 +45,7 @@ export const Computers = ({ current }) => {
     const [keys, setKeys] = useState(null);
     const [requestCode, setRequestCode] = useState('');
     const [grantCode, setGrantCode] = useState(null);
+    const [delivered, setDelivered] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
 
@@ -65,7 +66,10 @@ export const Computers = ({ current }) => {
                 method: 'POST',
                 body: JSON.stringify({ code: requestCode.trim() }),
             });
-            setGrantCode(res.code);
+            // One-trip: delivered means the grant went over the wire and the new computer has
+            // already moved in - no code to carry. Otherwise, fall back to the courier.
+            setDelivered(res.delivered);
+            setGrantCode(res.delivered ? null : res.code);
             setRequestCode('');
             load(); // the new key is authorized now; show it (named once it syncs back)
         } catch (err) {
@@ -96,16 +100,25 @@ export const Computers = ({ current }) => {
             </ul>`}
 
             <h3 class="computers-subtitle">invite another computer to be you</h3>
+            ${delivered &&
+            html`<p class="field-note ok">
+                    It moved right in - nothing to carry back. It should be itself over there
+                    already.
+                </p>
+                <button class="skip-link" onClick=${() => setDelivered(false)}>
+                    invite another computer
+                </button>`}
             ${grantCode
                 ? html`<p class="null-sub">
-                          Done - carry this invite back to the new computer and paste it there.
-                          Keep this computer awake while it moves in.
+                          Couldn't reach the new computer directly - carry this invite back
+                          and paste it there. Keep this computer awake while it moves in.
                       </p>
                       <code class="spare-key">${grantCode}</code>
                       <button class="skip-link" onClick=${() => setGrantCode(null)}>
                           invite a different computer
                       </button>`
-                : html`<p class="null-sub">
+                : !delivered &&
+                  html`<p class="null-sub">
                           On the new computer, sign in and choose
                           ${' '}<strong>bring your persona from another computer</strong> - it
                           will give you a code to paste here.

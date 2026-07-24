@@ -124,6 +124,27 @@ export function usePersona(account) {
         setState('none');
     };
 
+    // While waiting in the join state, watch for the persona to arrive on its own: the granter
+    // delivers the grant over the wire when it can (one-trip adoption), and this node completes
+    // without anyone pasting anything. Polling the persona list is the humble, sufficient
+    // signal - the live cache will replace it with a push someday.
+    useEffect(() => {
+        if (state !== 'join') return;
+        const timer = setInterval(async () => {
+            try {
+                const personas = await api('/api/identity');
+                if (personas.length > 0) {
+                    clearInterval(timer);
+                    setJoin(null);
+                    await open(personas[0].root_pubkey);
+                }
+            } catch {
+                // Transient fetch trouble just means we check again next tick.
+            }
+        }, 2000);
+        return () => clearInterval(timer);
+    }, [state]);
+
     const completeJoin = async (grantCode) => {
         const identity = await api('/api/identity/adopt/complete', {
             method: 'POST',
@@ -207,14 +228,16 @@ export const JoinFlow = ({ persona }) => {
             </p>
             <code class="spare-key">${persona.join.requestCode}</code>
             <p class="null-sub">
-                It will answer with an invite code - paste that here. Keep both computers
-                awake: they talk to each other directly to bring your things across.
+                <span class="waiting-dot"></span> Waiting - when the other computer accepts,
+                your persona walks in here on its own. If it can't reach this computer, it
+                will hand you an invite code instead; paste that below. Keep both computers
+                awake either way.
             </p>
             <form class="welcome-form" onSubmit=${finish}>
                 <textarea
                     class="spare-paste"
                     rows="4"
-                    placeholder="paste the invite code here"
+                    placeholder="invite code (only needed if it doesn't arrive on its own)"
                     value=${grantCode}
                     onInput=${(e) => setGrantCode(e.currentTarget.value)}
                     required

@@ -384,6 +384,21 @@ body {
     font-size: 0.75rem;
 }
 
+.waiting-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ffd866;
+    animation: waiting-pulse 1.6s ease-in-out infinite;
+    margin-right: 0.3rem;
+}
+
+@keyframes waiting-pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}
+
 .skip-link:hover {
     color: #aaa;
 }

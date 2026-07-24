@@ -172,3 +172,50 @@ async function profileValue(fetch, root, field) {
         assert.equal(refused.status, 403);
     });
 });
+
+(HOST_B ? describe : describe.skip)("one-trip adoption", function () {
+    this.timeout(60000);
+
+    it("the grant travels by wire: delivered=true and the persona is already home", async function () {
+        const alice = await makeUserFetch({ prefix: "onetrip" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const aliceOnB = await makeUserFetch({ prefix: "onetripb", host: HOST_B });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+
+        // Granting now hands the grant straight to B over the adopt ALPN; the ack arrives
+        // only after B fully completed, so delivered:true means the ceremony is DONE.
+        const grantRes = await alice(`api/identity/${root}/nodes`, {
+            method: "POST",
+            body: JSON.stringify({ code: request.code }),
+        });
+        assert.equal(grantRes.status, 200);
+        const grant = await grantRes.json();
+        assert.equal(grant.delivered, true, "the wire carried it");
+        assert.ok(grant.code, "the fallback code still rides along");
+
+        // Nobody called adopt/complete - yet B already agents the persona, fully synced,
+        // self-named. The second courier trip is gone.
+        const personas = await (await aliceOnB("api/identity")).json();
+        assert.deepEqual(
+            personas.map((i) => i.root_pubkey),
+            [root],
+            "B is already home without a complete call"
+        );
+        const tree = await (await aliceOnB(`api/identity/${root}/keys`)).json();
+        const leaf = tree.keys.find((k) => k.pubkey === JSON.parse(request.code).leaf_pubkey);
+        assert.equal(leaf.name, "bravo", "completion ran in full: the new key named itself");
+
+        // Pasting the fallback code anyway confirms rather than fails: completion is
+        // idempotent, because the wire beating the human to it is now the COMMON case.
+        const manual = await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+        assert.equal(manual.status, 200, "manual complete after delivery confirms, never 404s");
+        assert.equal((await manual.json()).root_pubkey, root);
+    });
+});
