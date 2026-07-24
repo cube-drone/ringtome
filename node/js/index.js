@@ -4,6 +4,7 @@ import { LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso';
 import { Marquee } from '@cube-drone/marquee-react-renderer';
 
 import { useSession, Welcome } from './auth.js';
+import { usePersona, NullState, SpareKeyCeremony, NamePicker, PersonaBadge } from './persona.js';
 
 const html = htm.bind(h);
 
@@ -82,6 +83,46 @@ const Home = () => {
     `;
 };
 
+// The signed-in shell: which persona is loaded decides everything past the session bar.
+const Inside = ({ session }) => {
+    const persona = usePersona(session.account);
+
+    // The bar shows the *persona* once one is open; the account username recedes into a
+    // hover title - the account never gets a noun (GLOSSARY, Cozyweb language mapping).
+    const bar = html`
+        <header class="session-bar">
+            <span title="signed in as ${session.account.username}">
+                ${persona.state === 'open'
+                    ? html`<${PersonaBadge} current=${persona.current} />`
+                    : html`<span class="session-who">hi, ${session.account.username}</span>`}
+            </span>
+            <button class="session-out" onClick=${session.logout}>head out</button>
+        </header>
+    `;
+
+    if (persona.state === 'checking') {
+        return html`${bar}<div class="loading-shell"><p>Loading…</p></div>`;
+    }
+    if (persona.state === 'ceremony') {
+        return html`${bar}<${SpareKeyCeremony} persona=${persona} />`;
+    }
+    if (persona.state === 'naming') {
+        return html`${bar}<${NamePicker} persona=${persona} account=${session.account} />`;
+    }
+    if (persona.state === 'none') {
+        return html`${bar}<${NullState} persona=${persona} />`;
+    }
+
+    return html`
+        ${bar}
+        <${Router}>
+            <${Route} path="/" component=${Home} />
+            <${Route} path="/home" component=${Home} />
+            <${Route} path="/home/*" component=${Home} />
+        </${Router}>
+    `;
+};
+
 const App = () => {
     const session = useSession();
 
@@ -98,15 +139,7 @@ const App = () => {
         <${LocationProvider}>
             <${ErrorBoundary} onError=${error => console.error(error)}>
                 <div class="app-main">
-                    <header class="session-bar">
-                        <span class="session-who">hi, ${session.account.username}</span>
-                        <button class="session-out" onClick=${session.logout}>head out</button>
-                    </header>
-                    <${Router}>
-                        <${Route} path="/" component=${Home} />
-                        <${Route} path="/home" component=${Home} />
-                        <${Route} path="/home/*" component=${Home} />
-                    </${Router}>
+                    <${Inside} session=${session} />
                 </div>
             </${ErrorBoundary}>
         </${LocationProvider}>

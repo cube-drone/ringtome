@@ -559,3 +559,30 @@ store unit test (label/rename/clear/cap), the two-node integration test (B names
 "bravo" during adoption, sees A's "alpha" off the synced chain, and A learns "bravo" back via
 eager push in ~3s), and the keytree/profile expectation updates that double as coverage (the
 founding label is entry six, replayed and re-validated on rebuild like everything else).
+
+---
+
+## Personas in the UI: the null state and the spare-key moment (2026-07-23 → 07-24)
+
+The second 4C rung: signing in now lands somewhere. An account with personas auto-opens the
+first (adding more is a future inside-the-house action, never a pre-login menu); an account
+with none gets the null state - "Nobody lives here yet" - and the create flow. Two language
+rulings settled on the way and recorded in the Cozyweb mapping: **the persona is the single
+taught concept** ("identity" was already banned from the UI; "persona" confirmed as its
+costume), and **the account never gets a noun** - "sign in" / "new here?" are verbs, and once
+a persona opens, the session bar shows the persona (color chip + name, shortcode fallback -
+a persona never renders as bare hex) while the username recedes to a hover title. Creation
+runs the minimal honest spare-key moment: the recovery secret rendered once, downloadable as
+a labeled text file, continue-gated behind "I put my spare key somewhere safe" - the full
+photo/QR ceremony stays a later 4C rung, but the secret is never silently droppable. Two-step
+onboarding (account, then persona) was interrogated and kept: the join flow needs the
+identity-less state and the ceremony must not live in registration's first ten seconds - the
+friction is dissolved by sequencing (registration flows straight into "who are you going to
+be?"), not by merging the model. Field-testing immediately caught the missing last step of
+being born: a fresh persona rendered as "persona 7db0" because nobody had picked a display
+name - so the ceremony now flows into the **name picker** ("What should people call you?"),
+pre-filled with the account username (the one name this human already chose today), skippable
+("maybe later" - the shortcode fallback stands), writing the profile's ordinary `name` field.
+Verified against a live node: bundle → register → login → empty list → create (32-byte
+secret, once) → list of one → profile write and badge read-back → device names riding the
+keys response. UI-only change (~300 lines: persona.js, index.js gate, CSS).

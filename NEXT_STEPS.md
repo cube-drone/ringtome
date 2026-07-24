@@ -54,6 +54,11 @@ HISTORY.md.
 - **Device names** (2026-07-23): keys carry private human labels ("macbook-curtis", never
   fingerprints) - the `devices` register collection, node names from config/hostname, birth
   writes at creation and adoption, names joined into the keys endpoint.
+- **Personas in the UI** (2026-07-23 → 07-24): the null state ("Nobody lives here yet"), the
+  create flow with the minimal spare-key moment (secret shown once, download, confirm gate),
+  the name picker (pre-filled with the account username, skippable), auto-open of the first
+  persona, the persona badge in the bar. "Persona" confirmed as the UI's single taught
+  concept; the account never gets a noun.
 
 ## Standing residuals (owed, with triggers)
 

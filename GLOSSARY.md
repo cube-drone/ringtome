@@ -195,7 +195,8 @@ column is **banned from the UI permanently** (PROJECT_PLAN, The Cozyweb Surface)
 
 | engine room | the UI says |
 |---|---|
-| identity / key tree | you; your persona(s) |
+| identity / key tree | you; your **persona**(s) — the single taught concept |
+| account (node login) | *(never a noun — "sign in", "new here?"; once a persona is open, the bar shows the persona and the username recedes)* |
 | recovery key + photo ceremony | your **spare key** — "take a picture, keep it safe" |
 | adoption (request/grant codes) | "**invite this computer to be you**" (QR handshake) |
 | vouch | "**I know this person for real**" |
