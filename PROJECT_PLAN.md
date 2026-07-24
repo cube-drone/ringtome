@@ -2071,6 +2071,58 @@ respectively).
   authority) and implemented node-side by the Store Layer's typed handles.
 - **Entry validation:** Every incoming sync entry is validated against the current key tree. Entries are stored **signed** so that a Repudiation Revocation can retroactively quarantine everything a hostile key signed after its cut-point (see Revocation Types).
 
+### The Browser Is a View: The Live Cache (settled 2026-07-23)
+
+The web client is **not a peer**. It holds no keys, validates nothing, never touches
+ciphertext, and never dials the network - it has exactly one sync partner forever, the node
+that agents its identity, and what it syncs is not chains but **the view**. The architecture
+arrived here on its own: chains → journal → disposable materialized views is already the
+node's shape, and the browser adds one more disposable materialized view, one hop further out.
+
+- **Downstream is a WebSocket, and it is read-only.** Per identity, the node streams **view
+  deltas** - the same row shapes the persisted views hold (doc summaries, annotations, tags,
+  taxonomy facts, profile fields), already decrypted, already folded - and the browser upserts
+  them into an IndexedDB mirror (Dexie). The node folds once; every browser inherits the
+  fold. This is what keeps the dual-implementation cost near zero: the browser reimplements
+  *display* logic, never merge judgment - LWW rungs, DAG resolution, and conflict synthesis
+  stay in Rust, stated once. A per-chain cursor rides the stream so a returning browser
+  catches up incrementally; a browser with no cursor (or a doubtful one) drops the cache and
+  re-streams from zero. **The cache is disposable** - a pure function of the node's view,
+  never a source of truth: the Turso invariant, one hop out.
+- **Upstream is HTTP POST, and every write is one.** No mutations ride the socket: actions
+  arrive as the discrete, logged, rate-limited, cap-checked HTTP writes that already exist.
+  The asymmetry is deliberate - a socket that only ever flows outward is easy to reason
+  about, and the write surface stays one surface.
+- **Optimistic writes are a shadow overlay.** The client applies its own POSTs to a shadow
+  layer over the mirror immediately; the write lands on the node, folds, and **echoes back
+  down the stream**, which clears the shadow. Until the echo arrives the change is visibly
+  "on its way" - the first rung of the unsynced-indicator doctrine, free. (The second rung -
+  "has any *other node* seen it?" - is peer-ack information the node must expose; still
+  deferred, and slot-compatible with this same stream.)
+- **Plaintext in browser storage is accepted, deliberately.** The persisted-views ruling
+  leaned on Turso's at-rest encryption; IndexedDB has none, and the difference is accepted on
+  ownership grounds: the browser runs on the *user's own machine* - private docs cached there
+  live on hardware that is theirs, which is at least as sound as their plaintext living on a
+  node they may not own. The obligations that make this a posture rather than a leak: a
+  **"forget this browser"** control that drops mirror and shadow wholesale (logout offers
+  it), and nothing is ever cached for an identity the session doesn't own.
+- **The browser is never a device. Ever.** No leaf key, no signing, no adoption ceremony, no
+  seat in the key tree - cancelled permanently, not deferred. Browser storage is evictable at
+  the browser's whim, the XSS surface is real, and - decisively - it is unnecessary: the node
+  signs, so a browser can be lost, cleared, or stolen with zero authority attached. The
+  intermediate rung ("a browser that validates entries itself" - wasm-proto at the trust
+  boundary) is likewise unplanned: the browser's trust in its own node is the same trust
+  every HTTP read already extends (**We Trust the Node Operator**), and no consumer has named
+  a reason to shrink it. Offline *writes* are out of scope by construction - an offline
+  browser is a reading browser, and that is the accepted shape.
+
+What this buys: a live UI (every view reactive), offline reads, instant boot from cache,
+multi-tab coherence (one socket, BroadcastChannel fan-out - a client detail), and near-zero
+growth in bespoke read endpoints. What it costs: the change-stream endpoint and cursor
+bookkeeping on the node, the Dexie mirror + shadow overlay in the client. Sequencing
+consequence, deliberate: this **precedes the notes UI** - once an identity's view streams and
+its writes echo, the notes app is mostly rendering.
+
 ---
 
 ## Iroh Protocol Mapping

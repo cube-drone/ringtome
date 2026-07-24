@@ -132,7 +132,12 @@ divergence handling ("never silently lose words"). Its prerequisite is the **pri
 reuses. The Cozyweb language budget is enforced from the first screen. *Track demo:* create
 an identity, photograph the spare key, set your name, adopt a second node - all in a browser, no
 JSON visible. *Advisory:* highest motivation-ROI track - it makes all subsequent work visible in
-a UI instead of curl.
+a UI instead of curl. *Amended 2026-07-23:* the client's substrate is the **live cache**
+(PROJECT_PLAN, The Browser Is a View): a per-identity WebSocket view-delta stream into a
+Dexie/IndexedDB mirror, optimistic shadow writes over the existing HTTP POSTs - websocket out,
+POST in, browser never a device. It precedes the notes app, which then reduces to mostly
+rendering; the build order inside 4C is therefore login (done 07-23) → identity management in
+the UI → the stream + mirror → notes.
 
 **4M — The markup language ("pages have a language").** The security-critical content boundary,
 given the undivided attention the key tree got. First deployment target: the notes renderer
