@@ -511,7 +511,11 @@ best-effort: unreachable requester degrades to showing the grant code for the hu
 the offline ceremony survives as the fallback - and completion is idempotent, so a code pasted
 after the wire already won confirms instead of failing. Wire format: the same node-level JSON
 artifacts as the codes themselves, length-prefix framed - deliberately one level above the entry
-conformance boundary, versioned by the codes' own `v` field.
+conformance boundary, versioned by the codes' own `v` field. The *visible* form the human
+carries wears a costume (2026-07-24): `rt1.` + base64url(deflate(JSON)) - an opaque ~40%-shorter
+strip instead of pubkey-and-socket gubbins that reads as "code? so complicated!". Decorative
+armor with two real dividends: the prefix versions the envelope, and the compact base64url form
+is what the eventual QR ceremony wants anyway.
 
 ### Threat Model
 

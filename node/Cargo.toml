@@ -136,3 +136,4 @@ unsafe-libopus = "0.2"
 # chunks. See src/audio.rs.
 rubato = "4"
 gethostname = "1.1.0"
+flate2 = "1.1.9"

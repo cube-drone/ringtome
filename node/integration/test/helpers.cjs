@@ -61,4 +61,16 @@ async function makeUserFetch(opts = {}) {
     return fetch;
 }
 
-module.exports = { makeUserFetch, uniqueUsername };
+// Open an adoption code's envelope (`rt1.` + base64url(deflate(JSON))) for tests that need to
+// peek at a field (usually the minted leaf pubkey). Tolerates the bare-JSON form too, mirroring
+// the server's unpack.
+function decodeCode(code) {
+    const zlib = require("node:zlib");
+    const trimmed = code.trim();
+    if (trimmed.startsWith("{")) return JSON.parse(trimmed);
+    if (!trimmed.startsWith("rt1.")) throw new Error(`not a code: ${trimmed.slice(0, 12)}…`);
+    const deflated = Buffer.from(trimmed.slice(4), "base64url");
+    return JSON.parse(zlib.inflateRawSync(deflated).toString("utf8"));
+}
+
+module.exports = { makeUserFetch, uniqueUsername, decodeCode };

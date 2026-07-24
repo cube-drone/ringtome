@@ -24,6 +24,59 @@ use crate::AppState;
 const REQUEST_KIND: &str = "ringtome-adopt-request";
 const GRANT_KIND: &str = "ringtome-adopt-grant";
 
+/// The codes' visible costume: `rt1.` + base64url(deflate(JSON)). Purely decorative armor -
+/// raw JSON full of pubkeys and socket addresses reads as "code? so complicated!" to a person
+/// carrying it between computers, and an opaque strip reads as a ticket. The inner JSON is
+/// unchanged (still versioned by its `v` field); the prefix versions the envelope itself. The
+/// deflate is not vanity: hex pubkeys are 4-bits-per-char, so the strip comes out ~40%
+/// shorter than the JSON it wraps.
+const CODE_PREFIX: &str = "rt1.";
+
+/// Wrap a code artifact into its carryable form.
+pub fn pack<T: serde::Serialize>(value: &T) -> Result<String, AppError> {
+    use flate2::{write::DeflateEncoder, Compression};
+    use std::io::Write as _;
+    let json = serde_json::to_vec(value)
+        .map_err(|e| AppError::Internal(anyhow!("encoding code: {e}")))?;
+    let mut enc = DeflateEncoder::new(Vec::new(), Compression::best());
+    enc.write_all(&json)
+        .and_then(|()| enc.finish())
+        .map_err(|e| AppError::Internal(anyhow!("compressing code: {e}")))
+        .map(|deflated| {
+            use base64::Engine as _;
+            format!(
+                "{CODE_PREFIX}{}",
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(deflated)
+            )
+        })
+}
+
+/// Unwrap a carried code. Tolerates surrounding whitespace, and still accepts the bare-JSON
+/// form (a `{`-leading paste) so nothing breaks for anyone mid-ceremony across an upgrade -
+/// cheap tolerance, not a compatibility promise (the User-1 rule stands).
+pub fn unpack<T: serde::de::DeserializeOwned>(code: &str, what: &str) -> Result<T, AppError> {
+    let code = code.trim();
+    let json: Vec<u8> = if let Some(b64) = code.strip_prefix(CODE_PREFIX) {
+        use base64::Engine as _;
+        use std::io::Read as _;
+        let deflated = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(b64.trim())
+            .map_err(|_| AppError::BadRequest(format!("unreadable {what}")))?;
+        let mut out = Vec::new();
+        // A code is ~1 KiB; anything decompressing past this is not a code.
+        flate2::read::DeflateDecoder::new(&deflated[..])
+            .take(64 * 1024)
+            .read_to_end(&mut out)
+            .map_err(|_| AppError::BadRequest(format!("unreadable {what}")))?;
+        out
+    } else if code.starts_with('{') {
+        code.as_bytes().to_vec()
+    } else {
+        return Err(AppError::BadRequest(format!("unreadable {what}")));
+    };
+    serde_json::from_slice(&json).map_err(|_| AppError::BadRequest(format!("unreadable {what}")))
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct RequestCode {
     pub v: u8,
@@ -340,4 +393,54 @@ pub async fn complete(
         root_pubkey: code.root_pubkey,
         created_at_ms,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codes_wear_the_opaque_costume_and_round_trip() {
+        let request = RequestCode {
+            v: 0,
+            kind: REQUEST_KIND.to_string(),
+            leaf_pubkey: "cf".repeat(32),
+            enc_pubkey: "40".repeat(32),
+            endpoint_id: "6f".repeat(32),
+            addrs: vec![
+                "172.218.33.194:59216".into(),
+                "[2001:569:5b8a:a600:18d0:36e2:f595:7882]:63541".into(),
+                "127.0.0.1:58663".into(),
+            ],
+        };
+        let packed = pack(&request).unwrap();
+
+        // Opaque: prefixed, no JSON gubbins visible, and meaningfully shorter than the JSON.
+        assert!(packed.starts_with("rt1."));
+        assert!(!packed.contains('{') && !packed.contains(':'));
+        let json_len = serde_json::to_string(&request).unwrap().len();
+        assert!(
+            packed.len() < json_len * 3 / 4,
+            "the deflate earns its keep: {} vs {json_len}",
+            packed.len()
+        );
+
+        let back: RequestCode = unpack(&packed, "request code").unwrap();
+        assert_eq!(back.leaf_pubkey, request.leaf_pubkey);
+        assert_eq!(back.addrs, request.addrs);
+
+        // Whitespace tolerance (a code pasted with a stray newline) and the bare-JSON form
+        // (cheap mid-upgrade tolerance, not a compatibility promise).
+        let padded = format!("  {packed}\n");
+        let back: RequestCode = unpack(&padded, "request code").unwrap();
+        assert_eq!(back.endpoint_id, request.endpoint_id);
+        let json = serde_json::to_string(&request).unwrap();
+        let back: RequestCode = unpack(&json, "request code").unwrap();
+        assert_eq!(back.leaf_pubkey, request.leaf_pubkey);
+
+        // Garbage in every costume is a clean refusal, never a panic.
+        for junk in ["", "rt1.", "rt1.!!!not-base64!!!", "rt1.AAAA", "hello there"] {
+            assert!(unpack::<RequestCode>(junk, "request code").is_err(), "{junk:?}");
+        }
+    }
 }

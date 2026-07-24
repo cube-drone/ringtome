@@ -75,6 +75,8 @@ HISTORY.md.
 - **One-trip adoption** (2026-07-24): the grant travels by wire (dedicated adopt ALPN,
   channel pinned to the requested endpoint, no bearer secrets), carried code demoted to
   fallback, completion idempotent. One human trip; the persona "walks in on its own."
+- **Codes wear a costume** (2026-07-24): `rt1.` + base64url(deflate(JSON)) - opaque,
+  ~40% shorter, envelope-versioned, QR-ready. The gubbins are gone.
 
 ## Standing residuals (owed, with triggers)
 

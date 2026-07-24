@@ -12,7 +12,7 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { HOST_B } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, decodeCode } = require("./helpers.cjs");
 
 async function setField(fetch, root, field, value) {
     return fetch(`api/identity/${root}/profile`, {
@@ -43,7 +43,7 @@ async function profileValue(fetch, root, field) {
         const request = await (
             await aliceOnB("api/identity/adopt/begin", { method: "POST" })
         ).json();
-        const leaf = JSON.parse(request.code).leaf_pubkey;
+        const leaf = decodeCode(request.code).leaf_pubkey;
 
         const grant = await (
             await alice(`api/identity/${root}/nodes`, {
@@ -206,7 +206,7 @@ async function profileValue(fetch, root, field) {
             "B is already home without a complete call"
         );
         const tree = await (await aliceOnB(`api/identity/${root}/keys`)).json();
-        const leaf = tree.keys.find((k) => k.pubkey === JSON.parse(request.code).leaf_pubkey);
+        const leaf = tree.keys.find((k) => k.pubkey === decodeCode(request.code).leaf_pubkey);
         assert.equal(leaf.name, "bravo", "completion ran in full: the new key named itself");
 
         // Pasting the fallback code anyway confirms rather than fails: completion is

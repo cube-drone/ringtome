@@ -11,7 +11,7 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { HOST_B } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, decodeCode } = require("./helpers.cjs");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -62,7 +62,7 @@ describe("device names: what keys are called", function () {
             await aliceOnB("api/identity/adopt/begin", { method: "POST" })
         ).json();
         // The request code is a JSON envelope; B's minted leaf pubkey rides inside it.
-        const leafPubkey = JSON.parse(request.code).leaf_pubkey;
+        const leafPubkey = decodeCode(request.code).leaf_pubkey;
         const grant = await (
             await alice(`api/identity/${root}/nodes`, {
                 method: "POST",

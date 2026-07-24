@@ -14,7 +14,7 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { HOST_B } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, decodeCode } = require("./helpers.cjs");
 
 const GENERAL_PRIVATE_SERVICE = 5;
 
@@ -110,7 +110,7 @@ describe("private chains: the encrypted KV + set store", function () {
             const request = await (
                 await aliceOnB("api/identity/adopt/begin", { method: "POST" })
             ).json();
-            const leaf = JSON.parse(request.code).leaf_pubkey;
+            const leaf = decodeCode(request.code).leaf_pubkey;
             const grant = await (
                 await alice(`api/identity/${root}/nodes`, {
                     method: "POST",

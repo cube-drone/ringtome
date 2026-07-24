@@ -702,3 +702,18 @@ identities table; the queries moved home to identity.rs as owned helpers), and t
 test-unit tee caught the failure block on first firing. Proven by the one-trip integration
 test: delivered:true, persona present on B with zero complete calls, new key self-named, and
 the fallback code confirming idempotently afterward.
+
+---
+
+## Codes wear a costume (2026-07-24)
+
+The adoption codes stopped showing their gubbins: the raw JSON strip of pubkeys and socket
+addresses ("code? so complicated!") is now `rt1.` + base64url(deflate(JSON)) - an opaque
+~40%-shorter ticket (about 390 chars vs 600). Decorative armor with real dividends: the prefix
+versions the envelope independently of the inner JSON's `v`, deflate genuinely earns its keep
+on 4-bit-per-char hex pubkeys, and compact base64url is what the QR ceremony will want anyway.
+`pack`/`unpack` live in adoption.rs beside the codes they dress; unpack tolerates whitespace
+and the bare-JSON form (cheap mid-upgrade tolerance, not a compatibility promise), bounds
+decompression at 64 KiB, and refuses garbage in every costume cleanly. The wire delivery frames
+and everything under them are untouched - this is strictly the human-visible layer. Tests peek
+inside codes via a shared `decodeCode` helper (node:zlib mirrors the server's unpack).

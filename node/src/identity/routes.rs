@@ -316,8 +316,7 @@ async fn adopt_begin_handler(
     State(state): State<AppState>,
 ) -> Result<Json<CodeResponse>, AppError> {
     let request = super::adoption::begin(&state, &session.account.id).await?;
-    let code = serde_json::to_string(&request)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding request code: {e}")))?;
+    let code = super::adoption::pack(&request)?;
     Ok(Json(CodeResponse { code }))
 }
 
@@ -329,8 +328,8 @@ async fn authorize_node_handler(
     Path(root): Path<String>,
     Json(req): Json<CodeRequest>,
 ) -> Result<Json<GrantResponse>, AppError> {
-    let request: super::adoption::RequestCode = serde_json::from_str(&req.code)
-        .map_err(|_| AppError::BadRequest("unparseable request code".into()))?;
+    let request: super::adoption::RequestCode =
+        super::adoption::unpack(&req.code, "request code")?;
     let (requester_endpoint, requester_addrs) =
         (request.endpoint_id.clone(), request.addrs.clone());
     let grant =
@@ -361,8 +360,7 @@ async fn authorize_node_handler(
         }
     };
 
-    let code = serde_json::to_string(&grant)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("encoding grant code: {e}")))?;
+    let code = super::adoption::pack(&grant)?;
     Ok(Json(GrantResponse { code, delivered }))
 }
 
@@ -382,8 +380,7 @@ async fn adopt_complete_handler(
     State(state): State<AppState>,
     Json(req): Json<CodeRequest>,
 ) -> Result<Json<IdentityInfo>, AppError> {
-    let grant: super::adoption::GrantCode = serde_json::from_str(&req.code)
-        .map_err(|_| AppError::BadRequest("unparseable grant code".into()))?;
+    let grant: super::adoption::GrantCode = super::adoption::unpack(&req.code, "grant code")?;
     let identity = super::adoption::complete(&state, &session.account.id, grant).await?;
     Ok(Json(identity.into()))
 }
