@@ -1,8 +1,9 @@
 import { h, render } from 'preact';
-import { useState } from 'preact/hooks';
 import htm from 'htm';
 import { LocationProvider, ErrorBoundary, Router, Route } from 'preact-iso';
 import { Marquee } from '@cube-drone/marquee-react-renderer';
+
+import { useSession, Welcome } from './auth.js';
 
 const html = htm.bind(h);
 
@@ -81,19 +82,36 @@ const Home = () => {
     `;
 };
 
-const App = () => html`
-    <${LocationProvider}>
-        <${ErrorBoundary} onError=${error => console.error(error)}>
-            <div class="app-main">
-                <${Router}>
-                    <${Route} path="/" component=${Home} />
-                    <${Route} path="/home" component=${Home} />
-                    <${Route} path="/home/*" component=${Home} />
-                </${Router}>
-            </div>
-        </${ErrorBoundary}>
-    </${LocationProvider}>
-`;
+const App = () => {
+    const session = useSession();
+
+    // First paint: don't flash the front door at someone who's already in.
+    if (session.checking) {
+        return html`<div class="app-main"><div class="loading-shell"><p>Loading…</p></div></div>`;
+    }
+
+    if (!session.account) {
+        return html`<div class="app-main"><${Welcome} session=${session} /></div>`;
+    }
+
+    return html`
+        <${LocationProvider}>
+            <${ErrorBoundary} onError=${error => console.error(error)}>
+                <div class="app-main">
+                    <header class="session-bar">
+                        <span class="session-who">hi, ${session.account.username}</span>
+                        <button class="session-out" onClick=${session.logout}>head out</button>
+                    </header>
+                    <${Router}>
+                        <${Route} path="/" component=${Home} />
+                        <${Route} path="/home" component=${Home} />
+                        <${Route} path="/home/*" component=${Home} />
+                    </${Router}>
+                </div>
+            </${ErrorBoundary}>
+        </${LocationProvider}>
+    `;
+};
 
 function main() {
     let app = document.getElementById('app');

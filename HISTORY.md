@@ -522,3 +522,19 @@ expansion over HTTP; the 400 that names the cycle). *Residuals:* the published t
 document (now folding a tree closure, visited-set included) stays designed-ahead; roster-aware
 reads (a tagged taxonomy is invisible in docs-by-tag; sub-lists appear at top level in the
 roster listing) are UI-adjacent and unowned.
+
+---
+
+## The front door (2026-07-23)
+
+The first real UI rung past hello-world: node login and registration - deliberately
+bargain-basement (username + password against the existing M0 auth API, no identity ceremony,
+no email, no recovery). `auth.js`: a `useSession` hook over the HttpOnly-cookie session
+(whoami on first paint so the sign-in screen never flashes at someone already in),
+register-then-login in one motion (register alone doesn't set the cookie), live debounced
+username availability off `check-username` with the server's slug errors shown verbatim, and
+one two-mood Welcome component ("sign in" / "new here?"). The signed-in state is the old
+marquee demo page plus a session bar ("hi, curtis" / "head out") - cozy language budget
+honored from the first screen. Verified against a live scratch node end to end: page → bundle
+→ register → cookie → whoami → wrong-password message → logout. ~330 lines total, sized to be
+reviewed without losing the plot.

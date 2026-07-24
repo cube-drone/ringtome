@@ -70,6 +70,138 @@ body {
     padding: 1rem 0;
 }
 
+/* --- the front door (login / registration) --- */
+
+.welcome {
+    max-width: 340px;
+    margin: 14vh auto 0;
+    text-align: center;
+}
+
+.welcome-title {
+    font-family: "Press Start 2P", monospace;
+    font-size: 1.6rem;
+    color: #ffd866;
+    margin: 0 0 0.4rem;
+}
+
+.welcome-sub {
+    color: #888;
+    margin: 0 0 2rem;
+}
+
+.welcome-tabs {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 1.2rem;
+}
+
+.tab {
+    background: none;
+    border: 1px solid #444;
+    border-radius: 6px 6px 0 0;
+    color: #aaa;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    font: inherit;
+}
+
+.tab.active {
+    color: #ffd866;
+    border-color: #ffd866;
+}
+
+.welcome-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    text-align: left;
+}
+
+.welcome-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    color: #aaa;
+    font-size: 0.9rem;
+}
+
+.welcome-form input {
+    background: #10101f;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 0.55rem 0.7rem;
+    font: inherit;
+}
+
+.welcome-form input:focus {
+    outline: none;
+    border-color: #ffd866;
+}
+
+.field-note {
+    margin: -0.4rem 0 0;
+    font-size: 0.8rem;
+}
+
+.field-note.ok { color: #a9dc76; }
+.field-note.bad { color: #ff6188; }
+
+.form-error {
+    margin: 0;
+    color: #ff6188;
+    font-size: 0.85rem;
+}
+
+.welcome-go {
+    background: #ffd866;
+    border: none;
+    border-radius: 6px;
+    color: #1a1a2e;
+    padding: 0.6rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.welcome-go:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* --- signed-in header --- */
+
+.session-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #333;
+    margin-bottom: 0.5rem;
+}
+
+.session-who {
+    color: #a9dc76;
+}
+
+.session-out {
+    background: none;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #aaa;
+    padding: 0.3rem 0.8rem;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+}
+
+.session-out:hover {
+    border-color: #ff6188;
+    color: #ff6188;
+}
+
 @media (max-width: 500px) {
     .app-main {
         padding: 10px;

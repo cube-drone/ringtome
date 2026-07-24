@@ -49,6 +49,8 @@ HISTORY.md.
 - **Taxonomy trees as composition** (2026-07-23): nesting a list in a list IS the tree -
   local cycle refusal at `place`, visited-set stubs in the tree read, the `parent` slot and
   its fold-time cycle rule retired unused. The published form is still designed-ahead.
+- **The front door** (2026-07-23): node login + registration in the embedded UI - cookie
+  sessions, live username availability, cozy language. First 4C rung past hello-world.
 
 ## Standing residuals (owed, with triggers)
 
