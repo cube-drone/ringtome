@@ -87,7 +87,14 @@ export const Computers = ({ current }) => {
             html`<ul class="computer-list">
                 ${keys.map((k) => {
                     const d = describe(k);
-                    return html`<li class="computer-row" key=${k.pubkey}>
+                    // The server sends responsibility order (rank paths); the indent makes the
+                    // chain of vouching visible - each computer sits under whoever invited it.
+                    const depth = k.rank_path.length;
+                    return html`<li
+                        class="computer-row"
+                        key=${k.pubkey}
+                        style="margin-left: ${depth * 0.9}rem"
+                    >
                         <span class="computer-name">
                             ${d.label}
                             ${d.detail && html` <span class="computer-detail">— ${d.detail}</span>`}

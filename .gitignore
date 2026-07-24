@@ -8,6 +8,7 @@
 /data
 **/data/
 /data-b
+/data-c
 /data-dht
 
 # env / secrets

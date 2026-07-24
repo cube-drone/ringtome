@@ -80,7 +80,9 @@ HISTORY.md.
 - **Junior grants** (2026-07-24): the M3 root-only trim un-trimmed - any Active key extends
   the tree (`Crown::usurper_stamp_for_new_child`, any depth), so invitations daisy-chain and
   rank paths record who vouched for whom. Three-node harness (`alpha`/`bravo`/`charlie`) +
-  `just start_three`; proven by daisychain.cjs end to end.
+  `just start_three`; proven by daisychain.cjs end to end. The keys endpoint returns
+  responsibility order (lexicographic rank paths: root, spare, then each inviter directly
+  above its invitees), and "your computers" indents by depth to show the chain.
 
 ## Standing residuals (owed, with triggers)
 

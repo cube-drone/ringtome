@@ -490,7 +490,7 @@ async fn keys_handler(
         Err(_) => Default::default(),
     };
 
-    let keys = tree
+    let mut keys: Vec<KeyInfo> = tree
         .members()
         .map(|(pk, status)| {
             let pubkey = hex::encode(pk);
@@ -503,6 +503,11 @@ async fn keys_handler(
             }
         })
         .collect();
+    // Responsibility order: lexicographic rank paths ARE the tree's seniority order, and they
+    // put every parent immediately before its subtree - root first, spare key second, each
+    // inviter directly above the computers it vouched for. The canonical display order for
+    // every key screen, decided once here.
+    keys.sort_by(|a, b| a.rank_path.cmp(&b.rank_path));
 
     Ok(Json(CrownResponse {
         root_pubkey: root,

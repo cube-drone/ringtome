@@ -66,6 +66,15 @@ async function adopt(joiner, granter, root) {
         assert.equal(treeOnC.keys.find((k) => k.pubkey === b.leaf).name, "bravo");
         assert.equal(treeOnC.keys.find((k) => k.pubkey === c.leaf).name, "charlie");
 
+        // And in responsibility order: the keys endpoint sorts by rank path, so the founder
+        // leads, the spare key sits beside it, and each computer follows whoever vouched for
+        // it - the order the "your computers" screen shows verbatim.
+        assert.deepEqual(
+            treeOnC.keys.map((k) => k.name),
+            ["alpha", null, "bravo", "charlie"],
+            "root, spare, then the invitation chain in vouching order"
+        );
+
         // The chain converges end to end: a write on C surfaces on A (C's entries reach A
         // through the peer graph - eager push relays, no manual sync calls).
         await aliceOnC(`api/identity/${root}/profile`, {
