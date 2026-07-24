@@ -182,6 +182,11 @@ are ever allowed to meet, and in what costume.
   the root, not the display name, which is what defeats costume attacks.
 - **display name** — an identity's mutable self-claim. **identicon** — the unforgeable visual
   derived from the root pubkey that disambiguates it.
+- **device name** — your private label for your own keys ("macbook-curtis", not `dd7ee7d7…`):
+  the `devices` register collection on general-private, synced to your own nodes only. Keys are
+  born labeled with their node's configured name (`RINGTOME_NODE_NAME`, default hostname);
+  the recovery key is a role, rendered by rank, never labeled. Collisions disambiguate with a
+  derived pubkey shortcode, UI-side. Never authority: ceremonies target pubkeys, always.
 
 ## Cozyweb language mapping
 

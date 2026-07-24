@@ -135,3 +135,4 @@ unsafe-libopus = "0.2"
 # at 48 kHz, so anything else (44.1k above all) is FFT-resampled in streamed
 # chunks. See src/audio.rs.
 rubato = "4"
+gethostname = "1.1.0"

@@ -51,6 +51,9 @@ HISTORY.md.
   its fold-time cycle rule retired unused. The published form is still designed-ahead.
 - **The front door** (2026-07-23): node login + registration in the embedded UI - cookie
   sessions, live username availability, cozy language. First 4C rung past hello-world.
+- **Device names** (2026-07-23): keys carry private human labels ("macbook-curtis", never
+  fingerprints) - the `devices` register collection, node names from config/hostname, birth
+  writes at creation and adoption, names joined into the keys endpoint.
 
 ## Standing residuals (owed, with triggers)
 

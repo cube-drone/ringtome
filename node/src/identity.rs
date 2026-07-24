@@ -65,6 +65,7 @@ pub async fn create(
     keystore: &Keystore,
     user_dbs: &crate::db::UserDbManager,
     account_id: &Uuid,
+    node_name: &str,
 ) -> Result<CreatedIdentity, AppError> {
     // 1. Generate the root keypair. The public key is the identity's name.
     let signing_key = SigningKey::generate(&mut OsRng);
@@ -143,6 +144,31 @@ pub async fn create(
         ],
     )
     .await?;
+
+    // 8. The founding key's device name - the identity's first private record. On the creating
+    //    node the root doubles as the working leaf, so the label lands on the root pubkey; the
+    //    recovery key gets no label (it is a *role*, rendered by rank, not a device). Labels
+    //    are labels: a failure here warns and moves on, it must never doom creation.
+    let label_write = async {
+        let epoch_keys =
+            crate::record::private::unseal_epoch_keys(&user_db, &root_pubkey, &root_enc).await?;
+        crate::record::private::write_record(
+            &user_db,
+            &signing_key,
+            &epoch_keys,
+            service::GENERAL_PRIVATE,
+            &ringtome_proto::PrivatePlain {
+                kind: ringtome_proto::PrivateKind::Register,
+                collection: crate::record::store::DEVICES_COLLECTION.to_string(),
+                key: pubkey_hex.clone(),
+                value: Some(node_name.to_string()),
+            },
+        )
+        .await
+    };
+    if let Err(e) = label_write.await {
+        tracing::warn!(root = %pubkey_hex, "could not write founding device name: {e}");
+    }
 
     tracing::info!(
         root_pubkey = %pubkey_hex,

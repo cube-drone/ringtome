@@ -188,6 +188,7 @@ async fn create_handler(
         &state.keystore,
         &state.user_dbs,
         &session.account.id,
+        &state.config.node_name,
     )
     .await?;
     Ok(Json(CreatedIdentityInfo {
@@ -419,6 +420,10 @@ struct KeyInfo {
     pubkey: String,
     status: &'static str,
     rank_path: Vec<u64>,
+    /// The key's device name (PROJECT_PLAN, Device Names) - a private label, absent when
+    /// unnamed. Rendering only: the pubkey is always alongside, because names are pointers,
+    /// never authority.
+    name: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -443,12 +448,24 @@ async fn keys_handler(
         .map_err(AppError::Internal)?;
     let tree = imaol::load_key_tree(&db, &root).await?;
 
+    // Device names, best-effort: the labels are decoration on this response, so a store that
+    // won't open (no epoch keys yet, say) degrades to unnamed keys, never to a failed read.
+    let names = match store::open(&state, &session.account.id, &root).await {
+        Ok(data) => data.devices().all().await.unwrap_or_default(),
+        Err(_) => Default::default(),
+    };
+
     let keys = tree
         .members()
-        .map(|(pk, status)| KeyInfo {
-            pubkey: hex::encode(pk),
-            status: status.name(),
-            rank_path: tree.rank_path(pk).unwrap_or_default().to_vec(),
+        .map(|(pk, status)| {
+            let pubkey = hex::encode(pk);
+            let name = names.get(&pubkey).cloned();
+            KeyInfo {
+                pubkey,
+                status: status.name(),
+                rank_path: tree.rank_path(pk).unwrap_or_default().to_vec(),
+                name,
+            }
         })
         .collect();
 

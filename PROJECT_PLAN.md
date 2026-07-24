@@ -609,6 +609,34 @@ Contact names are adjacent to vouching (both are "I have personally pinned this 
 separate: you can save a public figure you have never met, and vouch for a real human you never bothered to save.
 The UI may offer them together, but they are distinct gestures.
 
+**Device names (settled 2026-07-23; IMPLEMENTED).** The fourth member of the family, one hop
+inward: your private label for **your own keys**. A key tree rendered as fingerprints - "I've
+adopted `dd7ee7d7...` but I don't trust `039def...`" - is a statement for the utterly
+deranged; the tree a person can hold is *asceticbot-curtis, macbook-curtis, and the spare
+key*. The pieces:
+
+- **Storage is a register collection** (`devices`, on general-private): key = leaf pubkey hex,
+  value = the label, LWW. Synced to all the identity's own nodes by the existing member gates
+  and structurally withheld from strangers - the greater internet never learns what you call
+  your laptop. Renaming is an ordinary register write; no bespoke machinery.
+- **Nodes carry names; keys are born labeled.** Every node has a configured name
+  (`RINGTOME_NODE_NAME`; defaults to the machine's hostname - a desktop node is called what
+  the computer is called - and a public operator sets the domain). Identity creation labels
+  the founding key (the root doubles as the creating node's working leaf); an adopting node
+  labels its own new key as its **first authored write** on the identity - a birth
+  certificate. The recovery key gets no label: it is a *role*, rendered by rank ("the spare
+  key"), and storing what is derivable from structure would be a second source of truth.
+- **Disambiguation is derived, never stored.** Two visible keys sharing a name render with a
+  pubkey-derived shortcode suffix (`macbook-curtis · 4f2a`), UI-side, only on collision. The
+  common collision is *time*, not simultaneity: revoke the macbook, re-adopt the macbook, and
+  history holds two keys both honestly named "macbook."
+- **Names are pointers, never authority - enforced at the ceremonies.** A label is never the
+  argument to anything: revocation targets pubkeys, confirmations echo the fingerprint and
+  identicon. Any member device can rename any key (it's a shared private register), so a
+  compromised-but-unrevoked device can vandalize labels - recoverable (history is on the
+  chain), and a repudiation retroactively quarantines the hostile key's renames along with
+  everything else it signed: label vandalism heals itself.
+
 ### Hosting and the Colocation Problem
 
 pkarr records are public metadata: anyone can query a batch of pubkeys and **cluster identities by their address

@@ -94,9 +94,15 @@ describe("profile chains", function () {
         await setField(user, root, "name", "c");
 
         const entries = await (await user(`api/identity/${root}/entries`)).json();
-        // 5 entries: the identity chain's genesis (recovery-key authorization) and epoch-0
-        // key-epoch (both service 0) plus the three profile-sets (service 2).
-        assert.equal(entries.length, 5);
+        // 6 entries: the identity chain's genesis (recovery-key authorization) and epoch-0
+        // key-epoch (both service 0), the founding device name (service 5), plus the three
+        // profile-sets (service 2).
+        assert.equal(entries.length, 6);
+        assert.equal(
+            entries.filter((e) => e.service === 5).length,
+            1,
+            "the founding device name is the identity's first private record"
+        );
         const profileEntries = entries.filter((e) => e.service === 2);
         assert.deepEqual(
             profileEntries.map((e) => e.seq),
@@ -128,9 +134,9 @@ describe("profile chains", function () {
         const rebuild = await (
             await user(`api/identity/${root}/rebuild`, { method: "POST" })
         ).json();
-        // 3 profile-sets + the identity chain's genesis authorize + epoch 0 = 5 replayed and
-        // re-validated.
-        assert.equal(rebuild.entries_replayed, 5, "every signed entry replays and re-validates");
+        // 3 profile-sets + the identity chain's genesis authorize + epoch 0 + the founding
+        // device name = 6 replayed and re-validated.
+        assert.equal(rebuild.entries_replayed, 6, "every signed entry replays and re-validates");
 
         const after = await (await user(`api/identity/${root}/profile`)).json();
         assert.deepEqual(after, before, "replaying the log reproduces the exact same view");

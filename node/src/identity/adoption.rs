@@ -254,6 +254,25 @@ pub async fn complete(
         .map_err(|e| AppError::Internal(anyhow!("private-chain sync failed: {e}")))?;
     tracing::info!(root = %code.root_pubkey, ?stats, "adoption private sync complete");
 
+    // The new key's device name - this node labeling itself, as its first authored write on
+    // the identity (PROJECT_PLAN, Device Names). Best-effort by design: the epoch keys just
+    // arrived on the private sync above, but if anything about that is still settling, a
+    // missing label is a rename away - it must never fail an otherwise-complete adoption.
+    match crate::record::store::open(state, account_id, &code.root_pubkey).await {
+        Ok(data) => {
+            if let Err(e) = data
+                .devices()
+                .set_name(&leaf, &state.config.node_name)
+                .await
+            {
+                tracing::warn!(root = %code.root_pubkey, "could not write device name: {e}");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(root = %code.root_pubkey, "could not open store for device name: {e}");
+        }
+    }
+
     Ok(super::Identity {
         root_pubkey: code.root_pubkey,
         created_at_ms,

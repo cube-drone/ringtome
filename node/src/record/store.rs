@@ -12,6 +12,7 @@
 //! | `profile()`                 | profile-public (2) | LWW register       | everyone (public)   | `profile_view`     | full      |
 //! | `private_registers(c)`      | general-private (5)| LWW register       | your own nodes only | in-memory, on read | full      |
 //! | `private_set(c)`            | general-private (5)| LWW-element-set    | your own nodes only | in-memory, on read | full      |
+//! | `devices()`                 | general-private (5)| LWW register (the `devices` collection) | your own nodes only | persisted, catch-up | full      |
 //! | `posts()`                   | posts (3)       | append-only log    | everyone (public)   | none (log is view) | suffix*   |
 //! | `documents()`               | documents-private (6)| version DAG        | your own nodes only | in-memory, on read | full      |
 //! | `annotations()`             | doc-meta-private (7)| LWW register + LWW-element-set per doc | your own nodes only | persisted, catch-up | full      |
@@ -142,6 +143,12 @@ impl Store {
             store: self,
             collection,
         }
+    }
+
+    /// Private labels for the identity's own keys ("macbook-curtis", not `dd7ee7d7...`) -
+    /// the `devices` register collection, typed (PROJECT_PLAN, Device Names).
+    pub fn devices(&self) -> Devices<'_> {
+        Devices { store: self }
     }
 
     pub fn posts(&self) -> AppendLog<'_> {
@@ -278,6 +285,65 @@ impl PrivateSet<'_> {
     pub async fn elements(&self) -> Result<(Vec<private::SetElement>, u64), AppError> {
         let view = self.store.private_view().await?;
         Ok((view.set_elements(self.collection), view.undecryptable))
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Device names: private labels for the identity's own keys (PROJECT_PLAN, Device Names - the
+// fourth member of the naming family: identicon, display name, contact name, device name).
+// "I've adopted dd7ee7d7... but I don't trust 039def..." is a statement for the utterly
+// deranged; "macbook-curtis and the spare key" is one for a person. A register collection on
+// general-private: synced to all the identity's own nodes, structurally withheld from
+// strangers - the greater internet never learns what you call your laptop.
+//
+// NAMES ARE POINTERS, NEVER AUTHORITY (Doctrine): a label must never be the argument to any
+// ceremony - revocation targets pubkeys, confirmations echo the fingerprint. Any member device
+// can rename any key (LWW; vandalism is recoverable from chain history, and a repudiation
+// retroactively quarantines a hostile key's renames with everything else it signed).
+// Disambiguation is the UI's job, derived, never stored: two visible keys sharing a name
+// render with a pubkey-derived shortcode suffix - the common collision is time, not
+// simultaneity ("macbook" revoked and re-adopted is two keys, both honestly "macbook").
+
+/// The register collection device names live in. A claimed name, per the store's collection
+/// convention.
+pub const DEVICES_COLLECTION: &str = "devices";
+
+pub struct Devices<'s> {
+    store: &'s Store,
+}
+
+impl Devices<'_> {
+    /// Cap on one label. A device name is a nickname, not a description - past this it is
+    /// prose, and prose has other homes.
+    pub const MAX_NAME_BYTES: usize = 120;
+
+    /// Label a key (LWW per key; renaming is just writing again).
+    pub async fn set_name(&self, leaf: &[u8; 32], name: &str) -> Result<SignedEntry, AppError> {
+        if name.len() > Self::MAX_NAME_BYTES {
+            return Err(AppError::BadRequest(format!(
+                "device names are capped at {} bytes - this is a nickname, not a description",
+                Self::MAX_NAME_BYTES
+            )));
+        }
+        self.store
+            .private_registers(DEVICES_COLLECTION)
+            .set(&hex::encode(leaf), name)
+            .await
+    }
+
+    /// Every named key, `pubkey hex → label`, merged across the identity's nodes. Empty labels
+    /// read as unnamed (clearing a name is writing an empty one).
+    pub async fn all(&self) -> Result<BTreeMap<String, String>, AppError> {
+        let (registers, _) = self
+            .store
+            .private_registers(DEVICES_COLLECTION)
+            .all()
+            .await?;
+        Ok(registers
+            .into_iter()
+            .filter(|r| !r.value.is_empty())
+            .map(|r| (r.key, r.value))
+            .collect())
     }
 }
 
@@ -1105,6 +1171,34 @@ mod tests {
         let (elements, _) = store.private_set("follows").elements().await.unwrap();
         assert_eq!(elements.len(), 1);
         assert_eq!(elements[0].element, "ccdd");
+    }
+
+    #[tokio::test]
+    async fn device_names_label_rename_and_clear() {
+        let store = test_store().await;
+        let (macbook, pi) = ([0xAA; 32], [0xBB; 32]);
+
+        store.devices().set_name(&macbook, "macbook-curtis").await.unwrap();
+        store.devices().set_name(&pi, "asceticbot").await.unwrap();
+
+        let names = store.devices().all().await.unwrap();
+        assert_eq!(names.len(), 2);
+        assert_eq!(names[&hex::encode(macbook)], "macbook-curtis");
+
+        // Rename is just writing again (LWW); clearing is writing the empty label.
+        store.devices().set_name(&pi, "asceticbot-curtis").await.unwrap();
+        store.devices().set_name(&macbook, "").await.unwrap();
+        let names = store.devices().all().await.unwrap();
+        assert_eq!(names.len(), 1, "cleared label reads as unnamed");
+        assert_eq!(names[&hex::encode(pi)], "asceticbot-curtis");
+
+        // A label past the cap is refused as a nickname, not silently truncated.
+        let err = store
+            .devices()
+            .set_name(&pi, &"x".repeat(Devices::MAX_NAME_BYTES + 1))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("nickname"), "{err}");
     }
 
     #[tokio::test]

@@ -538,3 +538,24 @@ marquee demo page plus a session bar ("hi, curtis" / "head out") - cozy language
 honored from the first screen. Verified against a live scratch node end to end: page → bundle
 → register → cookie → whoami → wrong-password message → logout. ~330 lines total, sized to be
 reviewed without losing the plot.
+
+---
+
+## Device names (2026-07-23)
+
+The self-contained "how we name nodes" unit, start to finish: a key tree rendered as
+fingerprints is a statement for the utterly deranged, so keys now carry private human labels
+(PROJECT_PLAN, Device Names - the fourth member of the naming family). One register collection
+(`devices`) on general-private, so labels sync to all your own nodes and are structurally
+invisible to strangers. Nodes carry a configured name (`RINGTOME_NODE_NAME`, defaulting to the
+machine's hostname, clamped once in config to the 120-byte label cap); identity creation labels
+the founding key as the identity's first private record, and an adopting node labels its own
+new key as its first authored write - both best-effort by design, because a label must never
+doom a ceremony. The recovery key stays unlabeled (a role, rendered by rank). The keys endpoint
+joins names beside pubkeys (best-effort: a store that won't open degrades to unnamed keys,
+never a failed read); rename is the ordinary private KV route - zero new write surface.
+Disambiguation is derived at render (pubkey shortcode on collision), never stored. Proven by a
+store unit test (label/rename/clear/cap), the two-node integration test (B names itself
+"bravo" during adoption, sees A's "alpha" off the synced chain, and A learns "bravo" back via
+eager push in ~3s), and the keytree/profile expectation updates that double as coverage (the
+founding label is entry six, replayed and re-validated on rebuild like everything else).
