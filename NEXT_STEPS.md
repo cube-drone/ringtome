@@ -96,8 +96,12 @@ Work that survived its milestone lives here until delivered (then it moves to HI
 - **Monotonic memory for remote identities** (owed since M2's status note): for *synced*
   identities the append-only entries table is structurally sufficient; for stranger resolution
   it does not exist yet. Lands with 4S's public serving surface.
-- **Root-only adoption grants** (M3 trim): v1 only the root's node can authorize new nodes;
-  relax when a real multi-node household hits it.
+- **Root-only adoption grants** (M3 trim): only the founding node can authorize new computers.
+  Not doctrine - any Active key may authorize children (spare-key succession depends on it);
+  the trim is just the unimplemented usurper-list computation for a non-root parent. The
+  refusal now speaks cozy and names the founding computer ("try again from \"alpha\"" -
+  2026-07-24) instead of the old "root node" engine-speak. Relax when a real multi-node
+  household actually needs junior grants.
 - **Mainline NAT rung** (what remains of the M3.5 mainline residual after the 2026-07-22
   same-box field test - see HISTORY): the relay-assisted discovery path is proven against the
   real DHT; still owed are NAT traversal (two real houses, the Tier 6 distributed run) and the

@@ -168,9 +168,30 @@ pub async fn authorize_node(
     let signer =
         super::load_signing_key(&state.node_db, &state.keystore, account_id, root_hex).await?;
     if signer.verifying_key().to_bytes() != root {
-        return Err(AppError::Forbidden(
-            "v1: only the identity's root node can authorize new nodes".into(),
-        ));
+        // The M3 trim (root-only grants) surfacing as UX. Not doctrine - the tree model lets
+        // any Active key authorize children, and junior grants arrive when a real household
+        // needs them (NEXT_STEPS, standing residuals) - so the refusal must be honest about
+        // "for now" and actionable about WHERE. Device names exist precisely for this
+        // sentence; "root node" is engine-room vocabulary and stays out of it.
+        let founder = match crate::record::store::open(state, account_id, root_hex).await {
+            Ok(data) => data
+                .devices()
+                .all()
+                .await
+                .ok()
+                .and_then(|names| names.get(root_hex).cloned()),
+            Err(_) => None,
+        };
+        let msg = match founder {
+            Some(name) => format!(
+                "for now, only this persona's first computer can invite new ones - try again \
+                 from \"{name}\"."
+            ),
+            None => "for now, only this persona's first computer - the one where it was \
+                     created - can invite new ones."
+                .to_string(),
+        };
+        return Err(AppError::Forbidden(msg));
     }
 
     let db = state

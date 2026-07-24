@@ -170,6 +170,11 @@ async function profileValue(fetch, root, field) {
             body: JSON.stringify({ code: request2.code }),
         });
         assert.equal(refused.status, 403);
+        // The refusal is cozy and actionable: it names the founding computer (device names
+        // exist for exactly this sentence), never says "root node", and admits "for now".
+        const message = (await refused.json()).message;
+        assert.match(message, /try again from "alpha"/, message);
+        assert.doesNotMatch(message, /root node/, "engine-room words stay out of the UI");
     });
 });
 
