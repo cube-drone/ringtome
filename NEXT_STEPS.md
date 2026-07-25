@@ -88,6 +88,11 @@ HISTORY.md.
   snapshot), mirror dropped on logout, badge reads live (a rename on any computer lands in
   every browser in seconds). Shadow overlay ships with the notes editor. The 4C order is now:
   ~~login~~ → ~~identity management~~ → ~~stream + mirror~~ → **notes**.
+- **Notes v0** (2026-07-25): two columns and honesty - every document newest-first off the
+  live mirror, "+ new item", and a read-only reader consuming the synthesized body (format
+  dispatched: pre / Marquee / media; divergence shows inline for free). The marquee demo page
+  retired; its renderer now earns real work. Next: the editor, which brings the shadow
+  overlay with it.
 
 ## Standing residuals (owed, with triggers)
 

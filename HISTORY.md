@@ -772,3 +772,23 @@ grep in the harness pipeline (output frozen at a 4KB boundary while the suite ac
 stranger tests (`ws` keeps the socket - and the process - alive after `unexpected-response`
 unless you `terminate()`). Killing the run flushed the buffer and confessed everything.
 Morals: line-buffer or don't pipe, and a refused upgrade still leaves a handle to destroy.
+
+---
+
+## The notes app, v0: two columns and honesty (2026-07-25)
+
+The flagship boots - deliberately skeletal, exactly as scoped: a top bar, a left column
+listing EVERY document newest-first straight off the live mirror (another computer's save
+re-sorts the list within seconds; the component never fetches a list in its life), a "+ new
+item" button that mints a Hello World document, and a right column reading the selected
+document read-only. The reader consumes the node's synthesized `body` - single head, clean
+merge, or the conflict presented inline with device labels - which means divergence display
+cost the reader NOTHING: it shows what it's given, plus an honest "diverged" chip
+(the editor-is-the-merge-tool doctrine, reader half). Format dispatch works today: plaintext
+in a pre, marquee through the real Marquee renderer (the hello-world demo page retired; its
+renderer moved into the reader and earns real work), stills/video/audio via the body
+endpoint. Settled in passing: a document's format is per-VERSION, so "change a file's type"
+is an ordinary save with a new format - text↔markup is trivial reinterpretation, and nothing
+needed building. Deferred by name: the editor (and with it the shadow overlay), taxonomies
+and tag filters in the left column, the adjustable-width column, and the cozy-OS window
+dressing - for now the app IS the desktop.
