@@ -240,6 +240,13 @@ manufactures a divergence conflict with a concurrent prose edit.
   ever-growing set per tag" vs "a search over annotations" turned out to be a false choice: both
   read directions are indexes over the same materialized table, so the wire shape is chosen on
   merge grounds alone. See PROJECT_PLAN, Annotations.)*
+  *(Shipped 2026-07-25: the setting UI (an editor panel for description + tags) and list
+  tag-filtering that stacks with search. Annotations reach the browser **joined onto the `docs`
+  mirror row at the stream boundary** - not baked into the persisted `doc_heads` table, which
+  is the notes-chain resolution memo and folds from a different chain than annotations do. The
+  join happens in the stream `gather` (and the HTTP list/tagged/tree reads) via one
+  `annotation_map`, so the mirror row is filter-ready without coupling two folds; staleness is
+  free, since an annotation write is itself a chain write that ticks the stream cursor.)*
 - **Ordered structure (trees, curated sequences, "BOOK ABOUT HORSES"): taxonomy documents** - a
   body that is an ordered arrangement of references, inheriting the full single-document
   machinery above: versioning, the divergence DAG (reorganizing a tree on two devices *is*

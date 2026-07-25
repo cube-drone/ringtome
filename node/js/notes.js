@@ -135,12 +135,18 @@ export const Notes = ({ current }) => {
     const [selected, setSelected] = useState(null);
     const [busy, setBusy] = useState(false);
     const [query, setQuery] = useState('');
+    const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
 
-    // null = no query (show everything); a Set = the matching doc_ids, live over the index.
+    // Filters stack: search hits AND every active tag. Search stays a filter over the current
+    // view (Curtis's preference) rather than a separate ranked results screen.
     const hits = useSearch(root, query);
     const list = (docs || [])
         .filter((d) => hits === null || hits.has(d.doc_id))
+        .filter((d) => tagFilter.every((t) => (d.tags || []).includes(t)))
         .sort((a, b) => b.updated_ms - a.updated_ms || (a.doc_id < b.doc_id ? 1 : -1));
+
+    const toggleTag = (tag) =>
+        setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
 
     const createNew = async () => {
         setBusy(true);
@@ -177,6 +183,17 @@ export const Notes = ({ current }) => {
                         value=${query}
                         onInput=${(e) => setQuery(e.currentTarget.value)}
                     />
+                    ${tagFilter.length > 0 &&
+                    html`<div class="notes-tagfilter">
+                        ${tagFilter.map(
+                            (t) => html`<button
+                                class="annot-tag annot-tag-active"
+                                key=${t}
+                                title="remove filter"
+                                onClick=${() => toggleTag(t)}
+                            >${t} ×</button>`
+                        )}
+                    </div>`}
                     ${list.map(
                         (d) => html`<button
                             key=${d.doc_id}
@@ -187,6 +204,22 @@ export const Notes = ({ current }) => {
                             <span class="note-row-when">
                                 ${when(d.updated_ms)}${d.diverged ? ' · two versions' : ''}
                             </span>
+                            ${(d.tags || []).length > 0 &&
+                            html`<span class="note-row-tags">
+                                ${d.tags.map(
+                                    (t) => html`<span
+                                        class=${tagFilter.includes(t)
+                                            ? 'note-row-tag active'
+                                            : 'note-row-tag'}
+                                        key=${t}
+                                        role="button"
+                                        onClick=${(e) => {
+                                            e.stopPropagation();
+                                            toggleTag(t);
+                                        }}
+                                    >${t}</span>`
+                                )}
+                            </span>`}
                         </button>`
                     )}
                     ${docs && list.length === 0 &&

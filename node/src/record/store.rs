@@ -564,6 +564,21 @@ pub struct Annotations<'s> {
     store: &'s Store,
 }
 
+/// One document's annotations for the stream/mirror: its named fields (description, ...) and
+/// its tags. Serialized straight to the browser mirror.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AnnotationRow {
+    pub doc_id: String,
+    pub fields: BTreeMap<String, String>,
+    pub tags: Vec<String>,
+}
+
+impl AnnotationRow {
+    fn is_empty(&self) -> bool {
+        self.fields.is_empty() && self.tags.is_empty()
+    }
+}
+
 impl Annotations<'_> {
     /// Cap on one annotation value. Doctrine, enforced at the handle: past a couple of KiB a
     /// "description" is becoming another document - write one and reference it.
@@ -675,6 +690,37 @@ impl Annotations<'_> {
             .into_iter()
             .map(|e| e.element)
             .collect())
+    }
+
+    /// Every document's annotations at once (own-root collections only) - the stream's bulk
+    /// read, so the mirror can carry tags and descriptions the way it carries doc summaries.
+    /// One fold of the doc-meta view, swept by collection.
+    pub async fn all(&self) -> Result<Vec<AnnotationRow>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        let mut rows: BTreeMap<[u8; 16], AnnotationRow> = BTreeMap::new();
+        for collection in view.collections() {
+            let Some((root, doc_id)) = parse_annot_collection(collection) else {
+                continue;
+            };
+            if root != self.store.root {
+                continue; // annotations on someone else's document aren't this identity's list
+            }
+            let entry = rows.entry(doc_id).or_insert_with(|| AnnotationRow {
+                doc_id: hex::encode(doc_id),
+                fields: BTreeMap::new(),
+                tags: Vec::new(),
+            });
+            for r in view.registers_in(collection) {
+                if !r.value.is_empty() {
+                    entry.fields.insert(r.key, r.value);
+                }
+            }
+            for e in view.set_elements(collection) {
+                entry.tags.push(e.element);
+            }
+            entry.tags.sort();
+        }
+        Ok(rows.into_values().filter(|r| !r.is_empty()).collect())
     }
 
     /// The inverted read: every `(root, doc_id)` currently tagged `tag`, across every identity

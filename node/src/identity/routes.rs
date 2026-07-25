@@ -1047,6 +1047,12 @@ struct DocSummary {
     heads: usize,
     diverged: bool,
     updated_ms: i64,
+    /// The document's annotations, joined onto its list row at the stream boundary (they fold
+    /// from a different chain than the resolution memo, so they're attached here rather than
+    /// baked into `doc_heads`). Tags drive list filtering; `fields` carries `description` and
+    /// any other named annotation. Empty when the doc has none.
+    tags: Vec<String>,
+    fields: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize)]
@@ -1055,19 +1061,45 @@ struct DocListResponse {
     undecryptable: usize,
 }
 
-/// One list entry off a memoized `doc_heads` row - the same shape the full-fold path produced,
-/// now read back rather than re-derived.
-fn summarize(row: crate::record::documents::DocHeadRow) -> DocSummary {
+/// One list entry off a memoized `doc_heads` row, with its annotations joined in from the
+/// doc-meta view (keyed by doc_id hex). The resolution facts come from `doc_heads`; the tags
+/// and fields come from the separate annotation chain - assembled here so the mirror's docs
+/// row is everything the list needs to show and filter a document.
+fn summarize(
+    row: crate::record::documents::DocHeadRow,
+    annots: &std::collections::BTreeMap<String, crate::record::store::AnnotationRow>,
+) -> DocSummary {
+    let doc_id = hex::encode(row.doc_id);
+    let (tags, fields) = annots
+        .get(&doc_id)
+        .map(|a| (a.tags.clone(), a.fields.clone()))
+        .unwrap_or_default();
     DocSummary {
         media: MediaInfo::of_row(&row),
-        doc_id: hex::encode(row.doc_id),
         title: row.title,
         head: hex::encode(row.head),
         format: crate::record::documents::Format::from_wire(row.format).as_str(),
         heads: row.logical_heads,
         diverged: row.diverged,
         updated_ms: row.head_ms,
+        doc_id,
+        tags,
+        fields,
     }
+}
+
+/// The doc-meta annotations for every document, keyed by doc_id hex - the join input for
+/// `summarize`, read once per list/stream build.
+async fn annotation_map(
+    data: &store::Store,
+) -> Result<std::collections::BTreeMap<String, crate::record::store::AnnotationRow>, AppError> {
+    Ok(data
+        .annotations()
+        .all()
+        .await?
+        .into_iter()
+        .map(|a| (a.doc_id.clone(), a))
+        .collect())
 }
 
 /// Every document, newest first: the note list. Reads the memoized `doc_heads` rows (one query
@@ -1079,8 +1111,9 @@ async fn docs_list_handler(
 ) -> Result<Json<DocListResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let (rows, undecryptable) = data.documents().summaries().await?;
+    let annots = annotation_map(&data).await?;
     Ok(Json(DocListResponse {
-        docs: rows.into_iter().map(summarize).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots)).collect(),
         undecryptable,
     }))
 }
@@ -1325,8 +1358,9 @@ async fn docs_by_tag_handler(
             r.doc_id,
         )
     });
+    let annots = annotation_map(&data).await?;
     Ok(Json(TaggedDocsResponse {
-        docs: rows.into_iter().map(summarize).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots)).collect(),
     }))
 }
 
@@ -1430,12 +1464,13 @@ async fn taxonomy_get_handler(
     // One summaries query for every own document in the whole tree.
     let mut own_ids = Vec::new();
     collect_doc_ids(&tree, &own_root, &mut own_ids);
+    let annots = annotation_map(&data).await?;
     let rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
         .documents()
         .summaries_for(&own_ids)
         .await?
         .into_iter()
-        .map(|r| (r.doc_id, summarize(r)))
+        .map(|r| (r.doc_id, summarize(r, &annots)))
         .collect();
 
     Ok(Json(render_tree(tree, &rows)))
@@ -1764,7 +1799,8 @@ async fn gather(
 ) -> Result<StreamMessage, AppError> {
     let profile = data.profile().all().await?;
     let (rows, _undecryptable) = data.documents().summaries().await?;
-    let docs = rows.into_iter().map(summarize).collect();
+    let annots = annotation_map(data).await?;
+    let docs = rows.into_iter().map(|r| summarize(r, &annots)).collect();
     let taxonomies = data
         .taxonomies()
         .all()

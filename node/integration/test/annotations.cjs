@@ -115,6 +115,28 @@ describe("annotations: private facts about documents", function () {
         assert.deepEqual(after.fields, { description: "a sunset" });
     });
 
+    it("joins tags and fields onto the docs list row (the mirror's filter data)", async function () {
+        // Annotations fold from a different chain than doc_heads; they're joined onto the list
+        // row at the stream boundary so the mirror's docs row is filter-ready. Prove the join.
+        const { user, root } = await makeIdentity("annjoin");
+        const doc = await createDoc(user, root, "pier", "a sunset over the pier");
+        await putField(user, root, doc.doc_id, "description", "a calm evening");
+        await putTag(user, root, doc.doc_id, "beach");
+        await putTag(user, root, doc.doc_id, "sunset");
+
+        const list = await listDocs(user, root);
+        const row = list.docs.find((d) => d.doc_id === doc.doc_id);
+        assert.ok(row, "the doc is listed");
+        assert.deepEqual(row.tags, ["beach", "sunset"], "tags joined onto the row");
+        assert.equal(row.fields.description, "a calm evening", "description joined onto the row");
+
+        // A doc with no annotations carries empty structures, never undefined.
+        const bare = await createDoc(user, root, "bare", "nothing here");
+        const bareRow = (await listDocs(user, root)).docs.find((d) => d.doc_id === bare.doc_id);
+        assert.deepEqual(bareRow.tags, []);
+        assert.deepEqual(bareRow.fields, {});
+    });
+
     it("tags two docs and lists them by tag in the docs-list per-doc shape", async function () {
         const { user, root } = await makeIdentity("anntags");
         const pier = await createDoc(user, root, "pier", "the pier");

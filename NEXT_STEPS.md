@@ -146,6 +146,15 @@ HISTORY.md.
   source cursor centers + outlines its rendered node; clicking a rendered node puts the
   cursor on its source span; echo guard against the select-event bounce. The pattern is the
   react-renderer demo's, ported whole.
+- **Annotations UI + tag-filter** (2026-07-25): the editor gained a panel to set a document's
+  description and tags (the two per-doc annotations; title is a header field, separate), and
+  the notes list filters by tag, stacking with search (search stays a filter over the current
+  view, not a ranked results screen - Curtis's preference). Design call, mid-build: annotations
+  are **joined onto the `docs` list row at the stream boundary**, not baked into the persisted
+  `doc_heads` table - `doc_heads` is the notes-chain resolution memo, annotations fold from a
+  different chain, and joining in `gather` (one `annotation_map` helper, shared by the HTTP
+  list/tagged/tree handlers) gives the filter-ready mirror row without coupling two folds.
+  Client writes optimistically (tag overlay clears on echo; description is a shadow buffer).
 - **Turbolinks unfurl** (2026-07-25): every Marquee surface now runs a shared turbolink
   chain - marquee-turbolink's fetchless plugins (YouTube/Spotify/media) plus a Ringtome
   OpenGraph plugin backed by `GET /api/unfurl` (the node fetches; browsers can't, CORS).

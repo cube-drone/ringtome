@@ -1205,3 +1205,35 @@ was so silent it earns a regression guard. Two tests: the JS guard (a 600KB unlo
 NOT get keepalive) and an integration save of a 126KB document (2x the cap) proving the server
 was never the limit - it round-trips verbatim. The server-side ceiling (`max_document_bytes`,
 ~10MB default) returns an honest 413 with a message, never a silent NetworkError.
+
+---
+
+## Setting tags and descriptions; tag-filter that stacks (2026-07-25)
+
+The annotation model had HTTP routes but no UI - a document could hold a description and tags,
+but nothing let you set them. Now an annotations panel sits in the editor (tag chips with
+add/remove, a description field) and the notes list can filter by tag, stacking with search.
+
+The design question Curtis raised mid-build - "bake annotations into the doc_heads
+materialized view?" - resolved to **join at the stream boundary, not merge the folds**.
+`doc_heads` is the resolution memo of the *notes* chain; annotations fold from a *different*
+chain (DOC_META_PRIVATE). Physically merging them would couple two folds (an annotation write
+moves the doc-meta chain, not doc_versions, so it would have to reach over and dirty
+doc_heads). Instead the `DocSummary` the stream ships gains `tags` + `fields`, joined on from
+the doc-meta view in `gather` (and the HTTP list, tagged, and tree handlers, via one
+`annotation_map` helper). Same mirror shape Curtis wanted - one `docs` kind, annotations on
+the row, filter-ready - with no cross-chain fold entanglement, and staleness is free: an
+annotation write IS a chain write, so it moves the frontier and ticks the stream cursor.
+
+Client: `js/annotations.js` reads tags/description live off the mirror docs row and writes
+through the annotation routes. Tags use an optimistic overlay (a click shows before its echo
+lands, clears when the mirror reflects it); the description is a shadow buffer like the editor
+body (local while dirty, adopts the mirror when clean, debounced save + blur flush). The notes
+list stacks filters - search hits AND every active tag - honoring the search-as-filter
+preference (search narrows the current view, never a separate ranked screen). Row tags are
+clickable to toggle a filter; active filters show as removable chips.
+
+The backend already had the inverted reads (`own_docs_tagged`, the tagged-docs and taxonomy
+tree endpoints); this unit gave them a front end and put the same data on the live list. Test:
+the docs list row carries joined tags + fields (and empty structures, never undefined, for a
+bare doc).

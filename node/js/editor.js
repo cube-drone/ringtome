@@ -27,6 +27,7 @@ import { needsReload } from './lookout.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { keepaliveOk } from './keepalive.js';
+import { Annotations } from './annotations.js';
 
 const html = htm.bind(h);
 
@@ -421,6 +422,7 @@ export const Editor = ({ root, docId }) => {
                     >${dump ? 'close debug' : 'debug'}</button>
                 </span>
             </header>
+            <${Annotations} root=${root} docId=${docId} />
             <div class="editor-tabs">
                 ${available.map(
                     (m) => html`<button
