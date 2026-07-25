@@ -4,6 +4,11 @@
 // server sends a full snapshot, which we apply by clear-and-replace. Writes never touch this
 // file; they are HTTP POSTs elsewhere, and their effects arrive back down the stream like
 // anyone else's.
+//
+// The one exception is `prefs`: local-only UI preferences (per-doc view mode), the single
+// table the stream never feeds and refreshes never clear. Still disposable - prefs share the
+// mirror's lifetime, so "forget this browser" forgets them too, which is the right privacy
+// posture for a table that records which documents you touch.
 import Dexie, { liveQuery } from 'dexie';
 import { useState, useEffect } from 'preact/hooks';
 
@@ -15,11 +20,16 @@ export function openMirror(root) {
     let db = mirrors.get(root);
     if (!db) {
         db = new Dexie(`ringtome-mirror-${root}`);
+        // One version, whole schema - the User-1 rule (STYLE.md) applies to the mirror
+        // doubly: no migration ceremony pre-launch anywhere, and this database is disposable
+        // besides. (Dexie 4 diffs declared stores and upgrades additively on its own, so
+        // even existing mirrors pick up new tables without a version bump.)
         db.version(1).stores({
             kv: 'key',
             profile: 'field',
             docs: 'doc_id',
             taxonomies: 'taxonomy_id',
+            prefs: 'key', // local-only, never stream-fed (module doc)
         });
         mirrors.set(root, db);
     }

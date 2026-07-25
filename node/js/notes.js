@@ -139,9 +139,11 @@ export const Notes = ({ current }) => {
     const createNew = async () => {
         setBusy(true);
         try {
+            // New items are Marquee by default - the interactive editor is the front door;
+            // the format chip converts to plaintext for anyone who wants a plain page.
             const made = await api(`/api/identity/${root}/docs`, {
                 method: 'POST',
-                body: JSON.stringify({ title: 'untitled', body: '' }),
+                body: JSON.stringify({ title: 'untitled', body: '', format: 'marquee' }),
             });
             setSelected(made.doc_id); // the mirror row follows within a second or two
         } finally {

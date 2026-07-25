@@ -138,6 +138,21 @@ behaviors on top:
   it is linear while the row says diverged has not yet presented that divergence."
 - The plan's **unsynced indicator** doctrine applies verbatim: a device knows which of its saves
   no peer has acknowledged, and surfaces it like an unsaved document.
+- **View modes are a view choice; format is a document property** (2026-07-25). The editor
+  offers *interactive* (Marquee live preview via `@cube-drone/marquee-codemirror` — the
+  document never stops being plain source; styling is projected onto it as decorations, so the
+  save machinery sees exactly what a textarea would), *side by side* (source pane + rendered
+  pane), *plaintext* (the raw source in a plain textarea), and *read only* (the rendered
+  document). A Marquee doc offers all four and opens interactive; a plaintext doc offers only
+  plaintext/read-only and opens plaintext; converting a doc's format re-clamps the mode to
+  what the new format supports. **New items default to Marquee** — the interactive editor is
+  the front door, and the format chip converts to plaintext for anyone who wants a plain page.
+  Conflict tangles obey the mode like any other text: the interactive surface renders
+  `:::conflict` blocks live (the variants are just blocks; click one to edit its source),
+  and a tangle that breaks the strict parse degrades to source in the rendered views, as ever.
+  The last-picked mode is remembered per document in the browser mirror's local-only `prefs`
+  table - the one table the stream never feeds - so it holds steady across revisits, and is
+  forgotten with the mirror on logout (the right posture for a record of which docs you touch).
 
 **On collaborative CRDT text, decided:** real-time co-editing is a non-goal — a text CRDT's
 op-log would become a wire format inside the conformance boundary, a giant cost with no named

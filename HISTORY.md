@@ -1031,3 +1031,38 @@ doing version-count thrift, not sync pacing - shortening it quintuples versions 
 session, and the principled fix there is retention (keep-last-N), not a shorter debounce.
 Evidence the levers work: the integration suite - full of tests that poll for cross-node
 propagation - halved its wall clock, 44s → 22s, with no test changed.
+
+---
+
+## The editor grows modes; Marquee becomes the front door (2026-07-25)
+
+The write/preview tabs retire in favor of four view modes - *interactive*, *side by side*,
+*plaintext*, *read only* - with the rule that keeps the mapping honest: modes are a VIEW
+choice, format is a DOCUMENT property. A Marquee doc offers all four and opens interactive;
+a plaintext doc offers plaintext/read-only and opens plaintext; converting a format re-clamps
+the mode. New items are now created as Marquee - the interactive editor is the front door.
+
+The interactive surface is `@cube-drone/marquee-codemirror` (published from the marqueemarkup
+workspace): Obsidian-style live preview on CodeMirror 6, where the document never stops being
+plain Marquee source - styling is projected on as decorations, blocks the cursor isn't in
+render fully via the real HTML renderer, and the block under the cursor opens to its source.
+No rich-text model means the editor's save machinery is untouched: the surface hands the
+shadow buffer a string exactly as the textarea did, autosave/lookout/conflict obligations all
+apply unchanged. The Preact wrapper (`js/livemarquee.js`) does the controlled-CodeMirror
+dance - the view owns its state while typing; the `body` prop replaces the doc only when it
+disagrees, i.e. exactly on loads, lookout reloads, and conflicts presenting - with a syncing
+guard so programmatic replaces never arm the dirty flag (that would have marked every
+background reload "unsaved").
+
+Conflict tangles ride along nicely: the interactive mode renders `:::conflict`/`:::variant`
+blocks live, so a divergence looks like labeled stacked blocks you click into and tidy.
+The last-picked mode is remembered per document in a new local-only `prefs` table on the
+Dexie mirror - the single table the stream never feeds and refreshes never clear, still
+disposable with the mirror on logout. Added to the one version(1) schema, no bump: the
+User-1 rule applies to the mirror doubly (no migration ceremony pre-launch, and this
+database is disposable besides), and Dexie 4 auto-diffs additive schema anyway. Hydration
+uses a functional set so a human's click always beats the read; a remembered mode the
+current format can't offer sits clamped and resurfaces if the doc converts back.
+Housekeeping: a project `.npmrc` pins the @cube-drone scope to public npm (the home config
+routes the scope to GitHub Packages for publishing, which 404'd new installs here); the JS
+bundle grows 182 → 463 KB with CodeMirror aboard - fine for a self-hosted node UI.

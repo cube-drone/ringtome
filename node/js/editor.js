@@ -24,6 +24,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
 import { needsReload } from './lookout.js';
+import { LiveMarquee } from './livemarquee.js';
 
 const html = htm.bind(h);
 
@@ -42,12 +43,25 @@ async function api(path, options = {}) {
     return body;
 }
 
+// The view modes. Modes are a VIEW choice, format is a DOCUMENT property - they meet in
+// modesFor: a Marquee doc offers all four, a plaintext doc only the two that make sense
+// without a renderer. Defaults per format, chosen when the user hasn't picked.
+const MODES = {
+    interactive: 'interactive', // live preview: styling projected onto the source in place
+    side: 'side by side', // source pane + rendered pane
+    plain: 'plaintext', // the raw source in a plain textarea
+    read: 'read only', // the rendered document, nothing editable
+};
+const modesFor = (format) =>
+    format === 'marquee' ? ['interactive', 'side', 'plain', 'read'] : ['plain', 'read'];
+const defaultMode = (format) => (format === 'marquee' ? 'interactive' : 'plain');
+
 export const Editor = ({ root, docId }) => {
     const [loaded, setLoaded] = useState(null); // the fetched detail this session started from
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
     const [format, setFormat] = useState('plaintext');
-    const [tab, setTab] = useState('write'); // 'write' | 'preview' (marquee only)
+    const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
     const [status, setStatus] = useState('opening'); // opening | clean | dirty | saving | error
     const [error, setError] = useState(null);
     const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
@@ -92,7 +106,6 @@ export const Editor = ({ root, docId }) => {
         setTitle(doc.title);
         setBody(doc.body);
         setFormat(doc.format);
-        setTab('write');
         setStatus('clean');
     };
 
@@ -167,6 +180,33 @@ export const Editor = ({ root, docId }) => {
         return () => document.removeEventListener('visibilitychange', onHide);
     }, []);
 
+    // The remembered view mode: hydrate this doc's last pick from the mirror's local-only
+    // prefs table; picking writes it back. The functional set means a click that beats the
+    // read wins - hydration never clobbers a human. A remembered mode the current format
+    // can't offer just sits clamped (the effective-mode rule below) and resurfaces if the
+    // doc converts back.
+    useEffect(() => {
+        let alive = true;
+        openMirror(root)
+            .prefs.get(`mode:${docId}`)
+            .then((row) => {
+                if (alive && row && MODES[row.value]) {
+                    setChosenMode((cur) => cur ?? row.value);
+                }
+            })
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+    }, [root, docId]);
+
+    const pickMode = (m) => {
+        setChosenMode(m);
+        openMirror(root)
+            .prefs.put({ key: `mode:${docId}`, value: m })
+            .catch(() => {});
+    };
+
     // The lookout: watch this doc's mirror row, reload when the row knows something this
     // buffer hasn't presented. The judgment lives in lookout.js as a pure predicate - it has
     // been field-tested wrong twice (the module's comment is the scar record), so it earns
@@ -201,28 +241,60 @@ export const Editor = ({ root, docId }) => {
         opening: '…',
     }[status];
 
-    let preview = null;
-    if (format === 'marquee' && tab === 'preview') {
+    // The effective mode: the user's pick if the format still offers it, else the format's
+    // default (a marquee doc opens interactive; converting it to plaintext clamps an
+    // interactive/side pick back to the plain textarea).
+    const available = modesFor(format);
+    const mode =
+        chosenMode && available.includes(chosenMode) ? chosenMode : defaultMode(format);
+
+    // The rendered document, shared by side-by-side and read-only. Strict parse first: a
+    // broken document (usually a conflict that split a block) degrades honestly - the side
+    // pane shows the parse error, read-only falls back to source, and nothing is lost.
+    let rendered = null;
+    if (format === 'marquee' && (mode === 'side' || mode === 'read')) {
         try {
-            parse(body); // strict parse first: a broken document previews as its error
-            preview = html`<div class="reader-marquee"><${Marquee} source=${body} animate="visible" /></div>`;
+            parse(body);
+            rendered = html`<div class="reader-marquee"><${Marquee} source=${body} animate="visible" /></div>`;
         } catch (e) {
-            preview = html`<p class="form-error">marquee doesn't parse: ${e.message}</p>`;
+            rendered =
+                mode === 'read'
+                    ? html`<div>
+                          <p class="null-sub">
+                              this marquee doesn't parse right now (likely a conflict split a
+                              block) - showing the source; edit to tidy it
+                          </p>
+                          <pre class="reader-plain">${body}</pre>
+                      </div>`
+                    : html`<p class="form-error">marquee doesn't parse: ${e.message}</p>`;
         }
     }
+
+    const sourcePane = html`<textarea
+        class="editor-body"
+        value=${body}
+        onInput=${(e) => {
+            setBody(e.currentTarget.value);
+            touched();
+        }}
+        onBlur=${save}
+        spellcheck="true"
+    ></textarea>`;
 
     return html`
         <div class="reader">
             <header class="reader-head">
-                <input
-                    class="editor-title"
-                    value=${title}
-                    onInput=${(e) => {
-                        setTitle(e.currentTarget.value);
-                        touched();
-                    }}
-                    placeholder="untitled"
-                />
+                ${mode === 'read'
+                    ? html`<span class="editor-title editor-title-read">${title || 'untitled'}</span>`
+                    : html`<input
+                          class="editor-title"
+                          value=${title}
+                          onInput=${(e) => {
+                              setTitle(e.currentTarget.value);
+                              touched();
+                          }}
+                          placeholder="untitled"
+                      />`}
                 <span class="reader-chips">
                     ${loaded.diverged &&
                     (loaded.resolution === 'conflict'
@@ -254,17 +326,15 @@ export const Editor = ({ root, docId }) => {
                     >${dump ? 'close debug' : 'debug'}</button>
                 </span>
             </header>
-            ${format === 'marquee' &&
-            html`<div class="editor-tabs">
-                <button
-                    class=${tab === 'write' ? 'tab active' : 'tab'}
-                    onClick=${() => setTab('write')}
-                >write</button>
-                <button
-                    class=${tab === 'preview' ? 'tab active' : 'tab'}
-                    onClick=${() => setTab('preview')}
-                >preview</button>
-            </div>`}
+            <div class="editor-tabs">
+                ${available.map(
+                    (m) => html`<button
+                        key=${m}
+                        class=${mode === m ? 'tab active' : 'tab'}
+                        onClick=${() => pickMode(m)}
+                    >${MODES[m]}</button>`
+                )}
+            </div>
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
             ${dump != null
                 ? html`<pre class="reader-plain debug-dump">${dump}</pre>`
@@ -276,18 +346,25 @@ export const Editor = ({ root, docId }) => {
                           their own - nothing is lost.
                       </p>
                   </div>`
-                : tab === 'preview' && format === 'marquee'
-                ? preview
-                : html`<textarea
-                      class="editor-body"
-                      value=${body}
-                      onInput=${(e) => {
-                          setBody(e.currentTarget.value);
+                : mode === 'read'
+                ? format === 'marquee'
+                    ? rendered
+                    : html`<pre class="reader-plain">${body}</pre>`
+                : mode === 'interactive' && format === 'marquee'
+                ? html`<${LiveMarquee}
+                      body=${body}
+                      onInput=${(text) => {
+                          setBody(text);
                           touched();
                       }}
                       onBlur=${save}
-                      spellcheck="true"
-                  ></textarea>`}
+                  />`
+                : mode === 'side' && format === 'marquee'
+                ? html`<div class="editor-side">
+                      <div class="editor-side-source">${sourcePane}</div>
+                      <div class="editor-side-preview">${rendered}</div>
+                  </div>`
+                : sourcePane}
         </div>
     `;
 };

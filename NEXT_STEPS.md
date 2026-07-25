@@ -138,6 +138,12 @@ HISTORY.md.
   "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
   emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
   time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
+- **Editor modes + Marquee as the front door** (2026-07-25): write/preview tabs became four
+  view modes (interactive / side by side / plaintext / read only; modes are a view choice,
+  format a document property - each format offers what it can render, and defaults follow).
+  Interactive is `@cube-drone/marquee-codemirror`'s live preview - plain source with styling
+  projected on, so the save/lookout/conflict machinery is untouched. New items default to
+  Marquee.
 - **The write nudge** (2026-07-25): locally-signed writes ring the eager loop's doorbell
   (`Db::nudge_sync` through `imaol::append`, the one funnel - only local writes sign), plus
   debounce 3000→750ms and eager tick 2s→1s. Write-to-peer floor drops ~5-7s → ~1s; relays
