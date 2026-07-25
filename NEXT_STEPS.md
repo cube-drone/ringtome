@@ -91,8 +91,18 @@ HISTORY.md.
 - **Notes v0** (2026-07-25): two columns and honesty - every document newest-first off the
   live mirror, "+ new item", and a read-only reader consuming the synthesized body (format
   dispatched: pre / Marquee / media; divergence shows inline for free). The marquee demo page
-  retired; its renderer now earns real work. Next: the editor, which brings the shadow
-  overlay with it.
+  retired; its renderer now earns real work.
+- **The editor** (2026-07-25): all four NOTES_APP client obligations live - debounced
+  autosave (idle/blur/tab-hide/switch), head-check via the live mirror (clean → fast-forward,
+  dirty → fork knowingly), conflicts edited in-document as the resolution, tangles start
+  clean. The buffer IS the shadow overlay; the status chip is the unsynced indicator's first
+  rung. Marquee write/preview tabs over the real renderer; format conversion as an ordinary
+  save (the no-op bounce learned to respect format - a review-caught silent-swallow bug).
+- **The body lane, both sides** (2026-07-25): field testing's first dragon - the sync
+  responder never fetched bodies, so diverged editors "cleared" each other (null body poured
+  into the textarea). Responder now dials back and backfills after every serving exchange;
+  the editor treats null bodies as a waiting room ("on its way…", editing disabled, retry).
+  Proven by bodies.cjs including the reported stale-tab scenario verbatim.
 
 ## Standing residuals (owed, with triggers)
 

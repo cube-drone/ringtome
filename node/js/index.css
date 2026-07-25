@@ -557,6 +557,60 @@ body {
     border-radius: 6px;
 }
 
+/* --- the editor --- */
+
+.editor-title {
+    background: none;
+    border: none;
+    border-bottom: 1px dashed transparent;
+    color: #e0e0e0;
+    font: inherit;
+    font-size: 1.1rem;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+}
+
+.editor-title:focus {
+    outline: none;
+    border-bottom-color: #ffd866;
+}
+
+.editor-body {
+    background: #10101f;
+    border: 1px solid #2a2a3e;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    padding: 0.8rem;
+    min-height: 50vh;
+    resize: vertical;
+    width: 100%;
+}
+
+.editor-body:focus {
+    outline: none;
+    border-color: #555;
+}
+
+.editor-tabs {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.chip-button {
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.7rem;
+    color: #a9dc76;
+}
+
+.chip-button:hover {
+    border-color: #a9dc76;
+}
+
 .waiting-dot {
     display: inline-block;
     width: 8px;
@@ -580,4 +634,12 @@ body {
     .app-main {
         padding: 10px;
     }
+}
+
+.editor-waiting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30vh;
+    text-align: center;
 }

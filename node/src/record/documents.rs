@@ -345,10 +345,16 @@ pub async fn save_version(
     let view = materialize(db, keys).await?;
     let doc = view.docs.get(&save.doc_id);
 
-    // The no-op bounce: an ordinary save whose fingerprint and title match its own parent.
+    // The no-op bounce: an ordinary save whose fingerprint, title, AND format match its own
+    // parent. Format participates because conversion (plaintext → marquee, same bytes) is a
+    // real save - a bounce that ignored it would silently swallow the explicit act the format
+    // doctrine promises (NOTES_APP: reinterpretation arrives via this field).
     if let [parent] = save.parents.as_slice() {
         if let Some(version) = doc.and_then(|d| d.versions.get(parent)) {
-            if version.header.body_hash == body_hash && version.header.title == save.title {
+            if version.header.body_hash == body_hash
+                && version.header.title == save.title
+                && version.header.format == save.format.to_wire()
+            {
                 return Ok(*parent);
             }
         }
@@ -937,7 +943,10 @@ pub async fn heads_for(
 
 /// After a sync: fetch, from the peer we just exchanged with, every referenced body we lack.
 /// Headers ride entry sync; bodies ride iroh-blobs - this is the pass that joins them. Runs on
-/// the initiator's side only (the responder catches up on its own next initiated sync).
+/// BOTH sides of an exchange (2026-07-25): the initiator inline after its exchange, the
+/// responder as a spawned dial-back to the peer that just delivered headers - "catch up on
+/// the next initiated sync" left the receiving node's editors staring at null bodies for a
+/// whole anti-entropy interval, since eager push makes the writer the initiator.
 /// Best-effort by design: a body that doesn't land now is fetchable on any later sync, so
 /// nothing here may fail the exchange.
 pub async fn fetch_missing_bodies(
@@ -1474,6 +1483,28 @@ mod tests {
             doc.versions.get(&reverted).unwrap().header.file_hash,
             doc.versions.get(&v1).unwrap().header.file_hash,
         );
+
+        // A FORMAT-only change is a real save too: conversion (plaintext → marquee, same
+        // bytes, same title) is the explicit act the format doctrine promises, and a bounce
+        // that ignored format would swallow it silently. (Caught in review before the editor
+        // shipped its convert control.)
+        let convert = |parents: Vec<[u8; 32]>| Save {
+            doc_id,
+            parents,
+            title: "t2".into(),
+            body: b"start".to_vec(),
+            format: Format::Marquee,
+            media: None,
+        };
+        let converted = save_version(&db, &key, &keys, &files, convert(vec![reverted]))
+            .await
+            .unwrap();
+        assert_ne!(converted, reverted, "conversion must not bounce");
+        // And saving again in the SAME format bounces as ever.
+        let bounced_again = save_version(&db, &key, &keys, &files, convert(vec![converted]))
+            .await
+            .unwrap();
+        assert_eq!(bounced_again, converted);
     }
 
     /// Notes are private: their entries AND their frontiers stay behind the member proof. A

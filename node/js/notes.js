@@ -9,6 +9,7 @@ import htm from 'htm';
 import { Marquee } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
+import { Editor } from './editor.js';
 
 const html = htm.bind(h);
 
@@ -38,9 +39,17 @@ const Reader = ({ root, docId }) => {
         setDoc(null);
         setError(null);
         if (!docId) return;
-        api(`/api/identity/${root}/docs/${docId}`)
-            .then(setDoc)
-            .catch((e) => setError(e.message));
+        let timer = null;
+        const fetchDoc = () =>
+            api(`/api/identity/${root}/docs/${docId}`)
+                .then((d) => {
+                    setDoc(d);
+                    // Bodies can trail their headers across computers; retry until they land.
+                    if (d.body == null) timer = setTimeout(fetchDoc, 2000);
+                })
+                .catch((e) => setError(e.message));
+        fetchDoc();
+        return () => timer && clearTimeout(timer);
     }, [root, docId]);
 
     if (!docId) {
@@ -85,6 +94,18 @@ const Reader = ({ root, docId }) => {
     `;
 };
 
+// Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
+// you haven't typed in); media and unknown formats stay read-only in the Reader.
+const RightColumn = ({ root, docId, docs }) => {
+    if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
+    const row = (docs || []).find((d) => d.doc_id === docId);
+    const format = row ? row.format : 'plaintext';
+    if (format === 'plaintext' || format === 'marquee') {
+        return html`<${Editor} root=${root} docId=${docId} key=${docId} />`;
+    }
+    return html`<${Reader} root=${root} docId=${docId} key=${docId} />`;
+};
+
 export const Notes = ({ current }) => {
     const root = current.root;
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
@@ -100,7 +121,7 @@ export const Notes = ({ current }) => {
         try {
             const made = await api(`/api/identity/${root}/docs`, {
                 method: 'POST',
-                body: JSON.stringify({ title: 'Hello World', body: 'Hello, world!\n' }),
+                body: JSON.stringify({ title: 'untitled', body: '' }),
             });
             setSelected(made.doc_id); // the mirror row follows within a second or two
         } finally {
@@ -136,7 +157,7 @@ export const Notes = ({ current }) => {
                     ${docs && list.length === 0 &&
                     html`<p class="null-sub notes-empty">nothing here yet.</p>`}
                 </aside>
-                <${Reader} root=${root} docId=${selected} />
+                <${RightColumn} root=${root} docId=${selected} docs=${docs} />
             </div>
         </div>
     `;

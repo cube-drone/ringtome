@@ -792,3 +792,56 @@ is an ordinary save with a new format - text↔markup is trivial reinterpretatio
 needed building. Deferred by name: the editor (and with it the shadow overlay), taxonomies
 and tag filters in the left column, the adjustable-width column, and the cozy-OS window
 dressing - for now the app IS the desktop.
+
+---
+
+## The editor (2026-07-25)
+
+Never-lose-words meets a keyboard. One component (`editor.js`) carries all four client
+obligations from NOTES_APP's sync model, each with its mechanism: **debounced autosave**
+(~10s idle, blur, tab-hide via keepalive fetch, doc switch - and a clean buffer never saves);
+**check-the-head-before-saving** with the live mirror as the lookout (head moved + clean
+buffer → quiet fast-forward reload; head moved + dirty → keep typing, the next save forks
+knowingly and the conflict presents next open - never blind-save, never lose); **conflicts
+present in the document** (a diverged doc loads its synthesized tangle - markers, device
+labels - and editing-then-saving with every head as parents IS the resolution: the editor is
+the merge tool, exactly as designed); and **the tangle starts clean, not dirty** (dirty arms
+only on real input, so autosave can never commit an untouched conflict). The buffer is the
+long-promised **shadow overlay** in its natural form: local state the stream never repaints,
+watched against the mirror but never rendered from it, fast-forwarded by save responses
+without a refetch - and the status chip (saved / unsaved / saving… / not saved!) is the
+unsynced indicator's first rung made visible. Marquee editing is write/preview tabs over the
+real renderer, with the strict parser run first so a broken document previews as its error.
+Format is a chip-button: plaintext ↔ marquee conversion as an ordinary save - which flushed
+out a real bug in review: the no-op bounce compared body and title but NOT format, so a
+format-only conversion would have bounced into nothing, silently swallowing the exact
+explicit act the per-version-format doctrine promises. Fixed with format in the bounce
+condition and a regression test (conversion is a real save; re-saving in the same format
+bounces as ever). New items are born untitled and empty now - there's an editor waiting.
+Stale-closure traps (timers and unmount flushes capturing old buffers) were routed through
+refs before they could eat anyone's words.
+
+---
+
+## The body lane joins both sides (2026-07-25)
+
+Field testing found the first real dragon of the dogfood era: two editors on a diverged doc
+kept "clearing" each other. The autopsy, in layers: document HEADERS ride entry sync but
+BODIES ride iroh-blobs, and `fetch_missing_bodies` ran on the sync *initiator's* side only -
+its own comment admitting "the responder catches up on its own next initiated sync". Eager
+push makes the WRITER the initiator, so the receiving node's brand-new headers pointed at
+blobs it wouldn't hold until its next anti-entropy pass (up to five minutes). Inside that
+window the resolver honestly answered `body: null` ("bodies this resolution needs aren't
+here yet") - and the editor poured null into the textarea as empty string. The user typed
+into the void; the save asserted every head as parents; the fork resolved to almost nothing.
+Never-lose-words held at the chain level throughout (every version is still in the history),
+but the UX was an eraser. Two fixes, either of which would have prevented the loss, both of
+which are correct: **the responder now backfills too** - after serving an exchange that
+ingested entries, it dials back the peer that just delivered the headers (who is online right
+now, by construction) and fetches the referenced blobs, spawned and best-effort; and **the
+editor treats a null body as a waiting room, never an empty buffer** - editing disabled, "on
+its way…" status, a 2s retry until the words arrive, and a structural guard that a
+parentless buffer can never save. The reader learned the same retry. Proven by `bodies.cjs`:
+a body written on A becomes readable on B with B never initiating anything, and the reported
+scenario verbatim - divergent saves on both computers - converges on BOTH nodes to a
+synthesized conflict containing BOTH texts, diverged flagged, never a null, never an empty.

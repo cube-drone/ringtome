@@ -755,6 +755,25 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         "served sync exchange"
     );
     conn.close(0u8.into(), b"done");
+
+    // The responder's half of the body lane: entries just landed, and the peer that sent
+    // their headers is online RIGHT NOW - dial back by endpoint id and fetch the referenced
+    // blobs, instead of sitting bodiless until our own next initiated sync (eager push makes
+    // the WRITER the initiator, so "catch up next time" meant an editor on this node could
+    // stare at a null body for a whole anti-entropy interval). Spawned: never blocks or fails
+    // the exchange.
+    if received > 0 {
+        let state = state.clone();
+        let remote = conn.remote_id();
+        tokio::spawn(async move {
+            let addr = EndpointAddr::new(remote);
+            let fetched =
+                crate::record::documents::fetch_missing_bodies(&state, &root_hex, addr).await;
+            if fetched > 0 {
+                tracing::info!(root = %root_hex, fetched, "backfilled bodies after serving sync");
+            }
+        });
+    }
     Ok(())
 }
 

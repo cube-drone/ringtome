@@ -2212,7 +2212,9 @@ socket** (an internal broadcast bus is the refinement if that ever shows in a pr
 socket **per tab** rather than BroadcastChannel fan-out (Dexie's liveQuery already makes the
 mirror reactive cross-tab; the shared-socket economy can come later); the mirror is dropped
 on logout unconditionally (the "forget this browser" obligation, v1 shape); and the **shadow
-overlay ships with the notes editor**, its first real writer. The badge is the first
+overlay shipped with the notes editor** (2026-07-25) in its natural form - the edit buffer
+itself: local state the stream never repaints, watched against the mirror but never rendered
+from it, fast-forwarded by save responses without refetching. The badge was the first
 consumer: rename a persona on any computer and every browser's bar catches up in seconds.)*
 
 ---
