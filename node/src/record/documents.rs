@@ -1068,6 +1068,60 @@ fn side_label(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
     format!("from {who}, {}", civil_utc(v.timestamp_ms))
 }
 
+/// Per-hunk Marquee conflicts (amended 2026-07-25): diffy's marker lines become `:::conflict`
+/// / `:::version` vocabulary at the same line boundaries, so non-overlapping edits stay merged
+/// and only the disputed hunks wear scaffolding - the whole-document presentation was a cure
+/// worse than the disease. The accepted risk, stated: a hunk boundary can split a multi-line
+/// block element, leaving a fragment inside a version block that fails the strict parse; the
+/// clients degrade to showing source (honest, lossless), and resolution happens in the write
+/// tab regardless. A line state machine, not blind replace: marker lines are only special in
+/// the states diffy emits them from, so a user's own "=======" line outside a conflict is
+/// left alone.
+fn hunk_conflict_directives(
+    marked: &str,
+    a: &Version,
+    b: &Version,
+    names: &BTreeMap<[u8; 32], String>,
+) -> String {
+    #[derive(PartialEq)]
+    enum State {
+        Outside,
+        Ours,
+        Theirs,
+    }
+    let mut state = State::Outside;
+    let mut out = String::new();
+    for line in marked.lines() {
+        match (&state, line) {
+            (State::Outside, "<<<<<<< ours") => {
+                out.push_str(&format!(
+                    ":::conflict\n:::version label=\"{}\" when={}\n",
+                    side_label(a, names),
+                    a.timestamp_ms
+                ));
+                state = State::Ours;
+            }
+            (State::Ours, "=======") => {
+                out.push_str(&format!(
+                    "::: version\n:::version label=\"{}\" when={}\n",
+                    side_label(b, names),
+                    b.timestamp_ms
+                ));
+                state = State::Theirs;
+            }
+            (State::Theirs, ">>>>>>> theirs") => {
+                out.push_str("::: version\n::: conflict\n");
+                state = State::Outside;
+            }
+            _ => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
+
 /// Present a conflict as *whole* alternatives - the shape used when three-way merge can't run
 /// (no usable fork point, or more than two heads), and the *only* shape for Marquee (which gets
 /// real vocabulary rather than markers). Degraded relative to per-hunk, still lossless. Text
@@ -1266,7 +1320,7 @@ pub async fn resolve(
                 Format::Plaintext => marked
                     .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a, names)))
                     .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b, names))),
-                Format::Marquee => whole_version_conflict(format, &[(a, text_a), (b, text_b)], names),
+                Format::Marquee => hunk_conflict_directives(&marked, a, b, names),
                 Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
                     unreachable!("media never reaches text merge")
                 }
@@ -3063,5 +3117,50 @@ mod tests {
             1,
             "one tail hunk, not a whole-document conflict:\n{body}"
         );
+    }
+
+    /// The Marquee mirror of the per-hunk plaintext test (amended 2026-07-25: the
+    /// whole-document conflict presentation was a cure worse than the disease). Non-overlapping
+    /// edits merge in; only the disputed tail wears `:::conflict` scaffolding, at line
+    /// boundaries.
+    #[tokio::test]
+    async fn marquee_conflicts_are_per_hunk() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let m = Format::Marquee;
+        let base = save_fmt(&db, &key, &keys, &files, doc_id, vec![], "t", b"A\nB\nC\nD\n", m).await;
+        let _ours = save_fmt(
+            &db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nB\nC\nD\nE\nF\n", m,
+        )
+        .await;
+        let _theirs = save_fmt(
+            &db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nX\nB\nC\nD\nZZZ\n", m,
+        )
+        .await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        let clean_prefix = body.split(":::conflict").next().unwrap();
+        assert!(
+            clean_prefix.contains("X\n"),
+            "the insertion merged outside the scaffolding:\n{body}"
+        );
+        assert_eq!(
+            body.matches(":::conflict").count(),
+            1, // one opener (the closer is spaced: `::: conflict`)
+            "exactly one conflict block:\n{body}"
+        );
+        assert!(body.contains("::: conflict"), "the block closes:\n{body}");
+        assert!(
+            body.contains(":::version label=\"from computer"),
+            "sides are labeled version blocks:\n{body}"
+        );
+        assert!(!body.contains("<<<<<<<"), "no git markers in marquee:\n{body}");
+        assert!(body.contains("ZZZ") && body.contains("E\nF"), "both tails inside:\n{body}");
     }
 }

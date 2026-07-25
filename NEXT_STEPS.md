@@ -122,9 +122,15 @@ HISTORY.md.
   dumps a document's full DAG as JSON (remove after the thorny-merge era).
 - **The chip learns two words** (2026-07-25): a clean read-time merge shows calm green
   "merged" (the DAG honestly holds two heads until the next save seals the weave - merges
-  are never auto-committed, by anti-criss-cross design); red "diverged" is reserved for
-  genuine overlap. Field dump confirmed the recursive base handling a live criss-cross
-  invisibly - the machinery's first production save.
+  are never auto-committed, by anti-criss-cross design); red "conflict" is reserved for
+  genuine overlap ("diverged" retired to the engine room, per the Cozyweb mapping). Field
+  dump confirmed the recursive base handling a live criss-cross invisibly - the machinery's
+  first production save.
+- **Marquee conflicts go per-hunk** (2026-07-26): diffy's marker lines become `:::conflict` /
+  `:::version` vocabulary at line boundaries - cleanly-merged regions survive, only disputed
+  hunks wear scaffolding. Accepted risk (spec'd in NOTES_APP): a hunk splitting a multi-line
+  element fails the strict parse; the reader degrades to showing source. Whole-version blocks
+  remain the degraded form for three-plus heads / no fork point.
 
 ## Standing residuals (owed, with triggers)
 

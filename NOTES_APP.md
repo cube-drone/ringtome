@@ -100,7 +100,14 @@ behaviors on top:
   and the shape is **dispatched on the header's `format`** (the first behavior to actually differ
   between formats): git-style marker blocks for plaintext (per-hunk, with honest labels — "from
   your phone, yesterday 9pm"; chains are per-device, so attribution is free), a `:::conflict`
-  directive wrapping whole-`:::version` blocks in Marquee. Clean three-way merge is
+  directive wrapping `:::version` blocks in Marquee - **per-hunk since 2026-07-26** (the
+  whole-document presentation proved a cure worse than the disease in field testing: it
+  discarded every cleanly-merged region to protect against occasionally splitting a block
+  element). Marquee's block elements are largely line-tied, so line-boundary hunks usually
+  land clean; when a hunk does split a multi-line element, the strict parse fails and clients
+  degrade to showing source - honest and lossless, and resolution happens in the write view
+  regardless. Whole-`:::version` blocks remain the degraded form (three-plus heads, no usable
+  fork point), exactly parallel to plaintext's whole-document fallback. Clean three-way merge is
   format-agnostic (Marquee source is still lines); only the *conflict* presentation forks. The editor is the merge tool. This text is **synthesized at
   read time, never written** — resolution is the user tidying it and saving, which lists all DAG
   heads as parents and heals the fork through the ordinary write. Properties that make it safe:

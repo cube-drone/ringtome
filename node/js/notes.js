@@ -6,7 +6,7 @@
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
-import { Marquee } from '@cube-drone/marquee-react-renderer';
+import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
 import { Editor } from './editor.js';
@@ -65,9 +65,27 @@ const Reader = ({ root, docId }) => {
     if (doc.format === 'plaintext') {
         body = html`<pre class="reader-plain">${doc.body ?? '(body not on this computer yet)'}</pre>`;
     } else if (doc.format === 'marquee') {
-        body = doc.body == null
-            ? html`<p class="null-sub">(body not on this computer yet)</p>`
-            : html`<div class="reader-marquee"><${Marquee} source=${doc.body} animate="visible" /></div>`;
+        if (doc.body == null) {
+            body = html`<p class="null-sub">(body not on this computer yet)</p>`;
+        } else {
+            // A conflict hunk can split a block element and fail the strict parse (the
+            // accepted cost of per-hunk marquee conflicts). Degrade to source, honestly.
+            let parses = true;
+            try {
+                parse(doc.body);
+            } catch {
+                parses = false;
+            }
+            body = parses
+                ? html`<div class="reader-marquee"><${Marquee} source=${doc.body} animate="visible" /></div>`
+                : html`<div>
+                      <p class="null-sub">
+                          this marquee doesn't parse right now (likely a conflict split a
+                          block) - showing the source; edit to tidy it.
+                      </p>
+                      <pre class="reader-plain">${doc.body}</pre>
+                  </div>`;
+        }
     } else if (doc.format === 'avif' || doc.format === 'apng') {
         body = html`<img class="reader-media" src=${mediaUrl} alt=${doc.title} />`;
     } else if (doc.format === 'webm') {

@@ -927,3 +927,22 @@ But the chip conflated two states under one alarm word. Now: diverged + clean sy
 a calm green "merged" ("woven together cleanly - your next save seals the weave"); diverged +
 genuine overlap keeps the red "diverged"; the list row goes neutral ("two versions"), since
 the memoized row can't know the resolution without running the merge.
+
+---
+
+## Marquee conflicts go per-hunk (2026-07-26)
+
+The whole-`:::version` conflict presentation for Marquee - settled in NOTES_APP to protect
+block elements from being split by hunk boundaries - was re-judged in the field as a cure
+worse than the disease: it discarded every cleanly-merged region to prevent occasional
+breakage, and with Marquee's block elements largely line-tied, line-boundary hunks usually
+land clean anyway. Now diffy's marker lines become `:::conflict` / `:::version` vocabulary at
+the same boundaries (a line state machine, not blind replace - a user's own "=======" line
+outside a conflict is untouched), so non-overlapping edits stay merged and only disputed
+hunks wear scaffolding, with device-named labeled version blocks. The accepted risk, stated
+in the spec: a hunk can split a multi-line element and fail the strict parse - the reader
+now degrades to showing source with an honest note, and the editor's preview already reported
+parse errors. Whole-version blocks remain the degraded form (three-plus heads, no usable
+fork point), parallel to plaintext's whole-document fallback. Proven by the Marquee mirror of
+the per-hunk plaintext test: insertion outside the scaffolding, exactly one conflict block,
+labeled sides, no git markers, both tails inside.
