@@ -44,6 +44,18 @@ adds on top:
   writes nothing at all. The long-run ceiling is the already-designed snapshot + prefix-GC
   machinery (PROJECT_PLAN, Open Items: Snapshots) — the notes view is fold-based, exactly what
   snapshots exist to compact.
+- **Search is a materialized view, not an FTS feature** (shipped 2026-07-25). `doc_search` is
+  a token-bag row per document — the unique lowercased words of title, resolved body, and
+  annotation text (field values and tags; a long description indexes exactly like body prose)
+  — maintained by the same fold as `doc_heads` and living in the per-identity Turso DB, so it
+  inherits at-rest encryption *by construction* (an index is a plaintext derivative of
+  encrypted bodies; it must never live anywhere less protected). It streams to the mirror like
+  any other kind and the browser matches locally (prefix + AND), offline and instant — no
+  Turso FTS5 dependency, no `MATCH`. Staleness is fingerprinted over the exact token inputs
+  (the logical-head set, which head bodies are present, title, annotation text), so a
+  backfilled body re-indexes with no chain movement (via the stream cursor's `view_epochs`
+  term) and unchanged docs never re-tokenize. Owed: relevance *ranking* (today's match is
+  boolean) and the federated pre-filter (NEXT_STEPS).
 
 ## Media retention: the deletability doctrine, one level down
 

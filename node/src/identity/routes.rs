@@ -1730,11 +1730,18 @@ struct StreamMessage {
     docs: Option<Vec<DocSummary>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     taxonomies: Option<Vec<TaxonomyRow>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    search: Option<Vec<crate::record::documents::SearchRow>>,
 }
 
 /// The stream cursor: resync's frontier fingerprint (sorted `(author, service, floor, head)`
-/// rows - the same equality that drives eager push), hashed to an opaque token.
-async fn stream_cursor(db: &crate::db::Db) -> Result<String, AppError> {
+/// rows - the same equality that drives eager push), hashed to an opaque token - PLUS the
+/// root's view epoch, so changes frontiers can't see (a body arriving by backfill, which
+/// moves resolution and the search index without moving any chain) still tick the cursor.
+async fn stream_cursor(
+    db: &crate::db::Db,
+    view_epoch: u64,
+) -> Result<String, AppError> {
     let mut frontiers = crate::net::sync::local_frontiers(db, true)
         .await
         .map_err(AppError::Internal)?;
@@ -1746,6 +1753,7 @@ async fn stream_cursor(db: &crate::db::Db) -> Result<String, AppError> {
         hasher.update(&f.floor.to_be_bytes());
         hasher.update(&f.head.to_be_bytes());
     }
+    hasher.update(&view_epoch.to_be_bytes());
     Ok(hasher.finalize().to_hex().to_string())
 }
 
@@ -1768,12 +1776,14 @@ async fn gather(
             members: t.members,
         })
         .collect();
+    let search = data.documents().search_rows().await?;
     Ok(StreamMessage {
         kind,
         cursor,
         profile: Some(profile),
         docs: Some(docs),
         taxonomies: Some(taxonomies),
+        search: Some(search),
     })
 }
 
@@ -1814,7 +1824,9 @@ async fn serve_stream(
         .await
         .map_err(|e| anyhow::anyhow!("opening db for stream: {e}"))?;
 
-    let mut cursor = stream_cursor(&db).await.map_err(anyhow::Error::new)?;
+    let mut cursor = stream_cursor(&db, state.view_epochs.get(&root))
+        .await
+        .map_err(anyhow::Error::new)?;
 
     // First word: live if the client's cursor still holds, a full snapshot on any doubt.
     let first = if client_cursor.as_deref() == Some(cursor.as_str()) {
@@ -1824,6 +1836,7 @@ async fn serve_stream(
             profile: None,
             docs: None,
             taxonomies: None,
+            search: None,
         }
     } else {
         gather(&data, "snapshot", cursor.clone())
@@ -1839,7 +1852,9 @@ async fn serve_stream(
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                let now = stream_cursor(&db).await.map_err(anyhow::Error::new)?;
+                let now = stream_cursor(&db, state.view_epochs.get(&root))
+                    .await
+                    .map_err(anyhow::Error::new)?;
                 if now != cursor {
                     cursor = now;
                     let update = gather(&data, "update", cursor.clone())

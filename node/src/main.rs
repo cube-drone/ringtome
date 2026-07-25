@@ -62,6 +62,33 @@ pub struct AppState {
     pub resync: net::resync::ResyncTracker,
     /// The turbolink unfurl engine: outbound OpenGraph fetches, guarded and cached.
     pub unfurl: net::unfurl::Unfurler,
+    /// Per-root view-freshness counter for changes chain frontiers can't see - today, body
+    /// blobs arriving by backfill (headers travel ahead of bodies; a body landing changes
+    /// what resolution and the search index can say without moving any frontier). Mixed into
+    /// the live-cache stream cursor so open browsers hear about it. In-memory: a boot resets
+    /// it, which just makes returning cursors doubt themselves into a full snapshot - the
+    /// design's own answer.
+    pub view_epochs: ViewEpochs,
+}
+
+/// See [`AppState::view_epochs`].
+#[derive(Clone, Default)]
+pub struct ViewEpochs(std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u64>>>);
+
+impl ViewEpochs {
+    pub fn bump(&self, root: &str) {
+        let mut map = self.0.lock().expect("view epochs poisoned");
+        *map.entry(root.to_string()).or_insert(0) += 1;
+    }
+
+    pub fn get(&self, root: &str) -> u64 {
+        self.0
+            .lock()
+            .expect("view epochs poisoned")
+            .get(root)
+            .copied()
+            .unwrap_or(0)
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -209,6 +236,7 @@ async fn main() -> anyhow::Result<()> {
         ingest,
         resync: net::resync::ResyncTracker::default(),
         unfurl,
+        view_epochs: ViewEpochs::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
 

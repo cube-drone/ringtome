@@ -1141,3 +1141,44 @@ so browsers also scroll there) when a textarea surface (re)appears; CodeMirror s
 EditorState.create's selection, scrolls it centered, and reports movement through an
 onCursor hook - the syncing guard keeps programmatic doc replaces from being mistaken for
 human caret moves.
+
+---
+
+## Private-document search: a materialized, mirror-synced token index (2026-07-25)
+
+Search settled along the seam the architecture already offered - Curtis's synthesis, which
+collapsed the "where does the index live" fork and dodged the Turso-FTS5 gamble entirely: the
+index is a **materialized view like `doc_heads`**, not a SQL FTS feature. `doc_search` holds
+one token-bag row per document - the unique lowercased words of its title, resolved body, and
+annotation text (field values AND tags, so a long description is exactly as findable as body
+prose, which answered the "do annotations need indexing too?" question: yes, folded into the
+doc's row rather than a separate kind). It lives in the per-identity Turso DB, so it inherits
+at-rest encryption **by construction** - an index is a plaintext derivative of encrypted
+bodies and must never be less protected than they are; putting it anywhere else would have
+been the whole security question, and this puts it nowhere else.
+
+It streams to the Dexie mirror as one more kind alongside docs/taxonomies, and the browser
+queries it locally (`js/search.js`: prefix-match for type-ahead, AND across query words to
+narrow) - offline, instant, zero round-trips per keystroke. The notes list gained a search
+box that filters live.
+
+The interesting mechanics:
+
+- **Staleness is a fingerprint over exactly the token inputs**, so only changed docs
+  re-tokenize: the logical-head SET (`heads_fp` - the set as a BLAKE3, not the count, because
+  raced resolutions rotate the set invisibly - the lookout lesson, reused), which of those
+  heads' bodies are locally present, the title, and the annotation text. A clean pass is one
+  query and some hashing.
+- **A backfilled body re-indexes with no chain movement.** Headers travel ahead of bodies;
+  a body arriving changes what the index can say without moving any frontier. New per-root
+  `view_epochs` counter, bumped when `fetch_missing_bodies` lands blobs, mixed into the live-
+  cache stream cursor - so open browsers re-stream and the index re-checks body presence.
+  In-memory, so a boot resets it to a full snapshot, which is the design's own answer anyway.
+- **doc_heads grew `heads_fp` + `head_bodies`**, computed in the existing fold where the head
+  set is already in hand - the search refresh reads them instead of re-resolving every doc.
+
+Tests: four Rust (tokenization band, annotation inclusion, fingerprint-gated refresh on body
+edit / annotation change, and the headers-ahead-of-bodies re-index), six JS matcher units, and
+an end-to-end stream assertion that a created doc's body words arrive as a token row. Schema
+generation 4 (User-1 rule: additive columns, no migration - rebuild). `doc_search` registered
+with the SQL-ownership conventions cop.

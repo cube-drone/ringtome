@@ -2215,7 +2215,17 @@ on logout unconditionally (the "forget this browser" obligation, v1 shape); and 
 overlay shipped with the notes editor** (2026-07-25) in its natural form - the edit buffer
 itself: local state the stream never repaints, watched against the mirror but never rendered
 from it, fast-forwarded by save responses without refetching. The badge was the first
-consumer: rename a persona on any computer and every browser's bar catches up in seconds.)*
+consumer: rename a persona on any computer and every browser's bar catches up in seconds.
+
+Two amendments since (2026-07-25). The cursor gained a **`view_epochs` term**: a per-root
+in-memory counter for view changes chain frontiers can't see - specifically a body blob
+arriving by backfill, which moves a document's resolution (and search tokens) without moving
+any chain head. Bumped when `fetch_missing_bodies` lands blobs, mixed into the fingerprint, it
+makes open browsers re-stream on body arrival; in-memory, so a boot resets it to a full
+snapshot - the disposable-mirror answer, unchanged. And the **search index** (`doc_search`,
+a token-bag view streamed as a new kind) became the first real customer for the promised
+Stage-2 row deltas: at whole-kind refresh it re-ships the token corpus per save, tolerable at
+cozy scale and the concrete pressure that will earn per-row deltas when a library grows.)*
 
 ---
 

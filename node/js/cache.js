@@ -29,6 +29,7 @@ export function openMirror(root) {
             profile: 'field',
             docs: 'doc_id',
             taxonomies: 'taxonomy_id',
+            search: 'doc_id', // token bags, stream-fed like docs (search runs local)
             prefs: 'key', // local-only, never stream-fed (module doc)
         });
         mirrors.set(root, db);
@@ -50,21 +51,33 @@ export async function forgetMirror(root) {
 // message replaces its table entirely, inside one transaction with the cursor - so the mirror
 // is always a consistent frame, never a half-applied one.
 async function apply(db, msg) {
-    await db.transaction('rw', db.kv, db.profile, db.docs, db.taxonomies, async () => {
-        if (msg.profile) {
-            await db.profile.clear();
-            await db.profile.bulkPut(msg.profile);
+    await db.transaction(
+        'rw',
+        db.kv,
+        db.profile,
+        db.docs,
+        db.taxonomies,
+        db.search,
+        async () => {
+            if (msg.profile) {
+                await db.profile.clear();
+                await db.profile.bulkPut(msg.profile);
+            }
+            if (msg.docs) {
+                await db.docs.clear();
+                await db.docs.bulkPut(msg.docs);
+            }
+            if (msg.taxonomies) {
+                await db.taxonomies.clear();
+                await db.taxonomies.bulkPut(msg.taxonomies);
+            }
+            if (msg.search) {
+                await db.search.clear();
+                await db.search.bulkPut(msg.search);
+            }
+            await db.kv.put({ key: 'cursor', value: msg.cursor });
         }
-        if (msg.docs) {
-            await db.docs.clear();
-            await db.docs.bulkPut(msg.docs);
-        }
-        if (msg.taxonomies) {
-            await db.taxonomies.clear();
-            await db.taxonomies.bulkPut(msg.taxonomies);
-        }
-        await db.kv.put({ key: 'cursor', value: msg.cursor });
-    });
+    );
 }
 
 // Open the stream and keep the mirror current until stopped. Reconnects with backoff; every

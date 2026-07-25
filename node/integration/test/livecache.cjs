@@ -127,6 +127,14 @@ describe("the live cache stream", function () {
         assert.equal(docUpdate.docs.length, 1);
         assert.equal(docUpdate.docs[0].title, "first note");
 
+        // The search index rides the same stream: a token-bag row over title + body.
+        assert.equal(docUpdate.search.length, 1, "one search row");
+        assert.equal(docUpdate.search[0].doc_id, docUpdate.docs[0].doc_id);
+        const tokens = docUpdate.search[0].tokens.split(" ");
+        for (const w of ["first", "note", "hello", "mirror"]) {
+            assert.ok(tokens.includes(w), `search tokens include "${w}": ${tokens}`);
+        }
+
         // Reconnect with the fresh cursor: nothing missed, no snapshot - just "live".
         stream.ws.close();
         const resumed = openStream(HOST, root, cookie, docUpdate.cursor);

@@ -215,20 +215,30 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   bump may simply wipe and rebuild (the journal replays; worst case, test data dies). Lands
   with Tier 6, alongside the security pass in the "gates ship" family. Turso stays pinned
   (`=0.7.0`) for reproducibility meanwhile.
-- **FTS over titles + descriptions** (trimmed from the materializer's ship): the data-layer
-  plan named it; nothing consumes it yet. Lands with whichever 4C surface first offers search.
-  **Where search lives** (settled in design 2026-07-25, Curtis's synthesis): the index is a
-  **materialized view like `doc_heads`** - a per-doc token-bag row, maintained by the same
-  fold that already knows when a resolution changes, living in the per-identity Turso DB (so
-  it inherits at-rest encryption *by construction* - no Turso-FTS5 gamble, SQL never needs
-  MATCH) and streamed to the Dexie mirror like any other kind, where queries run local,
-  offline, and instant at cozy scale. Two gates before build: (1) the stream is Stage-1
-  whole-kind refresh - re-shipping a token corpus per save is megabytes per keystroke-burst,
-  so this is the first real customer for **Stage 2 row-level deltas**; (2) posture, stated
-  deliberately: a token bag is the corpus wearing a haircut, so the mirror then holds ~the
-  whole content in IndexedDB - same per-persona logout-dropped disposability as ever, but
-  said out loud. Interim, if search is wanted sooner: the brute-force node endpoint scanning
-  resolved bodies remains the honest small opener.
+- **Private-document search: SHIPPED 2026-07-25** (Curtis's materialized-view synthesis). The
+  index is a **materialized view like `doc_heads`** - `doc_search`, a per-doc token-bag row
+  over title + resolved body + annotation text (field values and tags, so a long description
+  is as findable as body prose), maintained by the same fold, living in the per-identity Turso
+  DB so it inherits at-rest encryption *by construction* (no Turso-FTS5 gamble, SQL never needs
+  MATCH). Streamed to the Dexie mirror as one more kind; the browser matches locally (prefix +
+  AND, `js/search.js`), offline and instant. Staleness is a fingerprint over exactly the
+  token inputs - the logical-head SET (not count: raced resolutions rotate it invisibly), which
+  head bodies are locally present (a backfilled body re-indexes with no chain change, carried
+  by the new `view_epochs` counter mixed into the stream cursor), the title, and the annotation
+  text - so only changed docs pay to re-tokenize. The Stage-1 whole-kind refresh still re-ships
+  the corpus per save; that's the standing pressure for **Stage 2 row-level deltas** (below),
+  now with a real customer. Posture, on the record: a token bag is the corpus wearing a haircut,
+  so the mirror holds ~the whole content in IndexedDB - same per-persona logout-dropped
+  disposability, said out loud. **Still owed:** the federated rung (below) and FTS *ranking* -
+  today's match is boolean; relevance ordering waits for a corpus that needs it.
+  **The federated rung, sketched 2026-07-25** (from Curtis's log-search engine - subtoken bloom
+  filters over hierarchical blocks): blooms are mediocre as an index of record at doc
+  granularity (word-exact kills type-ahead; short prefixes match everything; false positives
+  read as bugs) but excellent as a *pre-filter* - if 4S search ever reaches across identities, a
+  small per-identity/per-collection summary bloom (one-way by construction, cheap to sync)
+  narrows "which of the fifty identities I follow might mention this" to a handful worth
+  querying properly. Blocks reassigned from hours to identities; the local index stays a token
+  bag, where localhost bandwidth is free.
 - **Flow A's bells** (deferred at the scratch ship, 2026-07-24): browser-side challenge
   signing (the pasted seed currently transits to the node - unacceptable once nodes host
   strangers), post-use spare-key rotation, and the cooling-off window with logged-in cancel.

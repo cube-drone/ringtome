@@ -452,6 +452,21 @@ body {
     border-color: #a9dc76;
 }
 
+.notes-search {
+    background: #10101f;
+    border: 1px solid #2a2a3e;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 0.4rem 0.6rem;
+    font: inherit;
+    font-size: 0.85rem;
+}
+
+.notes-search:focus {
+    outline: none;
+    border-color: #555;
+}
+
 .note-row {
     background: #10101f;
     border: 1px solid #2a2a3e;

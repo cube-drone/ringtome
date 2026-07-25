@@ -85,7 +85,25 @@ CREATE TABLE doc_heads (
     logical_heads INTEGER NOT NULL,     -- how many logical heads the resolver kept
     diverged      INTEGER NOT NULL,     -- logical_heads > 1, precomputed for the list read
     genesis_ms    INTEGER NOT NULL,     -- claimed stamp of the parentless/earliest version
-    head_ms       INTEGER NOT NULL      -- display head's claimed stamp (modified ordering)
+    head_ms       INTEGER NOT NULL,     -- display head's claimed stamp (modified ordering)
+    heads_fp      BLOB    NOT NULL,     -- BLAKE3 over the sorted logical-head hashes: the head
+                                        -- SET as one comparable value (raced resolutions rotate
+                                        -- the set without moving the count - the lookout lesson)
+    head_bodies   BLOB    NOT NULL      -- the logical heads' body hashes, sorted+concatenated:
+                                        -- what the search index checks blob presence against
+);
+
+-- The search index: one token-bag row per document, derived from title + resolved body +
+-- annotations (PROJECT_PLAN, The Browser Is a View; NEXT_STEPS, Where search lives). A
+-- materialized view like doc_heads - living here it inherits at-rest encryption BY
+-- CONSTRUCTION (an index is a plaintext derivative of encrypted bodies and must never be less
+-- protected than they are). `fp` is the staleness fingerprint over exactly the inputs that
+-- change the tokens: the logical-head set, which of their bodies are locally present, the
+-- title, and the annotation text. Refreshed lazily by the stream's read path; disposable.
+CREATE TABLE doc_search (
+    doc_id  BLOB PRIMARY KEY,
+    fp      BLOB NOT NULL,
+    tokens  TEXT NOT NULL
 );
 
 -- The private key/value store's LWW registers, persisted. `service` rides in the primary key so

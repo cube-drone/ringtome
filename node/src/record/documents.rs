@@ -638,13 +638,29 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
             .map(|v| v.timestamp_ms)
             .min()
             .unwrap_or(earliest);
+        // The logical-head SET, as one comparable value plus its bodies' hashes - the search
+        // index's staleness inputs, computed here where the set is already in hand. Sorted:
+        // the set has no inherent order and the fingerprint must not invent one.
+        let mut sorted_heads = doc.logical_heads.clone();
+        sorted_heads.sort();
+        let mut heads_hasher = blake3::Hasher::new();
+        let mut head_bodies: Vec<[u8; 32]> = Vec::new();
+        for h in &sorted_heads {
+            heads_hasher.update(h);
+            if let Some(v) = doc.versions.get(h) {
+                head_bodies.push(v.header.file_hash);
+            }
+        }
+        head_bodies.sort();
+        let head_bodies: Vec<u8> = head_bodies.into_iter().flatten().collect();
         db.execute(
             "INSERT INTO doc_heads
                (doc_id, entry_hash, title, format, file_hash, width, height, duration_ms,
-                thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms)
+                thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms,
+                heads_fp, head_bodies)
              VALUES (:doc_id, :entry_hash, :title, :format, :file_hash, :width, :height,
                      :duration_ms, :thumb_hash, :preview_hash, :logical_heads, :diverged,
-                     :genesis_ms, :head_ms)
+                     :genesis_ms, :head_ms, :heads_fp, :head_bodies)
              ON CONFLICT(doc_id) DO UPDATE SET
                entry_hash = excluded.entry_hash,
                title = excluded.title,
@@ -658,8 +674,12 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                logical_heads = excluded.logical_heads,
                diverged = excluded.diverged,
                genesis_ms = excluded.genesis_ms,
-               head_ms = excluded.head_ms",
+               head_ms = excluded.head_ms,
+               heads_fp = excluded.heads_fp,
+               head_bodies = excluded.head_bodies",
             turso::named_params! {
+                ":heads_fp": heads_hasher.finalize().as_bytes().to_vec(),
+                ":head_bodies": head_bodies,
                 ":doc_id": doc_id.as_slice(),
                 ":entry_hash": head.hash.as_slice(),
                 ":title": head.header.title.as_str(),
@@ -687,7 +707,11 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
 /// folded facts AND the memoized resolutions. The next keyed materialize refolds both from the
 /// log (a refold re-derives every doc's `doc_heads` row, since every doc changes in that pass).
 pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
-    for sql in ["DELETE FROM doc_versions", "DELETE FROM doc_heads"] {
+    for sql in [
+        "DELETE FROM doc_versions",
+        "DELETE FROM doc_heads",
+        "DELETE FROM doc_search",
+    ] {
         db.execute(sql, ())
             .await
             .context("clearing document views")
@@ -967,6 +991,128 @@ pub async fn heads_for(
     Ok(out)
 }
 
+// ---------------------------------------------------------------------------------------------
+// The search index: doc_search, a token-bag materialized view.
+
+/// One document's search row: the unique normalized words of its title, resolved body, and
+/// annotation text, space-joined. The browser mirror holds these and queries them locally
+/// (NEXT_STEPS, Where search lives - settled 2026-07-25).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SearchRow {
+    pub doc_id: String,
+    pub tokens: String,
+}
+
+/// Normalize text into the bag: lowercase alphanumeric runs, 2..=32 chars. Unicode-aware
+/// (`char::is_alphanumeric`), so accented words and CJK runs index as written.
+fn tokenize_into(text: &str, out: &mut std::collections::BTreeSet<String>) {
+    for run in text.split(|c: char| !c.is_alphanumeric()) {
+        if run.is_empty() {
+            continue;
+        }
+        let token = run.to_lowercase();
+        let len = token.chars().count();
+        if (2..=32).contains(&len) {
+            out.insert(token);
+        }
+    }
+}
+
+/// Current search rows for every document, refreshing stale ones first - the same
+/// catch-up-on-read discipline as every view. Staleness is a fingerprint over exactly the
+/// inputs that change a doc's tokens: the logical-head set (`heads_fp` - the SET, not the
+/// count: raced resolutions rotate it invisibly otherwise), which head bodies are locally
+/// present (a body arriving by backfill must re-index - headers travel ahead of bodies), the
+/// title, and the annotation text. Only stale docs pay for materialization and body reads;
+/// a clean pass is one query and some hashing.
+pub async fn search_rows(
+    db: &Db,
+    keys: &EpochKeys,
+    files: &FileStore,
+    annots: &BTreeMap<[u8; 16], String>,
+) -> Result<Vec<SearchRow>, AppError> {
+    catch_up(db, keys).await?;
+    // (doc_id, title, heads_fp, head_bodies) - the search index's staleness inputs per doc.
+    type SearchHead = (Vec<u8>, String, Vec<u8>, Vec<u8>);
+    let heads: Vec<SearchHead> = db
+        .fetch_all("SELECT doc_id, title, heads_fp, head_bodies FROM doc_heads", ())
+        .await
+        .context("reading heads for search")
+        .map_err(AppError::Internal)?;
+    let cached: BTreeMap<Vec<u8>, (Vec<u8>, String)> = db
+        .fetch_all::<(Vec<u8>, Vec<u8>, String)>("SELECT doc_id, fp, tokens FROM doc_search", ())
+        .await
+        .context("reading search rows")
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .map(|(id, fp, tokens)| (id, (fp, tokens)))
+        .collect();
+
+    let mut out = Vec::new();
+    let mut stale: Vec<([u8; 16], Vec<u8>, String)> = Vec::new(); // (id, fp, title)
+    for (doc_id, title, heads_fp, head_bodies) in heads {
+        let id: [u8; 16] = doc_id
+            .as_slice()
+            .try_into()
+            .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?;
+        let annot_text = annots.get(&id).map(String::as_str).unwrap_or("");
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&heads_fp);
+        for chunk in head_bodies.chunks(32) {
+            let present = match <[u8; 32]>::try_from(chunk) {
+                Ok(h) => files.has(iroh_blobs::Hash::from_bytes(h)).await,
+                Err(_) => false,
+            };
+            hasher.update(&[present as u8]);
+        }
+        hasher.update(title.as_bytes());
+        hasher.update(&[0xff]); // title/annot seam: "ab"+"c" must not equal "a"+"bc"
+        hasher.update(annot_text.as_bytes());
+        let fp = hasher.finalize().as_bytes().to_vec();
+        match cached.get(&doc_id) {
+            Some((have, tokens)) if *have == fp => out.push(SearchRow {
+                doc_id: hex::encode(id),
+                tokens: tokens.clone(),
+            }),
+            _ => stale.push((id, fp, title)),
+        }
+    }
+
+    if !stale.is_empty() {
+        let view = materialize(db, keys).await?;
+        for (id, fp, title) in stale {
+            let mut tokens = std::collections::BTreeSet::new();
+            tokenize_into(&title, &mut tokens);
+            if let Some(annot_text) = annots.get(&id) {
+                tokenize_into(annot_text, &mut tokens);
+            }
+            if let Some(doc) = view.docs.get(&id) {
+                // Empty device-name map: conflict labels' device names are presentation,
+                // not content - close enough for an index either way.
+                let resolved = resolve(files, keys, doc, &BTreeMap::new()).await?;
+                if let Some(body) = &resolved.body {
+                    tokenize_into(body, &mut tokens);
+                }
+            }
+            let tokens = tokens.into_iter().collect::<Vec<_>>().join(" ");
+            db.execute(
+                "INSERT INTO doc_search (doc_id, fp, tokens) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(doc_id) DO UPDATE SET fp = excluded.fp, tokens = excluded.tokens",
+                (id.to_vec(), fp, tokens.clone()),
+            )
+            .await
+            .context("writing search row")
+            .map_err(AppError::Internal)?;
+            out.push(SearchRow {
+                doc_id: hex::encode(id),
+                tokens,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.doc_id.cmp(&b.doc_id));
+    Ok(out)
+}
+
 /// After a sync: fetch, from the peer we just exchanged with, every referenced body we lack.
 /// Headers ride entry sync; bodies ride iroh-blobs - this is the pass that joins them. Runs on
 /// BOTH sides of an exchange (2026-07-25): the initiator inline after its exchange, the
@@ -1020,7 +1166,15 @@ pub async fn fetch_missing_bodies(
     .await;
 
     match result {
-        Ok(n) => n,
+        Ok(n) => {
+            if n > 0 {
+                // Bodies arrived without any frontier moving - tell the views' listeners
+                // (the live-cache stream cursor mixes this in; the search index re-checks
+                // body presence on the refresh it triggers).
+                state.view_epochs.bump(root_hex);
+            }
+            n
+        }
         Err(e) => {
             tracing::warn!(root = %root_hex, "body fetch after sync failed: {e:#}");
             0
@@ -3561,5 +3715,142 @@ mod tests {
             3,
             "whole-document form: every side in full:\n{body}"
         );
+    }
+
+    fn tokens_of(rows: &[SearchRow], doc_id: &[u8; 16]) -> Vec<String> {
+        let hex = hex::encode(doc_id);
+        rows.iter()
+            .find(|r| r.doc_id == hex)
+            .map(|r| r.tokens.split(' ').map(str::to_string).collect())
+            .unwrap_or_default()
+    }
+
+    /// The index reads title + body, normalized: lowercased unique words, punctuation split,
+    /// the 2..=32 length band applied (so "a" and a 40-char noise run don't index).
+    #[tokio::test]
+    async fn search_index_tokenizes_title_and_body() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let doc_id = new_doc_id();
+        save(
+            &db, &key, &keys, &files, doc_id, vec![], "Quick Fox",
+            b"The QUICK brown fox. A x!",
+        )
+        .await;
+
+        let rows = search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        let tokens = tokens_of(&rows, &doc_id);
+        for want in ["quick", "fox", "brown", "the"] {
+            assert!(tokens.contains(&want.to_string()), "has {want}: {tokens:?}");
+        }
+        assert!(!tokens.contains(&"a".to_string()), "single letters dropped");
+        assert!(!tokens.contains(&"x".to_string()), "single letters dropped");
+        // "QUICK" and "quick" fold to one token.
+        assert_eq!(tokens.iter().filter(|t| *t == "quick").count(), 1);
+    }
+
+    /// Annotation text (a long description, tags) is indexed alongside the body - the whole
+    /// point of folding annotations into the doc's row rather than a separate kind.
+    #[tokio::test]
+    async fn search_index_includes_annotation_text() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let doc_id = new_doc_id();
+        save(&db, &key, &keys, &files, doc_id, vec![], "t", b"body words").await;
+
+        let mut annots = BTreeMap::new();
+        annots.insert(doc_id, "marzipan confectionery\ndessert".to_string());
+        let rows = search_rows(&db, &keys, &files, &annots).await.unwrap();
+        let tokens = tokens_of(&rows, &doc_id);
+        for want in ["marzipan", "confectionery", "dessert", "body", "words"] {
+            assert!(tokens.contains(&want.to_string()), "has {want}: {tokens:?}");
+        }
+    }
+
+    /// The staleness fingerprint: an unchanged doc is served from the cached row (no rewrite),
+    /// an edited body re-indexes, and a changed annotation re-indexes even with the body fixed.
+    #[tokio::test]
+    async fn search_rows_refresh_only_when_inputs_change() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"alpha").await;
+
+        async fn fp(db: &Db, doc_id: &[u8; 16]) -> Vec<u8> {
+            db.fetch_one::<(Vec<u8>,)>(
+                "SELECT fp FROM doc_search WHERE doc_id = ?1",
+                (doc_id.to_vec(),),
+            )
+            .await
+            .unwrap()
+            .0
+        }
+
+        let rows = search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        assert!(tokens_of(&rows, &doc_id).contains(&"alpha".to_string()));
+        let fp1 = fp(&db, &doc_id).await;
+
+        // Re-run, nothing changed: same fingerprint (served from cache).
+        search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        assert_eq!(fp(&db, &doc_id).await, fp1, "unchanged doc keeps its row");
+
+        // Edit the body: new head, new tokens, new fingerprint.
+        save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"beta").await;
+        let rows = search_rows(&db, &keys, &files, &BTreeMap::new()).await.unwrap();
+        let tokens = tokens_of(&rows, &doc_id);
+        assert!(tokens.contains(&"beta".to_string()), "re-indexed: {tokens:?}");
+        assert!(!tokens.contains(&"alpha".to_string()), "old body gone: {tokens:?}");
+        let fp2 = fp(&db, &doc_id).await;
+        assert_ne!(fp2, fp1, "an edit moves the fingerprint");
+
+        // Change only the annotation (body fixed): still re-indexes.
+        let mut annots = BTreeMap::new();
+        annots.insert(doc_id, "gamma".to_string());
+        let rows = search_rows(&db, &keys, &files, &annots).await.unwrap();
+        assert!(tokens_of(&rows, &doc_id).contains(&"gamma".to_string()));
+        assert_ne!(fp(&db, &doc_id).await, fp2, "an annotation change re-indexes");
+    }
+
+    /// A body header without its blob (the cross-node reality: headers travel ahead of bodies)
+    /// indexes the title now and the body when the blob lands - proven by driving the two
+    /// blob-presence states directly, since the fingerprint folds in per-head blob presence.
+    #[tokio::test]
+    async fn search_reindexes_when_a_body_blob_arrives() {
+        let writer = test_db().await;
+        let reader = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let with_blob = FileStore::memory();
+        let no_blob = FileStore::memory(); // the reader's store before backfill
+
+        let doc_id = new_doc_id();
+        save(&writer, &key, &keys, &with_blob, doc_id, vec![], "Title Here", b"secret body word")
+            .await;
+
+        // Deliver the writer's header entries into the reader's log (what sync sends), leaving
+        // the body blob behind in the writer's store - exactly the headers-ahead-of-bodies gap.
+        let raw = crate::record::imaol::all_entry_bytes(&writer).await.unwrap();
+        let root = key.verifying_key().to_bytes();
+        crate::net::sync::ingest_batch(&reader, root, raw, true)
+            .await
+            .unwrap();
+
+        // Before the blob (reader's own empty store): title indexes, body doesn't.
+        let rows = search_rows(&reader, &keys, &no_blob, &BTreeMap::new()).await.unwrap();
+        let tokens = tokens_of(&rows, &doc_id);
+        assert!(tokens.contains(&"title".to_string()), "title indexed: {tokens:?}");
+        assert!(!tokens.contains(&"secret".to_string()), "body not here yet: {tokens:?}");
+
+        // The blob arrives (backfill) - the writer's store now stands in as the reader's, blob
+        // present. Same log, no chain change: the fingerprint moves on body presence alone.
+        let rows = search_rows(&reader, &keys, &with_blob, &BTreeMap::new()).await.unwrap();
+        let tokens = tokens_of(&rows, &doc_id);
+        assert!(tokens.contains(&"secret".to_string()), "body now indexed: {tokens:?}");
     }
 }

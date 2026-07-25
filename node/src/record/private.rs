@@ -602,6 +602,22 @@ impl PrivateView {
             })
             .collect()
     }
+
+    /// Every collection name this view holds anything under (registers or present set
+    /// elements) - the enumeration the per-doc readers above deliberately don't need, for
+    /// callers that sweep a whole service (the search index gathering annotation text).
+    pub fn collections(&self) -> std::collections::BTreeSet<&str> {
+        self.registers
+            .keys()
+            .map(|(c, _)| c.as_str())
+            .chain(
+                self.sets
+                    .iter()
+                    .filter(|(_, (present, _, _))| *present)
+                    .map(|((c, _), _)| c.as_str()),
+            )
+            .collect()
+    }
 }
 
 /// Fold one decrypted record into the persisted tables. The LWW judgment is the statement's

@@ -258,6 +258,7 @@ mod tests {
             ingest: crate::ingest::Ingest::new(dir.join("quarantine")),
             resync: crate::net::resync::ResyncTracker::default(),
             unfurl: crate::net::unfurl::Unfurler::new(30.0),
+            view_epochs: crate::ViewEpochs::default(),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

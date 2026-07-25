@@ -417,6 +417,48 @@ impl Documents<'_> {
             .await
     }
 
+    /// The search index, current: one token-bag row per document over title, resolved body,
+    /// and annotation text (field values and tags, so a long description is exactly as
+    /// findable as body prose). Stale rows refresh on this read, the same catch-up-on-read
+    /// discipline as every view; the stream ships these to the mirror, where queries run local.
+    pub async fn search_rows(
+        &self,
+    ) -> Result<Vec<crate::record::documents::SearchRow>, AppError> {
+        // Annotation text per doc, own-root collections only: value text and tag names, in
+        // stable order so the staleness fingerprint can't wobble.
+        let view = self.store.doc_meta_view().await?;
+        let mut annots: BTreeMap<[u8; 16], String> = BTreeMap::new();
+        for collection in view.collections() {
+            let Some((root, doc_id)) = parse_annot_collection(collection) else {
+                continue;
+            };
+            if root != self.store.root {
+                continue;
+            }
+            let mut text = String::new();
+            for r in view.registers_in(collection) {
+                if !r.value.is_empty() {
+                    text.push_str(&r.value);
+                    text.push('\n');
+                }
+            }
+            for e in view.set_elements(collection) {
+                text.push_str(&e.element);
+                text.push('\n');
+            }
+            if !text.is_empty() {
+                annots.insert(doc_id, text);
+            }
+        }
+        crate::record::documents::search_rows(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            &self.store.files,
+            &annots,
+        )
+        .await
+    }
+
     /// The docs-list read: every document's memoized display row (`doc_heads`), newest head
     /// first, plus the undecryptable count - one query after catch-up, no full-view fold.
     pub async fn summaries(

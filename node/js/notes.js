@@ -11,6 +11,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 import { openMirror, useLive } from './cache.js';
 import { Editor } from './editor.js';
 import { useTurbolinks } from './turbolinks.js';
+import { useSearch } from './search.js';
 
 const html = htm.bind(h);
 
@@ -133,9 +134,12 @@ export const Notes = ({ current }) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const [selected, setSelected] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [query, setQuery] = useState('');
 
+    // null = no query (show everything); a Set = the matching doc_ids, live over the index.
+    const hits = useSearch(root, query);
     const list = (docs || [])
-        .slice()
+        .filter((d) => hits === null || hits.has(d.doc_id))
         .sort((a, b) => b.updated_ms - a.updated_ms || (a.doc_id < b.doc_id ? 1 : -1));
 
     const createNew = async () => {
@@ -166,6 +170,13 @@ export const Notes = ({ current }) => {
                     <button class="notes-new" disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : '+ new item'}
                     </button>
+                    <input
+                        class="notes-search"
+                        type="search"
+                        placeholder="search…"
+                        value=${query}
+                        onInput=${(e) => setQuery(e.currentTarget.value)}
+                    />
                     ${list.map(
                         (d) => html`<button
                             key=${d.doc_id}
@@ -179,7 +190,9 @@ export const Notes = ({ current }) => {
                         </button>`
                     )}
                     ${docs && list.length === 0 &&
-                    html`<p class="null-sub notes-empty">nothing here yet.</p>`}
+                    html`<p class="null-sub notes-empty">
+                        ${hits === null ? 'nothing here yet.' : 'nothing matches.'}
+                    </p>`}
                 </aside>
                 <${RightColumn} root=${root} docId=${selected} docs=${docs} />
             </div>
