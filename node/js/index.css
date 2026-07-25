@@ -52,12 +52,12 @@ body {
 }
 
 .app-main {
-    /* Wide enough for the notes app's two columns (a merge with conflict markers deserves
-       room to breathe); every other screen carries its own narrower max-width, so only the
-       notes app actually stretches. */
-    max-width: 1100px;
+    /* Full viewport width - space is at a premium on a small laptop, and the notes app's
+       right column (flex:1 beside a fixed 240px list) puts every extra pixel into the editor.
+       Every other screen carries its own narrower max-width and centers itself, so only the
+       wide layouts actually use the room. */
+    width: 100%;
     min-height: 100vh;
-    margin: 0 auto;
     padding: 20px;
 }
 
