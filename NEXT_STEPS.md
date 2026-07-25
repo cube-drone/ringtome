@@ -159,6 +159,17 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   accept-side rate limiting exists (the HTTP limiter doesn't cover iroh). Explore per-endpoint
   accept throttling / cost caps; per-identity refusal of contact is the adjacent operator
   policy hook.
+- **Peer set derived from the key tree** (opened 2026-07-25; no trigger - next up, while we
+  remember it's worth doing): the doctrine already exists (PROJECT_PLAN, "The Identity Tree Is
+  Its Own Peer-Discovery Structure": the chain frontier *is* the peer list, addresses come from
+  discovery) but the implementation still dials only `identity_peers` rows written at adoption
+  time. A daisy-chained node provably knows its cousins from the synced chains yet never dials
+  them - eager push pays an extra relay hop (field-observed as loose sync latency, 2026-07-25)
+  and anti-entropy samples an artificially thin set. The work: derive the dial list from the
+  key-tree frontier + dial-by-key discovery, demoting `identity_peers` to an address cache
+  seeded by adoption and observed dials. NOT peer-list gossip - no new wire surface; the chains
+  already carry who-exists epidemically. REFACTOR's `sync.rs` peer-bookkeeping note names the
+  code seam; its revisit condition ("peer management grows real behavior") fires with this.
 - **Monotonic memory for remote identities** (owed since M2's status note): for *synced*
   identities the append-only entries table is structurally sufficient; for stranger resolution
   it does not exist yet. Lands with 4S's public serving surface.

@@ -17,8 +17,9 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   the first real paginated consumer.
 - [ ] **`sync.rs`'s peer-bookkeeping tail** (`add_peer` / `peers_for` / `mark_synced` /
   `dial_addr`) could split into its own module; it's also what `conventions.rs` maps
-  `identity_peers` to. Deliberately deferred: not yet earning its churn. Revisit when background
-  sync / eager push (the M3 residual) makes peer management grow real behavior.
+  `identity_peers` to. Deliberately deferred: not yet earning its churn. The revisit condition
+  has now fired: NEXT_STEPS' "Peer set derived from the key tree" residual (2026-07-25) is
+  exactly peer management growing real behavior - do the split as part of that unit.
 - [ ] **Taxonomy rank rebalancing** (`record/rank.rs` module doc names it): ranks grow ~one
   digit per 18 appends / per same-spot insert hit; a bloated list is repaired by rewriting its
   ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead
