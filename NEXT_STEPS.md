@@ -83,6 +83,11 @@ HISTORY.md.
   `just start_three`; proven by daisychain.cjs end to end. The keys endpoint returns
   responsibility order (lexicographic rank paths: root, spare, then each inviter directly
   above its invitees), and "your computers" indents by depth to show the chain.
+- **The live cache, Stage 1** (2026-07-24 → 07-25): the read-only WebSocket stream + Dexie
+  mirror - whole-kind refreshes, frontier-fingerprint cursor (match → live, doubt →
+  snapshot), mirror dropped on logout, badge reads live (a rename on any computer lands in
+  every browser in seconds). Shadow overlay ships with the notes editor. The 4C order is now:
+  ~~login~~ → ~~identity management~~ → ~~stream + mirror~~ → **notes**.
 
 ## Standing residuals (owed, with triggers)
 

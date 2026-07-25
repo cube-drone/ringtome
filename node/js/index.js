@@ -113,7 +113,15 @@ const Inside = ({ session }) => {
                     class="session-out"
                     onClick=${() => setView(view === 'computers' ? 'home' : 'computers')}
                 >${view === 'computers' ? 'back home' : 'your computers'}</button>`}
-                <button class="session-out" onClick=${session.logout}>head out</button>
+                <button
+                    class="session-out"
+                    onClick=${async () => {
+                        // Heading out forgets this browser: stream stopped, mirror dropped -
+                        // a signed-out browser keeps no copy of anyone's things.
+                        await persona.shutdown();
+                        session.logout();
+                    }}
+                >head out</button>
             </span>
         </header>
     `;

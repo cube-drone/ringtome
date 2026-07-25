@@ -2200,6 +2200,21 @@ bookkeeping on the node, the Dexie mirror + shadow overlay in the client. Sequen
 consequence, deliberate: this **precedes the notes UI** - once an identity's view streams and
 its writes echo, the notes app is mostly rendering.
 
+*(Stage 1 IMPLEMENTED 2026-07-25 - `/api/identity/{root}/stream` + `cache.js`. The v1
+simplifications, named so their refinements stay honest: updates are **whole-kind refreshes**
+(every row of profile/docs/taxonomies - the degenerate delta, same shapes, idempotent; row
+deltas when a library is big enough to care); the **cursor is a frontier fingerprint**
+(BLAKE3 over the identity's sorted chain heads - resync's change detector, hashed), so a
+matching reconnect goes straight to live and ANY doubt gets the full snapshot - incremental
+catch-up beyond nothing-changed is deliberately unbuilt, because "drop the cache and
+re-stream" is this design's own answer; **change detection is a 1s fingerprint poll per open
+socket** (an internal broadcast bus is the refinement if that ever shows in a profile); one
+socket **per tab** rather than BroadcastChannel fan-out (Dexie's liveQuery already makes the
+mirror reactive cross-tab; the shared-socket economy can come later); the mirror is dropped
+on logout unconditionally (the "forget this browser" obligation, v1 shape); and the **shadow
+overlay ships with the notes editor**, its first real writer. The badge is the first
+consumer: rename a persona on any computer and every browser's bar catches up in seconds.)*
+
 ---
 
 ## Iroh Protocol Mapping

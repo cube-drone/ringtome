@@ -741,3 +741,34 @@ the rank-path lineage, every key named from the deepest chair, a write on C conv
 through the epidemic relay with no manual syncs, and the founding spare key rescuing C's
 account password two hops from home. The old junior-refusal test retired with a headstone
 comment pointing here.
+
+---
+
+## The live cache, Stage 1 (2026-07-24 → 07-25)
+
+The browser stopped fetching and started mirroring: `/api/identity/{root}/stream` is the
+read-only WebSocket the plan settled (The Browser Is a View), and `cache.js` is the Dexie
+mirror it feeds. The v1 shape, honest and named in the plan text: whole-kind refreshes (every
+row of profile / doc summaries / taxonomy roster - the degenerate delta, idempotent to
+apply), a cursor that is resync's frontier fingerprint hashed (matching reconnect → "live";
+any doubt → full snapshot, because drop-and-re-stream is the design's own answer), change
+detection as a 1s fingerprint poll per open socket, one socket per tab (Dexie's liveQuery is
+already reactive cross-tab), mirror dropped unconditionally on logout, and the shadow overlay
+deferred to the notes editor - its first real writer. The stream reuses the HTTP routes' own
+response structs, so the mirror rows and the fetch rows can never drift. Ownership is gated
+BEFORE the upgrade (strangers never get a socket: anonymous → 401, someone else's cookie →
+the uniform 404), and client chatter down the socket is read-and-ignored - mutations are
+POSTs, doctrine held mechanically. First consumer: the persona badge reads the mirror live,
+so a rename on any computer lands in every browser's bar within seconds. Proven by
+`livecache.cjs`: snapshot-then-echo (including a document arriving in the doc rows), cursor
+resume to "live", doubtful-cursor snapshot, read-only chatter ignored while real POSTs land,
+stranger refusals, and the crown jewel - a write on node B arriving down node A's stream in
+~3s with nobody polling anything.
+
+The debugging war story, recorded because both morals generalize: the first full run appeared
+to wedge mid-suite with both nodes healthy - a false alarm manufactured by block-buffered
+grep in the harness pipeline (output frozen at a 4KB boundary while the suite actually ran to
+93-passing), hiding the REAL bug: mocha hung at exit on websocket handles leaked by the
+stranger tests (`ws` keeps the socket - and the process - alive after `unexpected-response`
+unless you `terminate()`). Killing the run flushed the buffer and confessed everything.
+Morals: line-buffer or don't pipe, and a refused upgrade still leaves a handle to destroy.

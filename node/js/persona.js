@@ -7,8 +7,10 @@
 // here yet") and the create flow - which includes the spare-key moment, because creation
 // returns the recovery secret exactly once and we are not allowed to lose it politely.
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
+
+import { startLiveCache, forgetMirror, openMirror, useLive } from './cache.js';
 
 const html = htm.bind(h);
 
@@ -45,8 +47,11 @@ export function usePersona(account) {
     const [naming, setNaming] = useState(null); // root awaiting its display name
     const [join, setJoin] = useState(null); // { requestCode } - the outbound half of adoption
     const [error, setError] = useState(null);
+    const live = useRef(null); // the open persona's live-cache handle
 
-    // Opening a persona = remembering its root and fetching its public name for display.
+    // Opening a persona = remembering its root, fetching its public name for display, and
+    // starting the live cache - from here on, the mirror stays current and every view that
+    // reads it is reactive.
     const open = async (root) => {
         let name = '';
         try {
@@ -55,9 +60,27 @@ export function usePersona(account) {
         } catch {
             // A persona with no readable profile still opens; it just renders by shortcode.
         }
+        if (live.current) live.current.stop();
+        live.current = startLiveCache(root);
         setCurrent({ root, name });
         setState('open');
     };
+
+    // The way out: stop the stream and drop the mirror ("forget this browser" - PROJECT_PLAN,
+    // The Browser Is a View). Called before logout; a signed-out browser keeps nothing.
+    const shutdown = async () => {
+        if (live.current) {
+            live.current.stop();
+            live.current = null;
+        }
+        if (current) {
+            await forgetMirror(current.root);
+        }
+    };
+
+    // A closed tab also stops streaming (the mirror persists for next time; only logout
+    // forgets it).
+    useEffect(() => () => live.current && live.current.stop(), []);
 
     useEffect(() => {
         if (!account) return;
@@ -166,6 +189,7 @@ export function usePersona(account) {
         startJoin,
         cancelJoin,
         completeJoin,
+        shutdown,
     };
 }
 
@@ -351,13 +375,22 @@ export const NamePicker = ({ persona, account }) => {
     `;
 };
 
-// The persona badge: chip + name (or shortcode) - a persona never renders as bare hex.
-export const PersonaBadge = ({ current }) => html`
-    <span class="persona-badge">
-        <span
-            class="persona-chip"
-            style="background: hsl(${personaHue(current.root)}, 60%, 55%)"
-        ></span>
-        ${current.name || `persona ${shortcode(current.root)}`}
-    </span>
-`;
+// The persona badge: chip + name (or shortcode) - a persona never renders as bare hex. The
+// name reads from the live mirror first, so a rename on ANY of your computers lands here
+// within seconds; the fetched-at-open name is the fallback while the mirror fills.
+export const PersonaBadge = ({ current }) => {
+    const liveName = useLive(
+        () => openMirror(current.root).profile.get('name'),
+        [current.root]
+    );
+    const name = (liveName && liveName.value) || current.name;
+    return html`
+        <span class="persona-badge">
+            <span
+                class="persona-chip"
+                style="background: hsl(${personaHue(current.root)}, 60%, 55%)"
+            ></span>
+            ${name || `persona ${shortcode(current.root)}`}
+        </span>
+    `;
+};

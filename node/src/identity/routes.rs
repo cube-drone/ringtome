@@ -150,6 +150,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/taxonomies/{taxonomy_id}/members/{doc_id}",
             put(taxonomy_member_put_handler).delete(taxonomy_member_delete_handler),
         )
+        // The live cache (PROJECT_PLAN, The Browser Is a View): a read-only WebSocket that
+        // streams the identity's view rows to the browser's Dexie mirror. Downstream only -
+        // every mutation stays an HTTP POST above.
+        .route("/api/identity/{root}/stream", get(stream_handler))
 }
 
 #[derive(Serialize)]
@@ -1572,6 +1576,181 @@ async fn private_set_list_handler(
         elements,
         undecryptable,
     }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The live cache stream (PROJECT_PLAN, The Browser Is a View - Stage 1 as built).
+//
+// A read-only WebSocket per identity, downstream only: the node streams the same view rows the
+// HTTP reads serve - profile fields, doc summaries, the taxonomy roster - and the browser
+// mirrors them into Dexie. The v1 simplifications, named:
+//
+// - **Whole-kind refresh, not row deltas**: an update carries every row of each kind (the
+//   degenerate delta - same shapes, idempotent to apply). Row-level deltas are a refinement
+//   for when a library is big enough to care.
+// - **The cursor is a frontier fingerprint** (BLAKE3 over the identity's sorted chain heads -
+//   resync's change detector, hashed). A reconnect whose cursor still matches goes straight to
+//   live; ANY doubt - absent, stale, garbage - gets a full snapshot. "Drop the cache and
+//   re-stream" is the design's own answer, so incremental catch-up beyond nothing-changed is
+//   deliberately not built.
+// - **Change detection is a 1s poll per socket** (recompute the fingerprint, compare). One
+//   tiny query per second per open tab; a write lands on the browser within ~1-2s. A
+//   node-internal broadcast bus is the refinement if per-socket polling ever shows up in a
+//   profile.
+//
+// Client messages are ignored (the socket is read-only by doctrine - mutations are POSTs);
+// reading them anyway is what lets tungstenite answer pings and notice close frames.
+
+#[derive(Deserialize)]
+struct StreamQuery {
+    cursor: Option<String>,
+}
+
+/// One streamed payload: everything the mirror holds, refreshed whole. `snapshot` tells the
+/// browser to clear-and-replace (its cursor was absent or doubtful); `update` is the same
+/// operation while live; `live` is "your cursor still holds, nothing to send".
+#[derive(Serialize)]
+struct StreamMessage {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    cursor: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<Vec<imaol::ProfileField>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    docs: Option<Vec<DocSummary>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    taxonomies: Option<Vec<TaxonomyRow>>,
+}
+
+/// The stream cursor: resync's frontier fingerprint (sorted `(author, service, floor, head)`
+/// rows - the same equality that drives eager push), hashed to an opaque token.
+async fn stream_cursor(db: &crate::db::Db) -> Result<String, AppError> {
+    let mut frontiers = crate::net::sync::local_frontiers(db, true)
+        .await
+        .map_err(AppError::Internal)?;
+    frontiers.sort_by_key(|f| (f.author, f.service));
+    let mut hasher = blake3::Hasher::new();
+    for f in &frontiers {
+        hasher.update(&f.author);
+        hasher.update(&f.service.to_be_bytes());
+        hasher.update(&f.floor.to_be_bytes());
+        hasher.update(&f.head.to_be_bytes());
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+async fn gather(
+    data: &store::Store,
+    kind: &'static str,
+    cursor: String,
+) -> Result<StreamMessage, AppError> {
+    let profile = data.profile().all().await?;
+    let (rows, _undecryptable) = data.documents().summaries().await?;
+    let docs = rows.into_iter().map(summarize).collect();
+    let taxonomies = data
+        .taxonomies()
+        .all()
+        .await?
+        .into_iter()
+        .map(|t| TaxonomyRow {
+            taxonomy_id: hex::encode(t.taxonomy_id),
+            title: t.title,
+            members: t.members,
+        })
+        .collect();
+    Ok(StreamMessage {
+        kind,
+        cursor,
+        profile: Some(profile),
+        docs: Some(docs),
+        taxonomies: Some(taxonomies),
+    })
+}
+
+async fn stream_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Query(query): Query<StreamQuery>,
+    ws: axum::extract::ws::WebSocketUpgrade,
+) -> Result<Response, AppError> {
+    // Gate BEFORE upgrading: a stranger never gets a socket at all.
+    super::require_owned(&state.node_db, &session.account.id, &root).await?;
+    let account_id = session.account.id;
+    Ok(ws.on_upgrade(move |socket| async move {
+        if let Err(e) = serve_stream(socket, state, account_id, root.clone(), query.cursor).await
+        {
+            tracing::debug!(%root, "live-cache stream ended: {e:#}");
+        }
+    }))
+}
+
+async fn serve_stream(
+    mut socket: axum::extract::ws::WebSocket,
+    state: AppState,
+    account_id: uuid::Uuid,
+    root: String,
+    client_cursor: Option<String>,
+) -> anyhow::Result<()> {
+    use axum::extract::ws::Message;
+
+    // Opened once and held: keystore unseal per message would be silly.
+    let data = store::open(&state, &account_id, &root)
+        .await
+        .map_err(|e| anyhow::anyhow!("opening store for stream: {e}"))?;
+    let db = state
+        .user_dbs
+        .get(&root)
+        .await
+        .map_err(|e| anyhow::anyhow!("opening db for stream: {e}"))?;
+
+    let mut cursor = stream_cursor(&db).await.map_err(anyhow::Error::new)?;
+
+    // First word: live if the client's cursor still holds, a full snapshot on any doubt.
+    let first = if client_cursor.as_deref() == Some(cursor.as_str()) {
+        StreamMessage {
+            kind: "live",
+            cursor: cursor.clone(),
+            profile: None,
+            docs: None,
+            taxonomies: None,
+        }
+    } else {
+        gather(&data, "snapshot", cursor.clone())
+            .await
+            .map_err(anyhow::Error::new)?
+    };
+    socket
+        .send(Message::Text(serde_json::to_string(&first)?.into()))
+        .await?;
+
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {
+                let now = stream_cursor(&db).await.map_err(anyhow::Error::new)?;
+                if now != cursor {
+                    cursor = now;
+                    let update = gather(&data, "update", cursor.clone())
+                        .await
+                        .map_err(anyhow::Error::new)?;
+                    socket
+                        .send(Message::Text(serde_json::to_string(&update)?.into()))
+                        .await?;
+                }
+            }
+            incoming = socket.recv() => {
+                match incoming {
+                    None | Some(Err(_)) => return Ok(()), // gone
+                    Some(Ok(Message::Close(_))) => return Ok(()),
+                    // Read-only socket: client payloads are ignored, not honored - mutations
+                    // are HTTP POSTs. (Ping/pong is handled inside the websocket layer.)
+                    Some(Ok(_)) => {}
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

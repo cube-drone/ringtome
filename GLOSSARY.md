@@ -62,12 +62,14 @@ are ever allowed to meet, and in what costume.
   document/annotation tables). Persisted in the encrypted local database (since 2026-07-20) but
   **disposable by design**; **rebuild** wipes views and replays the log, re-validating every
   link. Views hold facts; judgment (DAG resolution, merge rungs) stays in code.
-- **live cache** *(planned)* — the browser's materialized view, one hop further out: a
-  Dexie/IndexedDB mirror of the node's view rows, fed by a per-identity read-only WebSocket
-  delta stream, with an optimistic **shadow overlay** for writes not yet echoed back. Writes
-  never ride the socket (HTTP POST in, websocket out); the browser holds no keys, is never a
-  device, and the cache is disposable — drop and re-stream (PROJECT_PLAN, The Browser Is a
-  View).
+- **live cache** — the browser's materialized view, one hop further out: a Dexie/IndexedDB
+  mirror of the node's view rows (profile, doc summaries, taxonomy roster), fed by a
+  per-identity read-only WebSocket stream — whole-kind refreshes keyed by a frontier-
+  fingerprint cursor: matching cursor → live, any doubt → full snapshot. Writes never ride
+  the socket (HTTP POST in, websocket out); the browser holds no keys, is never a device, and
+  the cache is disposable — drop and re-stream; dropped unconditionally on logout. The
+  optimistic **shadow overlay** *(planned)* arrives with the notes editor, its first writer
+  (PROJECT_PLAN, The Browser Is a View).
 - **journal** — the flat per-identity file (`journals/<root>.jnl`) of raw accepted entries,
   appended verbatim at ingest as plaintext length-prefixed frames — deliberately unencrypted,
   because entries are already signed immutable envelopes (private payloads already ciphertext)

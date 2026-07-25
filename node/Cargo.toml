@@ -14,7 +14,7 @@ path = "src/main.rs"
 ringtome-proto = { path = "../proto" }
 
 # web service
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
 tower-http = { version = "0.6", features = ["trace"] }
 tokio = { version = "1", features = ["full"] }
@@ -137,3 +137,4 @@ unsafe-libopus = "0.2"
 rubato = "4"
 gethostname = "1.1.0"
 flate2 = "1.1.9"
+blake3 = "1.8.5"
