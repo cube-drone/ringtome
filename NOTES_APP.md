@@ -154,6 +154,9 @@ behaviors on top:
   The last-picked mode is remembered per document in the browser mirror's local-only `prefs`
   table - the one table the stream never feeds - so it holds steady across revisits, and is
   forgotten with the mirror on logout (the right posture for a record of which docs you touch).
+  The caret is remembered per document too, but tab-locally in memory, never persisted - a
+  deliberate split: mode is a *choice* (prefs), a caret is *working state*, and cross-tab
+  storage would make two tabs on one doc fight over it.
 - **Turbolinks expand on every surface** (2026-07-25) via one shared plugin chain: the
   fetchless kinds (YouTube/Spotify/media) plus OpenGraph cards fetched *by the node*
   (`/api/unfurl` - browsers can't read foreign HTML; the endpoint is SSRF-guarded, globally

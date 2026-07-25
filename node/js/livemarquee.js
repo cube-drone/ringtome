@@ -19,7 +19,7 @@ import { marquee } from '@cube-drone/marquee-codemirror';
 
 const html = htm.bind(h);
 
-export const LiveMarquee = ({ body, profile, onInput, onBlur }) => {
+export const LiveMarquee = ({ body, profile, initialSelection, onInput, onBlur, onCursor }) => {
     const host = useRef(null);
     const view = useRef(null);
     // The marquee extension takes its profile at configure time; a Compartment lets a new
@@ -31,13 +31,22 @@ export const LiveMarquee = ({ body, profile, onInput, onBlur }) => {
     // Fresh callbacks every render, stable identity for the extensions (the timer-and-unmount
     // stale-closure lesson from editor.js, applied here).
     const hooks = useRef({});
-    hooks.current = { onInput, onBlur };
+    hooks.current = { onInput, onBlur, onCursor };
 
     useEffect(() => {
+        // Land where the host remembers the caret sitting (clamped: the body may have
+        // changed shape since), and scroll it home so "return to a doc" means returning.
+        const at = initialSelection
+            ? {
+                  anchor: Math.min(initialSelection.start, body.length),
+                  head: Math.min(initialSelection.end, body.length),
+              }
+            : undefined;
         const v = new EditorView({
             parent: host.current,
             state: EditorState.create({
                 doc: body,
+                selection: at,
                 extensions: [
                     history(),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -47,6 +56,13 @@ export const LiveMarquee = ({ body, profile, onInput, onBlur }) => {
                         if (u.docChanged && !syncing.current) {
                             hooks.current.onInput(u.state.doc.toString());
                         }
+                        if ((u.selectionSet || u.docChanged) && !syncing.current) {
+                            const sel = u.state.selection.main;
+                            hooks.current.onCursor?.(
+                                Math.min(sel.anchor, sel.head),
+                                Math.max(sel.anchor, sel.head)
+                            );
+                        }
                     }),
                     EditorView.domEventHandlers({
                         blur: () => hooks.current.onBlur && hooks.current.onBlur(),
@@ -54,6 +70,10 @@ export const LiveMarquee = ({ body, profile, onInput, onBlur }) => {
                 ],
             }),
         });
+        if (at) {
+            v.dispatch({ effects: EditorView.scrollIntoView(at.anchor, { y: 'center' }) });
+            v.focus();
+        }
         view.current = v;
         return () => {
             v.destroy();

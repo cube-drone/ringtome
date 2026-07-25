@@ -57,6 +57,16 @@ const modesFor = (format) =>
     format === 'marquee' ? ['interactive', 'side', 'plain', 'read'] : ['plain', 'read'];
 const defaultMode = (format) => (format === 'marquee' ? 'interactive' : 'plain');
 
+// Where you were in each document - shared by every editing surface, so switching modes (or
+// leaving and returning to a doc) lands the cursor where it last sat. Deliberately a module
+// Map, NOT the mirror's prefs table: a cursor is incidental working state, not a choice -
+// cross-tab storage would make two tabs on one doc clobber each other, and a stale cursor
+// is noise. Per tab, per session, like scroll positions everywhere else on the web.
+const cursorMemory = new Map();
+const rememberCursor = (root, docId, start, end) =>
+    cursorMemory.set(`${root}:${docId}`, { start, end });
+const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
+
 export const Editor = ({ root, docId }) => {
     const [loaded, setLoaded] = useState(null); // the fetched detail this session started from
     const [title, setTitle] = useState('');
@@ -282,6 +292,15 @@ export const Editor = ({ root, docId }) => {
         }, 0);
         if (markedRef.current) markedRef.current.classList.remove('editor-cursor-node');
         markedRef.current = null;
+        rememberCursor(root, docId, span.start, span.end);
+    };
+
+    // Every caret movement in the textarea is noted (and forwards to the scroll sync);
+    // restoration happens when a textarea surface (re)appears - a mode switch or a return
+    // to this doc - clamped to the current body, focused so the caret is visibly home.
+    const noteCaret = (e) => {
+        rememberCursor(root, docId, e.currentTarget.selectionStart, e.currentTarget.selectionEnd);
+        syncToCursor();
     };
 
     // The effective mode: the user's pick if the format still offers it, else the format's
@@ -290,6 +309,23 @@ export const Editor = ({ root, docId }) => {
     const available = modesFor(format);
     const mode =
         chosenMode && available.includes(chosenMode) ? chosenMode : defaultMode(format);
+
+    // Caret restoration for the textarea surfaces: when one (re)appears - a mode switch, or
+    // a return to this doc - put the caret back where it last sat in this document, clamped
+    // to the current body, focused so it's visibly home. (The interactive surface does the
+    // same itself, via LiveMarquee's initialSelection.)
+    useEffect(() => {
+        if (mode !== 'plain' && mode !== 'side') return;
+        const ta = sourceRef.current;
+        const at = recallCursor(root, docId);
+        if (!ta || !at || !loaded) return;
+        const len = ta.value.length;
+        // Selection BEFORE focus: browsers scroll a focused textarea to its caret, so this
+        // order gets "back where I was" to also mean scrolled there.
+        ta.setSelectionRange(Math.min(at.start, len), Math.min(at.end, len));
+        ta.focus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, loaded && docId]);
 
     // The rendered document, shared by side-by-side and read-only. Strict parse first: a
     // broken document (usually a conflict that split a block) degrades honestly - the side
@@ -328,9 +364,9 @@ export const Editor = ({ root, docId }) => {
             touched();
         }}
         onBlur=${save}
-        onSelect=${syncToCursor}
-        onClick=${syncToCursor}
-        onKeyUp=${syncToCursor}
+        onSelect=${noteCaret}
+        onClick=${noteCaret}
+        onKeyUp=${noteCaret}
         spellcheck="true"
     ></textarea>`;
 
@@ -407,6 +443,8 @@ export const Editor = ({ root, docId }) => {
                 ? html`<${LiveMarquee}
                       body=${body}
                       profile=${tlProfile}
+                      initialSelection=${recallCursor(root, docId)}
+                      onCursor=${(start, end) => rememberCursor(root, docId, start, end)}
                       onInput=${(text) => {
                           setBody(text);
                           touched();

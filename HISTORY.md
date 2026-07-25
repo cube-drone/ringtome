@@ -1123,3 +1123,21 @@ fires `select`, which would run the forward sync and yank the clicked node out f
 the cursor; cleared on a timeout so a `select` that never arrives can't wedge it. Both
 handlers no-op gracefully in the modes missing one of the panes (plain has no preview,
 read-only no textarea).
+
+---
+
+## The caret remembers (2026-07-25)
+
+Field report: switching interactive ↔ side-by-side dumped the document back to position 0.
+Now every editing surface shares one caret memory per document - switch modes and the caret
+(and scroll) land where they sat; leave a doc and return and you're where you left off. The
+judgement call, made deliberately: this lives in a module-level Map - per tab, per session -
+NOT the mirror's prefs table. The prefs table is for choices (view mode); a caret is
+incidental working state, and Dexie is cross-tab shared, so persisting it would make two
+tabs on one doc clobber each other and would resurrect week-stale positions as noise. Per
+tab like scroll positions everywhere else on the web. Mechanics: the textareas note the
+caret on select/click/keyup and restore (clamped to the current body, selection-then-focus
+so browsers also scroll there) when a textarea surface (re)appears; CodeMirror seeds
+EditorState.create's selection, scrolls it centered, and reports movement through an
+onCursor hook - the syncing guard keeps programmatic doc replaces from being mistaken for
+human caret moves.

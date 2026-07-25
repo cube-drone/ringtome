@@ -138,6 +138,10 @@ HISTORY.md.
   "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
   emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
   time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
+- **Caret memory** (2026-07-25): all editing surfaces share one per-document caret memory -
+  mode switches and doc revisits restore cursor + scroll. Session/tab-local by judgement
+  (module Map, not Dexie prefs: carets are working state, not choices; cross-tab storage
+  would make tabs fight).
 - **Side-by-side scroll sync** (2026-07-25): the renderer's MarqueeHandle API, finally used -
   source cursor centers + outlines its rendered node; clicking a rendered node puts the
   cursor on its source span; echo guard against the select-event bounce. The pattern is the
