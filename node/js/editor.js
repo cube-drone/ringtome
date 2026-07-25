@@ -23,6 +23,7 @@ import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
+import { needsReload } from './lookout.js';
 
 const html = htm.bind(h);
 
@@ -166,27 +167,23 @@ export const Editor = ({ root, docId }) => {
         return () => document.removeEventListener('visibilitychange', onHide);
     }, []);
 
-    // The lookout: watch this doc's mirror row. The signal is NOT just "did the display head
-    // move" - the display head for a diverged doc is one deterministic pick among the logical
-    // heads, so the device whose save happens to BE that pick would never notice the fork
-    // (field-tested: one editor showed the merge, the other sat oblivious). Watch the whole
-    // shape: display head, head count, diverged flag. Any change + clean buffer → reload
-    // (fast-forward, or the conflict presenting itself). Change + dirty → keep typing; the
-    // fork is deliberate and presents right after the next save lands.
+    // The lookout: watch this doc's mirror row, reload when the row knows something this
+    // buffer hasn't presented. The judgment lives in lookout.js as a pure predicate - it has
+    // been field-tested wrong twice (the module's comment is the scar record), so it earns
+    // tests of its own. Change + dirty → keep typing; the fork is deliberate and presents
+    // right after the next save lands.
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     useEffect(() => {
         const m = machine.current;
         if (!row || !loaded || m.dirty || m.inflight) return;
         const seen = m.seen || { diverged: false, heads: 1 };
-        if (
-            !m.parents.includes(row.head) ||
-            row.diverged !== seen.diverged ||
-            row.heads !== seen.heads
-        ) {
+        if (needsReload(row, m.parents, seen)) {
             load().catch(() => {});
         }
+        // `status` is a dep so a row update skipped during an inflight save gets re-judged
+        // when the save settles - the row may never change again to re-fire this effect.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [row && row.head, row && row.heads, row && row.diverged]);
+    }, [row && row.head, row && row.heads, row && row.diverged, status]);
 
     if (status === 'opening' && !loaded) {
         return html`<div class="reader"><p class="null-sub">opening…</p></div>`;

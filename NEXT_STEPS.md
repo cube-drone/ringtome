@@ -126,11 +126,18 @@ HISTORY.md.
   genuine overlap ("diverged" retired to the engine room, per the Cozyweb mapping). Field
   dump confirmed the recursive base handling a live criss-cross invisibly - the machinery's
   first production save.
-- **Marquee conflicts go per-hunk** (2026-07-26): diffy's marker lines become `:::conflict` /
-  `:::version` vocabulary at line boundaries - cleanly-merged regions survive, only disputed
+- **Marquee conflicts go per-hunk** (2026-07-25): diffy's marker lines become `:::conflict` /
+  `:::variant` vocabulary at line boundaries - cleanly-merged regions survive, only disputed
   hunks wear scaffolding. Accepted risk (spec'd in NOTES_APP): a hunk splitting a multi-line
-  element fails the strict parse; the reader degrades to showing source. Whole-version blocks
+  element fails the strict parse; the reader degrades to showing source. Whole-variant blocks
   remain the degraded form for three-plus heads / no fork point.
+- **The lookout learns about raced resolutions; `:::variant` gets its real name** (2026-07-25):
+  two devices resolving the same fork left one browser oblivious (its own save was the display
+  pick; every watched scalar unchanged while the head set rotated). The lookout's judgment is
+  now a pure tested predicate (`js/lookout.js`, scars documented) with the new clause
+  "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
+  emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
+  time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
 
 ## Standing residuals (owed, with triggers)
 

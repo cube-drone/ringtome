@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Ringtome node UI (Preact)",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "build": "esbuild index.js --bundle --tree-shaking=true --metafile=target/js/meta.json --outfile=target/js/bundle.js --platform=browser --minify",
     "watch": "esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser --watch --sourcemap --keep-names --define:process.env.NODE_ENV=\\\"development\\\" --log-level=info --legal-comments=inline",

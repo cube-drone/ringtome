@@ -100,13 +100,15 @@ behaviors on top:
   and the shape is **dispatched on the header's `format`** (the first behavior to actually differ
   between formats): git-style marker blocks for plaintext (per-hunk, with honest labels — "from
   your phone, yesterday 9pm"; chains are per-device, so attribution is free), a `:::conflict`
-  directive wrapping `:::version` blocks in Marquee - **per-hunk since 2026-07-26** (the
+  directive wrapping `:::variant` blocks in Marquee (the renderers' shipped vocabulary —
+  "version" was judged overloaded over in marquee; `label` and `when` are advisory display
+  text rendered verbatim, so `when` carries civil time) - **per-hunk since 2026-07-25** (the
   whole-document presentation proved a cure worse than the disease in field testing: it
   discarded every cleanly-merged region to protect against occasionally splitting a block
   element). Marquee's block elements are largely line-tied, so line-boundary hunks usually
   land clean; when a hunk does split a multi-line element, the strict parse fails and clients
   degrade to showing source - honest and lossless, and resolution happens in the write view
-  regardless. Whole-`:::version` blocks remain the degraded form (three-plus heads, no usable
+  regardless. Whole-`:::variant` blocks remain the degraded form (three-plus heads, no usable
   fork point), exactly parallel to plaintext's whole-document fallback. Clean three-way merge is
   format-agnostic (Marquee source is still lines); only the *conflict* presentation forks. The editor is the merge tool. This text is **synthesized at
   read time, never written** — resolution is the user tidying it and saving, which lists all DAG
@@ -122,7 +124,12 @@ behaviors on top:
   devices" looks like your document, with both texts inline under gentle labels.
 - **Clients check the head before saving**: if it moved, rebase (fast-forward the editor onto the
   new head) or fork knowingly — never blind-save. The stale tab becomes a detected sibling, not
-  a destroyer.
+  a destroyer. The watch signal is subtler than "did the head move" — field-tested twice: the
+  device whose save *is* the display pick never sees it move, and two devices racing to resolve
+  the same fork can leave every watched scalar (display head, head count, diverged flag)
+  identical while the head *set* rotates underneath. The full judgment, scars and all, lives as
+  a pure tested predicate (`js/lookout.js`); the load-bearing clause is "an editor that believes
+  it is linear while the row says diverged has not yet presented that divergence."
 - The plan's **unsynced indicator** doctrine applies verbatim: a device knows which of its saves
   no peer has acknowledged, and surfaces it like an unsaved document.
 
@@ -238,9 +245,11 @@ the feature waits).
 ## Open questions
 
 - [ ] Retention default: keep-last-N versions — what's N, and is it user-visible?
-- [ ] The `:::conflict` / `:::version` vocabulary: Ringtome host vocabulary, or upstream into
-  Marquee's spec as general versioning vocabulary any embedder can use? (Merge UX itself is
-  resolved — conflicts present in-document; see The sync model.)
+- [x] ~~The conflict vocabulary: Ringtome host vocabulary, or upstream into Marquee's spec?~~
+  Upstreamed: Marquee ships `:::conflict` / `:::variant` (0.6.x, both renderers, shared
+  `mq-conflict`/`mq-variant` class contract; "version" was judged overloaded on their side).
+  Ringtome emits their names. (Merge UX itself is resolved — conflicts present in-document;
+  see The sync model.)
 - [ ] Header encoding: reuse the private-register's string value (hex-encoded `file_hash`/`parent`)
   or a dedicated CBOR `NoteHeader` payload with binary fields and its own AAD? Leaning dedicated,
   since byte-level file encryption already exists for bodies. (Chunking is no longer a question -

@@ -1057,19 +1057,26 @@ pub(crate) fn civil_utc(ms: i64) -> String {
     format!("{y:04}-{m:02}-{d:02} {h:02}:{mi:02}")
 }
 
-/// A conflict side's label: which device, when - and "which device" finally speaks device
-/// names (NOTES_APP promised "from your phone, yesterday 9pm"; chains are per-device, so
-/// attribution is free). Falls back to the shortcode for unnamed keys.
-fn side_label(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
+/// A conflict side's "which device" - device names at last (NOTES_APP promised "from your
+/// phone, yesterday 9pm"; chains are per-device, so attribution is free). Falls back to the
+/// shortcode for unnamed keys.
+fn side_who(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
     let who = names
         .get(&v.author)
         .cloned()
         .unwrap_or_else(|| format!("computer {}", hex::encode(&v.author[..2])));
-    format!("from {who}, {}", civil_utc(v.timestamp_ms))
+    format!("from {who}")
+}
+
+/// Which device *and* when, in one string - the shape for plaintext's git-style marker lines,
+/// which have a single label slot. Marquee splits the same facts across `label` and `when`
+/// attrs instead (both rendered verbatim, side by side).
+fn side_label(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
+    format!("{}, {}", side_who(v, names), civil_utc(v.timestamp_ms))
 }
 
 /// Per-hunk Marquee conflicts (amended 2026-07-25): diffy's marker lines become `:::conflict`
-/// / `:::version` vocabulary at the same line boundaries, so non-overlapping edits stay merged
+/// / `:::variant` vocabulary at the same line boundaries, so non-overlapping edits stay merged
 /// and only the disputed hunks wear scaffolding - the whole-document presentation was a cure
 /// worse than the disease. The accepted risk, stated: a hunk boundary can split a multi-line
 /// block element, leaving a fragment inside a version block that fails the strict parse; the
@@ -1095,22 +1102,22 @@ fn hunk_conflict_directives(
         match (&state, line) {
             (State::Outside, "<<<<<<< ours") => {
                 out.push_str(&format!(
-                    ":::conflict\n:::version label=\"{}\" when={}\n",
-                    side_label(a, names),
-                    a.timestamp_ms
+                    ":::conflict\n:::variant label=\"{}\" when=\"{}\"\n",
+                    side_who(a, names),
+                    civil_utc(a.timestamp_ms)
                 ));
                 state = State::Ours;
             }
             (State::Ours, "=======") => {
                 out.push_str(&format!(
-                    "::: version\n:::version label=\"{}\" when={}\n",
-                    side_label(b, names),
-                    b.timestamp_ms
+                    "::: variant\n:::variant label=\"{}\" when=\"{}\"\n",
+                    side_who(b, names),
+                    civil_utc(b.timestamp_ms)
                 ));
                 state = State::Theirs;
             }
             (State::Theirs, ">>>>>>> theirs") => {
-                out.push_str("::: version\n::: conflict\n");
+                out.push_str("::: variant\n::: conflict\n");
                 state = State::Outside;
             }
             _ => {
@@ -1152,22 +1159,25 @@ fn whole_version_conflict(
             }
             out
         }
-        // Marquee vocabulary: a `:::conflict` wrapping one `:::version` per side. An unknowing
-        // renderer shrugs and shows every version's children in full - the degraded conflict is
-        // still a lossless conflict (REQUEST_conflict_vocabulary.md, over in marquee).
+        // Marquee vocabulary: a `:::conflict` wrapping one `:::variant` per side - the names
+        // the renderers actually ship ("version" was judged overloaded, over in marquee; the
+        // mq-conflict/mq-variant class contract is shared by both renderers). `label` and
+        // `when` are advisory display text shown VERBATIM, so `when` carries civil time, not
+        // epoch ms. An unknowing renderer shrugs and shows every variant's children in full -
+        // the degraded conflict is still a lossless conflict.
         Format::Marquee => {
             let mut out = String::from(":::conflict\n");
             for (v, body) in sides {
                 out.push_str(&format!(
-                    ":::version label=\"{}\" when={}\n",
-                    side_label(v, names),
-                    v.timestamp_ms
+                    ":::variant label=\"{}\" when=\"{}\"\n",
+                    side_who(v, names),
+                    civil_utc(v.timestamp_ms)
                 ));
                 out.push_str(body);
                 if !body.ends_with('\n') {
                     out.push('\n');
                 }
-                out.push_str("::: version\n");
+                out.push_str("::: variant\n");
             }
             out.push_str("::: conflict\n");
             out
@@ -2163,8 +2173,8 @@ mod tests {
             "marquee vocabulary, not markers:\n{body}"
         );
         assert!(
-            body.contains(":::version"),
-            "one version block per side:\n{body}"
+            body.contains(":::variant"),
+            "one variant block per side (the renderers' name - not \"version\"):\n{body}"
         );
         assert!(
             !body.contains("<<<<<<<"),
@@ -3157,8 +3167,12 @@ mod tests {
         );
         assert!(body.contains("::: conflict"), "the block closes:\n{body}");
         assert!(
-            body.contains(":::version label=\"from computer"),
-            "sides are labeled version blocks:\n{body}"
+            body.contains(":::variant label=\"from computer"),
+            "sides are labeled variant blocks:\n{body}"
+        );
+        assert!(
+            body.contains("when=\"") && !body.contains("when=1"),
+            "when is quoted civil time, rendered verbatim - never raw epoch ms:\n{body}"
         );
         assert!(!body.contains("<<<<<<<"), "no git markers in marquee:\n{body}");
         assert!(body.contains("ZZZ") && body.contains("E\nF"), "both tails inside:\n{body}");

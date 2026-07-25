@@ -930,19 +930,48 @@ the memoized row can't know the resolution without running the merge.
 
 ---
 
-## Marquee conflicts go per-hunk (2026-07-26)
+## Marquee conflicts go per-hunk (2026-07-25)
 
-The whole-`:::version` conflict presentation for Marquee - settled in NOTES_APP to protect
+The whole-document conflict presentation for Marquee - settled in NOTES_APP to protect
 block elements from being split by hunk boundaries - was re-judged in the field as a cure
 worse than the disease: it discarded every cleanly-merged region to prevent occasional
 breakage, and with Marquee's block elements largely line-tied, line-boundary hunks usually
-land clean anyway. Now diffy's marker lines become `:::conflict` / `:::version` vocabulary at
+land clean anyway. Now diffy's marker lines become `:::conflict` / `:::variant` vocabulary at
 the same boundaries (a line state machine, not blind replace - a user's own "=======" line
 outside a conflict is untouched), so non-overlapping edits stay merged and only disputed
-hunks wear scaffolding, with device-named labeled version blocks. The accepted risk, stated
+hunks wear scaffolding, with device-named labeled variant blocks. The accepted risk, stated
 in the spec: a hunk can split a multi-line element and fail the strict parse - the reader
 now degrades to showing source with an honest note, and the editor's preview already reported
-parse errors. Whole-version blocks remain the degraded form (three-plus heads, no usable
+parse errors. Whole-variant blocks remain the degraded form (three-plus heads, no usable
 fork point), parallel to plaintext's whole-document fallback. Proven by the Marquee mirror of
 the per-hunk plaintext test: insertion outside the scaffolding, exactly one conflict block,
 labeled sides, no git markers, both tails inside.
+
+---
+
+## The lookout learns about raced resolutions; the conflict vocabulary gets its real name (2026-07-25)
+
+Field report with paired debug dumps, and the dumps were the diagnosis: both nodes in perfect
+agreement (same heads, same synthesized conflict), but only one browser showing it. The blind
+spot: two devices each resolved the same fork, producing a fresh two-head fork whose display
+pick was one racer's own save - that editor saw head ∈ parents, heads still 2, diverged still
+true, every watched scalar identical to the tangle it had just resolved, and sat oblivious
+while the head *set* rotated underneath. Second scar on the same predicate (the first: the
+display-pick device never sees the head move), so the judgment moved out of the component into
+`js/lookout.js` as a pure function carrying its scar record, tested by mocha without a browser
+(`integration/test/lookout.cjs` - the raced case reproduces the dumps' exact shape, and failed
+against the old logic before the fix). The cure is one clause: an editor that believes it is
+linear (exactly one parent - its own fast-forwarded save) while the row says diverged has
+definitionally not yet presented that divergence - reload. After the reload save_parents is
+every logical head, so it cannot loop.
+
+Same report, second bug: the synthesized Marquee conflict wore `:::version` blocks, but the
+vocabulary Marquee actually shipped is `:::conflict` / `:::variant` ("version" was judged
+overloaded on their side; both renderers carry the mq-conflict/mq-variant class contract).
+So our conflicts were falling through to the unknown-vocabulary shrug - lossless, as designed,
+but unstyled. Renamed, and the attrs corrected to the contract: `label` and `when` are
+advisory display text rendered *verbatim* (their renderer comment warns that reformatting
+timestamps makes two renderers disagree), so `when` now carries quoted civil time instead of
+raw epoch ms, and the device name and timestamp split across the two attrs rather than
+doubling up. The NOTES_APP open question - host vocabulary or upstream? - closed itself:
+upstreamed, and Ringtome emits their names.
