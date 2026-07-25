@@ -1106,3 +1106,20 @@ pinned by fixture tests including the multibyte-char-at-the-cap edge. The privac
 recorded as deliberate: unfurling links in private notes reveals interest to target sites;
 accepted (niche threat, node-not-browser does the fetching, cache damps repetition).
 reqwest was already in the tree via pkarr - the direct dependency cost nothing new.
+
+---
+
+## Side-by-side learns to follow the cursor (2026-07-25)
+
+Field note: the marquee-react-renderer demo goes to real effort keeping its two panes in
+step, and our side-by-side mode did none of it - the scroll-sync half of the renderer's API
+(the MarqueeHandle: `elementNear`, `scrollToSource`, `onNodeClick`) was sitting unused.
+Ported the demo's pattern whole ("the honest prototype of the editor we're heading toward",
+its own words): forward sync on select/click/keyup - the source cursor centers the nearest
+rendered node in the preview and outlines it (`editor-cursor-node`, the house amber) -
+and reverse sync on preview click, which puts the cursor on that node's exact source span.
+The load-bearing subtlety, kept with its comment: an echo guard, because setSelectionRange
+fires `select`, which would run the forward sync and yank the clicked node out from under
+the cursor; cleared on a timeout so a `select` that never arrives can't wedge it. Both
+handlers no-op gracefully in the modes missing one of the panes (plain has no preview,
+read-only no textarea).

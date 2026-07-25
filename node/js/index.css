@@ -661,6 +661,15 @@ body {
     border: 1px solid #2a2a3e;
     border-radius: 6px;
     padding: 0.8rem;
+    /* scrollToSource centers the cursor's node; smooth keeps the tracking legible. */
+    scroll-behavior: smooth;
+}
+
+/* The preview node the source cursor is inside - the scroll sync, made visible. */
+.editor-cursor-node {
+    outline: 2px solid rgba(255, 216, 102, 0.55);
+    outline-offset: 2px;
+    border-radius: 2px;
 }
 
 .chip-button {

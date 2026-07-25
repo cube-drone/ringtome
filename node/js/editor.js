@@ -246,6 +246,44 @@ export const Editor = ({ root, docId }) => {
     // endpoint; the profile's identity changes as cards land, re-rendering every surface.
     const tlProfile = useTurbolinks(body, format);
 
+    // Side-by-side scroll sync, both directions - the pattern from marquee-react-renderer's
+    // own demo ("the honest prototype of the editor we're heading toward"). Forward: the
+    // textarea cursor centers the nearest rendered node and outlines it. Reverse: clicking
+    // a rendered node puts the cursor on its source span. The echo guard is load-bearing:
+    // setSelectionRange fires `select`, which would run the forward sync and yank the very
+    // node you clicked out from under you; cleared on a timeout so a `select` that never
+    // arrives can't leave it stuck.
+    const previewRef = useRef(null); // MarqueeHandle
+    const sourceRef = useRef(null); // the side-by-side textarea
+    const markedRef = useRef(null); // the currently-outlined preview element
+    const echoRef = useRef(false);
+    const syncToCursor = () => {
+        const handle = previewRef.current;
+        const ta = sourceRef.current;
+        if (!handle || !ta || echoRef.current) return;
+        if (markedRef.current) markedRef.current.classList.remove('editor-cursor-node');
+        markedRef.current = null;
+        // NEAREST, not "containing": a cursor on the blank line between two paragraphs is
+        // contained only by the document, and centering *that* is a trip to nowhere.
+        const el = handle.elementNear(ta.selectionStart);
+        if (!el) return;
+        handle.scrollToSource(ta.selectionStart);
+        el.classList.add('editor-cursor-node');
+        markedRef.current = el;
+    };
+    const syncToNode = (_node, span) => {
+        const ta = sourceRef.current;
+        if (!ta || !span) return;
+        echoRef.current = true;
+        ta.focus();
+        ta.setSelectionRange(span.start, span.end);
+        setTimeout(() => {
+            echoRef.current = false;
+        }, 0);
+        if (markedRef.current) markedRef.current.classList.remove('editor-cursor-node');
+        markedRef.current = null;
+    };
+
     // The effective mode: the user's pick if the format still offers it, else the format's
     // default (a marquee doc opens interactive; converting it to plaintext clamps an
     // interactive/side pick back to the plain textarea).
@@ -260,7 +298,13 @@ export const Editor = ({ root, docId }) => {
     if (format === 'marquee' && (mode === 'side' || mode === 'read')) {
         try {
             parse(body);
-            rendered = html`<div class="reader-marquee"><${Marquee} source=${body} animate="visible" profile=${tlProfile} /></div>`;
+            rendered = html`<div class="reader-marquee"><${Marquee}
+                ref=${previewRef}
+                source=${body}
+                animate="visible"
+                profile=${tlProfile}
+                onNodeClick=${syncToNode}
+            /></div>`;
         } catch (e) {
             rendered =
                 mode === 'read'
@@ -277,12 +321,16 @@ export const Editor = ({ root, docId }) => {
 
     const sourcePane = html`<textarea
         class="editor-body"
+        ref=${sourceRef}
         value=${body}
         onInput=${(e) => {
             setBody(e.currentTarget.value);
             touched();
         }}
         onBlur=${save}
+        onSelect=${syncToCursor}
+        onClick=${syncToCursor}
+        onKeyUp=${syncToCursor}
         spellcheck="true"
     ></textarea>`;
 

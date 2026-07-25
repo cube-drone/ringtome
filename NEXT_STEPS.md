@@ -138,6 +138,10 @@ HISTORY.md.
   "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
   emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
   time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
+- **Side-by-side scroll sync** (2026-07-25): the renderer's MarqueeHandle API, finally used -
+  source cursor centers + outlines its rendered node; clicking a rendered node puts the
+  cursor on its source span; echo guard against the select-event bounce. The pattern is the
+  react-renderer demo's, ported whole.
 - **Turbolinks unfurl** (2026-07-25): every Marquee surface now runs a shared turbolink
   chain - marquee-turbolink's fetchless plugins (YouTube/Spotify/media) plus a Ringtome
   OpenGraph plugin backed by `GET /api/unfurl` (the node fetches; browsers can't, CORS).

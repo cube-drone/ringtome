@@ -142,8 +142,9 @@ behaviors on top:
   offers *interactive* (Marquee live preview via `@cube-drone/marquee-codemirror` — the
   document never stops being plain source; styling is projected onto it as decorations, so the
   save machinery sees exactly what a textarea would), *side by side* (source pane + rendered
-  pane), *plaintext* (the raw source in a plain textarea), and *read only* (the rendered
-  document). A Marquee doc offers all four and opens interactive; a plaintext doc offers only
+  pane, scroll-synced both ways: the source cursor centers and outlines its rendered node,
+  clicking a rendered node puts the cursor on its source span), *plaintext* (the raw source
+  in a plain textarea), and *read only* (the rendered document). A Marquee doc offers all four and opens interactive; a plaintext doc offers only
   plaintext/read-only and opens plaintext; converting a doc's format re-clamps the mode to
   what the new format supports. **New items default to Marquee** — the interactive editor is
   the front door, and the format chip converts to plaintext for anyone who wants a plain page.
