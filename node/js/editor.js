@@ -26,6 +26,7 @@ import { openMirror, useLive } from './cache.js';
 import { needsReload } from './lookout.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
+import { keepaliveOk } from './keepalive.js';
 
 const html = htm.bind(h);
 
@@ -120,7 +121,7 @@ export const Editor = ({ root, docId }) => {
         setStatus('clean');
     };
 
-    const save = async () => {
+    const save = async ({ unloading = false } = {}) => {
         const m = machine.current;
         if (!m.dirty || m.inflight) return;
         if (m.parents.length === 0) return; // waiting room: nothing loaded to save against
@@ -129,16 +130,20 @@ export const Editor = ({ root, docId }) => {
         // Snapshot what we're saving (from the ref, never a closure); edits during the
         // request keep the buffer dirty.
         const snapshot = { ...buffer.current, parents: m.parents };
+        const payload = JSON.stringify({
+            title: snapshot.title,
+            body: snapshot.body,
+            format: snapshot.format,
+            parents: snapshot.parents,
+        });
+        // keepalive only on the unload path, only when the body fits its 64 KiB cap - see
+        // keepalive.js for the whole painful reason.
+        const keepalive = keepaliveOk(unloading, new TextEncoder().encode(payload).length);
         try {
             const res = await api(`/api/identity/${root}/docs/${docId}`, {
                 method: 'PUT',
-                body: JSON.stringify({
-                    title: snapshot.title,
-                    body: snapshot.body,
-                    format: snapshot.format,
-                    parents: snapshot.parents,
-                }),
-                keepalive: true, // survives tab-hide saves
+                body: payload,
+                keepalive,
             });
             m.parents = [res.version];
             const b = buffer.current;
@@ -181,11 +186,12 @@ export const Editor = ({ root, docId }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, docId]);
 
-    // Tab hidden (close, switch away): flush with keepalive - the words leave the building
-    // even if the tab doesn't come back.
+    // Tab hidden (close, switch away): flush with keepalive so the words leave the building
+    // even if the tab doesn't come back. This is the ONE save that passes unloading - a
+    // React unmount (doc switch) doesn't abort fetches, so only a real page-away needs it.
     useEffect(() => {
         const onHide = () => {
-            if (document.visibilityState === 'hidden') saveRef.current();
+            if (document.visibilityState === 'hidden') saveRef.current({ unloading: true });
         };
         document.addEventListener('visibilitychange', onHide);
         return () => document.removeEventListener('visibilitychange', onHide);

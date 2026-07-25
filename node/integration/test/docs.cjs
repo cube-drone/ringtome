@@ -134,6 +134,23 @@ describe("versioned documents (notes)", function () {
         assert.equal(detail.title, "groceries");
     });
 
+    it("saves a document larger than the keepalive cap (the server was never the limit)", async function () {
+        // The '600KB never saved' bug was fetch's client-side keepalive cap (64 KiB), not the
+        // server. This proves the server-side path takes a body well past that cap and reads
+        // it back verbatim - here ~128KB, over the keepalive limit and under this node's
+        // 256KB document cap (a real node's default is ~10MB).
+        const user = await makeUserFetch({ prefix: "docsbig" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const big = "Sherlock ".repeat(14_000); // ~126KB, ~2x the 64 KiB keepalive cap
+        assert.ok(big.length > 64 * 1024, "the body exceeds the keepalive cap");
+        const doc = await createDoc(user, root, "big", big, "marquee");
+        const detail = await getDoc(user, root, doc.doc_id);
+        assert.equal(detail.body.length, big.length, "the whole body round-trips");
+        assert.equal(detail.body, big);
+    });
+
     it("detects the stale tab: divergence keeps both versions readable", async function () {
         const user = await makeUserFetch({ prefix: "docsfork" });
         const created = await (await user("api/identity", { method: "POST" })).json();

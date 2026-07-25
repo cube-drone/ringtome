@@ -1182,3 +1182,26 @@ edit / annotation change, and the headers-ahead-of-bodies re-index), six JS matc
 an end-to-end stream assertion that a created doc's body words arrive as a token row. Schema
 generation 4 (User-1 rule: additive columns, no migration - rebuild). `doc_search` registered
 with the SQL-ownership conventions cop.
+
+---
+
+## The 64 KiB save cliff: keepalive vs. a big paste (2026-07-25)
+
+Field report: pasting a ~600KB document (Sherlock Holmes) into a note showed "Not Saved!" /
+"NetworkError when attempting to fetch resource" and never saved - with nothing in the network
+tab or the server log to explain it. That absence WAS the clue: the request never left the
+browser. The editor set `keepalive: true` on every save (so a save survives a closing tab),
+and fetch's keepalive flag caps the request body at 64 KiB by spec - a larger body is rejected
+client-side as an opaque NetworkError before any round-trip. Any document over ~64KB simply
+could not save.
+
+Fix: keepalive is now set ONLY on the unload flush (visibilitychange -> hidden), and even then
+only when the body fits - a big document flushed on unload falls back to a plain fetch, which
+is all an unload flush ever was (best-effort; the 10s autosave has almost certainly already
+saved it). Normal debounced/blur saves are ordinary fetches with no size limit; a React
+unmount (doc switch) doesn't abort fetches, so it never needed keepalive either. The decision
+is a pure tested helper (`js/keepalive.js`, `keepaliveOk(unloading, bytes)`) because the bug
+was so silent it earns a regression guard. Two tests: the JS guard (a 600KB unload body does
+NOT get keepalive) and an integration save of a 126KB document (2x the cap) proving the server
+was never the limit - it round-trips verbatim. The server-side ceiling (`max_document_bytes`,
+~10MB default) returns an honest 413 with a message, never a silent NetworkError.
