@@ -13,15 +13,18 @@ import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { EditorView, keymap } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { marquee } from '@cube-drone/marquee-codemirror';
 
 const html = htm.bind(h);
 
-export const LiveMarquee = ({ body, onInput, onBlur }) => {
+export const LiveMarquee = ({ body, profile, onInput, onBlur }) => {
     const host = useRef(null);
     const view = useRef(null);
+    // The marquee extension takes its profile at configure time; a Compartment lets a new
+    // profile (turbolink data arriving) swap it live, rebuilding decorations in place.
+    const marqueeConf = useRef(new Compartment());
     // True while WE are dispatching the external replace - those doc changes are sync, not
     // typing, and must not reach onInput (which arms the dirty flag).
     const syncing = useRef(false);
@@ -39,7 +42,7 @@ export const LiveMarquee = ({ body, onInput, onBlur }) => {
                     history(),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
                     EditorView.lineWrapping,
-                    marquee(),
+                    marqueeConf.current.of(marquee({ profile })),
                     EditorView.updateListener.of((u) => {
                         if (u.docChanged && !syncing.current) {
                             hooks.current.onInput(u.state.doc.toString());
@@ -67,6 +70,16 @@ export const LiveMarquee = ({ body, onInput, onBlur }) => {
             syncing.current = false;
         }
     }, [body]);
+
+    // A new profile identity (freshly resolved turbolink cards) reconfigures the extension;
+    // decorations rebuild against the same untouched source.
+    useEffect(() => {
+        const v = view.current;
+        if (v) {
+            v.dispatch({ effects: marqueeConf.current.reconfigure(marquee({ profile })) });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [profile]);
 
     return html`<div class="editor-live" ref=${host}></div>`;
 };

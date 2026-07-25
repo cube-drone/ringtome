@@ -74,6 +74,12 @@ pub struct Config {
     /// debounce (~10s) is what batches a typing burst into one save, so this stays short.
     /// Override with `RINGTOME_SYNC_DEBOUNCE_MS`.
     pub sync_debounce_ms: i64,
+    /// The unfurl endpoint's global outbound budget, in fetches per minute - also the burst
+    /// capacity (one minute's allowance up front). This exists so a node can't be aimed at a
+    /// foreign server as a load test; it is sized per NODE, not per user, so a single-user
+    /// node is generous at the default 30 and a many-user node raises it to taste. Override
+    /// with `RINGTOME_UNFURL_RATE_PER_MIN`.
+    pub unfurl_rate_per_min: f64,
     /// Anti-entropy cadence: every interval, each identity with peers runs a full exchange with
     /// up to 3 randomly chosen peers, dirty or not (PROJECT_PLAN, sync discipline: random
     /// selection keeps the sync graph well-connected). Also the boot catch-up - the first pass
@@ -163,6 +169,11 @@ impl Config {
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(300);
 
+        let unfurl_rate_per_min = env::var("RINGTOME_UNFURL_RATE_PER_MIN")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(30.0);
+
         // Env wins; otherwise the machine's hostname - the name a person already calls this
         // computer. An unresolvable hostname falls back to a constant rather than failing boot:
         // the name is a label, and labels must never be load-bearing. Clamped once here to the
@@ -200,6 +211,7 @@ impl Config {
             max_document_bytes,
             sync_debounce_ms,
             resync_interval_secs,
+            unfurl_rate_per_min,
             node_name,
         }
     }

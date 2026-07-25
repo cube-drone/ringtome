@@ -25,6 +25,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 import { openMirror, useLive } from './cache.js';
 import { needsReload } from './lookout.js';
 import { LiveMarquee } from './livemarquee.js';
+import { useTurbolinks } from './turbolinks.js';
 
 const html = htm.bind(h);
 
@@ -241,6 +242,10 @@ export const Editor = ({ root, docId }) => {
         opening: '…',
     }[status];
 
+    // Turbolink cards for whatever the buffer holds - resolves via the node's unfurl
+    // endpoint; the profile's identity changes as cards land, re-rendering every surface.
+    const tlProfile = useTurbolinks(body, format);
+
     // The effective mode: the user's pick if the format still offers it, else the format's
     // default (a marquee doc opens interactive; converting it to plaintext clamps an
     // interactive/side pick back to the plain textarea).
@@ -255,7 +260,7 @@ export const Editor = ({ root, docId }) => {
     if (format === 'marquee' && (mode === 'side' || mode === 'read')) {
         try {
             parse(body);
-            rendered = html`<div class="reader-marquee"><${Marquee} source=${body} animate="visible" /></div>`;
+            rendered = html`<div class="reader-marquee"><${Marquee} source=${body} animate="visible" profile=${tlProfile} /></div>`;
         } catch (e) {
             rendered =
                 mode === 'read'
@@ -353,6 +358,7 @@ export const Editor = ({ root, docId }) => {
                 : mode === 'interactive' && format === 'marquee'
                 ? html`<${LiveMarquee}
                       body=${body}
+                      profile=${tlProfile}
                       onInput=${(text) => {
                           setBody(text);
                           touched();

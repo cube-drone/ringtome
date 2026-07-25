@@ -53,6 +53,10 @@ turso = "=0.7.0"
 moka = { version = "0.12", features = ["future"] }
 iroh = "1.0.2"
 pkarr = "5"
+# Outbound HTTP for the turbolink unfurl endpoint (net::unfurl) - already in the tree via
+# pkarr, so this direct dependency costs nothing new. rustls only, no native TLS.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2"] }
+url = "2"
 base64 = "0.22.1"
 dryoc = "0.8.0"
 iroh-blobs = "0.103.0"

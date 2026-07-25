@@ -60,6 +60,8 @@ pub struct AppState {
     /// In-memory eager-push debounce state (which identities changed, when last pushed).
     /// Rebuilt empty each boot: roots re-seed dirty and re-push once, cheaply.
     pub resync: net::resync::ResyncTracker,
+    /// The turbolink unfurl engine: outbound OpenGraph fetches, guarded and cached.
+    pub unfurl: net::unfurl::Unfurler,
 }
 
 #[derive(serde::Serialize)]
@@ -108,6 +110,29 @@ async fn node_info(_session: auth::Session, State(state): State<AppState>) -> Js
             .map(|s| s.to_string())
             .collect(),
     })
+}
+
+#[derive(serde::Deserialize)]
+struct UnfurlQuery {
+    url: String,
+}
+
+/// Fetch a link's OpenGraph card on the browser's behalf (net::unfurl - CORS forbids the
+/// browser doing it). Session-gated: unfurling spends the node's outbound budget and reveals
+/// interest in the target, so only this node's own users may ask. `null` is an honest "that
+/// page has no card" (or a transient fetch failure) - the turbolink falls to its plain form.
+async fn unfurl_handler(
+    _session: auth::Session,
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<UnfurlQuery>,
+) -> Result<Json<Option<net::unfurl::Summary>>, AppError> {
+    match state.unfurl.unfurl(&q.url).await {
+        Ok(summary) => Ok(Json(summary)),
+        Err(net::unfurl::Refusal::BadTarget(m)) => Err(AppError::BadRequest(m)),
+        Err(net::unfurl::Refusal::RateLimited) => Err(AppError::TooManyRequests(
+            "the node's unfurl budget is spent for the moment - links still work plain".into(),
+        )),
+    }
 }
 
 #[tokio::main]
@@ -171,6 +196,7 @@ async fn main() -> anyhow::Result<()> {
     ingest.ensure_dir()?;
     // Reconcile any jobs left in flight by a previous run before the worker starts claiming.
     ingest::reconcile_on_boot(&node_db).await?;
+    let unfurl = net::unfurl::Unfurler::new(config.unfurl_rate_per_min);
     let state = AppState {
         config,
         node_db,
@@ -182,6 +208,7 @@ async fn main() -> anyhow::Result<()> {
         files,
         ingest,
         resync: net::resync::ResyncTracker::default(),
+        unfurl,
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
 
@@ -241,6 +268,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/health", get(health))
         .route("/api/config", get(get_config))
         .route("/api/node", get(node_info))
+        .route("/api/unfurl", get(unfurl_handler))
         .merge(auth::router())
         .merge(identity::router(body_limits));
 

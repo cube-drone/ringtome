@@ -138,6 +138,15 @@ HISTORY.md.
   "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
   emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
   time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
+- **Turbolinks unfurl** (2026-07-25): every Marquee surface now runs a shared turbolink
+  chain - marquee-turbolink's fetchless plugins (YouTube/Spotify/media) plus a Ringtome
+  OpenGraph plugin backed by `GET /api/unfurl` (the node fetches; browsers can't, CORS).
+  The endpoint's safety envelope, both halves tested: SSRF guard (public-addresses-only per
+  redirect hop, connection pinned to the vetted address) and a global token bucket
+  (`RINGTOME_UNFURL_RATE_PER_MIN`, default 30 - per NODE, so many-user nodes raise it) so a
+  node can't be turned into an attack on a foreign server.
+  Privacy call recorded as deliberate: unfurling private-note links reveals interest to
+  target sites - accepted.
 - **Editor modes + Marquee as the front door** (2026-07-25): write/preview tabs became four
   view modes (interactive / side by side / plaintext / read only; modes are a view choice,
   format a document property - each format offers what it can render, and defaults follow).

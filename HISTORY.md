@@ -1066,3 +1066,43 @@ current format can't offer sits clamped and resurfaces if the doc converts back.
 Housekeeping: a project `.npmrc` pins the @cube-drone scope to public npm (the home config
 routes the scope to GitHub Packages for publishing, which 404'd new installs here); the JS
 bundle grows 182 → 463 KB with CodeMirror aboard - fine for a self-hosted node UI.
+
+---
+
+## Turbolinks unfurl: OpenGraph cards via the node (2026-07-25)
+
+Field observation: no turbolink expanded anywhere - not for want of machinery but for want
+of wiring. Every Marquee surface ran the bare-web default profile, whose turbolink socket is
+empty; even marquee-turbolink's fetchless plugins (YouTube, Spotify, image/audio/video -
+derivable from the URL, zero network) were sitting uncomposed. And the package's own
+OpenGraph plugin can't run in a browser at all: CORS forbids reading foreign HTML.
+
+Now: `js/turbolinks.js` composes the fetchless defaults plus a Ringtome OpenGraph plugin
+whose resolve() asks the node - `GET /api/unfurl?url=...` - and whose render() hands the
+summary to the package's own renderCard. One shared resolve cache and one injected
+stylesheet serve every surface (reader, side-by-side, interactive - the CodeMirror extension
+takes the profile through a Compartment, so cards arriving reconfigure decorations live).
+
+The node side (`net::unfurl`) is the interesting part, because an endpoint that fetches
+user-chosen URLs owes two guarantees, both tested:
+
+- **No reaching inward (SSRF)**: http/https only, every hop of a redirect chain (≤ 4)
+  re-vetted - every DNS answer must be a public address (private/loopback/link-local/CGNAT/
+  ULA/v4-mapped all refused) - and the connection is PINNED to the vetted address via a
+  per-hop resolve override, closing the DNS-rebinding TOCTOU. A node is never a periscope
+  into its own LAN; integration proves the refusals against real local addresses.
+- **No reaching outward too hard**: one global token bucket, generous for a human pasting
+  links, useless as a load test against a foreign server (Curtis's framing, and the
+  condition on shipping this at all). One knob, `RINGTOME_UNFURL_RATE_PER_MIN` (default 30):
+  the per-minute rate is also the burst capacity, sized per NODE - a single-user node is
+  generous at the default, a many-user node raises it. Nonsense values fall back rather
+  than disabling the brake. Refusals spend tokens too, which is what makes the 429 provable
+  offline. Per-URL day-long cache; cache hits don't spend; transient fetch failures aren't
+  cached, so a hiccup doesn't wear a day-long scar.
+
+The parse is a hand-rolled port of marquee-turbolink's parseOpenGraph (same fields, same
+title-required rule, same bounded 64KiB read, same five entities) - no regex dependency,
+pinned by fixture tests including the multibyte-char-at-the-cap edge. The privacy call is
+recorded as deliberate: unfurling links in private notes reveals interest to target sites;
+accepted (niche threat, node-not-browser does the fetching, cache damps repetition).
+reqwest was already in the tree via pkarr - the direct dependency cost nothing new.

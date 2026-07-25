@@ -4,9 +4,12 @@
 //!   - [`sync`]: chain exchange between nodes agenting the same identity.
 //!   - [`resync`]: when to run that exchange unprompted - eager push + anti-entropy.
 //!   - [`discovery`]: publish/resolve of serving + endpoint records (off / local / mainline DHT).
+//!   - [`unfurl`]: outbound OpenGraph fetches for the browser's turbolinks (SSRF-guarded,
+//!     globally rate-limited, cached).
 
 pub mod adopt;
 pub mod discovery;
 pub mod p2p;
 pub mod resync;
 pub mod sync;
+pub mod unfurl;

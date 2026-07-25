@@ -5096,6 +5096,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
+ "h2",
  "http",
  "http-body",
  "http-body-util",
@@ -5184,6 +5185,7 @@ dependencies = [
  "rav1d",
  "rav1e",
  "ravif",
+ "reqwest",
  "rgb",
  "ringtome-proto",
  "rubato",
@@ -5197,6 +5199,7 @@ dependencies = [
  "tracing-subscriber",
  "turso",
  "unsafe-libopus",
+ "url",
  "uuid",
  "webm-iterable",
 ]

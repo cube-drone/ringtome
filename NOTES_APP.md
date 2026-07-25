@@ -153,6 +153,13 @@ behaviors on top:
   The last-picked mode is remembered per document in the browser mirror's local-only `prefs`
   table - the one table the stream never feeds - so it holds steady across revisits, and is
   forgotten with the mirror on logout (the right posture for a record of which docs you touch).
+- **Turbolinks expand on every surface** (2026-07-25) via one shared plugin chain: the
+  fetchless kinds (YouTube/Spotify/media) plus OpenGraph cards fetched *by the node*
+  (`/api/unfurl` - browsers can't read foreign HTML; the endpoint is SSRF-guarded, globally
+  rate-limited so a node can't be aimed at a foreign server, and cached per URL). Decided
+  and accepted: unfurling links in private notes reveals interest to the target site -
+  the deanonymization-via-OpenGraph threat is judged niche, and the node (not the browser)
+  is what shows up in their logs.
 
 **On collaborative CRDT text, decided:** real-time co-editing is a non-goal — a text CRDT's
 op-log would become a wire format inside the conformance boundary, a giant cost with no named

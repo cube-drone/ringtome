@@ -10,6 +10,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
 import { Editor } from './editor.js';
+import { useTurbolinks } from './turbolinks.js';
 
 const html = htm.bind(h);
 
@@ -34,6 +35,7 @@ const when = (ms) => new Date(ms).toLocaleString();
 const Reader = ({ root, docId }) => {
     const [doc, setDoc] = useState(null);
     const [error, setError] = useState(null);
+    const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
 
     useEffect(() => {
         setDoc(null);
@@ -77,7 +79,7 @@ const Reader = ({ root, docId }) => {
                 parses = false;
             }
             body = parses
-                ? html`<div class="reader-marquee"><${Marquee} source=${doc.body} animate="visible" /></div>`
+                ? html`<div class="reader-marquee"><${Marquee} source=${doc.body} animate="visible" profile=${tlProfile} /></div>`
                 : html`<div>
                       <p class="null-sub">
                           this marquee doesn't parse right now (likely a conflict split a
