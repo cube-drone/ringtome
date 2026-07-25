@@ -146,6 +146,11 @@ HISTORY.md.
   source cursor centers + outlines its rendered node; clicking a rendered node puts the
   cursor on its source span; echo guard against the select-event bounce. The pattern is the
   react-renderer demo's, ported whole.
+- **Live-cache stream nudged** (2026-07-25): the stream's 1s cursor poll now also wakes on a
+  local write (the write-nudge, upgraded from a single-waiter `Notify` to a `()` broadcast so
+  many sockets can subscribe). Title/annotation edits reflect in the list in a round-trip
+  instead of up to a tick - the "internal broadcast bus" Stage-1 refinement, delivered because
+  it showed in a profile. The tick stays as the backstop; nudging is pure latency.
 - **Annotations UI + tag-filter** (2026-07-25): the editor gained a panel to set a document's
   description and tags (the two per-doc annotations; title is a header field, separate), and
   the notes list filters by tag, stacking with search (search stays a filter over the current

@@ -1266,3 +1266,25 @@ zero backend - `js/docdate.js` grew `splitClaimed`/`joinClaimed` (pure, tested),
 became `parseClaimed`, and the formatter shows a time only when the claim has one. The panel's
 date input gained a time sibling (disabled until a date is set); the annotations `useField`
 shadow-buffer discipline generalized to the composite `useClaimedDate`.
+
+---
+
+## The live-cache stream gets nudged (2026-07-25)
+
+Field report: changing a title or annotation took a full sync loop to reflect in the list -
+human-noticeable. The cause was the stream's own 1s cursor poll: a local write echoed back only
+when the next tick happened to notice the cursor had moved. This is exactly the "internal
+broadcast bus is the refinement if that ever shows in a profile" case the Stage-1 notes named -
+and it showed.
+
+Fix: local writes now ping the same write-nudge that already wakes the eager-sync loop, and the
+live-cache stream subscribes to it. The one change needed was topology: the nudge was a single
+`Notify` (one waiter - the eager loop), which can't serve many streams, so it became a `()`
+broadcast (`db::WriteNudge`). Every waiter - the eager loop and each open socket - wakes on a
+write, re-checks its own cursor, and sends only if it actually moved (`db::await_write_nudge`
+folds a lagged/closed receiver into one clean "re-check", never a busy loop). The 1s tick stays
+as the backstop for the two things a local-write nudge can't see - a write that races an
+in-flight send, and a body blob arriving by backfill (which bumps `view_epochs`, not a chain) -
+so nudging is pure latency, never correctness. Net: a save reflects in every open browser in a
+round-trip (~tens of ms) instead of up to a second. Tests updated for the broadcast (the loop
+doorbell test, the manager-nudge test now asserting TWO subscribers both hear one write).

@@ -147,11 +147,32 @@ pub struct Db {
     /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
     /// mechanism - sealed dumps) and for in-memory test databases.
     journal: Option<Journal>,
-    /// The eager-sync wake-up bell, attached like the journal (per-user databases only). Rung
-    /// by [`Db::nudge_sync`] on locally-*signed* writes so the eager loop notices a fresh save
-    /// in milliseconds instead of a poll tick. One bell for the whole node: the eager pass
-    /// fingerprints every root anyway, so the nudge needs no per-root routing.
-    write_nudge: Option<std::sync::Arc<tokio::sync::Notify>>,
+    /// The write-nudge broadcast, attached like the journal (per-user databases only). Fired by
+    /// [`Db::nudge_sync`] on locally-*signed* writes so every waiter - the eager-sync loop AND
+    /// each open live-cache stream - notices a fresh save in milliseconds instead of a poll
+    /// tick. A broadcast, not a single `Notify`, precisely because there are many waiters: one
+    /// bell for the whole node (each consumer re-checks its own frontier and acts only if it
+    /// actually moved, so no per-root routing is needed).
+    write_nudge: Option<WriteNudge>,
+}
+
+/// The write-nudge bus: a `()` broadcast fired on every locally-signed write. Consumers
+/// (`loops::periodic_nudged`, the live-cache stream) subscribe and re-check their own state on
+/// each ping. Capacity is tiny - a ping carries no data, and [`await_write_nudge`] folds a
+/// lagged receiver into a single "something changed, re-check", so overflow is harmless.
+pub type WriteNudge = tokio::sync::broadcast::Sender<()>;
+
+/// Await the next write nudge on a subscription, treating a lag (missed pings) as one wake and
+/// never busy-looping once the sender is gone (the receiver is disabled and the future parks).
+pub async fn await_write_nudge(rx: &mut Option<tokio::sync::broadcast::Receiver<()>>) {
+    use tokio::sync::broadcast::error::RecvError;
+    if let Some(r) = rx.as_mut() {
+        match r.recv().await {
+            Ok(()) | Err(RecvError::Lagged(_)) => return,
+            Err(RecvError::Closed) => *rx = None,
+        }
+    }
+    std::future::pending::<()>().await
 }
 
 impl Db {
@@ -244,21 +265,21 @@ impl Db {
         }
     }
 
-    /// Ring the eager-sync bell: a locally-signed write just landed, sync soon. `notify_one`
-    /// stores a permit when no loop is currently waiting, so a write racing the pass is never
-    /// lost. No-op for databases without the bell (node.db, tests) - and deliberately NEVER
-    /// called from the sync-ingest path: entries arriving *by sync* relay onward on the lazy
-    /// tick, which is the damping that keeps a peer triangle from ping-ponging (net::resync).
+    /// Fire the write nudge: a locally-signed write just landed - wake the eager-sync loop and
+    /// every open stream. `send` errors only when nobody is subscribed (ignored: the tick is
+    /// the backstop). No-op for databases without the bus (node.db, tests) - and deliberately
+    /// NEVER called from the sync-ingest path: entries arriving *by sync* relay onward on the
+    /// lazy tick, the damping that keeps a peer triangle from ping-ponging (net::resync).
     pub fn nudge_sync(&self) {
-        if let Some(bell) = &self.write_nudge {
-            bell.notify_one();
+        if let Some(bus) = &self.write_nudge {
+            let _ = bus.send(());
         }
     }
 
-    /// This handle (and every clone made from it) with the eager-sync bell attached.
-    fn with_write_nudge(self, bell: std::sync::Arc<tokio::sync::Notify>) -> Db {
+    /// This handle (and every clone made from it) with the write-nudge bus attached.
+    fn with_write_nudge(self, bus: WriteNudge) -> Db {
         Db {
-            write_nudge: Some(bell),
+            write_nudge: Some(bus),
             ..self
         }
     }
@@ -481,10 +502,10 @@ pub struct UserDbManager {
     journals_directory: PathBuf,
     keystore: Keystore,
     handles: moka::future::Cache<String, Db>,
-    /// The one eager-sync bell, attached to every per-user handle (see [`Db::nudge_sync`]).
+    /// The one write-nudge bus, attached to every per-user handle (see [`Db::nudge_sync`]).
     /// Owned here so wiring is automatic: whoever opens a user DB gets a nudging handle, and
-    /// the eager loop borrows the same bell via [`UserDbManager::write_nudge`].
-    write_nudge: std::sync::Arc<tokio::sync::Notify>,
+    /// consumers subscribe via [`UserDbManager::subscribe_writes`].
+    write_nudge: WriteNudge,
 }
 
 impl UserDbManager {
@@ -497,12 +518,19 @@ impl UserDbManager {
             journals_directory: data_directory.join("journals"),
             keystore,
             handles: moka::future::Cache::new(max_open),
-            write_nudge: std::sync::Arc::new(tokio::sync::Notify::new()),
+            // 16 is ample: pings carry no data and lag folds to one re-check.
+            write_nudge: tokio::sync::broadcast::channel(16).0,
         }
     }
 
-    /// The eager-sync bell every handle from this manager rings on locally-signed writes.
-    pub fn write_nudge(&self) -> std::sync::Arc<tokio::sync::Notify> {
+    /// Subscribe to the write-nudge bus - a ping on every locally-signed write. Each consumer
+    /// (the eager loop, a live-cache stream) gets its own receiver.
+    pub fn subscribe_writes(&self) -> tokio::sync::broadcast::Receiver<()> {
+        self.write_nudge.subscribe()
+    }
+
+    /// The bus itself, for a consumer that subscribes on its own schedule (the eager loop).
+    pub fn write_nudge(&self) -> WriteNudge {
         self.write_nudge.clone()
     }
 
@@ -733,18 +761,22 @@ mod tests {
         let dir = temp_dir().await;
         let ks = temp_keystore(&dir);
         let mgr = UserDbManager::new(&dir, ks, 8);
-        let bell = mgr.write_nudge();
+        // Two subscribers - every waiter (the eager loop AND each open stream) must hear one
+        // write, which is exactly why the bus is a broadcast and not a single-waiter Notify.
+        let mut a = mgr.subscribe_writes();
+        let mut b = mgr.subscribe_writes();
 
         let db = mgr.get("alice_pubkey").await.unwrap();
         db.nudge_sync();
 
-        // notify_one with no waiter stores a permit, so this resolves immediately - the
-        // property that makes a write racing an in-flight pass safe.
-        tokio::time::timeout(std::time::Duration::from_secs(1), bell.notified())
-            .await
-            .expect("a user-db handle's nudge reaches the manager's bell");
+        for (name, rx) in [("a", &mut a), ("b", &mut b)] {
+            tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+                .await
+                .unwrap_or_else(|_| panic!("subscriber {name} timed out"))
+                .expect("subscriber received the nudge");
+        }
 
-        // And a bell-less database (tests, node.db) shrugs instead of panicking.
+        // And a bus-less database (tests, node.db) shrugs instead of panicking.
         test_user_db().await.nudge_sync();
 
         tokio::fs::remove_dir_all(&dir).await.ok();

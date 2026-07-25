@@ -2216,7 +2216,12 @@ deltas when a library is big enough to care); the **cursor is a frontier fingerp
 matching reconnect goes straight to live and ANY doubt gets the full snapshot - incremental
 catch-up beyond nothing-changed is deliberately unbuilt, because "drop the cache and
 re-stream" is this design's own answer; **change detection is a 1s fingerprint poll per open
-socket** (an internal broadcast bus is the refinement if that ever shows in a profile); one
+socket, now nudged** (the anticipated internal broadcast bus - it showed in a profile, 2026-07-25:
+title/annotation edits lagged a full tick before reflecting in the list. Local writes ping the
+same write-nudge bus the eager-sync loop uses, upgraded from a single-waiter `Notify` to a `()`
+broadcast so every open socket wakes; each still re-checks its own cursor and sends only if it
+moved. The 1s tick stays as the backstop - it catches writes that race a send and body blobs
+arriving by backfill - so the nudge is pure latency, never correctness); one
 socket **per tab** rather than BroadcastChannel fan-out (Dexie's liveQuery already makes the
 mirror reactive cross-tab; the shared-socket economy can come later); the mirror is dropped
 on logout unconditionally (the "forget this browser" obligation, v1 shape); and the **shadow

@@ -1883,33 +1883,39 @@ async fn serve_stream(
         .send(Message::Text(serde_json::to_string(&first)?.into()))
         .await?;
 
+    // A local write pings the write-nudge bus (Db::nudge_sync), so a save reflects in every
+    // open browser in a round-trip instead of up to a full tick later. The tick stays as the
+    // backstop - it catches anything the nudge misses (a write during a send, a body arriving
+    // by backfill that bumped view_epochs) - so nudging is pure latency, never correctness.
+    let mut nudge = Some(state.user_dbs.subscribe_writes());
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
-            _ = tick.tick() => {
-                let now = stream_cursor(&db, state.view_epochs.get(&root))
-                    .await
-                    .map_err(anyhow::Error::new)?;
-                if now != cursor {
-                    cursor = now;
-                    let update = gather(&data, "update", cursor.clone())
-                        .await
-                        .map_err(anyhow::Error::new)?;
-                    socket
-                        .send(Message::Text(serde_json::to_string(&update)?.into()))
-                        .await?;
-                }
-            }
+            _ = tick.tick() => {}
+            _ = crate::db::await_write_nudge(&mut nudge) => {}
             incoming = socket.recv() => {
                 match incoming {
                     None | Some(Err(_)) => return Ok(()), // gone
                     Some(Ok(Message::Close(_))) => return Ok(()),
                     // Read-only socket: client payloads are ignored, not honored - mutations
                     // are HTTP POSTs. (Ping/pong is handled inside the websocket layer.)
-                    Some(Ok(_)) => {}
+                    Some(Ok(_)) => continue, // a client message never triggers a gather
                 }
             }
+        }
+        // Reached after a tick or a nudge: re-check the cursor and push an update if it moved.
+        let now = stream_cursor(&db, state.view_epochs.get(&root))
+            .await
+            .map_err(anyhow::Error::new)?;
+        if now != cursor {
+            cursor = now;
+            let update = gather(&data, "update", cursor.clone())
+                .await
+                .map_err(anyhow::Error::new)?;
+            socket
+                .send(Message::Text(serde_json::to_string(&update)?.into()))
+                .await?;
         }
     }
 }

@@ -22,14 +22,14 @@ where
     periodic_inner(name, every, None, state, job)
 }
 
-/// [`periodic`], plus a doorbell: the loop also runs a pass immediately whenever `nudge` is
-/// notified, without waiting for the tick. `Notify::notify_one` semantics make the bell safe
-/// against races - a ring while a pass is running stores a permit and wakes the very next
-/// wait. The tick keeps its own schedule regardless; a nudged pass never delays it.
+/// [`periodic`], plus a doorbell: the loop also runs a pass immediately whenever a write nudge
+/// fires, without waiting for the tick. The bus buffers a ping that arrives mid-pass, and
+/// [`crate::db::await_write_nudge`] folds a lag into one wake, so a write racing the pass is
+/// never lost. The tick keeps its own schedule regardless; a nudged pass never delays it.
 pub fn periodic_nudged<S, F, Fut>(
     name: &'static str,
     every: Duration,
-    nudge: std::sync::Arc<tokio::sync::Notify>,
+    nudge: crate::db::WriteNudge,
     state: S,
     job: F,
 ) where
@@ -37,13 +37,13 @@ pub fn periodic_nudged<S, F, Fut>(
     F: Fn(S) -> Fut + Send + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
 {
-    periodic_inner(name, every, Some(nudge), state, job)
+    periodic_inner(name, every, Some(nudge.subscribe()), state, job)
 }
 
 fn periodic_inner<S, F, Fut>(
     name: &'static str,
     every: Duration,
-    nudge: Option<std::sync::Arc<tokio::sync::Notify>>,
+    mut nudge: Option<tokio::sync::broadcast::Receiver<()>>,
     state: S,
     job: F,
 ) where
@@ -54,16 +54,11 @@ fn periodic_inner<S, F, Fut>(
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(every);
         loop {
-            match &nudge {
-                Some(bell) => {
-                    tokio::select! {
-                        _ = tick.tick() => {}
-                        _ = bell.notified() => {}
-                    }
-                }
-                None => {
-                    tick.tick().await;
-                }
+            // Either the tick fires or a write nudge arrives (a no-nudge loop's receiver is
+            // None, so `await_write_nudge` parks forever and only the tick drives it).
+            tokio::select! {
+                _ = tick.tick() => {}
+                _ = crate::db::await_write_nudge(&mut nudge) => {}
             }
             // Each pass runs in its own task so a panic is contained (and logged as a join
             // error) instead of killing the loop.
@@ -111,11 +106,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_nudge_runs_a_pass_without_waiting_for_the_tick() {
         let passes = Arc::new(AtomicU32::new(0));
-        let bell = Arc::new(tokio::sync::Notify::new());
+        let bus = tokio::sync::broadcast::channel::<()>(16).0;
         periodic_nudged(
             "test-nudged-loop",
             Duration::from_secs(3600),
-            bell.clone(),
+            bus.clone(),
             passes.clone(),
             |counter| async move {
                 counter.fetch_add(1, Ordering::SeqCst);
@@ -127,13 +122,13 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(passes.load(Ordering::SeqCst), 1, "the boot pass ran");
 
-        // A ring mid-interval wakes the loop right away - virtual time is nowhere near the
+        // A ping mid-interval wakes the loop right away - virtual time is nowhere near the
         // hour tick.
-        bell.notify_one();
+        let _ = bus.send(());
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(passes.load(Ordering::SeqCst), 2, "the nudge ran a pass");
 
-        // Quiet bell, quiet loop: no extra passes sneak in between ticks.
+        // Quiet bus, quiet loop: no extra passes sneak in between ticks.
         tokio::time::sleep(Duration::from_secs(60)).await;
         assert_eq!(passes.load(Ordering::SeqCst), 2, "no phantom passes");
     }
