@@ -911,3 +911,19 @@ shipped ("debug" chip in the editor → the full version DAG as JSON: every vers
 parents, author + device name, stamps, fingerprints, bodies; head bookkeeping; fork points;
 this node's synthesized resolution) - field-testing's request, slated for removal when the
 thorny-merge era ends.
+
+---
+
+## The chip learns two words (2026-07-25)
+
+Field-test dump review, with a victory lap inside it: a user's "incredibly smooth" merge
+session turned out to contain a live criss-cross (raced 07:01 resolutions, two fork points)
+that the day-old recursive base handled invisibly - resolution "merged", both sides' edits
+woven. The question it raised: why does a CLEAN merge still light the "diverged" chip? Answer,
+recorded: the flag is honest - the DAG genuinely holds two heads until the next ordinary save
+heals it, because clean merges are synthesized at read time and never auto-committed (minting
+merge entries at detection is exactly how racing devices would generate infinite criss-cross).
+But the chip conflated two states under one alarm word. Now: diverged + clean synthesis shows
+a calm green "merged" ("woven together cleanly - your next save seals the weave"); diverged +
+genuine overlap keeps the red "diverged"; the list row goes neutral ("two versions"), since
+the memoized row can't know the resolution without running the merge.

@@ -199,6 +199,7 @@ column is **banned from the UI permanently** (PROJECT_PLAN, The Cozyweb Surface)
 |---|---|
 | identity / key tree | you; your **persona**(s) — the single taught concept |
 | account (node login) | *(never a noun — "sign in", "new here?"; once a persona is open, the bar shows the persona and the username recedes)* |
+| divergence / diverged heads | a **conflict** (red chip) when edits genuinely overlap; just "merged" (green) when the read-time weave is clean; "two versions" in listings |
 | recovery key + photo ceremony | your **spare key** — "take a picture, keep it safe" |
 | adoption (request/grant codes) | "**invite this computer to be you**" (QR handshake) |
 | vouch | "**I know this person for real**" |

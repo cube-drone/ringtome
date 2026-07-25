@@ -84,7 +84,9 @@ const Reader = ({ root, docId }) => {
                 <span class="reader-title">${doc.title || 'untitled'}</span>
                 <span class="reader-chips">
                     ${doc.diverged &&
-                    html`<span class="chip chip-diverged" title="edited on two computers; every version is shown below">diverged</span>`}
+                    (doc.resolution === 'conflict'
+                        ? html`<span class="chip chip-diverged" title="edited in the same place on two computers; every version is shown below">conflict</span>`
+                        : html`<span class="chip chip-merged" title="changes from two computers, woven together cleanly">merged</span>`)}
                     <span class="chip">${doc.format}</span>
                     <span class="chip">read-only</span>
                 </span>
@@ -150,7 +152,7 @@ export const Notes = ({ current }) => {
                         >
                             <span class="note-row-title">${d.title || 'untitled'}</span>
                             <span class="note-row-when">
-                                ${when(d.updated_ms)}${d.diverged ? ' · diverged' : ''}
+                                ${when(d.updated_ms)}${d.diverged ? ' · two versions' : ''}
                             </span>
                         </button>`
                     )}

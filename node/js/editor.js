@@ -228,7 +228,9 @@ export const Editor = ({ root, docId }) => {
                 />
                 <span class="reader-chips">
                     ${loaded.diverged &&
-                    html`<span class="chip chip-diverged" title="edited on two computers - the versions are shown below; tidy and save to resolve">diverged</span>`}
+                    (loaded.resolution === 'conflict'
+                        ? html`<span class="chip chip-diverged" title="edited in the same place on two computers - both versions are below; tidy and save to settle it">conflict</span>`
+                        : html`<span class="chip chip-merged" title="changes from two computers, woven together cleanly - your next save seals the weave">merged</span>`)}
                     <button
                         class="chip chip-button"
                         title="how this document reads; converting is an ordinary save"
