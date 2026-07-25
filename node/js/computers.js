@@ -25,6 +25,17 @@ async function api(path, options = {}) {
     return body;
 }
 
+// The key's authority status, in cozy words - and the normal state says NOTHING: "active" is
+// the crown's word for not-revoked (an authority fact, not liveness - the spare key is
+// "active" in the only sense the tree knows), and rendering it reads to a human as "recently
+// seen", which it is not. Only the exceptional states get a word.
+function cozyStatus(status) {
+    if (status === 'active') return null;
+    if (status === 'retired') return 'retired';
+    if (status === 'repudiated') return 'locked out';
+    return status; // an unknown future state shows honestly rather than hiding
+}
+
 // Role by tree structure: the root is the crown (the founding computer's working key); the
 // all-zeros spine is the spare key. Everything else is an ordinary computer.
 function roleOf(key) {
@@ -100,7 +111,7 @@ export const Computers = ({ current }) => {
                             ${d.detail && html` <span class="computer-detail">— ${d.detail}</span>`}
                         </span>
                         <span class="computer-facts" title=${k.pubkey}>
-                            ${k.status}${' · '}${shortcode(k.pubkey)}
+                            ${cozyStatus(k.status) && html`<span class="computer-status">${cozyStatus(k.status)}${' · '}</span>`}${shortcode(k.pubkey)}
                         </span>
                     </li>`;
                 })}

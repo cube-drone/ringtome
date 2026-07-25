@@ -384,6 +384,10 @@ body {
     font-size: 0.75rem;
 }
 
+.computer-status {
+    color: #ff6188;
+}
+
 /* --- the notes app --- */
 
 .notes {
