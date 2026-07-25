@@ -103,6 +103,11 @@ HISTORY.md.
   into the textarea). Responder now dials back and backfills after every serving exchange;
   the editor treats null bodies as a waiting room ("on its way…", editing disabled, retry).
   Proven by bodies.cjs including the reported stale-tab scenario verbatim.
+- **The oblivious editor + named conflict sides** (2026-07-25): the lookout now watches head
+  count and diverged flag, not just the display head (whichever device's save WAS the display
+  head never noticed the fork); conflict labels speak device names - "from alpha, 2026-07-25
+  03:12" - honoring NOTES_APP's "from your phone, yesterday 9pm". Shell widened to 1100px
+  for the notes app alone.
 
 ## Standing residuals (owed, with triggers)
 

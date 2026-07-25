@@ -468,13 +468,29 @@ impl Documents<'_> {
     }
 
     /// The document's synthesized current text: one head's body verbatim, a clean three-way
-    /// merge, or the conflict presented inline (NOTES_APP, The sync model).
+    /// merge, or the conflict presented inline (NOTES_APP, The sync model) - with conflict
+    /// sides labeled by DEVICE NAME ("from macbook-curtis, 2026-07-25 03:12"), the promise
+    /// the labels were minted for.
     pub async fn resolved(
         &self,
         doc: &crate::record::documents::Doc,
     ) -> Result<crate::record::documents::ResolvedDoc, AppError> {
-        crate::record::documents::resolve(&self.store.files, &self.store.authorship.epoch_keys, doc)
-            .await
+        let names: BTreeMap<[u8; 32], String> = self
+            .store
+            .private_view()
+            .await?
+            .registers_in(DEVICES_COLLECTION)
+            .into_iter()
+            .filter(|r| !r.value.is_empty())
+            .filter_map(|r| crate::pubkey::decode(&r.key).map(|pk| (pk, r.value)))
+            .collect();
+        crate::record::documents::resolve(
+            &self.store.files,
+            &self.store.authorship.epoch_keys,
+            doc,
+            &names,
+        )
+        .await
     }
 }
 

@@ -85,6 +85,7 @@ export const Editor = ({ root, docId }) => {
         if (machine.current.waitTimer) clearTimeout(machine.current.waitTimer);
         machine.current.parents = doc.save_parents;
         machine.current.dirty = false;
+        machine.current.seen = { diverged: doc.diverged, heads: doc.heads.length };
         setLoaded(doc);
         setTitle(doc.title);
         setBody(doc.body);
@@ -164,18 +165,27 @@ export const Editor = ({ root, docId }) => {
         return () => document.removeEventListener('visibilitychange', onHide);
     }, []);
 
-    // The lookout: watch this doc's mirror row. Head moved + clean buffer → another computer
-    // saved and we have nothing at stake: fast-forward by reloading. Head moved + dirty →
-    // keep typing; the fork is deliberate and presents itself next open.
+    // The lookout: watch this doc's mirror row. The signal is NOT just "did the display head
+    // move" - the display head for a diverged doc is one deterministic pick among the logical
+    // heads, so the device whose save happens to BE that pick would never notice the fork
+    // (field-tested: one editor showed the merge, the other sat oblivious). Watch the whole
+    // shape: display head, head count, diverged flag. Any change + clean buffer → reload
+    // (fast-forward, or the conflict presenting itself). Change + dirty → keep typing; the
+    // fork is deliberate and presents right after the next save lands.
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     useEffect(() => {
         const m = machine.current;
         if (!row || !loaded || m.dirty || m.inflight) return;
-        if (!m.parents.includes(row.head)) {
+        const seen = m.seen || { diverged: false, heads: 1 };
+        if (
+            !m.parents.includes(row.head) ||
+            row.diverged !== seen.diverged ||
+            row.heads !== seen.heads
+        ) {
             load().catch(() => {});
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [row && row.head]);
+    }, [row && row.head, row && row.heads, row && row.diverged]);
 
     if (status === 'opening' && !loaded) {
         return html`<div class="reader"><p class="null-sub">opening…</p></div>`;

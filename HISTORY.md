@@ -845,3 +845,26 @@ parentless buffer can never save. The reader learned the same retry. Proven by `
 a body written on A becomes readable on B with B never initiating anything, and the reported
 scenario verbatim - divergent saves on both computers - converges on BOTH nodes to a
 synthesized conflict containing BOTH texts, diverged flagged, never a null, never an empty.
+
+---
+
+## The oblivious editor, and conflict sides get their names (2026-07-25)
+
+Field test round two found the asymmetry: after a fork, one editor showed the merge and the
+other sat oblivious, showing only its own words. The mechanism: the editor's lookout watched
+"did the display head move" - but the display head of a diverged doc is one deterministic
+pick among the logical heads, identical on every node, so the device whose save happened to
+BE that pick saw its own hash and never reloaded. The lookout now watches the whole shape -
+display head, head count, diverged flag - and any change against a clean buffer reloads
+(which also means a fork you created unknowingly presents its conflict moments after your
+save lands, rather than on the next open). And the merge got legible: conflict side labels
+were "device 8657ff04 at 1753400000000" (raw hex, raw millis, half a line wide); they now
+speak DEVICE NAMES - "from alpha, 2026-07-25 03:12" - the exact promise NOTES_APP made
+("from your phone, yesterday 9pm"; chains are per-device, so attribution is free) and the
+exact purpose device names were minted for two days ago. Threaded as a names map from the
+store layer (which owns the devices register) into the resolver, with a zero-dep UTC
+formatter (Hinnant's civil-from-days) because the label is baked into synthesized text and
+must be deterministic; unnamed keys fall back to "computer <shortcode>". The app shell also
+widened to 1100px for the notes app alone (every other screen carries its own max-width) -
+a merge deserves room to breathe. Proven in bodies.cjs: the stale-tab scenario now also
+asserts "from alpha" and "from bravo" appear in the synthesized conflict on both nodes.

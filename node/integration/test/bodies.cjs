@@ -133,6 +133,12 @@ async function pollDoc(fetch, root, docId, predicate, ms = 20000) {
             );
             assert.equal(doc.diverged, true, `node ${who} knows it diverged`);
             assert.equal(doc.resolution, "conflict", `node ${who} presents the conflict`);
+            // The sides are labeled by DEVICE NAME - "from alpha, ..." / "from bravo, ..." -
+            // the NOTES_APP promise ("from your phone, yesterday 9pm"), finally kept.
+            assert.ok(
+                doc.body.includes("from alpha") && doc.body.includes("from bravo"),
+                `node ${who} labels conflict sides by device name: ${doc.body}`
+            );
         }
     });
 });

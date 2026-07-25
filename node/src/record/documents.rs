@@ -1025,20 +1025,46 @@ pub struct ResolvedDoc {
     pub body: Option<String>,
 }
 
-/// A conflict side's label: which device, when. Cozy names are the UI's job; this is honest.
-fn side_label(v: &Version) -> String {
-    format!(
-        "device {} at {}",
-        hex::encode(&v.author[..4]),
-        v.timestamp_ms
-    )
+/// Millis-since-epoch to a compact UTC stamp ("2026-07-25 03:12") - zero deps, Hinnant's
+/// civil-from-days. Baked into synthesized conflict text, so it must be deterministic and
+/// timezone-free; friendlier relative phrasing ("yesterday 9pm") is a client rendering someday.
+fn civil_utc(ms: i64) -> String {
+    let secs = ms.div_euclid(1000);
+    let days = secs.div_euclid(86400);
+    let tod = secs.rem_euclid(86400);
+    let (h, mi) = (tod / 3600, (tod % 3600) / 60);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02} {h:02}:{mi:02}")
+}
+
+/// A conflict side's label: which device, when - and "which device" finally speaks device
+/// names (NOTES_APP promised "from your phone, yesterday 9pm"; chains are per-device, so
+/// attribution is free). Falls back to the shortcode for unnamed keys.
+fn side_label(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
+    let who = names
+        .get(&v.author)
+        .cloned()
+        .unwrap_or_else(|| format!("computer {}", hex::encode(&v.author[..2])));
+    format!("from {who}, {}", civil_utc(v.timestamp_ms))
 }
 
 /// Present a conflict as *whole* alternatives - the shape used when three-way merge can't run
 /// (no usable fork point, or more than two heads), and the *only* shape for Marquee (which gets
 /// real vocabulary rather than markers). Degraded relative to per-hunk, still lossless. Text
 /// only: `resolve` returns before this for media (which has no synthesized-text conflict).
-fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> String {
+fn whole_version_conflict(
+    format: Format,
+    sides: &[(&Version, String)],
+    names: &BTreeMap<[u8; 32], String>,
+) -> String {
     match format {
         Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
             unreachable!("media conflicts are keep-both, never synthesized text")
@@ -1047,7 +1073,7 @@ fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> Strin
         Format::Plaintext => {
             let mut out = String::new();
             for (i, (v, body)) in sides.iter().enumerate() {
-                out.push_str(&format!("<<<<<<< {}\n", side_label(v)));
+                out.push_str(&format!("<<<<<<< {}\n", side_label(v, names)));
                 out.push_str(body);
                 if !body.ends_with('\n') {
                     out.push('\n');
@@ -1068,7 +1094,7 @@ fn whole_version_conflict(format: Format, sides: &[(&Version, String)]) -> Strin
             for (v, body) in sides {
                 out.push_str(&format!(
                     ":::version label=\"{}\" when={}\n",
-                    side_label(v),
+                    side_label(v, names),
                     v.timestamp_ms
                 ));
                 out.push_str(body);
@@ -1090,6 +1116,7 @@ pub async fn resolve(
     files: &FileStore,
     keys: &EpochKeys,
     doc: &Doc,
+    names: &BTreeMap<[u8; 32], String>,
 ) -> Result<ResolvedDoc, AppError> {
     // Deterministic side order: oldest claimed stamp first (hash tiebreak).
     let mut heads: Vec<&Version> = doc
@@ -1157,7 +1184,7 @@ pub async fn resolve(
             return Ok(ResolvedDoc {
                 resolution: Resolution::Conflict,
                 title: display_title,
-                body: Some(whole_version_conflict(format, &sides)),
+                body: Some(whole_version_conflict(format, &sides, names)),
             });
         }
     };
@@ -1192,7 +1219,7 @@ pub async fn resolve(
         return Ok(ResolvedDoc {
             resolution: Resolution::Conflict,
             title: display_title,
-            body: Some(whole_version_conflict(format, &[(a, text_a), (b, text_b)])),
+            body: Some(whole_version_conflict(format, &[(a, text_a), (b, text_b)], names)),
         });
     };
 
@@ -1226,9 +1253,9 @@ pub async fn resolve(
             title,
             body: Some(match format {
                 Format::Plaintext => marked
-                    .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a)))
-                    .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b))),
-                Format::Marquee => whole_version_conflict(format, &[(a, text_a), (b, text_b)]),
+                    .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a, names)))
+                    .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b, names))),
+                Format::Marquee => whole_version_conflict(format, &[(a, text_a), (b, text_b)], names),
                 Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
                     unreachable!("media never reaches text merge")
                 }
@@ -1745,7 +1772,7 @@ mod tests {
         doc_id: &[u8; 16],
     ) -> ResolvedDoc {
         let view = materialize(db, keys).await.unwrap();
-        resolve(files, keys, view.docs.get(doc_id).unwrap())
+        resolve(files, keys, view.docs.get(doc_id).unwrap(), &BTreeMap::new())
             .await
             .unwrap()
     }
@@ -1856,7 +1883,7 @@ mod tests {
             "markers present:\n{body}"
         );
         assert!(
-            body.contains("device "),
+            body.contains("from computer "),
             "sides carry device labels:\n{body}"
         );
     }
@@ -2101,7 +2128,7 @@ mod tests {
         assert_eq!(got, webp, "the image comes back exactly");
 
         // resolve() must NOT mangle the binary: single head, no synthesized body.
-        let r = resolve(&files, &keys, doc).await.unwrap();
+        let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
         assert_eq!(r.resolution, Resolution::Single);
         assert_eq!(r.body, None, "binary is served separately, not inlined");
 
@@ -2133,7 +2160,7 @@ mod tests {
         .await;
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
-        let r = resolve(&files, &keys, doc).await.unwrap();
+        let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
         assert_eq!(
             r.resolution,
             Resolution::Conflict,
@@ -2289,7 +2316,7 @@ mod tests {
         expect.sort();
         assert_eq!(heads, expect, "both are heads; the phantom is not");
         // No common ancestor -> conservative conflict, both bodies present.
-        let r = resolve(&files, &keys, doc).await.unwrap();
+        let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
         assert!(body.contains("real start") && body.contains("orphan words"));
@@ -2340,7 +2367,7 @@ mod tests {
             "the alien parent is not pulled into this doc"
         );
         assert!(doc.heads.contains(&v1) && doc.heads.contains(&child));
-        let r = resolve(&files, &keys, doc).await.unwrap();
+        let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
         assert!(r.body.unwrap().contains("mine, edited"), "no words lost");
     }
 
@@ -2494,7 +2521,7 @@ mod tests {
             2,
             "two maximal common ancestors"
         );
-        let r = resolve(&files, &keys, doc).await.unwrap();
+        let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
         assert_eq!(r.resolution, Resolution::Conflict);
         let body = r.body.unwrap();
         assert!(body.contains("merge left") && body.contains("merge right"));
@@ -2648,7 +2675,7 @@ mod tests {
         let view = materialize(&db, &keys).await.unwrap();
         let doc = view.docs.get(&doc_id).unwrap();
         assert!(doc.diverged(), "the deep fork is a real divergence");
-        let body = resolve(&files, &keys, doc).await.unwrap().body.unwrap();
+        let body = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap().body.unwrap();
         assert!(
             body.contains("three") && body.contains("BRANCH"),
             "both branches present"
