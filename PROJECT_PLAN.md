@@ -2310,7 +2310,10 @@ absurdly node-rich identities (the design center is 2-5 nodes). The random selec
 keeps the sync graph well-connected so no node ossifies into a chokepoint by habit - the traffic discipline and the
 security property below are one mechanism seen from two sides. (Implemented 2026-07-22 as `net::resync`'s two
 background passes: debounced eager push on local change, plus a periodic anti-entropy exchange with up to k=3
-randomly chosen peers per identity, first pass at boot.)
+randomly chosen peers per identity, first pass at boot. Write-nudged 2026-07-25: locally-signed writes ring the
+eager loop's doorbell so the debounce clock starts at the write itself - a save is on its peers in about a second -
+while sync-received entries deliberately relay on the lazy tick, the damping that keeps a peer triangle from
+ping-ponging exchanges.)
 
 **The adversary in the mesh lies only by omission.** A malicious-but-not-yet-repudiated node cannot forge others'
 entries (signatures), cannot truncate chains undetectably (hash chain + dense seqs), and cannot lie about its own

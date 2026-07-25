@@ -210,10 +210,13 @@ async fn main() -> anyhow::Result<()> {
     );
     // Background sync (net::resync): eager push notices fresh local writes and delivers them to
     // peers after a short debounce; anti-entropy periodically exchanges with random peers dirty
-    // or not - and its immediate first pass is the boot catch-up.
-    loops::periodic(
+    // or not - and its immediate first pass is the boot catch-up. The eager loop's doorbell is
+    // rung by every locally-signed write (Db::nudge_sync via the user-DB manager), so the
+    // debounce clock starts at the write, not at the next tick.
+    loops::periodic_nudged(
         "sync-eager-push",
         net::resync::EAGER_TICK,
+        state.user_dbs.write_nudge(),
         state.clone(),
         net::resync::eager_pass,
     );

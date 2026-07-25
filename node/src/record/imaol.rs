@@ -110,6 +110,11 @@ pub async fn append(
     .context("storing entry")
     .map_err(AppError::Internal)?;
 
+    // Every locally-signed write rings the eager-sync bell (this function is the one funnel:
+    // only local writes sign; sync-received entries take the gate path and deliberately ride
+    // the lazy tick instead - the relay damping, see net::resync).
+    db.nudge_sync();
+
     Ok(signed)
 }
 

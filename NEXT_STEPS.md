@@ -138,6 +138,12 @@ HISTORY.md.
   "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
   emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
   time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
+- **The write nudge** (2026-07-25): locally-signed writes ring the eager loop's doorbell
+  (`Db::nudge_sync` through `imaol::append`, the one funnel - only local writes sign), plus
+  debounce 3000→750ms and eager tick 2s→1s. Write-to-peer floor drops ~5-7s → ~1s; relays
+  deliberately stay on the lazy tick (the anti-ping-pong damping). The integration suite
+  halved its wall clock as a side effect. The UI's 10s autosave deliberately untouched -
+  that's version thrift, waiting on retention, not sync pacing.
 - **Three-plus heads merge per-hunk** (2026-07-25): the N-way alignment - fork points
   generalized to head sets; a single shared fork point lets every head diff against it, with
   overlapping edit runs grouped into disputed regions (one variant per distinct proposal) and

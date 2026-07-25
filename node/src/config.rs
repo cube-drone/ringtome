@@ -67,10 +67,12 @@ pub struct Config {
     /// this only caps a novel-stuffer. Override with `RINGTOME_MAX_DOCUMENT_BYTES`.
     pub max_document_bytes: usize,
     /// How long a changed identity must sit quiet before its peers get an eager push - batches
-    /// a burst of writes into one exchange. Change detection runs on a ~2s tick (net::resync),
-    /// so the true write-to-peer latency floor is tick + debounce + tick (~7s worst case at
-    /// defaults) - that is within the "seconds-while-connected" freshness the doctrine promises,
-    /// so resist "fixing" it by cranking the tick. Override with `RINGTOME_SYNC_DEBOUNCE_MS`.
+    /// a burst of writes into one exchange. Local writes ring the eager loop's doorbell
+    /// (`Db::nudge_sync`) so the debounce clock starts at the write itself; the ~1s tick then
+    /// finds the debounce open, making the write-to-peer floor ~debounce rounded up to a tick
+    /// (a save is on its peers in roughly a second at defaults). The UI's own autosave
+    /// debounce (~10s) is what batches a typing burst into one save, so this stays short.
+    /// Override with `RINGTOME_SYNC_DEBOUNCE_MS`.
     pub sync_debounce_ms: i64,
     /// Anti-entropy cadence: every interval, each identity with peers runs a full exchange with
     /// up to 3 randomly chosen peers, dirty or not (PROJECT_PLAN, sync discipline: random
@@ -154,7 +156,7 @@ impl Config {
         let sync_debounce_ms = env::var("RINGTOME_SYNC_DEBOUNCE_MS")
             .ok()
             .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(3000);
+            .unwrap_or(750);
 
         let resync_interval_secs = env::var("RINGTOME_RESYNC_INTERVAL_SECS")
             .ok()

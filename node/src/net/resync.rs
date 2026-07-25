@@ -3,12 +3,18 @@
 //! Two registered passes (see main.rs's loop inventory), both thin schedulers over the one
 //! point-to-point exchange in [`super::sync`]:
 //!
-//!   - **Eager push** (fast tick): notice that an identity's chains moved, wait for the burst
-//!     to quiet (the debounce), then run a full exchange with every known peer - the
-//!     "seconds-while-connected" freshness mitigation (PROJECT_PLAN, Loss and the Replication
-//!     Window). Entries that *arrive* by sync move the frontier too, so a push received from
-//!     one peer re-dirties the root here and relays onward next tick - epidemic spread over
-//!     the peer graph, converging because an up-to-date exchange transfers nothing.
+//!   - **Eager push** (fast tick + doorbell): notice that an identity's chains moved, wait
+//!     for the burst to quiet (the debounce), then run a full exchange with every known
+//!     peer - the "seconds-while-connected" freshness mitigation (PROJECT_PLAN, Loss and
+//!     the Replication Window). Locally-*signed* writes additionally ring the write nudge
+//!     (`Db::nudge_sync`, wired through `loops::periodic_nudged`), so the pass that starts
+//!     the debounce clock runs at the write itself instead of up to a tick later. Entries
+//!     that *arrive* by sync move the frontier too, so a push received from one peer
+//!     re-dirties the root here and relays onward next tick - epidemic spread over the peer
+//!     graph, converging because an up-to-date exchange transfers nothing. Relayed entries
+//!     deliberately do NOT ring the bell: local writes are latency-sensitive and rare, relay
+//!     traffic is neither, and keeping relays on the lazy tick is the damping that keeps a
+//!     peer triangle from ping-ponging exchanges.
 //!   - **Anti-entropy** (slow interval): a full exchange with a few peers chosen at random
 //!     over the whole peer set, dirty or not (PROJECT_PLAN, sync discipline - the random
 //!     choice is what keeps the sync graph well-connected). This is the reliability layer:
@@ -37,9 +43,11 @@ use crate::clock::now_ms;
 use crate::net::sync;
 use crate::AppState;
 
-/// Eager-loop cadence (registered in main.rs). The short-poll idiom the ingest worker set;
-/// with the debounce it makes the write-to-peer latency floor ~tick + debounce + tick.
-pub const EAGER_TICK: Duration = Duration::from_secs(2);
+/// Eager-loop cadence (registered in main.rs). The write nudge handles the local-write case
+/// in ~0ms; this tick is what paces everything else - relays, retries, the follow-up pass
+/// that finds the debounce open. Write-to-peer latency floor: ~debounce rounded up to the
+/// next tick (typically just over a second at the defaults).
+pub const EAGER_TICK: Duration = Duration::from_secs(1);
 /// Under continuous writes the debounce never opens; push anyway once dirty this long.
 const MAX_PUSH_DELAY_MS: i64 = 30_000;
 /// After a push reached zero peers, wait this long before re-dialing. Offline peers must not

@@ -1000,3 +1000,34 @@ the old always-degrade rule falsely conflicted. Whole-document remains for what 
 can't stand on - no single fork point for the set (criss-cross among three-plus heads,
 pinned by test), or a missing base body. The debug endpoint now reports fork points for any
 head count. Four new tests, the field scenario reproduced verbatim among them.
+
+---
+
+## The write nudge: sync latency drops from ~5-7s to ~1s (2026-07-25)
+
+Field observation after the merge saga quieted: watching a sync was a little too *visible* -
+the write-to-other-screen path summed a 0-2s eager-tick notice, a 3s quiet debounce, and a
+tick alignment into ~5-7 seconds, while same-node tabs (1s stream tick only) felt instant.
+Three levers, none touching correctness (all of this is latency-only; anti-entropy remains
+the reliability layer and the exchange is idempotent):
+
+- **The write nudge**: every locally-signed write rings a doorbell (`Db::nudge_sync` -
+  `imaol::append` is the one funnel, since only local writes sign) that wakes the eager loop
+  immediately via `loops::periodic_nudged`, so the debounce clock starts at the write instead
+  of up to a tick later. The bell is one `tokio::sync::Notify` owned by the user-DB manager
+  and attached to per-user handles exactly like the journal; `notify_one`'s stored permit
+  makes a write racing an in-flight pass safe. The deliberate asymmetry is the damping:
+  sync-*received* entries do NOT ring the bell - relays ride the lazy tick, which is what
+  keeps a peer triangle from ping-ponging exchanges. Convergence was never at stake (an
+  up-to-date exchange transfers nothing).
+- **Dial turns**: `sync_debounce_ms` default 3000 → 750 (the UI's own ~10s autosave debounce
+  is what batches a typing burst into one save; the server-side debounce only needs to catch
+  multi-write ceremonies), `EAGER_TICK` 2s → 1s (the tick now paces relays, retries, and the
+  follow-up pass that finds the debounce open).
+
+New floor: ~debounce rounded up to a tick - a save is on its peers in about a second, on the
+other screen in about two. The lever deliberately NOT pulled: the UI's 10s autosave, which is
+doing version-count thrift, not sync pacing - shortening it quintuples versions per writing
+session, and the principled fix there is retention (keep-last-N), not a shorter debounce.
+Evidence the levers work: the integration suite - full of tests that poll for cross-node
+propagation - halved its wall clock, 44s → 22s, with no test changed.

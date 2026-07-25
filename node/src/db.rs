@@ -147,6 +147,11 @@ pub struct Db {
     /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
     /// mechanism - sealed dumps) and for in-memory test databases.
     journal: Option<Journal>,
+    /// The eager-sync wake-up bell, attached like the journal (per-user databases only). Rung
+    /// by [`Db::nudge_sync`] on locally-*signed* writes so the eager loop notices a fresh save
+    /// in milliseconds instead of a poll tick. One bell for the whole node: the eager pass
+    /// fingerprints every root anyway, so the nudge needs no per-root routing.
+    write_nudge: Option<std::sync::Arc<tokio::sync::Notify>>,
 }
 
 impl Db {
@@ -235,6 +240,25 @@ impl Db {
     fn with_journal(self, journal: Journal) -> Db {
         Db {
             journal: Some(journal),
+            ..self
+        }
+    }
+
+    /// Ring the eager-sync bell: a locally-signed write just landed, sync soon. `notify_one`
+    /// stores a permit when no loop is currently waiting, so a write racing the pass is never
+    /// lost. No-op for databases without the bell (node.db, tests) - and deliberately NEVER
+    /// called from the sync-ingest path: entries arriving *by sync* relay onward on the lazy
+    /// tick, which is the damping that keeps a peer triangle from ping-ponging (net::resync).
+    pub fn nudge_sync(&self) {
+        if let Some(bell) = &self.write_nudge {
+            bell.notify_one();
+        }
+    }
+
+    /// This handle (and every clone made from it) with the eager-sync bell attached.
+    fn with_write_nudge(self, bell: std::sync::Arc<tokio::sync::Notify>) -> Db {
+        Db {
+            write_nudge: Some(bell),
             ..self
         }
     }
@@ -335,6 +359,7 @@ fn connect(database: turso::Database) -> Result<Db> {
         stmt_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         ingest_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         journal: None,
+        write_nudge: None,
     })
 }
 
@@ -456,6 +481,10 @@ pub struct UserDbManager {
     journals_directory: PathBuf,
     keystore: Keystore,
     handles: moka::future::Cache<String, Db>,
+    /// The one eager-sync bell, attached to every per-user handle (see [`Db::nudge_sync`]).
+    /// Owned here so wiring is automatic: whoever opens a user DB gets a nudging handle, and
+    /// the eager loop borrows the same bell via [`UserDbManager::write_nudge`].
+    write_nudge: std::sync::Arc<tokio::sync::Notify>,
 }
 
 impl UserDbManager {
@@ -468,7 +497,13 @@ impl UserDbManager {
             journals_directory: data_directory.join("journals"),
             keystore,
             handles: moka::future::Cache::new(max_open),
+            write_nudge: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
+    }
+
+    /// The eager-sync bell every handle from this manager rings on locally-signed writes.
+    pub fn write_nudge(&self) -> std::sync::Arc<tokio::sync::Notify> {
+        self.write_nudge.clone()
     }
 
     fn path_for(&self, root_pubkey: &str) -> PathBuf {
@@ -512,7 +547,9 @@ impl UserDbManager {
                     .with_context(|| format!("backfilling journal for {root_pubkey}"))?;
             }
         }
-        let db = db.with_journal(journal);
+        let db = db
+            .with_journal(journal)
+            .with_write_nudge(self.write_nudge.clone());
 
         self.handles
             .insert(root_pubkey.to_string(), db.clone())
@@ -687,6 +724,28 @@ mod tests {
         // Two files on disk, one per identity, each with its own key file.
         assert!(dir.join("users").join("alice_pubkey.db").exists());
         assert!(dir.join("users").join("bob_pubkey.db").exists());
+
+        tokio::fs::remove_dir_all(&dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn user_db_handles_ring_the_managers_write_nudge() {
+        let dir = temp_dir().await;
+        let ks = temp_keystore(&dir);
+        let mgr = UserDbManager::new(&dir, ks, 8);
+        let bell = mgr.write_nudge();
+
+        let db = mgr.get("alice_pubkey").await.unwrap();
+        db.nudge_sync();
+
+        // notify_one with no waiter stores a permit, so this resolves immediately - the
+        // property that makes a write racing an in-flight pass safe.
+        tokio::time::timeout(std::time::Duration::from_secs(1), bell.notified())
+            .await
+            .expect("a user-db handle's nudge reaches the manager's bell");
+
+        // And a bell-less database (tests, node.db) shrugs instead of panicking.
+        test_user_db().await.nudge_sync();
 
         tokio::fs::remove_dir_all(&dir).await.ok();
     }
