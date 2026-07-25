@@ -217,6 +217,18 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   (`=0.7.0`) for reproducibility meanwhile.
 - **FTS over titles + descriptions** (trimmed from the materializer's ship): the data-layer
   plan named it; nothing consumes it yet. Lands with whichever 4C surface first offers search.
+  **Where search lives** (settled in design 2026-07-25, Curtis's synthesis): the index is a
+  **materialized view like `doc_heads`** - a per-doc token-bag row, maintained by the same
+  fold that already knows when a resolution changes, living in the per-identity Turso DB (so
+  it inherits at-rest encryption *by construction* - no Turso-FTS5 gamble, SQL never needs
+  MATCH) and streamed to the Dexie mirror like any other kind, where queries run local,
+  offline, and instant at cozy scale. Two gates before build: (1) the stream is Stage-1
+  whole-kind refresh - re-shipping a token corpus per save is megabytes per keystroke-burst,
+  so this is the first real customer for **Stage 2 row-level deltas**; (2) posture, stated
+  deliberately: a token bag is the corpus wearing a haircut, so the mirror then holds ~the
+  whole content in IndexedDB - same per-persona logout-dropped disposability as ever, but
+  said out loud. Interim, if search is wanted sooner: the brute-force node endpoint scanning
+  resolved bodies remains the honest small opener.
 - **Flow A's bells** (deferred at the scratch ship, 2026-07-24): browser-side challenge
   signing (the pasted seed currently transits to the node - unacceptable once nodes host
   strangers), post-use spare-key rotation, and the cooling-off window with logged-in cancel.
