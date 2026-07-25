@@ -12,6 +12,7 @@ import { openMirror, useLive } from './cache.js';
 import { Editor } from './editor.js';
 import { useTurbolinks } from './turbolinks.js';
 import { useSearch } from './search.js';
+import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
 
 const html = htm.bind(h);
 
@@ -140,10 +141,13 @@ export const Notes = ({ current }) => {
     // Filters stack: search hits AND every active tag. Search stays a filter over the current
     // view (Curtis's preference) rather than a separate ranked results screen.
     const hits = useSearch(root, query);
+    // Newest first by the CLAIMED date - a doc's own display_date if it set one, else its real
+    // last-updated stamp. So a note backdated to 2015 files itself under 2015, not the day you
+    // typed it (the user's date is authoritative, per Curtis's ask).
     const list = (docs || [])
         .filter((d) => hits === null || hits.has(d.doc_id))
         .filter((d) => tagFilter.every((t) => (d.tags || []).includes(t)))
-        .sort((a, b) => b.updated_ms - a.updated_ms || (a.doc_id < b.doc_id ? 1 : -1));
+        .sort((a, b) => claimedMs(b) - claimedMs(a) || (a.doc_id < b.doc_id ? 1 : -1));
 
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
@@ -202,7 +206,12 @@ export const Notes = ({ current }) => {
                         >
                             <span class="note-row-title">${d.title || 'untitled'}</span>
                             <span class="note-row-when">
-                                ${when(d.updated_ms)}${d.diverged ? ' · two versions' : ''}
+                                ${hasClaimedDate(d)
+                                    ? html`<span
+                                          class="note-row-claimed"
+                                          title="a date you set for this document (its real last edit was ${when(d.updated_ms)})"
+                                      >${formatClaimed(d.fields[DISPLAY_DATE_FIELD])}</span>`
+                                    : when(d.updated_ms)}${d.diverged ? ' · two versions' : ''}
                             </span>
                             ${(d.tags || []).length > 0 &&
                             html`<span class="note-row-tags">

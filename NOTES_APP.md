@@ -247,6 +247,15 @@ manufactures a divergence conflict with a concurrent prose edit.
   join happens in the stream `gather` (and the HTTP list/tagged/tree reads) via one
   `annotation_map`, so the mirror row is filter-ready without coupling two folds; staleness is
   free, since an annotation write is itself a chain write that ticks the stream cursor.)*
+- **Reserved conventional field, `display_date`** (2026-07-25): a user-claimed date for the
+  document, authoritative for list sorting and display over the derived stamps - so a backdated
+  import files itself under the date the user claims, not the day they typed it. The value is a
+  self-describing ISO string: `YYYY-MM-DD` for a date, `YYYY-MM-DDTHH:MM` when the user adds a
+  time (two controls, one field; a time without a date is meaningless and clears). Pure
+  convention over the annotation layer (no new backend; it rides the `fields` map already
+  joined onto the row); the client (`js/docdate.js`) owns the parse/order/format (date-only ⇒
+  local midnight, so no timezone off-by-one) and marks it as a claim. See PROJECT_PLAN,
+  Displayed Time vs. Claimed Time.
 - **Ordered structure (trees, curated sequences, "BOOK ABOUT HORSES"): taxonomy documents** - a
   body that is an ordered arrangement of references, inheriting the full single-document
   machinery above: versioning, the divergence DAG (reorganizing a tree on two devices *is*

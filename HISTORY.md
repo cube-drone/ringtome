@@ -1237,3 +1237,32 @@ The backend already had the inverted reads (`own_docs_tagged`, the tagged-docs a
 tree endpoints); this unit gave them a front end and put the same data on the live list. Test:
 the docs list row carries joined tags + fields (and empty structures, never undefined, for a
 bare doc).
+
+---
+
+## The claimed display date (2026-07-25)
+
+A document can now carry `display_date` - the user's own asserted date for it, distinct from
+its authoring claim, its received-at, and its last-edit stamp. Write up a 2015 interaction in
+2026 and file it under 2015: the claim is authoritative for list sorting and display precisely
+because a human's deliberate assertion outranks any clock (PROJECT_PLAN, Displayed Time vs.
+Claimed Time - it's openly the most authoritative and least trustworthy date at once).
+
+The satisfying part: zero backend. It's a conventional annotation field, so it rides the
+existing `set_field` route and arrives on the docs mirror row inside the `fields` map already
+joined there - the whole feature is client-side. `js/docdate.js` owns the pure rules (sort key
+= claimed date if set and parseable, else the real updated stamp; date-only parsed as LOCAL
+midnight so "2015-07-31" never displays as the 30th in a western timezone; garbage falls back
+rather than sorting to NaN), tested without a browser. The annotations panel got a date input
+(sharing a `useField` shadow-buffer hook with the description), and the list sorts by the
+claim and shows it in amber, marked as a claim ("its real last edit was ..."). One integration
+line proves the field rides through onto the row like any other. The reserved field name is
+documented in NOTES_APP and the Displayed Time doctrine.
+
+**Amended same day: time added.** The claim now carries an optional time - two controls (date +
+time) over the one `display_date` field, stored self-describing (`YYYY-MM-DD` or
+`YYYY-MM-DDTHH:MM`; a time without a date clears, since a claim is anchored on its day). Still
+zero backend - `js/docdate.js` grew `splitClaimed`/`joinClaimed` (pure, tested), `parseIsoDay`
+became `parseClaimed`, and the formatter shows a time only when the claim has one. The panel's
+date input gained a time sibling (disabled until a date is set); the annotations `useField`
+shadow-buffer discipline generalized to the composite `useClaimedDate`.

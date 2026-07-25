@@ -539,12 +539,51 @@ body {
     border-color: #82aaff;
 }
 
-/* The annotations panel in the editor: tag chips + a description field. */
+/* A user-claimed display date shown on a list row - subtly marked so it reads as a claim. */
+.note-row-claimed {
+    color: #ffd866;
+}
+
+/* The annotations panel in the editor: date + tag chips + a description field. */
 .annotations {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
     margin: 0.3rem 0 0.5rem;
+}
+
+.annot-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.annot-label {
+    font-size: 0.72rem;
+    color: #888;
+    min-width: 3rem;
+}
+
+.annot-date,
+.annot-time {
+    background: #10101f;
+    border: 1px solid #2a2a3e;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.2rem 0.4rem;
+    color-scheme: dark;
+}
+
+.annot-date:focus,
+.annot-time:focus {
+    outline: none;
+    border-color: #555;
+}
+
+.annot-time:disabled {
+    opacity: 0.4;
 }
 
 .annot-tags {

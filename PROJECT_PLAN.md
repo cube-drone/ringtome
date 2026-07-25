@@ -1137,6 +1137,14 @@ forking honest nodes' views. Instead, each trust boundary handles time defensive
 - **Cross-device skew is surfaced, not corrected.** If your own identity's other node signs claims well past
   `received_at`, that's a UI notification ("your Pi thinks it's Thursday"), never a silent rewrite - the claims are
   signed, and other people's confusion is their signed assertion to own.
+- **The user's own claimed date is the most authoritative, and openly the least trustworthy** (implemented
+  2026-07-25). A document may carry a `display_date` annotation - the date the *user* asserts for it, distinct from
+  its authoring claim, its `received_at`, and its last-edit stamp. Writing up a July 31 2015 interaction in 2026 and
+  wanting it filed under 2015 is the case: the claim overrides the derived display date for sorting and display,
+  because a human's deliberate assertion about their own document outranks any clock. It is a conventional
+  annotation field (rides the annotation layer, editable without a version, joined onto the list row) holding a
+  self-describing ISO value - a date, or a date and time when the user cares to be precise - and the UI marks it as
+  a claim rather than a system fact. Absent it, display falls back to the derived stamps above.
 
 ### Anchored Revocations
 

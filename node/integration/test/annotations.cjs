@@ -121,6 +121,9 @@ describe("annotations: private facts about documents", function () {
         const { user, root } = await makeIdentity("annjoin");
         const doc = await createDoc(user, root, "pier", "a sunset over the pier");
         await putField(user, root, doc.doc_id, "description", "a calm evening");
+        // display_date is a conventional field (the user's claimed date); it rides the same
+        // field path and arrives on the row for the client to sort/display by.
+        await putField(user, root, doc.doc_id, "display_date", "2015-07-31");
         await putTag(user, root, doc.doc_id, "beach");
         await putTag(user, root, doc.doc_id, "sunset");
 
@@ -129,6 +132,7 @@ describe("annotations: private facts about documents", function () {
         assert.ok(row, "the doc is listed");
         assert.deepEqual(row.tags, ["beach", "sunset"], "tags joined onto the row");
         assert.equal(row.fields.description, "a calm evening", "description joined onto the row");
+        assert.equal(row.fields.display_date, "2015-07-31", "claimed date joined onto the row");
 
         // A doc with no annotations carries empty structures, never undefined.
         const bare = await createDoc(user, root, "bare", "nothing here");
