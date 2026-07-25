@@ -975,3 +975,28 @@ timestamps makes two renderers disagree), so `when` now carries quoted civil tim
 raw epoch ms, and the device name and timestamp split across the two attrs rather than
 doubling up. The NOTES_APP open question - host vocabulary or upstream? - closed itself:
 upstreamed, and Ringtome emits their names.
+
+---
+
+## Three-plus heads merge per-hunk: the N-way alignment (2026-07-25)
+
+Field report, three debug dumps in agreement: three computers changed the same paragraph
+simultaneously and got the whole-document wall - because three-plus logical heads skipped
+merging entirely and went straight to the degraded form (`fork_points_of_logical_heads: []`
+in the dumps was the tell: we didn't even compute fork points past two heads). The dumps
+also showed the fix was well-posed: all three heads forked from ONE version, so the merge is
+fully determined by N diffs against that base.
+
+Now: `fork_points_of_heads` generalizes fork points to head *sets* (maximal common ancestors
+of all heads at once; the pairwise form is a thin wrapper), and when the set shares a single
+fork point, `align_heads` runs the N-way line alignment - each head diffed against the base
+(diffy patches, walked into edit runs), runs whose base ranges overlap or touch grouped into
+disputed regions, everything else woven clean. A disputed region carries one variant per
+*distinct* proposal, labeled by the earliest head carrying it (twin-folding spirit: two
+devices that wrote the same words agree). Presentation dispatches per format exactly like
+the two-head paths - plaintext's marker chain, Marquee's `:::conflict`/`:::variant`. Bonus
+correctness: three heads with DISJOINT edits now merge fully clean (green "merged"), a case
+the old always-degrade rule falsely conflicted. Whole-document remains for what alignment
+can't stand on - no single fork point for the set (criss-cross among three-plus heads,
+pinned by test), or a missing base body. The debug endpoint now reports fork points for any
+head count. Four new tests, the field scenario reproduced verbatim among them.

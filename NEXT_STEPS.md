@@ -138,6 +138,11 @@ HISTORY.md.
   "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
   emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
   time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
+- **Three-plus heads merge per-hunk** (2026-07-25): the N-way alignment - fork points
+  generalized to head sets; a single shared fork point lets every head diff against it, with
+  overlapping edit runs grouped into disputed regions (one variant per distinct proposal) and
+  disjoint edits weaving fully clean (previously false-conflicted). Whole-document degradation
+  survives only for head sets with no single fork point or a missing base body.
 
 ## Standing residuals (owed, with triggers)
 

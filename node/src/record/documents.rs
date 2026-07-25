@@ -201,9 +201,23 @@ impl Doc {
     /// produce several, and the echo rung then requires ALL of them to match (conservative:
     /// when in doubt, stay diverged - keep-both never loses words).
     pub(crate) fn fork_points(&self, a: &[u8; 32], b: &[u8; 32]) -> Vec<[u8; 32]> {
-        let ancestors_a = self.ancestors(a);
-        let ancestors_b = self.ancestors(b);
-        let common: Vec<[u8; 32]> = ancestors_a.intersection(&ancestors_b).copied().collect();
+        self.fork_points_of_heads(&[*a, *b])
+    }
+
+    /// The same question for a whole head SET: the maximal common ancestors of every listed
+    /// head at once. This is what the N-way merge pivots on - three devices editing the same
+    /// paragraph simultaneously fork three ways from ONE version, and that version is the
+    /// base all three diffs align against.
+    pub(crate) fn fork_points_of_heads(&self, heads: &[[u8; 32]]) -> Vec<[u8; 32]> {
+        let Some((first, rest)) = heads.split_first() else {
+            return Vec::new();
+        };
+        let mut common_set = self.ancestors(first);
+        for h in rest {
+            let anc = self.ancestors(h);
+            common_set.retain(|c| anc.contains(c));
+        }
+        let common: Vec<[u8; 32]> = common_set.into_iter().collect();
         let mut maximal: Vec<[u8; 32]> = common
             .iter()
             .copied()
@@ -1075,6 +1089,16 @@ fn side_label(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
     format!("{}, {}", side_who(v, names), civil_utc(v.timestamp_ms))
 }
 
+/// The opening line of one Marquee variant - the attr shape is the renderers' contract:
+/// `label` and `when` are advisory display text shown verbatim, so `when` is civil time.
+fn variant_open(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
+    format!(
+        ":::variant label=\"{}\" when=\"{}\"\n",
+        side_who(v, names),
+        civil_utc(v.timestamp_ms)
+    )
+}
+
 /// Per-hunk Marquee conflicts (amended 2026-07-25): diffy's marker lines become `:::conflict`
 /// / `:::variant` vocabulary at the same line boundaries, so non-overlapping edits stay merged
 /// and only the disputed hunks wear scaffolding - the whole-document presentation was a cure
@@ -1101,19 +1125,13 @@ fn hunk_conflict_directives(
     for line in marked.lines() {
         match (&state, line) {
             (State::Outside, "<<<<<<< ours") => {
-                out.push_str(&format!(
-                    ":::conflict\n:::variant label=\"{}\" when=\"{}\"\n",
-                    side_who(a, names),
-                    civil_utc(a.timestamp_ms)
-                ));
+                out.push_str(":::conflict\n");
+                out.push_str(&variant_open(a, names));
                 state = State::Ours;
             }
             (State::Ours, "=======") => {
-                out.push_str(&format!(
-                    "::: variant\n:::variant label=\"{}\" when=\"{}\"\n",
-                    side_who(b, names),
-                    civil_utc(b.timestamp_ms)
-                ));
+                out.push_str("::: variant\n");
+                out.push_str(&variant_open(b, names));
                 state = State::Theirs;
             }
             (State::Theirs, ">>>>>>> theirs") => {
@@ -1129,10 +1147,184 @@ fn hunk_conflict_directives(
     out
 }
 
-/// Present a conflict as *whole* alternatives - the shape used when three-way merge can't run
-/// (no usable fork point, or more than two heads), and the *only* shape for Marquee (which gets
-/// real vocabulary rather than markers). Degraded relative to per-hunk, still lossless. Text
-/// only: `resolve` returns before this for media (which has no synthesized-text conflict).
+/// One stretch of an N-way merge: lines every head agrees on, or a region where two-plus
+/// heads propose different text.
+enum Segment {
+    Agreed(Vec<String>),
+    /// Distinct proposals in house order, deduped by text - two heads that wrote the same
+    /// words for a region agree, and their proposal folds to one variant labeled by the
+    /// earliest head carrying it (the same logical-folding spirit as twin heads). The index
+    /// is into the resolver's sorted head list.
+    Disputed(Vec<(usize, Vec<String>)>),
+}
+
+/// The edit runs of one side against the base: contiguous stretches of non-context patch
+/// lines, as (base_start, base_end, replacement_lines). Half-open 0-indexed base ranges; a
+/// pure insertion is the empty range at its insertion point.
+fn edit_runs(base: &str, side: &str) -> Vec<(usize, usize, Vec<String>)> {
+    let patch = diffy::create_patch(base, side);
+    let mut runs = Vec::new();
+    for hunk in patch.hunks() {
+        // Unified-diff ranges are 1-indexed; the 0-start form only appears for an empty
+        // base, where 0 is already the right 0-indexed position.
+        let mut ix = hunk.old_range().start().saturating_sub(1);
+        let mut run: Option<(usize, usize, Vec<String>)> = None;
+        for line in hunk.lines() {
+            match line {
+                diffy::Line::Context(_) => {
+                    if let Some(r) = run.take() {
+                        runs.push(r);
+                    }
+                    ix += 1;
+                }
+                diffy::Line::Delete(_) => {
+                    let r = run.get_or_insert((ix, ix, Vec::new()));
+                    ix += 1;
+                    r.1 = ix;
+                }
+                diffy::Line::Insert(t) => {
+                    run.get_or_insert((ix, ix, Vec::new()))
+                        .2
+                        .push(t.strip_suffix('\n').unwrap_or(t).to_string());
+                }
+            }
+        }
+        if let Some(r) = run.take() {
+            runs.push(r);
+        }
+    }
+    runs
+}
+
+/// One side's text for a base region, reconstructed by splicing its edit runs into the base
+/// slice. A side with no runs in the region returns the base slice itself - "left it alone".
+fn splice(
+    base_lines: &[&str],
+    runs: &[(usize, usize, Vec<String>)],
+    rs: usize,
+    re: usize,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cursor = rs;
+    for (s, e, repl) in runs.iter().filter(|(s, e, _)| rs <= *s && *e <= re) {
+        out.extend(base_lines[cursor..*s].iter().map(|l| l.to_string()));
+        out.extend(repl.iter().cloned());
+        cursor = *e;
+    }
+    out.extend(base_lines[cursor..re].iter().map(|l| l.to_string()));
+    out
+}
+
+/// Line-level N-way merge over a single shared base - what three-plus devices editing the
+/// same document simultaneously produce when they all forked from one version (amended
+/// 2026-07-25; before this, three-plus heads *always* degraded to the whole-document
+/// conflict, field-reported when three computers changed one paragraph and got walls).
+/// Each head is diffed against the base independently; edit runs whose base ranges overlap
+/// or *touch* are grouped into one disputed region (touching is deliberate: adjacent edits
+/// have no agreed line between them to anchor a seam, so they conflict, as in git);
+/// everywhere else the heads merge clean - including fully clean when all edits are
+/// disjoint, a case the old degradation falsely conflicted. Deterministic: heads arrive in
+/// house order and diffy is deterministic over its inputs.
+fn align_heads(base: &str, sides: &[&str]) -> Vec<Segment> {
+    let base_lines: Vec<&str> = base.lines().collect();
+    let per_side: Vec<Vec<(usize, usize, Vec<String>)>> =
+        sides.iter().map(|s| edit_runs(base, s)).collect();
+
+    let mut all: Vec<(usize, usize)> = per_side
+        .iter()
+        .flat_map(|runs| runs.iter().map(|(s, e, _)| (*s, *e)))
+        .collect();
+    all.sort_unstable();
+    let mut groups: Vec<(usize, usize)> = Vec::new();
+    for (s, e) in all {
+        match groups.last_mut() {
+            Some((_, ge)) if s <= *ge => *ge = (*ge).max(e),
+            _ => groups.push((s, e)),
+        }
+    }
+
+    let owned = |lines: &[&str]| lines.iter().map(|l| l.to_string()).collect::<Vec<_>>();
+    let mut segments = Vec::new();
+    let mut cursor = 0;
+    for (rs, re) in groups {
+        if rs > cursor {
+            segments.push(Segment::Agreed(owned(&base_lines[cursor..rs])));
+        }
+        let base_slice = owned(&base_lines[rs..re]);
+        let mut distinct: Vec<(usize, Vec<String>)> = Vec::new();
+        for (side, runs) in per_side.iter().enumerate() {
+            let prop = splice(&base_lines, runs, rs, re);
+            if prop == base_slice || distinct.iter().any(|(_, p)| *p == prop) {
+                continue;
+            }
+            distinct.push((side, prop));
+        }
+        segments.push(match distinct.len() {
+            0 => Segment::Agreed(base_slice), // unreachable: a group implies an edit
+            1 => Segment::Agreed(distinct.pop().map(|(_, p)| p).unwrap_or(base_slice)),
+            _ => Segment::Disputed(distinct),
+        });
+        cursor = re;
+    }
+    if cursor < base_lines.len() {
+        segments.push(Segment::Agreed(owned(&base_lines[cursor..])));
+    }
+    segments
+}
+
+/// The N-way merge's presentation, format-dispatched exactly like the two-head forms:
+/// disputed regions wear plaintext's marker chain (one `<<<<<<<` per side, the house shape
+/// from the whole-document form) or Marquee's `:::conflict`/`:::variant` scaffolding.
+fn render_segments(
+    format: Format,
+    segments: &[Segment],
+    heads: &[&Version],
+    names: &BTreeMap<[u8; 32], String>,
+) -> String {
+    let mut out = String::new();
+    let push_lines = |out: &mut String, lines: &[String]| {
+        for l in lines {
+            out.push_str(l);
+            out.push('\n');
+        }
+    };
+    for seg in segments {
+        match seg {
+            Segment::Agreed(lines) => push_lines(&mut out, lines),
+            Segment::Disputed(props) => match format {
+                Format::Plaintext => {
+                    for (i, (side, lines)) in props.iter().enumerate() {
+                        out.push_str(&format!("<<<<<<< {}\n", side_label(heads[*side], names)));
+                        push_lines(&mut out, lines);
+                        out.push_str(if i + 1 == props.len() {
+                            ">>>>>>>\n"
+                        } else {
+                            "=======\n"
+                        });
+                    }
+                }
+                Format::Marquee => {
+                    out.push_str(":::conflict\n");
+                    for (side, lines) in props {
+                        out.push_str(&variant_open(heads[*side], names));
+                        push_lines(&mut out, lines);
+                        out.push_str("::: variant\n");
+                    }
+                    out.push_str("::: conflict\n");
+                }
+                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
+                    unreachable!("media never reaches text merge")
+                }
+            },
+        }
+    }
+    out
+}
+
+/// Present a conflict as *whole* alternatives - the degraded shape used when a merge can't
+/// run: no single fork point for the head set (criss-cross among three-plus heads), or a
+/// missing body. Lossless as ever. Text only: `resolve` returns before this for media
+/// (which has no synthesized-text conflict).
 fn whole_version_conflict(
     format: Format,
     sides: &[(&Version, String)],
@@ -1168,11 +1360,7 @@ fn whole_version_conflict(
         Format::Marquee => {
             let mut out = String::from(":::conflict\n");
             for (v, body) in sides {
-                out.push_str(&format!(
-                    ":::variant label=\"{}\" when=\"{}\"\n",
-                    side_who(v, names),
-                    civil_utc(v.timestamp_ms)
-                ));
+                out.push_str(&variant_open(v, names));
                 out.push_str(body);
                 if !body.ends_with('\n') {
                     out.push('\n');
@@ -1244,7 +1432,13 @@ pub async fn resolve(
             })
         }
         [a, b] => [*a, *b],
-        // Three-plus logical heads: the whole-document conflict, every side in full.
+        // Three-plus logical heads. When the whole head set forked from ONE version (three
+        // computers changing the same document simultaneously - field-reported when it came
+        // back as a wall of whole-document conflict), that version is the base and the N-way
+        // alignment merges per-hunk: disjoint edits weave clean, only genuinely disputed
+        // regions wear scaffolding, one variant per distinct proposal. Murkier shapes - no
+        // single fork point for the set (criss-cross among three-plus), a missing base body
+        // - degrade to the whole-document conflict as ever: conservative, lossless.
         many => {
             let mut sides = Vec::new();
             for v in many {
@@ -1256,6 +1450,39 @@ pub async fn resolve(
                     });
                 };
                 sides.push((*v, String::from_utf8_lossy(&body).into_owned()));
+            }
+            let head_hashes: Vec<[u8; 32]> = many.iter().map(|v| v.hash).collect();
+            let forks = doc.fork_points_of_heads(&head_hashes);
+            let fork_version = match forks.as_slice() {
+                [fork] => doc.versions.get(fork),
+                _ => None,
+            };
+            if let Some(fv) = fork_version {
+                if let Some(base) = read_body(files, keys, fv).await? {
+                    let base = String::from_utf8_lossy(&base).into_owned();
+                    let texts: Vec<&str> = sides.iter().map(|(_, t)| t.as_str()).collect();
+                    let segments = align_heads(&base, &texts);
+                    let disputed = segments.iter().any(|s| matches!(s, Segment::Disputed(_)));
+                    // Rung 3 generalizes: exactly one head renamed (relative to the fork)
+                    // → the rename wins; otherwise the display head's title stands.
+                    let renamed: Vec<&&Version> = many
+                        .iter()
+                        .filter(|v| v.header.title != fv.header.title)
+                        .collect();
+                    let title = match renamed.as_slice() {
+                        [one] => one.header.title.clone(),
+                        _ => display_title,
+                    };
+                    return Ok(ResolvedDoc {
+                        resolution: if disputed {
+                            Resolution::Conflict
+                        } else {
+                            Resolution::Merged
+                        },
+                        title,
+                        body: Some(render_segments(format, &segments, many, names)),
+                    });
+                }
             }
             return Ok(ResolvedDoc {
                 resolution: Resolution::Conflict,
@@ -1315,7 +1542,7 @@ pub async fn resolve(
 
     // Rung 4: three-way line merge, which is format-agnostic (Marquee source is still lines).
     // Clean = every line from both sides present, nobody asked anything. Overlap presents the
-    // conflict - inline per-hunk markers for plaintext, whole-version `:::conflict` vocabulary
+    // conflict per-hunk - inline markers for plaintext, `:::conflict`/`:::variant` vocabulary
     // for Marquee (its markers-are-vocabulary is the whole reason we split the formats).
     match merge_lines(&base, &text_a, &text_b) {
         Ok(merged) => Ok(ResolvedDoc {
@@ -3176,5 +3403,163 @@ mod tests {
         );
         assert!(!body.contains("<<<<<<<"), "no git markers in marquee:\n{body}");
         assert!(body.contains("ZZZ") && body.contains("E\nF"), "both tails inside:\n{body}");
+    }
+
+    /// The 2026-07-25 field report, reproduced: THREE computers changing the same section
+    /// simultaneously fork three ways from one version - and got the whole-document wall,
+    /// because three-plus heads skipped merging entirely. Now: one conflict block holding
+    /// the three proposals, everything else woven clean outside it.
+    #[tokio::test]
+    async fn three_way_fork_conflicts_per_hunk_not_whole_document() {
+        let db = test_db().await;
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let m = Format::Marquee;
+        let base_body = b"### One\nA\n\n### Two\nB\n\n### Five\nE\n";
+        let key_a = signer(1);
+        let base = save_fmt(&db, &key_a, &keys, &files, doc_id, vec![], "t", base_body, m).await;
+        for (byte, one) in [(1u8, "1111111"), (2, "2222222"), (3, "33333333")] {
+            let body = format!("### One\n{one}\n\n### Two\nB\n\n### Five\nE\n");
+            save_fmt(
+                &db,
+                &signer(byte),
+                &keys,
+                &files,
+                doc_id,
+                vec![base],
+                "t",
+                body.as_bytes(),
+                m,
+            )
+            .await;
+        }
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert_eq!(
+            body.matches(":::conflict").count(),
+            1,
+            "one disputed region, not a whole-document conflict:\n{body}"
+        );
+        assert_eq!(
+            body.matches(":::variant").count(),
+            3,
+            "three proposals inside it:\n{body}"
+        );
+        for one in ["1111111", "2222222", "33333333"] {
+            assert!(body.contains(one), "every proposal present:\n{body}");
+        }
+        let tail = body.rsplit("::: conflict").next().unwrap();
+        assert!(
+            tail.contains("### Two\nB") && tail.contains("### Five\nE"),
+            "the agreed sections live OUTSIDE the scaffolding:\n{body}"
+        );
+    }
+
+    /// Three heads whose edits don't touch merge fully clean - a case the old always-degrade
+    /// rule falsely presented as a conflict.
+    #[tokio::test]
+    async fn three_heads_with_disjoint_edits_merge_clean() {
+        let db = test_db().await;
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let base_body = b"### One\nA\n\n### Two\nB\n\n### Five\nE\n";
+        let base = save(&db, &signer(1), &keys, &files, doc_id, vec![], "t", base_body).await;
+        let edits: [&[u8]; 3] = [
+            b"### One\nAAAA\n\n### Two\nB\n\n### Five\nE\n",
+            b"### One\nA\n\n### Two\nBBBB\n\n### Five\nE\n",
+            b"### One\nA\n\n### Two\nB\n\n### Five\nEEEE\n",
+        ];
+        for (byte, body) in edits.iter().enumerate() {
+            save(&db, &signer(byte as u8 + 1), &keys, &files, doc_id, vec![base], "t", body).await;
+        }
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Merged, "disjoint edits weave clean");
+        let body = r.body.unwrap();
+        assert_eq!(
+            body,
+            "### One\nAAAA\n\n### Two\nBBBB\n\n### Five\nEEEE\n",
+            "all three edits present, no scaffolding"
+        );
+    }
+
+    /// The plaintext mirror of the three-way field case: one marker region (the house chain,
+    /// one `<<<<<<<` per side), agreed text outside it.
+    #[tokio::test]
+    async fn three_way_plaintext_conflicts_per_hunk() {
+        let db = test_db().await;
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let base = save(&db, &signer(1), &keys, &files, doc_id, vec![], "t", b"A\nB\nC\n").await;
+        for (byte, first) in [(1u8, "X"), (2, "Y"), (3, "Z")] {
+            let body = format!("{first}\nB\nC\n");
+            save(&db, &signer(byte), &keys, &files, doc_id, vec![base], "t", body.as_bytes())
+                .await;
+        }
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert_eq!(body.matches("<<<<<<<").count(), 3, "one opener per side:\n{body}");
+        assert_eq!(body.matches(">>>>>>>").count(), 1, "one disputed region:\n{body}");
+        assert!(
+            body.ends_with(">>>>>>>\nB\nC\n"),
+            "the agreed tail lives outside the markers:\n{body}"
+        );
+    }
+
+    /// Three-plus heads WITHOUT a single shared fork point (a criss-cross among them) still
+    /// degrade to the whole-document conflict - the N-way alignment needs one base to stand
+    /// on, and when history can't name one, conservative-and-lossless wins as ever.
+    #[tokio::test]
+    async fn three_heads_with_crisscross_history_degrade_to_whole_document() {
+        let db = test_db().await;
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let m = Format::Marquee;
+        let root = save_fmt(&db, &signer(1), &keys, &files, doc_id, vec![], "t", b"SHARED\n", m)
+            .await;
+        let v1 =
+            save_fmt(&db, &signer(1), &keys, &files, doc_id, vec![root], "t", b"SHARED\nv1\n", m)
+                .await;
+        let v2 =
+            save_fmt(&db, &signer(2), &keys, &files, doc_id, vec![root], "t", b"SHARED\nv2\n", m)
+                .await;
+        // Three racing resolutions of the same fork: every head descends from BOTH v1 and
+        // v2, so the maximal common ancestors are {v1, v2} - no single base.
+        for (byte, text) in [(1u8, "m1"), (2, "m2"), (3, "m3")] {
+            let body = format!("SHARED\n{text}\n");
+            save_fmt(
+                &db,
+                &signer(byte),
+                &keys,
+                &files,
+                doc_id,
+                vec![v1, v2],
+                "t",
+                body.as_bytes(),
+                m,
+            )
+            .await;
+        }
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert_eq!(
+            body.matches("SHARED").count(),
+            3,
+            "whole-document form: every side in full:\n{body}"
+        );
     }
 }

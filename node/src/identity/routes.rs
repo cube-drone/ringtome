@@ -1661,9 +1661,13 @@ async fn docs_debug_handler(
     }
     versions.sort_by_key(|v| (v.timestamp_ms, v.hash.clone()));
 
-    let fork_points_of_logical_heads = match doc.logical_heads.as_slice() {
-        [a, b] => doc.fork_points(a, b).iter().map(hex::encode).collect(),
-        _ => Vec::new(),
+    let fork_points_of_logical_heads = if doc.logical_heads.len() >= 2 {
+        doc.fork_points_of_heads(&doc.logical_heads)
+            .iter()
+            .map(hex::encode)
+            .collect()
+    } else {
+        Vec::new()
     };
     let resolved = data.documents().resolved(doc).await?;
 

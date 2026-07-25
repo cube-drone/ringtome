@@ -119,8 +119,14 @@ behaviors on top:
   that's never heard of `:::conflict` renders both texts in full (the degraded conflict is still
   a lossless conflict), and the one named client obligation is that **synthesized text starts
   clean, not dirty** — autosave must never commit the tangle the user hasn't touched. Three-plus
-  logical heads, or a GC'd/ambiguous fork point, degrade to the whole-document conflict ("every
-  version in full") - lossless, and conservative rather than attempting a fiddly multi-way merge. This resolves the merge-UX open question: "diverged on two
+  logical heads merge per-hunk too (amended 2026-07-25, field-tested: three computers changing
+  one paragraph came back as a whole-document wall): when the head set shares a **single** fork
+  point, every head is diffed against it and aligned - disjoint edits weave fully clean, and a
+  disputed region carries one variant per *distinct* proposal (two heads that wrote the same
+  words fold to one variant, the twin-folding spirit). Degradation to the whole-document
+  conflict ("every version in full") remains for what alignment can't stand on: no single fork
+  point for the set (criss-cross among three-plus heads), or a GC'd fork body - lossless and
+  conservative as ever. This resolves the merge-UX open question: "diverged on two
   devices" looks like your document, with both texts inline under gentle labels.
 - **Clients check the head before saving**: if it moved, rebase (fast-forward the editor onto the
   new head) or fork knowingly — never blind-save. The stale tab becomes a detected sibling, not
