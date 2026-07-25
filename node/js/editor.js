@@ -49,6 +49,7 @@ export const Editor = ({ root, docId }) => {
     const [tab, setTab] = useState('write'); // 'write' | 'preview' (marquee only)
     const [status, setStatus] = useState('opening'); // opening | clean | dirty | saving | error
     const [error, setError] = useState(null);
+    const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
 
     // Mutable save-machine state: parents to assert, dirtiness, timers. Refs, not state -
     // the save loop must see current values without re-render races. `buffer` mirrors the
@@ -239,6 +240,19 @@ export const Editor = ({ root, docId }) => {
                     <span class=${status === 'error' ? 'chip chip-diverged' : 'chip'}>
                         ${statusWord}
                     </span>
+                    <button
+                        class="chip chip-button"
+                        title="TEMPORARY: dump this document's full version history for debugging"
+                        onClick=${async () => {
+                            if (dump) return setDump(null);
+                            try {
+                                const d = await api(`/api/identity/${root}/docs/${docId}/debug`);
+                                setDump(JSON.stringify(d, null, 2));
+                            } catch (e) {
+                                setDump(`debug dump failed: ${e.message}`);
+                            }
+                        }}
+                    >${dump ? 'close debug' : 'debug'}</button>
                 </span>
             </header>
             ${format === 'marquee' &&
@@ -253,7 +267,9 @@ export const Editor = ({ root, docId }) => {
                 >preview</button>
             </div>`}
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
-            ${status === 'waiting'
+            ${dump != null
+                ? html`<pre class="reader-plain debug-dump">${dump}</pre>`
+                : status === 'waiting'
                 ? html`<div class="editor-waiting">
                       <p class="null-sub">
                           <span class="waiting-dot"></span> Some of this document's words are

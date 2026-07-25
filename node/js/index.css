@@ -646,3 +646,9 @@ body {
     min-height: 30vh;
     text-align: center;
 }
+
+.debug-dump {
+    user-select: all;
+    max-height: 70vh;
+    font-size: 0.7rem;
+}

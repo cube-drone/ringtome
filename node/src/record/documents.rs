@@ -200,11 +200,11 @@ impl Doc {
     /// no other common ancestor descends from. Usually exactly one; criss-cross histories can
     /// produce several, and the echo rung then requires ALL of them to match (conservative:
     /// when in doubt, stay diverged - keep-both never loses words).
-    fn fork_points(&self, a: &[u8; 32], b: &[u8; 32]) -> Vec<[u8; 32]> {
+    pub(crate) fn fork_points(&self, a: &[u8; 32], b: &[u8; 32]) -> Vec<[u8; 32]> {
         let ancestors_a = self.ancestors(a);
         let ancestors_b = self.ancestors(b);
         let common: Vec<[u8; 32]> = ancestors_a.intersection(&ancestors_b).copied().collect();
-        common
+        let mut maximal: Vec<[u8; 32]> = common
             .iter()
             .copied()
             .filter(|c| {
@@ -212,7 +212,19 @@ impl Doc {
                     .iter()
                     .any(|d| d != c && self.ancestors(d).contains(c))
             })
-            .collect()
+            .collect();
+        // DETERMINISTIC order (claimed stamp, hash tiebreak - the house total order). The
+        // intersection above iterates a HashSet, and the recursive virtual base is
+        // order-sensitive: unsorted, two devices could synthesize DIFFERENT tangles from
+        // identical DAGs - caught as a test flake by the test-unit tee, diagnosed as a
+        // convergence bug.
+        maximal.sort_by_key(|h| {
+            self.versions
+                .get(h)
+                .map(|v| (v.timestamp_ms, v.hash))
+                .unwrap_or((i64::MIN, *h))
+        });
+        maximal
     }
 
     /// The read-time mop-up (NOTES_APP, The sync model): fold away DAG heads that carry no
@@ -1028,7 +1040,7 @@ pub struct ResolvedDoc {
 /// Millis-since-epoch to a compact UTC stamp ("2026-07-25 03:12") - zero deps, Hinnant's
 /// civil-from-days. Baked into synthesized conflict text, so it must be deterministic and
 /// timezone-free; friendlier relative phrasing ("yesterday 9pm") is a client rendering someday.
-fn civil_utc(ms: i64) -> String {
+pub(crate) fn civil_utc(ms: i64) -> String {
     let secs = ms.div_euclid(1000);
     let days = secs.div_euclid(86400);
     let tod = secs.rem_euclid(86400);
@@ -1204,17 +1216,16 @@ pub async fn resolve(
         String::from_utf8_lossy(&body_b).into_owned(),
     );
 
-    // The fork point's body is the three-way base. Exactly one usable fork point, body in
-    // hand, or we degrade to the whole-document conflict - conservative, lossless.
-    let base = match doc.fork_points(&a.hash, &b.hash).as_slice() {
-        [one] => match doc.versions.get(one) {
-            Some(fork) => read_body(files, keys, fork)
-                .await?
-                .map(|b| String::from_utf8_lossy(&b).into_owned()),
-            None => None,
-        },
-        _ => None,
-    };
+    // The fork point's body is the three-way base. One fork point: use it directly. TWO -
+    // the criss-cross case (both sides once resolved the same fork, racing) - synthesize a
+    // VIRTUAL base, git-recursive style: merge the two fork points over their own unique
+    // common ancestor, clean merges only. (Without this, one raced resolution anywhere in a
+    // document's past would degrade every future fork to whole-document conflict, forever -
+    // field-found: a well-shaped two-sided edit came back as a wall of markers because the
+    // doc carried criss-cross scars from earlier testing.) Anything murkier - zero fork
+    // points, three-plus, missing bodies, a conflicted virtual base - degrades to the
+    // whole-document conflict as ever: conservative, lossless.
+    let base = base_body(files, keys, doc, &a.hash, &b.hash).await?;
     let Some(base) = base else {
         return Ok(ResolvedDoc {
             resolution: Resolution::Conflict,
@@ -1242,7 +1253,7 @@ pub async fn resolve(
     // Clean = every line from both sides present, nobody asked anything. Overlap presents the
     // conflict - inline per-hunk markers for plaintext, whole-version `:::conflict` vocabulary
     // for Marquee (its markers-are-vocabulary is the whole reason we split the formats).
-    match diffy::merge(&base, &text_a, &text_b) {
+    match merge_lines(&base, &text_a, &text_b) {
         Ok(merged) => Ok(ResolvedDoc {
             resolution: Resolution::Merged,
             title,
@@ -1262,6 +1273,83 @@ pub async fn resolve(
             }),
         }),
     }
+}
+
+/// Three-way line merge with git's plain ours/theirs conflict style (no `||||||| original`
+/// base section). One function so every merge in the resolver agrees - and the style choice
+/// is load-bearing: the recursive virtual base may itself carry conflict markers, and diff3's
+/// base section was the channel they leaked through into user-facing output (found as a
+/// hash-order-dependent test flake; the leak is structurally closed with the base section
+/// gone, since the SIDES are always real user text).
+fn merge_lines(base: &str, a: &str, b: &str) -> Result<String, String> {
+    diffy::MergeOptions::new()
+        .set_conflict_style(diffy::ConflictStyle::Merge)
+        .merge(base, a, b)
+}
+
+/// The three-way base for a pair of heads, as text - git's recursive strategy, bounded. One
+/// fork point reads directly. Two (the criss-cross: a raced resolution somewhere in history)
+/// recurse: synthesize THEIR base the same way, merge them over it - and, exactly as git's
+/// recursive strategy does, a CONFLICTED virtual merge still serves as the base, markers and
+/// all: the sides being merged over it almost always agree about the once-resolved region
+/// (they both descend from its resolution), so the marker lines cancel against both sides
+/// and never reach the output; where they genuinely don't cancel, they surface inside a
+/// conflict hunk, which is honest. Depth-limited (nested criss-crosses converge in one or two
+/// levels or aren't worth chasing); everything murkier - zero fork points, three-plus,
+/// missing bodies, a conflicted virtual - is `None`, and the caller degrades to the
+/// whole-document conflict: conservative, lossless.
+fn base_body<'a>(
+    files: &'a FileStore,
+    keys: &'a EpochKeys,
+    doc: &'a Doc,
+    a: &'a [u8; 32],
+    b: &'a [u8; 32],
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<Option<String>, AppError>> + Send + 'a>,
+> {
+    fn depth_limited<'a>(
+        files: &'a FileStore,
+        keys: &'a EpochKeys,
+        doc: &'a Doc,
+        a: [u8; 32],
+        b: [u8; 32],
+        depth: u8,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Option<String>, AppError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            if depth > 4 {
+                return Ok(None);
+            }
+            let read_text = |hash: [u8; 32]| async move {
+                match doc.versions.get(&hash) {
+                    Some(v) => Ok::<_, AppError>(
+                        read_body(files, keys, v)
+                            .await?
+                            .map(|b| String::from_utf8_lossy(&b).into_owned()),
+                    ),
+                    None => Ok(None),
+                }
+            };
+            match doc.fork_points(&a, &b).as_slice() {
+                [one] => read_text(*one).await,
+                [f1, f2] => {
+                    let sub = depth_limited(files, keys, doc, *f1, *f2, depth + 1).await?;
+                    let (Some(sub), Some(b1), Some(b2)) =
+                        (sub, read_text(*f1).await?, read_text(*f2).await?)
+                    else {
+                        return Ok(None);
+                    };
+                    Ok(Some(match merge_lines(&sub, &b1, &b2) {
+                        Ok(clean) => clean,
+                        Err(markered) => markered, // git-style: a conflicted base still bases
+                    }))
+                }
+                _ => Ok(None),
+            }
+        })
+    }
+    depth_limited(files, keys, doc, *a, *b, 0)
 }
 
 /// Read and decrypt one version's body from the file layer.
@@ -2864,5 +2952,116 @@ mod tests {
         assert_eq!(rows2[0].genesis_ms, row.genesis_ms);
         assert_eq!(rows2[0].head_ms, row.head_ms);
         assert_eq!(rows2[0].logical_heads, row.logical_heads);
+    }
+
+    /// The field report of 2026-07-25, verbatim: base A-B-C-D; one computer appends E,F (as
+    /// autosave does it - two saves, a chain); the other inserts X and Y mid-document and
+    /// appends ZZZ (three saves, a chain). Expectation: X and Y merge in smoothly, ONE
+    /// conflict hunk at the tail (E,F vs ZZZ) - never a whole-document conflict. Multi-hop
+    /// chains are the shape real autosave produces, so the fork point is several ancestors
+    /// deep on both sides.
+    #[tokio::test]
+    async fn autosave_chains_merge_per_hunk_not_whole_document() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let base = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"A\nB\nC\nD\n").await;
+
+        // Computer one: appends, two autosaves deep.
+        let a1 = save(&db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nB\nC\nD\nE\n").await;
+        let a2 = save(&db, &key, &keys, &files, doc_id, vec![a1], "t", b"A\nB\nC\nD\nE\nF\n").await;
+
+        // Computer two: inserts mid-document and appends, three autosaves deep.
+        let b1 = save(&db, &key, &keys, &files, doc_id, vec![base], "t", b"A\nX\nB\nC\nD\n").await;
+        let b2 = save(&db, &key, &keys, &files, doc_id, vec![b1], "t", b"A\nX\nB\nY\nC\nD\n").await;
+        let b3 = save(
+            &db, &key, &keys, &files, doc_id, vec![b2], "t", b"A\nX\nB\nY\nC\nD\nZZZ\n",
+        )
+        .await;
+        let _ = (a2, b3);
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.logical_heads.len(), 2, "a genuine two-sided fork");
+
+        let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
+        assert_eq!(r.resolution, Resolution::Conflict, "the tail genuinely conflicts");
+        let body = r.body.unwrap();
+        // The insertions merged in smoothly - they appear OUTSIDE any conflict fence...
+        let clean_prefix = body.split("<<<<<<<").next().unwrap();
+        assert!(
+            clean_prefix.contains("X\n") && clean_prefix.contains("Y\n"),
+            "X and Y merge without conflict:\n{body}"
+        );
+        // ...and exactly one conflict hunk exists, containing the two tails.
+        assert_eq!(
+            body.matches("<<<<<<<").count(),
+            1,
+            "one hunk, not a whole-document conflict:\n{body}"
+        );
+        assert!(body.contains("ZZZ") && body.contains("E\nF"), "both tails present:\n{body}");
+    }
+
+    /// The criss-cross RESCUE: a document whose past holds a raced resolution (both sides
+    /// once merged the same fork - two maximal fork points forever after) must still merge
+    /// future two-sided edits per-hunk, via the virtual base (the fork points merged over
+    /// their own common ancestor). Without this, one race anywhere in history degraded every
+    /// later fork to a whole-document conflict - the field report of 2026-07-25.
+    #[tokio::test]
+    async fn criss_cross_scars_still_merge_per_hunk() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        // A common genesis, a fork, and a RACED resolution: both merge saves list both heads.
+        let g = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"A\nB\nC\nD\n").await;
+        let h1 = save(&db, &key, &keys, &files, doc_id, vec![g], "t", b"A\nB\nC\nD\nfoo\n").await;
+        let h2 = save(&db, &key, &keys, &files, doc_id, vec![g], "t", b"A\nB\nC\nD\nbar\n").await;
+        let m1 = save(
+            &db, &key, &keys, &files, doc_id, vec![h1, h2], "t", b"A\nB\nC\nD\n",
+        )
+        .await;
+        let m2 = save(
+            &db, &key, &keys, &files, doc_id, vec![h1, h2], "t", b"A\nB\nC\nD\n!\n",
+        )
+        .await;
+
+        // On the scarred document, the user's clean two-sided edit: appends on one side,
+        // mid-document insertions plus a different tail on the other.
+        let e1 = save(
+            &db, &key, &keys, &files, doc_id, vec![m1, m2], "t", b"A\nB\nC\nD\n!\nE\nF\n",
+        )
+        .await;
+        let e2 = save(
+            &db, &key, &keys, &files, doc_id, vec![m1, m2], "t", b"A\nX\nB\nY\nC\nD\n!\nZZZ\n",
+        )
+        .await;
+        let _ = (e1, e2);
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let doc = view.docs.get(&doc_id).unwrap();
+        assert_eq!(doc.logical_heads.len(), 2);
+        // The scar is real: the current heads have TWO maximal fork points (m1 and m2).
+        let heads: Vec<_> = doc.logical_heads.clone();
+        assert_eq!(doc.fork_points(&heads[0], &heads[1]).len(), 2, "criss-cross confirmed");
+
+        let r = resolve(&files, &keys, doc, &BTreeMap::new()).await.unwrap();
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        let clean_prefix = body.split("<<<<<<<").next().unwrap();
+        assert!(
+            clean_prefix.contains("X\n") && clean_prefix.contains("Y\n"),
+            "insertions merge despite the scar:\n{body}"
+        );
+        assert_eq!(
+            body.matches("<<<<<<<").count(),
+            1,
+            "one tail hunk, not a whole-document conflict:\n{body}"
+        );
     }
 }

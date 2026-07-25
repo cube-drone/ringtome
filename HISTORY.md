@@ -868,3 +868,46 @@ must be deterministic; unnamed keys fall back to "computer <shortcode>". The app
 widened to 1100px for the notes app alone (every other screen carries its own max-width) -
 a merge deserves room to breathe. Proven in bodies.cjs: the stale-tab scenario now also
 asserts "from alpha" and "from bravo" appear in the synthesized conflict on both nodes.
+
+---
+
+## The recursive base: criss-cross scars merge again (2026-07-25)
+
+Field test round three, subtle and excellent: a clean two-sided edit (append E-F on one
+computer; insert X and Y mid-document plus a different tail on the other) came back as a
+whole-document conflict instead of the expected smooth X/Y merge with one tail hunk. The
+reported SHAPE was innocent - a fresh reproduction test of exactly that autosave-chain fork
+passes as-is, per-hunk, one conflict. The real culprit was the document's PAST: earlier field
+rounds had raced resolutions (both editors saving the same fork's heads as parents), leaving
+a criss-cross - two maximal fork points - and `resolve`'s base-finder demanded exactly one,
+degrading every future fork on that document to a whole-document conflict, forever. One race
+anywhere in history salted the ground permanently. The fix is git's recursive strategy,
+bounded: with two fork points, synthesize a VIRTUAL base by merging them over their own base
+(computed the same way, recursively, depth-limited) - and, exactly as git does, a CONFLICTED
+virtual merge still serves as the base, markers and all: both outer sides descend from the
+race's resolutions, so they agree about the once-disputed region and the markers cancel
+against both sides. Proven twice: `autosave_chains_merge_per_hunk_not_whole_document` (the
+report's shape, verbatim - X and Y outside any fence, exactly one hunk, both tails present)
+and `criss_cross_scars_still_merge_per_hunk` (the scarred history, confirmed as two fork
+points, still merging per-hunk). The genuinely-ambiguous case - histories with no common
+ancestor at all - keeps its conservative whole-document degradation, unchanged and tested.
+
+The recursive base's shakedown, same day, was a double catch. First: the rescue test flaked -
+`fork_points` iterated a HashSet, and the virtual base is order-sensitive, which was not a
+test problem but a CONVERGENCE bug (two devices could synthesize different tangles from
+identical DAGs); fork points now sort by the house total order (claimed stamp, hash). Second:
+even sorted, one hash-ordering leaked the virtual base's markers into user-facing output
+through diff3's `||||||| original` base section - so every merge in the resolver now uses
+git's plain ours/theirs conflict style (`merge_lines`, one function, one style), which closes
+the leak structurally (the SIDES are always real user text) and drops the noisy base section
+from user conflicts besides. And in the same gate run, the test-unit tee finally caught the
+three-day phantom flake with its name on it: `db_without_key_file_refuses_to_open`,
+"Decryption failed for page=1" - `temp_dir()` derived uniqueness from pid+nanos, SystemTime's
+granularity is coarser than a nanosecond, and two parallel db tests on the same clock tick
+shared a directory: one encrypted the database under its keystore, the other opened it with
+a different one. Never the net layer at all. Fixed with an atomic counter; three consecutive
+full-suite runs clean; the REFACTOR most-wanted entry retired. A TEMPORARY debug button also
+shipped ("debug" chip in the editor → the full version DAG as JSON: every version with
+parents, author + device name, stamps, fingerprints, bodies; head bookkeeping; fork points;
+this node's synthesized resolution) - field-testing's request, slated for removal when the
+thorny-merge era ends.

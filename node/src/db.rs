@@ -534,14 +534,25 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     async fn temp_dir() -> PathBuf {
-        // A unique-ish scratch dir under the OS temp location, avoiding Date/rand (unavailable in
-        // some harnesses) by leaning on the process id + a nanosecond counter.
+        // A unique scratch dir under the OS temp location. The uniqueness is an ATOMIC
+        // COUNTER, not the clock: pid+nanos collided under parallel test load (SystemTime
+        // granularity is coarser than a nanosecond), giving two tests the same directory -
+        // one encrypted the db under its keystore, the other opened it with a different one,
+        // and "Decryption failed for page=1" haunted full-suite runs for three days as the
+        // once-in-many-runs phantom flake (REFACTOR.md's most-wanted, finally caught by the
+        // test-unit tee).
+        static UNIQUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = UNIQUE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir =
-            std::env::temp_dir().join(format!("ringtome-test-{}-{}", std::process::id(), nanos));
+        let dir = std::env::temp_dir().join(format!(
+            "ringtome-test-{}-{}-{}",
+            std::process::id(),
+            nanos,
+            n
+        ));
         tokio::fs::create_dir_all(&dir).await.unwrap();
         dir
     }

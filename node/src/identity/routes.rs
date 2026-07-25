@@ -154,6 +154,13 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         // streams the identity's view rows to the browser's Dexie mirror. Downstream only -
         // every mutation stays an HTTP POST above.
         .route("/api/identity/{root}/stream", get(stream_handler))
+        // TEMPORARY debug surface (2026-07-25, field-testing the merge machinery): the whole
+        // version DAG of one document, bodies included, owner-gated like everything else.
+        // Slated for removal once the thorny-merge era ends.
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/debug",
+            get(docs_debug_handler),
+        )
 }
 
 #[derive(Serialize)]
@@ -1575,6 +1582,105 @@ async fn private_set_list_handler(
     Ok(Json(PrivateSetListResponse {
         elements,
         undecryptable,
+    }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// TEMPORARY: the document-history debug dump. Everything the merge machinery sees, as JSON a
+// human can paste into a bug report: every version (parents, author + device name, stamps,
+// fingerprints, full body text), the head bookkeeping, fork points between logical heads, and
+// what resolve() synthesizes right now on THIS node. Owner-gated; remove when the thorny-merge
+// era ends.
+
+#[derive(Serialize)]
+struct DebugVersion {
+    hash: String,
+    parents: Vec<String>,
+    author: String,
+    author_name: Option<String>,
+    timestamp_ms: i64,
+    timestamp_utc: String,
+    title: String,
+    format: &'static str,
+    body_hash: String,
+    body: Option<String>,
+    is_head: bool,
+    is_logical_head: bool,
+}
+
+#[derive(Serialize)]
+struct DebugDump {
+    node_name: String,
+    doc_id: String,
+    heads: Vec<String>,
+    logical_heads: Vec<String>,
+    display_head: Option<String>,
+    fork_points_of_logical_heads: Vec<String>,
+    resolution: &'static str,
+    resolved_body: Option<String>,
+    versions: Vec<DebugVersion>,
+}
+
+async fn docs_debug_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<DebugDump>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let view = data.documents().all().await?;
+    let doc = view
+        .docs
+        .get(&doc_id)
+        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+    let names = data.devices().all().await.unwrap_or_default();
+
+    let mut versions = Vec::new();
+    for v in doc.versions.values() {
+        let body = data
+            .documents()
+            .body(v)
+            .await
+            .ok()
+            .flatten()
+            .map(|b| String::from_utf8_lossy(&b).into_owned());
+        versions.push(DebugVersion {
+            hash: hex::encode(v.hash),
+            parents: v.header.parents.iter().map(hex::encode).collect(),
+            author: hex::encode(v.author),
+            author_name: names.get(&hex::encode(v.author)).cloned(),
+            timestamp_ms: v.timestamp_ms,
+            timestamp_utc: crate::record::documents::civil_utc(v.timestamp_ms),
+            title: v.header.title.clone(),
+            format: crate::record::documents::Format::from_wire(v.header.format).as_str(),
+            body_hash: hex::encode(v.header.body_hash),
+            body,
+            is_head: doc.heads.contains(&v.hash),
+            is_logical_head: doc.logical_heads.contains(&v.hash),
+        });
+    }
+    versions.sort_by_key(|v| (v.timestamp_ms, v.hash.clone()));
+
+    let fork_points_of_logical_heads = match doc.logical_heads.as_slice() {
+        [a, b] => doc.fork_points(a, b).iter().map(hex::encode).collect(),
+        _ => Vec::new(),
+    };
+    let resolved = data.documents().resolved(doc).await?;
+
+    Ok(Json(DebugDump {
+        node_name: state.config.node_name.clone(),
+        doc_id: hex::encode(doc_id),
+        heads: doc.heads.iter().map(hex::encode).collect(),
+        logical_heads: doc.logical_heads.iter().map(hex::encode).collect(),
+        display_head: doc.display_head().map(|v| hex::encode(v.hash)),
+        fork_points_of_logical_heads,
+        resolution: match resolved.resolution {
+            crate::record::documents::Resolution::Single => "single",
+            crate::record::documents::Resolution::Merged => "merged",
+            crate::record::documents::Resolution::Conflict => "conflict",
+        },
+        resolved_body: resolved.body,
+        versions,
     }))
 }
 

@@ -24,15 +24,6 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead
   of need otherwise. The compact-append `after()` already keeps the common bulk-import case
   cheap.
-- [ ] **An unidentified once-in-several-runs unit-test flake** (node suite; seen FOUR times
-  2026-07-22/23/24, never on a rerun, name never captured - every sighting only showed the
-  count line, including the fourth, eaten by a `| grep "test result"` pipe). ~25 deliberate
-  reproduction runs all clean; every sighting happened inside larger composite invocations
-  (`cargo test` workspace, `just ci`, compound shell commands), suggesting load- or
-  contention-sensitivity - a timing-sensitive net/loops test, not the data layer. The
-  promised wrapper is now in place: `just test-unit` runs `--no-fail-fast` and tees full
-  output to `/tmp/ringtome-test-unit.log`, so the next sighting's `failures:` block survives
-  regardless of what consumed the terminal. When it fires: read the log, record the name here.
 
 ## Reviewed and left alone (standing decisions, not history)
 

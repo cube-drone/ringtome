@@ -36,9 +36,10 @@ fmt:
     cd "{{workspace}}" && cargo fmt
 
 # Rust unit tests.
-# Full output teed to /tmp so a flaky failure's `failures:` block survives the run - a
-# once-in-many-runs unit flake has now escaped capture four times (REFACTOR.md); when it fires,
-# the test name is in the log file even if the terminal scrolled or a pipe ate it.
+# Full output teed to /tmp so any failure's `failures:` block survives the run even when a
+# pipe or scrolled terminal eats it. (Installed to hunt the once-in-many-runs phantom flake,
+# which it caught on 2026-07-25: a temp-dir clock collision in db tests, since fixed. Kept -
+# it costs nothing and the next phantom won't announce itself either.)
 test-unit:
     #!/usr/bin/env bash
     set -uo pipefail

@@ -108,6 +108,18 @@ HISTORY.md.
   head never noticed the fork); conflict labels speak device names - "from alpha, 2026-07-25
   03:12" - honoring NOTES_APP's "from your phone, yesterday 9pm". Shell widened to 1100px
   for the notes app alone.
+- **The recursive base** (2026-07-25): a raced resolution anywhere in a document's history
+  (criss-cross - two maximal fork points) no longer degrades every future fork to a
+  whole-document conflict. Git's recursive strategy, bounded: fork points merge over their
+  own base into a virtual base, conflicted virtuals included (markers cancel against sides
+  that agree). Genuinely ambiguous histories keep the conservative degradation.
+- **Merge shakedown triple** (2026-07-25): fork points sorted by the house total order (a
+  HashSet iteration was a convergence bug - devices could synthesize different tangles);
+  all resolver merges unified on git's plain ours/theirs style (closes the virtual-base
+  marker leak through diff3's base section); and the three-day phantom flake caught and
+  killed - `temp_dir()`'s pid+nanos collided under parallel load, two db tests shared a
+  directory. Atomic counter now; ledger entry retired. TEMPORARY debug button in the editor
+  dumps a document's full DAG as JSON (remove after the thorny-merge era).
 
 ## Standing residuals (owed, with triggers)
 
