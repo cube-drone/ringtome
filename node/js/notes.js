@@ -176,15 +176,19 @@ export const DocsApp = ({ app, current, docId }) => {
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
 
-    // The tag cloud (an optional sidebar): every tag across this app's documents, most-used
-    // first. Counted over the app's docs unfiltered, so it's a stable index rather than
-    // shifting as you search; clicking one toggles it into the same tag filter.
+    // The tag cloud (an optional sidebar): every tag across this app's documents that match the
+    // current search, most-used first. Counted over the search results (not the tag filter), so
+    // it narrows with a query but still shows every tag you could add; clicking one toggles it
+    // into the same tag filter the list uses.
     const tagCloud = feat.tagColumn
         ? Object.entries(
-              (docs || []).filter(inThisApp).reduce((counts, d) => {
-                  for (const t of d.tags || []) counts[t] = (counts[t] || 0) + 1;
-                  return counts;
-              }, {})
+              (docs || [])
+                  .filter(inThisApp)
+                  .filter((d) => hits === null || hits.has(d.doc_id))
+                  .reduce((counts, d) => {
+                      for (const t of d.tags || []) counts[t] = (counts[t] || 0) + 1;
+                      return counts;
+                  }, {})
           ).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
         : [];
 
@@ -263,14 +267,18 @@ export const DocsApp = ({ app, current, docId }) => {
                             onClick=${() => select(d.doc_id)}
                         >
                             <span class="note-row-title">${d.title || 'untitled'}</span>
-                            <span class="note-row-when">
-                                ${hasClaimedDate(d)
+                            ${(feat.date || d.diverged) &&
+                            html`<span class="note-row-when">
+                                ${feat.date &&
+                                (hasClaimedDate(d)
                                     ? html`<span
                                           class="note-row-claimed"
                                           title="a date you set for this document (its real last edit was ${when(d.updated_ms)})"
                                       >${formatClaimed(d.fields[DISPLAY_DATE_FIELD])}</span>`
-                                    : when(d.updated_ms)}${d.diverged ? ' · two versions' : ''}
-                            </span>
+                                    : when(d.updated_ms))}${d.diverged
+                                    ? (feat.date ? ' · ' : '') + 'two versions'
+                                    : ''}
+                            </span>`}
                             ${(d.tags || []).length > 0 &&
                             html`<span class="note-row-tags">
                                 ${d.tags.map(

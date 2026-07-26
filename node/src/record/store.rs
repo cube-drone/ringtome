@@ -688,11 +688,13 @@ impl Annotations<'_> {
             .await
     }
 
-    /// All of one document's tags, merged.
+    /// All of one document's tags, in insertion order - the LWW stamp when each tag was added
+    /// (element as the deterministic tiebreak for same-millisecond adds). Insertion order is the
+    /// order the author built, so it reads more like their intent than an alphabetical shuffle.
     pub async fn tags(&self, doc_id: &[u8; 16]) -> Result<Vec<String>, AppError> {
         let view = self.store.doc_meta_view().await?;
         Ok(view
-            .set_elements(&self.collection(doc_id))
+            .set_elements_ordered(&self.collection(doc_id))
             .into_iter()
             .map(|e| e.element)
             .collect())
@@ -721,10 +723,10 @@ impl Annotations<'_> {
                     entry.fields.insert(r.key, r.value);
                 }
             }
-            for e in view.set_elements(collection) {
-                entry.tags.push(e.element);
-            }
-            entry.tags.sort();
+            // Insertion order, matching the per-doc `tags()` read (LWW-stamp total order).
+            entry
+                .tags
+                .extend(view.set_elements_ordered(collection).into_iter().map(|e| e.element));
         }
         Ok(rows.into_values().filter(|r| !r.is_empty()).collect())
     }
@@ -1654,9 +1656,9 @@ mod tests {
         store.annotations().tag(&pier, "beach").await.unwrap();
         store.annotations().tag(&cat, "sunset").await.unwrap();
 
-        // Per-doc direction.
+        // Per-doc direction: insertion order (sunset tagged first), not alphabetical.
         let tags = store.annotations().tags(&pier).await.unwrap();
-        assert_eq!(tags, vec!["beach", "sunset"]);
+        assert_eq!(tags, vec!["sunset", "beach"]);
 
         // Inverted direction: same table, other index. Doc refs parse back out of the
         // collection names, root and all.

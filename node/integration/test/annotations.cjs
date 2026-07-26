@@ -150,9 +150,9 @@ describe("annotations: private facts about documents", function () {
         await putTag(user, root, cat.doc_id, "sunset");
         await putTag(user, root, pier.doc_id, "beach");
 
-        // Both tag directions agree: per-doc tags...
+        // Both tag directions agree: per-doc tags, in insertion order (sunset tagged first).
         const ann = await getAnnotations(user, root, pier.doc_id);
-        assert.deepEqual(ann.tags, ["beach", "sunset"]);
+        assert.deepEqual(ann.tags, ["sunset", "beach"]);
 
         // ...and the inverted listing, which must carry the SAME per-doc shape as the docs
         // list - both are reads of the memoized doc_heads rows.

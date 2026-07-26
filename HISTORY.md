@@ -1431,3 +1431,22 @@ every tag across the app's documents, most-used at the top, counted over the app
 unfiltered so it's a stable index, each row toggling the same tag filter the list already uses.
 The default Notes app resolves to the defaults, so it is untouched. Adding an app's personality
 is now a `features` block plus, where it wants one, a new column - not a fork of the editor.
+
+---
+
+## Tags read in insertion order, not alphabetical (2026-07-26)
+
+Tags surfaced alphabetically both in the annotations panel and the recipe/notes rows, which
+scrambled the order the author built them in. The order was recoverable all along: an
+LWW-element-set element carries the stamp it was last written under, and that stamp is the CRDT's
+full total order - `(timestamp_ms, seq, hash)` - not just a millisecond. `SetElement` only ever
+exposed `updated_at_ms`, so a same-millisecond burst of tags (the common case: three tags typed
+in a row) had no sub-ms order to sort by and fell back to a string tiebreak, i.e. alphabetical.
+
+`PrivateView` grew `set_elements_ordered`, which sorts by the full stamp it already holds - seq
+breaks a same-millisecond tie by chain position, hash breaks it across devices. `Annotations::tags`
+and `Annotations::all` now read through it, so both the per-doc panel and the mirror-joined row
+carry build order. The client dropped its trailing `.sort()` on the tag chips; the mirror now
+delivers them oldest-first and optimistic adds append at the end, so a new tag lands where you'd
+expect. The tag-frequency sidebar stays frequency-sorted (a different question). No schema change
+- the order was in the stamp the whole time; we were throwing it away at the view boundary.

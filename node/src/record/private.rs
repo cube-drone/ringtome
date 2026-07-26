@@ -603,6 +603,30 @@ impl PrivateView {
             .collect()
     }
 
+    /// Set elements in LWW-stamp order - i.e. INSERTION order: the same total order the CRDT
+    /// resolves conflicts by, `(timestamp_ms, seq, hash)`. `set_elements` returns element-key
+    /// (alphabetical) order; this returns the order the elements were actually added, so a
+    /// same-millisecond burst still orders by chain position (seq) rather than a string tiebreak.
+    pub fn set_elements_ordered(&self, collection: &str) -> Vec<SetElement> {
+        let mut items: Vec<(&Stamp, SetElement)> = self
+            .sets
+            .iter()
+            .filter(|((c, _), (present, _, _))| c == collection && *present)
+            .map(|((_, e), (_, value, stamp))| {
+                (
+                    stamp,
+                    SetElement {
+                        element: e.clone(),
+                        value: value.clone(),
+                        updated_at_ms: stamp.0,
+                    },
+                )
+            })
+            .collect();
+        items.sort_by_key(|(stamp, _)| *stamp);
+        items.into_iter().map(|(_, e)| e).collect()
+    }
+
     /// Every collection name this view holds anything under (registers or present set
     /// elements) - the enumeration the per-doc readers above deliberately don't need, for
     /// callers that sweep a whole service (the search index gathering annotation text).

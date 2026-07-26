@@ -175,12 +175,15 @@ export const Annotations = ({ root, docId, features }) => {
         });
     }, [mirrorTags.join(' ')]);
 
+    // Insertion order: the mirror already delivers tags oldest-first (the server sorts by LWW
+    // stamp), and optimistic adds append at the end - so a new tag lands where you'd expect it,
+    // not alphabetically reshuffled.
     const shownTags = [
         ...mirrorTags.filter((t) => pending[t] !== 'removing'),
         ...Object.entries(pending)
             .filter(([t, op]) => op === 'adding' && !mirrorTags.includes(t))
             .map(([t]) => t),
-    ].sort();
+    ];
 
     const tagUrl = (tag) =>
         `/api/identity/${root}/docs/${docId}/annotations/tags/${encodeURIComponent(tag)}`;
