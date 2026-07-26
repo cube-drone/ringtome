@@ -10,6 +10,8 @@ import {
     NamePicker,
     JoinFlow,
     PersonaBadge,
+    PersonaHome,
+    Profile,
 } from './persona.js';
 import { Computers } from './computers.js';
 import { Notes } from './notes.js';
@@ -31,9 +33,10 @@ const NotFound = () => html`
 
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
 // persona is open, routing takes over. The whole internal UI lives under /home (root bounces
-// there, and stays free for the API / a future public face): `/home` is the console, `/home/
-// notes[/<doc_id>]` the notes app, `/home/computers` the system view. Routes are session-
-// relative and identity-free by design (PROJECT_PLAN, The Client Is a Console).
+// there, and stays free for the API / a future public face): `/home` is the console,
+// `/home/notes[/<doc_id>]` the notes app, and `/home/persona[/profile|/computers]` is identity
+// management (reached by the dock gear). Routes are session-relative and identity-free by
+// design (PROJECT_PLAN, The Client Is a Console).
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
     const loc = useLocation();
@@ -42,27 +45,24 @@ const Inside = ({ session }) => {
 
     // The bar shows the *persona* once one is open; the account username recedes into a
     // hover title - the account never gets a noun (GLOSSARY, Cozyweb language mapping).
+    // Left: app navigation (back to the console). Right: who you are + a gear into persona
+    // management (profile, your computers, log out all live under /home/persona now).
     const bar = html`
         <header class="session-bar">
-            <span title="signed in as ${session.account.username}">
+            <span class="session-nav">
+                ${open && inApp &&
+                html`<button class="session-out" onClick=${() => loc.route('/home')}>◀ apps</button>`}
+            </span>
+            <span class="session-identity" title="signed in as ${session.account.username}">
                 ${open
                     ? html`<${PersonaBadge} current=${persona.current} />`
                     : html`<span class="session-who">hi, ${session.account.username}</span>`}
-            </span>
-            <span class="session-actions">
                 ${open &&
-                (inApp
-                    ? html`<button class="session-out" onClick=${() => loc.route('/home')}>◀ apps</button>`
-                    : html`<button class="session-out" onClick=${() => loc.route('/home/computers')}>your computers</button>`)}
-                <button
-                    class="session-out"
-                    onClick=${async () => {
-                        // Heading out forgets this browser: stream stopped, mirror dropped -
-                        // a signed-out browser keeps no copy of anyone's things.
-                        await persona.shutdown();
-                        session.logout();
-                    }}
-                >head out</button>
+                html`<button
+                    class="session-gear"
+                    title="persona &amp; settings"
+                    onClick=${() => loc.route('/home/persona')}
+                >⚙</button>`}
             </span>
         </header>
     `;
@@ -90,7 +90,9 @@ const Inside = ({ session }) => {
         <${Router}>
             <${Console} path="/home" onLaunch=${(id) => loc.route('/home/' + id)} />
             <${Notes} path="/home/notes/:docId?" current=${persona.current} />
-            <${Computers} path="/home/computers" current=${persona.current} />
+            <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
+            <${Profile} path="/home/persona/profile" current=${persona.current} />
+            <${Computers} path="/home/persona/computers" current=${persona.current} />
             <${NotFound} default />
         </${Router}>
     `;

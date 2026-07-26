@@ -394,3 +394,139 @@ export const PersonaBadge = ({ current }) => {
         </span>
     `;
 };
+
+// The persona home: the root of identity management (reached by the gear in the dock). A small
+// menu - profile, your computers, log out - each its own place under /home/persona.
+export const PersonaHome = ({ persona, session }) => {
+    const current = persona.current;
+    const logout = async () => {
+        // Heading out forgets this browser: stream stopped, mirror dropped.
+        await persona.shutdown();
+        session.logout();
+    };
+    return html`
+        <div class="persona-page">
+            <h1 class="persona-page-title">
+                <span
+                    class="persona-chip"
+                    style="background: hsl(${personaHue(current.root)}, 60%, 55%)"
+                ></span>
+                ${current.name || `persona ${shortcode(current.root)}`}
+            </h1>
+            <nav class="persona-menu">
+                <a class="persona-menu-item" href="/home/persona/profile">
+                    <span class="persona-menu-icon">🪪</span>
+                    <span class="persona-menu-label">
+                        <strong>profile</strong>
+                        <small>your name and how you appear</small>
+                    </span>
+                </a>
+                <a class="persona-menu-item" href="/home/persona/computers">
+                    <span class="persona-menu-icon">💻</span>
+                    <span class="persona-menu-label">
+                        <strong>your computers</strong>
+                        <small>the machines that carry this persona</small>
+                    </span>
+                </a>
+                <button class="persona-menu-item persona-menu-danger" onClick=${logout}>
+                    <span class="persona-menu-icon">👋</span>
+                    <span class="persona-menu-label">
+                        <strong>log out</strong>
+                        <small>forget this browser and head out</small>
+                    </span>
+                </button>
+            </nav>
+        </div>
+    `;
+};
+
+// One editable profile field as a shadow buffer: local while you type (so the live stream
+// never repaints mid-edit), saved on a debounce and on blur, adopting the mirror when clean.
+function useProfileField(root, field, { debounceMs = 800 } = {}) {
+    const live = useLive(() => openMirror(root).profile.get(field), [root, field]);
+    const mirror = (live && live.value) || '';
+    const [value, setValue] = useState(mirror);
+    const valueRef = useRef(value);
+    valueRef.current = value;
+    const dirty = useRef(false);
+    const timer = useRef(null);
+
+    useEffect(() => {
+        if (!dirty.current) setValue(mirror);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mirror]);
+
+    const flush = async () => {
+        if (!dirty.current) return;
+        const v = valueRef.current;
+        dirty.current = false;
+        try {
+            await api(`/api/identity/${root}/profile`, {
+                method: 'POST',
+                body: JSON.stringify({ field, value: v }),
+            });
+        } catch {
+            dirty.current = true; // a failed save stays dirty; blur/next edit retries
+        }
+    };
+
+    const onInput = (e) => {
+        const v = e.currentTarget.value;
+        setValue(v);
+        valueRef.current = v;
+        dirty.current = true;
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(flush, debounceMs);
+    };
+
+    useEffect(
+        () => () => {
+            if (timer.current) clearTimeout(timer.current);
+            if (dirty.current) flush();
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [root, field]
+    );
+
+    return { value, onInput, flush };
+}
+
+// The profile editor: your public self-claims (name, bio). Writes land on the profile chain
+// and echo to every computer within seconds. (History-over-time is a future addition.)
+export const Profile = ({ current }) => {
+    const root = current.root;
+    const name = useProfileField(root, 'name');
+    const bio = useProfileField(root, 'bio');
+    return html`
+        <div class="persona-page">
+            <div class="persona-page-head">
+                <a class="back-link" href="/home/persona">◀ persona</a>
+                <h1 class="persona-page-title">profile</h1>
+            </div>
+            <label class="profile-field">
+                <span class="profile-field-label">name</span>
+                <input
+                    class="name-input"
+                    value=${name.value}
+                    onInput=${name.onInput}
+                    onBlur=${name.flush}
+                    placeholder="what people call you here"
+                />
+            </label>
+            <label class="profile-field">
+                <span class="profile-field-label">bio</span>
+                <textarea
+                    class="profile-bio"
+                    value=${bio.value}
+                    onInput=${bio.onInput}
+                    onBlur=${bio.flush}
+                    rows="3"
+                    placeholder="a line or two about you (optional)"
+                ></textarea>
+            </label>
+            <p class="null-sub">
+                changes save on their own and appear on all your computers within seconds.
+            </p>
+        </div>
+    `;
+};

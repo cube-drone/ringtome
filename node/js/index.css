@@ -364,9 +364,152 @@ body {
 
 /* --- your computers --- */
 
-.session-actions {
+.session-nav {
     display: flex;
     gap: 0.5rem;
+}
+
+.session-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.session-gear {
+    background: none;
+    border: 0;
+    color: var(--dock-text);
+    cursor: pointer;
+    font-size: 1.15rem;
+    line-height: 1;
+    padding: 0.1rem 0.2rem;
+    opacity: 0.85;
+    transition: opacity 0.12s ease, transform 0.2s ease;
+}
+
+.session-gear:hover {
+    opacity: 1;
+    transform: rotate(45deg);
+}
+
+/* --- persona management pages (the gear's home) --- */
+
+.persona-page {
+    max-width: 520px;
+    margin: 4vh auto 0;
+}
+
+.persona-page-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    margin-bottom: 1.2rem;
+}
+
+.persona-page-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 1.2rem;
+}
+
+.persona-page-head .persona-page-title {
+    margin: 0;
+}
+
+.back-link {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.back-link:hover {
+    color: var(--teal);
+}
+
+.persona-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.persona-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    color: var(--ink);
+    text-decoration: none;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.persona-menu-item:hover {
+    border-color: var(--teal);
+    transform: translateY(-1px);
+}
+
+.persona-menu-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.persona-menu-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.persona-menu-label small {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.persona-menu-danger:hover {
+    border-color: var(--coral);
+}
+
+.profile-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+}
+
+/* The shared name-input is centered for the NamePicker; a settings field wants it plain. */
+.profile-field .name-input {
+    text-align: left;
+    font-size: 1rem;
+    width: 100%;
+}
+
+.profile-field-label {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.profile-bio {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--ink);
+    padding: 0.55rem 0.7rem;
+    font: inherit;
+    resize: vertical;
+    width: 100%;
+}
+
+.profile-bio:focus {
+    outline: none;
+    border-color: var(--teal);
 }
 
 .computers {
