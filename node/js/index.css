@@ -78,6 +78,12 @@
     vertical-align: -0.15em;
 }
 
+/* The duotone second colour is our teal. Phosphor draws the secondary layer as a path at
+   opacity 0.2 inheriting currentColor; just repaint it teal, keeping that original 0.2. */
+.ph path[opacity="0.2"] {
+    fill: var(--teal);
+}
+
 body {
     margin: 0;
     padding: 0;
@@ -88,7 +94,7 @@ body {
 
 .app-main {
     /* The fixed frame: a full-viewport flex column that never itself scrolls. The app region
-       (`.app-frame`) takes all the room above the footer (`.session-bar`); the two are stacked
+       (`.app-frame`) takes all the room above the footer (`.quickbar`); the two are stacked
        flex bands, so neither ever overlaps the other. Full viewport width - space is at a
        premium on a small laptop, and the notes app's right column (flex:1 beside a fixed 240px
        list) puts every extra pixel into the editor. */
@@ -324,39 +330,73 @@ body {
 /* The footer: a fixed band at the bottom of the window, its own teal surface. It is NOT an
    overlay - it's a flex sibling of `.app-frame`, so it holds its own space below the app region
    and can never hang over note content. */
-.session-bar {
+/* The Quickbar band: a FIXED-height teal shelf. Its tiles are taller than the band and bottom-
+   aligned, so their tops overflow upward - hence overflow:visible and align-items:flex-end. */
+.quickbar {
     flex-shrink: 0;
+    height: 3rem;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 20px;
+    align-items: flex-end;
+    padding: 0 20px 6px;
     background: var(--teal-deep);
+    overflow: visible;
+    /* Stack above the app region so the tiles' poking-up tops paint over it, not behind it. */
+    position: relative;
+    z-index: 2;
 }
 
-/* The dock's contents sit on teal, so they wear light text (their own overrides). */
-.session-who {
-    color: var(--dock-text);
+/* The app dock: one hexagon per app, icon only (the console glyphs without their names), a fast
+   switch between apps. The current app's tile sits full; the rest dim back. */
+.quickbar-apps {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4rem;
 }
 
-/* The footer's "leave" button - only shown for shell routes without their own app header
-   (persona management, not-found), so those aren't stranded. */
-.session-out {
+/* Each tile is a two-layer hexagon: the outer layer is a teal-deep rim (a border, since a
+   clip-path can't take a clean CSS border), the inner face is the app surface with the icon. The
+   rim is the SAME teal as the bar, so within the bar it vanishes into the backdrop and only the
+   part poking ABOVE the bar shows a rim (against the app behind). */
+.quickbar-hex {
+    --qh-w: 46px;
+    width: var(--qh-w);
+    height: calc(var(--qh-w) * 1.1547); /* regular pointy-top hexagon */
+    padding: 4px; /* the rim thickness */
+    border: 0;
+    background: var(--teal-deep);
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+    cursor: pointer;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* The user's own tile (Persona, first) runs a little bigger than the rest. */
+.quickbar-hex-lead {
+    --qh-w: 54px;
+}
+
+.quickbar-hex-face {
+    width: 100%;
+    height: 100%;
+    background: var(--surface);
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+    color: var(--ink);
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    background: none;
-    border: 1px solid rgba(251, 246, 236, 0.45);
-    border-radius: 6px;
-    color: var(--dock-text);
-    padding: 0.3rem 0.8rem;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.85rem;
+    justify-content: center;
+    font-size: 1.25rem; /* the icon */
 }
 
-.session-out:hover {
-    border-color: var(--dock-text);
-    background: rgba(251, 246, 236, 0.12);
+.quickbar-hex-lead .quickbar-hex-face {
+    font-size: 1.6rem;
+}
+
+.quickbar-hex:not(.active) {
+    opacity: 0.72;
+}
+
+.quickbar-hex:hover {
+    opacity: 1;
+    transform: translateY(-2px);
 }
 
 /* --- personas: null state, spare-key ceremony, badge --- */
@@ -481,35 +521,7 @@ body {
 
 /* --- your computers --- */
 
-.session-nav {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.session-identity {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-
-.session-gear {
-    background: none;
-    border: 0;
-    color: var(--dock-text);
-    cursor: pointer;
-    font-size: 1.15rem;
-    line-height: 1;
-    padding: 0.1rem 0.2rem;
-    opacity: 0.85;
-    transition: opacity 0.12s ease, transform 0.2s ease;
-}
-
-.session-gear:hover {
-    opacity: 1;
-    transform: rotate(45deg);
-}
-
-/* --- persona management pages (the gear's home) --- */
+/* --- persona management pages --- */
 
 .persona-page {
     max-width: 520px;
@@ -1371,8 +1383,8 @@ body {
     .app-frame-inner {
         padding: 12px;
     }
-    .session-bar {
-        padding: 0.5rem 10px;
+    .quickbar {
+        padding: 0.4rem 10px;
     }
 }
 

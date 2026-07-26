@@ -1622,3 +1622,36 @@ seconds; it falls back to the fetched-at-open name, then to '' while the mirror 
 resolves the display label - the persona app to that live name, everything else to its registry
 name - and the Persona tile falls back to "Persona" when the persona is unnamed. The tile gained
 ellipsis so a long name stays on one tidy line inside the hexagon.
+
+---
+
+## The Quickbar, with an app dock (2026-07-26)
+
+The bottom bar has a name now - the Quickbar (`.session-bar` -> `.quickbar`). Its left end became
+an app dock: one small pointy-top hexagon per live app (Persona, Notes, Recipes), icon only -
+sharing the console tiles' glyphs without the names - a one-click switch between apps that skips
+the console. The current app's hex is lit; the rest dim back, so the dock also shows where you
+are. The tooltip carries the name (Persona's is the live persona name, like everywhere else). The
+right end is unchanged: the persona badge and the gear.
+
+The old footer "leave" button (shown only on header-less routes) is gone - the dock reaches every
+app directly and the app header's close reaches the console, so nothing is stranded without it.
+Dead `.session-nav`/`.session-out` styles removed.
+
+---
+
+## The Quickbar dock grows up (2026-07-26)
+
+Reworked the Quickbar into a proper app dock. The right-hand side (persona badge + gear) is gone -
+Persona is the first hex now, and it IS both the identity and the way into persona management, so
+the duplicate had to go. The account username display went with it (the account was never a noun
+anyway).
+
+The tiles are bigger and now overflow the bar: the Quickbar is a fixed-height band with
+`overflow: visible`, the tiles bottom-align and run taller than it, so their tops poke up above the
+bar (a stacking context on the bar keeps them painting over the app region, not behind it). Each
+tile is a two-layer hexagon - an outer teal-deep rim (a clip-path can't take a clean CSS border)
+around a surface face with the icon. The rim is the SAME teal as the bar, so within the bar it
+dissolves into the backdrop and only the part poking ABOVE the bar carries a visible teal edge -
+the frustrating-to-lay-out effect Curtis asked for. The user's own tile (Persona, first) runs a
+little bigger than the rest; the current app's tile sits full while the others dim back.

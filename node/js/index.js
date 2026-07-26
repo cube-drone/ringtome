@@ -9,7 +9,6 @@ import {
     SpareKeyCeremony,
     NamePicker,
     JoinFlow,
-    PersonaBadge,
     PersonaHome,
     Profile,
     usePersonaName,
@@ -17,7 +16,7 @@ import {
 import { Computers } from './computers.js';
 import { DocsApp } from './notes.js';
 import { Console } from './console.js';
-import { docApps, appById, appLabel } from './apps.js';
+import { liveApps, docApps, appById, appLabel } from './apps.js';
 import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
@@ -58,31 +57,32 @@ const Inside = ({ session }) => {
     // falls the Persona tile back to "Persona".
     const personaName = usePersonaName(persona.current);
 
-    // The bar shows the *persona* once one is open; the account username recedes into a
-    // hover title - the account never gets a noun (GLOSSARY, Cozyweb language mapping).
-    // Left: app navigation (back to the console). Right: who you are + a gear into persona
-    // management (profile, your computers, log out all live under /home/persona now).
+    // The Quickbar: the persistent bottom bar, now purely the app dock - a hexagon per app (icon
+    // only, the console glyphs without their names), a fast switch between apps. The tiles run
+    // TALLER than the bar and bottom-align, so their teal rim pokes up above it; within the bar
+    // that rim is the same teal as the backdrop and vanishes, so it only reads on the part above.
+    // The user's own tile (Persona, first) runs a little bigger. Persona being the first tile is
+    // why the old name + gear on the right are gone - the persona tile IS both now.
     const bar = html`
-        <header class="session-bar">
-            ${/* An open app carries its own close in the unified header, so the footer only shows
-                a way out for shell routes that DON'T get that header (persona management, a
-                not-found) - which would otherwise be stranded. The empty span keeps identity right. */ ''}
-            <span class="session-nav">
-                ${open && inApp && !appHere &&
-                html`<button class="session-out" onClick=${() => loc.route('/home')}><${Icons.back} /> apps</button>`}
-            </span>
-            <span class="session-identity" title="signed in as ${session.account.username}">
-                ${open
-                    ? html`<${PersonaBadge} current=${persona.current} />`
-                    : html`<span class="session-who">hi, ${session.account.username}</span>`}
+        <footer class="quickbar">
+            <span class="quickbar-apps">
                 ${open &&
-                html`<button
-                    class="session-gear"
-                    title="persona &amp; settings"
-                    onClick=${() => loc.route('/home/persona')}
-                ><${Icons.gear} /></button>`}
+                liveApps.map(
+                    (app) => html`<button
+                        class=${[
+                            'quickbar-hex',
+                            app.id === 'persona' ? 'quickbar-hex-lead' : '',
+                            appHere && appHere.id === app.id ? 'active' : '',
+                        ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        key=${app.id}
+                        title=${appLabel(app, personaName)}
+                        onClick=${() => loc.route('/home/' + app.id)}
+                    ><span class="quickbar-hex-face"><${app.icon} /></span></button>`
+                )}
             </span>
-        </header>
+        </footer>
     `;
 
     // The unified app header: a solid ink band (the frame colour) atop every app - its title on
