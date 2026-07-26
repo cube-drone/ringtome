@@ -212,6 +212,18 @@ already stated - *it is your node; you can add code.* A gentle on-ramp still mat
 able to jot a note without first choosing a notebook type, so an un-opinionated default has a place in the console
 too.
 
+**Routing: internal URLs are session-relative and identity-free** (console + routing landed 2026-07-25). The whole
+internal UI lives under `/home` - `/home` the console, `/home/notes[/<doc_id>]` an application, and so on - so
+back/forward, refresh, and deep links work, while `/` stays free for the API and a future public face (it bounces to
+`/home` for now). The load-bearing rule: an internal URL names *no identity* - no node-username, no persona - because
+the moment an identity appears in a path it *looks* shareable, and internal URLs are not. So **identity-in-the-URL is
+the signal that a thing is shareable**: private/internal carries none, public/addressable carries one, and the two
+can never be confused structurally rather than by a user's care. A corollary: a persona (or document) **slug is a
+*publishing* prerequisite, not a routing one** - routing runs fine on the implicit active persona and raw doc-id hex
+(URLs only you can open), and a real registered handle is minted at the moment something becomes publicly
+addressable, the "claim your handle" moment. Sharing is therefore always an *explicit action* that generates the
+public address, never "copy what's in the address bar."
+
 ---
 
 ## Doctrine

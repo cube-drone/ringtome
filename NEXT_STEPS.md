@@ -146,6 +146,14 @@ HISTORY.md.
   source cursor centers + outlines its rendered node; clicking a rendered node puts the
   cursor on its source span; echo guard against the select-event bounce. The pattern is the
   react-renderer demo's, ported whole.
+- **The console + client-side routing** (2026-07-25): opening a persona lands on an application
+  launcher (one tile, Notes, for now) instead of straight into notes; the console knows an app
+  only as a registry tile (`js/console.js`). preact-iso routing wired under `/home` - `/home`
+  console, `/home/notes[/<doc_id>]` the app (selected doc lives in the URL), `/home/computers`
+  the system view; `/` bounces to `/home`, kept free for the API / a future public face. Design
+  rules recorded in PROJECT_PLAN: internal URLs are session-relative and identity-free
+  (identity-in-the-URL = "shareable"); a persona/doc slug is a publishing prerequisite, not a
+  routing one. Buckets/views get their route shape when built.
 - **Live-cache stream nudged** (2026-07-25): the stream's 1s cursor poll now also wakes on a
   local write (the write-nudge, upgraded from a single-waiter `Notify` to a `()` broadcast so
   many sockets can subscribe). Title/annotation edits reflect in the list in a round-trip

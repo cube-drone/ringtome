@@ -391,6 +391,67 @@ body {
     color: #ff6188;
 }
 
+/* --- the console (application launcher) --- */
+
+.console {
+    padding: 1.5rem 0;
+}
+
+.console-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin: 0 0 1.2rem;
+}
+
+.console-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.app-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    background: #10101f;
+    border: 1px solid #2a2a3e;
+    border-radius: 12px;
+    padding: 1.2rem;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    color: #e0e0e0;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.app-tile:hover {
+    border-color: #ffd866;
+    transform: translateY(-2px);
+}
+
+.app-tile-icon {
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.app-tile-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.app-tile-tagline {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.console-more {
+    margin-top: 1.5rem;
+    color: #666;
+    font-size: 0.85rem;
+}
+
 /* --- the notes app --- */
 
 .notes {

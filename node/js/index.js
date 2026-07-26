@@ -1,7 +1,6 @@
 import { h, render } from 'preact';
-import { useState } from 'preact/hooks';
 import htm from 'htm';
-import { LocationProvider, ErrorBoundary } from 'preact-iso';
+import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso';
 
 import { useSession, Welcome } from './auth.js';
 import {
@@ -14,17 +13,35 @@ import {
 } from './persona.js';
 import { Computers } from './computers.js';
 import { Notes } from './notes.js';
+import { Console } from './console.js';
 
 const html = htm.bind(h);
 
-// The signed-in shell: which persona is loaded decides everything past the session bar.
+// Nothing lives at this address. Internal URLs are session-relative (no identity in them, so
+// they never look shareable - PROJECT_PLAN, The Client Is a Console); an unknown one just
+// sends you home.
+const NotFound = () => html`
+    <div class="console">
+        <p class="null-sub">
+            there's nothing at this address.
+            ${' '}<a href="/home">back to your applications</a>.
+        </p>
+    </div>
+`;
+
+// The signed-in shell: which persona is loaded decides everything past the session bar. Once a
+// persona is open, routing takes over. The whole internal UI lives under /home (root bounces
+// there, and stays free for the API / a future public face): `/home` is the console, `/home/
+// notes[/<doc_id>]` the notes app, `/home/computers` the system view. Routes are session-
+// relative and identity-free by design (PROJECT_PLAN, The Client Is a Console).
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
-    const [view, setView] = useState('home'); // 'home' | 'computers'
+    const loc = useLocation();
+    const open = persona.state === 'open';
+    const inApp = loc.path !== '/home';
 
     // The bar shows the *persona* once one is open; the account username recedes into a
     // hover title - the account never gets a noun (GLOSSARY, Cozyweb language mapping).
-    const open = persona.state === 'open';
     const bar = html`
         <header class="session-bar">
             <span title="signed in as ${session.account.username}">
@@ -34,10 +51,9 @@ const Inside = ({ session }) => {
             </span>
             <span class="session-actions">
                 ${open &&
-                html`<button
-                    class="session-out"
-                    onClick=${() => setView(view === 'computers' ? 'home' : 'computers')}
-                >${view === 'computers' ? 'back home' : 'your computers'}</button>`}
+                (inApp
+                    ? html`<button class="session-out" onClick=${() => loc.route('/home')}>◀ apps</button>`
+                    : html`<button class="session-out" onClick=${() => loc.route('/home/computers')}>your computers</button>`)}
                 <button
                     class="session-out"
                     onClick=${async () => {
@@ -51,6 +67,8 @@ const Inside = ({ session }) => {
         </header>
     `;
 
+    // The persona lifecycle preempts routing - you can't reach any app without an open persona,
+    // whatever the URL says. Once open, the URL is honored (a deep link survives the flow).
     if (persona.state === 'checking') {
         return html`${bar}<div class="loading-shell"><p>Loading…</p></div>`;
     }
@@ -67,12 +85,15 @@ const Inside = ({ session }) => {
         return html`${bar}<${NullState} persona=${persona} />`;
     }
 
-    if (view === 'computers') {
-        return html`${bar}<${Computers} current=${persona.current} />`;
-    }
-    // Home is the notes app - the flagship (NOTES_APP.md). The cozy-OS window dressing
-    // arrives with the shell; for now the app IS the desktop.
-    return html`${bar}<${Notes} current=${persona.current} />`;
+    return html`
+        ${bar}
+        <${Router}>
+            <${Console} path="/home" onLaunch=${(id) => loc.route('/home/' + id)} />
+            <${Notes} path="/home/notes/:docId?" current=${persona.current} />
+            <${Computers} path="/home/computers" current=${persona.current} />
+            <${NotFound} default />
+        </${Router}>
+    `;
 };
 
 const App = () => {
@@ -88,7 +109,7 @@ const App = () => {
     }
 
     return html`
-        <${LocationProvider}>
+        <${LocationProvider} scope="/home">
             <${ErrorBoundary} onError=${error => console.error(error)}>
                 <div class="app-main">
                     <${Inside} session=${session} />

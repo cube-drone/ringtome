@@ -1288,3 +1288,38 @@ in-flight send, and a body blob arriving by backfill (which bumps `view_epochs`,
 so nudging is pure latency, never correctness. Net: a save reflects in every open browser in a
 round-trip (~tens of ms) instead of up to a second. Tests updated for the broadcast (the loop
 doorbell test, the manager-nudge test now asserting TWO subscribers both hear one write).
+
+---
+
+## The console and client-side routing (2026-07-25)
+
+The client grew a real front layer. Opening a persona now lands on a **console** - an
+application launcher (PROJECT_PLAN, The Client Is a Console of Applications) - rather than
+straight into notes. Today it holds one tile, Notes; the console knows an application only as
+`{id, name, icon, tagline}` in a plain registry (`js/console.js`), the generic-boundary
+discipline kept even at one-tile scale.
+
+And the whole client got **URL routing** (preact-iso, already in the tree). The internal UI
+lives entirely under **/home** - `/home` is the console, `/home/notes[/<doc_id>]` the notes app,
+`/home/computers` the system view - so back/forward, refresh, and deep links all work, and the
+selected document moved from local state into the route (`/home/notes/<doc_id>`). Root `/`
+bounces to `/home` with a temporary redirect, keeping the root namespace free for the API and a
+future public face; the LocationProvider is scoped to `/home` so the SPA never hijacks a link
+outside it.
+
+Two design decisions are recorded in the doctrine, not just the code:
+
+- **Internal URLs are session-relative and identity-free.** No node-username, no persona in the
+  path - because the moment an identity appears in a URL it looks shareable, and internal URLs
+  are not. The rule that falls out: *identity-in-the-URL is the signal that a thing is
+  shareable* - private/internal has none, public/addressable has one - so the two can never be
+  confused, structurally rather than by carefulness.
+- **A persona slug is a publishing prerequisite, not a routing one.** Routing needs neither a
+  persona slug (persona is the implicit active one; doc_ids are already persona-scoped) nor a
+  document slug (raw hex is fine for URLs only you can open). Slugs become real when a persona
+  or document becomes *publicly addressable* - a claim-your-handle moment - so nothing about
+  this layer waits on them. Buckets/views get their route shape when they're built.
+
+Server change was one line (root redirect); `/home/*` already served the SPA shell, and the
+page's asset URLs were already absolute, so deep-link refreshes load correctly. 124 integration
+green.

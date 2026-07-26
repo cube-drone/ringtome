@@ -283,8 +283,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let mut app = Router::new()
-        // SPA shell: every frontend route returns the same HTML
-        .route("/", get(ui::homepage))
+        // The internal UI lives entirely under /home (SPA shell: every /home route returns the
+        // same HTML, the client router sorts out which screen). Root bounces there for now, and
+        // stays free for the API and a future public face - a temporary redirect so it is never
+        // cached as permanent against that day.
+        .route(
+            "/",
+            get(|| async { axum::response::Redirect::temporary("/home") }),
+        )
         .route("/home", get(ui::homepage))
         .route("/home/{*wildcard}", get(ui::homepage))
         // Versioned static assets (CDN cache-safe)

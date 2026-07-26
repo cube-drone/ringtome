@@ -13,6 +13,7 @@ import { Editor } from './editor.js';
 import { useTurbolinks } from './turbolinks.js';
 import { useSearch } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
+import { useLocation } from 'preact-iso';
 
 const html = htm.bind(h);
 
@@ -130,13 +131,18 @@ const RightColumn = ({ root, docId, docs }) => {
     return html`<${Reader} root=${root} docId=${docId} key=${docId} />`;
 };
 
-export const Notes = ({ current }) => {
+export const Notes = ({ current, docId }) => {
     const root = current.root;
+    const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
-    const [selected, setSelected] = useState(null);
     const [busy, setBusy] = useState(false);
     const [query, setQuery] = useState('');
     const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
+
+    // The selected document lives in the URL (`/home/notes/<doc_id>`), not local state - so
+    // back/forward and deep links just work. Selecting navigates; the route param is the source.
+    const selected = docId || null;
+    const select = (id) => loc.route(id ? `/home/notes/${id}` : '/home/notes');
 
     // Filters stack: search hits AND every active tag. Search stays a filter over the current
     // view (Curtis's preference) rather than a separate ranked results screen.
@@ -161,7 +167,7 @@ export const Notes = ({ current }) => {
                 method: 'POST',
                 body: JSON.stringify({ title: 'untitled', body: '', format: 'marquee' }),
             });
-            setSelected(made.doc_id); // the mirror row follows within a second or two
+            select(made.doc_id); // the mirror row follows within a second or two
         } finally {
             setBusy(false);
         }
@@ -202,7 +208,7 @@ export const Notes = ({ current }) => {
                         (d) => html`<button
                             key=${d.doc_id}
                             class=${d.doc_id === selected ? 'note-row selected' : 'note-row'}
-                            onClick=${() => setSelected(d.doc_id)}
+                            onClick=${() => select(d.doc_id)}
                         >
                             <span class="note-row-title">${d.title || 'untitled'}</span>
                             <span class="note-row-when">
