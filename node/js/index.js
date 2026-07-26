@@ -68,26 +68,33 @@ const Inside = ({ session }) => {
         </header>
     `;
 
+    // The whole signed-in screen is a fixed frame: the app region (the bordered box) and the
+    // footer each hold their own band and never overlap. The app content goes in `.app-frame`,
+    // the footer (`bar`) renders after it, and the flex column in `.app-main` stacks them. The
+    // border is drawn the way the hexagon tiles are: two clip-path layers, dark outside and
+    // surface inside, so the corners can step like pixels instead of rounding smooth.
+    const frame = (content) =>
+        html`<div class="app-frame"><div class="app-frame-inner">${content}</div></div>${bar}`;
+
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
     // whatever the URL says. Once open, the URL is honored (a deep link survives the flow).
     if (persona.state === 'checking') {
-        return html`${bar}<div class="loading-shell"><p>Loading…</p></div>`;
+        return frame(html`<div class="loading-shell"><p>Loading…</p></div>`);
     }
     if (persona.state === 'ceremony') {
-        return html`${bar}<${SpareKeyCeremony} persona=${persona} />`;
+        return frame(html`<${SpareKeyCeremony} persona=${persona} />`);
     }
     if (persona.state === 'naming') {
-        return html`${bar}<${NamePicker} persona=${persona} account=${session.account} />`;
+        return frame(html`<${NamePicker} persona=${persona} account=${session.account} />`);
     }
     if (persona.state === 'join') {
-        return html`${bar}<${JoinFlow} persona=${persona} />`;
+        return frame(html`<${JoinFlow} persona=${persona} />`);
     }
     if (persona.state === 'none') {
-        return html`${bar}<${NullState} persona=${persona} />`;
+        return frame(html`<${NullState} persona=${persona} />`);
     }
 
-    return html`
-        ${bar}
+    return frame(html`
         <${Router}>
             <${Console} path="/home" onLaunch=${(id) => loc.route('/home/' + id)} />
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
@@ -103,7 +110,7 @@ const Inside = ({ session }) => {
             )}
             <${NotFound} default />
         </${Router}>
-    `;
+    `);
 };
 
 const App = () => {

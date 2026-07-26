@@ -1510,3 +1510,29 @@ chip in the editor and reader headers (reading pin state from the same live mirr
 watches), and a small 📌 ahead of a pinned row's title. Propagation is free - the pin moves the
 doc-meta frontier, the stream re-gathers, and the mirror's whole-docs refresh carries the new flag
 to every open browser.
+
+---
+
+## The app becomes a fixed frame, the footer its own band (2026-07-26)
+
+The bottom dock was a `position: fixed` overlay that hung over the content with a shadow, and
+`.app-main` reserved matching bottom padding so nothing hid beneath it. Replaced with a
+non-overlapping layout: `.app-main` is a full-viewport flex column that never scrolls, holding two
+stacked bands - the app region (`.app-frame`) taking all the room above, the footer
+(`.session-bar`) its own fixed band below. Neither can ever cover the other, so the footer no
+longer hangs over note content.
+
+The app region is now a framed box with a chunky 10px dark (`--ink`) border, and its inner layer
+scrolls *inside* that border rather than moving the page. The route content is wrapped in
+`.app-frame` > `.app-frame-inner` in the shell (`index.js`), with the footer rendered after it so
+flex order stacks them. The notes app fills the frame (`height: 100%`, clip) and its columns - tag
+list, document list, editor - scroll internally, so each reaches the bottom of the app. The old
+`max-height: 70vh/78vh` column hacks and the dock's shadow are gone; the frame's height bounds
+everything now.
+
+The border isn't `border-radius` (too smooth for a retro panel): it's the hexagon-tile trick
+turned rectangular - two `clip-path` layers sharing one polygon whose corners STEP like pixels (a
+two-step 6px staircase), dark outside and surface inside, so the dark shows through as a
+pixel-cornered frame. No image, no 9-slice asset; the jaggedness is the corner geometry itself.
+Only the two BOTTOM corners are stepped - the top stays square - so the panel reads as sitting on
+its rounded feet.
