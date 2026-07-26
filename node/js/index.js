@@ -99,12 +99,12 @@ const Inside = ({ session }) => {
                     class="app-header-btn"
                     title="back to the list"
                     onClick=${() => loc.route('/home/' + appHere.id)}
-                ><${Icons.back} /> back</button>`}
+                ><${Icons.back} /></button>`}
                 <button
-                    class="app-header-btn"
+                    class="app-header-btn app-header-btn-square"
                     title="close this app"
                     onClick=${() => loc.route('/home')}
-                ><${Icons.close} /> close</button>
+                ><${Icons.close} /></button>
             </span>
         </header>`;
 
