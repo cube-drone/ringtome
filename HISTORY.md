@@ -1373,3 +1373,42 @@ roster response and a new streamed `buckets` mirror kind carry `{name, app, memb
 launcher can resolve which app opens a notebook, live. Two integration tests: an empty bucket
 that earns a document (app-type persisting across membership changes, and surviving as a
 member-only roster entry after undefine), and two notebooks routing to two different apps.
+
+---
+
+## App styles: the recipe app joins the console (2026-07-26)
+
+The client learned that it has more than one application. A new `js/apps.js` is the curated app
+registry - each app carries a `style` (the app-type a bucket stores to say which app opens it),
+and `default` (Notes) is the fallback for an unknown/absent style, the graceful degradation the
+free-form app-type field requires. Recipes went from a `soon` placeholder to a `live` app with
+style `recipe`; the console launches it, and `index.js` generates a route per live app
+(`/home/<id>/:docId?`) instead of hardcoding notes. The `Notes` component became `DocsApp` - the
+shared documents surface, parameterized by its app (id in its routes, name/icon in its header) -
+so the recipe app is a real, launchable, labeled destination today, and a genuinely distinct
+recipe layout is a later accretion rather than a fork of the machinery. `appForStyle(style)`
+resolves a bucket's app-type to its app (default when unknown), the hook the launcher will use
+to open a notebook in the right place.
+
+Deliberately not yet: scoping an app's view to its buckets. Both apps currently render the same
+shared documents view (all docs), because scoping the recipe app to recipe buckets before there
+is any UI to create those buckets would just yield an empty app with no way to fill it. The
+next accretion is bucket-creation + per-app scoping together.
+
+---
+
+## Apps scope to their buckets, implicitly (2026-07-26)
+
+Curtis simplified the app<->bucket tie: a bucket whose NAME is an app-type simply IS that type
+(the `recipes` bucket is a recipes bucket, no registry row), so every app has an eponymous
+bucket we just assume exists - no implicit creation, no `define` call for the common case. The
+server-side registry stays, but only for user-named buckets (`grandmas-recipes` -> `recipes`).
+
+`apps.js` grew `appTypeOf(bucketName, roster)`: the name IS a known style -> that style; else the
+streamed registry mapping; else `default`. The documents app (`DocsApp`) now scopes its list -
+a doc shows only when one of its buckets resolves to this app's style, with unbucketed docs
+belonging to the default app (the catch-all, so legacy notes never vanish). "+ new item" files
+the doc into the app's eponymous bucket (a name-keyed membership PUT, no define), so it belongs
+here rather than only to the catch-all. Search and tags now filter *within* the app - so
+searching "braise" in Recipes can never surface a journal entry, the scoping the whole console
+rests on. Managing/switching multiple notebooks within an app is still deferred.

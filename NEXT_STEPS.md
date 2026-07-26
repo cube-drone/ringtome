@@ -153,8 +153,14 @@ HISTORY.md.
   tiny **registry**: one LWW register `name -> app-type` (which app opens a notebook; also lets
   an empty bucket exist), NOT a Taxonomy and not a document. `define`/`undefine` + `POST/DELETE
   /buckets`; the roster (`{name, app, members}`) streams as a new mirror kind. No new SQL table
-  (reuses the doc-meta private sets/registers). Owed next: the client UI - bucket chips,
-  per-notebook scoping of search/tags, and the launcher wiring a notebook to its app.
+  (reuses the doc-meta private sets/registers).
+- **App styles + implicit bucket scoping** (2026-07-26): a client app registry (`apps.js`) with
+  a `style` per app; Recipes is a second live app. A bucket whose NAME is an app-type IS that
+  type (eponymous, no registry row); `appTypeOf` resolves name -> style -> registry -> default.
+  `DocsApp` scopes its list to docs whose buckets resolve to its style (unbucketed -> the default
+  app's catch-all), and files new docs into the app's eponymous bucket. Search/tags now filter
+  within the app. Owed next: managing/switching *multiple* notebooks within an app (a modal),
+  bucket chips on rows, and distinct per-app layouts (a recipe card grid, a journal river).
 - **The console + client-side routing** (2026-07-25): opening a persona lands on an application
   launcher (one tile, Notes, for now) instead of straight into notes; the console knows an app
   only as a registry tile (`js/console.js`). preact-iso routing wired under `/home` - `/home`

@@ -14,6 +14,7 @@ import { useTurbolinks } from './turbolinks.js';
 import { useSearch } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
 import { useLocation } from 'preact-iso';
+import { DEFAULT_STYLE, appTypeOf } from './apps.js';
 
 const html = htm.bind(h);
 
@@ -131,7 +132,10 @@ const RightColumn = ({ root, docId, docs }) => {
     return html`<${Reader} root=${root} docId=${docId} key=${docId} />`;
 };
 
-export const Notes = ({ current, docId }) => {
+// The documents app - the shared surface every "documents" application (Notes, Recipes, ...)
+// currently renders. `app` is its registry entry (id, name, icon, style); the document
+// machinery is the same, so a new app style is a registry line plus, later, its own layout.
+export const DocsApp = ({ app, current, docId }) => {
     const root = current.root;
     const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
@@ -139,18 +143,31 @@ export const Notes = ({ current, docId }) => {
     const [query, setQuery] = useState('');
     const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
 
-    // The selected document lives in the URL (`/home/notes/<doc_id>`), not local state - so
+    // The selected document lives in the URL (`/home/<app>/<doc_id>`), not local state - so
     // back/forward and deep links just work. Selecting navigates; the route param is the source.
     const selected = docId || null;
-    const select = (id) => loc.route(id ? `/home/notes/${id}` : '/home/notes');
+    const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
 
-    // Filters stack: search hits AND every active tag. Search stays a filter over the current
-    // view (Curtis's preference) rather than a separate ranked results screen.
+    // This app shows only its own documents. A doc's app-type is its bucket's type (a bucket
+    // named like an app-type IS that type; user buckets resolve via the streamed registry);
+    // an unbucketed doc belongs to the default app, which is the catch-all. So a doc shows here
+    // when any of its buckets resolves to this app's style - the per-notebook scoping the whole
+    // console rests on, and why searching in the recipe app never turns up a journal entry.
+    const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
+    const inThisApp = (d) => {
+        const names = d.buckets || [];
+        const types = names.length ? names.map((n) => appTypeOf(n, roster)) : [DEFAULT_STYLE];
+        return types.includes(app.style);
+    };
+
+    // Filters stack: this app's scope, THEN search hits, THEN every active tag. Search stays a
+    // filter over the current view (Curtis's preference) rather than a separate ranked screen.
     const hits = useSearch(root, query);
     // Newest first by the CLAIMED date - a doc's own display_date if it set one, else its real
     // last-updated stamp. So a note backdated to 2015 files itself under 2015, not the day you
     // typed it (the user's date is authoritative, per Curtis's ask).
     const list = (docs || [])
+        .filter(inThisApp)
         .filter((d) => hits === null || hits.has(d.doc_id))
         .filter((d) => tagFilter.every((t) => (d.tags || []).includes(t)))
         .sort((a, b) => claimedMs(b) - claimedMs(a) || (a.doc_id < b.doc_id ? 1 : -1));
@@ -167,6 +184,12 @@ export const Notes = ({ current, docId }) => {
                 method: 'POST',
                 body: JSON.stringify({ title: 'untitled', body: '', format: 'marquee' }),
             });
+            // File it into this app's eponymous bucket (the bucket named for the app's style,
+            // implicitly of that type), so it belongs here and not just to the catch-all.
+            await api(
+                `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(app.style)}`,
+                { method: 'PUT' }
+            );
             select(made.doc_id); // the mirror row follows within a second or two
         } finally {
             setBusy(false);
@@ -176,7 +199,7 @@ export const Notes = ({ current, docId }) => {
     return html`
         <div class="notes">
             <header class="notes-bar">
-                <span class="notes-title">notes</span>
+                <span class="notes-title">${app.icon} ${app.name}</span>
                 <span class="notes-count">
                     ${docs ? `${list.length} thing${list.length === 1 ? '' : 's'}` : '…'}
                 </span>

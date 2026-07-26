@@ -1,22 +1,12 @@
 // The console: the root point after you open a persona, a launcher of applications (see
-// PROJECT_PLAN, The Client Is a Console of Applications). Only Notes is real; the rest are
-// placeholders marking where future applications will live, plus a couple of blank cells so
-// the honeycomb packing is visible while there's little to pack.
+// PROJECT_PLAN, The Client Is a Console of Applications). The app registry lives in apps.js;
+// `live` apps launch, `soon` are placeholders, `blank` cells fill the honeycomb.
 import { h } from 'preact';
 import htm from 'htm';
 
-const html = htm.bind(h);
+import { APPS } from './apps.js';
 
-export const APPS = [
-    { id: 'notes', name: 'Notes', icon: '📝' },
-    { id: 'recipes', name: 'Recipes', icon: '🍲', soon: true },
-    { id: 'journal', name: 'Journal', icon: '📓', soon: true },
-    { id: 'wiki', name: 'Wiki', icon: '📚', soon: true },
-    { id: 'blog', name: 'Blog', icon: '📣', soon: true },
-    { id: 'book', name: 'Book', icon: '📖', soon: true },
-    { blank: true },
-    { blank: true },
-];
+const html = htm.bind(h);
 
 // Hexagons pack into a honeycomb: fixed-width rows, every other row shifted half a cell so the
 // cells nestle. The rows are chunked here rather than left to wrap - a honeycomb over a
@@ -41,8 +31,7 @@ function Hex(app, key, onLaunch) {
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
     const cls = `app-tile${app.soon ? ' soon' : ''}${app.blank ? ' blank' : ''}`;
-    const live = app.id && !app.soon && !app.blank;
-    return live
+    return app.live
         ? html`<button class=${cls} key=${key} onClick=${() => onLaunch(app.id)}>${stack}</button>`
         : html`<div class=${cls} key=${key}>${stack}</div>`;
 }

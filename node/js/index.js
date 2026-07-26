@@ -14,8 +14,9 @@ import {
     Profile,
 } from './persona.js';
 import { Computers } from './computers.js';
-import { Notes } from './notes.js';
+import { DocsApp } from './notes.js';
 import { Console } from './console.js';
+import { liveApps } from './apps.js';
 
 const html = htm.bind(h);
 
@@ -89,10 +90,17 @@ const Inside = ({ session }) => {
         ${bar}
         <${Router}>
             <${Console} path="/home" onLaunch=${(id) => loc.route('/home/' + id)} />
-            <${Notes} path="/home/notes/:docId?" current=${persona.current} />
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
+            ${liveApps.map(
+                (app) => html`<${DocsApp}
+                    path="/home/${app.id}/:docId?"
+                    key=${app.id}
+                    app=${app}
+                    current=${persona.current}
+                />`
+            )}
             <${NotFound} default />
         </${Router}>
     `;
