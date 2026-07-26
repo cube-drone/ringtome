@@ -26,7 +26,7 @@ function Hex(app, key, onLaunch) {
     const content = app.blank
         ? ''
         : html`
-              <span class="app-tile-icon">${app.icon}</span>
+              <span class="app-tile-icon"><${app.icon} /></span>
               <span class="app-tile-name">${app.name}</span>
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;

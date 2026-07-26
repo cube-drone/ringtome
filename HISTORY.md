@@ -1536,3 +1536,26 @@ two-step 6px staircase), dark outside and surface inside, so the dark shows thro
 pixel-cornered frame. No image, no 9-slice asset; the jaggedness is the corner geometry itself.
 Only the two BOTTOM corners are stepped - the top stays square - so the panel reads as sitting on
 its rounded feet.
+
+---
+
+## An icon language: Phosphor duotone, no more emoji (2026-07-26)
+
+Emoji read inconsistently across platforms and don't belong in the UI. Replaced every one with a
+Phosphor icon (MIT-licensed, so it fits the project's open-source constraint), rendered in
+duotone. The React package resolves fine under the existing `react` -> `preact/compat` browser-field
+alias (the same path the Marquee renderer already uses).
+
+The vocabulary lives in one new module, `icons.js`: a `role -> glyph` map (`Icons.notes`,
+`Icons.pin`, `Icons.gear`, `Icons.back`, `Icons.profile`, ...), so the rest of the UI names icons
+by meaning and a restyle is one edit. `apps.js` now carries component refs instead of emoji
+strings; the console tiles, app headers, pin chips/row markers, the dock gear and back-nav, and
+the persona menu all render `<${Icons.x} />`. A single `IconContext.Provider` at the app root sets
+the house style - `weight: 'duotone'`, `size: '1em'` (so the containers' existing font-size rules
+size the glyphs), `currentColor`, and a `ph` class the stylesheet uses to seat glyphs on the text
+baseline. Verified end-to-end by bundling a render through esbuild: the SVG comes out with the two
+duotone paths (secondary at `opacity 0.2`), `1em`, `currentColor`, and the class.
+
+Cost: ~44 KB (Phosphor bundles all six weights per icon even though only duotone is used; tree-
+shaking kept just the twelve icons we reference). The one glyph left as text is the `×` on
+tag-remove buttons - a typographic character, not an emoji.

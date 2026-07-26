@@ -17,6 +17,7 @@ import { Computers } from './computers.js';
 import { DocsApp } from './notes.js';
 import { Console } from './console.js';
 import { liveApps } from './apps.js';
+import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -52,7 +53,7 @@ const Inside = ({ session }) => {
         <header class="session-bar">
             <span class="session-nav">
                 ${open && inApp &&
-                html`<button class="session-out" onClick=${() => loc.route('/home')}>◀ apps</button>`}
+                html`<button class="session-out" onClick=${() => loc.route('/home')}><${Icons.back} /> apps</button>`}
             </span>
             <span class="session-identity" title="signed in as ${session.account.username}">
                 ${open
@@ -63,7 +64,7 @@ const Inside = ({ session }) => {
                     class="session-gear"
                     title="persona &amp; settings"
                     onClick=${() => loc.route('/home/persona')}
-                >⚙</button>`}
+                ><${Icons.gear} /></button>`}
             </span>
         </header>
     `;
@@ -139,7 +140,16 @@ const App = () => {
 function main() {
     let app = document.getElementById('app');
     console.log("Ringtome UI loaded!");
-    render(html`<${App} />`, app);
+    // One provider at the root sets the house icon style: Phosphor, DUOTONE, sized to the font
+    // (1em, so the containers' existing font-size rules size the glyphs), in currentColor. The
+    // provider value REPLACES Phosphor's defaults rather than merging, so size lives here too; the
+    // `ph` class is the hook the stylesheet uses to seat the glyphs on the text baseline.
+    render(
+        html`<${IconContext.Provider}
+            value=${{ weight: 'duotone', size: '1em', className: 'ph' }}
+        ><${App} /></${IconContext.Provider}>`,
+        app
+    );
 }
 
 main();

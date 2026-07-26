@@ -7,14 +7,16 @@
 // the `recipes` bucket. The registry (`name -> app`, on the server) is only consulted for
 // USER-named buckets like `grandmas-recipes`. Anything we can't resolve falls back to `default`
 // (Notes), so an unknown style never strands you.
+import { Icons } from './icons.js';
+
 export const DEFAULT_STYLE = 'default';
 
 export const APPS = [
-    { id: 'notes', name: 'Notes', icon: '📝', style: 'default', live: true },
+    { id: 'notes', name: 'Notes', icon: Icons.notes, style: 'default', live: true },
     {
         id: 'recipes',
         name: 'Recipes',
-        icon: '🍲',
+        icon: Icons.recipes,
         style: 'recipes',
         live: true,
         // A recipe book: just the interactive editor, tags and title, and a tag cloud beside
@@ -28,10 +30,10 @@ export const APPS = [
             tagColumn: true,
         },
     },
-    { id: 'journal', name: 'Journal', icon: '📓', soon: true },
-    { id: 'wiki', name: 'Wiki', icon: '📚', soon: true },
-    { id: 'blog', name: 'Blog', icon: '📣', soon: true },
-    { id: 'book', name: 'Book', icon: '📖', soon: true },
+    { id: 'journal', name: 'Journal', icon: Icons.journal, soon: true },
+    { id: 'wiki', name: 'Wiki', icon: Icons.wiki, soon: true },
+    { id: 'blog', name: 'Blog', icon: Icons.blog, soon: true },
+    { id: 'book', name: 'Book', icon: Icons.book, soon: true },
     { blank: true },
     { blank: true },
 ];

@@ -11,6 +11,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { startLiveCache, forgetMirror, openMirror, useLive } from './cache.js';
+import { Icons } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -415,21 +416,21 @@ export const PersonaHome = ({ persona, session }) => {
             </h1>
             <nav class="persona-menu">
                 <a class="persona-menu-item" href="/home/persona/profile">
-                    <span class="persona-menu-icon">🪪</span>
+                    <span class="persona-menu-icon"><${Icons.profile} /></span>
                     <span class="persona-menu-label">
                         <strong>profile</strong>
                         <small>your name and how you appear</small>
                     </span>
                 </a>
                 <a class="persona-menu-item" href="/home/persona/computers">
-                    <span class="persona-menu-icon">💻</span>
+                    <span class="persona-menu-icon"><${Icons.computers} /></span>
                     <span class="persona-menu-label">
                         <strong>your computers</strong>
                         <small>the machines that carry this persona</small>
                     </span>
                 </a>
                 <button class="persona-menu-item persona-menu-danger" onClick=${logout}>
-                    <span class="persona-menu-icon">👋</span>
+                    <span class="persona-menu-icon"><${Icons.logout} /></span>
                     <span class="persona-menu-label">
                         <strong>log out</strong>
                         <small>forget this browser and head out</small>
@@ -500,7 +501,7 @@ export const Profile = ({ current }) => {
     return html`
         <div class="persona-page">
             <div class="persona-page-head">
-                <a class="back-link" href="/home/persona">◀ persona</a>
+                <a class="back-link" href="/home/persona"><${Icons.back} /> persona</a>
                 <h1 class="persona-page-title">profile</h1>
             </div>
             <label class="profile-field">

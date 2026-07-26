@@ -71,6 +71,13 @@
     box-sizing: border-box;
 }
 
+/* Phosphor icons (the `ph` class comes from the root IconContext): they're `<svg>` boxes, which
+   sit on the baseline and read a touch high next to text - nudge them down so a glyph and its
+   label share a line cleanly. Icon-only containers (app tiles, menu rows) are unaffected. */
+.ph {
+    vertical-align: -0.15em;
+}
+
 body {
     margin: 0;
     padding: 0;

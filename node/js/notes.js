@@ -15,6 +15,7 @@ import { useSearch } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
 import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, appTypeOf, featuresOf } from './apps.js';
+import { Icons } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -142,7 +143,7 @@ const Reader = ({ root, docId, onDeleted }) => {
                             ? 'unpin from the top of the list'
                             : 'pin to the top of the list'}
                         onClick=${togglePin}
-                    >${pinned ? '📌 pinned' : 'pin'}</button>
+                    >${pinned ? html`<${Icons.pin} /> pinned` : 'pin'}</button>
                     ${onDeleted &&
                     html`<button
                         class="chip chip-button chip-delete"
@@ -264,7 +265,7 @@ export const DocsApp = ({ app, current, docId }) => {
     return html`
         <div class="notes">
             <header class="notes-bar">
-                <span class="notes-title">${app.icon} ${app.name}</span>
+                <span class="notes-title"><${app.icon} /> ${app.name}</span>
                 <span class="notes-count">
                     ${docs ? `${list.length} thing${list.length === 1 ? '' : 's'}` : '…'}
                 </span>
@@ -315,7 +316,7 @@ export const DocsApp = ({ app, current, docId }) => {
                             onClick=${() => select(d.doc_id)}
                         >
                             <span class="note-row-title">
-                                ${d.pinned && html`<span class="note-row-pin" title="pinned">📌</span> `}${d.title || 'untitled'}
+                                ${d.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}${d.title || 'untitled'}
                             </span>
                             ${(feat.date || d.diverged) &&
                             html`<span class="note-row-when">

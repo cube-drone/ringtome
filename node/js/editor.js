@@ -29,6 +29,7 @@ import { useTurbolinks } from './turbolinks.js';
 import { keepaliveOk } from './keepalive.js';
 import { Annotations } from './annotations.js';
 import { featuresOf } from './apps.js';
+import { Icons } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -468,7 +469,7 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
                             ? 'unpin from the top of the list'
                             : 'pin to the top of the list'}
                         onClick=${() => togglePin(row && row.pinned)}
-                    >${row && row.pinned ? '📌 pinned' : 'pin'}</button>
+                    >${row && row.pinned ? html`<${Icons.pin} /> pinned` : 'pin'}</button>
                     ${onDeleted &&
                     html`<button
                         class="chip chip-button chip-delete"
