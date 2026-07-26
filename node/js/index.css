@@ -752,6 +752,72 @@ body {
     font-size: 0.85rem;
 }
 
+/* A thin tag-frequency sidebar (Recipes), left of the document list. */
+.tag-column {
+    width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    overflow-y: auto;
+    max-height: 78vh;
+}
+
+.tag-column-title {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.2rem 0.3rem 0.3rem;
+}
+
+.tag-cloud-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.28rem 0.5rem;
+    cursor: pointer;
+    text-align: left;
+}
+
+.tag-cloud-row:hover {
+    background: var(--surface);
+}
+
+.tag-cloud-row.active {
+    background: var(--pink);
+    color: var(--surface);
+}
+
+.tag-cloud-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tag-cloud-count {
+    color: var(--muted);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.tag-cloud-row.active .tag-cloud-count {
+    color: var(--surface);
+    opacity: 0.85;
+}
+
+.tag-column-empty {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+}
+
 .notes-search:focus {
     outline: none;
     border-color: var(--border-strong);
@@ -1096,6 +1162,13 @@ body {
     font-family: inherit;
     line-height: 1.5;
     padding: 0.8rem;
+}
+
+/* Make the editable content fill the box, not just wrap the text - so a click anywhere in the
+   editor (below a short document) lands in the content area and drops the caret at the end of
+   the document, instead of in dead space the editor ignores. */
+.editor-live .cm-content {
+    min-height: 46vh;
 }
 
 /* Side by side: source and rendering as equal panes, each scrolling alone. */

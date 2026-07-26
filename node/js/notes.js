@@ -14,7 +14,7 @@ import { useTurbolinks } from './turbolinks.js';
 import { useSearch } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
 import { useLocation } from 'preact-iso';
-import { DEFAULT_STYLE, appTypeOf } from './apps.js';
+import { DEFAULT_STYLE, appTypeOf, featuresOf } from './apps.js';
 
 const html = htm.bind(h);
 
@@ -122,12 +122,12 @@ const Reader = ({ root, docId }) => {
 
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
-const RightColumn = ({ root, docId, docs }) => {
+const RightColumn = ({ root, docId, docs, features }) => {
     if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
     if (format === 'plaintext' || format === 'marquee') {
-        return html`<${Editor} root=${root} docId=${docId} key=${docId} />`;
+        return html`<${Editor} root=${root} docId=${docId} key=${docId} features=${features} />`;
     }
     return html`<${Reader} root=${root} docId=${docId} key=${docId} />`;
 };
@@ -137,6 +137,7 @@ const RightColumn = ({ root, docId, docs }) => {
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
 export const DocsApp = ({ app, current, docId }) => {
     const root = current.root;
+    const feat = featuresOf(app);
     const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const [busy, setBusy] = useState(false);
@@ -175,6 +176,18 @@ export const DocsApp = ({ app, current, docId }) => {
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
 
+    // The tag cloud (an optional sidebar): every tag across this app's documents, most-used
+    // first. Counted over the app's docs unfiltered, so it's a stable index rather than
+    // shifting as you search; clicking one toggles it into the same tag filter.
+    const tagCloud = feat.tagColumn
+        ? Object.entries(
+              (docs || []).filter(inThisApp).reduce((counts, d) => {
+                  for (const t of d.tags || []) counts[t] = (counts[t] || 0) + 1;
+                  return counts;
+              }, {})
+          ).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+        : [];
+
     const createNew = async () => {
         setBusy(true);
         try {
@@ -205,6 +218,22 @@ export const DocsApp = ({ app, current, docId }) => {
                 </span>
             </header>
             <div class="notes-columns">
+                ${feat.tagColumn &&
+                html`<aside class="tag-column">
+                    <div class="tag-column-title">tags</div>
+                    ${tagCloud.map(
+                        ([tag, count]) => html`<button
+                            key=${tag}
+                            class=${tagFilter.includes(tag) ? 'tag-cloud-row active' : 'tag-cloud-row'}
+                            onClick=${() => toggleTag(tag)}
+                        >
+                            <span class="tag-cloud-name">${tag}</span>
+                            <span class="tag-cloud-count">${count}</span>
+                        </button>`
+                    )}
+                    ${tagCloud.length === 0 &&
+                    html`<p class="null-sub tag-column-empty">no tags yet</p>`}
+                </aside>`}
                 <aside class="notes-list">
                     <button class="notes-new" disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : '+ new item'}
@@ -265,7 +294,7 @@ export const DocsApp = ({ app, current, docId }) => {
                         ${hits === null ? 'nothing here yet.' : 'nothing matches.'}
                     </p>`}
                 </aside>
-                <${RightColumn} root=${root} docId=${selected} docs=${docs} />
+                <${RightColumn} root=${root} docId=${selected} docs=${docs} features=${feat} />
             </div>
         </div>
     `;

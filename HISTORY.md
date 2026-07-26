@@ -1412,3 +1412,22 @@ the doc into the app's eponymous bucket (a name-keyed membership PUT, no define)
 here rather than only to the catch-all. Search and tags now filter *within* the app - so
 searching "braise" in Recipes can never surface a journal entry, the scoping the whole console
 rests on. Managing/switching multiple notebooks within an app is still deferred.
+
+---
+
+## Recipes gets its own face: per-app features (2026-07-26)
+
+The first genuinely-differentiated app. App surfaces are now data: `apps.js` grew a `features`
+block per app (over full-Notes defaults), and `featuresOf(app)` resolves it. Recipes overrides
+to a recipe book - `modes: ['interactive']` only, no format chip, no date/description
+annotations, no debug chip, and a `tagColumn`.
+
+The pieces read the flags rather than hardcoding: the editor filters its offered view modes to
+the app's list (falling back to the format's full set if the intersection is empty, so a doc is
+never trapped), and hides the format/debug chips and the mode tabs when there's nothing to
+switch; the annotations panel drops the date and description rows but always keeps tags and
+title; and `DocsApp` renders a thin tag-frequency sidebar to the left of the document list -
+every tag across the app's documents, most-used at the top, counted over the app's docs
+unfiltered so it's a stable index, each row toggling the same tag filter the list already uses.
+The default Notes app resolves to the defaults, so it is untouched. Adding an app's personality
+is now a `features` block plus, where it wants one, a new column - not a fork of the editor.

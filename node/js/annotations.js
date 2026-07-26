@@ -143,7 +143,10 @@ function useClaimedDate(root, docId, mirrorValue) {
     };
 }
 
-export const Annotations = ({ root, docId }) => {
+export const Annotations = ({ root, docId, features }) => {
+    // Which annotations this app surfaces; absent = show them all (the default app).
+    const showDate = !features || features.date !== false;
+    const showDesc = !features || features.description !== false;
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     const mirrorTags = (row && row.tags) || [];
     const mirrorDesc = (row && row.fields && row.fields.description) || '';
@@ -210,7 +213,8 @@ export const Annotations = ({ root, docId }) => {
 
     return html`
         <div class="annotations">
-            <div class="annot-row">
+            ${showDate &&
+            html`<div class="annot-row">
                 <label class="annot-label" title="the date and time this document should be filed and sorted under - your claim, authoritative over the real save date">date</label>
                 <input
                     class="annot-date"
@@ -228,7 +232,7 @@ export const Annotations = ({ root, docId }) => {
                     disabled=${!claimed.date}
                     title=${claimed.date ? 'time (optional)' : 'set a date first'}
                 />
-            </div>
+            </div>`}
             <div class="annot-tags">
                 ${shownTags.map(
                     (t) => html`<span class="annot-tag" key=${t}>
@@ -254,14 +258,15 @@ export const Annotations = ({ root, docId }) => {
                     onBlur=${() => addTag(tagInput)}
                 />
             </div>
-            <textarea
+            ${showDesc &&
+            html`<textarea
                 class="annot-desc"
                 placeholder="a short description (optional)"
                 value=${desc.value}
                 onInput=${desc.onInput}
                 onBlur=${desc.flush}
                 rows="2"
-            ></textarea>
+            ></textarea>`}
         </div>
     `;
 };

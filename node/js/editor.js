@@ -28,6 +28,7 @@ import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { keepaliveOk } from './keepalive.js';
 import { Annotations } from './annotations.js';
+import { featuresOf } from './apps.js';
 
 const html = htm.bind(h);
 
@@ -69,7 +70,8 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId }) => {
+export const Editor = ({ root, docId, features }) => {
+    const feat = features || featuresOf();
     const [loaded, setLoaded] = useState(null); // the fetched detail this session started from
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
@@ -312,10 +314,17 @@ export const Editor = ({ root, docId }) => {
 
     // The effective mode: the user's pick if the format still offers it, else the format's
     // default (a marquee doc opens interactive; converting it to plaintext clamps an
-    // interactive/side pick back to the plain textarea).
-    const available = modesFor(format);
+    // interactive/side pick back to the plain textarea). The app narrows the offered modes
+    // (Recipes offers only interactive); if its list leaves nothing for this format, fall back
+    // to the format's full set rather than trapping the doc.
+    let available = modesFor(format).filter((m) => feat.modes.includes(m));
+    if (available.length === 0) available = modesFor(format);
     const mode =
-        chosenMode && available.includes(chosenMode) ? chosenMode : defaultMode(format);
+        chosenMode && available.includes(chosenMode)
+            ? chosenMode
+            : available.includes(defaultMode(format))
+            ? defaultMode(format)
+            : available[0];
 
     // Caret restoration for the textarea surfaces: when one (re)appears - a mode switch, or
     // a return to this doc - put the caret back where it last sat in this document, clamped
@@ -396,18 +405,20 @@ export const Editor = ({ root, docId }) => {
                     (loaded.resolution === 'conflict'
                         ? html`<span class="chip chip-diverged" title="edited in the same place on two computers - both versions are below; tidy and save to settle it">conflict</span>`
                         : html`<span class="chip chip-merged" title="changes from two computers, woven together cleanly - your next save seals the weave">merged</span>`)}
-                    <button
+                    ${feat.format &&
+                    html`<button
                         class="chip chip-button"
                         title="how this document reads; converting is an ordinary save"
                         onClick=${() => {
                             setFormat(format === 'plaintext' ? 'marquee' : 'plaintext');
                             touched();
                         }}
-                    >${format}</button>
+                    >${format}</button>`}
                     <span class=${status === 'error' ? 'chip chip-diverged' : 'chip'}>
                         ${statusWord}
                     </span>
-                    <button
+                    ${feat.debug &&
+                    html`<button
                         class="chip chip-button"
                         title="TEMPORARY: dump this document's full version history for debugging"
                         onClick=${async () => {
@@ -419,11 +430,12 @@ export const Editor = ({ root, docId }) => {
                                 setDump(`debug dump failed: ${e.message}`);
                             }
                         }}
-                    >${dump ? 'close debug' : 'debug'}</button>
+                    >${dump ? 'close debug' : 'debug'}</button>`}
                 </span>
             </header>
-            <${Annotations} root=${root} docId=${docId} />
-            <div class="editor-tabs">
+            <${Annotations} root=${root} docId=${docId} features=${feat} />
+            ${available.length > 1 &&
+            html`<div class="editor-tabs">
                 ${available.map(
                     (m) => html`<button
                         key=${m}
@@ -431,7 +443,7 @@ export const Editor = ({ root, docId }) => {
                         onClick=${() => pickMode(m)}
                     >${MODES[m]}</button>`
                 )}
-            </div>
+            </div>`}
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
             ${dump != null
                 ? html`<pre class="reader-plain debug-dump">${dump}</pre>`

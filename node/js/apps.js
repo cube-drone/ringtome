@@ -11,7 +11,23 @@ export const DEFAULT_STYLE = 'default';
 
 export const APPS = [
     { id: 'notes', name: 'Notes', icon: '📝', style: 'default', live: true },
-    { id: 'recipes', name: 'Recipes', icon: '🍲', style: 'recipes', live: true },
+    {
+        id: 'recipes',
+        name: 'Recipes',
+        icon: '🍲',
+        style: 'recipes',
+        live: true,
+        // A recipe book: just the interactive editor, tags and title, and a tag cloud beside
+        // the list. No dates, no descriptions, no format-juggling, no debug chip.
+        features: {
+            modes: ['interactive'],
+            format: false,
+            date: false,
+            description: false,
+            debug: false,
+            tagColumn: true,
+        },
+    },
     { id: 'journal', name: 'Journal', icon: '📓', soon: true },
     { id: 'wiki', name: 'Wiki', icon: '📚', soon: true },
     { id: 'blog', name: 'Blog', icon: '📣', soon: true },
@@ -19,6 +35,20 @@ export const APPS = [
     { blank: true },
     { blank: true },
 ];
+
+// What an app's surface offers. The default is the full Notes experience; an app overrides
+// only the pieces it wants to drop or add, so a new app style is a short `features` block.
+const DEFAULT_FEATURES = {
+    modes: ['interactive', 'side', 'plain', 'read'], // view modes offered
+    format: true, // the format-convert chip
+    date: true, // the claimed date/time annotation
+    description: true, // the description annotation
+    debug: true, // the TEMPORARY debug-dump chip
+    tagColumn: false, // a sidebar listing every tag by frequency
+};
+
+/// The resolved feature set for an app (defaults, then the app's overrides). Safe on undefined.
+export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.features) || {}) });
 
 /// The launchable apps, in registry order.
 export const liveApps = APPS.filter((a) => a.live);
