@@ -37,6 +37,34 @@
 @font-face { font-family: "Bitcount"; src: url("/fonts/bitcount.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Quicksand"; src: url("/fonts/quicksand.woff2") format("woff2"); font-display: swap; }
 
+/* --- the palette ---
+ * Warm and beachy, mid-tone (neither dark nor light): sand and cream surfaces, teal water,
+ * shell pink, sunset coral, sea-green. Every colour in the app is one of these tokens, so the
+ * whole scheme re-tunes from here. */
+:root {
+    --bg: #e7dbc3;            /* page: warm sand */
+    --surface: #f6efe0;      /* cards, inputs, tiles: cream (a touch lighter than the sand) */
+    --surface-2: #efe3cd;    /* chips, secondary fills */
+    --ink: #40382c;          /* primary text: warm dark brown */
+    --ink-soft: #574d3d;     /* softer body text */
+    --muted: #8a7a5f;        /* secondary text, labels */
+    --faint: #a89777;        /* placeholders, tertiary */
+    --border: #d7c6a2;       /* soft warm borders */
+    --border-strong: #c1aa80;/* hover / emphasis borders */
+
+    --teal: #1f9e90;         /* primary accent: water - focus, selection, hover, highlight */
+    --teal-deep: #227d71;    /* the bottom dock band */
+    --sea: #4bab7f;          /* good / merged / friendly sea-green */
+    --pink: #d97a97;         /* tags: shell pink */
+    --coral: #db6a63;        /* danger / conflict / logout-hover: sunset coral */
+
+    --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */
+    --dock-text: #fbf6ec;    /* light text that sits on the teal dock */
+
+    --hex-border-dark: #bf9152;   /* the outer 2px ring of an application hexagon: caramel */
+    --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */
+}
+
 /* --- app shell --- */
 
 *, *::before, *::after {
@@ -46,9 +74,9 @@
 body {
     margin: 0;
     padding: 0;
-    background-color: #1a1a2e;
+    background-color: var(--bg);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: #e0e0e0;
+    color: var(--ink);
 }
 
 .app-main {
@@ -58,7 +86,8 @@ body {
        wide layouts actually use the room. */
     width: 100%;
     min-height: 100vh;
-    padding: 20px;
+    /* Extra bottom padding clears the fixed session dock (.session-bar). */
+    padding: 20px 20px 76px;
 }
 
 .loading-shell {
@@ -66,7 +95,7 @@ body {
     align-items: center;
     justify-content: center;
     min-height: 80vh;
-    color: #888;
+    color: var(--muted);
 }
 
 .marquee-page {
@@ -84,12 +113,12 @@ body {
 .welcome-title {
     font-family: "Press Start 2P", monospace;
     font-size: 1.6rem;
-    color: #ffd866;
+    color: var(--teal);
     margin: 0 0 0.4rem;
 }
 
 .welcome-sub {
-    color: #888;
+    color: var(--muted);
     margin: 0 0 2rem;
 }
 
@@ -102,17 +131,17 @@ body {
 
 .tab {
     background: none;
-    border: 1px solid #444;
+    border: 1px solid var(--border-strong);
     border-radius: 6px 6px 0 0;
-    color: #aaa;
+    color: var(--muted);
     padding: 0.4rem 1rem;
     cursor: pointer;
     font: inherit;
 }
 
 .tab.active {
-    color: #ffd866;
-    border-color: #ffd866;
+    color: var(--teal);
+    border-color: var(--teal);
 }
 
 .welcome-form {
@@ -126,22 +155,22 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
-    color: #aaa;
+    color: var(--muted);
     font-size: 0.9rem;
 }
 
 .welcome-form input {
-    background: #10101f;
-    border: 1px solid #444;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    color: #e0e0e0;
+    color: var(--ink);
     padding: 0.55rem 0.7rem;
     font: inherit;
 }
 
 .welcome-form input:focus {
     outline: none;
-    border-color: #ffd866;
+    border-color: var(--teal);
 }
 
 .field-note {
@@ -149,20 +178,20 @@ body {
     font-size: 0.8rem;
 }
 
-.field-note.ok { color: #a9dc76; }
-.field-note.bad { color: #ff6188; }
+.field-note.ok { color: var(--sea); }
+.field-note.bad { color: var(--coral); }
 
 .form-error {
     margin: 0;
-    color: #ff6188;
+    color: var(--coral);
     font-size: 0.85rem;
 }
 
 .welcome-go {
-    background: #ffd866;
+    background: var(--teal);
     border: none;
     border-radius: 6px;
-    color: #1a1a2e;
+    color: var(--bg);
     padding: 0.6rem;
     font: inherit;
     font-weight: 600;
@@ -176,24 +205,32 @@ body {
 
 /* --- signed-in header --- */
 
+/* A fixed dock at the bottom of the window, hanging over the content with its own surface and
+   a soft upward shadow. `.app-main` reserves matching bottom padding so nothing hides beneath. */
 .session-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid #333;
-    margin-bottom: 0.5rem;
+    padding: 0.5rem 20px;
+    background: var(--teal-deep);
+    box-shadow: 0 -2px 12px rgba(51, 40, 20, 0.18);
 }
 
+/* The dock's contents sit on teal, so they wear light text (their own overrides). */
 .session-who {
-    color: #a9dc76;
+    color: var(--dock-text);
 }
 
 .session-out {
     background: none;
-    border: 1px solid #444;
+    border: 1px solid rgba(251, 246, 236, 0.45);
     border-radius: 6px;
-    color: #aaa;
+    color: var(--dock-text);
     padding: 0.3rem 0.8rem;
     cursor: pointer;
     font: inherit;
@@ -201,8 +238,8 @@ body {
 }
 
 .session-out:hover {
-    border-color: #ff6188;
-    color: #ff6188;
+    border-color: var(--dock-text);
+    background: rgba(251, 246, 236, 0.12);
 }
 
 /* --- personas: null state, spare-key ceremony, badge --- */
@@ -219,23 +256,23 @@ body {
 .null-title {
     font-family: "Press Start 2P", monospace;
     font-size: 1rem;
-    color: #ffd866;
+    color: var(--teal);
     margin: 0;
     line-height: 1.6;
 }
 
 .null-sub {
-    color: #999;
+    color: var(--muted);
     margin: 0;
     line-height: 1.5;
 }
 
 .spare-key {
     display: block;
-    background: #10101f;
-    border: 1px dashed #ffd866;
+    background: var(--surface);
+    border: 1px dashed var(--teal);
     border-radius: 6px;
-    color: #a9dc76;
+    color: var(--sea);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.8rem;
     padding: 0.8rem;
@@ -245,9 +282,9 @@ body {
 
 .ceremony-download {
     background: none;
-    border: 1px solid #444;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    color: #aaa;
+    color: var(--muted);
     padding: 0.4rem 1rem;
     cursor: pointer;
     font: inherit;
@@ -255,8 +292,8 @@ body {
 }
 
 .ceremony-download:hover {
-    border-color: #ffd866;
-    color: #ffd866;
+    border-color: var(--teal);
+    color: var(--teal);
 }
 
 .ceremony-confirm {
@@ -264,7 +301,7 @@ body {
     gap: 0.5rem;
     justify-content: center;
     align-items: center;
-    color: #aaa;
+    color: var(--muted);
     font-size: 0.9rem;
     cursor: pointer;
 }
@@ -273,7 +310,7 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    color: #a9dc76;
+    color: var(--dock-text);
 }
 
 .persona-chip {
@@ -284,10 +321,10 @@ body {
 }
 
 .name-input {
-    background: #10101f;
-    border: 1px solid #444;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    color: #e0e0e0;
+    color: var(--ink);
     padding: 0.55rem 0.7rem;
     font: inherit;
     text-align: center;
@@ -296,13 +333,13 @@ body {
 
 .name-input:focus {
     outline: none;
-    border-color: #ffd866;
+    border-color: var(--teal);
 }
 
 .skip-link {
     background: none;
     border: none;
-    color: #777;
+    color: var(--faint);
     font: inherit;
     font-size: 0.85rem;
     cursor: pointer;
@@ -310,10 +347,10 @@ body {
 }
 
 .spare-paste {
-    background: #10101f;
-    border: 1px solid #444;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    color: #a9dc76;
+    color: var(--sea);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.75rem;
     padding: 0.55rem 0.7rem;
@@ -322,7 +359,7 @@ body {
 
 .spare-paste:focus {
     outline: none;
-    border-color: #ffd866;
+    border-color: var(--teal);
 }
 
 /* --- your computers --- */
@@ -343,12 +380,12 @@ body {
 .computers-title {
     font-family: "Press Start 2P", monospace;
     font-size: 1rem;
-    color: #ffd866;
+    color: var(--teal);
     margin: 0;
 }
 
 .computers-subtitle {
-    color: #e0e0e0;
+    color: var(--ink);
     font-size: 1rem;
     margin: 1.5rem 0 0;
 }
@@ -366,90 +403,139 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    background: #10101f;
-    border: 1px solid #333;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.5rem 0.8rem;
 }
 
 .computer-name {
-    color: #a9dc76;
+    color: var(--sea);
 }
 
 .computer-detail {
-    color: #777;
+    color: var(--faint);
     font-size: 0.85rem;
 }
 
 .computer-facts {
-    color: #666;
+    color: var(--faint);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.75rem;
 }
 
 .computer-status {
-    color: #ff6188;
+    color: var(--coral);
 }
 
 /* --- the console (application launcher) --- */
 
 .console {
-    padding: 1.5rem 0;
+    padding: 2rem 0;
+    display: flex;
+    justify-content: center;
 }
 
-.console-title {
-    font-size: 1.3rem;
-    font-weight: 600;
-    color: #e0e0e0;
-    margin: 0 0 1.2rem;
-}
-
-.console-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1rem;
-}
-
-.app-tile {
+/* Honeycomb: fixed-width rows, every other row shifted half a cell so hexagons nestle, rows
+   pulled up 25% of a hexagon's height (their points slot into the row above). The hexagon and
+   its double border are three nested clipped layers - outer dark ring, inner light ring, then
+   the surface face. Corners are sharp: clip-path polygons can't round, so the "tiny rounding"
+   would need an SVG shape (a follow-up). All the sizes are tokens here, tunable. */
+.hex-comb {
+    --hex-w: 156px;
+    --hex-h: 180px;               /* regular pointy-top: h = w * 1.1547 */
+    --hex-gap: 6px;
+    --hex-clip: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.35rem;
-    background: #10101f;
-    border: 1px solid #2a2a3e;
-    border-radius: 12px;
-    padding: 1.2rem;
-    cursor: pointer;
-    font: inherit;
-    text-align: left;
-    color: #e0e0e0;
-    transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
-.app-tile:hover {
-    border-color: #ffd866;
-    transform: translateY(-2px);
+.hex-row {
+    display: flex;
+    gap: var(--hex-gap);
+}
+
+.hex-row + .hex-row {
+    /* Even gap on every side: a regular hexagon's neighbours all sit one center-distance
+       (hex-w + gap) away, so the row advance is that distance times sin(60deg) = √3/2. Pulling
+       up by exactly hex-h/4 (the touching amount) is what made diagonal neighbours tighter than
+       row neighbours. */
+    margin-top: calc((var(--hex-w) + var(--hex-gap)) * 0.866025 - var(--hex-h));
+}
+
+.hex-row.shift {
+    margin-left: calc((var(--hex-w) + var(--hex-gap)) / 2);
+}
+
+.app-tile {
+    flex: 0 0 auto;
+    width: var(--hex-w);
+    height: var(--hex-h);
+    clip-path: var(--hex-clip);
+    background: var(--hex-border-light);   /* outer ring: lighter, 2px */
+    padding: 2px;
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    display: block;
+    transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.app-tile:not(.blank):not(.soon):hover {
+    transform: scale(1.04);
+    filter: brightness(1.04);
+}
+
+.hex-mid {
+    display: block;
+    width: 100%;
+    height: 100%;
+    clip-path: var(--hex-clip);
+    background: var(--hex-border-dark);   /* inner ring: darker, 4px */
+    padding: 4px;
+}
+
+.hex-face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 100%;
+    height: 100%;
+    clip-path: var(--hex-clip);
+    background: var(--surface);
+    padding: 1.4rem 1rem;
+    text-align: center;
+    color: var(--ink);
+}
+
+.app-tile.soon {
+    cursor: default;
+}
+
+.app-tile.soon .hex-face {
+    background: var(--surface-2);
+    color: var(--faint);
+}
+
+.app-tile.blank {
+    cursor: default;
+}
+
+.app-tile.blank .hex-face {
+    background: var(--surface-2);
 }
 
 .app-tile-icon {
-    font-size: 2rem;
+    font-size: 2.1rem;
     line-height: 1;
 }
 
 .app-tile-name {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
-}
-
-.app-tile-tagline {
-    font-size: 0.8rem;
-    color: #888;
-}
-
-.console-more {
-    margin-top: 1.5rem;
-    color: #666;
-    font-size: 0.85rem;
 }
 
 /* --- the notes app --- */
@@ -466,17 +552,17 @@ body {
     align-items: baseline;
     gap: 0.8rem;
     padding: 0.3rem 0;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border);
 }
 
 .notes-title {
     font-family: "Press Start 2P", monospace;
     font-size: 0.85rem;
-    color: #ffd866;
+    color: var(--teal);
 }
 
 .notes-count {
-    color: #666;
+    color: var(--faint);
     font-size: 0.85rem;
 }
 
@@ -500,9 +586,9 @@ body {
 
 .notes-new {
     background: none;
-    border: 1px dashed #555;
+    border: 1px dashed var(--border-strong);
     border-radius: 6px;
-    color: #a9dc76;
+    color: var(--sea);
     padding: 0.45rem;
     cursor: pointer;
     font: inherit;
@@ -510,14 +596,14 @@ body {
 }
 
 .notes-new:hover {
-    border-color: #a9dc76;
+    border-color: var(--sea);
 }
 
 .notes-search {
-    background: #10101f;
-    border: 1px solid #2a2a3e;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #e0e0e0;
+    color: var(--ink);
     padding: 0.4rem 0.6rem;
     font: inherit;
     font-size: 0.85rem;
@@ -525,12 +611,12 @@ body {
 
 .notes-search:focus {
     outline: none;
-    border-color: #555;
+    border-color: var(--border-strong);
 }
 
 .note-row {
-    background: #10101f;
-    border: 1px solid #2a2a3e;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.45rem 0.6rem;
     cursor: pointer;
@@ -539,15 +625,15 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    color: #e0e0e0;
+    color: var(--ink);
 }
 
 .note-row:hover {
-    border-color: #555;
+    border-color: var(--border-strong);
 }
 
 .note-row.selected {
-    border-color: #ffd866;
+    border-color: var(--teal);
 }
 
 .note-row-title {
@@ -558,7 +644,7 @@ body {
 }
 
 .note-row-when {
-    color: #666;
+    color: var(--faint);
     font-size: 0.7rem;
 }
 
@@ -583,26 +669,26 @@ body {
 
 .note-row-tag {
     font-size: 0.65rem;
-    color: #82aaff;
-    background: #171727;
-    border: 1px solid #2a2a3e;
+    color: var(--pink);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 999px;
     padding: 0.02rem 0.4rem;
 }
 
 .note-row-tag:hover {
-    border-color: #82aaff;
+    border-color: var(--pink);
 }
 
 .note-row-tag.active {
-    background: #82aaff;
-    color: #10101f;
-    border-color: #82aaff;
+    background: var(--pink);
+    color: var(--surface);
+    border-color: var(--pink);
 }
 
 /* A user-claimed display date shown on a list row - subtly marked so it reads as a claim. */
 .note-row-claimed {
-    color: #ffd866;
+    color: var(--teal);
 }
 
 /* The annotations panel in the editor: date + tag chips + a description field. */
@@ -621,26 +707,26 @@ body {
 
 .annot-label {
     font-size: 0.72rem;
-    color: #888;
+    color: var(--muted);
     min-width: 3rem;
 }
 
 .annot-date,
 .annot-time {
-    background: #10101f;
-    border: 1px solid #2a2a3e;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #e0e0e0;
+    color: var(--ink);
     font: inherit;
     font-size: 0.78rem;
     padding: 0.2rem 0.4rem;
-    color-scheme: dark;
+    color-scheme: light;
 }
 
 .annot-date:focus,
 .annot-time:focus {
     outline: none;
-    border-color: #555;
+    border-color: var(--border-strong);
 }
 
 .annot-time:disabled {
@@ -659,18 +745,18 @@ body {
     align-items: center;
     gap: 0.2rem;
     font-size: 0.72rem;
-    color: #82aaff;
-    background: #171727;
-    border: 1px solid #2a2a3e;
+    color: var(--pink);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 999px;
     padding: 0.08rem 0.5rem;
 }
 
 .annot-tag-active {
     cursor: pointer;
-    background: #82aaff;
-    color: #10101f;
-    border-color: #82aaff;
+    background: var(--pink);
+    color: var(--surface);
+    border-color: var(--pink);
     font: inherit;
     font-size: 0.72rem;
 }
@@ -694,7 +780,7 @@ body {
 .annot-tag-input {
     background: none;
     border: none;
-    color: #e0e0e0;
+    color: var(--ink);
     font: inherit;
     font-size: 0.75rem;
     width: 6rem;
@@ -706,10 +792,10 @@ body {
 }
 
 .annot-desc {
-    background: #10101f;
-    border: 1px solid #2a2a3e;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #cfcfcf;
+    color: var(--ink-soft);
     font: inherit;
     font-size: 0.8rem;
     line-height: 1.4;
@@ -720,7 +806,7 @@ body {
 
 .annot-desc:focus {
     outline: none;
-    border-color: #555;
+    border-color: var(--border-strong);
 }
 
 .reader {
@@ -741,13 +827,13 @@ body {
     justify-content: space-between;
     align-items: baseline;
     gap: 0.6rem;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border);
     padding-bottom: 0.4rem;
 }
 
 .reader-title {
     font-size: 1.1rem;
-    color: #e0e0e0;
+    color: var(--ink);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -760,22 +846,22 @@ body {
 }
 
 .chip {
-    background: #10101f;
-    border: 1px solid #444;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
     border-radius: 10px;
-    color: #888;
+    color: var(--muted);
     font-size: 0.7rem;
     padding: 0.1rem 0.5rem;
 }
 
 .chip-diverged {
-    border-color: #ff6188;
-    color: #ff6188;
+    border-color: var(--coral);
+    color: var(--coral);
 }
 
 .reader-plain {
-    background: #10101f;
-    border: 1px solid #2a2a3e;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.8rem;
     white-space: pre-wrap;
@@ -798,7 +884,7 @@ body {
     background: none;
     border: none;
     border-bottom: 1px dashed transparent;
-    color: #e0e0e0;
+    color: var(--ink);
     font: inherit;
     font-size: 1.1rem;
     flex: 1;
@@ -808,14 +894,14 @@ body {
 
 .editor-title:focus {
     outline: none;
-    border-bottom-color: #ffd866;
+    border-bottom-color: var(--teal);
 }
 
 .editor-body {
-    background: #10101f;
-    border: 1px solid #2a2a3e;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #e0e0e0;
+    color: var(--ink);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.85rem;
     line-height: 1.5;
@@ -827,7 +913,7 @@ body {
 
 .editor-body:focus {
     outline: none;
-    border-color: #555;
+    border-color: var(--border-strong);
 }
 
 .editor-tabs {
@@ -840,15 +926,15 @@ body {
     display: block;
     font-size: 1.3rem;
     font-weight: 600;
-    color: #e0e0e0;
+    color: var(--ink);
     padding: 0.2rem 0;
 }
 
 /* The interactive (live preview) surface: CodeMirror hosts its own scrolling. The mq-doc
    look inside comes from the marquee extension's bundled theme + marquee-css. */
 .editor-live {
-    background: #10101f;
-    border: 1px solid #2a2a3e;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     min-height: 50vh;
     overflow: hidden;
@@ -890,7 +976,7 @@ body {
 .editor-side-preview {
     max-height: 75vh;
     overflow-y: auto;
-    border: 1px solid #2a2a3e;
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.8rem;
     /* scrollToSource centers the cursor's node; smooth keeps the tracking legible. */
@@ -899,7 +985,7 @@ body {
 
 /* The preview node the source cursor is inside - the scroll sync, made visible. */
 .editor-cursor-node {
-    outline: 2px solid rgba(255, 216, 102, 0.55);
+    outline: 2px solid var(--glow);
     outline-offset: 2px;
     border-radius: 2px;
 }
@@ -908,11 +994,11 @@ body {
     cursor: pointer;
     font: inherit;
     font-size: 0.7rem;
-    color: #a9dc76;
+    color: var(--sea);
 }
 
 .chip-button:hover {
-    border-color: #a9dc76;
+    border-color: var(--sea);
 }
 
 .waiting-dot {
@@ -920,7 +1006,7 @@ body {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #ffd866;
+    background: var(--teal);
     animation: waiting-pulse 1.6s ease-in-out infinite;
     margin-right: 0.3rem;
 }
@@ -931,12 +1017,15 @@ body {
 }
 
 .skip-link:hover {
-    color: #aaa;
+    color: var(--muted);
 }
 
 @media (max-width: 500px) {
     .app-main {
-        padding: 10px;
+        padding: 10px 10px 72px;
+    }
+    .session-bar {
+        padding: 0.5rem 10px;
     }
 }
 
@@ -955,6 +1044,6 @@ body {
 }
 
 .chip-merged {
-    border-color: #a9dc76;
-    color: #a9dc76;
+    border-color: var(--sea);
+    color: var(--sea);
 }

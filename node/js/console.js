@@ -1,38 +1,65 @@
 // The console: the root point after you open a persona, a launcher of applications (see
-// PROJECT_PLAN, The Client Is a Console of Applications). It knows an application only as a
-// tile - id, name, icon, tagline - which is the generic boundary the whole vision rests on,
-// kept honest even at this baby scale. Today only Notes is real; this list is where a recipe
-// book, a journal, a blog will move in over time.
+// PROJECT_PLAN, The Client Is a Console of Applications). Only Notes is real; the rest are
+// placeholders marking where future applications will live, plus a couple of blank cells so
+// the honeycomb packing is visible while there's little to pack.
 import { h } from 'preact';
 import htm from 'htm';
 
 const html = htm.bind(h);
 
 export const APPS = [
-    {
-        id: 'notes',
-        name: 'Notes',
-        icon: '📝',
-        tagline: 'jot, draft, and keep your documents',
-    },
+    { id: 'notes', name: 'Notes', icon: '📝' },
+    { id: 'recipes', name: 'Recipes', icon: '🍲', soon: true },
+    { id: 'journal', name: 'Journal', icon: '📓', soon: true },
+    { id: 'wiki', name: 'Wiki', icon: '📚', soon: true },
+    { id: 'blog', name: 'Blog', icon: '📣', soon: true },
+    { id: 'book', name: 'Book', icon: '📖', soon: true },
+    { blank: true },
+    { blank: true },
 ];
 
-export const Console = ({ onLaunch }) => html`
-    <div class="console">
-        <h1 class="console-title">your applications</h1>
-        <div class="console-grid">
-            ${APPS.map(
-                (app) => html`<button
-                    class="app-tile"
-                    key=${app.id}
-                    onClick=${() => onLaunch(app.id)}
-                >
-                    <span class="app-tile-icon">${app.icon}</span>
-                    <span class="app-tile-name">${app.name}</span>
-                    <span class="app-tile-tagline">${app.tagline}</span>
-                </button>`
-            )}
+// Hexagons pack into a honeycomb: fixed-width rows, every other row shifted half a cell so the
+// cells nestle. The rows are chunked here rather than left to wrap - a honeycomb over a
+// free-wrapping list is fragile, since the half-cell shift needs to know which cells share a
+// row. Fixed columns is the price; a launcher is a fine place to pay it.
+const COLUMNS = 4;
+
+function chunk(arr, n) {
+    const rows = [];
+    for (let i = 0; i < arr.length; i += n) rows.push(arr.slice(i, i + n));
+    return rows;
+}
+
+// One hexagon: three nested clipped layers make the double border - the outer carries the dark
+// ring, the middle the lighter ring, the face the surface and content.
+function Hex(app, key, onLaunch) {
+    const content = app.blank
+        ? ''
+        : html`
+              <span class="app-tile-icon">${app.icon}</span>
+              <span class="app-tile-name">${app.name}</span>
+          `;
+    const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
+    const cls = `app-tile${app.soon ? ' soon' : ''}${app.blank ? ' blank' : ''}`;
+    const live = app.id && !app.soon && !app.blank;
+    return live
+        ? html`<button class=${cls} key=${key} onClick=${() => onLaunch(app.id)}>${stack}</button>`
+        : html`<div class=${cls} key=${key}>${stack}</div>`;
+}
+
+export const Console = ({ onLaunch }) => {
+    const rows = chunk(APPS, COLUMNS);
+    return html`
+        <div class="console">
+            <div class="hex-comb">
+                ${rows.map(
+                    (row, ri) => html`
+                        <div class=${ri % 2 ? 'hex-row shift' : 'hex-row'} key=${ri}>
+                            ${row.map((app, ci) => Hex(app, ri * COLUMNS + ci, onLaunch))}
+                        </div>
+                    `
+                )}
+            </div>
         </div>
-        <p class="console-more">more applications will move in over time.</p>
-    </div>
-`;
+    `;
+};
