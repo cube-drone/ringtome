@@ -40,6 +40,12 @@ async function roster(fetch, root) {
     return res.json();
 }
 
+const defineBucket = (fetch, root, name, app) =>
+    fetch(`api/identity/${root}/buckets`, { method: "POST", body: JSON.stringify({ name, app }) });
+
+const undefineBucket = (fetch, root, name) =>
+    fetch(`api/identity/${root}/buckets/${encodeURIComponent(name)}`, { method: "DELETE" });
+
 async function bucketed(fetch, root, bucket) {
     const res = await fetch(`api/identity/${root}/docs/bucketed/${encodeURIComponent(bucket)}`);
     assert.equal(res.status, 200);
@@ -65,8 +71,44 @@ describe("buckets: which notebook a document lives in", function () {
         assert.deepEqual(pierRow.buckets, ["journal"]);
 
         const r = await roster(user, root);
-        const byName = Object.fromEntries(r.buckets.map((b) => [b.name, b.docs]));
+        const byName = Object.fromEntries(r.buckets.map((b) => [b.name, b.members]));
         assert.deepEqual(byName, { favorites: 1, journal: 1, recipes: 1 });
+    });
+
+    it("defines an empty bucket with an app-type, which persists as it earns documents", async () => {
+        const { user, root } = await makeIdentity("bucketdef");
+
+        // Create an empty bucket tied to an app - it exists before any document.
+        assert.equal((await defineBucket(user, root, "grandmas-recipes", "recipes")).status, 200);
+        let entry = (await roster(user, root)).buckets.find((b) => b.name === "grandmas-recipes");
+        assert.ok(entry, "the empty bucket is in the roster");
+        assert.equal(entry.app, "recipes", "tied to its app");
+        assert.equal(entry.members, 0, "empty");
+
+        // It earns a document; the app-type persists across membership changes.
+        const doc = await createDoc(user, root, "pie", "apple");
+        await putBucket(user, root, doc.doc_id, "grandmas-recipes");
+        entry = (await roster(user, root)).buckets.find((b) => b.name === "grandmas-recipes");
+        assert.equal(entry.members, 1);
+        assert.equal(entry.app, "recipes", "app-type survives the doc being added");
+
+        // Forgetting the registry entry drops the app-type; the member keeps it in the roster.
+        assert.equal((await undefineBucket(user, root, "grandmas-recipes")).status, 200);
+        entry = (await roster(user, root)).buckets.find((b) => b.name === "grandmas-recipes");
+        assert.ok(entry, "still listed via its member");
+        assert.equal(entry.app, "", "app-type forgotten");
+        assert.equal(entry.members, 1);
+    });
+
+    it("routes different notebooks to different apps", async () => {
+        const { user, root } = await makeIdentity("bucketapps");
+        await defineBucket(user, root, "grandmas-recipes", "recipes");
+        await defineBucket(user, root, "very-personal-private", "journal");
+        const apps = Object.fromEntries(
+            (await roster(user, root)).buckets.map((b) => [b.name, b.app])
+        );
+        assert.equal(apps["grandmas-recipes"], "recipes");
+        assert.equal(apps["very-personal-private"], "journal");
     });
 
     it("lists docs in a bucket, and removing takes them out", async () => {

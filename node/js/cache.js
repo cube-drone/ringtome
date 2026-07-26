@@ -30,6 +30,7 @@ export function openMirror(root) {
             docs: 'doc_id',
             taxonomies: 'taxonomy_id',
             search: 'doc_id', // token bags, stream-fed like docs (search runs local)
+            buckets: 'name', // the bucket roster: name -> app-type + member count
             prefs: 'key', // local-only, never stream-fed (module doc)
         });
         mirrors.set(root, db);
@@ -58,6 +59,7 @@ async function apply(db, msg) {
         db.docs,
         db.taxonomies,
         db.search,
+        db.buckets,
         async () => {
             if (msg.profile) {
                 await db.profile.clear();
@@ -74,6 +76,10 @@ async function apply(db, msg) {
             if (msg.search) {
                 await db.search.clear();
                 await db.search.bulkPut(msg.search);
+            }
+            if (msg.buckets) {
+                await db.buckets.clear();
+                await db.buckets.bulkPut(msg.buckets);
             }
             await db.kv.put({ key: 'cursor', value: msg.cursor });
         }

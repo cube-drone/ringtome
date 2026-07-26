@@ -253,9 +253,14 @@ manufactures a divergence conflict with a concurrent prose edit.
   wholesale. The separation is the point, not incidental: a bucket is the axis search and tags
   are *scoped to*, so it must not appear in the tag cloud it filters. NOT a `Taxonomy` - no
   order, no ranks, no tree; annotation-shaped. A `Buckets` store handle, PUT/DELETE membership,
-  a roster (distinct names + counts) and docs-in-bucket reads, and a `buckets` field joined onto
-  the docs mirror row like tags. Buckets are name-keyed for now; named bucket *objects* (minted
-  id, free rename, an app-type field) are the launcher's notebook-picker layer, deferred.
+  a roster and docs-in-bucket reads, and a `buckets` field joined onto the docs mirror row like
+  tags. Buckets are **name-keyed** - membership is exactly the tag mechanism. Beside it sits a
+  tiny **registry** (2026-07-26): one LWW register `name -> app-type`, doing only two jobs -
+  saying which application opens a bucket (so a wiki never opens in the recipe app) and letting
+  an empty bucket exist before its first document. Emphatically not a `Taxonomy` (no order, no
+  tree) and not a document (no versioning) - the lightest thing that carries the mapping. The
+  roster (`{name, app, members}`, registered-but-empty buckets included) streams as its own
+  mirror kind, so the launcher can resolve a notebook to its app live.
 - **Reserved conventional field, `display_date`** (2026-07-25): a user-claimed date for the
   document, authoritative for list sorting and display over the derived stamps - so a backdated
   import files itself under the date the user claims, not the day they typed it. The value is a

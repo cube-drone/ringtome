@@ -148,12 +148,13 @@ HISTORY.md.
   react-renderer demo's, ported whole.
 - **Document bucketing (server side)** (2026-07-26): buckets - which project/notebook a doc
   lives in - as the tag mechanism in a *separate* namespace (`bucket:` beside `annot:`), so
-  they're the axis search and tags are scoped to and never pollute the tag cloud. A `Buckets`
-  store handle (place/remove/of/own_docs_in/roster/all), HTTP routes, and a `buckets` field
-  joined onto the docs mirror row like tags. No new SQL table (reuses the doc-meta private
-  sets). Annotation-shaped, NOT a Taxonomy (no ordering). Deferred: named bucket *objects*
-  (minted id, rename, app-type) for the launcher's notebook picker - name-keyed is the minimal
-  foundation. Owed next: the client UI (bucket chips, per-notebook scoping of search/tags).
+  they're the axis search and tags are scoped to and never pollute the tag cloud. Name-keyed
+  membership (place/remove/of/own_docs_in), joined onto the docs mirror row like tags. Plus a
+  tiny **registry**: one LWW register `name -> app-type` (which app opens a notebook; also lets
+  an empty bucket exist), NOT a Taxonomy and not a document. `define`/`undefine` + `POST/DELETE
+  /buckets`; the roster (`{name, app, members}`) streams as a new mirror kind. No new SQL table
+  (reuses the doc-meta private sets/registers). Owed next: the client UI - bucket chips,
+  per-notebook scoping of search/tags, and the launcher wiring a notebook to its app.
 - **The console + client-side routing** (2026-07-25): opening a persona lands on an application
   launcher (one tile, Notes, for now) instead of straight into notes; the console knows an app
   only as a registry tile (`js/console.js`). preact-iso routing wired under `/home` - `/home`

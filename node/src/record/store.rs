@@ -762,19 +762,19 @@ impl Annotations<'_> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Buckets: which project(s) a document belongs to, its notebook membership. The SAME
+// Buckets: which project(s)/notebook(s) a document belongs to. Membership is the SAME
 // LWW-element-set mechanism as tags - unordered, multiple, unions cleanly when two devices add
-// the same doc to a bucket at once - but in a SEPARATE collection namespace so buckets never
-// mingle with tags. That separation is the point: a bucket is the axis search and tags are
-// *scoped to* ("braise" in the recipe book finds braised pork, never the journal), so it must
-// not appear in the tag cloud it filters. A bucket is keyed by its name, exactly as a tag is
-// its string; the roster is the distinct names in use.
+// the same doc at once - in a SEPARATE collection namespace so buckets never mingle with tags.
+// That separation is the point: a bucket is the axis search and tags are *scoped to* ("braise"
+// in the recipe book finds braised pork, never the journal), so it must not appear in the tag
+// cloud it filters. A bucket is keyed by its name, exactly as a tag is its string.
 //
-// Deliberately NOT a Taxonomy: no ordering, no ranks, no tree composition - membership only.
-// And deliberately annotation-shaped, not its own registry: named bucket *objects* (a minted
-// id so an empty bucket persists and rename is free, plus an app-type field) are a later layer
-// for the launcher's notebook picker; name-keyed membership is the minimal foundation, and the
-// User-1 rule lets us upgrade the shape freely when that layer arrives.
+// Beside membership sits a tiny REGISTRY: a single LWW register mapping bucket name -> app-type
+// (`grandmas-recipes` -> `recipes`, `very-personal-private` -> `journal`). It does two small
+// jobs and no more: it says which application should open a bucket (so a wiki never opens in the
+// recipe app), and it lets an empty bucket exist in the window between "created" and "earned its
+// first document". Not a Taxonomy (no ordering, no tree) and not a document (no versioning) -
+// just a name->value register, the lightest thing that carries the mapping.
 
 /// The collection naming convention for a document's bucket memberships: `bucket:<root>/<doc>`,
 /// the full `(root, doc_id)` reference form so bucketing *someone else's* document stays
@@ -788,6 +788,21 @@ fn parse_bucket_collection(name: &str) -> Option<([u8; 32], [u8; 16])> {
     let root = crate::pubkey::decode(root_hex)?;
     let doc_id: [u8; 16] = hex::decode(doc_id_hex).ok()?.try_into().ok()?;
     Some((root, doc_id))
+}
+
+/// The bucket registry: one LWW register collection, `key = bucket name`, `value = app-type`.
+/// Membership lives elsewhere (the `bucket:` sets); this only carries the name->app mapping and
+/// gives an empty bucket a place to be. (A plain string, not a `bucket:` collection, so the
+/// membership parser never mistakes it for one.)
+const BUCKET_REGISTRY: &str = "buckets";
+
+/// One bucket in the roster: its name, the app-type meant to open it (empty if unregistered),
+/// and how many of this identity's documents it holds.
+#[derive(Debug, Clone)]
+pub struct BucketSummary {
+    pub name: String,
+    pub app: String,
+    pub members: usize,
 }
 
 pub struct Buckets<'s> {
@@ -814,6 +829,49 @@ impl Buckets<'_> {
             )));
         }
         Ok(name)
+    }
+
+    /// Register a bucket's app-type (creating the bucket if new): an LWW register write,
+    /// `name -> app`. This is also how an empty bucket comes into being - it exists in the
+    /// registry before any document is placed in it. Idempotent; re-registering updates the app.
+    pub async fn define(&self, bucket: &str, app: &str) -> Result<SignedEntry, AppError> {
+        let name = Self::clean(bucket)?;
+        let app = app.trim().to_string();
+        if app.len() > Self::MAX_NAME_BYTES {
+            return Err(AppError::BadRequest(format!(
+                "app-type exceeds {} bytes",
+                Self::MAX_NAME_BYTES
+            )));
+        }
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::Register,
+                    collection: BUCKET_REGISTRY.to_string(),
+                    key: name,
+                    value: Some(app),
+                },
+            )
+            .await
+    }
+
+    /// Forget a bucket's registry entry (an LWW clear - absent value). Membership tags stay on
+    /// the chain like everything else; a bucket still holding documents remains in the roster
+    /// (via those members), just without a known app-type until re-registered.
+    pub async fn undefine(&self, bucket: &str) -> Result<SignedEntry, AppError> {
+        let name = Self::clean(bucket)?;
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::Register,
+                    collection: BUCKET_REGISTRY.to_string(),
+                    key: name,
+                    value: None,
+                },
+            )
+            .await
     }
 
     /// Put a document in a bucket (LWW-element-set add; the `(doc, bucket)` pair is the merge
@@ -889,17 +947,56 @@ impl Buckets<'_> {
         Ok(out)
     }
 
-    /// The roster: every bucket in use, name and how many of this identity's documents it
-    /// holds. Derived from membership (an empty bucket has no representation yet - that waits
-    /// for the named-bucket registry). Sorted by name.
-    pub async fn roster(&self) -> Result<Vec<(String, usize)>, AppError> {
+    /// The roster: every bucket - name, its registered app-type, and this identity's member
+    /// count. A bucket appears if it is registered (empty buckets included) OR if any document
+    /// is in it (a membership without a registry entry has an empty app-type). One view fold.
+    /// Sorted by name.
+    pub async fn roster(&self) -> Result<Vec<BucketSummary>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+
+        // name -> app, from the registry (empty values are cleared entries).
+        let mut apps: BTreeMap<String, String> = view
+            .registers_in(BUCKET_REGISTRY)
+            .into_iter()
+            .filter(|r| !r.value.is_empty())
+            .map(|r| (r.key, r.value))
+            .collect();
+
+        // name -> member count, from the per-doc membership sets (own root).
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-        for names in self.all().await?.into_values() {
-            for name in names {
-                *counts.entry(name).or_insert(0) += 1;
+        for collection in view.collections() {
+            let Some((root, _)) = parse_bucket_collection(collection) else {
+                continue;
+            };
+            if root != self.store.root {
+                continue;
+            }
+            for e in view.set_elements(collection) {
+                *counts.entry(e.element).or_insert(0) += 1;
             }
         }
-        Ok(counts.into_iter().collect())
+
+        let mut names: std::collections::BTreeSet<String> = apps.keys().cloned().collect();
+        names.extend(counts.keys().cloned());
+        Ok(names
+            .into_iter()
+            .map(|name| BucketSummary {
+                app: apps.remove(&name).unwrap_or_default(),
+                members: counts.get(&name).copied().unwrap_or(0),
+                name,
+            })
+            .collect())
+    }
+
+    /// The app-type registered to open a bucket, if any.
+    pub async fn app_of(&self, bucket: &str) -> Result<Option<String>, AppError> {
+        let name = Self::clean(bucket)?;
+        let view = self.store.doc_meta_view().await?;
+        Ok(view
+            .registers_in(BUCKET_REGISTRY)
+            .into_iter()
+            .find(|r| r.key == name && !r.value.is_empty())
+            .map(|r| r.value))
     }
 
     /// This identity's own documents currently in `bucket` - the app view's spine (the inverse

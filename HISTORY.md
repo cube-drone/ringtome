@@ -1350,3 +1350,26 @@ Deliberately deferred (name-keyed is the minimal foundation; the User-1 rule let
 freely): named bucket *objects* - a minted id so an empty bucket persists and rename is free,
 plus an app-type field - which the launcher's notebook picker will want. For "document
 bucketing," name-keyed membership is the right, minimal axis.
+
+---
+
+## The bucket registry: name -> app-type (2026-07-26)
+
+Curtis corrected an over-reach: I'd started modeling the "named bucket object" as a Taxonomy
+(minted id, id-keyed membership, a roster). Wrong shape. Membership is already tag-like and
+name-keyed and stays exactly that. The only new thing a bucket needs is a place to tie its
+**name to an app-type** ("grandmas-recipes" -> "recipes", "very-personal-private" -> "journal")
+so a wiki never opens in the recipe app - and, as a side effect, somewhere for an empty bucket
+to exist in the window between "created" and "earned its first document".
+
+So the registry is the lightest possible thing: **one LWW register collection, `key = bucket
+name, value = app-type`** on the doc-meta chain. Not a Taxonomy, not a document. `define(name,
+app)` writes the register (and is how an empty bucket is born); `undefine` clears it; `roster`
+now merges the registry (app-types + registered-but-empty buckets) with the in-use names
+(membership counts), so a bucket appears if it is registered OR holds documents. Membership -
+`place`/`remove`/`of`/`own_docs_in` - is untouched, still name-keyed sets in the `bucket:`
+namespace. HTTP gained `POST /buckets` (define) and `DELETE /buckets/{name}` (undefine); the
+roster response and a new streamed `buckets` mirror kind carry `{name, app, members}`, so the
+launcher can resolve which app opens a notebook, live. Two integration tests: an empty bucket
+that earns a document (app-type persisting across membership changes, and surviving as a
+member-only roster entry after undefine), and two notebooks routing to two different apps.

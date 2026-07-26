@@ -141,7 +141,14 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/{doc_id}/buckets/{bucket}",
             put(bucket_put_handler).delete(bucket_delete_handler),
         )
-        .route("/api/identity/{root}/buckets", get(buckets_roster_handler))
+        .route(
+            "/api/identity/{root}/buckets",
+            get(buckets_roster_handler).post(bucket_define_handler),
+        )
+        .route(
+            "/api/identity/{root}/buckets/{bucket}",
+            axum::routing::delete(bucket_undefine_handler),
+        )
         .route(
             "/api/identity/{root}/docs/bucketed/{bucket}",
             get(docs_by_bucket_handler),
@@ -1432,7 +1439,9 @@ async fn bucket_delete_handler(
 #[derive(Serialize)]
 struct BucketRow {
     name: String,
-    docs: usize,
+    /// The app-type meant to open this bucket (empty if unregistered).
+    app: String,
+    members: usize,
 }
 
 #[derive(Serialize)]
@@ -1440,8 +1449,8 @@ struct BucketRosterResponse {
     buckets: Vec<BucketRow>,
 }
 
-/// Every bucket in use, name and this identity's document count - the notebook roster. Empty
-/// buckets aren't here yet (that waits for the named-bucket registry).
+/// Every bucket - name, its registered app-type, and this identity's member count - the
+/// notebook roster. Registered-but-empty buckets are included.
 async fn buckets_roster_handler(
     session: Session,
     State(state): State<AppState>,
@@ -1453,9 +1462,52 @@ async fn buckets_roster_handler(
         .roster()
         .await?
         .into_iter()
-        .map(|(name, docs)| BucketRow { name, docs })
+        .map(|b| BucketRow {
+            name: b.name,
+            app: b.app,
+            members: b.members,
+        })
         .collect();
     Ok(Json(BucketRosterResponse { buckets }))
+}
+
+#[derive(Deserialize)]
+struct BucketDefine {
+    name: String,
+    /// The application meant to open this bucket ("recipes", "journal", ...); client vocabulary.
+    #[serde(default)]
+    app: String,
+}
+
+/// Create/define a bucket and the app that opens it (an LWW register, `name -> app`). This is
+/// how an empty bucket is born - it exists before its first document.
+async fn bucket_define_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<BucketDefine>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.buckets().define(&req.name, &req.app).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Forget a bucket's registry entry. Its members' tags stay; a bucket still holding documents
+/// remains in the roster (without an app-type) until re-defined.
+async fn bucket_undefine_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, bucket)): Path<(String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.buckets().undefine(&bucket).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
 }
 
 /// This identity's documents currently in `bucket`, in the docs-list per-doc shape - the app
@@ -1896,6 +1948,8 @@ struct StreamMessage {
     taxonomies: Option<Vec<TaxonomyRow>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     search: Option<Vec<crate::record::documents::SearchRow>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    buckets: Option<Vec<BucketRow>>,
 }
 
 /// The stream cursor: resync's frontier fingerprint (sorted `(author, service, floor, head)`
@@ -1943,6 +1997,17 @@ async fn gather(
         })
         .collect();
     let search = data.documents().search_rows().await?;
+    let buckets = data
+        .buckets()
+        .roster()
+        .await?
+        .into_iter()
+        .map(|b| BucketRow {
+            name: b.name,
+            app: b.app,
+            members: b.members,
+        })
+        .collect();
     Ok(StreamMessage {
         kind,
         cursor,
@@ -1950,6 +2015,7 @@ async fn gather(
         docs: Some(docs),
         taxonomies: Some(taxonomies),
         search: Some(search),
+        buckets: Some(buckets),
     })
 }
 
@@ -2003,6 +2069,7 @@ async fn serve_stream(
             docs: None,
             taxonomies: None,
             search: None,
+            buckets: None,
         }
     } else {
         gather(&data, "snapshot", cursor.clone())
