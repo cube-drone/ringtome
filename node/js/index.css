@@ -135,6 +135,17 @@ body {
     clip-path: var(--panel-clip);
 }
 
+/* The bare desktop: the region the app selector (and the pre-persona flows) live on. No frame,
+   no surface - just the warm page beneath, because the launcher isn't an app. Same footer below,
+   same fill-the-space-above-it job as the shell. */
+.app-stage {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
 .loading-shell {
     display: flex;
     align-items: center;
@@ -615,8 +626,10 @@ body {
 /* --- the console (application launcher) --- */
 
 .console {
-    padding: 2rem 0;
+    flex: 1;
+    padding: 2rem;
     display: flex;
+    align-items: center;
     justify-content: center;
 }
 

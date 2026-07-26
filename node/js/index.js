@@ -69,33 +69,37 @@ const Inside = ({ session }) => {
         </header>
     `;
 
-    // The whole signed-in screen is a fixed frame: the app region (the bordered box) and the
-    // footer each hold their own band and never overlap. The app content goes in `.app-frame`,
-    // the footer (`bar`) renders after it, and the flex column in `.app-main` stacks them. The
-    // border is drawn the way the hexagon tiles are: two clip-path layers, dark outside and
-    // surface inside, so the corners can step like pixels instead of rounding smooth.
-    const frame = (content) =>
+    // Two wrappers over the same footer. `shell` is the bordered app frame - drawn the way the
+    // hexagon tiles are, two clip-path layers (dark outside, surface inside) so the corners step
+    // like pixels - and it means "an app is open". `stage` is the bare desktop: the app selector
+    // and the pre-persona flows aren't apps, so they don't get a shell. The hexagons SUMMON apps;
+    // the launcher doesn't live inside one. Either way the footer (`bar`) renders after, and the
+    // flex column in `.app-main` stacks the region above it.
+    const shell = (content) =>
         html`<div class="app-frame"><div class="app-frame-inner">${content}</div></div>${bar}`;
+    const stage = (content) => html`<div class="app-stage">${content}</div>${bar}`;
 
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
-    // whatever the URL says. Once open, the URL is honored (a deep link survives the flow).
+    // whatever the URL says. These onboarding flows aren't apps either, so they ride the stage.
     if (persona.state === 'checking') {
-        return frame(html`<div class="loading-shell"><p>Loading…</p></div>`);
+        return stage(html`<div class="loading-shell"><p>Loading…</p></div>`);
     }
     if (persona.state === 'ceremony') {
-        return frame(html`<${SpareKeyCeremony} persona=${persona} />`);
+        return stage(html`<${SpareKeyCeremony} persona=${persona} />`);
     }
     if (persona.state === 'naming') {
-        return frame(html`<${NamePicker} persona=${persona} account=${session.account} />`);
+        return stage(html`<${NamePicker} persona=${persona} account=${session.account} />`);
     }
     if (persona.state === 'join') {
-        return frame(html`<${JoinFlow} persona=${persona} />`);
+        return stage(html`<${JoinFlow} persona=${persona} />`);
     }
     if (persona.state === 'none') {
-        return frame(html`<${NullState} persona=${persona} />`);
+        return stage(html`<${NullState} persona=${persona} />`);
     }
 
-    return frame(html`
+    // Once open, the URL is honored (a deep link survives the flow). The console lives at `/home`
+    // on the bare stage; an open app (any deeper route) gets the shell. `inApp` is that line.
+    const routed = html`
         <${Router}>
             <${Console} path="/home" onLaunch=${(id) => loc.route('/home/' + id)} />
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
@@ -111,7 +115,8 @@ const Inside = ({ session }) => {
             )}
             <${NotFound} default />
         </${Router}>
-    `);
+    `;
+    return inApp ? shell(routed) : stage(routed);
 };
 
 const App = () => {

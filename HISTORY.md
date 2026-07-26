@@ -1559,3 +1559,17 @@ duotone paths (secondary at `opacity 0.2`), `1em`, `currentColor`, and the class
 Cost: ~44 KB (Phosphor bundles all six weights per icon even though only duotone is used; tree-
 shaking kept just the twelve icons we reference). The one glyph left as text is the `×` on
 tag-remove buttons - a typographic character, not an emoji.
+
+---
+
+## The app selector lives outside the shell (2026-07-26)
+
+The bordered pixel-cornered frame means "an app is open" - so the console (the honeycomb launcher)
+shouldn't be inside it: the hexagons SUMMON apps, they aren't an app themselves. `Inside` now has
+two wrappers over the same footer - `shell` (the clip-path frame, for an open app) and `stage`
+(the bare warm desktop) - and picks between them on the `inApp` line the routing already draws:
+`/home` (the console) rides the stage, any deeper route gets the shell. The pre-persona flows
+(loading, spare-key ceremony, name picker, join, null state) ride the stage too - they aren't apps
+either. The console now centers its honeycomb on the bare desktop instead of sitting in a boxed
+surface. Persona management stays framed: it's a place you navigate into and back out of, more app
+than launcher.
