@@ -154,6 +154,64 @@ This is also an aesthetic goal - the design is intended to evoke "sloppy", "amat
 it invites collaboration by being unpretentious. We don't want purity or cleanliness, 
 we want sticky friction and the idea that this place encourages contribution at all skill levels. 
 
+### The Client Is a Console of Applications
+
+The cozy aesthetic above is a feeling; here is how it becomes structure. The client is not "a notes app." It is a
+**console** - a launcher, in the spirit of the Wii System Menu - of small, warmly-branded applications: *Chef
+Robort's Recipe Time*, *JOURNALTIME*, *Personal Wiki*, *RPG PLANNER DELUXE*, *Blog*. In our hearts we know they are
+the same system underneath. To the user they are different applications, with their own names, themes, and - where
+it earns its keep - genuinely different layouts. Login opens the console, not a document; picking an application
+opens that world. (Today login still opens a single notes application directly; the console is the direction.)
+
+**One machine, many faces.** Every application is a *remix of the same base primitives* pointed at a use-case. A
+journal wants a date and a chronological river (the user's `display_date` claim, sorted). A recipe book wants tags
+and fast search and cares nothing for chronology. A wiki wants a tree and next/previous navigation. A blog wants
+document metadata and a way to cross into public. That the one substrate - signed chains, annotations, taxonomies,
+the version DAG, the visibility gradient - serves all of these is not a coincidence to paper over; it is the whole
+design, and the recurring evidence that the primitives are deep. The pattern is **fractal**: recipe-vs-journal is
+the notes substrate wearing two faces, and later DMs-vs-BBS-vs-GeoCities will be the *communications* substrate
+wearing three - the same signed content at different points on the private → sealed-group → public gradient,
+addressed and browsed differently. The console is the face of faces.
+
+**The kernel is layered; applications plug in at different depths.** sync → private document editing → the
+publication boundary → social membership. A recipe book plugs in shallow: it is a browse-face over private notes.
+*Blog* and *Book* plug into publication - you compose in private notes and publish across the boundary, and the
+public artifact is a *copy* that cannot leak private edits back (copy-don't-flip; the notes editor already *is* the
+post composer, see NOTES_APP). "Roll out a whole-book update" is just re-publishing a composed taxonomy as a new
+public version. A future BBS plugs into membership. Publishing, in this model, stops being a mode hidden inside the
+notes app and becomes *what the Blog and Book applications are*.
+
+**The application boundary is generic, on purpose.** The console knows an application only as a mounted surface with
+a name, a theme, an icon, and a lifecycle - never as "a list-view over the private notes collection." This keeps the
+seam wide enough to host a publish queue or a threaded board later, not only a document list. Applications that
+happen to be notes-faces share a browse skeleton among *themselves* as an implementation detail; the contract does
+not force that thinness on anyone. So the cost of applications is **bimodal**: notes-family faces are cheap (theme,
+surfaced fields, sort, navigation affordances - much of it declarative), while a genuine social or publication
+application is a substantial build. The launcher's job is to make the cheap ones nearly free and give the expensive
+ones a home. Stated plainly: **the launcher is the top-level shell of the entire product, forever** - every future
+surface is its tenant - even though its first, humble job is to sit in front of a notes app.
+
+**Projects (buckets) are the places documents live.** Within an application a user keeps one or more **projects** -
+"Grandma's Recipes", a work journal and a personal journal - and most users need only one. A document belongs to one
+or more projects; membership is unordered and multiple, tag-like rather than folder-like, so a D&D session recap can
+live in a campaign log and a worldbuilding wiki at once, viewed chronologically in one and tree-positioned in the
+other (the view belongs to the application, not the document). Search and tags are **scoped to the current
+project**: searching "braise" in the recipe book finds braised-pork recipes, never the journal entry about braising
+the roof in frustration. The project is therefore a distinct *axis* - the thing every other tag is measured against -
+even if it is implemented as a reserved tag namespace, and it stays out of the ordinary tag cloud for cleanliness.
+Sending a document to another application is, mechanically, adding a second project; in the UI it can feel like "send
+to Blog." (Share-vs-copy semantics on that send are a real future decision - share suits notes-y apps, copy suits
+the publish boundary - deferred until we build sharing.)
+
+**Curated, not composable.** The set of applications is a hand-made menu, like a console with good games - not an
+app-builder, which is precisely the oppressive, un-cozy thing this model exists to avoid. Keeping options *open all
+the time* - every toggle and dial present because someone might want it - is how a friendly tool becomes an
+intimidating one. Instead each application is opinionated: it shows the few things its use-case needs and hides the
+rest, and its rigidity is what makes it calm. The escape valve for power is not a settings panel but the ethos
+already stated - *it is your node; you can add code.* A gentle on-ramp still matters, though: a new person should be
+able to jot a note without first choosing a notebook type, so an un-opinionated default has a place in the console
+too.
+
 ---
 
 ## Doctrine
