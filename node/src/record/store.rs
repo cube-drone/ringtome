@@ -167,6 +167,12 @@ impl Store {
         Annotations { store: self }
     }
 
+    /// Bucket membership: which project(s)/notebook(s) a document belongs to - the tag
+    /// mechanism in its own namespace, the axis tags and search are scoped to.
+    pub fn buckets(&self) -> Buckets<'_> {
+        Buckets { store: self }
+    }
+
     /// User-defined ordered structure over documents - reading lists, albums, curated
     /// sequences: per-element ranked facts on the doc-meta chain, never document bodies
     /// (PROJECT_PLAN, Taxonomies).
@@ -749,6 +755,167 @@ impl Annotations<'_> {
             .docs_tagged(tag)
             .await?
             .into_iter()
+            .filter(|(root, _)| *root == self.store.root)
+            .map(|(_, doc_id)| doc_id)
+            .collect())
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Buckets: which project(s) a document belongs to, its notebook membership. The SAME
+// LWW-element-set mechanism as tags - unordered, multiple, unions cleanly when two devices add
+// the same doc to a bucket at once - but in a SEPARATE collection namespace so buckets never
+// mingle with tags. That separation is the point: a bucket is the axis search and tags are
+// *scoped to* ("braise" in the recipe book finds braised pork, never the journal), so it must
+// not appear in the tag cloud it filters. A bucket is keyed by its name, exactly as a tag is
+// its string; the roster is the distinct names in use.
+//
+// Deliberately NOT a Taxonomy: no ordering, no ranks, no tree composition - membership only.
+// And deliberately annotation-shaped, not its own registry: named bucket *objects* (a minted
+// id so an empty bucket persists and rename is free, plus an app-type field) are a later layer
+// for the launcher's notebook picker; name-keyed membership is the minimal foundation, and the
+// User-1 rule lets us upgrade the shape freely when that layer arrives.
+
+/// The collection naming convention for a document's bucket memberships: `bucket:<root>/<doc>`,
+/// the full `(root, doc_id)` reference form so bucketing *someone else's* document stays
+/// representable - and a namespace distinct from `annot:`, so the two axes never collide.
+pub fn bucket_collection(root: &[u8; 32], doc_id: &[u8; 16]) -> String {
+    format!("bucket:{}/{}", hex::encode(root), hex::encode(doc_id))
+}
+
+fn parse_bucket_collection(name: &str) -> Option<([u8; 32], [u8; 16])> {
+    let (root_hex, doc_id_hex) = name.strip_prefix("bucket:")?.split_once('/')?;
+    let root = crate::pubkey::decode(root_hex)?;
+    let doc_id: [u8; 16] = hex::decode(doc_id_hex).ok()?.try_into().ok()?;
+    Some((root, doc_id))
+}
+
+pub struct Buckets<'s> {
+    store: &'s Store,
+}
+
+impl Buckets<'_> {
+    /// A bucket name past this is becoming a document - a notebook is a short label.
+    pub const MAX_NAME_BYTES: usize = 120;
+
+    fn collection(&self, doc_id: &[u8; 16]) -> String {
+        bucket_collection(&self.store.root, doc_id)
+    }
+
+    fn clean(bucket: &str) -> Result<String, AppError> {
+        let name = bucket.trim().to_string();
+        if name.is_empty() {
+            return Err(AppError::BadRequest("bucket name is empty".into()));
+        }
+        if name.len() > Self::MAX_NAME_BYTES {
+            return Err(AppError::BadRequest(format!(
+                "bucket name exceeds {} bytes",
+                Self::MAX_NAME_BYTES
+            )));
+        }
+        Ok(name)
+    }
+
+    /// Put a document in a bucket (LWW-element-set add; the `(doc, bucket)` pair is the merge
+    /// unit, so two devices bucketing at once union rather than conflict). Idempotent.
+    pub async fn place(&self, doc_id: &[u8; 16], bucket: &str) -> Result<SignedEntry, AppError> {
+        let name = Self::clean(bucket)?;
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: self.collection(doc_id),
+                    key: name,
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// Take a document out of a bucket (LWW-element-set remove; a place/remove race resolves by
+    /// timestamp).
+    pub async fn remove(&self, doc_id: &[u8; 16], bucket: &str) -> Result<SignedEntry, AppError> {
+        let name = Self::clean(bucket)?;
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetRemove,
+                    collection: self.collection(doc_id),
+                    key: name,
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// Every bucket one document is in, sorted.
+    pub async fn of(&self, doc_id: &[u8; 16]) -> Result<Vec<String>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        let mut names: Vec<String> = view
+            .set_elements(&self.collection(doc_id))
+            .into_iter()
+            .map(|e| e.element)
+            .collect();
+        names.sort();
+        Ok(names)
+    }
+
+    /// Each of this identity's own documents mapped to its buckets - the join the mirror row
+    /// carries, so the client can scope and filter by bucket. One view fold, swept by
+    /// collection (own-root only; bucketing another identity's doc is a future surface).
+    pub async fn all(&self) -> Result<BTreeMap<[u8; 16], Vec<String>>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        let mut out: BTreeMap<[u8; 16], Vec<String>> = BTreeMap::new();
+        for collection in view.collections() {
+            let Some((root, doc_id)) = parse_bucket_collection(collection) else {
+                continue;
+            };
+            if root != self.store.root {
+                continue;
+            }
+            let mut names: Vec<String> = view
+                .set_elements(collection)
+                .into_iter()
+                .map(|e| e.element)
+                .collect();
+            if names.is_empty() {
+                continue;
+            }
+            names.sort();
+            out.insert(doc_id, names);
+        }
+        Ok(out)
+    }
+
+    /// The roster: every bucket in use, name and how many of this identity's documents it
+    /// holds. Derived from membership (an empty bucket has no representation yet - that waits
+    /// for the named-bucket registry). Sorted by name.
+    pub async fn roster(&self) -> Result<Vec<(String, usize)>, AppError> {
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for names in self.all().await?.into_values() {
+            for name in names {
+                *counts.entry(name).or_insert(0) += 1;
+            }
+        }
+        Ok(counts.into_iter().collect())
+    }
+
+    /// This identity's own documents currently in `bucket` - the app view's spine (the inverse
+    /// read, same machinery as `own_docs_tagged`, filtered to the bucket namespace).
+    pub async fn own_docs_in(&self, bucket: &str) -> Result<Vec<[u8; 16]>, AppError> {
+        let name = Self::clean(bucket)?;
+        let collections = private::collections_with_element(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            &name,
+        )
+        .await?;
+        Ok(collections
+            .iter()
+            .filter_map(|c| parse_bucket_collection(c))
             .filter(|(root, _)| *root == self.store.root)
             .map(|(_, doc_id)| doc_id)
             .collect())

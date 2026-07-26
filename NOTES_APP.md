@@ -247,6 +247,15 @@ manufactures a divergence conflict with a concurrent prose edit.
   join happens in the stream `gather` (and the HTTP list/tagged/tree reads) via one
   `annotation_map`, so the mirror row is filter-ready without coupling two folds; staleness is
   free, since an annotation write is itself a chain write that ticks the stream cursor.)*
+- **Buckets: the same set mechanism, a separate namespace** (server side shipped 2026-07-26).
+  Which project/notebook a document lives in is unordered membership just like tags - so a
+  `bucket:<root>/<doc_id>` collection beside `annot:<root>/<doc_id>`, the tag machinery reused
+  wholesale. The separation is the point, not incidental: a bucket is the axis search and tags
+  are *scoped to*, so it must not appear in the tag cloud it filters. NOT a `Taxonomy` - no
+  order, no ranks, no tree; annotation-shaped. A `Buckets` store handle, PUT/DELETE membership,
+  a roster (distinct names + counts) and docs-in-bucket reads, and a `buckets` field joined onto
+  the docs mirror row like tags. Buckets are name-keyed for now; named bucket *objects* (minted
+  id, free rename, an app-type field) are the launcher's notebook-picker layer, deferred.
 - **Reserved conventional field, `display_date`** (2026-07-25): a user-claimed date for the
   document, authoritative for list sorting and display over the derived stamps - so a backdated
   import files itself under the date the user claims, not the day they typed it. The value is a

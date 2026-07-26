@@ -1323,3 +1323,30 @@ Two design decisions are recorded in the doctrine, not just the code:
 Server change was one line (root redirect); `/home/*` already served the SPA shell, and the
 page's asset URLs were already absolute, so deep-link refreshes load correctly. 124 integration
 green.
+
+---
+
+## Document bucketing (2026-07-26)
+
+Buckets - which project(s)/notebook(s) a document belongs to - landed on the server. Curtis's
+correction shaped the design: they are NOT a `Taxonomy` (no ordering, no ranks, no tree
+composition), they're **annotation-shaped** - the exact tag mechanism (a per-document
+LWW-element-set, unordered, multiple, unions on concurrent add), but in a SEPARATE collection
+namespace (`bucket:<root>/<doc_id>` beside `annot:<root>/<doc_id>`). The separation is the whole
+point: a bucket is the axis search and tags are *scoped to* ("braise" in the recipe book finds
+braised pork, never the journal), so it must not appear in the tag cloud it filters.
+
+A new `Buckets` store handle in the annotation family: `place`/`remove` (membership), `of`
+(a doc's buckets), `own_docs_in` (a bucket's docs, the inverse read via
+`collections_with_element` filtered to the bucket namespace), `roster` (distinct names + counts),
+and `all` (the doc→buckets join). No new SQL table - buckets reuse the doc-meta chain's private
+set machinery entirely, so the conventions cop needed nothing. HTTP: PUT/DELETE membership, GET
+roster, GET docs-in-bucket. And `DocSummary` gained a `buckets` field joined at the stream
+boundary exactly like tags, so the mirror row carries membership and the client can scope and
+filter with no extra fetch. Four integration tests, including the load-bearing one: a word used
+as both a bucket and a tag stays cleanly separate in both axes.
+
+Deliberately deferred (name-keyed is the minimal foundation; the User-1 rule lets us upgrade
+freely): named bucket *objects* - a minted id so an empty bucket persists and rename is free,
+plus an app-type field - which the launcher's notebook picker will want. For "document
+bucketing," name-keyed membership is the right, minimal axis.

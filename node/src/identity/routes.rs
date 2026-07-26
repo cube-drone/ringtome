@@ -135,6 +135,17 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/tagged/{tag}",
             get(docs_by_tag_handler),
         )
+        // Buckets: which project(s)/notebook(s) a document belongs to - the tag mechanism in
+        // its own namespace, the axis search and tags are scoped to.
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/buckets/{bucket}",
+            put(bucket_put_handler).delete(bucket_delete_handler),
+        )
+        .route("/api/identity/{root}/buckets", get(buckets_roster_handler))
+        .route(
+            "/api/identity/{root}/docs/bucketed/{bucket}",
+            get(docs_by_bucket_handler),
+        )
         // Taxonomies: user-defined ordered lists of document references on the doc-meta chain.
         // Rename/describe ride the annotations routes above (a taxonomy id is annotatable like
         // any doc id); membership and order live here.
@@ -1053,6 +1064,10 @@ struct DocSummary {
     /// any other named annotation. Empty when the doc has none.
     tags: Vec<String>,
     fields: std::collections::BTreeMap<String, String>,
+    /// The document's bucket memberships (its projects/notebooks) - the axis the client scopes
+    /// search and tag-filters to. Joined here like tags, from a separate namespace. Empty when
+    /// the doc is in no bucket.
+    buckets: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -1068,12 +1083,14 @@ struct DocListResponse {
 fn summarize(
     row: crate::record::documents::DocHeadRow,
     annots: &std::collections::BTreeMap<String, crate::record::store::AnnotationRow>,
+    buckets: &std::collections::BTreeMap<String, Vec<String>>,
 ) -> DocSummary {
     let doc_id = hex::encode(row.doc_id);
     let (tags, fields) = annots
         .get(&doc_id)
         .map(|a| (a.tags.clone(), a.fields.clone()))
         .unwrap_or_default();
+    let buckets = buckets.get(&doc_id).cloned().unwrap_or_default();
     DocSummary {
         media: MediaInfo::of_row(&row),
         title: row.title,
@@ -1085,6 +1102,7 @@ fn summarize(
         doc_id,
         tags,
         fields,
+        buckets,
     }
 }
 
@@ -1102,6 +1120,19 @@ async fn annotation_map(
         .collect())
 }
 
+/// Each document's bucket memberships, keyed by doc_id hex - the other `summarize` join input.
+async fn bucket_map(
+    data: &store::Store,
+) -> Result<std::collections::BTreeMap<String, Vec<String>>, AppError> {
+    Ok(data
+        .buckets()
+        .all()
+        .await?
+        .into_iter()
+        .map(|(doc_id, names)| (hex::encode(doc_id), names))
+        .collect())
+}
+
 /// Every document, newest first: the note list. Reads the memoized `doc_heads` rows (one query
 /// after catch-up) instead of folding the full view; the response shape is unchanged.
 async fn docs_list_handler(
@@ -1112,8 +1143,9 @@ async fn docs_list_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let (rows, undecryptable) = data.documents().summaries().await?;
     let annots = annotation_map(&data).await?;
+    let buckets = bucket_map(&data).await?;
     Ok(Json(DocListResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots)).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect(),
         undecryptable,
     }))
 }
@@ -1359,8 +1391,104 @@ async fn docs_by_tag_handler(
         )
     });
     let annots = annotation_map(&data).await?;
+    let buckets = bucket_map(&data).await?;
     Ok(Json(TaggedDocsResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots)).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect(),
+    }))
+}
+
+/// Put a document in a bucket (LWW set-element add; the merge unit is the `(doc, bucket)` pair,
+/// so two devices bucketing at once union). Idempotent.
+async fn bucket_put_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id, bucket)): Path<(String, String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.buckets().place(&doc_id, &bucket).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Take a document out of a bucket (LWW set-element remove; a place/remove race resolves by
+/// timestamp).
+async fn bucket_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id, bucket)): Path<(String, String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.buckets().remove(&doc_id, &bucket).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+#[derive(Serialize)]
+struct BucketRow {
+    name: String,
+    docs: usize,
+}
+
+#[derive(Serialize)]
+struct BucketRosterResponse {
+    buckets: Vec<BucketRow>,
+}
+
+/// Every bucket in use, name and this identity's document count - the notebook roster. Empty
+/// buckets aren't here yet (that waits for the named-bucket registry).
+async fn buckets_roster_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<BucketRosterResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let buckets = data
+        .buckets()
+        .roster()
+        .await?
+        .into_iter()
+        .map(|(name, docs)| BucketRow { name, docs })
+        .collect();
+    Ok(Json(BucketRosterResponse { buckets }))
+}
+
+/// This identity's documents currently in `bucket`, in the docs-list per-doc shape - the app
+/// view's server spine (client filtering off the mirror row is the usual path; this is the
+/// direct query). Same claimed-stamp ordering as the tagged listing.
+async fn docs_by_bucket_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, bucket)): Path<(String, String)>,
+    Query(query): Query<TaggedQuery>,
+) -> Result<Json<TaggedDocsResponse>, AppError> {
+    let by_created = match query.order.as_deref() {
+        None | Some("modified") => false,
+        Some("created") => true,
+        Some(other) => {
+            return Err(AppError::BadRequest(format!(
+                "unknown order {other:?} (modified | created)"
+            )));
+        }
+    };
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let doc_ids = data.buckets().own_docs_in(&bucket).await?;
+    let mut rows = data.documents().summaries_for(&doc_ids).await?;
+    rows.sort_by_key(|r| {
+        (
+            std::cmp::Reverse(if by_created { r.genesis_ms } else { r.head_ms }),
+            r.doc_id,
+        )
+    });
+    let annots = annotation_map(&data).await?;
+    let buckets = bucket_map(&data).await?;
+    Ok(Json(TaggedDocsResponse {
+        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect(),
     }))
 }
 
@@ -1465,12 +1593,13 @@ async fn taxonomy_get_handler(
     let mut own_ids = Vec::new();
     collect_doc_ids(&tree, &own_root, &mut own_ids);
     let annots = annotation_map(&data).await?;
+    let buckets = bucket_map(&data).await?;
     let rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
         .documents()
         .summaries_for(&own_ids)
         .await?
         .into_iter()
-        .map(|r| (r.doc_id, summarize(r, &annots)))
+        .map(|r| (r.doc_id, summarize(r, &annots, &buckets)))
         .collect();
 
     Ok(Json(render_tree(tree, &rows)))
@@ -1800,7 +1929,8 @@ async fn gather(
     let profile = data.profile().all().await?;
     let (rows, _undecryptable) = data.documents().summaries().await?;
     let annots = annotation_map(data).await?;
-    let docs = rows.into_iter().map(|r| summarize(r, &annots)).collect();
+    let buckets = bucket_map(data).await?;
+    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect();
     let taxonomies = data
         .taxonomies()
         .all()
