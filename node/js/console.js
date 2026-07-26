@@ -26,7 +26,7 @@ function Hex(app, key, onLaunch, personaName) {
     // Tiles show the first 10 characters only - a long persona name would otherwise run off the
     // diagonal and clip against the hexagon. The full name still lives in the header and tooltips.
     const label = appLabel(app, personaName) || '';
-    const shown = label.length > 9 ? label.slice(0, 9) + '…' : label;
+    const shown = label.length > 11 ? label.slice(0, 11) + '…' : label;
     const content = app.blank
         ? ''
         : html`
