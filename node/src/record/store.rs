@@ -46,7 +46,7 @@
 // allow comes off when the first 4S route lands.
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::db::Db;
 use ringtome_proto::registry::{entry_type, service};
@@ -379,6 +379,35 @@ impl Store {
 // deliberately NOT last-writer-wins: concurrent saves are detected and both kept
 // (never-lose-words - NOTES_APP, The sync model).
 
+/// The tombstone roster: an LWW-element-set of deleted document ids (hex), on the doc-meta
+/// chain. Deletion is a *fact that syncs*, not an erasure - the version chain stays whole
+/// (Immutable Chains ≠ Immutable Content), the doc simply drops out of every list and search,
+/// and a `restore` (LWW remove) brings it back with its history intact. Exactly the taxonomy
+/// roster's shape: one collection, membership is the fact, convergent by construction. (Dropping
+/// the content blobs is a separate erasure pass - PROJECT_PLAN, Open Items - so a delete here
+/// hides the document without yet reclaiming its bytes.)
+const DELETED_DOCS: &str = "deleted";
+
+/// The pin roster: an LWW-element-set of pinned document ids (hex), on the doc-meta chain -
+/// the delete tombstone's twin, opposite in effect. A pin does NOT filter any read; it rides the
+/// list row as a flag (`DocSummary.pinned`) so the client sorts pinned documents to the top. Same
+/// shape, same convergence, its own collection so a pin is never mistaken for a delete or a tag.
+const PINNED_DOCS: &str = "pinned";
+
+/// The tombstoned doc ids present in a doc-meta view - shared by `deleted()` (the list filter)
+/// and `search_rows` (which already holds a view and reuses it rather than re-folding).
+fn deleted_from_view(view: &private::PrivateView) -> BTreeSet<[u8; 16]> {
+    ids_in(view, DELETED_DOCS)
+}
+
+/// The doc ids present as elements of one doc-meta roster collection (`deleted`, `pinned`).
+fn ids_in(view: &private::PrivateView, collection: &str) -> BTreeSet<[u8; 16]> {
+    view.set_elements(collection)
+        .into_iter()
+        .filter_map(|e| hex::decode(&e.element).ok()?.try_into().ok())
+        .collect()
+}
+
 pub struct Documents<'s> {
     store: &'s Store,
 }
@@ -456,36 +485,136 @@ impl Documents<'_> {
                 annots.insert(doc_id, text);
             }
         }
-        crate::record::documents::search_rows(
+        // Deleted docs drop out of search too, read from the same view we already folded.
+        let deleted: BTreeSet<String> = deleted_from_view(&view)
+            .iter()
+            .map(hex::encode)
+            .collect();
+        let rows = crate::record::documents::search_rows(
             &self.store.db,
             &self.store.authorship.epoch_keys,
             &self.store.files,
             &annots,
         )
-        .await
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter(|r| !deleted.contains(&r.doc_id))
+            .collect())
     }
 
-    /// The docs-list read: every document's memoized display row (`doc_heads`), newest head
-    /// first, plus the undecryptable count - one query after catch-up, no full-view fold.
-    pub async fn summaries(
-        &self,
-    ) -> Result<(Vec<crate::record::documents::DocHeadRow>, usize), AppError> {
-        crate::record::documents::list_heads(&self.store.db, &self.store.authorship.epoch_keys)
+    /// Delete a document: add its id to the tombstone roster (an LWW set-add on doc-meta). The
+    /// version chain is untouched - this is a *hide that syncs*, reversible by `restore`. Every
+    /// list and search read filters the roster, so the doc vanishes from all of them at once.
+    /// Idempotent.
+    pub async fn delete(&self, doc_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: DELETED_DOCS.to_string(),
+                    key: hex::encode(doc_id),
+                    value: None,
+                },
+            )
             .await
     }
 
+    /// Undelete a document (LWW set-remove): it reappears in every list with its history intact,
+    /// since nothing on the version chain was ever removed. A delete/restore race resolves by
+    /// timestamp, like every other LWW fact.
+    pub async fn restore(&self, doc_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetRemove,
+                    collection: DELETED_DOCS.to_string(),
+                    key: hex::encode(doc_id),
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// The tombstone roster: every deleted document's id. The filter every list read applies.
+    pub async fn deleted(&self) -> Result<BTreeSet<[u8; 16]>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        Ok(deleted_from_view(&view))
+    }
+
+    /// Pin a document to the top of the list (an LWW set-add on the `pinned` roster). Unlike
+    /// delete, this changes no read's membership - it only sets the `pinned` flag the list row
+    /// carries, so the client sorts it first. Idempotent.
+    pub async fn pin(&self, doc_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetAdd,
+                    collection: PINNED_DOCS.to_string(),
+                    key: hex::encode(doc_id),
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// Unpin a document (LWW set-remove): it falls back into ordinary date order. A pin/unpin
+    /// race resolves by timestamp.
+    pub async fn unpin(&self, doc_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
+        self.store
+            .write_private(
+                service::DOC_META_PRIVATE,
+                PrivatePlain {
+                    kind: PrivateKind::SetRemove,
+                    collection: PINNED_DOCS.to_string(),
+                    key: hex::encode(doc_id),
+                    value: None,
+                },
+            )
+            .await
+    }
+
+    /// The pin roster: every pinned document's id - the join input that sets `DocSummary.pinned`.
+    pub async fn pinned(&self) -> Result<BTreeSet<[u8; 16]>, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        Ok(ids_in(&view, PINNED_DOCS))
+    }
+
+    /// The docs-list read: every (non-deleted) document's memoized display row (`doc_heads`),
+    /// newest head first, plus the undecryptable count - one query after catch-up, then the
+    /// tombstone filter (a deleted doc still has its `doc_heads` row; it is hidden, not erased).
+    pub async fn summaries(
+        &self,
+    ) -> Result<(Vec<crate::record::documents::DocHeadRow>, usize), AppError> {
+        let (mut rows, undecryptable) =
+            crate::record::documents::list_heads(&self.store.db, &self.store.authorship.epoch_keys)
+                .await?;
+        let deleted = self.deleted().await?;
+        rows.retain(|r| !deleted.contains(&r.doc_id));
+        Ok((rows, undecryptable))
+    }
+
     /// Memoized display rows for a specific set of documents (the docs-by-tag read). Doc ids
-    /// with no local row (annotated but never held) are simply absent; ordering is the caller's.
+    /// with no local row (annotated but never held) are simply absent, as are deleted ones;
+    /// ordering is the caller's.
     pub async fn summaries_for(
         &self,
         doc_ids: &[[u8; 16]],
     ) -> Result<Vec<crate::record::documents::DocHeadRow>, AppError> {
-        crate::record::documents::heads_for(
+        let rows = crate::record::documents::heads_for(
             &self.store.db,
             &self.store.authorship.epoch_keys,
             doc_ids,
         )
-        .await
+        .await?;
+        let deleted = self.deleted().await?;
+        Ok(rows
+            .into_iter()
+            .filter(|r| !deleted.contains(&r.doc_id))
+            .collect())
     }
 
     /// Read and decrypt one version's body. `Ok(None)` when we hold no key for its era or the
@@ -1678,6 +1807,81 @@ mod tests {
             store.annotations().docs_tagged("sunset").await.unwrap(),
             vec![(store.root, pier), (store.root, cat)]
         );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_document_hides_it_from_every_list_and_restore_brings_it_back() {
+        use crate::record::documents::Format;
+        let store = test_store().await;
+
+        let (keep, _) = store
+            .documents()
+            .create("keeper", b"the good one", Format::Plaintext)
+            .await
+            .unwrap();
+        let (gone, _) = store
+            .documents()
+            .create("regret", b"braise the pork", Format::Plaintext)
+            .await
+            .unwrap();
+        store.annotations().tag(&gone, "braise").await.unwrap();
+
+        // Both present up front, in the list and (for the tagged one) via the inverse read.
+        let ids = |rows: &[crate::record::documents::DocHeadRow]| {
+            rows.iter().map(|r| r.doc_id).collect::<std::collections::BTreeSet<_>>()
+        };
+        let (rows, _) = store.documents().summaries().await.unwrap();
+        assert!(ids(&rows).contains(&gone) && ids(&rows).contains(&keep));
+
+        // Delete: it leaves the main list AND the tag/bucket-shaped `summaries_for` read, while
+        // the keeper is untouched. The version chain is not consulted - the tombstone is enough.
+        store.documents().delete(&gone).await.unwrap();
+        let (rows, _) = store.documents().summaries().await.unwrap();
+        assert!(!ids(&rows).contains(&gone), "deleted doc is hidden from the list");
+        assert!(ids(&rows).contains(&keep), "the keeper stays");
+        let by_id = store.documents().summaries_for(&[gone, keep]).await.unwrap();
+        assert_eq!(ids(&by_id), std::collections::BTreeSet::from([keep]));
+        assert!(store.documents().deleted().await.unwrap().contains(&gone));
+
+        // Restore: the tombstone is an LWW fact, so removing it un-hides the document whole -
+        // its history was never touched.
+        store.documents().restore(&gone).await.unwrap();
+        let (rows, _) = store.documents().summaries().await.unwrap();
+        assert!(ids(&rows).contains(&gone), "restore brings it back");
+        assert!(store.documents().deleted().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn pinning_flags_a_document_without_hiding_it_and_unpin_clears_it() {
+        use crate::record::documents::Format;
+        let store = test_store().await;
+        let (a, _) = store
+            .documents()
+            .create("a", b"one", Format::Plaintext)
+            .await
+            .unwrap();
+        let (b, _) = store
+            .documents()
+            .create("b", b"two", Format::Plaintext)
+            .await
+            .unwrap();
+
+        assert!(store.documents().pinned().await.unwrap().is_empty());
+
+        // Pin `a`: it's flagged, but STILL in the list (a pin sorts, it never filters - the
+        // client orders on the flag; the server keeps every row).
+        store.documents().pin(&a).await.unwrap();
+        assert_eq!(
+            store.documents().pinned().await.unwrap(),
+            std::collections::BTreeSet::from([a])
+        );
+        let (rows, _) = store.documents().summaries().await.unwrap();
+        let ids: std::collections::BTreeSet<_> = rows.iter().map(|r| r.doc_id).collect();
+        assert!(ids.contains(&a) && ids.contains(&b), "pinning hides nothing");
+
+        // Unpin: the flag clears (LWW remove).
+        store.documents().unpin(&a).await.unwrap();
+        assert!(store.documents().pinned().await.unwrap().is_empty());
     }
 
     #[tokio::test]

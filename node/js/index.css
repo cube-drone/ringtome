@@ -1217,6 +1217,30 @@ body {
     border-color: var(--sea);
 }
 
+/* Delete is the one destructive chip: coral, and it only warms up on hover so it never shouts
+   from the header until you reach for it. */
+.chip-delete {
+    color: var(--coral);
+}
+
+.chip-delete:hover {
+    border-color: var(--coral);
+    background: var(--coral);
+    color: var(--dock-text);
+}
+
+/* A pinned document's chip reads as "on": teal fill, so pin state is legible at a glance. */
+.chip-pinned {
+    color: var(--dock-text);
+    background: var(--teal);
+    border-color: var(--teal);
+}
+
+/* The little pin ahead of a pinned row's title. */
+.note-row-pin {
+    font-size: 0.8em;
+}
+
 .waiting-dot {
     display: inline-block;
     width: 8px;

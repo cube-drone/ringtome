@@ -70,7 +70,7 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId, features }) => {
+export const Editor = ({ root, docId, features, onDeleted }) => {
     const feat = features || featuresOf();
     const [loaded, setLoaded] = useState(null); // the fetched detail this session started from
     const [title, setTitle] = useState('');
@@ -172,6 +172,36 @@ export const Editor = ({ root, docId, features }) => {
         setStatus('dirty');
         if (m.timer) clearTimeout(m.timer);
         m.timer = setTimeout(() => saveRef.current(), AUTOSAVE_MS);
+    };
+
+    // Pin / unpin this document (a doc-meta flag that floats it to the top of the list). The
+    // current state comes from the live row at click time, so the button always toggles right.
+    const togglePin = async (isPinned) => {
+        try {
+            await api(`/api/identity/${root}/docs/${docId}/pin`, {
+                method: isPinned ? 'DELETE' : 'PUT',
+            });
+        } catch (e) {
+            setError(e.message);
+            setStatus('error');
+        }
+    };
+
+    // Delete this document: a reversible tombstone (the version chain stays; the doc drops out
+    // of every list). Disarm the buffer FIRST - otherwise the doc-switch unmount flush would
+    // save a fresh version onto the doc we're deleting. Then navigate away via onDeleted.
+    const remove = async () => {
+        if (!confirm('Delete this document? It leaves the list right away.')) return;
+        const m = machine.current;
+        m.dirty = false;
+        if (m.timer) clearTimeout(m.timer);
+        try {
+            await api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' });
+            onDeleted && onDeleted();
+        } catch (e) {
+            setError(e.message);
+            setStatus('error');
+        }
     };
 
     useEffect(() => {
@@ -398,6 +428,7 @@ export const Editor = ({ root, docId, features }) => {
                               setTitle(e.currentTarget.value);
                               touched();
                           }}
+                          onBlur=${() => saveRef.current()}
                           placeholder="untitled"
                       />`}
                 <span class="reader-chips">
@@ -431,6 +462,19 @@ export const Editor = ({ root, docId, features }) => {
                             }
                         }}
                     >${dump ? 'close debug' : 'debug'}</button>`}
+                    <button
+                        class=${row && row.pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
+                        title=${row && row.pinned
+                            ? 'unpin from the top of the list'
+                            : 'pin to the top of the list'}
+                        onClick=${() => togglePin(row && row.pinned)}
+                    >${row && row.pinned ? '📌 pinned' : 'pin'}</button>
+                    ${onDeleted &&
+                    html`<button
+                        class="chip chip-button chip-delete"
+                        title="delete this document (it leaves every list; the history is kept)"
+                        onClick=${remove}
+                    >delete</button>`}
                 </span>
             </header>
             <${Annotations} root=${root} docId=${docId} features=${feat} />

@@ -214,6 +214,16 @@ HISTORY.md.
 
 Work that survived its milestone lives here until delivered (then it moves to HISTORY):
 
+- **Delete's other half + a visible undo** (opened 2026-07-26, with the delete button): deletion
+  ships as a reversible tombstone (a `deleted` LWW-element-set on doc-meta; the doc leaves every
+  list and search, the version chain stays whole). Two pieces are owed. (1) **Dropping the content
+  blobs** - the doctrine's second half (NOTES_APP: "a tombstone plus dropping its files"); today's
+  delete hides bytes but doesn't reclaim them. Natural home is a GC pass over blobs no live
+  `doc_heads` row references, gated on the deleted set; lands well with snapshots/retention. (2) A
+  **visible restore/undo** - the `Documents::restore` verb exists and is reversible by
+  construction, but no UI calls it, so a deleted doc is currently recoverable only by a direct
+  set-remove. A "recently deleted" tray (read the tombstone roster, offer restore) is the small
+  surface owed. Trigger: the first time someone deletes something they wanted.
 - **Fork-aftermath dragon** (owed since M3): schema room for fork *evidence* plus the re-signing
   recovery flow - due before or with whatever first shows a fork to a human (4C's key screens
   are the likely trigger).

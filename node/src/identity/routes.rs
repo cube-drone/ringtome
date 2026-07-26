@@ -83,7 +83,14 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/{doc_id}",
             get(docs_get_handler)
                 .put(docs_save_handler)
+                .delete(docs_delete_handler)
                 .layer(DefaultBodyLimit::max(limits.document)),
+        )
+        // Pin a document to the top of its list (PUT) or release it (DELETE) - a doc-meta flag,
+        // like delete but opposite in effect.
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/pin",
+            put(pin_put_handler).delete(pin_delete_handler),
         )
         // Binary document bodies (images, etc.): metadata rides the query string, raw bytes ride
         // the request/response body - a webp can't live in a JSON string.
@@ -737,6 +744,54 @@ async fn docs_save_handler(
     }))
 }
 
+/// Delete a document: a tombstone on the doc-meta chain (an LWW set-add) that hides it from
+/// every list and search. The version chain is untouched - a `restore` would bring it back with
+/// its history - so this is reversible-by-design, not an erasure (Immutable Chains ≠ Immutable
+/// Content). Idempotent: deleting an already-deleted doc is a no-op re-add.
+async fn docs_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.documents().delete(&doc_id).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Pin a document (LWW set-add): it sorts to the top of every list until unpinned. Idempotent.
+async fn pin_put_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.documents().pin(&doc_id).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Unpin a document (LWW set-remove: a pin/unpin race resolves by timestamp).
+async fn pin_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let signed = data.documents().unpin(&doc_id).await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
 // --- binary bodies (images) ---------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -1075,6 +1130,9 @@ struct DocSummary {
     /// search and tag-filters to. Joined here like tags, from a separate namespace. Empty when
     /// the doc is in no bucket.
     buckets: Vec<String>,
+    /// Pinned to the top of the list (a doc-meta roster flag). Sorting is the client's; the
+    /// server only reports the fact.
+    pinned: bool,
 }
 
 #[derive(Serialize)]
@@ -1091,7 +1149,9 @@ fn summarize(
     row: crate::record::documents::DocHeadRow,
     annots: &std::collections::BTreeMap<String, crate::record::store::AnnotationRow>,
     buckets: &std::collections::BTreeMap<String, Vec<String>>,
+    pinned: &std::collections::BTreeSet<[u8; 16]>,
 ) -> DocSummary {
+    let is_pinned = pinned.contains(&row.doc_id);
     let doc_id = hex::encode(row.doc_id);
     let (tags, fields) = annots
         .get(&doc_id)
@@ -1110,6 +1170,7 @@ fn summarize(
         tags,
         fields,
         buckets,
+        pinned: is_pinned,
     }
 }
 
@@ -1151,8 +1212,9 @@ async fn docs_list_handler(
     let (rows, undecryptable) = data.documents().summaries().await?;
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
+    let pinned = data.documents().pinned().await?;
     Ok(Json(DocListResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect(),
         undecryptable,
     }))
 }
@@ -1399,8 +1461,9 @@ async fn docs_by_tag_handler(
     });
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
+    let pinned = data.documents().pinned().await?;
     Ok(Json(TaggedDocsResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect(),
     }))
 }
 
@@ -1539,8 +1602,9 @@ async fn docs_by_bucket_handler(
     });
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
+    let pinned = data.documents().pinned().await?;
     Ok(Json(TaggedDocsResponse {
-        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect(),
+        docs: rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect(),
     }))
 }
 
@@ -1646,12 +1710,13 @@ async fn taxonomy_get_handler(
     collect_doc_ids(&tree, &own_root, &mut own_ids);
     let annots = annotation_map(&data).await?;
     let buckets = bucket_map(&data).await?;
+    let pinned = data.documents().pinned().await?;
     let rows: std::collections::BTreeMap<[u8; 16], DocSummary> = data
         .documents()
         .summaries_for(&own_ids)
         .await?
         .into_iter()
-        .map(|r| (r.doc_id, summarize(r, &annots, &buckets)))
+        .map(|r| (r.doc_id, summarize(r, &annots, &buckets, &pinned)))
         .collect();
 
     Ok(Json(render_tree(tree, &rows)))
@@ -1984,7 +2049,8 @@ async fn gather(
     let (rows, _undecryptable) = data.documents().summaries().await?;
     let annots = annotation_map(data).await?;
     let buckets = bucket_map(data).await?;
-    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets)).collect();
+    let pinned = data.documents().pinned().await?;
+    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect();
     let taxonomies = data
         .taxonomies()
         .all()

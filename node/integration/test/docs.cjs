@@ -297,6 +297,76 @@ describe("versioned documents (notes)", function () {
         assert.equal(explained.message, job.error, "and it matches the queue's tombstone");
     });
 
+    it("deletes a document: it leaves every list surface but stays whole on the chain", async function () {
+        const user = await makeUserFetch({ prefix: "docsdelete" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const keep = await createDoc(user, root, "keeper", "the good hat");
+        const gone = await createDoc(user, root, "regret", "a braised blunder");
+        // Tag the doomed doc so we can also prove the inverse read (docs-by-tag, which goes
+        // through summaries_for) drops it.
+        await user(`api/identity/${root}/docs/${gone.doc_id}/annotations/tags/braise`, {
+            method: "PUT",
+        });
+
+        // Both present, both findable up front.
+        let list = await listDocs(user, root);
+        assert.equal(list.docs.length, 2);
+        let tagged = await (await user(`api/identity/${root}/docs/tagged/braise`)).json();
+        assert.equal(tagged.docs.length, 1, "the tag finds it before deletion");
+
+        // DELETE the unwanted one. It drops out of the list immediately (the tombstone filters
+        // the same doc_heads spine every read shares).
+        const res = await user(`api/identity/${root}/docs/${gone.doc_id}`, { method: "DELETE" });
+        assert.equal(res.status, 200);
+        list = await listDocs(user, root);
+        assert.deepEqual(
+            list.docs.map((d) => d.doc_id),
+            [keep.doc_id],
+            "only the keeper remains"
+        );
+
+        // The inverse read filters it too - a deleted doc is gone from every list surface, not
+        // just the main one.
+        tagged = await (await user(`api/identity/${root}/docs/tagged/braise`)).json();
+        assert.equal(tagged.docs.length, 0, "the tag no longer surfaces the deleted doc");
+
+        // The version chain was never touched: the header is still fetchable by id. Delete hides,
+        // it does not erase (Immutable Chains != Immutable Content).
+        const detail = await getDoc(user, root, gone.doc_id);
+        assert.equal(detail.title, "regret", "the document itself is still on the chain");
+
+        // Deleting again is idempotent (a no-op re-add), not an error.
+        const again = await user(`api/identity/${root}/docs/${gone.doc_id}`, { method: "DELETE" });
+        assert.equal(again.status, 200);
+    });
+
+    it("pins a document: the list row carries the flag, and unpin clears it", async function () {
+        const user = await makeUserFetch({ prefix: "docspin" });
+        const created = await (await user("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const plain = await createDoc(user, root, "ordinary", "just a note");
+        const star = await createDoc(user, root, "important", "read me first");
+
+        // Nothing pinned to start.
+        let list = await listDocs(user, root);
+        assert.ok(list.docs.every((d) => d.pinned === false), "no doc starts pinned");
+
+        // Pin one: its list row (and only its row) reports pinned.
+        const res = await user(`api/identity/${root}/docs/${star.doc_id}/pin`, { method: "PUT" });
+        assert.equal(res.status, 200);
+        list = await listDocs(user, root);
+        assert.equal(list.docs.find((d) => d.doc_id === star.doc_id).pinned, true);
+        assert.equal(list.docs.find((d) => d.doc_id === plain.doc_id).pinned, false);
+
+        // Unpin: the flag clears.
+        await user(`api/identity/${root}/docs/${star.doc_id}/pin`, { method: "DELETE" });
+        list = await listDocs(user, root);
+        assert.ok(list.docs.every((d) => d.pinned === false), "unpin clears the flag");
+    });
+
     it("rejects an oversized text document with 413", async function () {
         const user = await makeUserFetch({ prefix: "docsnovel" });
         const created = await (await user("api/identity", { method: "POST" })).json();

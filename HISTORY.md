@@ -1450,3 +1450,63 @@ carry build order. The client dropped its trailing `.sort()` on the tag chips; t
 delivers them oldest-first and optimistic adds append at the end, so a new tag lands where you'd
 expect. The tag-frequency sidebar stays frequency-sorted (a different question). No schema change
 - the order was in the stamp the whole time; we were throwing it away at the view boundary.
+
+---
+
+## Title edits settle on blur, not on the 10s autosave (2026-07-26)
+
+A field report: tags update instantly but a title change "takes a cycle". The cause is
+structural - a tag is an annotation (immediate small write, sub-second stream echo, so the list
+row catches up at once), while the title is part of the document *version* and rode the editor's
+10-second autosave debounce. Nothing left the building until that timer fired, so the doc-list
+row kept showing the old title / "untitled" for up to ten seconds. The title input now flushes
+the save on blur (the discipline annotation fields already use), so leaving the field settles the
+row within a round-trip. Body edits keep the 10s debounce on purpose - minting a version per
+keystroke is exactly what that timer prevents; the title is small and the thing you glance at the
+list to confirm, so it earns the early flush.
+
+---
+
+## Delete a document: a reversible tombstone (2026-07-26)
+
+A delete button, in every documents app (Notes, Recipes, and the media Reader). Deletion is the
+tombstone half of the deletability doctrine (NOTES_APP: "a tombstone plus dropping its files"):
+the id joins a `deleted` LWW-element-set on the doc-meta chain - the taxonomy-roster shape exactly
+- and the document drops out of every list and search at once. The version chain is untouched, so
+`restore` (an LWW set-remove) brings the document back whole; a delete/restore race resolves by
+timestamp like any other LWW fact. It is a hide that syncs, not an erasure.
+
+The filter is centralized where the codebase already centralizes: every doc read is a method on
+the `Documents` store handle (`summaries`, `summaries_for`, `search_rows`), and all three now drop
+tombstoned ids - so all six route surfaces (list, stream, by-tag, by-bucket, taxonomy members,
+search) are covered with zero route changes. The stream's whole-kind refresh does the rest: a
+delete moves the doc-meta frontier, the cursor ticks, and the mirror clears-and-replaces the docs
+kind, so the doc vanishes from every open browser in a round-trip.
+
+Client: a coral `delete` chip in the editor/reader header (warms up only on hover, never shouts),
+behind a confirm. The editor disarms its dirty buffer BEFORE navigating away - otherwise the
+doc-switch unmount flush would save a fresh version onto the very doc being tombstoned. On success
+it routes back to the app's list; the now-deleted row is already gone from the live mirror.
+
+Two residuals, both named in NEXT_STEPS: dropping the content blobs (the other half of the
+doctrine - this hides bytes, doesn't yet reclaim them), and a visible undo/restore surface (the
+`restore` verb exists on the store handle and is reversible by construction; nothing in the UI
+calls it yet - a deleted doc is currently recoverable only by a direct set-remove).
+
+---
+
+## Pin a document to the top of the list (2026-07-26)
+
+The delete tombstone's twin, opposite in effect. A `pinned` LWW-element-set on the doc-meta chain
+(its own collection, never a hidden tag - a tag would leak into the tag cloud, the row chips, and
+the search index, the same reason buckets stayed out of the tag namespace). Unlike delete, a pin
+filters nothing: it rides the list row as `DocSummary.pinned`, joined at `summarize` beside tags
+and buckets, and the client sorts pinned documents first, then by claimed date. So the ordering
+lives entirely on the client; the server only reports the fact.
+
+Backend: `Documents::pin`/`unpin`/`pinned`, a `PUT`/`DELETE .../docs/{id}/pin` route, and the
+`pinned` set threaded through the five `summarize` call sites. Client: a teal "pin"/"📌 pinned"
+chip in the editor and reader headers (reading pin state from the same live mirror row it already
+watches), and a small 📌 ahead of a pinned row's title. Propagation is free - the pin moves the
+doc-meta frontier, the stream re-gathers, and the mirror's whole-docs refresh carries the new flag
+to every open browser.

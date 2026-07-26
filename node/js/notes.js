@@ -36,10 +36,33 @@ const when = (ms) => new Date(ms).toLocaleString();
 // The reader: read-only display of one document's resolved current state. `body` arrives
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
-const Reader = ({ root, docId }) => {
+const Reader = ({ root, docId, onDeleted }) => {
     const [doc, setDoc] = useState(null);
     const [error, setError] = useState(null);
     const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
+    // Pin state rides the mirror row (not the doc detail), so read it live from there.
+    const row = useLive(() => (docId ? openMirror(root).docs.get(docId) : null), [root, docId]);
+    const pinned = !!(row && row.pinned);
+
+    const togglePin = async () => {
+        try {
+            await api(`/api/identity/${root}/docs/${docId}/pin`, {
+                method: pinned ? 'DELETE' : 'PUT',
+            });
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+
+    const remove = async () => {
+        if (!confirm('Delete this document? It leaves the list right away.')) return;
+        try {
+            await api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' });
+            onDeleted && onDeleted();
+        } catch (e) {
+            setError(e.message);
+        }
+    };
 
     useEffect(() => {
         setDoc(null);
@@ -113,6 +136,19 @@ const Reader = ({ root, docId }) => {
                         : html`<span class="chip chip-merged" title="changes from two computers, woven together cleanly">merged</span>`)}
                     <span class="chip">${doc.format}</span>
                     <span class="chip">read-only</span>
+                    <button
+                        class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
+                        title=${pinned
+                            ? 'unpin from the top of the list'
+                            : 'pin to the top of the list'}
+                        onClick=${togglePin}
+                    >${pinned ? '📌 pinned' : 'pin'}</button>
+                    ${onDeleted &&
+                    html`<button
+                        class="chip chip-button chip-delete"
+                        title="delete this document (it leaves every list; the history is kept)"
+                        onClick=${remove}
+                    >delete</button>`}
                 </span>
             </header>
             ${body}
@@ -122,14 +158,20 @@ const Reader = ({ root, docId }) => {
 
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
-const RightColumn = ({ root, docId, docs, features }) => {
+const RightColumn = ({ root, docId, docs, features, onDeleted }) => {
     if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
     if (format === 'plaintext' || format === 'marquee') {
-        return html`<${Editor} root=${root} docId=${docId} key=${docId} features=${features} />`;
+        return html`<${Editor}
+            root=${root}
+            docId=${docId}
+            key=${docId}
+            features=${features}
+            onDeleted=${onDeleted}
+        />`;
     }
-    return html`<${Reader} root=${root} docId=${docId} key=${docId} />`;
+    return html`<${Reader} root=${root} docId=${docId} key=${docId} onDeleted=${onDeleted} />`;
 };
 
 // The documents app - the shared surface every "documents" application (Notes, Recipes, ...)
@@ -167,11 +209,17 @@ export const DocsApp = ({ app, current, docId }) => {
     // Newest first by the CLAIMED date - a doc's own display_date if it set one, else its real
     // last-updated stamp. So a note backdated to 2015 files itself under 2015, not the day you
     // typed it (the user's date is authoritative, per Curtis's ask).
+    // Pinned documents float to the top (a doc-meta flag), then newest-claimed-date first.
     const list = (docs || [])
         .filter(inThisApp)
         .filter((d) => hits === null || hits.has(d.doc_id))
         .filter((d) => tagFilter.every((t) => (d.tags || []).includes(t)))
-        .sort((a, b) => claimedMs(b) - claimedMs(a) || (a.doc_id < b.doc_id ? 1 : -1));
+        .sort(
+            (a, b) =>
+                (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
+                claimedMs(b) - claimedMs(a) ||
+                (a.doc_id < b.doc_id ? 1 : -1)
+        );
 
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
@@ -266,7 +314,9 @@ export const DocsApp = ({ app, current, docId }) => {
                             class=${d.doc_id === selected ? 'note-row selected' : 'note-row'}
                             onClick=${() => select(d.doc_id)}
                         >
-                            <span class="note-row-title">${d.title || 'untitled'}</span>
+                            <span class="note-row-title">
+                                ${d.pinned && html`<span class="note-row-pin" title="pinned">📌</span> `}${d.title || 'untitled'}
+                            </span>
                             ${(feat.date || d.diverged) &&
                             html`<span class="note-row-when">
                                 ${feat.date &&
@@ -302,7 +352,13 @@ export const DocsApp = ({ app, current, docId }) => {
                         ${hits === null ? 'nothing here yet.' : 'nothing matches.'}
                     </p>`}
                 </aside>
-                <${RightColumn} root=${root} docId=${selected} docs=${docs} features=${feat} />
+                <${RightColumn}
+                    root=${root}
+                    docId=${selected}
+                    docs=${docs}
+                    features=${feat}
+                    onDeleted=${() => select(null)}
+                />
             </div>
         </div>
     `;
