@@ -379,12 +379,19 @@ export const NamePicker = ({ persona, account }) => {
 // The persona badge: chip + name (or shortcode) - a persona never renders as bare hex. The
 // name reads from the live mirror first, so a rename on ANY of your computers lands here
 // within seconds; the fetched-at-open name is the fallback while the mirror fills.
-export const PersonaBadge = ({ current }) => {
+// The persona's live display name, or '' if it has none yet. Reads the mirror first so a rename
+// on any computer lands within seconds; the fetched-at-open name is the fallback while the mirror
+// fills. Safe on a null persona (pre-open) - returns ''. Callers add their own shortcode fallback.
+export function usePersonaName(current) {
     const liveName = useLive(
-        () => openMirror(current.root).profile.get('name'),
-        [current.root]
+        () => (current ? openMirror(current.root).profile.get('name') : Promise.resolve(null)),
+        [current && current.root]
     );
-    const name = (liveName && liveName.value) || current.name;
+    return (liveName && liveName.value) || (current && current.name) || '';
+}
+
+export const PersonaBadge = ({ current }) => {
+    const name = usePersonaName(current);
     return html`
         <span class="persona-badge">
             <span
@@ -400,8 +407,13 @@ export const PersonaBadge = ({ current }) => {
 // menu - profile, your computers, log out - each its own place under /home/persona.
 export const PersonaHome = ({ persona, session }) => {
     const current = persona.current;
+    // Live name (mirror-first), so a rename lands here as fast as it does in the header and badge -
+    // not the fetched-at-open snapshot, which only refreshed on reload.
+    const name = usePersonaName(current);
     const logout = async () => {
-        // Heading out forgets this browser: stream stopped, mirror dropped.
+        // Heading out forgets this browser: stream stopped, mirror dropped. Confirm first - it's
+        // easy to hit by mistake, and coming back means signing in again.
+        if (!confirm('Log out of this browser? You will sign in again to come back.')) return;
         await persona.shutdown();
         session.logout();
     };
@@ -412,7 +424,7 @@ export const PersonaHome = ({ persona, session }) => {
                     class="persona-chip"
                     style="background: hsl(${personaHue(current.root)}, 60%, 55%)"
                 ></span>
-                ${current.name || `persona ${shortcode(current.root)}`}
+                ${name || `persona ${shortcode(current.root)}`}
             </h1>
             <nav class="persona-menu">
                 <a class="persona-menu-item" href="/home/persona/profile">
@@ -501,7 +513,6 @@ export const Profile = ({ current }) => {
     return html`
         <div class="persona-page">
             <div class="persona-page-head">
-                <a class="back-link" href="/home/persona"><${Icons.back} /> persona</a>
                 <h1 class="persona-page-title">profile</h1>
             </div>
             <label class="profile-field">

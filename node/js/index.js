@@ -12,11 +12,12 @@ import {
     PersonaBadge,
     PersonaHome,
     Profile,
+    usePersonaName,
 } from './persona.js';
 import { Computers } from './computers.js';
 import { DocsApp } from './notes.js';
 import { Console } from './console.js';
-import { liveApps } from './apps.js';
+import { docApps, appById, appLabel } from './apps.js';
 import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
@@ -45,14 +46,29 @@ const Inside = ({ session }) => {
     const open = persona.state === 'open';
     const inApp = loc.path !== '/home';
 
+    // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
+    // inside it - the two facts the unified app header needs. Null for persona/not-found routes,
+    // which keep their own heads and so get no app header.
+    const pathParts = loc.path.split('/'); // ['', 'home', '<app>', '<doc?>']
+    const appHere = appById(pathParts[2] || '');
+    const inDoc = !!(appHere && pathParts[3]);
+
+    // The Persona app wears the current persona's name (live), everywhere its label shows - the
+    // console tile and the app header. '' until a persona is open or named, and then `appLabel`
+    // falls the Persona tile back to "Persona".
+    const personaName = usePersonaName(persona.current);
+
     // The bar shows the *persona* once one is open; the account username recedes into a
     // hover title - the account never gets a noun (GLOSSARY, Cozyweb language mapping).
     // Left: app navigation (back to the console). Right: who you are + a gear into persona
     // management (profile, your computers, log out all live under /home/persona now).
     const bar = html`
         <header class="session-bar">
+            ${/* An open app carries its own close in the unified header, so the footer only shows
+                a way out for shell routes that DON'T get that header (persona management, a
+                not-found) - which would otherwise be stranded. The empty span keeps identity right. */ ''}
             <span class="session-nav">
-                ${open && inApp &&
+                ${open && inApp && !appHere &&
                 html`<button class="session-out" onClick=${() => loc.route('/home')}><${Icons.back} /> apps</button>`}
             </span>
             <span class="session-identity" title="signed in as ${session.account.username}">
@@ -69,14 +85,38 @@ const Inside = ({ session }) => {
         </header>
     `;
 
-    // Two wrappers over the same footer. `shell` is the bordered app frame - drawn the way the
-    // hexagon tiles are, two clip-path layers (dark outside, surface inside) so the corners step
-    // like pixels - and it means "an app is open". `stage` is the bare desktop: the app selector
-    // and the pre-persona flows aren't apps, so they don't get a shell. The hexagons SUMMON apps;
-    // the launcher doesn't live inside one. Either way the footer (`bar`) renders after, and the
-    // flex column in `.app-main` stacks the region above it.
+    // The unified app header: a solid ink band (the frame colour) atop every app - its title on
+    // the left, back/close on the right - so no app draws its own top bar. Back appears only
+    // inside a document (return to the app's list); close leaves the app for the launcher. Absent
+    // for persona/not-found (appHere null), which carry their own heads.
+    const appHeader =
+        appHere &&
+        html`<header class="app-header">
+            <span class="app-header-title"><${appHere.icon} /> ${appLabel(appHere, personaName)}</span>
+            <span class="app-header-actions">
+                ${inDoc &&
+                html`<button
+                    class="app-header-btn"
+                    title="back to the list"
+                    onClick=${() => loc.route('/home/' + appHere.id)}
+                ><${Icons.back} /> back</button>`}
+                <button
+                    class="app-header-btn"
+                    title="close this app"
+                    onClick=${() => loc.route('/home')}
+                ><${Icons.close} /> close</button>
+            </span>
+        </header>`;
+
+    // Two wrappers over the same footer. `shell` is the bordered app frame (an app is open): the
+    // ink header band, then the surface content. `stage` is the bare desktop - the app selector
+    // and pre-persona flows, which aren't apps and so get no shell. Either way the footer (`bar`)
+    // renders after, and the flex column in `.app-main` stacks the region above it.
     const shell = (content) =>
-        html`<div class="app-frame"><div class="app-frame-inner">${content}</div></div>${bar}`;
+        html`<div class="app-frame">
+            ${appHeader}
+            <div class="app-frame-inner">${content}</div>
+        </div>${bar}`;
     const stage = (content) => html`<div class="app-stage">${content}</div>${bar}`;
 
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
@@ -101,11 +141,15 @@ const Inside = ({ session }) => {
     // on the bare stage; an open app (any deeper route) gets the shell. `inApp` is that line.
     const routed = html`
         <${Router}>
-            <${Console} path="/home" onLaunch=${(id) => loc.route('/home/' + id)} />
+            <${Console}
+                path="/home"
+                onLaunch=${(id) => loc.route('/home/' + id)}
+                personaName=${personaName}
+            />
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
-            ${liveApps.map(
+            ${docApps.map(
                 (app) => html`<${DocsApp}
                     path="/home/${app.id}/:docId?"
                     key=${app.id}

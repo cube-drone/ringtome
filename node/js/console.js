@@ -4,7 +4,7 @@
 import { h } from 'preact';
 import htm from 'htm';
 
-import { APPS } from './apps.js';
+import { APPS, appLabel } from './apps.js';
 
 const html = htm.bind(h);
 
@@ -22,12 +22,12 @@ function chunk(arr, n) {
 
 // One hexagon: three nested clipped layers make the double border - the outer carries the dark
 // ring, the middle the lighter ring, the face the surface and content.
-function Hex(app, key, onLaunch) {
+function Hex(app, key, onLaunch, personaName) {
     const content = app.blank
         ? ''
         : html`
               <span class="app-tile-icon"><${app.icon} /></span>
-              <span class="app-tile-name">${app.name}</span>
+              <span class="app-tile-name">${appLabel(app, personaName)}</span>
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
     const cls = `app-tile${app.soon ? ' soon' : ''}${app.blank ? ' blank' : ''}`;
@@ -36,7 +36,7 @@ function Hex(app, key, onLaunch) {
         : html`<div class=${cls} key=${key}>${stack}</div>`;
 }
 
-export const Console = ({ onLaunch }) => {
+export const Console = ({ onLaunch, personaName }) => {
     const rows = chunk(APPS, COLUMNS);
     return html`
         <div class="console">
@@ -44,7 +44,9 @@ export const Console = ({ onLaunch }) => {
                 ${rows.map(
                     (row, ri) => html`
                         <div class=${ri % 2 ? 'hex-row shift' : 'hex-row'} key=${ri}>
-                            ${row.map((app, ci) => Hex(app, ri * COLUMNS + ci, onLaunch))}
+                            ${row.map((app, ci) =>
+                                Hex(app, ri * COLUMNS + ci, onLaunch, personaName)
+                            )}
                         </div>
                     `
                 )}

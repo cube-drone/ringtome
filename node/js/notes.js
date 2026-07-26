@@ -264,12 +264,6 @@ export const DocsApp = ({ app, current, docId }) => {
 
     return html`
         <div class="notes">
-            <header class="notes-bar">
-                <span class="notes-title"><${app.icon} /> ${app.name}</span>
-                <span class="notes-count">
-                    ${docs ? `${list.length} thing${list.length === 1 ? '' : 's'}` : '…'}
-                </span>
-            </header>
             <div class="notes-columns">
                 ${feat.tagColumn &&
                 html`<aside class="tag-column">

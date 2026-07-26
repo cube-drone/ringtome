@@ -12,6 +12,10 @@ import { Icons } from './icons.js';
 export const DEFAULT_STYLE = 'default';
 
 export const APPS = [
+    // Persona is a SYSTEM app: a real app with its own tile and the unified header, but its own
+    // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
+    // is excluded from the document-app routes. Also reachable from the footer gear.
+    { id: 'persona', name: 'Persona', icon: Icons.persona, live: true, system: true },
     { id: 'notes', name: 'Notes', icon: Icons.notes, style: 'default', live: true },
     {
         id: 'recipes',
@@ -35,7 +39,6 @@ export const APPS = [
     { id: 'blog', name: 'Blog', icon: Icons.blog, soon: true },
     { id: 'book', name: 'Book', icon: Icons.book, soon: true },
     { blank: true },
-    { blank: true },
 ];
 
 // What an app's surface offers. The default is the full Notes experience; an app overrides
@@ -52,14 +55,25 @@ const DEFAULT_FEATURES = {
 /// The resolved feature set for an app (defaults, then the app's overrides). Safe on undefined.
 export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.features) || {}) });
 
-/// The launchable apps, in registry order.
+/// The launchable apps, in registry order (the console tiles).
 export const liveApps = APPS.filter((a) => a.live);
 
-/// An app by its route id (live apps only).
+/// The document apps: live apps that own a document surface (a `style`). These get the generated
+/// `/home/<app>/<doc?>` routes; system apps like Persona carry their own routes instead.
+export const docApps = liveApps.filter((a) => a.style);
+
+/// An app by its route id (live apps only) - Persona included, so the shell gives it the header.
 export const appById = (id) => liveApps.find((a) => a.id === id) || null;
 
+/// The label a tile or the app header shows for an app. Persona wears the CURRENT persona's name
+/// (so "Persona" reads as whoever you are); every other app is its registry name. `personaName`
+/// is the live name, '' when unset - then the persona app falls back to its own registry name.
+export const appLabel = (app, personaName) =>
+    app && app.id === 'persona' && personaName ? personaName : app ? app.name : '';
+
 /// The set of names that are app-types in their own right (so a like-named bucket is implicit).
-const KNOWN_STYLES = new Set(liveApps.map((a) => a.style));
+/// Document apps only - a system app (Persona) has no style and names no bucket type.
+const KNOWN_STYLES = new Set(docApps.map((a) => a.style));
 
 /// The app-type of a bucket by name: its name IS a style (implicit), else its explicit registry
 /// mapping, else the default. `roster` is the streamed bucket registry (`{name, app}`), only

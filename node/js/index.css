@@ -146,6 +146,55 @@ body {
     flex-direction: column;
 }
 
+/* The unified app header: the same ink as the frame it sits in, so the top border and the header
+   read as one solid band. Title left, back/close right. Every app gets this identical bar from
+   the shell - no app draws its own. */
+.app-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.35rem 0.5rem 0.45rem;
+    background: var(--ink);
+    color: var(--dock-text);
+}
+
+.app-header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: "Press Start 2P", monospace;
+    font-size: 0.8rem;
+    color: var(--dock-text);
+}
+
+.app-header-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.app-header-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: none;
+    border: 0;
+    border-radius: 5px;
+    color: var(--dock-text);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    opacity: 0.82;
+    padding: 0.25rem 0.5rem;
+    transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.app-header-btn:hover {
+    opacity: 1;
+    background: rgba(251, 246, 236, 0.14);
+}
+
 .loading-shell {
     display: flex;
     align-items: center;
@@ -278,7 +327,12 @@ body {
     color: var(--dock-text);
 }
 
+/* The footer's "leave" button - only shown for shell routes without their own app header
+   (persona management, not-found), so those aren't stranded. */
 .session-out {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
     background: none;
     border: 1px solid rgba(251, 246, 236, 0.45);
     border-radius: 6px;
@@ -470,16 +524,6 @@ body {
 
 .persona-page-head .persona-page-title {
     margin: 0;
-}
-
-.back-link {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.9rem;
-}
-
-.back-link:hover {
-    color: var(--teal);
 }
 
 .persona-menu {
@@ -733,6 +777,12 @@ body {
 .app-tile-name {
     font-size: 1rem;
     font-weight: 600;
+    /* A persona name can be long; keep it on one tidy line within the hexagon. */
+    max-width: 90%;
+    padding: 0 0.3rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* --- the notes app --- */
@@ -746,25 +796,6 @@ body {
     height: 100%;
     min-height: 0;
     overflow: hidden;
-}
-
-.notes-bar {
-    display: flex;
-    align-items: baseline;
-    gap: 0.8rem;
-    padding: 0.3rem 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.notes-title {
-    font-family: "Press Start 2P", monospace;
-    font-size: 0.85rem;
-    color: var(--teal);
-}
-
-.notes-count {
-    color: var(--faint);
-    font-size: 0.85rem;
 }
 
 .notes-columns {

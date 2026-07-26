@@ -1573,3 +1573,52 @@ two wrappers over the same footer - `shell` (the clip-path frame, for an open ap
 either. The console now centers its honeycomb on the bare desktop instead of sitting in a boxed
 surface. Persona management stays framed: it's a place you navigate into and back out of, more app
 than launcher.
+
+---
+
+## A unified app header (2026-07-26)
+
+Every app now gets the same header from the shell - no app draws its own top bar. It's a solid
+band in `--ink` (the frame colour, so the top border and the header read as one), the app's
+icon+title on the left, back/close on the right. The shell derives the current app from the path
+(`/home/<app>/<doc?>` -> the registry), so the header is truly uniform: a new app is a registry
+line, nothing more. `close` leaves the app for the launcher (`/home`); `back` appears only when a
+document is open and returns to that app's list. The Notes app's old `.notes-bar` (its "Notes" +
+"6 things" count) is gone - the count loses its home, as intended.
+
+Persona management isn't an app, so it gets no app header (it keeps its own page head). That would
+have stranded it once the header owned "close", so the footer's leave button survives but now
+appears ONLY on header-less shell routes (persona, not-found) - an open app never shows it
+(redundant with the header's close), the console never shows it (you're already home). Net: one
+obvious way out from every screen, never two.
+
+---
+
+## Persona becomes an app (2026-07-26)
+
+Persona was chrome reached only by the footer gear; now it's a first-class app - the first tile in
+the console, named "Persona", and it wears the unified app header like any other. It's a SYSTEM app
+though (its own pages - profile, computers, log out - not a document surface), so the registry
+grew a distinction: `liveApps` (every launchable tile) vs `docApps` (live apps with a document
+`style`). The generated `/home/<app>/<doc?>` routes come from `docApps`, so Persona keeps its own
+explicit routes; `appById` still includes it, which is what makes the shell hand it the header.
+
+Consequences that fell out cleanly: the header's `back` already means "up to the app's list", so
+inside `/home/persona/profile` it returns to the persona menu - the profile page's own back-link
+was now redundant and is gone. And because Persona is an app, the footer's leave button (shown
+only on header-less shell routes) no longer appears on persona pages - the header's `close` takes
+you home, exactly as it does from Notes. The gear stays as the quick-bar shortcut. One blank
+honeycomb cell was dropped so the eight tiles still fill two clean rows.
+
+---
+
+## The Persona app wears your name (2026-07-26)
+
+"Persona" was a generic label; now the Persona app shows the CURRENT persona's name wherever its
+label appears - the console tile and the app header both read "Corff Burblepunk" (or whatever
+you've named yourself). The name is live: `usePersonaName` (extracted from `PersonaBadge`, which
+now shares it) reads the profile name from the mirror, so a rename on any computer lands within
+seconds; it falls back to the fetched-at-open name, then to '' while the mirror fills. `appLabel`
+resolves the display label - the persona app to that live name, everything else to its registry
+name - and the Persona tile falls back to "Persona" when the persona is unnamed. The tile gained
+ellipsis so a long name stays on one tidy line inside the hexagon.

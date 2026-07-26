@@ -14,6 +14,8 @@ import {
     PushPin,
     Gear,
     CaretLeft,
+    X,
+    UserCircle,
     IdentificationCard,
     Desktop,
     HandWaving,
@@ -23,6 +25,7 @@ export { IconContext } from '@phosphor-icons/react';
 
 export const Icons = {
     // apps (the console tiles + each app's own header)
+    persona: UserCircle,
     notes: NotePencil,
     recipes: CookingPot,
     journal: Notebook,
@@ -33,6 +36,7 @@ export const Icons = {
     pin: PushPin,
     gear: Gear,
     back: CaretLeft,
+    close: X,
     profile: IdentificationCard,
     computers: Desktop,
     logout: HandWaving,
