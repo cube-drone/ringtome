@@ -1655,3 +1655,28 @@ around a surface face with the icon. The rim is the SAME teal as the bar, so wit
 dissolves into the backdrop and only the part poking ABOVE the bar carries a visible teal edge -
 the frustrating-to-lay-out effect Curtis asked for. The user's own tile (Persona, first) runs a
 little bigger than the rest; the current app's tile sits full while the others dim back.
+
+---
+
+## A Swatch Internet Time clock in the corner (2026-07-26)
+
+Because the retro web demands it: the Quickbar's bottom-right corner now carries a live `.beat`
+clock. Swatch Internet Time cuts the day into 1000 beats on Biel Mean Time (UTC+1, no DST) - a
+`Clock` component ticks it every second, shown to two decimals (`@541.67`) so it visibly moves,
+with the real localized wall-clock time a hover away (the `title`). Verified against the known
+anchors (Biel midnight is `@000`, Biel noon `@500`). Purely, gloriously ornamental.
+
+---
+
+## Console tiles: the diagonal badge (2026-07-26)
+
+Restyled the application-selector hexagons into a diagonal name badge. A `::before` on the hex face
+floods the lower-right half with the border colour along a bottom-left -> top-right line, so the
+border reads as pouring diagonally into the tile. The fill is a `linear-gradient(to bottom right,
+transparent 50%, border 50%)` - NOT a clipped triangle: nesting a triangle clip-path inside the
+hex clip-path flooded the whole tile in practice, whereas `to bottom right` lands the hard edge on
+the exact corner-to-corner diagonal at any aspect ratio and needs no second clip-path. The icon is
+large and sits BEHIND the fill (z-index 0), centred, so its top-left shows over the surface while
+its bottom-right is swallowed - present but half-obscured. The name sits ABOVE the fill (z-index 2),
+uppercase and rotated ~-49deg to run parallel to the diagonal. The face gets `isolation: isolate`
+so those layer z-indexes order cleanly. Positions/size/angle are eyeballed and meant to be tuned.

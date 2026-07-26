@@ -1,4 +1,5 @@
 import { h, render } from 'preact';
+import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso';
 
@@ -32,6 +33,33 @@ const NotFound = () => html`
         </p>
     </div>
 `;
+
+// Swatch Internet Time: the day cut into 1000 ".beats" on Biel Mean Time (UTC+1, no DST). One
+// beat is 86.4 seconds; @000 is midnight in Biel. Silly, beloved, exactly right for a retro-web
+// corner clock. Shown to two decimals so it visibly ticks; the real local time is a hover away.
+function beats(date) {
+    const bmt = new Date(date.getTime() + 3600000); // shift to UTC+1 (Biel)
+    const secs =
+        bmt.getUTCHours() * 3600 +
+        bmt.getUTCMinutes() * 60 +
+        bmt.getUTCSeconds() +
+        bmt.getUTCMilliseconds() / 1000;
+    return (secs / 86.4) % 1000;
+}
+
+const Clock = () => {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, []);
+    const date = new Date(now);
+    const beat = '@' + beats(date).toFixed(2).padStart(6, '0');
+    return html`<span
+        class="quickbar-clock"
+        title=${`your time: ${date.toLocaleTimeString()}`}
+    >${beat}</span>`;
+};
 
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
 // persona is open, routing takes over. The whole internal UI lives under /home (root bounces
@@ -82,6 +110,7 @@ const Inside = ({ session }) => {
                     ><span class="quickbar-hex-face"><${app.icon} /></span></button>`
                 )}
             </span>
+            <${Clock} />
         </footer>
     `;
 

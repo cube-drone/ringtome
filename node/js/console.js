@@ -23,11 +23,15 @@ function chunk(arr, n) {
 // One hexagon: three nested clipped layers make the double border - the outer carries the dark
 // ring, the middle the lighter ring, the face the surface and content.
 function Hex(app, key, onLaunch, personaName) {
+    // Tiles show the first 10 characters only - a long persona name would otherwise run off the
+    // diagonal and clip against the hexagon. The full name still lives in the header and tooltips.
+    const label = appLabel(app, personaName) || '';
+    const shown = label.length > 9 ? label.slice(0, 9) + '…' : label;
     const content = app.blank
         ? ''
         : html`
               <span class="app-tile-icon"><${app.icon} /></span>
-              <span class="app-tile-name">${appLabel(app, personaName)}</span>
+              <span class="app-tile-name" title=${label}>${shown}</span>
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
     const cls = `app-tile${app.soon ? ' soon' : ''}${app.blank ? ' blank' : ''}`;

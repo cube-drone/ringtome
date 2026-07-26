@@ -337,12 +337,26 @@ body {
     height: 3rem;
     display: flex;
     align-items: flex-end;
+    justify-content: space-between; /* app dock left, clock right */
     padding: 0 20px 6px;
     background: var(--teal-deep);
     overflow: visible;
     /* Stack above the app region so the tiles' poking-up tops paint over it, not behind it. */
     position: relative;
     z-index: 2;
+}
+
+/* The corner clock: Swatch .beats, ticking; the local time on hover. Centred in the band rather
+   than bottom-aligned like the tiles. */
+.quickbar-clock {
+    align-self: center;
+    color: var(--dock-text);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.9rem;
+    letter-spacing: 0.03em;
+    opacity: 0.9;
+    cursor: default;
+    user-select: none;
 }
 
 /* The app dock: one hexagon per app, icon only (the console glyphs without their names), a fast
@@ -761,18 +775,33 @@ body {
 }
 
 .hex-face {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
+    display: block; /* it's a <span>; without this it stays inline and width/height are ignored */
+    position: relative;
     width: 100%;
     height: 100%;
     clip-path: var(--hex-clip);
     background: var(--surface);
-    padding: 1.4rem 1rem;
-    text-align: center;
     color: var(--ink);
+    isolation: isolate; /* own stacking context, so the layer z-indexes below order cleanly */
+}
+
+/* The diagonal fill, as a GRADIENT rather than a clipped triangle - nesting a second clip-path
+   inside the hex clip-path is what flooded the whole tile. `to bottom right` lands the hard edge
+   exactly on the bottom-left -> top-right diagonal at any aspect ratio: the lower-right half is
+   the border colour, the upper-left is transparent so the icon shows through. It sits ABOVE the
+   icon (swallowing its lower half) and BELOW the name. */
+.app-tile:not(.blank) .hex-face::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to bottom right,
+        transparent 0%,
+        transparent 50%,
+        var(--hex-border-dark) 50%,
+        var(--hex-border-dark) 100%
+    );
+    z-index: 1;
 }
 
 .app-tile.soon {
@@ -792,20 +821,34 @@ body {
     background: var(--surface-2);
 }
 
+/* The icon: large, sat BEHIND the diagonal fill - its top-left shows over the surface, its
+   bottom-right is swallowed by the fill (partially obscured, still visible). */
 .app-tile-icon {
-    font-size: 2.1rem;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* Nudged up-and-left off centre so more of it clears the diagonal fill (less gets swallowed). */
+    transform: translate(calc(-50% - 20px), calc(-50% - 20px));
+    font-size: 4.6rem;
     line-height: 1;
+    z-index: 0;
 }
 
+/* The name: uppercase, rotated parallel to the diagonal, seated in the filled lower half. Long
+   names run off the diagonal and are clipped by the hexagon - a stylistic price. */
 .app-tile-name {
+    position: absolute;
+    top: 63%;
+    left: 52%;
+    transform: translate(-50%, -50%) rotate(-49deg);
+    z-index: 2;
+    text-transform: uppercase;
+    font-family: "Radio Canada", sans-serif;
+    font-weight: 800;
     font-size: 1rem;
-    font-weight: 600;
-    /* A persona name can be long; keep it on one tidy line within the hexagon. */
-    max-width: 90%;
-    padding: 0 0.3rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    letter-spacing: 0.06em;
     white-space: nowrap;
+    color: var(--ink);
 }
 
 /* --- the notes app --- */
