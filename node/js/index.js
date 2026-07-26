@@ -92,7 +92,7 @@ const Inside = ({ session }) => {
     const appHeader =
         appHere &&
         html`<header class="app-header">
-            <span class="app-header-title"><${appHere.icon} /> ${appLabel(appHere, personaName)}</span>
+            <span class="app-header-title">${appLabel(appHere, personaName)}</span>
             <span class="app-header-actions">
                 ${inDoc &&
                 html`<button

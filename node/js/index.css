@@ -157,17 +157,15 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 0.8rem;
-    padding: 0.35rem 0.5rem 0.45rem;
+    /* No right padding: the close button sits flush against the frame's right border. */
+    padding: 0.35rem 0 0.45rem 0.5rem;
     background: var(--ink);
     color: var(--dock-text);
 }
 
 .app-header-title {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
     font-family: "Press Start 2P", monospace;
-    font-size: 0.8rem;
+    font-size: 1.05rem;
     color: var(--dock-text);
 }
 
@@ -203,9 +201,9 @@ body {
     transform: scale(1.06);
 }
 
-/* Close is a square hole (lightly rounded), distinct from the round back hole. */
+/* Close is a sharp square hole, distinct from the round back hole. */
 .app-header-btn-square {
-    border-radius: 6px;
+    border-radius: 0;
 }
 
 .loading-shell {
