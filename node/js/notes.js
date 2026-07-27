@@ -4,7 +4,7 @@
 // dispatched (plaintext | marquee | media). The editor, taxonomies in the left column, tag
 // filters, and the flexible cozy-OS window all come later; this is the skeleton they hang on.
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
@@ -18,6 +18,11 @@ import { DEFAULT_STYLE, appTypeOf, featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
+
+// The last document open in each app, keyed by `${root}:${app.id}` - so opening an app returns
+// you to where you were. In-memory (a session convenience), the same idea as the per-document
+// cursor memory; forgotten on reload.
+const lastDocMemory = new Map();
 
 async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -204,6 +209,26 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
         const types = names.length ? names.map((n) => appTypeOf(n, roster)) : [DEFAULT_STYLE];
         return types.includes(app.style);
     };
+
+    // Resume where you left off. Remember the document you have open as this app's most-recent,
+    // and - when you ENTER the app with nothing selected - return to it. The `restored` guard
+    // makes it a one-time, on-open jump: deliberately going back to the list later (header back)
+    // never bounces you into the document again. The redirect REPLACES history, so Back still
+    // exits to the launcher rather than looping through the list.
+    const restored = useRef(false);
+    useEffect(() => {
+        if (selected) lastDocMemory.set(`${root}:${app.id}`, selected);
+    }, [selected, root, app.id]);
+    useEffect(() => {
+        if (restored.current || !docs) return; // wait for the mirror, then decide exactly once
+        restored.current = true;
+        if (selected) return; // already on a document - nothing to restore
+        const last = lastDocMemory.get(`${root}:${app.id}`);
+        if (last && docs.some((d) => d.doc_id === last && inThisApp(d))) {
+            loc.route(`/home/${app.id}/${last}`, true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docs, selected]);
 
     // Filters stack: this app's scope, THEN search hits, THEN every active tag. Search stays a
     // filter over the current view (Curtis's preference) rather than a separate ranked screen.

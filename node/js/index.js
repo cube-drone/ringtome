@@ -105,20 +105,22 @@ const Inside = ({ session }) => {
         <footer class="quickbar">
             <span class="quickbar-apps">
                 ${open &&
-                liveApps.map(
-                    (app) => html`<button
+                liveApps.map((app) => {
+                    const isActive = !!(appHere && appHere.id === app.id);
+                    // Clicking the app you're already in closes it (back to the launcher).
+                    return html`<button
                         class=${[
                             'quickbar-hex',
                             app.id === 'persona' ? 'quickbar-hex-lead' : '',
-                            appHere && appHere.id === app.id ? 'active' : '',
+                            isActive ? 'active' : '',
                         ]
                             .filter(Boolean)
                             .join(' ')}
                         key=${app.id}
                         title=${appLabel(app, personaName)}
-                        onClick=${() => loc.route('/home/' + app.id)}
-                    ><span class="quickbar-hex-face"><${app.icon} /></span></button>`
-                )}
+                        onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
+                    ><span class="quickbar-hex-face"><${app.icon} /></span></button>`;
+                })}
             </span>
             <${Clock} />
         </footer>

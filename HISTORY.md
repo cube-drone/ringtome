@@ -1692,3 +1692,16 @@ It used to be buried in the notes app's left column. The query string is lifted 
 filtering (`useSearch`) as before - and it clears when you switch apps. The header only shows the
 box for apps with a document `style`; Persona and the console have no search. Old `.notes-search`
 input and styles removed.
+
+---
+
+## Apps resume the last document you had open (2026-07-27)
+
+Like the per-document cursor memory, an app now returns you to where you were: opening it jumps
+back to the document you most recently had open there. A module-level `lastDocMemory` (keyed by
+`root:app`, in-memory - a session convenience, forgotten on reload) records the open document;
+on ENTERING an app with nothing selected, a one-time effect redirects to the remembered document
+(REPLACE, so Back still exits to the launcher). A `restored` ref makes it strictly on-open:
+deliberately going back to the list later (header back) never bounces you into the document again.
+The jump is validated against the live mirror and the app's scope, so a since-deleted or
+moved-away document just leaves you on the list.
