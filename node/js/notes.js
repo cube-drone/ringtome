@@ -178,13 +178,14 @@ const RightColumn = ({ root, docId, docs, features, onDeleted }) => {
 // The documents app - the shared surface every "documents" application (Notes, Recipes, ...)
 // currently renders. `app` is its registry entry (id, name, icon, style); the document
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
-export const DocsApp = ({ app, current, docId }) => {
+// `searchQuery`, not `query` - preact-iso's Router injects its OWN `query` prop (parsed URL search
+// params, an object), which would shadow a prop of that name and break the string search.
+export const DocsApp = ({ app, current, docId, searchQuery }) => {
     const root = current.root;
     const feat = featuresOf(app);
     const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const [busy, setBusy] = useState(false);
-    const [query, setQuery] = useState('');
     const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
 
     // The selected document lives in the URL (`/home/<app>/<doc_id>`), not local state - so
@@ -206,7 +207,7 @@ export const DocsApp = ({ app, current, docId }) => {
 
     // Filters stack: this app's scope, THEN search hits, THEN every active tag. Search stays a
     // filter over the current view (Curtis's preference) rather than a separate ranked screen.
-    const hits = useSearch(root, query);
+    const hits = useSearch(root, searchQuery);
     // Newest first by the CLAIMED date - a doc's own display_date if it set one, else its real
     // last-updated stamp. So a note backdated to 2015 files itself under 2015, not the day you
     // typed it (the user's date is authoritative, per Curtis's ask).
@@ -285,13 +286,6 @@ export const DocsApp = ({ app, current, docId }) => {
                     <button class="notes-new" disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : '+ new item'}
                     </button>
-                    <input
-                        class="notes-search"
-                        type="search"
-                        placeholder="search…"
-                        value=${query}
-                        onInput=${(e) => setQuery(e.currentTarget.value)}
-                    />
                     ${tagFilter.length > 0 &&
                     html`<div class="notes-tagfilter">
                         ${tagFilter.map(

@@ -1680,3 +1680,15 @@ large and sits BEHIND the fill (z-index 0), centred, so its top-left shows over 
 its bottom-right is swallowed - present but half-obscured. The name sits ABOVE the fill (z-index 2),
 uppercase and rotated ~-49deg to run parallel to the diagonal. The face gets `isolation: isolate`
 so those layer z-indexes order cleanly. Positions/size/angle are eyeballed and meant to be tuned.
+
+---
+
+## Search moves into the app header (2026-07-27)
+
+Search is a top-level tool, so it now lives in a consistent place: the unified app header, right
+next to the title, the same spot in every app that offers it (Notes, Recipes - any document app).
+It used to be buried in the notes app's left column. The query string is lifted to the shell
+(`Inside`) - the header owns the input, and `DocsApp` reads the query as a prop and does the
+filtering (`useSearch`) as before - and it clears when you switch apps. The header only shows the
+box for apps with a document `style`; Persona and the console have no search. Old `.notes-search`
+input and styles removed.

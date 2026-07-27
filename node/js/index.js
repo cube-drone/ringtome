@@ -85,6 +85,16 @@ const Inside = ({ session }) => {
     // falls the Persona tile back to "Persona".
     const personaName = usePersonaName(persona.current);
 
+    // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
+    // column), the same place across every app that offers it. The query is lifted here so the
+    // header owns the input and the app reads it; it clears when you switch apps. Only document
+    // apps (those with a `style`) offer search.
+    const showSearch = !!(appHere && appHere.style);
+    const [query, setQuery] = useState('');
+    useEffect(() => {
+        setQuery('');
+    }, [appHere && appHere.id]);
+
     // The Quickbar: the persistent bottom bar, now purely the app dock - a hexagon per app (icon
     // only, the console glyphs without their names), a fast switch between apps. The tiles run
     // TALLER than the bar and bottom-align, so their teal rim pokes up above it; within the bar
@@ -122,6 +132,14 @@ const Inside = ({ session }) => {
         appHere &&
         html`<header class="app-header">
             <span class="app-header-title">${appLabel(appHere, personaName)}</span>
+            ${showSearch &&
+            html`<input
+                class="app-header-search"
+                type="search"
+                placeholder="search…"
+                value=${query}
+                onInput=${(e) => setQuery(e.currentTarget.value)}
+            />`}
             <span class="app-header-actions">
                 ${inDoc &&
                 html`<button
@@ -184,6 +202,7 @@ const Inside = ({ session }) => {
                     key=${app.id}
                     app=${app}
                     current=${persona.current}
+                    searchQuery=${query}
                 />`
             )}
             <${NotFound} default />

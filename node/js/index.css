@@ -161,7 +161,6 @@ body {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 0.8rem;
     /* No right padding: the close button sits flush against the frame's right border. */
     padding: 0.35rem 0 0.45rem 0.5rem;
@@ -170,15 +169,40 @@ body {
 }
 
 .app-header-title {
+    flex-shrink: 0;
     font-family: "Press Start 2P", monospace;
     font-size: 1.05rem;
     color: var(--dock-text);
+}
+
+/* The search box: a top-level fixture next to the title, in the same spot across every app that
+   offers it. Cream on the ink header, so it reads as an input, not a hole. */
+.app-header-search {
+    flex: 0 1 240px;
+    min-width: 0;
+    background: var(--surface);
+    border: 0;
+    border-radius: 6px;
+    padding: 0.35rem 0.65rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+}
+
+.app-header-search::placeholder {
+    color: var(--muted);
+}
+
+.app-header-search:focus {
+    outline: 2px solid var(--teal);
+    outline-offset: 1px;
 }
 
 .app-header-actions {
     display: flex;
     align-items: center;
     gap: 0.45rem;
+    margin-left: auto; /* push back/close to the right; title + search stay left */
 }
 
 /* Back/close are holes punched through the ink header: filled with the app surface (the content
@@ -902,16 +926,6 @@ body {
     border-color: var(--sea);
 }
 
-.notes-search {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--ink);
-    padding: 0.4rem 0.6rem;
-    font: inherit;
-    font-size: 0.85rem;
-}
-
 /* A thin tag-frequency sidebar (Recipes), left of the document list. */
 .tag-column {
     width: 180px;
@@ -976,11 +990,6 @@ body {
 .tag-column-empty {
     padding: 0.3rem 0.5rem;
     font-size: 0.8rem;
-}
-
-.notes-search:focus {
-    outline: none;
-    border-color: var(--border-strong);
 }
 
 .note-row {
