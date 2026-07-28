@@ -165,12 +165,11 @@ const LockButton = ({ onUnlocked }) => {
 
 // One row in the stack: the date heading, plus the editor (today / unlocked) or the reader
 // (locked, with the lock button).
-// Seal/unlock overrides live for the browser SESSION - the same idea as the cursor and
-// last-entry memory: a module Map keyed by doc_id, so navigating away and back (or an entry
-// scrolling out of the window and back) keeps its state. 'open' | 'locked'; absent = follow the
-// day (today open, past locked). Forgotten on reload, like the rest of the session memory. Owned
-// by JournalApp so it can also count open-today entries and drive the "start a new entry" prompt.
-const lockOverride = new Map();
+// Seal/unlock overrides persist in Dexie's local `prefs` table (keyed `seal:<doc_id>` ->
+// 'open' | 'locked'; absent = follow the day). Local-only - never synced to the node, but durable
+// across reloads and live across tabs of this browser (via `useLive`), which is the right weight:
+// "this page is closed" is a personal, per-device gesture, not a document fact.
+const sealKey = (docId) => `seal:${docId}`;
 
 const JournalEntry = ({ root, entry, open, onOverride }) => html`
     <article class=${open ? 'journal-entry open' : 'journal-entry locked'}>
@@ -211,15 +210,18 @@ export const JournalApp = ({ current }) => {
     const [busy, setBusy] = useState(false);
     const creating = useRef(false); // synchronous guard against duplicate today-entry creation
 
-    // Seal/unlock overrides (the durable session Map) are read here so the phantom can key off
-    // whether an OPEN today entry exists. A bump re-renders when one flips.
-    const [, bump] = useState(0);
+    // Seal/unlock overrides, live from Dexie (across reloads and tabs). Read here too so the
+    // phantom can key off whether an OPEN today entry exists.
+    const seals = useLive(
+        () => openMirror(root).prefs.where('key').startsWith('seal:').toArray(),
+        [root]
+    );
+    const sealMap = new Map((seals || []).map((r) => [r.key.slice(5), r.value])); // 'seal:'.length
     const setOverride = (docId, v) => {
-        lockOverride.set(docId, v);
-        bump((n) => n + 1);
+        openMirror(root).prefs.put({ key: sealKey(docId), value: v }).catch(() => {});
     };
     const openOf = (e, todayKey) => {
-        const o = lockOverride.get(e.doc_id);
+        const o = sealMap.get(e.doc_id);
         return o !== undefined ? o === 'open' : dayKey(e.created_ms) === todayKey;
     };
 
