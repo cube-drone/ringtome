@@ -13,6 +13,8 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 import { openMirror, useLive } from './cache.js';
 import { useSearch, queryWords } from './search.js';
 import { useDocSession } from './docsession.js';
+import { Annotations } from './annotations.js';
+import { claimedMs, hasClaimedDate } from './docdate.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Icons } from './icons.js';
@@ -46,6 +48,12 @@ const dateTitle = (ms) =>
         day: 'numeric',
     });
 
+// The moment an entry files under: the user's CLAIMED date if one is set (backdating a memory
+// to the day it happened), else the entry's real creation. Sorting and the displayed date both
+// read this; the day-lock machinery deliberately does not (an entry seals when its REAL day
+// ends, whatever day it claims to be about).
+const entryMs = (d) => (hasClaimedDate(d) ? claimedMs(d) : d.created_ms || 0);
+
 const STATUS_TIP = {
     clean: 'Saved',
     dirty: 'Unsaved — saving shortly',
@@ -65,10 +73,23 @@ const StatusDot = ({ status }) =>
         ? html`<${Icons.warn} />`
         : html`<span class="status-spin"><${Icons.spinner} /></span>`}</span>`;
 
-// The editable surface for a journal entry: the shared session + the live marquee, and the
-// minimum chrome (a save-status dot, a delete once the entry has been unlocked). No title input -
-// the date heading belongs to the stream row, not the editor.
-const JournalEditor = ({ root, docId, onSeal }) => {
+// The entry head: the title row over a smaller date line, with the corner actions (tag button,
+// and the lock for sealed entries) at the top right. `children` is the title row - an input for
+// an open entry, plain text for a locked one.
+const JournalHead = ({ dateMs, actions, children }) => html`
+    <header class="journal-entry-head">
+        <div class="journal-head-main">
+            ${children}
+            <div class="journal-date-sub">${dateTitle(dateMs)}</div>
+        </div>
+        <span class="journal-head-actions">${actions}</span>
+    </header>
+`;
+
+// The editable surface for a journal entry: the shared session + the live marquee, plus the
+// minimum chrome - the head (an editable title over the date), the annotations panel when the
+// tag button has it open, and a foot with the save-status dot, seal, and delete.
+const JournalEditor = ({ root, docId, onSeal, dateMs, actions, meta }) => {
     const s = useDocSession(root, docId, { onDeleted: () => {} });
     const tlProfile = useTurbolinks(s.body, s.format);
 
@@ -83,6 +104,19 @@ const JournalEditor = ({ root, docId, onSeal }) => {
     }
     return html`
         <div class="journal-editor">
+            <${JournalHead} dateMs=${dateMs} actions=${actions}>
+                <input
+                    class="journal-title"
+                    value=${s.title}
+                    placeholder="untitled"
+                    onInput=${(e) => {
+                        s.setTitle(e.currentTarget.value);
+                        s.touched();
+                    }}
+                    onBlur=${() => s.save()}
+                />
+            </${JournalHead}>
+            ${meta}
             <${LiveMarquee}
                 body=${s.body}
                 profile=${tlProfile}
@@ -200,22 +234,45 @@ const JournalFonts = ({ value, onPick }) => html`
     </div>
 `;
 
-const JournalEntry = ({ root, entry, open, onOverride }) => html`
-    <article class=${open ? 'journal-entry open' : 'journal-entry locked'}>
-        <header class="journal-entry-head">
-            <h2 class="journal-date">${dateTitle(entry.created_ms)}</h2>
-            ${!open && html`<${LockButton} onUnlocked=${() => onOverride('open')} />`}
-        </header>
-        ${open
-            ? html`<${JournalEditor}
-                  key=${entry.doc_id}
-                  root=${root}
-                  docId=${entry.doc_id}
-                  onSeal=${() => onOverride('locked')}
-              />`
-            : html`<${JournalReader} key=${entry.doc_id} root=${root} docId=${entry.doc_id} />`}
-    </article>
-`;
+const JournalEntry = ({ root, entry, open, onOverride }) => {
+    // The corner tag button opens the same annotations panel as every other document - tags,
+    // claimed date, description. Annotations are decoupled from the version lifecycle, so a
+    // SEALED entry can still be tagged and dated: the seal locks the words, not the filing.
+    const [showMeta, setShowMeta] = useState(false);
+    const dateMs = entryMs(entry);
+    const tagBtn = html`<button
+        class=${showMeta ? 'journal-tag active' : 'journal-tag'}
+        title="tags, date & description"
+        onClick=${() => setShowMeta((v) => !v)}
+    ><${Icons.tag} /></button>`;
+    const meta = showMeta
+        ? html`<div class="journal-meta">
+              <${Annotations} root=${root} docId=${entry.doc_id} />
+          </div>`
+        : null;
+    return html`
+        <article class=${open ? 'journal-entry open' : 'journal-entry locked'} data-doc=${entry.doc_id}>
+            ${open
+                ? html`<${JournalEditor}
+                      key=${entry.doc_id}
+                      root=${root}
+                      docId=${entry.doc_id}
+                      onSeal=${() => onOverride('locked')}
+                      dateMs=${dateMs}
+                      actions=${tagBtn}
+                      meta=${meta}
+                  />`
+                : html`<${JournalHead}
+                      dateMs=${dateMs}
+                      actions=${html`${tagBtn}<${LockButton} onUnlocked=${() => onOverride('open')} />`}
+                  >
+                      <div class="journal-title-read">${entry.title || 'untitled'}</div>
+                  </${JournalHead}>
+                  ${meta}
+                  <${JournalReader} key=${entry.doc_id} root=${root} docId=${entry.doc_id} />`}
+        </article>
+    `;
+};
 
 // The phantom today entry: an inviting blank page. It creates the real document on first
 // engagement - the entry doesn't exist until you start writing.
@@ -327,10 +384,12 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
     // whole test.
     const inJournal = (d) => (d.buckets || []).includes(bucket);
 
-    // Newest first by CREATION (not update); ties broken stably by id.
+    // Newest first by the entry's date - the user-claimed date when one is set, else CREATION
+    // (never update); ties broken stably by id. Backdate an entry and it files itself into the
+    // past, exactly like the Notes list.
     const entries = (docs || [])
         .filter(inJournal)
-        .sort((a, b) => (b.created_ms || 0) - (a.created_ms || 0) || (a.doc_id < b.doc_id ? 1 : -1));
+        .sort((a, b) => entryMs(b) - entryMs(a) || (a.doc_id < b.doc_id ? 1 : -1));
 
     // Search: the same top-level header box as Notes/Recipes, but here it FILTERS the day book to
     // matching entries (and the hit words get painted in place, below). No phantom while searching -
@@ -340,25 +399,56 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
     const matched = searching ? entries.filter((e) => hits && hits.has(e.doc_id)) : entries;
 
     const todayKey = dayKey(now);
-    // The phantom trigger: no UNSEALED entry for today. A today entry that's been sealed doesn't
-    // count - so once you seal today's page, you're prompted to start a fresh one.
-    const openTodayExists = entries.some(
-        (e) => dayKey(e.created_ms) === todayKey && openOf(e, todayKey)
-    );
+    // The phantom trigger: the only time NOT to offer a fresh page is when the TOP of the
+    // stream is an unsealed entry - the page you're mid-writing. An unsealed entry buried in
+    // the past (unlocked for repairs, or backdated away by a claimed date) shouldn't suppress
+    // the prompt: the book's open spot is at the top, or it's nowhere.
+    const topOpen = entries.length > 0 && openOf(entries[0], todayKey);
     const stack = searching
         ? matched
-        : openTodayExists
+        : topOpen
         ? entries
         : [{ phantom: true, created_ms: now }, ...entries];
 
-    // Once an open today entry exists (a create landed, or the day rolled over), free the create
-    // guard and drop the "opening…" state.
+    // Free the create guard when the roster of entries changes size - the click's new document
+    // landing in the mirror is exactly such a change, WHEREVER it sorts (a backdated or
+    // future-dated neighbor can't strand the guard the way a "did today's entry appear" test
+    // could). Deliberately not keyed on topOpen: the guard's job is only to bridge the gap
+    // between the click and the mirror echo.
     useEffect(() => {
-        if (openTodayExists) {
-            creating.current = false;
-            setBusy(false);
+        creating.current = false;
+        setBusy(false);
+    }, [entries.length]);
+
+    // Follow a re-dated entry. Claiming a date re-sorts the stream, and the entry you were just
+    // annotating skitters away - maybe below the render window, where it doesn't even exist on
+    // the page. Detect the move (an entry whose effective date changed since the last look),
+    // widen the window past its new position, and scroll its card back to you.
+    const prevMs = useRef(new Map());
+    const [follow, setFollow] = useState(null); // { id } - fresh object per move, to retrigger
+    const orderKey = entries.map((e) => `${e.doc_id}:${entryMs(e)}`).join(',');
+    useEffect(() => {
+        const prev = prevMs.current;
+        let moved = null;
+        for (const e of entries) {
+            const ms = entryMs(e);
+            const was = prev.get(e.doc_id);
+            if (was !== undefined && was !== ms) moved = e.doc_id;
+            prev.set(e.doc_id, ms);
         }
-    }, [openTodayExists]);
+        if (moved) {
+            const idx = entries.findIndex((e) => e.doc_id === moved);
+            setCount((c) => (idx >= c ? idx + 3 : c)); // make sure its new home is rendered
+            setFollow({ id: moved });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orderKey]);
+    useEffect(() => {
+        if (!follow) return;
+        // Runs after the widened window has rendered, so the card exists to scroll to.
+        const el = stageRef.current && stageRef.current.querySelector(`[data-doc="${follow.id}"]`);
+        if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, [follow]);
 
     // Windowed render (infinite scroll): grow when the sentinel scrolls into view.
     const [count, setCount] = useState(6);
@@ -382,15 +472,18 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
         creating.current = true;
         setBusy(true);
         try {
+            // An empty title, not the date: the head shows the date on its own line now, and
+            // the title row is the entry's own to name (or leave blank).
             const made = await api(`/api/identity/${root}/docs`, {
                 method: 'POST',
-                body: JSON.stringify({ title: dateTitle(now), body: '', format: 'marquee' }),
+                body: JSON.stringify({ title: '', body: '', format: 'marquee' }),
             });
             await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`, {
                 method: 'PUT',
             });
-            // Success: stay "opening…" (guard held) until the new entry shows via the mirror - the
-            // openTodayExists effect clears both - so a click during that catch-up beat can't duplicate.
+            // Success: stay "opening…" (guard held) until the new entry shows via the mirror -
+            // the entries-count effect clears both - so a click during that catch-up beat can't
+            // duplicate.
         } catch (e) {
             creating.current = false;
             setBusy(false); // failed: let them try again

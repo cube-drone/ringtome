@@ -64,12 +64,22 @@ export async function ensureTreeRoot(root, bucket) {
 const PageRow = ({ id, summary, depth, ops, parent }) => {
     const [hover, setHover] = useState(null); // 'before' | 'after' | null
     const [lifting, setLifting] = useState(false);
+    // Bring the selected row on-screen when the selection arrives (or when the row itself
+    // appears - an unfold revealing it mounts it selected). 'nearest' keeps an already-visible
+    // row still; no jump unless one is needed.
+    const rowRef = useRef(null);
+    const isSelected = ops.docId === id;
+    useEffect(() => {
+        if (isSelected && rowRef.current) {
+            rowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }, [isSelected]);
     if (ops.hits !== null && !ops.hits.has(id)) return null;
     const live = ops.byId.get(id);
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
     const cls = [
         'wiki-row',
-        ops.docId === id ? 'selected' : '',
+        isSelected ? 'selected' : '',
         hover ? `drop-${hover}` : '',
         lifting ? 'lifting' : '',
     ]
@@ -77,6 +87,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         .join(' ');
     return html`<div
         class=${cls}
+        ref=${rowRef}
         style=${`padding-left: ${0.4 + depth * 0.9}rem`}
         onClick=${() => ops.select(id)}
         draggable=${true}
