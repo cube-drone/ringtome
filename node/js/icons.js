@@ -35,6 +35,8 @@ import {
     TextTSlash,
     Keyboard,
     TextAa,
+    Plus,
+    CaretRight,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -52,6 +54,8 @@ export const Icons = {
     pin: PushPin,
     gear: Gear,
     back: CaretLeft,
+    forward: CaretRight,
+    plus: Plus,
     close: X,
     tag: Tag,
     trash: Trash,

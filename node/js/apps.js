@@ -16,13 +16,16 @@ export const APPS = [
     // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
     // is excluded from the document-app routes. Also reachable from the footer gear.
     { id: 'persona', name: 'Persona', icon: Icons.persona, live: true, system: true },
-    { id: 'notes', name: 'Notes', icon: Icons.notes, style: 'default', live: true },
+    // `bucketNoun` is what ONE bucket of this app is called to the user - the word the bucket
+    // switcher builds its labels from ("New Recipe Book", "Delete this Journal…").
+    { id: 'notes', name: 'Notes', icon: Icons.notes, style: 'default', live: true, bucketNoun: 'Notes' },
     {
         id: 'recipes',
         name: 'Recipes',
         icon: Icons.recipes,
         style: 'recipes',
         live: true,
+        bucketNoun: 'Recipe Book',
         // A recipe book: just the interactive editor, tags and title, and a tag cloud beside
         // the list. No dates, no descriptions, no format-juggling, no debug chip.
         features: {
@@ -40,6 +43,7 @@ export const APPS = [
         icon: Icons.journal,
         style: 'journal',
         live: true,
+        bucketNoun: 'Journal',
         // A day book: its own component (JournalApp), a stream of one entry per day - NOT the
         // Notes list. It composes the shared editing session directly, so it needs no `features`.
         journal: true,
@@ -92,6 +96,17 @@ export function appTypeOf(bucketName, roster) {
     const reg = (roster || []).find((b) => b.name === bucketName);
     if (reg && reg.app) return reg.app;
     return DEFAULT_STYLE;
+}
+
+/// The buckets an app can page through: its HOME bucket first (the eponymous one, named for the
+/// app's style - always present, even before anything is filed in it), then every other roster
+/// bucket that resolves to this app's type, alphabetically. This is the bucket switcher's rail.
+export function bucketsForApp(app, roster) {
+    const others = (roster || [])
+        .map((b) => b.name)
+        .filter((n) => n !== app.style && appTypeOf(n, roster) === app.style)
+        .sort();
+    return [app.style, ...others];
 }
 
 /// Which app opens a bucket of this style - the default app when the style has no live app.

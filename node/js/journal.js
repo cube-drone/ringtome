@@ -15,7 +15,6 @@ import { useSearch, queryWords } from './search.js';
 import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
-import { appTypeOf, DEFAULT_STYLE } from './apps.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
@@ -275,10 +274,9 @@ function useSearchHighlight(elRef, query) {
     }, [elRef, query]);
 }
 
-export const JournalApp = ({ current, searchQuery }) => {
+export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
     const root = current.root;
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
-    const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
     const [busy, setBusy] = useState(false);
     const creating = useRef(false); // synchronous guard against duplicate today-entry creation
 
@@ -324,11 +322,10 @@ export const JournalApp = ({ current, searchQuery }) => {
         return () => clearInterval(id);
     }, []);
 
-    const inJournal = (d) => {
-        const names = d.buckets || [];
-        const types = names.length ? names.map((n) => appTypeOf(n, roster)) : [DEFAULT_STYLE];
-        return types.includes('journal');
-    };
+    // This journal is ONE bucket - the header's switcher picks which (several journals can sit
+    // on the same shelf). Every entry is filed into its bucket at creation, so membership is the
+    // whole test.
+    const inJournal = (d) => (d.buckets || []).includes(bucket);
 
     // Newest first by CREATION (not update); ties broken stably by id.
     const entries = (docs || [])
@@ -389,7 +386,7 @@ export const JournalApp = ({ current, searchQuery }) => {
                 method: 'POST',
                 body: JSON.stringify({ title: dateTitle(now), body: '', format: 'marquee' }),
             });
-            await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/journal`, {
+            await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`, {
                 method: 'PUT',
             });
             // Success: stay "opening…" (guard held) until the new entry shows via the mirror - the

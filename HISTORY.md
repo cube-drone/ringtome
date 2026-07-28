@@ -1769,3 +1769,29 @@ one); no search box (it has no selector).
 Pragmatic v1 edges to revisit: the phantom is click-to-start (not first-keystroke), infinite-scroll
 uses a viewport IntersectionObserver, and locked entries fetch their body per-render (like search
 snippets). Needs a real browser pass - the save-engine extraction especially.
+
+## 2026-07-28: journal polish + the bucket switcher
+
+Journal grew its living-room comforts: seal/unlock state moved from a session Map into Dexie's
+local `prefs` table (`seal:<doc_id>`) - durable across reloads, live across tabs, never synced to
+the node ("this page is closed" is a per-device gesture, not a document fact). A page-wide font
+picker (keyboard/pen-nib/text-aa -> Special Elite / Caveat / Atkinson Hyperlegible) sits at the
+top of the stream, also in prefs, defaulting to typewriter. Journal text runs 1.1x with per-face
+optical scaling, and index.css gained a global `mq-font-*` size-normalization pass so the whole
+marquee grab bag reads at roughly one size (Caveat/VT323/Cormorant needed the most help). Search
+came to Journal too: the same header box, filtering the stream and painting hits in place via the
+CSS Custom Highlight API (ranges, not <mark> surgery - it lays over the live editor safely). All
+three header search boxes are now dead-centered (3-track grid).
+
+Then the bucket switcher (index.js `BucketSwitcher`, in the app header next to the title): each
+doc app is now a shelf of notebooks - ONE bucket at a time, not an app-type union. Plus creates a
+new bucket of the app's type ("New Journal"/"New Recipe Book"/"New Notes", via prompt ->
+POST /buckets), arrows page the rail (home bucket first, then registered same-type buckets,
+wrapping), and clicking the name drops the full list (member counts, current bolded). Deleting the
+current bucket (not offered for home) tombstones EVERY member doc then undefines the bucket,
+behind a BIG confirm. Apps filter by bucket membership now (`inThisBucket`); Notes' home bucket
+still gathers unbucketed docs; new docs file into the bucket you're looking at. Bucket choice is
+lifted shell state like the search query - entering an app always lands on its home bucket.
+
+Hard-won build note, recorded in auto-memory too: `npm run build` is JS only - CSS needs its own
+`npm run css`, and forgetting it looks exactly like "my CSS changes don't work."

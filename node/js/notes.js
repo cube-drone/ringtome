@@ -14,7 +14,7 @@ import { useTurbolinks } from './turbolinks.js';
 import { useSearch, queryWords } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
 import { useLocation } from 'preact-iso';
-import { DEFAULT_STYLE, appTypeOf, featuresOf } from './apps.js';
+import { DEFAULT_STYLE, featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
@@ -248,7 +248,7 @@ const RightColumn = ({ root, docId, docs, features, onDeleted }) => {
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
 // `searchQuery`, not `query` - preact-iso's Router injects its OWN `query` prop (parsed URL search
 // params, an object), which would shadow a prop of that name and break the string search.
-export const DocsApp = ({ app, current, docId, searchQuery }) => {
+export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     const root = current.root;
     const feat = featuresOf(app);
     const loc = useLocation();
@@ -261,16 +261,15 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
     const selected = docId || null;
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
 
-    // This app shows only its own documents. A doc's app-type is its bucket's type (a bucket
-    // named like an app-type IS that type; user buckets resolve via the streamed registry);
-    // an unbucketed doc belongs to the default app, which is the catch-all. So a doc shows here
-    // when any of its buckets resolves to this app's style - the per-notebook scoping the whole
-    // console rests on, and why searching in the recipe app never turns up a journal entry.
-    const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
-    const inThisApp = (d) => {
+    // This app shows ONE bucket at a time - the header's bucket switcher picks which, and the
+    // pick arrives as the `bucket` prop (the app's home bucket when nothing's picked). A doc is
+    // in view when it's a member of that bucket; the home bucket of the DEFAULT app additionally
+    // gathers unbucketed documents (they resolve to the default type, and home is the catch-all).
+    // Per-notebook scoping is why searching a recipe book never turns up a journal entry.
+    const inThisBucket = (d) => {
         const names = d.buckets || [];
-        const types = names.length ? names.map((n) => appTypeOf(n, roster)) : [DEFAULT_STYLE];
-        return types.includes(app.style);
+        if (names.includes(bucket)) return true;
+        return bucket === app.style && app.style === DEFAULT_STYLE && names.length === 0;
     };
 
     // Resume where you left off. Remember the document you have open as this app's most-recent,
@@ -287,7 +286,7 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
         restored.current = true;
         if (selected) return; // already on a document - nothing to restore
         const last = lastDocMemory.get(`${root}:${app.id}`);
-        if (last && docs.some((d) => d.doc_id === last && inThisApp(d))) {
+        if (last && docs.some((d) => d.doc_id === last && inThisBucket(d))) {
             loc.route(`/home/${app.id}/${last}`, true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -301,7 +300,7 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
     // typed it (the user's date is authoritative, per Curtis's ask).
     // Pinned documents float to the top (a doc-meta flag), then newest-claimed-date first.
     const list = (docs || [])
-        .filter(inThisApp)
+        .filter(inThisBucket)
         .filter((d) => hits === null || hits.has(d.doc_id))
         .filter((d) => tagFilter.every((t) => (d.tags || []).includes(t)))
         .sort(
@@ -321,7 +320,7 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
     const tagCloud = feat.tagColumn
         ? Object.entries(
               (docs || [])
-                  .filter(inThisApp)
+                  .filter(inThisBucket)
                   .filter((d) => hits === null || hits.has(d.doc_id))
                   .reduce((counts, d) => {
                       for (const t of d.tags || []) counts[t] = (counts[t] || 0) + 1;
@@ -339,10 +338,10 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
                 method: 'POST',
                 body: JSON.stringify({ title: 'untitled', body: '', format: 'marquee' }),
             });
-            // File it into this app's eponymous bucket (the bucket named for the app's style,
-            // implicitly of that type), so it belongs here and not just to the catch-all.
+            // File it into the CURRENT bucket - the notebook you're looking at is the notebook
+            // a new page lands in.
             await api(
-                `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(app.style)}`,
+                `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
                 { method: 'PUT' }
             );
             select(made.doc_id); // the mirror row follows within a second or two

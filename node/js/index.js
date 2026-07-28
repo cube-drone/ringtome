@@ -1,5 +1,5 @@
 import { h, render } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso';
 
@@ -18,10 +18,24 @@ import { Computers } from './computers.js';
 import { DocsApp } from './notes.js';
 import { JournalApp } from './journal.js';
 import { Console } from './console.js';
-import { liveApps, docApps, appById, appLabel } from './apps.js';
+import { liveApps, docApps, appById, appLabel, bucketsForApp } from './apps.js';
+import { openMirror, useLive } from './cache.js';
 import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
+
+async function api(path, options = {}) {
+    const res = await fetch(path, {
+        credentials: 'same-origin',
+        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
+        ...options,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(body.message || `request failed (${res.status})`);
+    }
+    return body;
+}
 
 // Nothing lives at this address. Internal URLs are session-relative (no identity in them, so
 // they never look shareable - PROJECT_PLAN, The Client Is a Console); an unknown one just
@@ -62,6 +76,126 @@ const Clock = () => {
     >${beat}</span>`;
 };
 
+// The bucket switcher: a doc-app is a shelf of notebooks (buckets), and this is how you move
+// along the shelf. It sits in the app header next to the title: a plus (bind a fresh, empty
+// notebook of this app's type), arrows that page left/right along the rail (wrapping), and the
+// current bucket's name - click it for the full list, where the current one can also be deleted.
+// Deleting is the heavy hammer: every document inside is tombstoned, then the bucket itself is
+// undefined - hence the BIG confirm. The home bucket (the eponymous one) can't be deleted.
+const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
+    const [menu, setMenu] = useState(false);
+    const boxRef = useRef(null);
+
+    // The menu closes on any press outside it (the usual dropdown contract).
+    useEffect(() => {
+        if (!menu) return;
+        const onDown = (e) => {
+            if (boxRef.current && !boxRef.current.contains(e.target)) setMenu(false);
+        };
+        document.addEventListener('pointerdown', onDown);
+        return () => document.removeEventListener('pointerdown', onDown);
+    }, [menu]);
+
+    const names = bucketsForApp(app, roster);
+    const at = Math.max(0, names.indexOf(bucket));
+    const step = (d) => onSwitch(names[(at + d + names.length) % names.length]);
+    const isHome = bucket === app.style;
+    const membersOf = (name) => {
+        const row = (roster || []).find((b) => b.name === name);
+        return row ? row.members : 0;
+    };
+
+    const create = async () => {
+        const name = (prompt(`A name for the new ${app.bucketNoun}:`) || '').trim();
+        if (!name) return;
+        try {
+            await api(`/api/identity/${root}/buckets`, {
+                method: 'POST',
+                body: JSON.stringify({ name, app: app.style }),
+            });
+            onSwitch(name); // it exists empty right away; the roster row follows via the stream
+        } catch (e) {
+            alert(`couldn't create it: ${e.message}`);
+        }
+    };
+
+    const destroy = async () => {
+        // Count from the mirror, not the roster row - same docs the view shows.
+        const docs = await openMirror(root).docs.toArray();
+        const members = docs.filter((d) => (d.buckets || []).includes(bucket));
+        const inside =
+            members.length === 0
+                ? 'It is empty - nothing else is lost.'
+                : `EVERY DOCUMENT INSIDE IT - all ${members.length} of ${
+                      members.length === 1 ? 'it' : 'them'
+                  } - GOES TOO.`;
+        if (
+            !confirm(
+                `DELETE THE ${app.bucketNoun.toUpperCase()} “${bucket}”?\n\n${inside}\n\n` +
+                    `This is the big one. Are you sure?`
+            )
+        )
+            return;
+        setMenu(false);
+        try {
+            for (const d of members) {
+                await api(`/api/identity/${root}/docs/${d.doc_id}`, { method: 'DELETE' });
+            }
+            await api(`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}`, {
+                method: 'DELETE',
+            });
+            onSwitch(app.style); // land back on the shelf's home notebook
+        } catch (e) {
+            alert(`couldn't delete it: ${e.message}`);
+        }
+    };
+
+    return html`
+        <span class="bucket-switch" ref=${boxRef}>
+            <button class="bucket-btn" title="New ${app.bucketNoun}" onClick=${create}>
+                <${Icons.plus} />
+            </button>
+            <button
+                class="bucket-btn"
+                title="the previous ${app.bucketNoun}"
+                disabled=${names.length < 2}
+                onClick=${() => step(-1)}
+            ><${Icons.back} /></button>
+            <button
+                class="bucket-name"
+                title="all of your notebooks"
+                onClick=${() => setMenu((m) => !m)}
+            >${bucket}</button>
+            <button
+                class="bucket-btn"
+                title="the next ${app.bucketNoun}"
+                disabled=${names.length < 2}
+                onClick=${() => step(1)}
+            ><${Icons.forward} /></button>
+            ${menu &&
+            html`<div class="bucket-menu">
+                ${names.map(
+                    (name) => html`<button
+                        key=${name}
+                        class=${name === bucket ? 'bucket-menu-item current' : 'bucket-menu-item'}
+                        onClick=${() => {
+                            onSwitch(name);
+                            setMenu(false);
+                        }}
+                    >
+                        <span>${name}</span>
+                        <span class="bucket-menu-count">${membersOf(name)}</span>
+                    </button>`
+                )}
+                ${!isHome &&
+                html`<button class="bucket-menu-item bucket-menu-delete" onClick=${destroy}>
+                    Delete this ${app.bucketNoun}…
+                </button>`}
+            </div>`}
+        </span>
+    `;
+};
+
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
 // persona is open, routing takes over. The whole internal UI lives under /home (root bounces
 // there, and stays free for the API / a future public face): `/home` is the console,
@@ -95,6 +229,17 @@ const Inside = ({ session }) => {
     useEffect(() => {
         setQuery('');
     }, [appHere && appHere.id]);
+
+    // The current bucket, lifted like the search query: the header owns the switcher, the app
+    // reads the choice. Null means "the app's home bucket" (the eponymous one); entering an app
+    // always starts you there. The roster (live, from the mirror) is what the switcher pages over.
+    const root = persona.current && persona.current.root;
+    const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);
+    const [bucketPick, setBucketPick] = useState(null);
+    useEffect(() => {
+        setBucketPick(null);
+    }, [appHere && appHere.id]);
+    const bucket = bucketPick || (appHere && appHere.style) || '';
 
     // The Quickbar: the persistent bottom bar, now purely the app dock - a hexagon per app (icon
     // only, the console glyphs without their names), a fast switch between apps. The tiles run
@@ -134,7 +279,17 @@ const Inside = ({ session }) => {
     const appHeader =
         appHere &&
         html`<header class="app-header">
-            <span class="app-header-title">${appLabel(appHere, personaName)}</span>
+            <span class="app-header-lead">
+                <span class="app-header-title">${appLabel(appHere, personaName)}</span>
+                ${!!appHere.style &&
+                html`<${BucketSwitcher}
+                    root=${root}
+                    app=${appHere}
+                    roster=${roster}
+                    bucket=${bucket}
+                    onSwitch=${setBucketPick}
+                />`}
+            </span>
             ${showSearch &&
             html`<input
                 class="app-header-search"
@@ -206,6 +361,7 @@ const Inside = ({ session }) => {
                           key=${app.id}
                           current=${persona.current}
                           searchQuery=${query}
+                          bucket=${appHere && appHere.id === app.id ? bucket : app.style}
                       />`
                     : html`<${DocsApp}
                           path="/home/${app.id}/:docId?"
@@ -213,6 +369,7 @@ const Inside = ({ session }) => {
                           app=${app}
                           current=${persona.current}
                           searchQuery=${query}
+                          bucket=${appHere && appHere.id === app.id ? bucket : app.style}
                       />`
             )}
             <${NotFound} default />
