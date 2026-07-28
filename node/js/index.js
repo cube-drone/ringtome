@@ -16,6 +16,7 @@ import {
 } from './persona.js';
 import { Computers } from './computers.js';
 import { DocsApp } from './notes.js';
+import { JournalApp } from './journal.js';
 import { Console } from './console.js';
 import { liveApps, docApps, appById, appLabel } from './apps.js';
 import { Icons, IconContext } from './icons.js';
@@ -89,7 +90,7 @@ const Inside = ({ session }) => {
     // column), the same place across every app that offers it. The query is lifted here so the
     // header owns the input and the app reads it; it clears when you switch apps. Only document
     // apps (those with a `style`) offer search.
-    const showSearch = !!(appHere && appHere.style);
+    const showSearch = !!(appHere && appHere.style && !appHere.journal);
     const [query, setQuery] = useState('');
     useEffect(() => {
         setQuery('');
@@ -198,14 +199,20 @@ const Inside = ({ session }) => {
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
-            ${docApps.map(
-                (app) => html`<${DocsApp}
-                    path="/home/${app.id}/:docId?"
-                    key=${app.id}
-                    app=${app}
-                    current=${persona.current}
-                    searchQuery=${query}
-                />`
+            ${docApps.map((app) =>
+                app.journal
+                    ? html`<${JournalApp}
+                          path="/home/${app.id}"
+                          key=${app.id}
+                          current=${persona.current}
+                      />`
+                    : html`<${DocsApp}
+                          path="/home/${app.id}/:docId?"
+                          key=${app.id}
+                          app=${app}
+                          current=${persona.current}
+                          searchQuery=${query}
+                      />`
             )}
             <${NotFound} default />
         </${Router}>

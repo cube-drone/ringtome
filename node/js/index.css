@@ -1569,6 +1569,166 @@ body {
     text-align: center;
 }
 
+/* --- the Journal app: a centered stream of day entries --- */
+
+.journal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1rem 1rem 4rem;
+}
+
+.journal-entry {
+    width: 100%;
+    max-width: 600px;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.4rem;
+}
+
+.journal-entry.locked {
+    opacity: 0.92;
+}
+
+.journal-entry-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 0.7rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+}
+
+.journal-date {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+/* Inside a journal entry the card IS the paper, so the editor/reader surfaces blend flat - no
+   nested boxes, no per-entry scroll (the whole stream scrolls). */
+.journal .editor-live .cm-editor {
+    background: none;
+    border: 0;
+    min-height: 5rem;
+    max-height: none;
+}
+
+/* A clickable writing area: clicking below the text lands the cursor at the entry's end (the same
+   fix as the Notes editor, just journal-sized). Without a content min-height, a click below a
+   short entry hits nothing. */
+.journal .editor-live .cm-content {
+    min-height: 4.5rem;
+    padding: 0;
+}
+
+.journal .reader-marquee,
+.journal .reader-plain {
+    background: none;
+    border: 0;
+    padding: 0;
+}
+
+.journal-editor-foot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+}
+
+.journal-status {
+    display: inline-flex;
+    color: var(--muted);
+    font-size: 1rem;
+}
+
+.journal-status.error {
+    color: var(--coral);
+}
+
+.journal-delete {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    color: var(--coral);
+    cursor: pointer;
+    font-size: 1.1rem;
+    opacity: 0.7;
+}
+
+.journal-delete:hover {
+    opacity: 1;
+}
+
+/* The lock: click to start a 15-second fill; the bar sweeps the button, then unlocks. */
+.journal-lock {
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.journal-lock-face {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+}
+
+.journal-unlock-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    z-index: 0;
+    background: var(--teal);
+    opacity: 0.4;
+    animation: journal-unlock 15s linear forwards;
+}
+
+@keyframes journal-unlock {
+    from {
+        width: 0;
+    }
+    to {
+        width: 100%;
+    }
+}
+
+/* The phantom today entry: an inviting blank page. */
+.journal-phantom-start {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 2px dashed var(--border-strong);
+    border-radius: 8px;
+    padding: 1.6rem;
+    cursor: pointer;
+    text-align: center;
+    font: inherit;
+}
+
+.journal-phantom-start:hover {
+    border-color: var(--teal);
+}
+
+.journal-sentinel {
+    height: 1px;
+    width: 100%;
+}
+
 .debug-dump {
     user-select: all;
     max-height: 70vh;

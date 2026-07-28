@@ -1120,6 +1120,9 @@ struct DocSummary {
     heads: usize,
     diverged: bool,
     updated_ms: i64,
+    /// Claimed stamp of the earliest (parentless) version - the CREATED ordering, distinct from
+    /// `updated_ms`. The Journal app stacks entries by this.
+    created_ms: i64,
     /// The document's annotations, joined onto its list row at the stream boundary (they fold
     /// from a different chain than the resolution memo, so they're attached here rather than
     /// baked into `doc_heads`). Tags drive list filtering; `fields` carries `description` and
@@ -1166,6 +1169,7 @@ fn summarize(
         heads: row.logical_heads,
         diverged: row.diverged,
         updated_ms: row.head_ms,
+        created_ms: row.genesis_ms,
         doc_id,
         tags,
         fields,

@@ -34,7 +34,16 @@ export const APPS = [
             tagColumn: true,
         },
     },
-    { id: 'journal', name: 'Journal', icon: Icons.journal, soon: true },
+    {
+        id: 'journal',
+        name: 'Journal',
+        icon: Icons.journal,
+        style: 'journal',
+        live: true,
+        // A day book: its own component (JournalApp), a stream of one entry per day - NOT the
+        // Notes list. It composes the shared editing session directly, so it needs no `features`.
+        journal: true,
+    },
     { id: 'wiki', name: 'Wiki', icon: Icons.wiki, soon: true },
     { id: 'blog', name: 'Blog', icon: Icons.blog, soon: true },
     { id: 'book', name: 'Book', icon: Icons.book, soon: true },

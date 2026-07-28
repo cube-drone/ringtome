@@ -1741,3 +1741,31 @@ by doc_id - once per document, not per keystroke, so matching stays local and in
 just fill in a beat later. `snippetLines` picks the first non-blank lines mentioning any query word;
 `highlight` wraps the hits in `<mark>`. Rows whose match was only in the title/tags (no body line)
 simply show no snippet. Only rendered while a search is active.
+
+---
+
+## Journal - and extracting the shared editing session (2026-07-27)
+
+Journal is a genuinely different document app, so it's built as its own app that COMPOSES shared
+pieces rather than the Notes app reconfiguring itself with a growing pile of `false` feature flags
+(Curtis's call, and the right one).
+
+The shared piece extracted: `useDocSession` (docsession.js) - the save engine every editing
+surface needs (load, buffer, debounced autosave, blur/unmount/tab-hide flush, and the mirror
+lookout that fast-forwards a clean buffer / forks a dirty one). It's moved verbatim out of the old
+Editor; the Notes Editor now composes it with its full chrome, and Journal composes it with almost
+none. "Never lose words" lives in one place now.
+
+Journal itself (journal.js): a centered stream (<=600px) of one entry per day, newest-first by
+CREATION time (a new `created_ms` on the doc summary, from `genesis_ms`), infinite-scroll windowed.
+Today's entry sits at the top as an inviting blank page - a phantom that only becomes a real
+document when you start (create + file into the `journal` bucket). Only today's entry is editable;
+a minute tick re-checks the day boundary, so an entry locks shut when its day ends, even mid-edit
+(the editor swaps to a read-only render, flushing first). Each older entry carries a lock button;
+clicking it runs a 15-second fill, after which the entry unlocks - editable and deletable. Routed
+at `/home/journal` to `JournalApp` (special-cased in the shell since it's a doc app but not a list
+one); no search box (it has no selector).
+
+Pragmatic v1 edges to revisit: the phantom is click-to-start (not first-keystroke), infinite-scroll
+uses a viewport IntersectionObserver, and locked entries fetch their body per-render (like search
+snippets). Needs a real browser pass - the save-engine extraction especially.

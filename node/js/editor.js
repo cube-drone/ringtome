@@ -22,18 +22,15 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
-import { openMirror, useLive } from './cache.js';
-import { needsReload } from './lookout.js';
+import { openMirror } from './cache.js';
+import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
-import { keepaliveOk } from './keepalive.js';
 import { Annotations } from './annotations.js';
 import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
-
-const AUTOSAVE_MS = 10_000;
 
 async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -81,164 +78,28 @@ const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || nu
 
 export const Editor = ({ root, docId, features, onDeleted }) => {
     const feat = features || featuresOf();
-    const [loaded, setLoaded] = useState(null); // the fetched detail this session started from
-    const [title, setTitle] = useState('');
-    const [body, setBody] = useState('');
-    const [format, setFormat] = useState('plaintext');
+    // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
+    // document session; the Editor just composes chrome around it.
+    const {
+        loaded,
+        status,
+        error,
+        title,
+        setTitle,
+        body,
+        setBody,
+        format,
+        setFormat,
+        save,
+        touched,
+        togglePin,
+        remove,
+        row,
+    } = useDocSession(root, docId, { onDeleted });
+
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
-    const [status, setStatus] = useState('opening'); // opening | clean | dirty | saving | error
-    const [error, setError] = useState(null);
     const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
-
-    // Mutable save-machine state: parents to assert, dirtiness, timers. Refs, not state -
-    // the save loop must see current values without re-render races. `buffer` mirrors the
-    // rendered state every render, so timers and unmount flushes never save a stale closure.
-    const machine = useRef({
-        parents: [],
-        dirty: false,
-        timer: null,
-        waitTimer: null,
-        inflight: false,
-    });
-    const buffer = useRef({});
-    buffer.current = { title, body, format };
-    const saveRef = useRef(() => {});
-
-    const load = async () => {
-        setStatus('opening');
-        setError(null);
-        const doc = await api(`/api/identity/${root}/docs/${docId}`);
-        // A null body means blobs this resolution needs haven't reached this computer yet
-        // (headers travel ahead of bodies). This is a WAITING ROOM, never an empty buffer:
-        // pouring null into the textarea as "" is how a divergence once ate a paragraph -
-        // the user typed into the void and saved, resolving the fork with nothing.
-        if (doc.body == null) {
-            setLoaded(doc);
-            setTitle(doc.title);
-            setFormat(doc.format);
-            setStatus('waiting');
-            machine.current.dirty = false;
-            if (machine.current.waitTimer) clearTimeout(machine.current.waitTimer);
-            machine.current.waitTimer = setTimeout(() => load().catch(() => {}), 2000);
-            return;
-        }
-        if (machine.current.waitTimer) clearTimeout(machine.current.waitTimer);
-        machine.current.parents = doc.save_parents;
-        machine.current.dirty = false;
-        machine.current.seen = { diverged: doc.diverged, heads: doc.heads.length };
-        setLoaded(doc);
-        setTitle(doc.title);
-        setBody(doc.body);
-        setFormat(doc.format);
-        setStatus('clean');
-    };
-
-    const save = async ({ unloading = false } = {}) => {
-        const m = machine.current;
-        if (!m.dirty || m.inflight) return;
-        if (m.parents.length === 0) return; // waiting room: nothing loaded to save against
-        m.inflight = true;
-        setStatus('saving');
-        // Snapshot what we're saving (from the ref, never a closure); edits during the
-        // request keep the buffer dirty.
-        const snapshot = { ...buffer.current, parents: m.parents };
-        const payload = JSON.stringify({
-            title: snapshot.title,
-            body: snapshot.body,
-            format: snapshot.format,
-            parents: snapshot.parents,
-        });
-        // keepalive only on the unload path, only when the body fits its 64 KiB cap - see
-        // keepalive.js for the whole painful reason.
-        const keepalive = keepaliveOk(unloading, new TextEncoder().encode(payload).length);
-        try {
-            const res = await api(`/api/identity/${root}/docs/${docId}`, {
-                method: 'PUT',
-                body: payload,
-                keepalive,
-            });
-            m.parents = [res.version];
-            const b = buffer.current;
-            const unchanged =
-                b.title === snapshot.title &&
-                b.body === snapshot.body &&
-                b.format === snapshot.format;
-            m.dirty = !unchanged;
-            setStatus(m.dirty ? 'dirty' : 'clean');
-        } catch (e) {
-            setError(e.message);
-            setStatus('error'); // still dirty; the next trigger retries
-        } finally {
-            m.inflight = false;
-        }
-    };
-    saveRef.current = save;
-
-    // Any real input arms the shadow and re-debounces the autosave clock.
-    const touched = () => {
-        const m = machine.current;
-        m.dirty = true;
-        setStatus('dirty');
-        if (m.timer) clearTimeout(m.timer);
-        m.timer = setTimeout(() => saveRef.current(), AUTOSAVE_MS);
-    };
-
-    // Pin / unpin this document (a doc-meta flag that floats it to the top of the list). The
-    // current state comes from the live row at click time, so the button always toggles right.
-    const togglePin = async (isPinned) => {
-        try {
-            await api(`/api/identity/${root}/docs/${docId}/pin`, {
-                method: isPinned ? 'DELETE' : 'PUT',
-            });
-        } catch (e) {
-            setError(e.message);
-            setStatus('error');
-        }
-    };
-
-    // Delete this document: a reversible tombstone (the version chain stays; the doc drops out
-    // of every list). Disarm the buffer FIRST - otherwise the doc-switch unmount flush would
-    // save a fresh version onto the doc we're deleting. Then navigate away via onDeleted.
-    const remove = async () => {
-        if (!confirm('Delete this document? It leaves the list right away.')) return;
-        const m = machine.current;
-        m.dirty = false;
-        if (m.timer) clearTimeout(m.timer);
-        try {
-            await api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' });
-            onDeleted && onDeleted();
-        } catch (e) {
-            setError(e.message);
-            setStatus('error');
-        }
-    };
-
-    useEffect(() => {
-        load().catch((e) => {
-            setError(e.message);
-            setStatus('error');
-        });
-        // Doc switch / unmount: flush whatever's unsaved, drop timers.
-        return () => {
-            const m = machine.current;
-            if (m.timer) clearTimeout(m.timer);
-            if (m.waitTimer) clearTimeout(m.waitTimer);
-            if (m.dirty) saveRef.current();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root, docId]);
-
-    // Tab hidden (close, switch away): flush with keepalive so the words leave the building
-    // even if the tab doesn't come back. This is the ONE save that passes unloading - a
-    // React unmount (doc switch) doesn't abort fetches, so only a real page-away needs it.
-    useEffect(() => {
-        const onHide = () => {
-            if (document.visibilityState === 'hidden') saveRef.current({ unloading: true });
-        };
-        document.addEventListener('visibilitychange', onHide);
-        return () => document.removeEventListener('visibilitychange', onHide);
-    }, []);
 
     // The remembered view mode: hydrate this doc's last pick from the mirror's local-only
     // prefs table; picking writes it back. The functional set means a click that beats the
@@ -266,24 +127,6 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
             .prefs.put({ key: `mode:${docId}`, value: m })
             .catch(() => {});
     };
-
-    // The lookout: watch this doc's mirror row, reload when the row knows something this
-    // buffer hasn't presented. The judgment lives in lookout.js as a pure predicate - it has
-    // been field-tested wrong twice (the module's comment is the scar record), so it earns
-    // tests of its own. Change + dirty → keep typing; the fork is deliberate and presents
-    // right after the next save lands.
-    const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
-    useEffect(() => {
-        const m = machine.current;
-        if (!row || !loaded || m.dirty || m.inflight) return;
-        const seen = m.seen || { diverged: false, heads: 1 };
-        if (needsReload(row, m.parents, seen)) {
-            load().catch(() => {});
-        }
-        // `status` is a dep so a row update skipped during an inflight save gets re-judged
-        // when the save settles - the row may never change again to re-fire this effect.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [row && row.head, row && row.heads, row && row.diverged, status]);
 
     if (status === 'opening' && !loaded) {
         return html`<div class="reader"><p class="null-sub">opening…</p></div>`;
@@ -438,7 +281,7 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
                               setTitle(e.currentTarget.value);
                               touched();
                           }}
-                          onBlur=${() => saveRef.current()}
+                          onBlur=${() => save()}
                           placeholder="untitled"
                       />`}
                 <span class="reader-chips">
