@@ -16,6 +16,7 @@ import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './
 import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, featuresOf } from './apps.js';
 import { WikiTree, ensureTreeRoot } from './tree.js';
+import { useColWidths } from './panes.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
@@ -366,6 +367,10 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     // A deleted doc never touches the taxonomy roster, so the tree wouldn't notice on its own.
     const [treeReload, setTreeReload] = useState(0);
 
+    // Column widths: each column left of the editor drags at its right edge (panes.js - the
+    // shared resizer strips + `colw:` prefs + CSS-var plumbing).
+    const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree']);
+
     const createNew = async () => {
         setBusy(true);
         try {
@@ -400,7 +405,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
 
     return html`
         <div class="notes">
-            <div class="notes-columns">
+            <div class="notes-columns" style=${colStyle}>
                 ${feat.tagColumn &&
                 (tucked.has('tags')
                     ? html`<${Rail} icon=${Icons.tag} label="tags" onClick=${() => toggleCol('tags')} />`
@@ -420,7 +425,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                           )}
                           ${tagCloud.length === 0 &&
                           html`<p class="null-sub tag-column-empty">no tags yet</p>`}
-                      </aside>`)}
+                      </aside>${resizer('tags')}`)}
                 ${tucked.has('list')
                     ? html`<${Rail} icon=${Icons.list} label="items" onClick=${() => toggleCol('list')} />`
                     : html`<aside class="notes-list">
@@ -492,7 +497,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                     html`<p class="null-sub notes-empty">
                         ${hits === null ? 'nothing here yet.' : 'nothing matches.'}
                     </p>`}
-                </aside>`}
+                </aside>${resizer('list')}`}
                 ${feat.tree &&
                 (tucked.has('tree')
                     ? html`<${Rail} icon=${Icons.tree} label="tree" onClick=${() => toggleCol('tree')} />`
@@ -505,7 +510,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                           reloadKey=${treeReload}
                           showUnfiled=${false}
                           onMinimize=${() => toggleCol('tree')}
-                      />`)}
+                      />${resizer('tree')}`)}
                 <${RightColumn}
                     root=${root}
                     docId=${selected}

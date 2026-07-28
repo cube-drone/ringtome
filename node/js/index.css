@@ -1171,6 +1171,41 @@ body {
     flex: 1;
 }
 
+/* Adjustable column widths: the stylesheet defaults hold until a drag sets the CSS var (per
+   app, persisted in prefs). Scoped to .notes-columns so the wiki app's tree keeps its width. */
+.notes-columns .tag-column {
+    width: var(--w-tags, 180px);
+}
+
+.notes-columns .notes-list {
+    width: var(--w-list, 240px);
+}
+
+.notes-columns .wiki-tree,
+.wiki-columns .wiki-tree {
+    width: var(--w-tree, 270px);
+}
+
+/* The resizer strip between columns: an invisible grab area that shows a teal seam on hover
+   and while dragging. */
+.col-resizer {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 8px;
+    /* Eat most of the flex gap on either side, so a gutter with a resizer in it reads about as
+       wide as one without. */
+    margin: 0 -0.5rem;
+    cursor: col-resize;
+    border-radius: 3px;
+    touch-action: none;
+}
+
+.col-resizer:hover,
+.col-resizer:active {
+    background: var(--teal);
+    opacity: 0.5;
+}
+
 .tag-cloud-row {
     display: flex;
     align-items: center;

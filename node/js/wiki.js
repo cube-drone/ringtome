@@ -8,6 +8,7 @@ import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from './cache.js';
 import { WikiTree } from './tree.js';
+import { useColWidths } from './panes.js';
 import { Editor } from './editor.js';
 import { featuresOf } from './apps.js';
 
@@ -27,6 +28,9 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
     // A deleted page never touches the taxonomy roster, so the tree wouldn't notice on its own -
     // this bump tells it to look again.
     const [treeReload, setTreeReload] = useState(0);
+
+    // The tree drags at its right edge, like the Notes columns (panes.js).
+    const { resizer, colStyle } = useColWidths(root, app.id, ['tree']);
 
     // Resume where you left off - the Notes pattern verbatim: remember the open page, and when
     // you ENTER the app with nothing selected, return to it (once, if it's still in the current
@@ -50,7 +54,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
 
     return html`
         <div class="wiki">
-            <div class="wiki-columns">
+            <div class="wiki-columns" style=${colStyle}>
                 <${WikiTree}
                     root=${root}
                     bucket=${bucket}
@@ -58,7 +62,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                     onSelect=${select}
                     searchQuery=${searchQuery}
                     reloadKey=${treeReload}
-                />
+                />${resizer('tree')}
                 <div class="wiki-main">
                     ${selected
                         ? html`<${Editor}
