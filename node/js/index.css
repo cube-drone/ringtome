@@ -1954,9 +1954,24 @@ body {
 }
 
 .journal-date-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.45rem;
     font-size: 0.75em;
     color: var(--muted);
     margin-top: 0.1rem;
+}
+
+/* The entry's tags, riding the date line as quiet little pills. */
+.journal-tag-chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 0.55em;
+    font-size: 0.9em;
+    color: var(--muted);
+    white-space: nowrap;
 }
 
 .journal-head-actions {

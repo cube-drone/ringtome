@@ -76,11 +76,16 @@ const StatusDot = ({ status }) =>
 // The entry head: the title row over a smaller date line, with the corner actions (tag button,
 // and the lock for sealed entries) at the top right. `children` is the title row - an input for
 // an open entry, plain text for a locked one.
-const JournalHead = ({ dateMs, actions, children }) => html`
+const JournalHead = ({ dateMs, tags, actions, children }) => html`
     <header class="journal-entry-head">
         <div class="journal-head-main">
             ${children}
-            <div class="journal-date-sub">${dateTitle(dateMs)}</div>
+            <div class="journal-date-sub">
+                <span>${dateTitle(dateMs)}</span>
+                ${(tags || []).map(
+                    (t) => html`<span class="journal-tag-chip" key=${t}>${t}</span>`
+                )}
+            </div>
         </div>
         <span class="journal-head-actions">${actions}</span>
     </header>
@@ -89,7 +94,7 @@ const JournalHead = ({ dateMs, actions, children }) => html`
 // The editable surface for a journal entry: the shared session + the live marquee, plus the
 // minimum chrome - the head (an editable title over the date), the annotations panel when the
 // tag button has it open, and a foot with the save-status dot, seal, and delete.
-const JournalEditor = ({ root, docId, onSeal, dateMs, actions, meta }) => {
+const JournalEditor = ({ root, docId, onSeal, dateMs, tags, actions, meta }) => {
     const s = useDocSession(root, docId, { onDeleted: () => {} });
     const tlProfile = useTurbolinks(s.body, s.format);
 
@@ -104,7 +109,7 @@ const JournalEditor = ({ root, docId, onSeal, dateMs, actions, meta }) => {
     }
     return html`
         <div class="journal-editor">
-            <${JournalHead} dateMs=${dateMs} actions=${actions}>
+            <${JournalHead} dateMs=${dateMs} tags=${tags} actions=${actions}>
                 <input
                     class="journal-title"
                     value=${s.title}
@@ -259,11 +264,13 @@ const JournalEntry = ({ root, entry, open, onOverride }) => {
                       docId=${entry.doc_id}
                       onSeal=${() => onOverride('locked')}
                       dateMs=${dateMs}
+                      tags=${entry.tags}
                       actions=${tagBtn}
                       meta=${meta}
                   />`
                 : html`<${JournalHead}
                       dateMs=${dateMs}
+                      tags=${entry.tags}
                       actions=${html`${tagBtn}<${LockButton} onUnlocked=${() => onOverride('open')} />`}
                   >
                       <div class="journal-title-read">${entry.title || 'untitled'}</div>
