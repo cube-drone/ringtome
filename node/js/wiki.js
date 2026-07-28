@@ -32,6 +32,23 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
     // The tree drags at its right edge, like the Notes columns (panes.js).
     const { resizer, colStyle } = useColWidths(root, app.id, ['tree']);
 
+    // Prev/next walk the tree as a book: the depth-first doc order, reported by the tree pane
+    // after each fetch. Next reads DOWN the tree, previous back up. Shown only when there's
+    // somewhere to go (more than one page, and the open page is in the order).
+    const [treeOrder, setTreeOrder] = useState(null);
+    const order = treeOrder || [];
+    const at = selected ? order.indexOf(selected) : -1;
+    const nav =
+        at !== -1 && order.length > 1
+            ? {
+                  prev: at > 0 ? order[at - 1] : null,
+                  next: at < order.length - 1 ? order[at + 1] : null,
+                  go: select,
+                  prevTip: 'Previous — back up the tree',
+                  nextTip: 'Next — down the tree',
+              }
+            : null;
+
     // Resume where you left off - the Notes pattern verbatim: remember the open page, and when
     // you ENTER the app with nothing selected, return to it (once, if it's still in the current
     // bucket). The redirect REPLACES history so Back still exits cleanly. The docs guard means
@@ -62,6 +79,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                     onSelect=${select}
                     searchQuery=${searchQuery}
                     reloadKey=${treeReload}
+                    onOrder=${setTreeOrder}
                 />${resizer('tree')}
                 <div class="wiki-main">
                     ${selected
@@ -69,6 +87,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                               root=${root}
                               docId=${selected}
                               key=${selected}
+                              nav=${nav}
                               features=${featuresOf(app)}
                               onDeleted=${() => {
                                   select(null);

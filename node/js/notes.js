@@ -118,7 +118,7 @@ const Snippet = ({ root, docId, query }) => {
 // The reader: read-only display of one document's resolved current state. `body` arrives
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
-const Reader = ({ root, docId, onDeleted }) => {
+const Reader = ({ root, docId, onDeleted, nav }) => {
     const [doc, setDoc] = useState(null);
     const [error, setError] = useState(null);
     const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
@@ -212,6 +212,19 @@ const Reader = ({ root, docId, onDeleted }) => {
             <header class="reader-head">
                 <span class="reader-title">${doc.title || 'untitled'}</span>
                 <span class="reader-chips">
+                    ${nav &&
+                    html`<button
+                            class="chip chip-button"
+                            title=${nav.prevTip || 'the previous document'}
+                            disabled=${!nav.prev}
+                            onClick=${() => nav.prev && nav.go(nav.prev)}
+                        ><${Icons.navPrev} /></button>
+                        <button
+                            class="chip chip-button"
+                            title=${nav.nextTip || 'the next document'}
+                            disabled=${!nav.next}
+                            onClick=${() => nav.next && nav.go(nav.next)}
+                        ><${Icons.navNext} /></button>`}
                     ${doc.diverged &&
                     (doc.resolution === 'conflict'
                         ? html`<span class="chip chip-diverged" title="edited in the same place on two computers; every version is shown below">conflict</span>`
@@ -240,7 +253,7 @@ const Reader = ({ root, docId, onDeleted }) => {
 
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
-const RightColumn = ({ root, docId, docs, features, onDeleted }) => {
+const RightColumn = ({ root, docId, docs, features, onDeleted, nav }) => {
     if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
@@ -249,11 +262,12 @@ const RightColumn = ({ root, docId, docs, features, onDeleted }) => {
             root=${root}
             docId=${docId}
             key=${docId}
+            nav=${nav}
             features=${features}
             onDeleted=${onDeleted}
         />`;
     }
-    return html`<${Reader} root=${root} docId=${docId} key=${docId} onDeleted=${onDeleted} />`;
+    return html`<${Reader} root=${root} docId=${docId} key=${docId} nav=${nav} onDeleted=${onDeleted} />`;
 };
 
 // The documents app - the shared surface every "documents" application (Notes, Recipes, ...)
@@ -366,10 +380,34 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
 
     // A deleted doc never touches the taxonomy roster, so the tree wouldn't notice on its own.
     const [treeReload, setTreeReload] = useState(0);
+    // The tree's depth-first doc order (the "book order"), reported by the tree pane.
+    const [treeOrder, setTreeOrder] = useState(null);
 
     // Column widths: each column left of the editor drags at its right edge (panes.js - the
     // shared resizer strips + `colw:` prefs + CSS-var plumbing).
     const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree']);
+
+    // Prev/next in the doc menu. Which order they walk depends on what's showing: with the
+    // tree column open, they read the tree as a book (down/up, depth-first - and the tree wins
+    // when both columns are open); with it tucked or absent, they walk the list's time order,
+    // where NEXT goes back in time (the list reads newest-first, so next is simply "down the
+    // list" - Recipes always walks this way). A doc missing from the tree (unfiled) falls back
+    // to the list order rather than stranding the arrows.
+    const listOrder = list.map((d) => d.doc_id);
+    const treeShowing = feat.tree && !tucked.has('tree');
+    const bookish = treeShowing && treeOrder && selected && treeOrder.includes(selected);
+    const navOrder = bookish ? treeOrder : listOrder;
+    const navAt = selected ? navOrder.indexOf(selected) : -1;
+    const nav =
+        navAt !== -1 && navOrder.length > 1
+            ? {
+                  prev: navAt > 0 ? navOrder[navAt - 1] : null,
+                  next: navAt < navOrder.length - 1 ? navOrder[navAt + 1] : null,
+                  go: select,
+                  prevTip: bookish ? 'Previous — back up the tree' : 'Previous — newer',
+                  nextTip: bookish ? 'Next — down the tree' : 'Next — older',
+              }
+            : null;
 
     const createNew = async () => {
         setBusy(true);
@@ -510,11 +548,13 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                           reloadKey=${treeReload}
                           showUnfiled=${false}
                           onMinimize=${() => toggleCol('tree')}
+                          onOrder=${setTreeOrder}
                       />${resizer('tree')}`)}
                 <${RightColumn}
                     root=${root}
                     docId=${selected}
                     docs=${docs}
+                    nav=${nav}
                     features=${feat}
                     onDeleted=${() => {
                         select(null);

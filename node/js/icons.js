@@ -45,6 +45,8 @@ import {
     PencilSimple,
     ListBullets,
     TreeStructure,
+    ArrowLeft,
+    ArrowRight,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -100,4 +102,7 @@ export const Icons = {
     // collapsible column rails
     list: ListBullets,
     tree: TreeStructure,
+    // document prev/next (the book-walk arrows in the doc menu)
+    navPrev: ArrowLeft,
+    navNext: ArrowRight,
 };

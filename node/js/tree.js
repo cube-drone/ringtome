@@ -286,6 +286,20 @@ const UnfiledBin = ({ unfiled, ops }) => {
     </div>`;
 };
 
+// The tree read as a book: every own page in depth-first order, first occurrence only (a
+// diamond-placed page reads once). This is the prev/next walking order for document nav.
+function flatDocs(node, out = [], seen = new Set()) {
+    for (const m of node.members || []) {
+        if (m.taxonomy) {
+            if (m.taxonomy.members) flatDocs(m.taxonomy, out, seen);
+        } else if (m.doc && !seen.has(m.doc_id)) {
+            seen.add(m.doc_id);
+            out.push(m.doc_id);
+        }
+    }
+    return out;
+}
+
 /**
  * The tree pane. Self-contained: finds (or lazily mints) the bucket's root taxonomy, fetches
  * and renders the expanded tree, and owns every tree operation (new page/section, rename,
@@ -296,6 +310,7 @@ const UnfiledBin = ({ unfiled, ops }) => {
  * @param reloadKey    bump to force a refetch (e.g. after deleting a doc from the editor)
  * @param showUnfiled  the unfiled bin; off when a sibling list column already plays that role
  * @param onMinimize   when present, the toolbar grows a tuck-away button (collapsible column)
+ * @param onOrder      called with the depth-first doc order (the "book order") after each fetch
  */
 export const WikiTree = ({
     root,
@@ -306,6 +321,7 @@ export const WikiTree = ({
     reloadKey = 0,
     showUnfiled = true,
     onMinimize,
+    onOrder,
 }) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const taxRows = useLive(() => openMirror(root).taxonomies.toArray(), [root]);
@@ -344,11 +360,16 @@ export const WikiTree = ({
     useEffect(() => {
         if (!rootId) {
             setTree(null);
+            onOrder && onOrder([]);
             return;
         }
         let alive = true;
         api(`/api/identity/${root}/taxonomies/${rootId}`)
-            .then((t) => alive && setTree(t))
+            .then((t) => {
+                if (!alive) return;
+                setTree(t);
+                onOrder && onOrder(flatDocs(t));
+            })
             .catch(() => {});
         return () => {
             alive = false;
@@ -370,6 +391,40 @@ export const WikiTree = ({
             .prefs.put({ key: `wikifold:${taxId}`, value: folded.has(taxId) ? '0' : '1' })
             .catch(() => {});
     };
+
+    // Arriving somewhere you can't see isn't arriving: when the selection changes (prev/next
+    // walking into a folded section, a deep link, a list click), unfold every ancestor of the
+    // newly selected page. ONCE per arrival - the ref - so folding a section over the open page
+    // afterwards sticks; the reveal only fires again when the selection actually moves. Waits
+    // for both the tree and the fold prefs before judging, so a deep link's first paint still
+    // reveals. A diamond-placed page reveals its first-occurrence path (the nav order's path).
+    const revealed = useRef(null);
+    useEffect(() => {
+        if (!selected || !tree || foldRows === undefined) return;
+        if (revealed.current === selected) return;
+        revealed.current = selected;
+        const trail = [];
+        const find = (n, path) => {
+            for (const m of n.members || []) {
+                if (m.taxonomy) {
+                    if (m.taxonomy.members && find(m.taxonomy, [...path, m.taxonomy.taxonomy_id])) {
+                        return true;
+                    }
+                } else if (m.doc_id === selected) {
+                    trail.push(...path);
+                    return true;
+                }
+            }
+            return false;
+        };
+        find(tree, []);
+        for (const id of trail) {
+            if (folded.has(id)) {
+                openMirror(root).prefs.put({ key: `wikifold:${id}`, value: '0' }).catch(() => {});
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selected, tree, foldRows]);
 
     const newPage = async (parentTaxId) => {
         try {
@@ -593,6 +648,13 @@ export const WikiTree = ({
                 if (tree) completeDrag({ intoId: tree.taxonomy_id });
             }}
         >
+            ${onMinimize &&
+            html`<div class="pane-head">
+                <span class="pane-head-label">tree</span>
+                <button class="pane-min" title="tuck the tree column away" onClick=${onMinimize}>
+                    <${Icons.back} />
+                </button>
+            </div>`}
             <div class="wiki-toolbar">
                 <button class="wiki-tool" onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> page
@@ -600,11 +662,6 @@ export const WikiTree = ({
                 <button class="wiki-tool" onClick=${() => newSection(null)}>
                     <${Icons.sectionNew} /> section
                 </button>
-                ${onMinimize &&
-                html`<span class="wiki-toolbar-spring"></span>
-                    <button class="pane-min" title="tuck the tree away" onClick=${onMinimize}>
-                        <${Icons.back} />
-                    </button>`}
             </div>
             ${tree && html`<${MemberList} node=${tree} depth=${0} ops=${ops} />`}
             ${empty &&

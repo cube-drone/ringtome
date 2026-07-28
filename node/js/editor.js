@@ -76,7 +76,7 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId, features, onDeleted }) => {
+export const Editor = ({ root, docId, features, onDeleted, nav }) => {
     const feat = features || featuresOf();
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
@@ -285,6 +285,19 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
                           placeholder="untitled"
                       />`}
                 <span class="reader-chips">
+                    ${nav &&
+                    html`<button
+                            class="chip chip-button"
+                            title=${nav.prevTip || 'the previous document'}
+                            disabled=${!nav.prev}
+                            onClick=${() => nav.prev && nav.go(nav.prev)}
+                        ><${Icons.navPrev} /></button>
+                        <button
+                            class="chip chip-button"
+                            title=${nav.nextTip || 'the next document'}
+                            disabled=${!nav.next}
+                            onClick=${() => nav.next && nav.go(nav.next)}
+                        ><${Icons.navNext} /></button>`}
                     ${loaded.diverged &&
                     (loaded.resolution === 'conflict'
                         ? html`<span class="chip chip-diverged" title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"><${Icons.conflict} /></span>`

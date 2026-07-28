@@ -1166,11 +1166,6 @@ body {
     letter-spacing: 0.08em;
 }
 
-/* The tree's toolbar hosts its own tuck button, pushed to the right edge. */
-.wiki-toolbar-spring {
-    flex: 1;
-}
-
 /* Adjustable column widths: the stylesheet defaults hold until a drag sets the CSS var (per
    app, persisted in prefs). Scoped to .notes-columns so the wiki app's tree keeps its width. */
 .notes-columns .tag-column {
@@ -1742,6 +1737,16 @@ body {
 
 .chip-button:hover {
     border-color: var(--sea);
+}
+
+/* An end-of-the-book nav arrow: still present (the pair keeps its shape), just quiet. */
+.chip-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.chip-button:disabled:hover {
+    border-color: var(--border);
 }
 
 /* Delete is the one destructive chip: coral, and it only warms up on hover so it never shouts
