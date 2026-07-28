@@ -37,6 +37,41 @@
 @font-face { font-family: "Bitcount"; src: url("/fonts/bitcount.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Quicksand"; src: url("/fonts/quicksand.woff2") format("woff2"); font-display: swap; }
 
+/* --- optical-size normalization ---
+ * These faces render visibly smaller than the rest of the grab bag at the same font-size (small
+ * x-heights / narrow em). Nudge each up in `em` (relative to context, so it composes with the size
+ * rungs) until the whole set reads at roughly one size. Applied on the marquee `mq-font-*` classes,
+ * so it holds wherever a font is chosen; the Journal mirrors these same factors on its base text. */
+.mq-font-atkinson-hyperlegible,
+.mq-font-zilla-slab,
+.mq-font-im-fell-english,
+.mq-font-uncial-antiqua,
+.mq-font-major-mono,
+.mq-font-bitcount,
+.mq-font-orbitron,
+.mq-font-audiowide,
+.mq-font-creepster,
+.mq-font-monoton,
+.mq-font-oi,
+.mq-font-kablammo,
+.mq-font-henny-penny,
+.mq-font-lobster,
+.mq-font-pacifico,
+.mq-font-fredericka,
+.mq-font-unifraktur,
+.mq-font-comic-neue {
+    font-size: 1.15em;
+}
+
+.mq-font-vt323,
+.mq-font-cormorant {
+    font-size: 1.3em;
+}
+
+.mq-font-caveat {
+    font-size: 1.5em;
+}
+
 /* --- the palette ---
  * Warm and beachy, mid-tone (neither dark nor light): sand and cream surfaces, teal water,
  * shell pink, sunset coral, sea-green. Every colour in the app is one of these tokens, so the
@@ -1577,6 +1612,54 @@ body {
     align-items: center;
     gap: 1.5rem;
     padding: 1rem 1rem 4rem;
+    /* The page writing hand: set per-journal via JournalFonts, inherited by every heading, reader,
+       and editor below (the cm-scroller inherits its font). Falls back to the legible face. */
+    font-family: var(--journal-font, "Atkinson Hyperlegible", sans-serif);
+    /* The day book reads large: 1.3x the surrounding text, times the chosen face's optical-size
+       scale (so Caveat, naturally tiny, lands even bigger). Entries, readers, and the editor all
+       inherit this; the toolbar and chrome keep their own absolute sizes. */
+    font-size: calc(1.3em * var(--journal-font-scale, 1));
+}
+
+/* The font selector: a small toolbar pinned to the top of the stream, above the entry column and
+   the same 600px width, so it rides along as you scroll the day book. Its own icons stay in the
+   UI font (they're glyphs, unaffected) - only the entries wear the chosen hand. */
+.journal-fonts {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    align-self: center;
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.3rem;
+    padding: 0.4rem 0;
+    background: var(--surface);
+}
+
+.journal-font {
+    display: inline-flex;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0.25rem 0.4rem;
+    opacity: 0.7;
+}
+
+.journal-font:hover {
+    opacity: 1;
+    color: var(--teal);
+}
+
+.journal-font.active {
+    opacity: 1;
+    color: var(--ink);
+    border-color: var(--border-strong);
+    background: var(--surface-2);
 }
 
 .journal-entry {
@@ -1604,7 +1687,7 @@ body {
 
 .journal-date {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: 1.1em; /* proportional to the entry's (now enlarged) body, not a fixed rem */
     font-weight: 600;
     color: var(--ink);
 }

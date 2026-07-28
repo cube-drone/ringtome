@@ -33,6 +33,8 @@ import {
     SquareHalf,
     TextT,
     TextTSlash,
+    Keyboard,
+    TextAa,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -72,4 +74,8 @@ export const Icons = {
     modeSide: SquareHalf,
     modePlain: TextT,
     modeRead: TextTSlash,
+    // journal font override
+    fontTypewriter: Keyboard,
+    fontHand: PenNib,
+    fontLegible: TextAa,
 };

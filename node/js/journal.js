@@ -171,6 +171,35 @@ const LockButton = ({ onUnlocked }) => {
 // "this page is closed" is a personal, per-device gesture, not a document fact.
 const sealKey = (docId) => `seal:${docId}`;
 
+// The page's writing hand: one font override for the WHOLE journal, chosen from three moods -
+// typewriter (Special Elite), handwritten (Caveat), or plain-legible (Atkinson Hyperlegible).
+// Stored in Dexie prefs alongside the seals (local, durable, live across tabs); it flows in as
+// the CSS var `--journal-font` on `.journal`, which every entry heading, reader, and editor
+// inherits. A per-page default (not per-entry) - the journal reads in one voice.
+// `scale` normalizes each face's optical size to the others (the same factors as the global
+// `mq-font-*` normalization in index.css): Special Elite is the reference, Atkinson runs a touch
+// small, Caveat a lot. It rides on top of the journal's own 1.5x size-up as `--journal-font-scale`.
+const FONTS = [
+    { id: 'special-elite', family: '"Special Elite", monospace', scale: 1, icon: Icons.fontTypewriter, label: 'Typewriter — Special Elite' },
+    { id: 'caveat', family: '"Caveat", cursive', scale: 1.5, icon: Icons.fontHand, label: 'Handwritten — Caveat' },
+    { id: 'atkinson', family: '"Atkinson Hyperlegible", sans-serif', scale: 1.15, icon: Icons.fontLegible, label: 'Legible — Atkinson Hyperlegible' },
+];
+const DEFAULT_FONT = 'special-elite';
+const fontOf = (id) => FONTS.find((f) => f.id === id) || FONTS[0];
+
+const JournalFonts = ({ value, onPick }) => html`
+    <div class="journal-fonts">
+        ${FONTS.map(
+            (f) => html`<button
+                key=${f.id}
+                class=${value === f.id ? 'journal-font active' : 'journal-font'}
+                title=${f.label}
+                onClick=${() => onPick(f.id)}
+            ><${f.icon} /></button>`
+        )}
+    </div>
+`;
+
 const JournalEntry = ({ root, entry, open, onOverride }) => html`
     <article class=${open ? 'journal-entry open' : 'journal-entry locked'}>
         <header class="journal-entry-head">
@@ -223,6 +252,26 @@ export const JournalApp = ({ current }) => {
     const openOf = (e, todayKey) => {
         const o = sealMap.get(e.doc_id);
         return o !== undefined ? o === 'open' : dayKey(e.created_ms) === todayKey;
+    };
+
+    // The page font override (same durable Dexie home as the seals). Read with the same
+    // `.where().equals().toArray()` shape the seals use - which reliably re-fires - rather than a
+    // bare `.get()`. An optimistic `pick` makes the click land instantly (no wait on the Dexie
+    // round-trip); once the write echoes back through the live query, the pick is dropped so a
+    // change from another tab can take over again.
+    const fontRows = useLive(
+        () => openMirror(root).prefs.where('key').equals('journal:font').toArray(),
+        [root]
+    );
+    const persistedFont = fontRows && fontRows[0] && fontRows[0].value;
+    const [fontPick, setFontPick] = useState(null);
+    const font = fontPick || persistedFont || DEFAULT_FONT;
+    useEffect(() => {
+        if (fontPick && persistedFont === fontPick) setFontPick(null);
+    }, [persistedFont, fontPick]);
+    const setFont = (f) => {
+        setFontPick(f);
+        openMirror(root).prefs.put({ key: 'journal:font', value: f }).catch(() => {});
     };
 
     // A minute tick re-checks the day boundary, so today's entry locks shut when the day ends.
@@ -297,8 +346,13 @@ export const JournalApp = ({ current }) => {
         }
     };
 
+    const face = fontOf(font);
     return html`
-        <div class="journal">
+        <div
+            class="journal"
+            style=${`--journal-font: ${face.family}; --journal-font-scale: ${face.scale}`}
+        >
+            <${JournalFonts} value=${font} onPick=${setFont} />
             ${shown.map((e) =>
                 e.phantom
                     ? html`<${JournalPhantom} key="today" now=${now} onStart=${startToday} busy=${busy} />`
