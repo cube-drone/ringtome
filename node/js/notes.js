@@ -15,6 +15,7 @@ import { useSearch, queryWords } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
 import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, featuresOf } from './apps.js';
+import { WikiTree, ensureTreeRoot } from './tree.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
@@ -38,6 +39,17 @@ async function api(path, options = {}) {
 }
 
 const when = (ms) => new Date(ms).toLocaleString();
+
+// A tucked-away column: the slim rail left standing when a column is minimized - its icon and
+// name run vertically, and a click brings the column back.
+const Rail = ({ icon, label, onClick }) => html`<button
+    class="pane-rail"
+    title=${`show ${label}`}
+    onClick=${onClick}
+>
+    <${icon} />
+    <span class="pane-rail-label">${label}</span>
+</button>`;
 
 // --- search snippets: the first few body lines that contain the query, with hits highlighted.
 // The mirror only holds a token bag (no line structure), so the body is fetched per result and
@@ -329,6 +341,31 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
           ).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
         : [];
 
+    // Which columns are tucked away (minimized to a rail): per-app, in Dexie prefs like the
+    // journal seals and tree folds - durable in this browser, live across tabs, never synced.
+    // The main surface can't tuck; everything to its left can.
+    const colRows = useLive(
+        () => openMirror(root).prefs.where('key').startsWith(`col:${app.id}:`).toArray(),
+        [root, app.id]
+    );
+    const tucked = new Set(
+        (colRows || []).filter((r) => r.value === '1').map((r) => r.key.split(':')[2])
+    );
+    const toggleCol = (c) => {
+        openMirror(root)
+            .prefs.put({ key: `col:${app.id}:${c}`, value: tucked.has(c) ? '0' : '1' })
+            .catch(() => {});
+    };
+    const paneHead = (label, col) => html`<div class="pane-head">
+        <span class="pane-head-label">${label}</span>
+        <button class="pane-min" title=${`tuck the ${label} column away`} onClick=${() => toggleCol(col)}>
+            <${Icons.back} />
+        </button>
+    </div>`;
+
+    // A deleted doc never touches the taxonomy roster, so the tree wouldn't notice on its own.
+    const [treeReload, setTreeReload] = useState(0);
+
     const createNew = async () => {
         setBusy(true);
         try {
@@ -344,6 +381,17 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
                 { method: 'PUT' }
             );
+            // When the tree column exists, a new item also takes its place in the tree - the
+            // last child of the root (append), where it's visible and draggable into shape,
+            // rather than invisibly unfiled.
+            if (feat.tree) {
+                const rootTax = await ensureTreeRoot(root, bucket);
+                await api(`/api/identity/${root}/taxonomies/${rootTax}/members/${made.doc_id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({}),
+                });
+                setTreeReload((k) => k + 1); // don't wait for the roster tick
+            }
             select(made.doc_id); // the mirror row follows within a second or two
         } finally {
             setBusy(false);
@@ -354,22 +402,29 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
         <div class="notes">
             <div class="notes-columns">
                 ${feat.tagColumn &&
-                html`<aside class="tag-column">
-                    <div class="tag-column-title">tags</div>
-                    ${tagCloud.map(
-                        ([tag, count]) => html`<button
-                            key=${tag}
-                            class=${tagFilter.includes(tag) ? 'tag-cloud-row active' : 'tag-cloud-row'}
-                            onClick=${() => toggleTag(tag)}
-                        >
-                            <span class="tag-cloud-name">${tag}</span>
-                            <span class="tag-cloud-count">${count}</span>
-                        </button>`
-                    )}
-                    ${tagCloud.length === 0 &&
-                    html`<p class="null-sub tag-column-empty">no tags yet</p>`}
-                </aside>`}
-                <aside class="notes-list">
+                (tucked.has('tags')
+                    ? html`<${Rail} icon=${Icons.tag} label="tags" onClick=${() => toggleCol('tags')} />`
+                    : html`<aside class="tag-column">
+                          ${paneHead('tags', 'tags')}
+                          ${tagCloud.map(
+                              ([tag, count]) => html`<button
+                                  key=${tag}
+                                  class=${tagFilter.includes(tag)
+                                      ? 'tag-cloud-row active'
+                                      : 'tag-cloud-row'}
+                                  onClick=${() => toggleTag(tag)}
+                              >
+                                  <span class="tag-cloud-name">${tag}</span>
+                                  <span class="tag-cloud-count">${count}</span>
+                              </button>`
+                          )}
+                          ${tagCloud.length === 0 &&
+                          html`<p class="null-sub tag-column-empty">no tags yet</p>`}
+                      </aside>`)}
+                ${tucked.has('list')
+                    ? html`<${Rail} icon=${Icons.list} label="items" onClick=${() => toggleCol('list')} />`
+                    : html`<aside class="notes-list">
+                    ${paneHead('items', 'list')}
                     <button class="notes-new" disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : '+ new item'}
                     </button>
@@ -437,13 +492,29 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                     html`<p class="null-sub notes-empty">
                         ${hits === null ? 'nothing here yet.' : 'nothing matches.'}
                     </p>`}
-                </aside>
+                </aside>`}
+                ${feat.tree &&
+                (tucked.has('tree')
+                    ? html`<${Rail} icon=${Icons.tree} label="tree" onClick=${() => toggleCol('tree')} />`
+                    : html`<${WikiTree}
+                          root=${root}
+                          bucket=${bucket}
+                          selected=${selected}
+                          onSelect=${select}
+                          searchQuery=${searchQuery}
+                          reloadKey=${treeReload}
+                          showUnfiled=${false}
+                          onMinimize=${() => toggleCol('tree')}
+                      />`)}
                 <${RightColumn}
                     root=${root}
                     docId=${selected}
                     docs=${docs}
                     features=${feat}
-                    onDeleted=${() => select(null)}
+                    onDeleted=${() => {
+                        select(null);
+                        setTreeReload((k) => k + 1);
+                    }}
                 />
             </div>
         </div>

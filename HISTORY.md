@@ -1830,3 +1830,26 @@ drop-into wash, lifted opacity on the source.
 
 v1 edges to revisit: deleting a wiki BUCKET leaves its root taxonomy orphaned on the roster
 (invisible, harmless), and other-identity tree members are skipped in render.
+
+## 2026-07-28: the everything-app (frankenstein, embraced)
+
+The wiki tree was extracted whole into tree.js (`WikiTree`, self-contained: root find/mint, tree
+fetch, folds, new page/section, rename, delete, drag - the wiki app is now a thin shell around
+it), the tree became a feature flag (`tree`, like `tagColumn`), and Notes claimed both: the
+recipe app's tag column on the left, the item list in the middle, the wiki tree to its right,
+the editor beyond. Every column left of the editor is TUCKABLE - minimized to a slim vertical
+rail (icon + name running down it, click to restore) - so the everything-app is only as
+monstrous as you choose. Tuck state per app in Dexie prefs (`col:<app.id>:<column>`), same home
+as seals/folds. Columns wear a small pane-head (name + tuck button); the tree's rides its
+toolbar. Recipes gets tags+list tucking for free (no tree); the wiki keeps its tree fixed.
+In Notes the tree hides its unfiled bin (the list already plays that role), and deleting a doc
+from the editor bumps the tree's reloadKey (a tombstone never ticks the taxonomy roster, so the
+tree wouldn't otherwise notice).
+
+Two coherence fixes behind the composition: "+ new item" in the list also appends the new doc as
+the root's last child when the tree column exists (via a shared module-level `ensureTreeRoot`
+dedupe, so the list and tree racing on a fresh bucket's first write still mint ONE root); and
+when the unfiled bin is hidden, deleting a section re-places its pages at the top level BEFORE
+the sections come down (place-before-remove, the move doctrine's ordering) - so a binless tree
+never orphans a page. Diamond-placed pages are left alone (their other home keeps them treed);
+pre-tree loose notes die with the test user (User-1 rule, invoked by name).

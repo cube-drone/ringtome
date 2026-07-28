@@ -18,7 +18,18 @@ export const APPS = [
     { id: 'persona', name: 'Persona', icon: Icons.persona, live: true, system: true },
     // `bucketNoun` is what ONE bucket of this app is called to the user - the word the bucket
     // switcher builds its labels from ("New Recipe Book", "Delete this Journal…").
-    { id: 'notes', name: 'Notes', icon: Icons.notes, style: 'default', live: true, bucketNoun: 'Notes' },
+    {
+        id: 'notes',
+        name: 'Notes',
+        icon: Icons.notes,
+        style: 'default',
+        live: true,
+        bucketNoun: 'Notes',
+        // The everything-app, embraced at last: the recipe app's tag column on the left, the
+        // wiki's tree on the right, the list between - each column tuckable, so it's only as
+        // monstrous as you choose to make it.
+        features: { tagColumn: true, tree: true },
+    },
     {
         id: 'recipes',
         name: 'Recipes',
@@ -74,6 +85,7 @@ const DEFAULT_FEATURES = {
     description: true, // the description annotation
     debug: true, // the TEMPORARY debug-dump chip
     tagColumn: false, // a sidebar listing every tag by frequency
+    tree: false, // the wiki tree pane (tree.js), right of the list
 };
 
 /// The resolved feature set for an app (defaults, then the app's overrides). Safe on undefined.

@@ -1108,12 +1108,67 @@ body {
     min-height: 0;
 }
 
-.tag-column-title {
+/* --- collapsible columns (the everything-app's tuckable panes) --- */
+/* A pane's little header: its name and the tuck-away button. */
+.pane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     color: var(--muted);
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 0.2rem 0.3rem 0.3rem;
+}
+
+.pane-min {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    padding: 0.1rem;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.pane-min:hover {
+    color: var(--teal);
+}
+
+/* The rail a tucked column leaves behind: a slim vertical strip - icon on top, the name running
+   down it - that restores the column on click. */
+.pane-rail {
+    flex-shrink: 0;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    width: 1.9rem;
+    padding: 0.5rem 0.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.pane-rail:hover {
+    color: var(--teal);
+    border-color: var(--teal);
+}
+
+.pane-rail-label {
+    writing-mode: vertical-rl;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* The tree's toolbar hosts its own tuck button, pushed to the right edge. */
+.wiki-toolbar-spring {
+    flex: 1;
 }
 
 .tag-cloud-row {

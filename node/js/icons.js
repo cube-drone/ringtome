@@ -43,6 +43,8 @@ import {
     FolderOpen,
     FolderSimplePlus,
     PencilSimple,
+    ListBullets,
+    TreeStructure,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -95,4 +97,7 @@ export const Icons = {
     sectionOpen: FolderOpen,
     sectionNew: FolderSimplePlus,
     rename: PencilSimple,
+    // collapsible column rails
+    list: ListBullets,
+    tree: TreeStructure,
 };
