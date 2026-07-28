@@ -253,7 +253,7 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
 
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
-const RightColumn = ({ root, docId, docs, features, onDeleted, nav }) => {
+const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket }) => {
     if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
@@ -263,6 +263,7 @@ const RightColumn = ({ root, docId, docs, features, onDeleted, nav }) => {
             docId=${docId}
             key=${docId}
             nav=${nav}
+            bucket=${bucket}
             features=${features}
             onDeleted=${onDeleted}
         />`;
@@ -555,6 +556,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                     docId=${selected}
                     docs=${docs}
                     nav=${nav}
+                    bucket=${bucket}
                     features=${feat}
                     onDeleted=${() => {
                         select(null);

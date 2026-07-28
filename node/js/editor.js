@@ -27,7 +27,7 @@ import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
-import { Modal, fmtBytes } from './modal.js';
+import { UploadFlow } from './upload.js';
 import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
@@ -77,7 +77,7 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId, features, onDeleted, nav }) => {
+export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     const feat = features || featuresOf();
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
@@ -448,25 +448,12 @@ export const Editor = ({ root, docId, features, onDeleted, nav }) => {
                 }}
             />
             ${uploadFiles &&
-            html`<${Modal} title="File upload" onClose=${() => setUploadFiles(null)}>
-                <ul class="modal-file-list">
-                    ${uploadFiles.map(
-                        (f, i) => html`<li key=${i}>
-                            <strong>${f.name}</strong>
-                            <span class="modal-file-meta">
-                                ${fmtBytes(f.size)}${f.type ? ` · ${f.type}` : ''}
-                            </span>
-                        </li>`
-                    )}
-                </ul>
-                <p class="null-sub modal-note">
-                    the landing pad is built - the upload machinery arrives in the next phase.
-                    Nothing was sent anywhere.
-                </p>
-                <div class="modal-actions">
-                    <button class="modal-ok" onClick=${() => setUploadFiles(null)}>OK</button>
-                </div>
-            </${Modal}>`}
+            html`<${UploadFlow}
+                root=${root}
+                bucket=${bucket}
+                files=${uploadFiles}
+                onClose=${() => setUploadFiles(null)}
+            />`}
         </div>
     `;
 };

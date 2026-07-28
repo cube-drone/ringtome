@@ -48,6 +48,7 @@ import {
     ArrowLeft,
     ArrowRight,
     UploadSimple,
+    CheckCircle,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -108,4 +109,5 @@ export const Icons = {
     navNext: ArrowRight,
     // file upload (the doc-menu button; drop and paste land in the same place)
     upload: UploadSimple,
+    done: CheckCircle,
 };

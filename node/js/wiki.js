@@ -88,6 +88,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                               docId=${selected}
                               key=${selected}
                               nav=${nav}
+                              bucket=${bucket}
                               features=${featuresOf(app)}
                               onDeleted=${() => {
                                   select(null);

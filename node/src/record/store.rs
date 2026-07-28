@@ -446,6 +446,19 @@ impl Documents<'_> {
         .await
     }
 
+    /// Retitle without touching content: a media-safe rename (a new version reusing the display
+    /// head's blobs). The rename path for processed uploads; sound for text docs too.
+    pub async fn retitle(&self, doc_id: &[u8; 16], title: &str) -> Result<[u8; 32], AppError> {
+        crate::record::documents::retitle(
+            &self.store.db,
+            &self.store.authorship.signer,
+            &self.store.authorship.epoch_keys,
+            *doc_id,
+            title,
+        )
+        .await
+    }
+
     /// The materialized view: every document, its version DAG, heads, and divergence state.
     pub async fn all(&self) -> Result<crate::record::documents::DocumentsView, AppError> {
         crate::record::documents::materialize(&self.store.db, &self.store.authorship.epoch_keys)

@@ -432,6 +432,63 @@ pub async fn save_version(
     Ok(*signed.hash())
 }
 
+/// Retitle a document without touching its words or media: a new version whose header copies
+/// the display head's content pointers verbatim - no bytes are read, re-encrypted, or stored
+/// (blob reuse by construction) - under the new title, parented on every logical head (a
+/// diverged doc settles into the retitle, the display head's content winning: the same shape a
+/// manual merge-save takes). Exists for renaming a PROCESSED upload - the JSON save route
+/// writes a text body and would clobber a media document into text; this path can't - but it
+/// is equally sound for text docs.
+pub async fn retitle(
+    db: &Db,
+    signer: &SigningKey,
+    keys: &EpochKeys,
+    doc_id: [u8; 16],
+    title: &str,
+) -> Result<[u8; 32], AppError> {
+    let (epoch, epoch_key) = keys
+        .current()
+        .ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
+    let view = materialize(db, keys).await?;
+    let doc = view
+        .docs
+        .get(&doc_id)
+        .ok_or_else(|| AppError::NotFound("no such document".into()))?;
+    let head = doc.display_head().ok_or_else(|| {
+        AppError::NotFound("the document has no version yet (still processing?)".into())
+    })?;
+    // The retitle no-op bounce: same name, nothing diverged to settle - the chain doesn't grow.
+    if head.header.title == title && doc.logical_heads.len() == 1 {
+        return Ok(head.hash);
+    }
+    let header = DocHeaderPlain {
+        doc_id,
+        parents: doc.logical_heads.clone(),
+        file_hash: head.header.file_hash,
+        body_hash: head.header.body_hash,
+        title: title.to_string(),
+        format: head.header.format,
+        width: head.header.width,
+        height: head.header.height,
+        duration_ms: head.header.duration_ms,
+        thumb_hash: head.header.thumb_hash,
+        preview_hash: head.header.preview_hash,
+    };
+    let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
+    let payload = record
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding doc header record: {e}")))?;
+    let signed = crate::record::imaol::append(
+        db,
+        signer,
+        service::DOCUMENTS_PRIVATE,
+        entry_type::DOC_HEADER,
+        Payload::Inline(payload),
+    )
+    .await?;
+    Ok(*signed.hash())
+}
+
 /// Mint a fresh document id. 16 random bytes; identity is the id, collision is negligible.
 pub fn new_doc_id() -> [u8; 16] {
     use rand::RngCore;

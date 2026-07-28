@@ -1869,3 +1869,40 @@ capture the File(s) and open the modal, which for now lists name/size/type hones
 the machinery isn't wired. Next phases: the upload itself with a progress bar, the server
 ingest-queue status view (with name/tags editable mid-flight), the in-document placeholder at
 the cursor, and the placeholder -> final file reference swap when processing completes.
+
+## 2026-07-28: file upload, phase 2 - the machinery
+
+The modal got its engine (upload.js `UploadFlow`). Each captured File POSTs to /docs/binary via
+XHR (fetch can't report upload progress) with a live progress bar; the 202's doc_id files into
+the CURRENT bucket immediately (membership is doc-meta, version-independent) and the modal then
+follows the job through the ingest queue (GET /ingest, polled 1s) to done/failed - failures
+surface the server's tombstone message. Mid-flight the file's NAME is editable and its TAGS are
+editable right away (the Annotations component, tags-only feature set, on the version-less
+doc_id). Closing the modal abandons nothing - the transcode lands server-side on its own.
+
+Names needed a server addition: the title is baked into the version when the worker CLAIMS the
+job, so `PATCH /api/identity/{root}/ingest/{job_id}` retitles a still-`pending` job and returns
+`applied: false` (surfaced in the modal) when it arrives too late - honest, never pretending.
+Owner-gated; unit-tested beside the queue tests (retitle lands on pending, refuses cross-account
+and post-claim). Editor now takes a `bucket` prop (threaded from Notes/Wiki) so uploads land in
+the notebook you're looking at.
+
+Phase 3 remaining: the in-document placeholder at the cursor, and the placeholder -> final file
+reference swap when processing completes (needs the marquee reference syntax decision).
+
+## 2026-07-28: upload field-test round - renames that always land, kinder bounces
+
+Field-testing surfaced three things. (1) The rename window: once the transcode lands the doc
+EXISTS, so past the job-title window the rename should just retitle the record - a new server
+primitive (`documents::retitle`, PATCH /docs/{doc_id}/title): a new version copying the display
+head's content pointers verbatim (no bytes read or stored - blob reuse by construction), new
+title, parented on every logical head. The JSON save route would clobber a media doc into text;
+this can't. The modal's rename now applies WHEREVER the file is - queued job, or finished
+document - and a rename typed while the worker held the job applies itself the moment the poll
+sees `done`. No more bouncing the user. (2) A PDF sailed all the way to the server before dying
+with a codec-guts error; the modal now bounces non-media types (not image/audio/video) kindly
+BEFORE a byte moves, and the server's Unsupported message leads with the human sentence, codec
+detail parenthesized. (3) "Daria S01E12.mp4" came out the other end as an audio file - the node
+speaks few video codecs and took the AAC track. Videos now upload with an honest note that
+sound-only or failure is possible until the in-browser pre-encode pipeline (the video-ingest
+example, repo sibling) becomes real - that's its own future project.

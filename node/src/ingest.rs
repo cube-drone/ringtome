@@ -256,7 +256,10 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
 /// genuine "this upload can't be stored" failures.
 fn tombstone(te: &CrushError) -> String {
     match te {
-        CrushError::Unsupported(f) => format!("unsupported media ({f})"),
+        // Lead with what a person needs; keep the codec detail parenthesized for debugging.
+        CrushError::Unsupported(f) => format!(
+            "this isn't a kind of media Ringtome can store yet - images, audio, and a few video codecs ({f})"
+        ),
         CrushError::Decode(e) => format!("couldn't process the media ({e})"),
         CrushError::TooLong(e) => format!("too long to store ({e})"),
     }
@@ -334,6 +337,28 @@ pub struct JobStatus {
 
 /// The columns behind one `JobStatus`, in `SELECT` order.
 type JobRow = (String, String, String, String, Option<String>, i64, i64);
+
+/// Rename a QUEUED upload. The title is baked into the version at transcode time, and the
+/// worker reads it when it CLAIMS the job (the `RETURNING` in `claim`) - so only a still-
+/// `pending` job can honestly take a new name; once claimed, the old title is already in
+/// flight. Returns whether the rename landed, so the caller can report "too late" truthfully
+/// instead of pretending.
+pub async fn retitle_job(
+    node_db: &Db,
+    account: &str,
+    job_id: &str,
+    title: &str,
+) -> Result<bool, AppError> {
+    let n = node_db
+        .execute(
+            "UPDATE ingest_job SET title = ?3 \
+             WHERE job_id = ?1 AND account = ?2 AND status = 'pending'",
+            (job_id, account, title),
+        )
+        .await
+        .map_err(|e| AppError::Internal(anyhow!("renaming ingest job: {e}")))?;
+    Ok(n > 0)
+}
 
 /// Every ingest job this account has queued, newest first - the "how long until my uploads are
 /// usable" view. Failures show here (with their message); they never appear as ghost documents.
@@ -482,6 +507,33 @@ mod tests {
             claim_next(&db).await.unwrap().is_none(),
             "nothing left to claim"
         );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn retitle_lands_on_pending_and_refuses_after_claim() {
+        let db = node_db().await;
+        let dir = scratch_dir("retitle");
+        let ingest = Ingest::new(dir.clone());
+        let job_id = ingest
+            .enqueue(&db, upload([7u8; 16], "IMG_4021.jpeg", b"pix"))
+            .await
+            .unwrap();
+
+        // Pending: the rename lands, and the owner's queue view shows the new name.
+        assert!(retitle_job(&db, "acct-1", &job_id, "the lighthouse").await.unwrap());
+        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        assert_eq!(jobs[0].title, "the lighthouse");
+
+        // Another account can't rename it, even pending.
+        assert!(!retitle_job(&db, "acct-2", &job_id, "hijack").await.unwrap());
+
+        // Claimed (the worker holds the title in memory now): too late, reported honestly.
+        claim_next(&db).await.unwrap().unwrap();
+        assert!(!retitle_job(&db, "acct-1", &job_id, "too late").await.unwrap());
+        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        assert_eq!(jobs[0].title, "the lighthouse");
 
         std::fs::remove_dir_all(&dir).ok();
     }

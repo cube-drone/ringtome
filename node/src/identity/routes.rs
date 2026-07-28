@@ -9,7 +9,7 @@ use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
@@ -86,6 +86,12 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
                 .delete(docs_delete_handler)
                 .layer(DefaultBodyLimit::max(limits.document)),
         )
+        // Rename without touching content: a media-safe retitle (a new version reusing the
+        // head's blobs). The rename path for processed uploads; sound for text docs too.
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/title",
+            patch(docs_retitle_handler),
+        )
         // Pin a document to the top of its list (PUT) or release it (DELETE) - a doc-meta flag,
         // like delete but opposite in effect.
         .route(
@@ -121,6 +127,11 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route(
             "/api/identity/{root}/ingest",
             get(docs_ingest_status_handler),
+        )
+        // Rename a still-queued upload (the title is baked into the version at transcode).
+        .route(
+            "/api/identity/{root}/ingest/{job_id}",
+            patch(ingest_retitle_handler),
         )
         // Annotations: private facts about documents - per-doc fields (LWW registers) and tags
         // (LWW set-elements) on the doc-meta chain, read/written through the store handle.
@@ -744,6 +755,28 @@ async fn docs_save_handler(
     }))
 }
 
+#[derive(Deserialize)]
+struct DocRetitle {
+    title: String,
+}
+
+/// Rename a document without touching its words or media: a new version reusing the display
+/// head's content blobs. The upload modal's post-processing rename lands here (the JSON save
+/// route writes a text body and would clobber a media document).
+async fn docs_retitle_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+    Json(req): Json<DocRetitle>,
+) -> Result<Json<DocSaved>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let version = data.documents().retitle(&doc_id, &req.title).await?;
+    Ok(Json(DocSaved {
+        version: hex::encode(version),
+    }))
+}
+
 /// Delete a document: a tombstone on the doc-meta chain (an LWW set-add) that hides it from
 /// every list and search. The version chain is untouched - a `restore` would bring it back with
 /// its history - so this is reversible-by-design, not an erasure (Immutable Chains ≠ Immutable
@@ -905,6 +938,38 @@ async fn docs_ingest_status_handler(
     let jobs =
         crate::ingest::jobs_for_account(&state.node_db, &session.account.id.to_string()).await?;
     Ok(Json(jobs))
+}
+
+#[derive(Deserialize)]
+struct IngestRetitle {
+    title: String,
+}
+
+#[derive(Serialize)]
+struct IngestRetitled {
+    /// False when the job was already claimed (or done, failed, or someone else's): the old
+    /// title is baked into (or heading for) the version, and pretending otherwise would lie.
+    applied: bool,
+}
+
+/// Rename a QUEUED upload before its transcode claims it - the upload modal's "set the file's
+/// name while it processes". Owner-gated; honest about arriving too late.
+async fn ingest_retitle_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, job_id)): Path<(String, String)>,
+    Json(req): Json<IngestRetitle>,
+) -> Result<Json<IngestRetitled>, AppError> {
+    // Owner gate before touching this account's queue.
+    store::open(&state, &session.account.id, &root).await?;
+    let applied = crate::ingest::retitle_job(
+        &state.node_db,
+        &session.account.id.to_string(),
+        &job_id,
+        &req.title,
+    )
+    .await?;
+    Ok(Json(IngestRetitled { applied }))
 }
 
 /// Serve a document body as raw bytes (the display head), with the format's Content-Type. This

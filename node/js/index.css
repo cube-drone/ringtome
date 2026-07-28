@@ -2424,17 +2424,90 @@ body {
     margin: 0.6rem 0 0;
 }
 
-.modal-file-list {
-    margin: 0;
-    padding-left: 1.2rem;
+/* --- the upload flow inside the modal --- */
+.upload-rows {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.9rem;
 }
 
-.modal-file-meta {
+.upload-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.upload-row-top {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* The file's name, editable while the upload/transcode is still in flight. */
+.upload-name {
+    flex: 1;
+    min-width: 0;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    font: inherit;
+    color: var(--ink);
+}
+
+.upload-name:disabled {
+    background: none;
+    border-color: transparent;
+    color: var(--ink);
+    opacity: 0.9;
+}
+
+.upload-size {
+    flex-shrink: 0;
     color: var(--muted);
-    font-size: 0.85em;
+    font-size: 0.85rem;
+}
+
+/* The progress bar: a chunky track that fills teal as the bytes go up. */
+.upload-bar {
+    height: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.upload-bar-fill {
+    height: 100%;
+    background: var(--teal);
+    transition: width 0.15s ease;
+}
+
+.upload-status {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.upload-done {
+    color: var(--sea);
+}
+
+.upload-failed {
+    color: var(--coral);
+}
+
+.upload-note {
+    color: var(--muted);
+    font-size: 0.8rem;
+    flex: 1;
+}
+
+.upload-tags {
+    border-top: 1px dashed var(--border);
+    padding-top: 0.4rem;
 }
 
 .modal-actions {
