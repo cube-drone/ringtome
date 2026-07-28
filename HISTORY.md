@@ -1729,3 +1729,15 @@ skull, the save status -> floppy-disk-back (state in the tooltip), the divergenc
 git-pull-request (conflict) and a git-merge (merged), and the format toggle -> the article-medium /
 text-t split (matching the interactive/plaintext mode icons). Chips restyled for glyphs: inline-flex,
 1rem, squarer padding.
+
+---
+
+## Search results show a highlighted snippet (2026-07-27)
+
+A search result row now carries a `<small>` snippet: the first 2-3 body lines that contain the
+query, with every hit highlighted. The mirror's search index is only a token bag (no line
+structure) and the list row carries no body, so the snippet body is fetched per result and cached
+by doc_id - once per document, not per keystroke, so matching stays local and instant; the snippets
+just fill in a beat later. `snippetLines` picks the first non-blank lines mentioning any query word;
+`highlight` wraps the hits in `<mark>`. Rows whose match was only in the title/tags (no body line)
+simply show no snippet. Only rendered while a search is active.

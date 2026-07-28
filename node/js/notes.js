@@ -11,7 +11,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 import { openMirror, useLive } from './cache.js';
 import { Editor } from './editor.js';
 import { useTurbolinks } from './turbolinks.js';
-import { useSearch } from './search.js';
+import { useSearch, queryWords } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
 import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, appTypeOf, featuresOf } from './apps.js';
@@ -38,6 +38,69 @@ async function api(path, options = {}) {
 }
 
 const when = (ms) => new Date(ms).toLocaleString();
+
+// --- search snippets: the first few body lines that contain the query, with hits highlighted.
+// The mirror only holds a token bag (no line structure), so the body is fetched per result and
+// cached - once per doc, not per keystroke, so matching stays local and instant.
+const snippetBodyCache = new Map(); // doc_id -> body text (string)
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The first `max` non-blank body lines that contain any query word (case-insensitive substring).
+function snippetLines(body, words, max = 3) {
+    if (!body || !words.length) return [];
+    const out = [];
+    for (const raw of body.split('\n')) {
+        const line = raw.trim();
+        if (line && words.some((w) => line.toLowerCase().includes(w))) {
+            out.push(line);
+            if (out.length >= max) break;
+        }
+    }
+    return out;
+}
+
+// Split a line around the query words, wrapping each hit in <mark>.
+function highlight(line, words) {
+    if (!words.length) return line;
+    const re = new RegExp('(' + words.map(escapeRegex).join('|') + ')', 'gi');
+    return line
+        .split(re)
+        .map((part, i) => (i % 2 === 1 ? html`<mark class="snippet-hit" key=${i}>${part}</mark>` : part));
+}
+
+const Snippet = ({ root, docId, query }) => {
+    const [body, setBody] = useState(() =>
+        snippetBodyCache.has(docId) ? snippetBodyCache.get(docId) : null
+    );
+    useEffect(() => {
+        if (snippetBodyCache.has(docId)) {
+            setBody(snippetBodyCache.get(docId));
+            return;
+        }
+        let alive = true;
+        api(`/api/identity/${root}/docs/${docId}`)
+            .then((d) => {
+                const b = d && typeof d.body === 'string' ? d.body : '';
+                snippetBodyCache.set(docId, b);
+                if (alive) setBody(b);
+            })
+            .catch(() => alive && setBody(''));
+        return () => {
+            alive = false;
+        };
+    }, [root, docId]);
+
+    if (body == null) return null; // still loading
+    const words = queryWords(query);
+    const lines = snippetLines(body, words, 3);
+    if (!lines.length) return null;
+    return html`<small class="note-row-snippet">
+        ${lines.map(
+            (line, i) => html`<span class="snippet-line" key=${i}>${highlight(line, words)}</span>`
+        )}
+    </small>`;
+};
 
 // The reader: read-only display of one document's resolved current state. `body` arrives
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
@@ -335,6 +398,12 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
                             d.fields &&
                             d.fields.description &&
                             html`<small class="note-row-desc">${d.fields.description}</small>`}
+                            ${hits !== null &&
+                            html`<${Snippet}
+                                root=${root}
+                                docId=${d.doc_id}
+                                query=${searchQuery}
+                            />`}
                             ${(feat.date || d.diverged) &&
                             html`<span class="note-row-when">
                                 ${feat.date &&

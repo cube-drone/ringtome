@@ -23,6 +23,8 @@ import {
     Trash,
     Skull,
     FloppyDiskBack,
+    SpinnerGap,
+    WarningCircle,
     GitPullRequest,
     GitMerge,
     ArticleMedium,
@@ -55,6 +57,8 @@ export const Icons = {
     logout: HandWaving,
     // editor status + document format (icon-only chips; the tooltip carries the words)
     saved: FloppyDiskBack,
+    spinner: SpinnerGap,
+    warn: WarningCircle,
     conflict: GitPullRequest,
     merged: GitMerge,
     formatMarquee: ArticleMedium,

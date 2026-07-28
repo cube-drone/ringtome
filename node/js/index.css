@@ -1043,6 +1043,29 @@ body {
     overflow: hidden;
 }
 
+/* Search snippet: the first few body lines that mention the query, hits highlighted. */
+.note-row-snippet {
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.snippet-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.snippet-hit {
+    background: #f3e08c;
+    color: var(--ink);
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
 .note-row-when {
     color: var(--faint);
     font-size: 0.7rem;
@@ -1507,6 +1530,18 @@ body {
 @keyframes waiting-pulse {
     0%, 100% { opacity: 0.25; }
     50% { opacity: 1; }
+}
+
+/* The unsaved/saving status spinner - actually spins. */
+.status-spin {
+    display: inline-flex;
+    animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .skip-link:hover {

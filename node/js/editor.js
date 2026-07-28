@@ -460,7 +460,11 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
                     <span
                         class=${status === 'error' ? 'chip chip-diverged' : 'chip'}
                         title=${statusTip}
-                    ><${Icons.saved} /></span>
+                    >${status === 'clean'
+                        ? html`<${Icons.saved} />`
+                        : status === 'error'
+                        ? html`<${Icons.warn} />`
+                        : html`<span class="status-spin"><${Icons.spinner} /></span>`}</span>
                     ${feat.debug &&
                     html`<button
                         class="chip chip-button"
