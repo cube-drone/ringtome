@@ -331,6 +331,10 @@ export const DocsApp = ({ app, current, docId, searchQuery }) => {
                             <span class="note-row-title">
                                 ${d.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}${d.title || 'untitled'}
                             </span>
+                            ${feat.description &&
+                            d.fields &&
+                            d.fields.description &&
+                            html`<small class="note-row-desc">${d.fields.description}</small>`}
                             ${(feat.date || d.diverged) &&
                             html`<span class="note-row-when">
                                 ${feat.date &&

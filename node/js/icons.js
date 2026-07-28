@@ -19,6 +19,16 @@ import {
     IdentificationCard,
     Desktop,
     HandWaving,
+    Tag,
+    Trash,
+    Skull,
+    FloppyDiskBack,
+    GitPullRequest,
+    GitMerge,
+    ArticleMedium,
+    SquareHalf,
+    TextT,
+    TextTSlash,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -37,7 +47,21 @@ export const Icons = {
     gear: Gear,
     back: CaretLeft,
     close: X,
+    tag: Tag,
+    trash: Trash,
+    debug: Skull,
     profile: IdentificationCard,
     computers: Desktop,
     logout: HandWaving,
+    // editor status + document format (icon-only chips; the tooltip carries the words)
+    saved: FloppyDiskBack,
+    conflict: GitPullRequest,
+    merged: GitMerge,
+    formatMarquee: ArticleMedium,
+    formatPlain: TextT,
+    // editor view modes (icon-only tabs; names live in the tooltip)
+    modeInteractive: ArticleMedium,
+    modeSide: SquareHalf,
+    modePlain: TextT,
+    modeRead: TextTSlash,
 };

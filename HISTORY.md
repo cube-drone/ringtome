@@ -1705,3 +1705,27 @@ on ENTERING an app with nothing selected, a one-time effect redirects to the rem
 deliberately going back to the list later (header back) never bounces you into the document again.
 The jump is validated against the live mirror and the app's scope, so a since-deleted or
 moved-away document just leaves you on the list.
+
+---
+
+## Editor chrome slims down: metadata dropdown, icon mode-tabs (2026-07-27)
+
+The tags/date/description panel was permanently parked under the header, eating writing space. It's
+now a dropdown: a tag-icon toggle in the header chips drops the annotations panel over the editor
+on demand (absolute, shadowed), and takes zero space when closed. Closing it unmounts the panel,
+which flushes any pending edit - so nothing is lost.
+
+The view-mode tabs stay out but tightened: icon-only now (ArticleMedium = interactive, SquareHalf
+= side-by-side, TextT = plaintext, TextTSlash = read-only), their names moved to the tooltip, and
+pressed right up against the text with a negative margin so they read as fold-tabs on the note.
+
+---
+
+## The editor header chips go fully icon (2026-07-27)
+
+Every header chip is now an icon, its words moved into a richer tooltip (a title plus what it is
+or what clicking it does): pin (text "pinned" dropped - the pin says it), delete -> trash, debug ->
+skull, the save status -> floppy-disk-back (state in the tooltip), the divergence chips -> a
+git-pull-request (conflict) and a git-merge (merged), and the format toggle -> the article-medium /
+text-t split (matching the interactive/plaintext mode icons). Chips restyled for glyphs: inline-flex,
+1rem, squarer padding.

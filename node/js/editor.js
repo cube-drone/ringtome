@@ -61,6 +61,14 @@ const modesFor = (format) =>
     format === 'marquee' ? ['interactive', 'side', 'plain', 'read'] : ['plain', 'read'];
 const defaultMode = (format) => (format === 'marquee' ? 'interactive' : 'plain');
 
+// The mode tabs show icons, not words; the words (MODES) live in each tab's tooltip.
+const MODE_ICONS = {
+    interactive: Icons.modeInteractive,
+    side: Icons.modeSide,
+    plain: Icons.modePlain,
+    read: Icons.modeRead,
+};
+
 // Where you were in each document - shared by every editing surface, so switching modes (or
 // leaving and returning to a doc) lands the cursor where it last sat. Deliberately a module
 // Map, NOT the mirror's prefs table: a cursor is incidental working state, not a choice -
@@ -81,6 +89,7 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
     const [status, setStatus] = useState('opening'); // opening | clean | dirty | saving | error
     const [error, setError] = useState(null);
     const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
+    const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
 
     // Mutable save-machine state: parents to assert, dirtiness, timers. Refs, not state -
     // the save loop must see current values without re-render races. `buffer` mirrors the
@@ -283,13 +292,13 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
         return html`<div class="reader"><p class="form-error">${error}</p></div>`;
     }
 
-    const statusWord = {
-        clean: 'saved',
-        dirty: 'unsaved',
-        saving: 'saving…',
-        error: 'not saved!',
-        waiting: 'on its way…',
-        opening: '…',
+    const statusTip = {
+        clean: 'Saved — every change is stored',
+        dirty: 'Unsaved — your edits will save on their own in a moment',
+        saving: 'Saving…',
+        error: 'Not saved — the last save failed; it will keep retrying',
+        waiting: 'On its way — some words are still arriving from another computer',
+        opening: 'Opening…',
     }[status];
 
     // Turbolink cards for whatever the buffer holds - resolves via the node's unfurl
@@ -435,24 +444,29 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
                 <span class="reader-chips">
                     ${loaded.diverged &&
                     (loaded.resolution === 'conflict'
-                        ? html`<span class="chip chip-diverged" title="edited in the same place on two computers - both versions are below; tidy and save to settle it">conflict</span>`
-                        : html`<span class="chip chip-merged" title="changes from two computers, woven together cleanly - your next save seals the weave">merged</span>`)}
+                        ? html`<span class="chip chip-diverged" title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"><${Icons.conflict} /></span>`
+                        : html`<span class="chip chip-merged" title="Merged — changes from two computers woven together cleanly; your next save seals the weave"><${Icons.merged} /></span>`)}
                     ${feat.format &&
                     html`<button
                         class="chip chip-button"
-                        title="how this document reads; converting is an ordinary save"
+                        title=${format === 'marquee'
+                            ? 'Marquee — click to convert this document to plaintext'
+                            : 'Plaintext — click to convert this document to Marquee'}
                         onClick=${() => {
                             setFormat(format === 'plaintext' ? 'marquee' : 'plaintext');
                             touched();
                         }}
-                    >${format}</button>`}
-                    <span class=${status === 'error' ? 'chip chip-diverged' : 'chip'}>
-                        ${statusWord}
-                    </span>
+                    ><${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain} /></button>`}
+                    <span
+                        class=${status === 'error' ? 'chip chip-diverged' : 'chip'}
+                        title=${statusTip}
+                    ><${Icons.saved} /></span>
                     ${feat.debug &&
                     html`<button
                         class="chip chip-button"
-                        title="TEMPORARY: dump this document's full version history for debugging"
+                        title=${dump
+                            ? 'Debug — click to close the version-history dump'
+                            : 'Debug — click to dump this document’s full version history'}
                         onClick=${async () => {
                             if (dump) return setDump(null);
                             try {
@@ -462,31 +476,40 @@ export const Editor = ({ root, docId, features, onDeleted }) => {
                                 setDump(`debug dump failed: ${e.message}`);
                             }
                         }}
-                    >${dump ? 'close debug' : 'debug'}</button>`}
+                    ><${Icons.debug} /></button>`}
+                    <button
+                        class=${showMeta ? 'chip chip-button chip-open' : 'chip chip-button'}
+                        title="tags, date & description"
+                        onClick=${() => setShowMeta((v) => !v)}
+                    ><${Icons.tag} /></button>
                     <button
                         class=${row && row.pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
                         title=${row && row.pinned
-                            ? 'unpin from the top of the list'
-                            : 'pin to the top of the list'}
+                            ? 'Pinned — click to unpin it from the top of the list'
+                            : 'Not pinned — click to pin it to the top of the list'}
                         onClick=${() => togglePin(row && row.pinned)}
-                    >${row && row.pinned ? html`<${Icons.pin} /> pinned` : 'pin'}</button>
+                    ><${Icons.pin} /></button>
                     ${onDeleted &&
                     html`<button
                         class="chip chip-button chip-delete"
-                        title="delete this document (it leaves every list; the history is kept)"
+                        title="Delete — removes this document from every list (its history is kept)"
                         onClick=${remove}
-                    >delete</button>`}
+                    ><${Icons.trash} /></button>`}
                 </span>
+                ${showMeta &&
+                html`<div class="editor-meta">
+                    <${Annotations} root=${root} docId=${docId} features=${feat} />
+                </div>`}
             </header>
-            <${Annotations} root=${root} docId=${docId} features=${feat} />
             ${available.length > 1 &&
             html`<div class="editor-tabs">
                 ${available.map(
                     (m) => html`<button
                         key=${m}
                         class=${mode === m ? 'tab active' : 'tab'}
+                        title=${MODES[m]}
                         onClick=${() => pickMode(m)}
-                    >${MODES[m]}</button>`
+                    ><${MODE_ICONS[m]} /></button>`
                 )}
             </div>`}
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
