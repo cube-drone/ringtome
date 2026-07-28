@@ -248,6 +248,12 @@ body {
     padding: 1rem 0;
 }
 
+/* Marquee override: it renders each list item as `<li><p>…</p></li>` and never resets the
+   paragraph's default 1em block margins, so list items sit way too far apart. Halve it. */
+.mq-doc li > p {
+    margin-block: 0.1em;
+}
+
 /* --- the front door (login / registration) --- */
 
 .welcome {
