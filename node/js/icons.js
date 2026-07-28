@@ -47,6 +47,7 @@ import {
     TreeStructure,
     ArrowLeft,
     ArrowRight,
+    UploadSimple,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -105,4 +106,6 @@ export const Icons = {
     // document prev/next (the book-walk arrows in the doc menu)
     navPrev: ArrowLeft,
     navNext: ArrowRight,
+    // file upload (the doc-menu button; drop and paste land in the same place)
+    upload: UploadSimple,
 };

@@ -27,6 +27,7 @@ import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
+import { Modal, fmtBytes } from './modal.js';
 import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
@@ -100,6 +101,31 @@ export const Editor = ({ root, docId, features, onDeleted, nav }) => {
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
     const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
+
+    // File upload, phase one of several: three doors - the upload chip, a drop from the
+    // desktop, a pasted image buffer - all landing in the same place: the upload modal, holding
+    // the captured File(s). The actual upload/ingest machinery (progress, the server's
+    // processing queue, the in-document placeholder) arrives in the next phases; this is the
+    // capture and the landing pad.
+    const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
+    const filePickRef = useRef(null);
+    const catchDrop = (e) => {
+        const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+        if (!files.length) return; // not a file drag (an internal row drag, say) - not ours
+        e.preventDefault();
+        e.stopPropagation();
+        setUploadFiles(files);
+    };
+    const allowFileDrag = (e) => {
+        const types = Array.from((e.dataTransfer && e.dataTransfer.types) || []);
+        if (types.includes('Files')) e.preventDefault();
+    };
+    const catchPaste = (e) => {
+        const files = Array.from((e.clipboardData && e.clipboardData.files) || []);
+        if (!files.length) return; // ordinary text paste - let it through untouched
+        e.preventDefault();
+        setUploadFiles(files);
+    };
 
     // The remembered view mode: hydrate this doc's last pick from the mirror's local-only
     // prefs table; picking writes it back. The functional set means a click that beats the
@@ -270,7 +296,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav }) => {
     ></textarea>`;
 
     return html`
-        <div class="reader">
+        <div class="reader" onDrop=${catchDrop} onDragOver=${allowFileDrag} onPaste=${catchPaste}>
             <header class="reader-head">
                 ${mode === 'read'
                     ? html`<span class="editor-title editor-title-read">${title || 'untitled'}</span>`
@@ -313,6 +339,11 @@ export const Editor = ({ root, docId, features, onDeleted, nav }) => {
                             touched();
                         }}
                     ><${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain} /></button>`}
+                    <button
+                        class="chip chip-button"
+                        title="Upload — attach a file to this document (drop or paste works too)"
+                        onClick=${() => filePickRef.current && filePickRef.current.click()}
+                    ><${Icons.upload} /></button>
                     <span
                         class=${status === 'error' ? 'chip chip-diverged' : 'chip'}
                         title=${statusTip}
@@ -405,6 +436,37 @@ export const Editor = ({ root, docId, features, onDeleted, nav }) => {
                       <div class="editor-side-preview">${rendered}</div>
                   </div>`
                 : sourcePane}
+            <input
+                type="file"
+                multiple
+                hidden
+                ref=${filePickRef}
+                onChange=${(e) => {
+                    const files = Array.from(e.currentTarget.files || []);
+                    if (files.length) setUploadFiles(files);
+                    e.currentTarget.value = ''; // so picking the same file again re-fires
+                }}
+            />
+            ${uploadFiles &&
+            html`<${Modal} title="File upload" onClose=${() => setUploadFiles(null)}>
+                <ul class="modal-file-list">
+                    ${uploadFiles.map(
+                        (f, i) => html`<li key=${i}>
+                            <strong>${f.name}</strong>
+                            <span class="modal-file-meta">
+                                ${fmtBytes(f.size)}${f.type ? ` · ${f.type}` : ''}
+                            </span>
+                        </li>`
+                    )}
+                </ul>
+                <p class="null-sub modal-note">
+                    the landing pad is built - the upload machinery arrives in the next phase.
+                    Nothing was sent anywhere.
+                </p>
+                <div class="modal-actions">
+                    <button class="modal-ok" onClick=${() => setUploadFiles(null)}>OK</button>
+                </div>
+            </${Modal}>`}
         </div>
     `;
 };

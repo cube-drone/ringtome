@@ -1853,3 +1853,19 @@ when the unfiled bin is hidden, deleting a section re-places its pages at the to
 the sections come down (place-before-remove, the move doctrine's ordering) - so a binless tree
 never orphans a page. Diamond-placed pages are left alone (their other home keeps them treed);
 pre-tree loose notes die with the test user (User-1 rule, invoked by name).
+
+## 2026-07-28: file upload, phase 1 - the modal and the three doors
+
+The house modal (modal.js): the app-window language as a floating panel - two-layer pixel-
+cornered frame (the `--panel-clip` polygon, promoted to :root so panels can share it), thick
+Press-Start title band, punched-out square [x] (Escape and scrim-click close too) - but wearing
+the BOLD QUICKBAR TEAL (--teal-deep) instead of app ink, so a modal reads as the system stepping
+forward. Built for reuse; file upload is its first tenant.
+
+Three doors into it, all in the shared Editor (Notes/Recipes/Wiki): an upload-simple chip in the
+doc menu (hidden file input), a drop from the desktop (guarded on real Files - internal row
+drags pass through), and a pasted image buffer (ordinary text paste untouched). All three
+capture the File(s) and open the modal, which for now lists name/size/type honestly and admits
+the machinery isn't wired. Next phases: the upload itself with a progress bar, the server
+ingest-queue status view (with name/tags editable mid-flight), the in-document placeholder at
+the cursor, and the placeholder -> final file reference swap when processing completes.
