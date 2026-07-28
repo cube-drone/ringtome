@@ -68,8 +68,8 @@ const StatusDot = ({ status }) =>
 // The editable surface for a journal entry: the shared session + the live marquee, and the
 // minimum chrome (a save-status dot, a delete once the entry has been unlocked). No title input -
 // the date heading belongs to the stream row, not the editor.
-const JournalEditor = ({ root, docId, deletable, onDeleted }) => {
-    const s = useDocSession(root, docId, { onDeleted });
+const JournalEditor = ({ root, docId, onSeal }) => {
+    const s = useDocSession(root, docId, { onDeleted: () => {} });
     const tlProfile = useTurbolinks(s.body, s.format);
 
     if (s.status === 'opening' && !s.loaded) {
@@ -95,12 +95,19 @@ const JournalEditor = ({ root, docId, deletable, onDeleted }) => {
             />
             <div class="journal-editor-foot">
                 <${StatusDot} status=${s.status} />
-                ${deletable &&
-                html`<button
+                <button
+                    class="journal-seal"
+                    title="Seal — lock this entry (unlocking takes 15 seconds)"
+                    onClick=${async () => {
+                        await s.save(); // flush pending edits so the locked view reads them
+                        onSeal();
+                    }}
+                ><${Icons.key} /></button>
+                <button
                     class="journal-delete"
                     title="Delete — removes this entry (its history is kept)"
                     onClick=${s.remove}
-                ><${Icons.trash} /></button>`}
+                ><${Icons.trash} /></button>
             </div>
         </div>
     `;
@@ -158,27 +165,29 @@ const LockButton = ({ onUnlocked }) => {
 
 // One row in the stack: the date heading, plus the editor (today / unlocked) or the reader
 // (locked, with the lock button).
-const JournalEntry = ({ root, entry, editable }) => {
-    const [unlocked, setUnlocked] = useState(false);
-    const open = editable || unlocked;
-    return html`
-        <article class=${open ? 'journal-entry open' : 'journal-entry locked'}>
-            <header class="journal-entry-head">
-                <h2 class="journal-date">${dateTitle(entry.created_ms)}</h2>
-                ${!editable && html`<${LockButton} onUnlocked=${() => setUnlocked(true)} />`}
-            </header>
-            ${open
-                ? html`<${JournalEditor}
-                      key=${entry.doc_id}
-                      root=${root}
-                      docId=${entry.doc_id}
-                      deletable=${true}
-                      onDeleted=${() => {}}
-                  />`
-                : html`<${JournalReader} key=${entry.doc_id} root=${root} docId=${entry.doc_id} />`}
-        </article>
-    `;
-};
+// Seal/unlock overrides live for the browser SESSION - the same idea as the cursor and
+// last-entry memory: a module Map keyed by doc_id, so navigating away and back (or an entry
+// scrolling out of the window and back) keeps its state. 'open' | 'locked'; absent = follow the
+// day (today open, past locked). Forgotten on reload, like the rest of the session memory. Owned
+// by JournalApp so it can also count open-today entries and drive the "start a new entry" prompt.
+const lockOverride = new Map();
+
+const JournalEntry = ({ root, entry, open, onOverride }) => html`
+    <article class=${open ? 'journal-entry open' : 'journal-entry locked'}>
+        <header class="journal-entry-head">
+            <h2 class="journal-date">${dateTitle(entry.created_ms)}</h2>
+            ${!open && html`<${LockButton} onUnlocked=${() => onOverride('open')} />`}
+        </header>
+        ${open
+            ? html`<${JournalEditor}
+                  key=${entry.doc_id}
+                  root=${root}
+                  docId=${entry.doc_id}
+                  onSeal=${() => onOverride('locked')}
+              />`
+            : html`<${JournalReader} key=${entry.doc_id} root=${root} docId=${entry.doc_id} />`}
+    </article>
+`;
 
 // The phantom today entry: an inviting blank page. It creates the real document on first
 // engagement - the entry doesn't exist until you start writing.
@@ -202,6 +211,18 @@ export const JournalApp = ({ current }) => {
     const [busy, setBusy] = useState(false);
     const creating = useRef(false); // synchronous guard against duplicate today-entry creation
 
+    // Seal/unlock overrides (the durable session Map) are read here so the phantom can key off
+    // whether an OPEN today entry exists. A bump re-renders when one flips.
+    const [, bump] = useState(0);
+    const setOverride = (docId, v) => {
+        lockOverride.set(docId, v);
+        bump((n) => n + 1);
+    };
+    const openOf = (e, todayKey) => {
+        const o = lockOverride.get(e.doc_id);
+        return o !== undefined ? o === 'open' : dayKey(e.created_ms) === todayKey;
+    };
+
     // A minute tick re-checks the day boundary, so today's entry locks shut when the day ends.
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
@@ -221,18 +242,21 @@ export const JournalApp = ({ current }) => {
         .sort((a, b) => (b.created_ms || 0) - (a.created_ms || 0) || (a.doc_id < b.doc_id ? 1 : -1));
 
     const todayKey = dayKey(now);
-    const hasToday = entries.length > 0 && dayKey(entries[0].created_ms) === todayKey;
-    // A phantom "today" slot on top when no entry exists for today yet.
-    const stack = hasToday ? entries : [{ phantom: true, created_ms: now }, ...entries];
+    // The phantom trigger: no UNSEALED entry for today. A today entry that's been sealed doesn't
+    // count - so once you seal today's page, you're prompted to start a fresh one.
+    const openTodayExists = entries.some(
+        (e) => dayKey(e.created_ms) === todayKey && openOf(e, todayKey)
+    );
+    const stack = openTodayExists ? entries : [{ phantom: true, created_ms: now }, ...entries];
 
-    // Once today's entry actually lands (or the day rolls over so there's a fresh phantom), free
-    // the create guard and drop the "opening…" state.
+    // Once an open today entry exists (a create landed, or the day rolled over), free the create
+    // guard and drop the "opening…" state.
     useEffect(() => {
-        if (hasToday) {
+        if (openTodayExists) {
             creating.current = false;
             setBusy(false);
         }
-    }, [hasToday]);
+    }, [openTodayExists]);
 
     // Windowed render (infinite scroll): grow when the sentinel scrolls into view.
     const [count, setCount] = useState(6);
@@ -264,7 +288,7 @@ export const JournalApp = ({ current }) => {
                 method: 'PUT',
             });
             // Success: stay "opening…" (guard held) until the new entry shows via the mirror - the
-            // `hasToday` effect clears both - so a click during that catch-up beat can't duplicate.
+            // openTodayExists effect clears both - so a click during that catch-up beat can't duplicate.
         } catch (e) {
             creating.current = false;
             setBusy(false); // failed: let them try again
@@ -280,7 +304,8 @@ export const JournalApp = ({ current }) => {
                           key=${e.doc_id}
                           root=${root}
                           entry=${e}
-                          editable=${dayKey(e.created_ms) === todayKey}
+                          open=${openOf(e, todayKey)}
+                          onOverride=${(v) => setOverride(e.doc_id, v)}
                       />`
             )}
             ${count < stack.length && html`<div ref=${sentinel} class="journal-sentinel"></div>`}

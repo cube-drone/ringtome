@@ -1611,11 +1611,24 @@ body {
 
 /* Inside a journal entry the card IS the paper, so the editor/reader surfaces blend flat - no
    nested boxes, no per-entry scroll (the whole stream scrolls). */
+/* The host div carries its own 50vh min-height (that's what made an empty entry huge) plus the
+   surface/border - flatten all of it so a journal entry sizes to its content. */
+.journal .editor-live {
+    min-height: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+
 .journal .editor-live .cm-editor {
     background: none;
     border: 0;
     min-height: 5rem;
     max-height: none;
+}
+
+.journal .editor-live .cm-scroller {
+    padding: 0;
 }
 
 /* A clickable writing area: clicking below the text lands the cursor at the entry's end (the same
@@ -1649,6 +1662,21 @@ body {
 
 .journal-status.error {
     color: var(--coral);
+}
+
+.journal-seal {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    opacity: 0.75;
+}
+
+.journal-seal:hover {
+    opacity: 1;
+    color: var(--teal);
 }
 
 .journal-delete {
