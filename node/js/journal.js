@@ -11,6 +11,7 @@ import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
+import { useSearch, queryWords } from './search.js';
 import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -232,7 +233,49 @@ const JournalPhantom = ({ now, onStart, busy }) => html`
     </article>
 `;
 
-export const JournalApp = ({ current }) => {
+// Paint the search hits across whatever is on screen, using the CSS Custom Highlight API: we
+// register text ranges, we don't rewrite the DOM - so it lays cleanly over the marquee readers and
+// the live editor alike, and a re-render (or an entry's body arriving async) can't leave orphaned
+// <mark> tags behind. A MutationObserver re-scans as the stream fills in; unsupported browsers just
+// get the filter with no paint. Keyed off `elRef` + the query string.
+function useSearchHighlight(elRef, query) {
+    useEffect(() => {
+        const el = elRef.current;
+        const ok =
+            typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
+        if (!ok || !el) return;
+        const words = queryWords(query);
+        if (!words.length) {
+            CSS.highlights.delete('journal-search');
+            return;
+        }
+        const paint = () => {
+            const ranges = [];
+            const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+                const hay = n.nodeValue.toLowerCase();
+                for (const w of words) {
+                    for (let i = hay.indexOf(w); i !== -1; i = hay.indexOf(w, i + w.length)) {
+                        const r = document.createRange();
+                        r.setStart(n, i);
+                        r.setEnd(n, i + w.length);
+                        ranges.push(r);
+                    }
+                }
+            }
+            CSS.highlights.set('journal-search', new Highlight(...ranges));
+        };
+        paint();
+        const mo = new MutationObserver(paint);
+        mo.observe(el, { childList: true, subtree: true, characterData: true });
+        return () => {
+            mo.disconnect();
+            CSS.highlights.delete('journal-search');
+        };
+    }, [elRef, query]);
+}
+
+export const JournalApp = ({ current, searchQuery }) => {
     const root = current.root;
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
@@ -292,13 +335,24 @@ export const JournalApp = ({ current }) => {
         .filter(inJournal)
         .sort((a, b) => (b.created_ms || 0) - (a.created_ms || 0) || (a.doc_id < b.doc_id ? 1 : -1));
 
+    // Search: the same top-level header box as Notes/Recipes, but here it FILTERS the day book to
+    // matching entries (and the hit words get painted in place, below). No phantom while searching -
+    // "start today's page" isn't a search result.
+    const hits = useSearch(root, searchQuery);
+    const searching = queryWords(searchQuery).length > 0;
+    const matched = searching ? entries.filter((e) => hits && hits.has(e.doc_id)) : entries;
+
     const todayKey = dayKey(now);
     // The phantom trigger: no UNSEALED entry for today. A today entry that's been sealed doesn't
     // count - so once you seal today's page, you're prompted to start a fresh one.
     const openTodayExists = entries.some(
         (e) => dayKey(e.created_ms) === todayKey && openOf(e, todayKey)
     );
-    const stack = openTodayExists ? entries : [{ phantom: true, created_ms: now }, ...entries];
+    const stack = searching
+        ? matched
+        : openTodayExists
+        ? entries
+        : [{ phantom: true, created_ms: now }, ...entries];
 
     // Once an open today entry exists (a create landed, or the day rolled over), free the create
     // guard and drop the "opening…" state.
@@ -347,23 +401,30 @@ export const JournalApp = ({ current }) => {
     };
 
     const face = fontOf(font);
+    const stageRef = useRef(null);
+    useSearchHighlight(stageRef, searchQuery);
     return html`
         <div
             class="journal"
+            ref=${stageRef}
             style=${`--journal-font: ${face.family}; --journal-font-scale: ${face.scale}`}
         >
             <${JournalFonts} value=${font} onPick=${setFont} />
-            ${shown.map((e) =>
-                e.phantom
-                    ? html`<${JournalPhantom} key="today" now=${now} onStart=${startToday} busy=${busy} />`
-                    : html`<${JournalEntry}
-                          key=${e.doc_id}
-                          root=${root}
-                          entry=${e}
-                          open=${openOf(e, todayKey)}
-                          onOverride=${(v) => setOverride(e.doc_id, v)}
-                      />`
-            )}
+            ${searching && !matched.length
+                ? html`<p class="null-sub journal-empty">
+                      no entries match “${searchQuery}”.
+                  </p>`
+                : shown.map((e) =>
+                      e.phantom
+                          ? html`<${JournalPhantom} key="today" now=${now} onStart=${startToday} busy=${busy} />`
+                          : html`<${JournalEntry}
+                                key=${e.doc_id}
+                                root=${root}
+                                entry=${e}
+                                open=${openOf(e, todayKey)}
+                                onOverride=${(v) => setOverride(e.doc_id, v)}
+                            />`
+                  )}
             ${count < stack.length && html`<div ref=${sentinel} class="journal-sentinel"></div>`}
         </div>
     `;

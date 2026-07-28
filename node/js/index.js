@@ -90,7 +90,7 @@ const Inside = ({ session }) => {
     // column), the same place across every app that offers it. The query is lifted here so the
     // header owns the input and the app reads it; it clears when you switch apps. Only document
     // apps (those with a `style`) offer search.
-    const showSearch = !!(appHere && appHere.style && !appHere.journal);
+    const showSearch = !!(appHere && appHere.style);
     const [query, setQuery] = useState('');
     useEffect(() => {
         setQuery('');
@@ -205,6 +205,7 @@ const Inside = ({ session }) => {
                           path="/home/${app.id}"
                           key=${app.id}
                           current=${persona.current}
+                          searchQuery=${query}
                       />`
                     : html`<${DocsApp}
                           path="/home/${app.id}/:docId?"

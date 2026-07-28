@@ -195,7 +195,11 @@ body {
    the shell - no app draws its own. */
 .app-header {
     flex-shrink: 0;
-    display: flex;
+    /* Three tracks so the search sits DEAD CENTER of the header: title hugs the left, actions the
+       right, and the middle column (the search) is centred by the equal 1fr flanks. minmax(0,1fr)
+       keeps a long title from stealing the centre - it truncates instead. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     gap: 0.8rem;
     /* No right padding: the close button sits flush against the frame's right border. */
@@ -205,7 +209,12 @@ body {
 }
 
 .app-header-title {
-    flex-shrink: 0;
+    grid-column: 1;
+    justify-self: start;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: "Press Start 2P", monospace;
     font-size: 1.05rem;
     color: var(--dock-text);
@@ -214,7 +223,10 @@ body {
 /* The search box: a top-level fixture next to the title, in the same spot across every app that
    offers it. Cream on the ink header, so it reads as an input, not a hole. */
 .app-header-search {
-    flex: 0 1 240px;
+    grid-column: 2;
+    justify-self: center;
+    width: 240px;
+    max-width: 100%;
     min-width: 0;
     background: var(--surface);
     border: 0;
@@ -235,10 +247,11 @@ body {
 }
 
 .app-header-actions {
+    grid-column: 3;
+    justify-self: end;
     display: flex;
     align-items: center;
     gap: 0.45rem;
-    margin-left: auto; /* push back/close to the right; title + search stay left */
 }
 
 /* Back/close are holes punched through the ink header: filled with the app surface (the content
@@ -1656,6 +1669,14 @@ body {
     color: var(--ink);
     border-color: var(--border-strong);
     background: var(--surface-2);
+}
+
+/* Search in the Journal filters the stream to matching entries and paints the hit words in place,
+   using the CSS Custom Highlight API (ranges registered from JS, no DOM surgery - so it works over
+   both the marquee readers and the live editor). Same warm marker as the Notes snippet hits. */
+::highlight(journal-search) {
+    background: #f3e08c;
+    color: var(--ink);
 }
 
 .journal-entry {
