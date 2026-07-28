@@ -41,15 +41,57 @@ const lastPageMemory = new Map();
 
 // One page leaf. Title reads LIVE from the mirror row (so an editor rename re-titles the tree
 // immediately); the tree snapshot's summary is the fallback. A search filters pages out of the
-// tree; sections stay as scaffolding.
-const PageRow = ({ id, summary, depth, ops }) => {
+// tree; sections stay as scaffolding. Draggable: a page moves between sections and reorders
+// within one; dropping on a page's top half inserts before it, bottom half after. `parent` is
+// the containing node (null for unfiled rows, which are draggable but not drop targets).
+const PageRow = ({ id, summary, depth, ops, parent }) => {
+    const [hover, setHover] = useState(null); // 'before' | 'after' | null
+    const [lifting, setLifting] = useState(false);
     if (ops.hits !== null && !ops.hits.has(id)) return null;
     const live = ops.byId.get(id);
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
+    const cls = [
+        'wiki-row',
+        ops.docId === id ? 'selected' : '',
+        hover ? `drop-${hover}` : '',
+        lifting ? 'lifting' : '',
+    ]
+        .filter(Boolean)
+        .join(' ');
     return html`<div
-        class=${ops.docId === id ? 'wiki-row selected' : 'wiki-row'}
+        class=${cls}
         style=${`padding-left: ${0.4 + depth * 0.9}rem`}
         onClick=${() => ops.select(id)}
+        draggable=${true}
+        onDragStart=${(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', id); // Firefox needs data to start a drag
+            ops.drag.current = { kind: 'page', id, parentId: parent ? parent.taxonomy_id : null };
+            setLifting(true);
+        }}
+        onDragEnd=${() => {
+            ops.drag.current = null;
+            setLifting(false);
+            setHover(null);
+        }}
+        onDragOver=${(e) => {
+            const drag = ops.drag.current;
+            if (!drag || drag.id === id || !parent) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            setHover((e.clientY - r.top) / r.height < 0.5 ? 'before' : 'after');
+        }}
+        onDragLeave=${(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setHover(null);
+        }}
+        onDrop=${(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const after = hover === 'after';
+            setHover(null);
+            if (parent) ops.completeDrag({ parentNode: parent, refId: id, after });
+        }}
     >
         <${Icons.page} />
         <span class="wiki-row-title">${title}</span>
@@ -60,7 +102,9 @@ const PageRow = ({ id, summary, depth, ops }) => {
 // `members: null` marks a stub - this section appears again elsewhere (a diamond's second
 // parent, or a merge-minted cycle); its expansion lives at its first encounter, so render a
 // marker, not a subtree.
-const SectionNode = ({ node, parentId, depth, ops }) => {
+const SectionNode = ({ node, parent, depth, ops }) => {
+    const [hover, setHover] = useState(null); // 'before' | 'after' | 'into' | null
+    const [lifting, setLifting] = useState(false);
     if (!node.members) {
         return html`<div class="wiki-row wiki-stub" style=${`padding-left: ${0.4 + depth * 0.9}rem`}>
             <${Icons.section} />
@@ -68,11 +112,76 @@ const SectionNode = ({ node, parentId, depth, ops }) => {
         </div>`;
     }
     const open = !ops.folded.has(node.taxonomy_id);
+    const cls = [
+        'wiki-row',
+        'wiki-row-section',
+        hover ? `drop-${hover}` : '',
+        lifting ? 'lifting' : '',
+    ]
+        .filter(Boolean)
+        .join(' ');
     return html`
         <div
-            class="wiki-row wiki-row-section"
+            class=${cls}
             style=${`padding-left: ${0.4 + depth * 0.9}rem`}
             onClick=${() => ops.toggleFold(node.taxonomy_id)}
+            draggable=${true}
+            onDragStart=${(e) => {
+                e.stopPropagation();
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', node.taxonomy_id);
+                // Its whole subtree's taxonomy ids ride along - the client-side cycle guard
+                // (the server refuses these too; this keeps the drop from even offering).
+                const taxIds = [];
+                const collect = (n) => {
+                    taxIds.push(n.taxonomy_id);
+                    for (const m of n.members || []) {
+                        if (m.taxonomy && m.taxonomy.members) collect(m.taxonomy);
+                    }
+                };
+                collect(node);
+                ops.drag.current = {
+                    kind: 'section',
+                    id: node.taxonomy_id,
+                    parentId: parent.taxonomy_id,
+                    taxIds,
+                };
+                setLifting(true);
+            }}
+            onDragEnd=${() => {
+                ops.drag.current = null;
+                setLifting(false);
+                setHover(null);
+            }}
+            onDragOver=${(e) => {
+                const drag = ops.drag.current;
+                if (!drag || drag.id === node.taxonomy_id) return;
+                // A section can't be dropped into (or beside anything inside) its own subtree.
+                if (drag.kind === 'section' && drag.taxIds.includes(node.taxonomy_id)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                const frac = (e.clientY - r.top) / r.height;
+                setHover(frac < 0.25 ? 'before' : frac > 0.75 ? 'after' : 'into');
+            }}
+            onDragLeave=${(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) setHover(null);
+            }}
+            onDrop=${(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const zone = hover;
+                setHover(null);
+                if (zone === 'into') {
+                    ops.completeDrag({ intoId: node.taxonomy_id });
+                } else {
+                    ops.completeDrag({
+                        parentNode: parent,
+                        refId: node.taxonomy_id,
+                        after: zone === 'after',
+                    });
+                }
+            }}
         >
             <span class=${open ? 'wiki-caret open' : 'wiki-caret'}><${Icons.forward} /></span>
             <${open ? Icons.sectionOpen : Icons.section} />
@@ -96,7 +205,7 @@ const SectionNode = ({ node, parentId, depth, ops }) => {
                 <button
                     class="wiki-act danger"
                     title="delete this section (its pages land in unfiled)"
-                    onClick=${() => ops.deleteSection(node, parentId)}
+                    onClick=${() => ops.deleteSection(node, parent.taxonomy_id)}
                 ><${Icons.trash} /></button>
             </span>
         </div>
@@ -112,16 +221,53 @@ const MemberList = ({ node, depth, ops }) => html`${node.members.map((m) => {
         return html`<${SectionNode}
             key=${m.doc_id}
             node=${m.taxonomy}
-            parentId=${node.taxonomy_id}
+            parent=${node}
             depth=${depth}
             ops=${ops}
         />`;
     }
     if (m.doc) {
-        return html`<${PageRow} key=${m.doc_id} id=${m.doc_id} summary=${m.doc} depth=${depth} ops=${ops} />`;
+        return html`<${PageRow}
+            key=${m.doc_id}
+            id=${m.doc_id}
+            summary=${m.doc}
+            depth=${depth}
+            ops=${ops}
+            parent=${node}
+        />`;
     }
     return null;
 })}`;
+
+// The unfiled bin: also a drop target - dragging a page here removes it from its section
+// (pages only; a section unhooked from the tree would be an invisible orphan).
+const UnfiledBin = ({ unfiled, ops }) => {
+    const [over, setOver] = useState(false);
+    return html`<div
+        class=${over ? 'wiki-unfiled drop-hover' : 'wiki-unfiled'}
+        onDragOver=${(e) => {
+            const drag = ops.drag.current;
+            if (!drag || drag.kind !== 'page' || !drag.parentId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setOver(true);
+        }}
+        onDragLeave=${(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setOver(false);
+        }}
+        onDrop=${(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setOver(false);
+            ops.completeDrag({ unfile: true });
+        }}
+    >
+        <div class="wiki-unfiled-title">unfiled</div>
+        ${unfiled.map(
+            (d) => html`<${PageRow} key=${d.doc_id} id=${d.doc_id} summary=${d} depth=${0} ops=${ops} />`
+        )}
+    </div>`;
+};
 
 export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
     const root = current.root;
@@ -324,6 +470,62 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
 
     const hits = useSearch(root, searchQuery);
 
+    // Drag-to-reorganize. The payload lives in a ref for the drag's duration (dataTransfer is
+    // read-locked during dragover, so everyone reads this instead). The server API is already
+    // drag-shaped: member PUT with an index is add-and-move in one op (position counted without
+    // the member itself), and a cross-section move is the documented place + remove pair -
+    // place FIRST, so a failure between the writes leaves a visible duplicate, never a lost
+    // page. Same-parent reorders skip the remove entirely.
+    const dragRef = useRef(null);
+    const completeDrag = async (drop) => {
+        const drag = dragRef.current;
+        dragRef.current = null;
+        if (!drag) return;
+        try {
+            if (drop.unfile) {
+                // Unfiling is pages-only: a section unhooked from every parent would be an
+                // invisible orphan, so sections can't land here.
+                if (drag.kind !== 'page' || !drag.parentId) return;
+                await api(
+                    `/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`,
+                    { method: 'DELETE' }
+                );
+                refetch();
+                return;
+            }
+            let destParent, index;
+            if (drop.intoId) {
+                destParent = drop.intoId; // append into a section (or the root)
+                index = undefined;
+            } else {
+                if (drag.id === drop.refId) return; // dropped beside itself: nothing to do
+                destParent = drop.parentNode.taxonomy_id;
+                // The arrival index, counted without the dragged member (the PUT's contract).
+                const list = (drop.parentNode.members || [])
+                    .map((m) => m.doc_id)
+                    .filter((x) => x !== drag.id);
+                const i = list.indexOf(drop.refId);
+                index = i === -1 ? undefined : drop.after ? i + 1 : i;
+            }
+            if (drag.kind === 'section' && drag.taxIds && drag.taxIds.includes(destParent)) {
+                return; // cycle: into itself or its own subtree (the server refuses these too)
+            }
+            await api(`/api/identity/${root}/taxonomies/${destParent}/members/${drag.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(index === undefined ? {} : { index }),
+            });
+            if (drag.parentId && drag.parentId !== destParent) {
+                await api(
+                    `/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`,
+                    { method: 'DELETE' }
+                );
+            }
+            refetch();
+        } catch (e) {
+            alert(`couldn't move that: ${e.message}`);
+        }
+    };
+
     const ops = {
         docId: selected,
         select,
@@ -335,6 +537,8 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
         newSection,
         renameSection,
         deleteSection,
+        drag: dragRef,
+        completeDrag,
     };
 
     const empty = !tree || !(tree.members || []).length;
@@ -342,7 +546,18 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
     return html`
         <div class="wiki">
             <div class="wiki-columns">
-                <aside class="wiki-tree">
+                <aside
+                    class="wiki-tree"
+                    onDragOver=${(e) => {
+                        // The pane background is the root's drop zone (rows stopPropagation, so
+                        // only true background drags reach here): drop to file at top level.
+                        if (dragRef.current && tree) e.preventDefault();
+                    }}
+                    onDrop=${(e) => {
+                        e.preventDefault();
+                        if (tree) completeDrag({ intoId: tree.taxonomy_id });
+                    }}
+                >
                     <div class="wiki-toolbar">
                         <button class="wiki-tool" onClick=${() => newPage(null)}>
                             <${Icons.pageNew} /> page
@@ -357,19 +572,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                     html`<p class="null-sub wiki-empty">
                         nothing here yet - start a page, or a section to put pages in.
                     </p>`}
-                    ${!!unfiled.length &&
-                    html`<div class="wiki-unfiled">
-                        <div class="wiki-unfiled-title">unfiled</div>
-                        ${unfiled.map(
-                            (d) => html`<${PageRow}
-                                key=${d.doc_id}
-                                id=${d.doc_id}
-                                summary=${d}
-                                depth=${0}
-                                ops=${ops}
-                            />`
-                        )}
-                    </div>`}
+                    ${!!unfiled.length && html`<${UnfiledBin} unfiled=${unfiled} ops=${ops} />`}
                 </aside>
                 <div class="wiki-main">
                     ${selected

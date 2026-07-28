@@ -1816,7 +1816,17 @@ state in Dexie prefs (`wikifold:<tax_id>`), search filters page leaves (sections
 scaffolding), and an "unfiled" bin catches anything in the bucket but out of the tree - nothing
 is ever lost to tree surgery. Multiple wikis ride the bucket switcher for free.
 
-v1 edges to revisit: no drag-to-reorganize yet (members append; moves are remove+place, no UI),
-deleting a wiki BUCKET leaves its root taxonomy orphaned on the roster (invisible, harmless),
-other-identity tree members are skipped in render, and there's no move-page-between-sections
-affordance yet.
+Follow-ups landed same day: per-app last-open-bucket session memory (`lastBucketMemory` in the
+shell), the wiki's last-open-page memory (Notes pattern verbatim), deep-link bucket correction
+(a refreshed document URL switches the shell to the doc's own bucket, at most once per doc), and
+drag-to-reorganize: native HTML5 DnD, no library. Pages and sections drag; a row's top/bottom
+half is insert-before/after (sections split 25/50/25 with a drop-INTO middle zone), the pane
+background files at top level, and the unfiled bin is a drop target that unhooks a page from its
+section. The server API was already drag-shaped (member PUT index = add-and-move, position
+counted without the member); cross-section moves place FIRST then remove, so a failure between
+the writes leaves a visible duplicate, never a lost page. Cycle guard client-side via the
+dragged section's subtree ids (the server refuses too); indicator CSS: insertion lines, teal
+drop-into wash, lifted opacity on the source.
+
+v1 edges to revisit: deleting a wiki BUCKET leaves its root taxonomy orphaned on the roster
+(invisible, harmless), and other-identity tree members are skipped in render.

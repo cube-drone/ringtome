@@ -2102,6 +2102,32 @@ body {
     color: var(--coral);
 }
 
+/* Drag-to-reorganize indicators: an insertion line above/below the row, a teal wash for
+   drop-into (sections), a lifted look on the dragged row, and a dashed ring on the unfiled bin
+   when a page can land there. */
+.wiki-row.drop-before {
+    box-shadow: 0 -2px 0 0 var(--teal);
+}
+
+.wiki-row.drop-after {
+    box-shadow: 0 2px 0 0 var(--teal);
+}
+
+.wiki-row.drop-into {
+    background: color-mix(in srgb, var(--teal) 18%, transparent);
+    border-color: var(--teal);
+}
+
+.wiki-row.lifting {
+    opacity: 0.45;
+}
+
+.wiki-unfiled.drop-hover {
+    outline: 2px dashed var(--teal);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
 /* A stub: this section appears again here (a diamond's second parent or a cycle) - a marker,
    not a second expansion. */
 .wiki-stub {
