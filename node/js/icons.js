@@ -37,6 +37,12 @@ import {
     TextAa,
     Plus,
     CaretRight,
+    FileText,
+    FilePlus,
+    FolderSimple,
+    FolderOpen,
+    FolderSimplePlus,
+    PencilSimple,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -82,4 +88,11 @@ export const Icons = {
     fontTypewriter: Keyboard,
     fontHand: PenNib,
     fontLegible: TextAa,
+    // the wiki tree (sections are taxonomies, pages are documents)
+    page: FileText,
+    pageNew: FilePlus,
+    section: FolderSimple,
+    sectionOpen: FolderOpen,
+    sectionNew: FolderSimplePlus,
+    rename: PencilSimple,
 };

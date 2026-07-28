@@ -17,6 +17,7 @@ import {
 import { Computers } from './computers.js';
 import { DocsApp } from './notes.js';
 import { JournalApp } from './journal.js';
+import { WikiApp } from './wiki.js';
 import { Console } from './console.js';
 import { liveApps, docApps, appById, appLabel, bucketsForApp } from './apps.js';
 import { openMirror, useLive } from './cache.js';
@@ -359,6 +360,15 @@ const Inside = ({ session }) => {
                     ? html`<${JournalApp}
                           path="/home/${app.id}"
                           key=${app.id}
+                          current=${persona.current}
+                          searchQuery=${query}
+                          bucket=${appHere && appHere.id === app.id ? bucket : app.style}
+                      />`
+                    : app.wiki
+                    ? html`<${WikiApp}
+                          path="/home/${app.id}/:docId?"
+                          key=${app.id}
+                          app=${app}
                           current=${persona.current}
                           searchQuery=${query}
                           bucket=${appHere && appHere.id === app.id ? bucket : app.style}

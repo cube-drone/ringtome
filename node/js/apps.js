@@ -48,7 +48,18 @@ export const APPS = [
         // Notes list. It composes the shared editing session directly, so it needs no `features`.
         journal: true,
     },
-    { id: 'wiki', name: 'Wiki', icon: Icons.wiki, soon: true },
+    {
+        id: 'wiki',
+        name: 'Wiki',
+        icon: Icons.wiki,
+        style: 'wiki',
+        live: true,
+        bucketNoun: 'Wiki',
+        // A knowledge base: pages in a TREE. Its own component (WikiApp) - the tree is a root
+        // taxonomy (titled `wiki:<bucket>`), sections are child taxonomies, pages are document
+        // leaves. Composes the shared Editor for the page surface.
+        wiki: true,
+    },
     { id: 'blog', name: 'Blog', icon: Icons.blog, soon: true },
     { id: 'book', name: 'Book', icon: Icons.book, soon: true },
     { blank: true },

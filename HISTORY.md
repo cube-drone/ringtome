@@ -1795,3 +1795,26 @@ lifted shell state like the search query - entering an app always lands on its h
 
 Hard-won build note, recorded in auto-memory too: `npm run build` is JS only - CSS needs its own
 `npm run css`, and forgetting it looks exactly like "my CSS changes don't work."
+
+## 2026-07-28: the wiki
+
+The taxonomy machinery's first real consumer (PROJECT_PLAN, Taxonomies - lists + trees were
+already implemented server-side; the question "can non-root nodes be named?" answers itself:
+interior nodes ARE taxonomies, titled by design). A wiki is one bucket + one root taxonomy,
+associated by title convention (`wiki:<bucket>` - prefixed so user-titled sections can never
+collide with a root lookup; lowest-id wins a concurrent-mint tie, minted lazily on first write).
+Sections are child taxonomies (create: POST /taxonomies + place in parent; rename: the title
+annotation on the taxonomy's own id; delete: unhook from parent + delete descendants, pages
+spared). Pages are document leaves - created into the bucket AND placed in their node, edited by
+the shared Editor (same one Notes uses, full feature set). The tree pane renders the whole
+expanded tree from GET /taxonomies/{root} - refetched when the streamed roster ticks or after
+our own writes; page titles read live off the mirror row so editor renames re-title the tree
+instantly. Cycle/diamond stubs render as ↩ markers (the server's members:null contract). Fold
+state in Dexie prefs (`wikifold:<tax_id>`), search filters page leaves (sections stay as
+scaffolding), and an "unfiled" bin catches anything in the bucket but out of the tree - nothing
+is ever lost to tree surgery. Multiple wikis ride the bucket switcher for free.
+
+v1 edges to revisit: no drag-to-reorganize yet (members append; moves are remove+place, no UI),
+deleting a wiki BUCKET leaves its root taxonomy orphaned on the roster (invisible, harmless),
+other-identity tree members are skipped in render, and there's no move-page-between-sections
+affordance yet.
