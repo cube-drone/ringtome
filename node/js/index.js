@@ -19,11 +19,16 @@ import { DocsApp } from './notes.js';
 import { JournalApp } from './journal.js';
 import { WikiApp } from './wiki.js';
 import { Console } from './console.js';
-import { liveApps, docApps, appById, appLabel, bucketsForApp } from './apps.js';
+import { liveApps, docApps, appById, appLabel, bucketsForApp, appTypeOf } from './apps.js';
 import { openMirror, useLive } from './cache.js';
 import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
+
+// The bucket you last had open in each app, keyed `${root}:${app.id}` - the same idea (and
+// lifetime) as the last-open-document memory in notes.js: an in-memory session convenience,
+// forgotten on reload.
+const lastBucketMemory = new Map();
 
 async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -232,15 +237,44 @@ const Inside = ({ session }) => {
     }, [appHere && appHere.id]);
 
     // The current bucket, lifted like the search query: the header owns the switcher, the app
-    // reads the choice. Null means "the app's home bucket" (the eponymous one); entering an app
-    // always starts you there. The roster (live, from the mirror) is what the switcher pages over.
+    // reads the choice. Null means "the app's home bucket" (the eponymous one). Entering an app
+    // returns you to the bucket you last had open there (the same session memory as the
+    // last-open document); home when there's no memory. The roster (live, from the mirror) is
+    // what the switcher pages over.
     const root = persona.current && persona.current.root;
     const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);
     const [bucketPick, setBucketPick] = useState(null);
+    const switchBucket = (name) => {
+        setBucketPick(name);
+        if (root && appHere) lastBucketMemory.set(`${root}:${appHere.id}`, name);
+    };
     useEffect(() => {
-        setBucketPick(null);
+        setBucketPick((root && appHere && lastBucketMemory.get(`${root}:${appHere.id}`)) || null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [appHere && appHere.id]);
     const bucket = bucketPick || (appHere && appHere.style) || '';
+
+    // Deep-link bucket correction: arriving on a document URL (a refresh, a pasted link), the
+    // in-memory bucket choice is gone but the URL still names the page - and the page knows its
+    // notebook. Once the mirror answers, if the current bucket doesn't hold the document, switch
+    // to the doc's bucket that belongs on this app's rail. Corrected AT MOST ONCE per document
+    // (the ref), so it never fights a deliberate later bucket switch made while a doc is open.
+    const deepDoc = (appHere && appHere.style && pathParts[3]) || null;
+    const docsRows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
+    const correctedFor = useRef(null);
+    useEffect(() => {
+        if (!deepDoc || correctedFor.current === deepDoc) return;
+        if (!docsRows || !roster) return; // wait for the mirror before judging membership
+        const row = docsRows.find((d) => d.doc_id === deepDoc);
+        if (!row) return; // not mirrored (yet) - leave the bucket alone
+        correctedFor.current = deepDoc;
+        const names = row.buckets || [];
+        if (names.includes(bucket)) return; // the current bucket already holds it
+        if (!names.length) return; // unbucketed: the default app's home gathers it
+        const target = names.find((n) => appTypeOf(n, roster) === appHere.style);
+        if (target) switchBucket(target);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deepDoc, docsRows, roster, bucket, appHere && appHere.id]);
 
     // The Quickbar: the persistent bottom bar, now purely the app dock - a hexagon per app (icon
     // only, the console glyphs without their names), a fast switch between apps. The tiles run
@@ -288,7 +322,7 @@ const Inside = ({ session }) => {
                     app=${appHere}
                     roster=${roster}
                     bucket=${bucket}
-                    onSwitch=${setBucketPick}
+                    onSwitch=${switchBucket}
                 />`}
             </span>
             ${showSearch &&

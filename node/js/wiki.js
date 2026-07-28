@@ -35,6 +35,10 @@ async function api(path, options = {}) {
 // taxonomies, also on the roster) from ever colliding with a root lookup.
 const rootTitleFor = (bucket) => `wiki:${bucket}`;
 
+// The page you last had open, keyed `${root}:${app.id}` - the same session memory as Notes'
+// last-open document (and the shell's last-open bucket). Forgotten on reload.
+const lastPageMemory = new Map();
+
 // One page leaf. Title reads LIVE from the mirror row (so an editor rename re-titles the tree
 // immediately); the tree snapshot's summary is the fallback. A search filters pages out of the
 // tree; sections stay as scaffolding.
@@ -126,6 +130,26 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
     const taxRows = useLive(() => openMirror(root).taxonomies.toArray(), [root]);
     const selected = docId || null;
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
+
+    // Resume where you left off - the Notes pattern verbatim: remember the open page, and when
+    // you ENTER the app with nothing selected, return to it (once, if it's still in the current
+    // bucket). The redirect REPLACES history so Back still exits cleanly. The docs guard means
+    // this decides only after the mirror answers - by which point the shell has restored the
+    // remembered bucket, so the membership check runs against the right notebook.
+    const restored = useRef(false);
+    useEffect(() => {
+        if (selected) lastPageMemory.set(`${root}:${app.id}`, selected);
+    }, [selected, root, app.id]);
+    useEffect(() => {
+        if (restored.current || !docs) return;
+        restored.current = true;
+        if (selected) return;
+        const last = lastPageMemory.get(`${root}:${app.id}`);
+        if (last && docs.some((d) => d.doc_id === last && (d.buckets || []).includes(bucket))) {
+            loc.route(`/home/${app.id}/${last}`, true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docs, selected]);
 
     // This wiki's root taxonomy, found on the streamed roster by the title convention. Ties
     // (two devices minting concurrently) resolve to the lowest id - the loser's root just goes

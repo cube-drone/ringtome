@@ -1791,7 +1791,9 @@ wrapping), and clicking the name drops the full list (member counts, current bol
 current bucket (not offered for home) tombstones EVERY member doc then undefines the bucket,
 behind a BIG confirm. Apps filter by bucket membership now (`inThisBucket`); Notes' home bucket
 still gathers unbucketed docs; new docs file into the bucket you're looking at. Bucket choice is
-lifted shell state like the search query - entering an app always lands on its home bucket.
+lifted shell state like the search query, and re-entering an app returns you to the bucket you
+last had open there (`lastBucketMemory` - the same session-Map idea as the last-open document);
+home when there's no memory.
 
 Hard-won build note, recorded in auto-memory too: `npm run build` is JS only - CSS needs its own
 `npm run css`, and forgetting it looks exactly like "my CSS changes don't work."
