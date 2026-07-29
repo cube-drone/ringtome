@@ -2067,3 +2067,30 @@ journal's sealed-entry reader, the tree pane (with a force-bypass when our own w
 since the roster stamp lags a beat behind them), and the slug resolver's treeFor - so cozy
 addresses resolve instantly too. Race stamps self-heal: a mid-race stamp mismatches on the
 next stream tick and forces one honest refetch.
+
+## 2026-07-29: the anti-jitter - one route for every document path
+
+Field-test: clicking a page WITH a taxonomy path jittered the whole structure (tags, items,
+tree, column widths) where a flat doc only swapped the document pane. Diagnosis: a taxonomy
+page's cozy address is 3+ segments, which fell out of the per-app route pattern - the Router
+unmounted the whole app, the catch-all showed "looking that up…", and the app remounted from
+scratch. Fix: the per-app routes are GONE; SlugRoute (the Router default) is now the ONE
+renderer for every document-app path - bare app, hex, slug, deep cozy alike. preact-iso marks
+a route change only when the component TYPE changes, so all doc navigation reconciles a single
+mounted component: the list, tags, tree, and widths hold still while the document pane changes.
+App-id+hex (and bare-app) paths resolve synchronously (no intermediate frame); cozy forms
+resolve async while the PREVIOUS view stays painted ("looking that up" survives only for cold
+deep links). Doc apps are keyed by app id - same app reconciles, switching apps remounts
+deliberately (the per-app restore guards assume a fresh mount). The remaining per-click work is
+the editor itself remounting per document (keyed by design - a fresh save session per doc is
+the never-lose-words guarantee), now fed from the doc cache so it's a rebuild, not a fetch.
+
+## 2026-07-29: the flash-back race
+
+Field-test: clicking a tree page sometimes flashed BACK to the previous document for a beat.
+The race: tree click -> hex URL -> syncHit paints doc B -> the cozy re-dress moves the URL to
+B's deep form -> syncHit goes null and the `syncHit || resolved` fallback reached for the
+freshest ASYNC resolution - which was still doc A's. Fix in SlugRoute: async resolutions are
+tagged with the path they answered (a resolution for a path we've left is ignored at render,
+not just at set), and the fallback is now the last actually-PAINTED view (a ref), never the
+last resolved one. Mid-flight you keep seeing exactly what you last saw.

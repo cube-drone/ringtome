@@ -19,9 +19,9 @@ import { DocsApp } from './notes.js';
 import { JournalApp } from './journal.js';
 import { WikiApp } from './wiki.js';
 import { Console } from './console.js';
-import { liveApps, docApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } from './apps.js';
+import { liveApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } from './apps.js';
 import { openMirror, useLive } from './cache.js';
-import { resolveSlugPath, slugify } from './slugs.js';
+import { resolveSlugPath, slugify, HEX_ID } from './slugs.js';
 import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
@@ -56,48 +56,82 @@ const NotFound = () => html`
     </div>
 `;
 
-// A path no explicit route claims gets tried as a COZY ADDRESS (slugs.js):
-// /home/<bucket>/<sections…>/<title-slug>. Cozy URLs are the RESTING form - this route
-// resolves the path and renders the right app in place (the hex id stays a prop, never the
-// address bar); unresolved, it's honestly nothing.
+// EVERY document-app path renders here - /home/<app>, /home/<app>/<hex>, /home/<app>/<slug>,
+// and the deep cozy forms alike - as the Router's default, so navigating between documents
+// (whatever the URL's shape) reconciles ONE mounted component instead of bouncing between
+// routes. That's the anti-jitter: the list, tags, tree, and column widths hold still while
+// only the document pane changes; per-app routes used to lose the whole structure the moment
+// a cozy path picked up a taxonomy segment. App-id + hex (and bare-app) paths resolve
+// SYNCHRONOUSLY - no intermediate frame at all; cozy forms resolve async while the PREVIOUS
+// view stays painted, so "looking that up" shows only on a cold deep link. The doc apps are
+// keyed by app id: same app reconciles (state holds), switching apps remounts (state resets -
+// deliberately, the per-app guards assume it).
 const SlugRoute = ({ current, searchQuery, bucket }) => {
     const loc = useLocation();
-    const [hit, setHit] = useState(undefined); // undefined = resolving, null = nothing there
+    // Async resolutions are TAGGED with the path they answered, and the last actually-PAINTED
+    // view rides a ref. Both are load-bearing (field-tested 2026-07-29): a bare
+    // `syncHit || resolved` fallback once flashed the PREVIOUS document during the hex->cozy
+    // re-dress - the freshest async resolution was one document old, and for a beat it won.
+    // Mid-flight, the user keeps seeing exactly what they last saw; a resolution for a path
+    // we've already left is ignored at render, not just at set.
+    const [resolved, setResolved] = useState(null); // { path, hit: {appId,docId} | 'nope' }
+    const lastView = useRef(null);
+    const segs = loc.path.split('/').filter(Boolean).slice(1); // drop the 'home'
+    const app0 = segs.length ? appById(segs[0]) : null;
+    const syncHit =
+        app0 && segs.length === 1
+            ? { appId: app0.id, docId: null }
+            : app0 && segs.length === 2 && HEX_ID.test(segs[1])
+            ? { appId: app0.id, docId: segs[1] }
+            : null;
     useEffect(() => {
-        setHit(undefined);
+        if (syncHit) return; // exact already - nothing to resolve
         let alive = true;
-        const segs = loc.path.split('/').filter(Boolean).slice(1); // drop the 'home'
+        const path = loc.path;
         resolveSlugPath(current.root, segs)
-            .then((h) => alive && setHit(h || null))
-            .catch(() => alive && setHit(null));
+            .then((h) =>
+                alive &&
+                setResolved({ path, hit: h ? { appId: h.appId, docId: h.docId } : 'nope' })
+            )
+            .catch(() => alive && setResolved({ path, hit: 'nope' }));
         return () => {
             alive = false;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loc.path]);
-    if (hit === undefined) {
+    const fresh = resolved && resolved.path === loc.path ? resolved.hit : null;
+    const view = syncHit || fresh || lastView.current;
+    if (view && view !== 'nope') lastView.current = view;
+    if (!view) {
         return html`<div class="console"><p class="null-sub">looking that up…</p></div>`;
     }
-    if (hit === null) return html`<${NotFound} />`;
-    const app = appById(hit.appId);
+    if (view === 'nope') return html`<${NotFound} />`;
+    const app = appById(view.appId);
     if (!app) return html`<${NotFound} />`;
     if (app.journal) {
         // The journal has no per-document view; the entry lives in its stream.
-        return html`<${JournalApp} current=${current} searchQuery=${searchQuery} bucket=${bucket} />`;
+        return html`<${JournalApp}
+            key=${app.id}
+            current=${current}
+            searchQuery=${searchQuery}
+            bucket=${bucket}
+        />`;
     }
     if (app.wiki) {
         return html`<${WikiApp}
+            key=${app.id}
             app=${app}
             current=${current}
-            docId=${hit.docId}
+            docId=${view.docId}
             searchQuery=${searchQuery}
             bucket=${bucket}
         />`;
     }
     return html`<${DocsApp}
+        key=${app.id}
         app=${app}
         current=${current}
-        docId=${hit.docId}
+        docId=${view.docId}
         searchQuery=${searchQuery}
         bucket=${bucket}
     />`;
@@ -456,33 +490,6 @@ const Inside = ({ session }) => {
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
-            ${docApps.map((app) =>
-                app.journal
-                    ? html`<${JournalApp}
-                          path="/home/${app.id}"
-                          key=${app.id}
-                          current=${persona.current}
-                          searchQuery=${query}
-                          bucket=${appHere && appHere.id === app.id ? bucket : app.style}
-                      />`
-                    : app.wiki
-                    ? html`<${WikiApp}
-                          path="/home/${app.id}/:docId?"
-                          key=${app.id}
-                          app=${app}
-                          current=${persona.current}
-                          searchQuery=${query}
-                          bucket=${appHere && appHere.id === app.id ? bucket : app.style}
-                      />`
-                    : html`<${DocsApp}
-                          path="/home/${app.id}/:docId?"
-                          key=${app.id}
-                          app=${app}
-                          current=${persona.current}
-                          searchQuery=${query}
-                          bucket=${appHere && appHere.id === app.id ? bucket : app.style}
-                      />`
-            )}
             <${SlugRoute} default current=${persona.current} searchQuery=${query} bucket=${bucket} />
         </${Router}>
     `;
