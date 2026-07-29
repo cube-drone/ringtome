@@ -189,6 +189,50 @@ export async function slugPathFor(root, docId, bucket) {
     return `/home/${head}${midPath}/${tail}`;
 }
 
+// --- dragging a document INTO a document: the crosslink drag ---
+// The editing surfaces (CodeMirror, textareas) natively insert a drag's text/plain at the
+// POINTER on drop - precision for free - so the drag itself carries the link markup. Media
+// docs carry their byte-URL embed (`![title](…/body/name.ext)` - the extension the renderer's
+// kind sniff needs; a cozy /home path serves the app, not bytes, so an embed can't use it).
+// Ordinary docs carry an id-form link (valid immediately), and the cozy form computes in
+// flight - the receiving editor swaps id-form for cozy when it lands.
+
+const MEDIA_EXT = { avif: 'avif', apng: 'png', webm: 'webm', opus: 'ogg' };
+const dragSwaps = new Map(); // inserted id-form text -> Promise<cozy-form text>
+
+/// Begin dragging a document row (list or tree). Writes the drag payload; registers the cozy
+/// swap for non-media docs. `doc` needs doc_id/title/format; `bucket` is the notebook in view.
+export function startDocDrag(e, root, doc, bucket) {
+    const label = (doc.title || 'untitled').replace(/[[\]()]/g, '') || 'untitled';
+    e.dataTransfer.setData('application/x-ringtome-doc', doc.doc_id);
+    e.dataTransfer.effectAllowed = 'copyMove';
+    const ext = MEDIA_EXT[doc.format];
+    if (ext) {
+        const slug = slugify(label).replace(/-/g, '_') || 'file';
+        e.dataTransfer.setData(
+            'text/plain',
+            `![${label}](/api/identity/${root}/docs/${doc.doc_id}/body/${slug}.${ext})`
+        );
+        return; // the byte URL is already final - nothing to swap
+    }
+    const idText = `[${label}](/home/${slugify(bucket)}/${doc.doc_id})`;
+    e.dataTransfer.setData('text/plain', idText);
+    dragSwaps.set(
+        idText,
+        slugPathFor(root, doc.doc_id, bucket).then((cozy) =>
+            cozy ? `[${label}](${cozy})` : idText
+        )
+    );
+    setTimeout(() => dragSwaps.delete(idText), 60_000); // an abandoned drag doesn't leak
+}
+
+/// The receiving editor claims a dropped doc-drag's cozy swap (by the exact inserted text).
+export function takeDocDropSwap(idText) {
+    const p = dragSwaps.get(idText) || null;
+    dragSwaps.delete(idText);
+    return p;
+}
+
 /**
  * The app-route shim: `/home/<app>/<something-not-hex>` means the something is a slug, not a
  * doc id. Resolves it (against the app's home bucket) to the EFFECTIVE doc id WITHOUT

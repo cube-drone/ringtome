@@ -2006,3 +2006,17 @@ follow the URL (and settle the bucket pick + memory, so stepping onward from a c
 stays in that notebook). And a rename re-dresses the address live: the doc's mirror row is a
 dependency of the dressing hook, so the URL updates the moment the title save echoes back
 (section renames/moves still wait for the next navigation; the forgiving pass covers them).
+
+## 2026-07-28: drag a document into a document - crosslinks by hand
+
+Rows from the Items list and the Tree now drag into the editor and land as links at the
+POINTER. The trick that made it small: the editing surfaces (CodeMirror, textareas) natively
+insert a drag's text/plain at the drop point, so the drag itself carries the link markup
+(slugs.js `startDocDrag`) and precision costs nothing. Media docs carry their byte-URL embed
+(`![title](…/body/name.ext)` - the extension-sniffed form an embed needs; a cozy /home path
+serves the app, not bytes). Ordinary docs carry an id-form link that's valid the moment it
+lands, with the cozy form computing in flight - the editor claims the swap on drop
+(takeDocDropSwap) and re-dresses the link once the path resolves, retrying briefly since the
+native insertion lands a beat after the drop event. Section rows are marked and refused (their
+raw taxonomy id isn't text anyone wants); the tree's internal reorganize drags coexist - same
+dragstart feeds both audiences (ops.drag for tree targets, the markup for editors).

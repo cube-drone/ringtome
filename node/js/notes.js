@@ -18,7 +18,7 @@ import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, featuresOf } from './apps.js';
 import { WikiTree, ensureTreeRoot } from './tree.js';
 import { useColWidths } from './panes.js';
-import { useSlugDocId, useCozyAddress, slugPathFor } from './slugs.js';
+import { useSlugDocId, useCozyAddress, slugPathFor, startDocDrag } from './slugs.js';
 import { Icons, formatIcon } from './icons.js';
 
 const html = htm.bind(h);
@@ -562,6 +562,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                             key=${d.doc_id}
                             class=${d.doc_id === selected ? 'note-row selected' : 'note-row'}
                             onClick=${() => select(d.doc_id)}
+                            draggable=${true}
+                            onDragStart=${(e) => startDocDrag(e, root, d, bucket)}
                         >
                             <span class="note-row-title">
                                 ${d.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}${formatIcon(d.format) &&

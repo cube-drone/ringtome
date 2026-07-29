@@ -11,6 +11,9 @@ import htm from 'htm';
 
 import { openMirror, useLive } from './cache.js';
 import { useSearch } from './search.js';
+// Circular with slugs.js (it imports rootTitleFor from here) - safe: both sides only call the
+// other's functions at runtime, never at module-eval time.
+import { startDocDrag } from './slugs.js';
 import { Icons, formatIcon } from './icons.js';
 
 const html = htm.bind(h);
@@ -95,8 +98,14 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         onClick=${() => ops.select(id)}
         draggable=${true}
         onDragStart=${(e) => {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', id); // Firefox needs data to start a drag
+            // Two audiences at once: the tree's own drop targets read `ops.drag` (reorganize),
+            // and an editor drop reads the link-markup payload (startDocDrag - the crosslink).
+            startDocDrag(
+                e,
+                ops.root,
+                live || { doc_id: id, title, format: summary && summary.format },
+                ops.bucket
+            );
             ops.drag.current = { kind: 'page', id, parentId: parent ? parent.taxonomy_id : null };
             setLifting(true);
         }}
@@ -161,6 +170,8 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                 e.stopPropagation();
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('text/plain', node.taxonomy_id);
+                // Marked so an editor drop can refuse it - a section isn't insertable text.
+                e.dataTransfer.setData('application/x-ringtome-section', node.taxonomy_id);
                 // Its whole subtree's taxonomy ids ride along - the client-side cycle guard
                 // (the server refuses these too; this keeps the drop from even offering).
                 const taxIds = [];
@@ -635,6 +646,8 @@ export const WikiTree = ({
     const ops = {
         docId: selected,
         select: onSelect,
+        root,
+        bucket,
         byId,
         hits,
         folded,

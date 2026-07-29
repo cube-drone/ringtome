@@ -28,7 +28,7 @@ import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { UploadFlow } from './upload.js';
-import { slugPathFor } from './slugs.js';
+import { slugPathFor, takeDocDropSwap } from './slugs.js';
 import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
@@ -173,11 +173,45 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     const onUploaded = (i, file, uploadedId, name) => swapToken(i, refFor(file, uploadedId, name));
     const onUploadFailed = (i) => swapToken(i, '');
     const catchDrop = (e) => {
-        const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
-        if (!files.length) return; // not a file drag (an internal row drag, say) - not ours
-        e.preventDefault();
-        e.stopPropagation();
-        captureFiles(files);
+        const dt = e.dataTransfer;
+        const files = Array.from((dt && dt.files) || []);
+        if (files.length) {
+            e.preventDefault();
+            e.stopPropagation();
+            captureFiles(files);
+            return;
+        }
+        const types = Array.from((dt && dt.types) || []);
+        if (types.includes('application/x-ringtome-section')) {
+            // A SECTION row from the tree isn't text - block the surface's native drop from
+            // inserting its raw taxonomy id.
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        if (types.includes('application/x-ringtome-doc')) {
+            // A document row (list or tree): the editing surface's NATIVE drop inserts the
+            // dragged link markup at the pointer - we deliberately don't preventDefault - and
+            // then the id-form link dresses itself in the cozy address once it computes. The
+            // insertion lands a beat after this handler, so the swap retries briefly.
+            const idText = dt.getData('text/plain');
+            const swap = takeDocDropSwap(idText);
+            if (swap) {
+                swap.then((cozyText) => {
+                    if (!cozyText || cozyText === idText) return;
+                    let tries = 0;
+                    const attempt = () => {
+                        if (bodyNow.current.includes(idText)) {
+                            setBody(bodyNow.current.replace(idText, cozyText));
+                            touched();
+                        } else if (++tries < 12) {
+                            setTimeout(attempt, 100);
+                        }
+                    };
+                    attempt();
+                });
+            }
+        }
     };
     const allowFileDrag = (e) => {
         const types = Array.from((e.dataTransfer && e.dataTransfer.types) || []);
