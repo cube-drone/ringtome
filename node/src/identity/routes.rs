@@ -122,6 +122,13 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/{doc_id}/body",
             get(docs_body_handler),
         )
+        // The same bytes under a decorative filename: a marquee embed target needs an
+        // EXTENSION for the renderer's media-kind sniff (`![t](.../body/photo.avif)`); the
+        // name is ignored, the response's real Content-Type (nosniff-pinned) is authoritative.
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/body/{filename}",
+            get(docs_body_named_handler),
+        )
         .route(
             "/api/identity/{root}/docs/{doc_id}/thumb",
             get(docs_thumb_handler),
@@ -1060,6 +1067,26 @@ async fn docs_body_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    docs_body_impl(session, state, root, doc_id).await
+}
+
+/// The decorative-filename twin (`…/body/{filename}`): the name is ignored entirely - it exists
+/// so an embed target can carry an extension for kind-sniffing renderers. The upload flow
+/// writes references in this form.
+async fn docs_body_named_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id, _filename)): Path<(String, String, String)>,
+) -> Result<Response, AppError> {
+    docs_body_impl(session, state, root, doc_id).await
+}
+
+async fn docs_body_impl(
+    session: Session,
+    state: AppState,
+    root: String,
+    doc_id: String,
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;

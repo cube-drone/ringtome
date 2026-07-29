@@ -96,7 +96,7 @@ const QUEUE_WORD = {
     processing: 'processing…',
 };
 
-export const UploadFlow = ({ root, bucket, files, onClose, intoTree }) => {
+export const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFailed }) => {
     // One row per file. `phase`: uploading -> queued -> done | failed.
     const [rows, setRows] = useState(() =>
         files.map((f) => ({
@@ -171,6 +171,7 @@ export const UploadFlow = ({ root, bucket, files, onClose, intoTree }) => {
                     phase: 'failed',
                     error: `Ringtome can't store this kind of file yet - images, audio, and some video (this is ${file.type}).`,
                 });
+                onFailed && onFailed(i); // the host removes this file's in-document placeholder
                 return;
             }
             try {
@@ -205,6 +206,10 @@ export const UploadFlow = ({ root, bucket, files, onClose, intoTree }) => {
                     );
                 }
                 patchRow(i, { docId: res.doc_id, jobId: res.job_id, phase: 'queued', pct: 100 });
+                // The doc_id exists: the host swaps this file's in-document placeholder for
+                // the real reference now (the body URL is stable; it self-describes while the
+                // transcode is still running).
+                onUploaded && onUploaded(i, file, res.doc_id, namesRef.current[i]);
                 // File it into the notebook you're in - membership is doc-meta, so it works the
                 // moment the id exists, long before the transcode lands.
                 if (bucket) {
@@ -233,6 +238,7 @@ export const UploadFlow = ({ root, bucket, files, onClose, intoTree }) => {
                 }
             } catch (e) {
                 patchRow(i, { phase: 'failed', error: e.message });
+                onFailed && onFailed(i); // remove the placeholder; nothing landed
             }
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps

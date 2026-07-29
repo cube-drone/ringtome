@@ -102,19 +102,67 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
 
-    // File upload, phase one of several: three doors - the upload chip, a drop from the
-    // desktop, a pasted image buffer - all landing in the same place: the upload modal, holding
-    // the captured File(s). The actual upload/ingest machinery (progress, the server's
-    // processing queue, the in-document placeholder) arrives in the next phases; this is the
-    // capture and the landing pad.
+    // File upload: three doors - the upload chip, a drop from the desktop, a pasted image
+    // buffer - all landing in `captureFiles`, which plants a PLACEHOLDER in the document at
+    // the current cursor for each file and opens the upload modal. When an upload lands its
+    // doc_id (the 202), the placeholder is swapped for the real reference - a marquee embed
+    // (`![name](…/body/name.ext)` - the decorative filename carries the extension the
+    // renderer's kind sniff needs) or, in plaintext, the bare URL. A failed upload removes
+    // its placeholder; a placeholder the user deleted meanwhile is respected (no swap).
     const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
     const filePickRef = useRef(null);
+    const bodyNow = useRef('');
+    bodyNow.current = body;
+    const uploadTokens = useRef([]); // placeholder text per file index, for the open modal
+    const captureFiles = (files) => {
+        if (!files.length) return;
+        const tokens = files.map(
+            (f) => `[uploading "${f.name}" …${Math.random().toString(36).slice(2, 6)}]`
+        );
+        uploadTokens.current = tokens;
+        const c = recallCursor(root, docId);
+        const pos = Math.min(
+            c ? (typeof c.end === 'number' ? c.end : c.start) || 0 : bodyNow.current.length,
+            bodyNow.current.length
+        );
+        setBody(
+            bodyNow.current.slice(0, pos) + tokens.join('\n') + bodyNow.current.slice(pos)
+        );
+        touched();
+        setUploadFiles(files);
+    };
+    // The final reference for a landed upload. The extension is guessed from the INPUT kind
+    // (image -> avif, video -> webm, audio -> ogg - what the crush emits); it's decorative,
+    // the served Content-Type is authoritative, and an unknown kind degrades to a plain link.
+    const refFor = (file, uploadedId, name) => {
+        const base = `/api/identity/${root}/docs/${uploadedId}/body`;
+        const t = file.type || '';
+        const ext = t.startsWith('image/')
+            ? 'avif'
+            : t.startsWith('video/')
+            ? 'webm'
+            : t.startsWith('audio/')
+            ? 'ogg'
+            : null;
+        const label = (name || file.name || 'file').replace(/[[\]()]/g, '');
+        const slug = label.replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
+        if (format === 'plaintext') return ext ? `${base}/${slug}.${ext}` : base;
+        return ext ? `![${label}](${base}/${slug}.${ext})` : `[${label}](${base})`;
+    };
+    const swapToken = (i, replacement) => {
+        const tok = uploadTokens.current[i];
+        if (!tok || !bodyNow.current.includes(tok)) return; // deleted by hand: their call
+        setBody(bodyNow.current.replace(tok, replacement));
+        touched();
+    };
+    const onUploaded = (i, file, uploadedId, name) => swapToken(i, refFor(file, uploadedId, name));
+    const onUploadFailed = (i) => swapToken(i, '');
     const catchDrop = (e) => {
         const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
         if (!files.length) return; // not a file drag (an internal row drag, say) - not ours
         e.preventDefault();
         e.stopPropagation();
-        setUploadFiles(files);
+        captureFiles(files);
     };
     const allowFileDrag = (e) => {
         const types = Array.from((e.dataTransfer && e.dataTransfer.types) || []);
@@ -124,7 +172,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         const files = Array.from((e.clipboardData && e.clipboardData.files) || []);
         if (!files.length) return; // ordinary text paste - let it through untouched
         e.preventDefault();
-        setUploadFiles(files);
+        captureFiles(files);
     };
 
     // The remembered view mode: hydrate this doc's last pick from the mirror's local-only
@@ -443,7 +491,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                 ref=${filePickRef}
                 onChange=${(e) => {
                     const files = Array.from(e.currentTarget.files || []);
-                    if (files.length) setUploadFiles(files);
+                    if (files.length) captureFiles(files);
                     e.currentTarget.value = ''; // so picking the same file again re-fires
                 }}
             />
@@ -453,6 +501,8 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                 bucket=${bucket}
                 intoTree=${!!feat.tree}
                 files=${uploadFiles}
+                onUploaded=${onUploaded}
+                onFailed=${onUploadFailed}
                 onClose=${() => setUploadFiles(null)}
             />`}
         </div>

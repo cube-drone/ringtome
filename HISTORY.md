@@ -1953,3 +1953,19 @@ same as "+ new item" (the row appears once the transcode lands a version; member
 immediate). And the wiki now mounts the shared RightColumn (exported from notes.js) instead of
 a bare Editor, so a media page there opens the Reader rather than a text editor that can't hold
 it.
+
+## 2026-07-28: uploads link themselves into the document at the cursor
+
+The original upload spec's last phase. All three doors (chip, drop, paste) now route through
+`captureFiles`, which plants a placeholder (`[uploading "name" …nonce]`) at the CURSOR (the
+per-doc cursor memory - the same position every surface remembers) and opens the modal. When an
+upload lands its 202, the placeholder swaps for the real reference: a marquee embed
+`![name](…/body/name.ext)` (plaintext docs get the bare URL; unknown kinds degrade to a plain
+link). The extension trick: the marquee renderer's media-kind sniff is extension-based and the
+body URL had none, so a new decorative-filename route (`/docs/{doc_id}/body/{filename}` - name
+ignored, real Content-Type authoritative and nosniff-pinned) lets references carry `.avif` /
+`.webm` / `.ogg`. A failed upload removes its placeholder; a placeholder the user deleted by
+hand is respected (no swap); the swap works because LiveMarquee reconciles external body-prop
+changes and the docsession buffer mirrors every render (both already true). The reference is
+live the moment it lands - the body endpoint self-describes while the transcode runs, and the
+embed pops in when the bytes arrive.
