@@ -292,7 +292,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
     }
 
     return html`
-        <div class="reader">
+        <div class="reader reader-file">
             <header class="reader-head">
                 <input
                     class="editor-title"
@@ -302,19 +302,12 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                     onBlur=${saveTitle}
                 />
                 <span class="reader-chips">
-                    ${nav &&
+                    ${onDeleted &&
                     html`<button
-                            class="chip chip-button"
-                            title=${nav.prevTip || 'the previous document'}
-                            disabled=${!nav.prev}
-                            onClick=${() => nav.prev && nav.go(nav.prev)}
-                        ><${Icons.navPrev} /></button>
-                        <button
-                            class="chip chip-button"
-                            title=${nav.nextTip || 'the next document'}
-                            disabled=${!nav.next}
-                            onClick=${() => nav.next && nav.go(nav.next)}
-                        ><${Icons.navNext} /></button>`}
+                        class="chip chip-button chip-delete"
+                        title="Delete — removes this document from every list (its history is kept)"
+                        onClick=${remove}
+                    ><${Icons.trash} /></button>`}
                     ${doc.diverged &&
                     (doc.resolution === 'conflict'
                         ? html`<span class="chip chip-diverged" title="edited in the same place on two computers; every version is shown below">conflict</span>`
@@ -336,23 +329,30 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                     <button
                         class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
                         title=${pinned
-                            ? 'unpin from the top of the list'
-                            : 'pin to the top of the list'}
+                            ? 'Pinned — click to unpin it from the top of the list'
+                            : 'Not pinned — click to pin it to the top of the list'}
                         onClick=${togglePin}
-                    >${pinned ? html`<${Icons.pin} /> pinned` : 'pin'}</button>
-                    ${onDeleted &&
+                    ><${Icons.pin} /></button>
+                    ${nav &&
                     html`<button
-                        class="chip chip-button chip-delete"
-                        title="delete this document (it leaves every list; the history is kept)"
-                        onClick=${remove}
-                    >delete</button>`}
+                            class="chip chip-button"
+                            title=${nav.prevTip || 'the previous document'}
+                            disabled=${!nav.prev}
+                            onClick=${() => nav.prev && nav.go(nav.prev)}
+                        ><${Icons.navPrev} /></button>
+                        <button
+                            class="chip chip-button"
+                            title=${nav.nextTip || 'the next document'}
+                            disabled=${!nav.next}
+                            onClick=${() => nav.next && nav.go(nav.next)}
+                        ><${Icons.navNext} /></button>`}
                 </span>
                 ${showMeta &&
                 html`<div class="editor-meta">
                     <${Annotations} root=${root} docId=${docId} />
                 </div>`}
             </header>
-            ${body}
+            <div class="reader-scroll">${body}</div>
         </div>
     `;
 };

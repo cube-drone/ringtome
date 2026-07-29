@@ -1543,6 +1543,24 @@ body {
     flex-shrink: 0;
 }
 
+/* Files scroll BELOW the header, like documents do: the file reader pins its head and scrolls
+   the body region itself. (Documents get this for free - CodeMirror caps and scrolls
+   internally - but a tall image used to overflow the whole card, dragging the title and nav
+   chips out of reach mid-scroll.) */
+.reader-file {
+    overflow: hidden; /* the body region below scrolls instead */
+}
+
+.reader-file .reader-head {
+    flex-shrink: 0;
+}
+
+.reader-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
 .chip {
     display: inline-flex;
     align-items: center;

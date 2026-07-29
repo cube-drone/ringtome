@@ -324,19 +324,12 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                           placeholder="untitled"
                       />`}
                 <span class="reader-chips">
-                    ${nav &&
+                    ${onDeleted &&
                     html`<button
-                            class="chip chip-button"
-                            title=${nav.prevTip || 'the previous document'}
-                            disabled=${!nav.prev}
-                            onClick=${() => nav.prev && nav.go(nav.prev)}
-                        ><${Icons.navPrev} /></button>
-                        <button
-                            class="chip chip-button"
-                            title=${nav.nextTip || 'the next document'}
-                            disabled=${!nav.next}
-                            onClick=${() => nav.next && nav.go(nav.next)}
-                        ><${Icons.navNext} /></button>`}
+                        class="chip chip-button chip-delete"
+                        title="Delete — removes this document from every list (its history is kept)"
+                        onClick=${remove}
+                    ><${Icons.trash} /></button>`}
                     ${loaded.diverged &&
                     (loaded.resolution === 'conflict'
                         ? html`<span class="chip chip-diverged" title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"><${Icons.conflict} /></span>`
@@ -400,12 +393,19 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                             : 'Not pinned — click to pin it to the top of the list'}
                         onClick=${() => togglePin(row && row.pinned)}
                     ><${Icons.pin} /></button>
-                    ${onDeleted &&
+                    ${nav &&
                     html`<button
-                        class="chip chip-button chip-delete"
-                        title="Delete — removes this document from every list (its history is kept)"
-                        onClick=${remove}
-                    ><${Icons.trash} /></button>`}
+                            class="chip chip-button"
+                            title=${nav.prevTip || 'the previous document'}
+                            disabled=${!nav.prev}
+                            onClick=${() => nav.prev && nav.go(nav.prev)}
+                        ><${Icons.navPrev} /></button>
+                        <button
+                            class="chip chip-button"
+                            title=${nav.nextTip || 'the next document'}
+                            disabled=${!nav.next}
+                            onClick=${() => nav.next && nav.go(nav.next)}
+                        ><${Icons.navNext} /></button>`}
                 </span>
                 ${showMeta &&
                 html`<div class="editor-meta">
