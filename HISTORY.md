@@ -2030,3 +2030,11 @@ gemoji dataset (the canonical github/gemoji name map, 1913 entries) rides the sh
 from useTurbolinks, and since both the react renderer and marquee-codemirror spread-merge the
 profile, every surface gets it at once - the live editor, side preview, readers, journal.
 Unknown slugs stay literal. Cost: ~51KB of bundle for the full table, accepted.
+
+## 2026-07-28: app-shelf cleanup
+
+Blog and Book (the `soon` placeholders) are off the console for now; Wiki is renamed Wikibook
+and Notes is renamed TurboNotes (ids, styles, routes, and bucket names all unchanged - `wiki`
+and `default` still carry the plumbing; only the labels and bucket nouns moved); and the shelf
+order is now Persona, Journal, Recipes, Wikibook, TurboNotes - console tiles and quickbar hexes
+alike, since both read registry order.

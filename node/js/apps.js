@@ -19,16 +19,15 @@ export const APPS = [
     // `bucketNoun` is what ONE bucket of this app is called to the user - the word the bucket
     // switcher builds its labels from ("New Recipe Book", "Delete this Journal…").
     {
-        id: 'notes',
-        name: 'Notes',
-        icon: Icons.notes,
-        style: 'default',
+        id: 'journal',
+        name: 'Journal',
+        icon: Icons.journal,
+        style: 'journal',
         live: true,
-        bucketNoun: 'Notes',
-        // The everything-app, embraced at last: the recipe app's tag column on the left, the
-        // wiki's tree on the right, the list between - each column tuckable, so it's only as
-        // monstrous as you choose to make it.
-        features: { tagColumn: true, tree: true },
+        bucketNoun: 'Journal',
+        // A day book: its own component (JournalApp), a stream of one entry per day - NOT the
+        // notes list. It composes the shared editing session directly, so it needs no `features`.
+        journal: true,
     },
     {
         id: 'recipes',
@@ -49,32 +48,33 @@ export const APPS = [
         },
     },
     {
-        id: 'journal',
-        name: 'Journal',
-        icon: Icons.journal,
-        style: 'journal',
-        live: true,
-        bucketNoun: 'Journal',
-        // A day book: its own component (JournalApp), a stream of one entry per day - NOT the
-        // Notes list. It composes the shared editing session directly, so it needs no `features`.
-        journal: true,
-    },
-    {
         id: 'wiki',
-        name: 'Wiki',
+        name: 'Wikibook',
         icon: Icons.wiki,
         style: 'wiki',
         live: true,
-        bucketNoun: 'Wiki',
+        bucketNoun: 'Wikibook',
         // A knowledge base: pages in a TREE. Its own component (WikiApp) - the tree is a root
         // taxonomy (titled `wiki:<bucket>`), sections are child taxonomies, pages are document
         // leaves. Composes the shared Editor for the page surface. `features.tree` marks it
-        // tree-having for the shared surfaces (uploads file into the tree root).
+        // tree-having for the shared surfaces (uploads file into the tree root). Renamed
+        // Wikibook 2026-07-28; the id, style, and bucket all stay `wiki` (User-1 or not, the
+        // routes and roster carry the old word fine - only the label changed).
         wiki: true,
         features: { tree: true },
     },
-    { id: 'blog', name: 'Blog', icon: Icons.blog, soon: true },
-    { id: 'book', name: 'Book', icon: Icons.book, soon: true },
+    {
+        id: 'notes',
+        name: 'TurboNotes',
+        icon: Icons.notes,
+        style: 'default',
+        live: true,
+        bucketNoun: 'TurboNotes',
+        // The everything-app, embraced at last (and renamed to match its ambition): the recipe
+        // app's tag column on the left, the wikibook's tree on the right, the list between -
+        // each column tuckable, so it's only as monstrous as you choose to make it.
+        features: { tagColumn: true, tree: true },
+    },
     { blank: true },
 ];
 
