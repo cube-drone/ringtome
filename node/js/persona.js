@@ -220,7 +220,7 @@ export const NullState = ({ persona }) => {
             <p class="null-sub">
                 Every computer you bring the persona to
                 fully syncs your persona's stuff everywhere. This computer will be you, too.
-                That's what happens when you
+                That's what happens when you...
             </p>
             <button class="skip-link" disabled=${busy} onClick=${run(persona.startJoin)}>
                 bring your persona from another computer.
