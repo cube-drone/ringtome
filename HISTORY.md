@@ -1941,3 +1941,15 @@ garbage. Test rewritten: truncation, spacing math (the real clip's numbers), NaN
 
 And the client displays video at native scale (max 320px) instead of stretching the crush into
 full-column blur.
+
+## 2026-07-28: uploaded files become full citizens
+
+Field-test: a processed upload's record couldn't be edited, and uploads never joined the tree.
+Three fixes. The Reader (where media docs open) now edits the RECORD around its read-only body:
+an editable title (the media-safe retitle route) and the tag button + annotations panel -
+"read-only" is about the bytes, not the filing. Uploads in tree-having apps (Notes, Wiki -
+`features.tree`, which the wiki app entry now declares) file into the tree root at upload time,
+same as "+ new item" (the row appears once the transcode lands a version; membership itself is
+immediate). And the wiki now mounts the shared RightColumn (exported from notes.js) instead of
+a bare Editor, so a media page there opens the Reader rather than a text editor that can't hold
+it.

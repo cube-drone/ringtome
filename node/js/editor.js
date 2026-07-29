@@ -451,6 +451,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
             html`<${UploadFlow}
                 root=${root}
                 bucket=${bucket}
+                intoTree=${!!feat.tree}
                 files=${uploadFiles}
                 onClose=${() => setUploadFiles(null)}
             />`}

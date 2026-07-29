@@ -11,7 +11,7 @@ import htm from 'htm';
 
 import { openMirror, useLive } from './cache.js';
 import { useSearch } from './search.js';
-import { Icons } from './icons.js';
+import { Icons, formatIcon } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -77,6 +77,9 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     if (ops.hits !== null && !ops.hits.has(id)) return null;
     const live = ops.byId.get(id);
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
+    // Media pages wear their kind (image/video/audio); text pages keep the page glyph.
+    const icon =
+        formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
     const cls = [
         'wiki-row',
         isSelected ? 'selected' : '',
@@ -121,7 +124,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
             if (parent) ops.completeDrag({ parentNode: parent, refId: id, after });
         }}
     >
-        <${Icons.page} />
+        <${icon} />
         <span class="wiki-row-title">${title}</span>
     </div>`;
 };

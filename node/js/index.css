@@ -1782,6 +1782,12 @@ video.reader-media {
     font-size: 0.8em;
 }
 
+/* A media row's kind glyph (file-image / file-video / file-audio), quiet beside the title. */
+.note-row-kind {
+    font-size: 0.9em;
+    color: var(--muted);
+}
+
 .waiting-dot {
     display: inline-block;
     width: 8px;

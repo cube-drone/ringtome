@@ -9,7 +9,7 @@ import { useLocation } from 'preact-iso';
 import { openMirror, useLive } from './cache.js';
 import { WikiTree } from './tree.js';
 import { useColWidths } from './panes.js';
-import { Editor } from './editor.js';
+import { RightColumn } from './notes.js';
 import { featuresOf } from './apps.js';
 
 const html = htm.bind(h);
@@ -82,22 +82,21 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                     onOrder=${setTreeOrder}
                 />${resizer('tree')}
                 <div class="wiki-main">
-                    ${selected
-                        ? html`<${Editor}
-                              root=${root}
-                              docId=${selected}
-                              key=${selected}
-                              nav=${nav}
-                              bucket=${bucket}
-                              features=${featuresOf(app)}
-                              onDeleted=${() => {
-                                  select(null);
-                                  setTreeReload((k) => k + 1);
-                              }}
-                          />`
-                        : html`<div class="reader reader-empty">
-                              <p class="null-sub">pick a page on the left, or start a new one.</p>
-                          </div>`}
+                    ${/* The shared right column (notes.js): text formats open the Editor, media
+                        opens the Reader - so an uploaded image/video page renders instead of
+                        landing in a text editor that can't hold it. */ ''}
+                    <${RightColumn}
+                        root=${root}
+                        docId=${selected}
+                        docs=${docs}
+                        nav=${nav}
+                        bucket=${bucket}
+                        features=${featuresOf(app)}
+                        onDeleted=${() => {
+                            select(null);
+                            setTreeReload((k) => k + 1);
+                        }}
+                    />
                 </div>
             </div>
         </div>

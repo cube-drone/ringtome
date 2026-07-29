@@ -49,6 +49,9 @@ import {
     ArrowRight,
     UploadSimple,
     CheckCircle,
+    FileImage,
+    FileAudio,
+    FileVideo,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -110,4 +113,19 @@ export const Icons = {
     // file upload (the doc-menu button; drop and paste land in the same place)
     upload: UploadSimple,
     done: CheckCircle,
+    // media document kinds (tree rows, list rows)
+    fileImage: FileImage,
+    fileAudio: FileAudio,
+    fileVideo: FileVideo,
 };
+
+/// The icon a MEDIA document's format earns in listings (tree rows, the note picker), or null
+/// for text formats - text rows keep their default look. Wire names from the server's
+/// `Format::as_str`: avif/apng render as images, webm as video, opus as audio.
+export const formatIcon = (format) =>
+    ({
+        avif: Icons.fileImage,
+        apng: Icons.fileImage,
+        webm: Icons.fileVideo,
+        opus: Icons.fileAudio,
+    })[format] || null;

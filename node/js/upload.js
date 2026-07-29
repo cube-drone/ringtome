@@ -14,6 +14,7 @@ import htm from 'htm';
 
 import { Modal, fmtBytes } from './modal.js';
 import { Annotations } from './annotations.js';
+import { ensureTreeRoot } from './tree.js';
 import { Icons } from './icons.js';
 // The in-browser video pre-encoder (the video-ingest spike, now in service): the HOSTILE decode
 // happens in the browser's hardened, licensed decoder, and the server only ever sees
@@ -95,7 +96,7 @@ const QUEUE_WORD = {
     processing: 'processing…',
 };
 
-export const UploadFlow = ({ root, bucket, files, onClose }) => {
+export const UploadFlow = ({ root, bucket, files, onClose, intoTree }) => {
     // One row per file. `phase`: uploading -> queued -> done | failed.
     const [rows, setRows] = useState(() =>
         files.map((f) => ({
@@ -211,6 +212,20 @@ export const UploadFlow = ({ root, bucket, files, onClose }) => {
                         `/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(bucket)}`,
                         { method: 'PUT' }
                     ).catch(() => {});
+                }
+                // A tree-having app (Notes, Wiki) also files the upload into the tree - the
+                // root's last child, same as "+ new item" - so it's visible and draggable into
+                // place instead of invisibly unfiled. (The tree row appears once the transcode
+                // lands a version; taxonomy membership itself works immediately.)
+                if (intoTree && bucket) {
+                    ensureTreeRoot(root, bucket)
+                        .then((rid) =>
+                            api(`/api/identity/${root}/taxonomies/${rid}/members/${res.doc_id}`, {
+                                method: 'PUT',
+                                body: JSON.stringify({}),
+                            })
+                        )
+                        .catch(() => {});
                 }
                 // A rename typed while the bytes were in flight: apply it to the queued job now.
                 if (namesRef.current[i] !== file.name) {

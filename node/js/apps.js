@@ -68,8 +68,10 @@ export const APPS = [
         bucketNoun: 'Wiki',
         // A knowledge base: pages in a TREE. Its own component (WikiApp) - the tree is a root
         // taxonomy (titled `wiki:<bucket>`), sections are child taxonomies, pages are document
-        // leaves. Composes the shared Editor for the page surface.
+        // leaves. Composes the shared Editor for the page surface. `features.tree` marks it
+        // tree-having for the shared surfaces (uploads file into the tree root).
         wiki: true,
+        features: { tree: true },
     },
     { id: 'blog', name: 'Blog', icon: Icons.blog, soon: true },
     { id: 'book', name: 'Book', icon: Icons.book, soon: true },

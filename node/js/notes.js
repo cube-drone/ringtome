@@ -10,6 +10,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
 import { Editor } from './editor.js';
+import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
 import { useSearch, queryWords } from './search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
@@ -17,7 +18,7 @@ import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, featuresOf } from './apps.js';
 import { WikiTree, ensureTreeRoot } from './tree.js';
 import { useColWidths } from './panes.js';
-import { Icons } from './icons.js';
+import { Icons, formatIcon } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -121,6 +122,30 @@ const Snippet = ({ root, docId, query }) => {
 const Reader = ({ root, docId, onDeleted, nav }) => {
     const [doc, setDoc] = useState(null);
     const [error, setError] = useState(null);
+    // The record around a read-only BODY is still editable: the title (via the media-safe
+    // retitle route - a new version reusing the head's blobs) and the annotations (tags, date,
+    // description - version-independent by design). "Read-only" is about the bytes, not the
+    // filing.
+    const [title, setTitle] = useState('');
+    const hydrated = useRef(false); // the body-retry loop refetches; hydrate the input ONCE
+    const [showMeta, setShowMeta] = useState(false);
+    const saveTitle = async () => {
+        if (!doc || title === (doc.title || '')) return;
+        try {
+            await api(`/api/identity/${root}/docs/${docId}/title`, {
+                method: 'PATCH',
+                body: JSON.stringify({ title }),
+            });
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    useEffect(() => {
+        if (doc && !hydrated.current) {
+            hydrated.current = true;
+            setTitle(doc.title || '');
+        }
+    }, [doc]);
     const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
     // Pin state rides the mirror row (not the doc detail), so read it live from there.
     const row = useLive(() => (docId ? openMirror(root).docs.get(docId) : null), [root, docId]);
@@ -149,6 +174,9 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
     useEffect(() => {
         setDoc(null);
         setError(null);
+        hydrated.current = false;
+        setTitle('');
+        setShowMeta(false);
         if (!docId) return;
         let timer = null;
         const fetchDoc = () =>
@@ -210,7 +238,13 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
     return html`
         <div class="reader">
             <header class="reader-head">
-                <span class="reader-title">${doc.title || 'untitled'}</span>
+                <input
+                    class="editor-title"
+                    value=${title}
+                    placeholder="untitled"
+                    onInput=${(e) => setTitle(e.currentTarget.value)}
+                    onBlur=${saveTitle}
+                />
                 <span class="reader-chips">
                     ${nav &&
                     html`<button
@@ -232,6 +266,11 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
                     <span class="chip">${doc.format}</span>
                     <span class="chip">read-only</span>
                     <button
+                        class=${showMeta ? 'chip chip-button chip-open' : 'chip chip-button'}
+                        title="tags, date & description"
+                        onClick=${() => setShowMeta((v) => !v)}
+                    ><${Icons.tag} /></button>
+                    <button
                         class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
                         title=${pinned
                             ? 'unpin from the top of the list'
@@ -245,6 +284,10 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
                         onClick=${remove}
                     >delete</button>`}
                 </span>
+                ${showMeta &&
+                html`<div class="editor-meta">
+                    <${Annotations} root=${root} docId=${docId} />
+                </div>`}
             </header>
             ${body}
         </div>
@@ -253,7 +296,8 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
 
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
-const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket }) => {
+// Exported: the wiki mounts this too, so a media page there opens the Reader, not a text editor.
+export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket }) => {
     if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
@@ -490,7 +534,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                             onClick=${() => select(d.doc_id)}
                         >
                             <span class="note-row-title">
-                                ${d.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}${d.title || 'untitled'}
+                                ${d.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}${formatIcon(d.format) &&
+                                html`<span class="note-row-kind"><${formatIcon(d.format)} /></span> `}${d.title || 'untitled'}
                             </span>
                             ${feat.description &&
                             d.fields &&
