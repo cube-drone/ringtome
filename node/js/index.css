@@ -1543,6 +1543,36 @@ body {
     flex-shrink: 0;
 }
 
+/* The caret pickers (CodeMirror autocomplete - completions.js), dressed for the house: cream
+   card, ink border, teal selection; an option's detail (the emoji glyph) rides to the right,
+   upright and full-size. */
+.cm-tooltip.cm-tooltip-autocomplete {
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(43, 38, 34, 0.35);
+    overflow: hidden;
+}
+
+.cm-tooltip-autocomplete > ul {
+    font-family: inherit;
+}
+
+.cm-tooltip-autocomplete > ul > li {
+    padding: 3px 10px;
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+    background: var(--teal);
+    color: var(--dock-text);
+}
+
+.cm-completionDetail {
+    margin-left: 0.7em;
+    font-style: normal;
+    font-size: 1.1em;
+}
+
 /* Files scroll BELOW the header, like documents do: the file reader pins its head and scrolls
    the body region itself. (Documents get this for free - CodeMirror caps and scrolls
    internally - but a tall image used to overflow the whole card, dragging the title and nav

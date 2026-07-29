@@ -15,6 +15,7 @@ import { cachedDoc, rememberDoc } from './doccache.js';
 import { useSearch, queryWords } from './search.js';
 import { useDocSession } from './docsession.js';
 import { useUploadCapture } from './upload.js';
+import { emojiCompletions } from './completions.js';
 import { DEFAULT_STYLE } from './apps.js';
 import { Annotations } from './annotations.js';
 import { claimedMs, hasClaimedDate } from './docdate.js';
@@ -151,6 +152,7 @@ const JournalEditor = ({ root, docId, onSeal, dateMs, tags, actions, meta }) => 
             <${LiveMarquee}
                 body=${s.body}
                 profile=${tlProfile}
+                completions=${[emojiCompletions]}
                 onInput=${(text) => {
                     s.setBody(text);
                     s.touched();

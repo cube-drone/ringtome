@@ -15,11 +15,22 @@ import htm from 'htm';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { autocompletion } from '@codemirror/autocomplete';
 import { marquee } from '@cube-drone/marquee-codemirror';
 
 const html = htm.bind(h);
 
-export const LiveMarquee = ({ body, profile, initialSelection, onInput, onBlur, onCursor }) => {
+export const LiveMarquee = ({
+    body,
+    profile,
+    initialSelection,
+    onInput,
+    onBlur,
+    onCursor,
+    // Contextual pop-up helpers (completions.js sources): pickers that hover at the caret when
+    // their trigger character is typed. Optional; absent means no autocompletion extension.
+    completions,
+}) => {
     const host = useRef(null);
     const view = useRef(null);
     // The marquee extension takes its profile at configure time; a Compartment lets a new
@@ -51,6 +62,11 @@ export const LiveMarquee = ({ body, profile, initialSelection, onInput, onBlur, 
                     history(),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
                     EditorView.lineWrapping,
+                    // The pickers ride CodeMirror's own autocompletion: filter-as-you-type,
+                    // arrows + Enter to pick, Escape (or just typing past) to wave it off.
+                    ...(completions && completions.length
+                        ? [autocompletion({ override: completions, icons: false })]
+                        : []),
                     marqueeConf.current.of(marquee({ profile })),
                     EditorView.updateListener.of((u) => {
                         if (u.docChanged && !syncing.current) {

@@ -2102,3 +2102,15 @@ Left/right arrow keys now walk the prev/next order in TurboNotes, Recipes, and t
 textarea, or editor keeps the arrows for the caret, and modifier combos pass through untouched.
 With no document selected, right opens the order's first document and left its last - the book
 falls open at either cover.
+
+## 2026-07-29: caret pickers, phase one - the emoji picker
+
+The contextual-helper system begins (completions.js, riding CodeMirror's own autocompletion
+through a new `completions` prop on LiveMarquee): type `:` in any interactive editor - notes,
+recipes, wikibook pages, journal entries - and a searchable emoji picker hovers at the caret.
+Filter-as-you-type over all 1913 gemoji names (the same table the renderer resolves), arrows +
+Enter fill the whole `:slug:` tag (rendering immediately via the profile), Escape or just
+typing past waves it off - the picker never blocks a key. Styled for the house: cream card,
+ink border, teal selection, the glyph riding each row's right edge. Phases two and three are
+sketched in the module: `[` a link picker over the bucket's documents, `!` a media picker over
+its files.
