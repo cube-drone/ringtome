@@ -2020,3 +2020,13 @@ lands, with the cozy form computing in flight - the editor claims the swap on dr
 native insertion lands a beat after the drop event. Section rows are marked and refused (their
 raw taxonomy id isn't text anyone wants); the tree's internal reorganize drags coexist - same
 dragstart feeds both audiences (ops.drag for tree targets, the markup for editors).
+
+## 2026-07-28: the emoji table
+
+Field-test: `:smile:` stayed literal in the editor. Not a Marquee bug - Marquee's emoji socket
+is embedder-supplied BY DESIGN (bareWebProfile ships no table; "the spec's custom-emoji map is
+named indirection" the embedder configures), and Ringtome never supplied one. Now it does: the
+gemoji dataset (the canonical github/gemoji name map, 1913 entries) rides the shared profile
+from useTurbolinks, and since both the react renderer and marquee-codemirror spread-merge the
+profile, every surface gets it at once - the live editor, side preview, readers, journal.
+Unknown slugs stay literal. Cost: ~51KB of bundle for the full table, accepted.

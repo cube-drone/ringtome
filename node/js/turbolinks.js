@@ -12,6 +12,7 @@
 // map, shared by every surface - one unfurl per URL per page load, no matter how many
 // editors and readers show it.
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { nameToEmoji } from 'gemoji';
 import { parse } from '@cube-drone/marquee-react-renderer';
 import {
     composeTurbolinks,
@@ -87,5 +88,14 @@ export function useTurbolinks(source, format) {
         };
     }, [source, format]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return useMemo(() => ({ turbolink: composeTurbolinks(plugins, resolved) }), [gen]);
+    return useMemo(
+        () => ({
+            turbolink: composeTurbolinks(plugins, resolved),
+            // The gemoji table: `:smile:` -> 😄. Marquee's emoji socket is embedder-supplied
+            // by design (bareWebProfile ships no table - the spec's custom-emoji map is our
+            // configuration); this is the table. Unknown slugs stay literal `:slug:`.
+            emoji: (slug) => nameToEmoji[slug] || null,
+        }),
+        [gen]
+    );
 }
