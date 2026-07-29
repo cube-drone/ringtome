@@ -81,19 +81,25 @@ const MAX_SIDE: u32 = 320;
 /// 50 ms = ~20 fps; sources faster than this get frames dropped (cumulative timing stays honest).
 const MIN_FRAME_SPACING_MS: u64 = 50;
 
-/// Frame-count cap (~2 minutes at 20 fps). The cap TRUNCATES rather than errors: decoding stops
-/// once this many source frames have been read and the clip is clipped. Chosen over a hard error
-/// because it doubles as the CI window into the big fixtures (tests pass a small
-/// `CrushOpts::max_frames`) and clipping is the crush ethos; an over-long upload from a
-/// misbehaving client loses its tail rather than DoSing the decode loop. The one *error* path on
-/// the time axis is [`MAX_DURATION_MS`] below.
+/// KEPT-frame cap: the memory budget (every kept frame is a 320p RGBA buffer held until encode).
+/// The cap TRUNCATES rather than errors: decoding stops once this many frames are kept and the
+/// clip is clipped. It doubles as the CI window into the big fixtures (tests pass a small
+/// `CrushOpts::max_frames`), and clipping is the crush ethos. For a clip whose DECLARED duration
+/// outruns this budget at 20 fps, the spacing stretches instead ([`spacing_for`]) - the whole
+/// clip is kept, sparser - so truncation only bites clips that outrun their own declaration.
 const MAX_FRAMES: u32 = 2_400;
 
-/// A WebM whose Segment Info *declares* a duration longer than this is rejected with
-/// [`CrushError::TooLong`] before any block is decoded - the client is supposed to bound duration,
-/// so a self-declared over-long upload is a misbehaving client, refused cheaply and early.
-/// 150 s = the MAX_FRAMES budget (2 min at 20 fps) plus slack.
-const MAX_DURATION_MS: f64 = 150_000.0;
+/// The kept-frame spacing for a clip: the ~20 fps floor normally, stretched so the WHOLE
+/// declared duration fits the frame budget when the clip is long. A long-but-small video (a 20
+/// minute talk under the byte cap) arrives sparser instead of being refused - the upload byte
+/// cap is the real ceiling; time just spreads to fit the memory budget. (Was a hard 150 s
+/// refusal; retired 2026-07-28 when the first real long-small clip hit it.)
+fn spacing_for(declared_ms: Option<u64>, cap: usize) -> u64 {
+    match declared_ms {
+        Some(ms) if ms > 0 => MIN_FRAME_SPACING_MS.max(ms.div_ceil(cap.max(1) as u64)),
+        _ => MIN_FRAME_SPACING_MS,
+    }
+}
 
 /// rav1e speed preset (0 = slowest/best, 10 = fastest). Fast on purpose: the quantizer below does
 /// the aesthetic work and encode time rides the upload path. Tunable later.
@@ -439,13 +445,18 @@ struct FrameSink {
     /// End of the clip so far (start + duration of the latest raw frame), for the last kept
     /// frame's honest duration.
     end_ms: u64,
-    /// Raw frames seen; decoding stops (truncates) when this reaches the cap.
+    /// Raw frames seen (bookkeeping; hostile-input work is bounded by the upload byte cap and
+    /// the per-frame alloc guards, not by this).
     raw_count: usize,
+    /// KEPT frames stop (truncate) at this - the memory budget.
     cap: usize,
+    /// Minimum ms between kept frames: the fps floor, or the stretched spacing that spreads a
+    /// long declared duration across the frame budget ([`spacing_for`]).
+    spacing_ms: u64,
 }
 
 impl FrameSink {
-    fn new(cap: usize) -> Self {
+    fn new(cap: usize, spacing_ms: u64) -> Self {
         FrameSink {
             kept: Vec::new(),
             source_dims: None,
@@ -454,12 +465,15 @@ impl FrameSink {
             end_ms: 0,
             raw_count: 0,
             cap,
+            spacing_ms,
         }
     }
 
-    /// True while the sink wants more frames; decode loops stop when this goes false (truncation).
+    /// True while the sink wants more frames; decode loops stop when this goes false. Gated on
+    /// KEPT frames (the memory bound): with stretched spacing a long clip offers many raw frames
+    /// per kept one, and those drops must not count against the clip's budget.
     fn wants_more(&self) -> bool {
-        self.raw_count < self.cap
+        self.kept.len() < self.cap
     }
 
     /// Offer one raw decoded frame (source resolution) with its source timing.
@@ -483,9 +497,9 @@ impl FrameSink {
         let ms = ms.saturating_sub(self.first_ms);
         self.end_ms = self.end_ms.max(ms + dur_ms.max(1));
 
-        // The frame-rate cap: drop any frame closer than the minimum spacing to the last kept one.
+        // The frame-rate cap: drop any frame closer than the spacing to the last kept one.
         if let Some(last) = self.kept.last() {
-            if ms < last.ms + MIN_FRAME_SPACING_MS {
+            if ms < last.ms + self.spacing_ms {
                 return Ok(());
             }
         }
@@ -565,19 +579,22 @@ struct DemuxedWebm {
     /// Track-declared dimensions (bomb-guarded before any pixel decode).
     width: u32,
     height: u32,
+    /// Segment-Info-declared duration, ms - what [`spacing_for`] spreads the frame budget over.
+    declared_ms: Option<u64>,
     video_packets: Vec<(u64, Vec<u8>)>,
     audio: Option<AudioTrack>,
 }
 
 /// Demux a WebM: strict against the closed set. Exactly one video track and it must be V_AV1;
 /// at most one audio track and it must be A_OPUS with an OpusHead CodecPrivate; any other track
-/// is `Unsupported`. A declared over-budget duration is refused before any block is read.
+/// is `Unsupported`. The declared duration is recorded for the adaptive frame spacing.
 fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, CrushError> {
     let mut src = Cursor::new(input);
     // Buffer TrackEntry masters whole so each track's children can be inspected in one piece.
     let iter = WebmIterator::new(&mut src, &[MatroskaSpec::TrackEntry(Master::Start)]);
 
     let mut timestamp_scale: u64 = 1_000_000; // Matroska default: ticks are ns, 1e6 => ms.
+    let mut declared_ms: Option<u64> = None;
     let mut cluster_ticks: u64 = 0;
     let mut video_track: Option<u64> = None;
     let mut audio_track: Option<u64> = None;
@@ -593,15 +610,18 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, CrushError> {
         let tag = tag.map_err(|e| CrushError::Decode(format!("webm parse failed: {e}")))?;
         match tag {
             MatroskaSpec::TimestampScale(v) => timestamp_scale = v.max(1),
-            // The duration bound, checked the moment the file declares it: refuse an over-long
-            // upload before decoding a single block.
+            // The declared duration, noted the moment the file declares it: not a bound any
+            // more, but the input to the adaptive frame spacing - a long clip spreads the
+            // frame budget across its whole length instead of being refused. Nonsense
+            // declarations (NaN, negative) are still garbage in, refused.
             MatroskaSpec::Duration(d) => {
-                let declared_ms = d * (timestamp_scale as f64) / 1_000_000.0;
-                if !declared_ms.is_finite() || declared_ms > MAX_DURATION_MS {
-                    return Err(CrushError::TooLong(format!(
-                        "webm declares {declared_ms:.0} ms, over the {MAX_DURATION_MS:.0} ms bound"
+                let ms = d * (timestamp_scale as f64) / 1_000_000.0;
+                if !ms.is_finite() || ms < 0.0 {
+                    return Err(CrushError::Decode(format!(
+                        "webm declares a nonsense duration ({d})"
                     )));
                 }
+                declared_ms = Some(ms as u64);
             }
             MatroskaSpec::TrackEntry(master) => {
                 let children = match master {
@@ -736,6 +756,7 @@ fn demux_webm(input: &[u8]) -> Result<DemuxedWebm, CrushError> {
     Ok(DemuxedWebm {
         width,
         height,
+        declared_ms,
         video_packets,
         audio,
     })
@@ -804,7 +825,7 @@ fn decode_webm_frames(demuxed: &DemuxedWebm, cap: usize) -> Result<Vec<BoundedFr
         }
     };
 
-    let mut sink = FrameSink::new(cap);
+    let mut sink = FrameSink::new(cap, spacing_for(demuxed.declared_ms, cap));
     let mut decoder = Av1Decoder::open()?;
     let mut picture_index = 0usize;
     let mut on_picture = |pic: DecodedPicture, sink: &mut FrameSink| -> Result<(), CrushError> {
@@ -1262,7 +1283,7 @@ fn decode_animation(
         InputKind::Webm => unreachable!("webm takes the demux lane"),
     };
 
-    let mut sink = FrameSink::new(cap);
+    let mut sink = FrameSink::new(cap, MIN_FRAME_SPACING_MS);
     let mut transparent = false;
     let mut clock_ms = 0u64;
     for frame in frames {
@@ -2348,9 +2369,10 @@ mod tests {
         );
     }
 
-    /// The time axis is bounded both ways: the frame cap TRUNCATES (the documented policy - the
-    /// clip is clipped, not refused), and a WebM *declaring* an over-budget duration is refused
-    /// with TooLong before any decode.
+    /// The time axis: the KEPT-frame cap TRUNCATES (the documented policy - the clip is
+    /// clipped, not refused), a long DECLARED duration stretches the spacing so the whole clip
+    /// fits the budget (retired the old hard 150 s refusal), and a nonsense declaration is
+    /// still garbage in, refused.
     #[test]
     fn frame_cap_enforced() {
         // Truncation: the squirrel has many frames; a cap of 3 clips the clip.
@@ -2368,10 +2390,19 @@ mod tests {
             out.frame_count
         );
 
-        // Declared-duration refusal: a WebM claiming ~28 hours is a misbehaving client.
-        let mut long = Vec::new();
+        // Adaptive spacing: a short clip keeps the fps floor; a long one spreads the budget
+        // across its whole declared length (the 21.6-minute field-test clip: ~541 ms/frame).
+        assert_eq!(spacing_for(None, 2_400), MIN_FRAME_SPACING_MS);
+        assert_eq!(spacing_for(Some(30_000), 2_400), MIN_FRAME_SPACING_MS);
+        assert_eq!(spacing_for(Some(1_296_520), 2_400), 541);
+        // A declared 28-hour clip spreads too - sparse, but the whole thing fits the budget.
+        let day = spacing_for(Some(100_000_000), 2_400);
+        assert!(day >= 41_666 && 100_000_000_u64.div_ceil(day) <= 2_400);
+
+        // Nonsense declarations (NaN) are refused as garbage, not spread.
+        let mut bad = Vec::new();
         {
-            let mut writer = WebmWriter::new(&mut long);
+            let mut writer = WebmWriter::new(&mut bad);
             writer
                 .write(&MatroskaSpec::Ebml(Master::Full(vec![
                     MatroskaSpec::DocType("webm".into()),
@@ -2381,17 +2412,17 @@ mod tests {
             writer
                 .write(&MatroskaSpec::Info(Master::Full(vec![
                     MatroskaSpec::TimestampScale(1_000_000),
-                    MatroskaSpec::Duration(100_000_000.0),
+                    MatroskaSpec::Duration(f64::NAN),
                 ])))
                 .unwrap();
             writer.write(&MatroskaSpec::Segment(Master::End)).unwrap();
         }
         assert!(
             matches!(
-                crush(&long, None, CrushOpts::default()),
-                Err(CrushError::TooLong(_))
+                crush(&bad, None, CrushOpts::default()),
+                Err(CrushError::Decode(_))
             ),
-            "a declared over-budget duration is refused"
+            "a nonsense declared duration is refused"
         );
     }
 

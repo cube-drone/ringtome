@@ -1906,3 +1906,38 @@ detail parenthesized. (3) "Daria S01E12.mp4" came out the other end as an audio 
 speaks few video codecs and took the AAC track. Videos now upload with an honest note that
 sound-only or failure is possible until the in-browser pre-encode pipeline (the video-ingest
 example, repo sibling) becomes real - that's its own future project.
+
+## 2026-07-28: video uploads - the video-ingest spike goes into service
+
+The in-browser pre-encoder (video-ingest, the repo-sibling spike) is now wired into the upload
+flow. A video/* file first re-encodes IN THE BROWSER - the hostile decode happens in the
+browser's hardened, licensed decoder, and the server only ever receives the normalized
+intermediary it can decode in memory-safe Rust (the spike's whole thesis, now live). Happy lane:
+AV1-in-WebM through the existing single-blob binary route. Fallback lane (browsers that can't
+encode AV1): 320p APNG + separate Ogg Opus sidecar, traveling as multipart parts to a new
+`POST /docs/binary/video` route (axum multipart feature enabled). Server side, the sidecar rides
+quarantine as a derived-path sibling file (`<job>.audio` - existence is the flag, no schema
+change), the worker feeds it to the already-waiting `video::crush(bytes, audio, ...)` via a new
+sidecar-aware dispatch door (`media::crush_with_sidecar` - APNG accepts the sidecar, WebM's
+inline audio wins, anything else refuses plainly), and every cleanup path removes both files.
+Enqueue-with-sidecar unit-tested; 191 server tests green.
+
+The modal narrates honestly: an "encoding" phase with elapsed seconds and the playback-speed
+caveat (the spike's MediaRecorder lane is realtime - the WebCodecs rebuild remains the known
+next step), the intermediary's size once known (the 58MB fallback reality), a note when the
+fallback lane is doing the work, and a note when undecodable audio (AC-3/DTS) forces video-only.
+
+## 2026-07-28: long videos spread instead of refuse; video displays at native 320p
+
+Field-test: a 21.6-minute, small-file video hit the hard 150 s declared-duration refusal. The
+bound was guarding real memory (every kept frame is a 320p RGBA buffer held until re-encode; the
+laundering doctrine forbids passthrough), so instead of dropping it, the frame budget now
+SPREADS: `spacing_for(declared_ms, cap)` stretches the kept-frame spacing so the WHOLE declared
+duration fits MAX_FRAMES - a long talk arrives sparser (the field-test clip: ~1.8 fps), never
+refused, never truncated. The kept-frame cap moved from raw-frames-seen to frames-KEPT (the
+actual memory bound; hostile-input work is bounded by the upload byte cap and per-frame alloc
+guards). MAX_DURATION_MS is retired; nonsense declarations (NaN/negative) still refuse as
+garbage. Test rewritten: truncation, spacing math (the real clip's numbers), NaN refusal.
+
+And the client displays video at native scale (max 320px) instead of stretching the crush into
+full-column blur.

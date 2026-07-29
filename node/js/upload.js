@@ -15,6 +15,10 @@ import htm from 'htm';
 import { Modal, fmtBytes } from './modal.js';
 import { Annotations } from './annotations.js';
 import { Icons } from './icons.js';
+// The in-browser video pre-encoder (the video-ingest spike, now in service): the HOSTILE decode
+// happens in the browser's hardened, licensed decoder, and the server only ever sees
+// our-encoder bytes - AV1-in-WebM (happy lane) or 320p APNG + Ogg Opus (universal fallback).
+import { ingestVideo } from '../../video-ingest/src/index.js';
 
 const html = htm.bind(h);
 
@@ -55,6 +59,37 @@ function uploadBinary(root, file, title, onPct) {
     });
 }
 
+// The fallback lane's two blobs travel as multipart parts (`video` + `audio`); the happy lane's
+// WebM goes through the plain binary route like any single blob. Same progress, same 202.
+function uploadVideoParts(root, videoBlob, audioBlob, title, onPct) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(
+            'POST',
+            `/api/identity/${root}/docs/binary/video?title=${encodeURIComponent(title)}`
+        );
+        xhr.responseType = 'json';
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+            else {
+                reject(
+                    new Error(
+                        (xhr.response && xhr.response.message) || `upload failed (${xhr.status})`
+                    )
+                );
+            }
+        };
+        xhr.onerror = () => reject(new Error('upload failed (network)'));
+        const parts = new FormData();
+        parts.append('video', videoBlob, 'video');
+        if (audioBlob) parts.append('audio', audioBlob, 'audio');
+        xhr.send(parts);
+    });
+}
+
 const QUEUE_WORD = {
     pending: 'waiting in the processing queue…',
     processing: 'processing…',
@@ -77,6 +112,12 @@ export const UploadFlow = ({ root, bucket, files, onClose }) => {
             // queued job while pending, the DOCUMENT record once a version exists.
             appliedName: f.name,
             tagsOpen: false,
+            // Video pre-encode bookkeeping: which lane it took, when the encode began (for the
+            // elapsed readout), the intermediary's size, and whether audio had to be dropped.
+            lane: null,
+            encStart: null,
+            outBytes: null,
+            audioDropped: false,
         }))
     );
     const patchRow = (i, up) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...up } : r)));
@@ -132,9 +173,36 @@ export const UploadFlow = ({ root, bucket, files, onClose }) => {
                 return;
             }
             try {
-                const res = await uploadBinary(root, file, namesRef.current[i], (pct) =>
-                    patchRow(i, { pct })
-                );
+                let res;
+                if (/^video\//.test(file.type || '')) {
+                    // Video first re-encodes IN THE BROWSER (the video-ingest contract): the
+                    // hostile decode happens in the browser's hardened decoder, and the server
+                    // receives only the normalized intermediary it can decode in safe Rust.
+                    patchRow(i, { phase: 'encoding', encStart: Date.now() });
+                    const out = await ingestVideo(file);
+                    patchRow(i, {
+                        lane: out.lane,
+                        outBytes: out.video.size + (out.audio ? out.audio.size : 0),
+                        audioDropped: out.lane === 'frames' && !out.audio,
+                        phase: 'uploading',
+                    });
+                    res =
+                        out.lane === 'av1'
+                            ? await uploadBinary(root, out.video, namesRef.current[i], (pct) =>
+                                  patchRow(i, { pct })
+                              )
+                            : await uploadVideoParts(
+                                  root,
+                                  out.video,
+                                  out.audio,
+                                  namesRef.current[i],
+                                  (pct) => patchRow(i, { pct })
+                              );
+                } else {
+                    res = await uploadBinary(root, file, namesRef.current[i], (pct) =>
+                        patchRow(i, { pct })
+                    );
+                }
                 patchRow(i, { docId: res.doc_id, jobId: res.job_id, phase: 'queued', pct: 100 });
                 // File it into the notebook you're in - membership is doc-meta, so it works the
                 // moment the id exists, long before the transcode lands.
@@ -188,7 +256,18 @@ export const UploadFlow = ({ root, bucket, files, onClose }) => {
         return () => clearInterval(id);
     }, [waiting, root]);
 
-    const anyInFlight = rows.some((r) => r.phase === 'uploading' || r.phase === 'queued');
+    // A once-a-second tick while anything is encoding, so the elapsed readout moves.
+    const encoding = rows.some((r) => r.phase === 'encoding');
+    const [, tickEnc] = useState(0);
+    useEffect(() => {
+        if (!encoding) return;
+        const id = setInterval(() => tickEnc((t) => t + 1), 1000);
+        return () => clearInterval(id);
+    }, [encoding]);
+
+    const anyInFlight = rows.some(
+        (r) => r.phase === 'encoding' || r.phase === 'uploading' || r.phase === 'queued'
+    );
 
     return html`<${Modal} title="File upload" onClose=${onClose}>
         <div class="upload-rows">
@@ -206,7 +285,9 @@ export const UploadFlow = ({ root, bucket, files, onClose }) => {
                             }}
                             onBlur=${() => renameNow(i, r)}
                         />
-                        <span class="upload-size">${fmtBytes(r.file.size)}</span>
+                        <span class="upload-size">
+                            ${fmtBytes(r.outBytes != null ? r.outBytes : r.file.size)}
+                        </span>
                         <button
                             class="chip chip-button"
                             title="tags"
@@ -214,6 +295,16 @@ export const UploadFlow = ({ root, bucket, files, onClose }) => {
                             onClick=${() => patchRow(i, { tagsOpen: !r.tagsOpen })}
                         ><${Icons.tag} /></button>
                     </div>
+                    ${r.phase === 'encoding' &&
+                    html`<div class="upload-status">
+                        <span class="status-spin"><${Icons.spinner} /></span>
+                        re-encoding in your browser…
+                        ${' '}${Math.max(0, Math.round((Date.now() - r.encStart) / 1000))}s
+                        <span class="upload-note">
+                            (the encoder runs at about playback speed - a two-minute clip takes
+                            about two minutes)
+                        </span>
+                    </div>`}
                     ${r.phase === 'uploading' &&
                     html`<div class="upload-bar">
                         <div class="upload-bar-fill" style=${`width: ${r.pct}%`}></div>
@@ -229,12 +320,16 @@ export const UploadFlow = ({ root, bucket, files, onClose }) => {
                     </div>`}
                     ${r.phase === 'failed' &&
                     html`<div class="upload-status upload-failed">${r.error}</div>`}
-                    ${/^video\//.test(r.file.type || '') &&
+                    ${r.lane === 'frames' &&
                     r.phase !== 'failed' &&
                     html`<div class="upload-note">
-                        video support is young: the node speaks only a few codecs, so this may
-                        come out sound-only or fail - in-browser pre-encoding (the video-ingest
-                        pipeline) is the eventual fix.
+                        this browser can't encode AV1, so the frame-by-frame fallback is doing
+                        the work - a bigger upload, the same result.
+                    </div>`}
+                    ${r.audioDropped &&
+                    html`<div class="upload-note">
+                        the audio track couldn't be processed (an unusual codec - AC-3/DTS can't
+                        be decoded in a browser), so this uploads video-only.
                     </div>`}
                     ${r.tagsOpen &&
                     r.docId &&

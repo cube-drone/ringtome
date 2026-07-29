@@ -107,6 +107,13 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/docs/binary",
             post(docs_create_binary_handler).layer(DefaultBodyLimit::max(limits.upload)),
         )
+        // Browser-pre-encoded video (the video-ingest intermediary contract): multipart `video`
+        // (AV1-WebM or the fallback lane's APNG frames) + optional `audio` (the fallback's
+        // separate Ogg Opus sidecar). Same 202/queue contract as the plain binary route.
+        .route(
+            "/api/identity/{root}/docs/binary/video",
+            post(docs_create_video_handler).layer(DefaultBodyLimit::max(limits.upload)),
+        )
         .route(
             "/api/identity/{root}/docs/{doc_id}/binary",
             put(docs_save_binary_handler).layer(DefaultBodyLimit::max(limits.upload)),
@@ -877,6 +884,65 @@ async fn docs_create_binary_handler(
                 parents: &[],
                 title: &meta.title,
                 bytes: &body,
+                audio: None,
+            },
+        )
+        .await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(DocQueued {
+            doc_id: hex::encode(doc_id),
+            job_id,
+            status: "pending",
+        }),
+    ))
+}
+
+/// Upload a browser-pre-encoded video (the video-ingest intermediary): multipart part `video`
+/// (AV1-in-WebM from the happy lane, or the fallback lane's APNG frames) plus optional `audio`
+/// (the fallback's separate Ogg Opus - APNG can't carry sound). Metadata rides the query like
+/// the plain binary route; same 202-and-queue contract. The server still validates everything -
+/// a modified client could send anything - it just never has to decode a foreign codec.
+async fn docs_create_video_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Query(meta): Query<BinaryMeta>,
+    mut parts: axum::extract::Multipart,
+) -> Result<impl IntoResponse, AppError> {
+    store::open(&state, &session.account.id, &root).await?;
+    let mut video: Option<Bytes> = None;
+    let mut audio: Option<Bytes> = None;
+    while let Some(field) = parts
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("bad multipart body: {e}")))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("bad multipart part {name:?}: {e}")))?;
+        match name.as_str() {
+            "video" => video = Some(bytes),
+            "audio" => audio = Some(bytes),
+            _ => {} // unknown parts are ignored, not fatal
+        }
+    }
+    let video = video.ok_or_else(|| AppError::BadRequest("missing `video` part".into()))?;
+    let doc_id = crate::record::documents::new_doc_id();
+    let job_id = state
+        .ingest
+        .enqueue(
+            &state.node_db,
+            crate::ingest::Upload {
+                account: &session.account.id.to_string(),
+                root: &root,
+                doc_id,
+                parents: &[],
+                title: &meta.title,
+                bytes: &video,
+                audio: audio.as_deref(),
             },
         )
         .await?;
@@ -913,6 +979,7 @@ async fn docs_save_binary_handler(
                 parents: &parents,
                 title: &meta.title,
                 bytes: &body,
+                audio: None,
             },
         )
         .await?;

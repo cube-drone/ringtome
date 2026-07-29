@@ -82,6 +82,27 @@ pub fn crush(bytes: &[u8]) -> Result<Ingested, CrushError> {
     }
 }
 
+/// The one door, sidecar edition: `audio` is the browser pre-encoder's fallback-lane Ogg Opus,
+/// shipped separately because the frames lane's APNG can't carry sound. Only APNG frames accept
+/// it; a WebM's audio rides inside the container (the sidecar is ignored there), and anything
+/// else with a sidecar is a client speaking a protocol we don't - refused plainly.
+pub fn crush_with_sidecar(bytes: &[u8], audio: Option<&[u8]>) -> Result<Ingested, CrushError> {
+    let Some(audio) = audio else {
+        return crush(bytes);
+    };
+    match image::detect(bytes) {
+        image::Detected::Animated => {
+            video::crush(bytes, Some(audio), video::CrushOpts { max_frames: None })
+                .map(Ingested::from_video)
+                .map_err(CrushError::from_video)
+        }
+        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => crush_as_video(bytes),
+        _ => Err(CrushError::Unsupported(
+            "an audio sidecar only rides with video frames".into(),
+        )),
+    }
+}
+
 /// The video lane, for an animated image or a WebM. A bare upload carries no side-channel audio:
 /// an animated image is silent, and a WebM's audio rides inside the container.
 fn crush_as_video(bytes: &[u8]) -> Result<Ingested, CrushError> {

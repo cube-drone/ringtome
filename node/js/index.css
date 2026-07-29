@@ -1588,6 +1588,13 @@ body {
     border-radius: 6px;
 }
 
+/* Video is stored at 320p (the in-browser pre-encoder's bound), so display it at native scale -
+   stretching it into blur would just advertise the crush. Images stay full-width above. */
+video.reader-media {
+    max-width: min(100%, 320px);
+    max-height: 320px;
+}
+
 /* --- the editor --- */
 
 .editor-title {

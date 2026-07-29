@@ -65,14 +65,14 @@ const MAIN_BOUND: u32 = 800;
 /// thumbnails are for list/grid views and ride eagerly when browsing, so they stay tiny.
 const THUMB_BOUND: u32 = 128;
 
-/// AVIF quality (1-100). Deliberately low: 18 is the chosen crush sweet spot - dense text stays
-/// legible but on the edge, with crispy visible artifacting, and typical images land at 5-20 KB.
-/// This is the aesthetic *and* the size lever working together, not a fidelity setting.
-const AVIF_QUALITY: f32 = 18.0;
+/// AVIF quality (1-100). Was 18 for a while - the "crush" aesthetic, crispy artifacts as a
+/// design nod - which turned out less fun in practice than in theory (field-tested 2026-07-28).
+/// 90 is a proper fidelity setting: photos look like photos; AVIF still keeps files reasonable.
+const AVIF_QUALITY: f32 = 90.0;
 
-/// AVIF alpha-channel quality (1-100). Matched to the main quality so transparency crushes with
-/// the same character.
-const AVIF_ALPHA_QUALITY: f32 = 18.0;
+/// AVIF alpha-channel quality (1-100). Matched to the main quality so transparency keeps the
+/// same fidelity.
+const AVIF_ALPHA_QUALITY: f32 = 90.0;
 
 /// AVIF encoder speed (0 = slowest/best, 10 = fastest). A middle setting: quality-preserving
 /// without pathological encode times on the blocking pool.
@@ -285,8 +285,8 @@ fn encode_avif(img: &DynamicImage) -> Result<Vec<u8>, CrushError> {
 
     // Force 8-bit output (ravif otherwise defaults to 10-bit via `BitDepth::Auto`). This is a
     // deliberate policy, not a decode limitation - our decoder now handles 10/12-bit foreign AVIFs
-    // via rav1d's `bitdepth_16`. But 8-bit is the right *output*: at our q18 crush it's visually
-    // identical to 10-bit while being smaller, and keeping our canonical body 8-bit keeps the in-spec
+    // via rav1d's `bitdepth_16`. But 8-bit is the right *output*: visually equivalent at our
+    // quality while smaller, and keeping our canonical body 8-bit keeps the in-spec
     // self-passthrough exact (the pass-through path decodes every AVIF for its thumbnail).
     let encoder = ravif::Encoder::new()
         .with_quality(AVIF_QUALITY)

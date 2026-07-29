@@ -14,7 +14,7 @@ path = "src/main.rs"
 ringtome-proto = { path = "../proto" }
 
 # web service
-axum = { version = "0.8", features = ["macros", "ws"] }
+axum = { version = "0.8", features = ["macros", "multipart", "ws"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
 tower-http = { version = "0.6", features = ["trace"] }
 tokio = { version = "1", features = ["full"] }

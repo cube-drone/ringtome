@@ -43,6 +43,15 @@ pub struct Upload<'a> {
     pub parents: &'a [[u8; 32]],
     pub title: &'a str,
     pub bytes: &'a [u8],
+    /// The browser pre-encoder's fallback-lane sidecar: a separate Ogg Opus blob accompanying
+    /// APNG frames (the lane for browsers that can't encode AV1 - inline WebM audio needs no
+    /// sidecar). Quarantined as a sibling file (`<path>.audio`), no schema column needed.
+    pub audio: Option<&'a [u8]>,
+}
+
+/// The sidecar's on-disk home, derived from the main quarantine path - existence IS the flag.
+fn sidecar_path(quarantine_path: &str) -> String {
+    format!("{quarantine_path}.audio")
 }
 
 impl Ingest {
@@ -80,6 +89,11 @@ impl Ingest {
         tokio::fs::write(&path, up.bytes)
             .await
             .map_err(|e| AppError::Internal(anyhow!("writing quarantine file: {e}")))?;
+        if let Some(audio) = up.audio {
+            tokio::fs::write(sidecar_path(&path.to_string_lossy()), audio)
+                .await
+                .map_err(|e| AppError::Internal(anyhow!("writing quarantine sidecar: {e}")))?;
+        }
 
         let parents_csv = up
             .parents
@@ -100,7 +114,7 @@ impl Ingest {
                     parents_csv.as_str(),
                     up.title,
                     path.to_string_lossy().as_ref(),
-                    up.bytes.len() as i64,
+                    (up.bytes.len() + up.audio.map_or(0, <[u8]>::len)) as i64,
                     now_ms(),
                 ),
             )
@@ -133,6 +147,7 @@ pub async fn worker_pass(state: crate::AppState) -> anyhow::Result<()> {
             tracing::error!(job = %job.job_id, "ingest job failed internally: {e:#}");
             fail_job(&state.node_db, &job.job_id, &format!("internal error: {e}")).await?;
             let _ = tokio::fs::remove_file(&job.quarantine_path).await;
+            let _ = tokio::fs::remove_file(sidecar_path(&job.quarantine_path)).await;
         }
     }
     Ok(())
@@ -170,10 +185,15 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
     let bytes = tokio::fs::read(&job.quarantine_path)
         .await
         .with_context(|| format!("reading quarantine file {}", job.quarantine_path))?;
+    // The fallback lane's Ogg Opus sidecar, when the browser pre-encoder shipped one.
+    let audio = tokio::fs::read(sidecar_path(&job.quarantine_path)).await.ok();
 
-    // The crush (AV1/AVIF/Opus encode) is CPU-bound: keep it off the async runtime. `media::crush`
-    // sniffs the upload and routes it to the image, video, or audio lane.
-    let outcome = tokio::task::spawn_blocking(move || crate::media::crush(&bytes)).await?;
+    // The crush (AV1/AVIF/Opus encode) is CPU-bound: keep it off the async runtime. The
+    // sidecar-aware door sniffs the upload and routes it to the image, video, or audio lane.
+    let outcome = tokio::task::spawn_blocking(move || {
+        crate::media::crush_with_sidecar(&bytes, audio.as_deref())
+    })
+    .await?;
     let ingested = match outcome {
         Ok(i) => i,
         Err(te) => {
@@ -182,6 +202,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
             // can't change the bytes.
             fail_job(&state.node_db, &job.job_id, &tombstone(&te)).await?;
             let _ = tokio::fs::remove_file(&job.quarantine_path).await;
+            let _ = tokio::fs::remove_file(sidecar_path(&job.quarantine_path)).await;
             return Ok(());
         }
     };
@@ -249,6 +270,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
 
     finish_job(&state.node_db, &job.job_id).await?;
     let _ = tokio::fs::remove_file(&job.quarantine_path).await;
+    let _ = tokio::fs::remove_file(sidecar_path(&job.quarantine_path)).await;
     Ok(())
 }
 
@@ -312,6 +334,7 @@ pub async fn reconcile_on_boot(node_db: &Db) -> anyhow::Result<()> {
             requeued += 1;
         } else {
             fail_job(node_db, &job_id, "upload lost on restart").await?;
+            let _ = tokio::fs::remove_file(sidecar_path(&path)).await; // no orphaned sidecars
             lost += 1;
         }
     }
@@ -452,7 +475,40 @@ mod tests {
             parents: &[],
             title,
             bytes,
+            audio: None,
         }
+    }
+
+    #[tokio::test]
+    async fn enqueue_with_sidecar_writes_the_sibling_file() {
+        let db = node_db().await;
+        let dir = scratch_dir("sidecar");
+        let ingest = Ingest::new(dir.clone());
+        let job_id = ingest
+            .enqueue(
+                &db,
+                Upload {
+                    audio: Some(b"ogg opus bytes"),
+                    ..upload([9u8; 16], "clip", b"apng frames")
+                },
+            )
+            .await
+            .unwrap();
+
+        // Both blobs staged: the frames under the job id, the audio as its `.audio` sibling.
+        assert_eq!(
+            tokio::fs::read(dir.join(&job_id)).await.unwrap(),
+            b"apng frames"
+        );
+        assert_eq!(
+            tokio::fs::read(dir.join(format!("{job_id}.audio"))).await.unwrap(),
+            b"ogg opus bytes"
+        );
+        // bytes_in counts the whole upload, sidecar included.
+        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        assert_eq!(jobs[0].bytes_in, ("apng frames".len() + "ogg opus bytes".len()) as i64);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]
