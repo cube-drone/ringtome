@@ -1969,3 +1969,40 @@ hand is respected (no swap); the swap works because LiveMarquee reconciles exter
 changes and the docsession buffer mirrors every render (both already true). The reference is
 live the moment it lands - the body endpoint self-describes while the transcode runs, and the
 embed pops in when the bytes arrive.
+
+## 2026-07-28: cozy addresses - human-readable crosslinks
+
+`/home/<bucket>/<section>/<section>/<slugified-title>` now resolves to a document - DERIVED
+addressing (slugs.js), computed from bucket names, tree-section titles, and doc titles, with no
+register to maintain. Deliberately NOT the plan's author-owned slug register (PROJECT_PLAN,
+Slugs - the public LWW namespace for the ringtome:// face, still future): that's a publication
+surface; this is the private working-form convenience, same spirit ("pointers, never
+authority"), computed not curated. The rules, stated once: first segment = app id (home bucket)
+or slugified bucket name; middles = slugified section titles, walked STRICTLY down the tree;
+last = slugified doc title; a 32-hex tail is canonical and resolves directly (also the fallback
+for untitled docs); ties go to the lowest id; and when the strict walk misses, a bucket-wide
+title pass catches it - so a doc dragged to a new section keeps its old links working.
+
+Wiring: the router's default route is now SlugRoute (resolve -> replace-redirect to the
+canonical /home/<app>/<doc_id>; honest not-found otherwise); the two-segment collision with app
+routes (/home/recipes/apple-pie captures as :docId) is handled by a non-hex shim in each doc app
+(useSlugRedirect). And a copy-link chip (link-simple) in the Editor and Reader menus computes
+the canonical cozy path - home buckets wear their app id, the tree path is the doc's first
+occurrence, and a slug that would LOSE its own tie (an earlier-id sibling shares the name)
+falls back to the honest id tail, so the chip never hands out a link that resolves to someone
+else. Clicked crosslinks inside rendered marquee ride preact-iso's in-scope link interception -
+no page reload.
+
+## 2026-07-28: cozy addresses become the RESTING form
+
+Follow-up to the crosslink work: the address bar now wears the cozy address while you work, not
+just accepts it. The flow reversed - instead of canonicalizing slugs to hex, hex canonicalizes
+to cozy: apps resolve a non-hex :docId in place (`useSlugDocId`, no redirect - cozy URLs rest),
+a hex URL replaces itself with the doc's computed cozy address (`useCozyAddress`, no-op once
+they match, so the loop terminates), and the catch-all SlugRoute now RENDERS the resolved app
+in place of redirecting. The shell learned to read cozy paths too: a first segment that isn't
+an app id resolves as a bucket slug off the live roster - the header, switcher, and bucket all
+follow the URL (and settle the bucket pick + memory, so stepping onward from a cozy address
+stays in that notebook). And a rename re-dresses the address live: the doc's mirror row is a
+dependency of the dressing hook, so the URL updates the moment the title save echoes back
+(section renames/moves still wait for the next navigation; the forgiving pass covers them).

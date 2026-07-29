@@ -28,6 +28,7 @@ import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { UploadFlow } from './upload.js';
+import { slugPathFor } from './slugs.js';
 import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
@@ -101,6 +102,20 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
     const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
+    // The copy-a-cozy-link chip: computes this doc's derived address (slugs.js) and puts it on
+    // the clipboard - the crosslink you paste into another document.
+    const [linkCopied, setLinkCopied] = useState(false);
+    const copyLink = async () => {
+        const p = await slugPathFor(root, docId, bucket);
+        if (!p) return;
+        try {
+            await navigator.clipboard.writeText(p);
+        } catch {
+            return; // clipboard denied: no false "copied!"
+        }
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 1600);
+    };
 
     // File upload: three doors - the upload chip, a drop from the desktop, a pasted image
     // buffer - all landing in `captureFiles`, which plants a PLACEHOLDER in the document at
@@ -392,6 +407,13 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                         title="Upload — attach a file to this document (drop or paste works too)"
                         onClick=${() => filePickRef.current && filePickRef.current.click()}
                     ><${Icons.upload} /></button>
+                    <button
+                        class=${linkCopied ? 'chip chip-button chip-open' : 'chip chip-button'}
+                        title=${linkCopied
+                            ? 'Copied!'
+                            : 'Copy a link to this document (paste it into another document to crosslink)'}
+                        onClick=${copyLink}
+                    ><${Icons.link} /></button>
                     <span
                         class=${status === 'error' ? 'chip chip-diverged' : 'chip'}
                         title=${statusTip}

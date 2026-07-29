@@ -19,8 +19,9 @@ import { DocsApp } from './notes.js';
 import { JournalApp } from './journal.js';
 import { WikiApp } from './wiki.js';
 import { Console } from './console.js';
-import { liveApps, docApps, appById, appLabel, bucketsForApp, appTypeOf } from './apps.js';
+import { liveApps, docApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } from './apps.js';
 import { openMirror, useLive } from './cache.js';
+import { resolveSlugPath, slugify } from './slugs.js';
 import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
@@ -54,6 +55,53 @@ const NotFound = () => html`
         </p>
     </div>
 `;
+
+// A path no explicit route claims gets tried as a COZY ADDRESS (slugs.js):
+// /home/<bucket>/<sections…>/<title-slug>. Cozy URLs are the RESTING form - this route
+// resolves the path and renders the right app in place (the hex id stays a prop, never the
+// address bar); unresolved, it's honestly nothing.
+const SlugRoute = ({ current, searchQuery, bucket }) => {
+    const loc = useLocation();
+    const [hit, setHit] = useState(undefined); // undefined = resolving, null = nothing there
+    useEffect(() => {
+        setHit(undefined);
+        let alive = true;
+        const segs = loc.path.split('/').filter(Boolean).slice(1); // drop the 'home'
+        resolveSlugPath(current.root, segs)
+            .then((h) => alive && setHit(h || null))
+            .catch(() => alive && setHit(null));
+        return () => {
+            alive = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loc.path]);
+    if (hit === undefined) {
+        return html`<div class="console"><p class="null-sub">looking that up…</p></div>`;
+    }
+    if (hit === null) return html`<${NotFound} />`;
+    const app = appById(hit.appId);
+    if (!app) return html`<${NotFound} />`;
+    if (app.journal) {
+        // The journal has no per-document view; the entry lives in its stream.
+        return html`<${JournalApp} current=${current} searchQuery=${searchQuery} bucket=${bucket} />`;
+    }
+    if (app.wiki) {
+        return html`<${WikiApp}
+            app=${app}
+            current=${current}
+            docId=${hit.docId}
+            searchQuery=${searchQuery}
+            bucket=${bucket}
+        />`;
+    }
+    return html`<${DocsApp}
+        app=${app}
+        current=${current}
+        docId=${hit.docId}
+        searchQuery=${searchQuery}
+        bucket=${bucket}
+    />`;
+};
 
 // Swatch Internet Time: the day cut into 1000 ".beats" on Biel Mean Time (UTC+1, no DST). One
 // beat is 86.4 seconds; @000 is midnight in Biel. Silly, beloved, exactly right for a retro-web
@@ -216,9 +264,18 @@ const Inside = ({ session }) => {
 
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
     // inside it - the two facts the unified app header needs. Null for persona/not-found routes,
-    // which keep their own heads and so get no app header.
-    const pathParts = loc.path.split('/'); // ['', 'home', '<app>', '<doc?>']
-    const appHere = appById(pathParts[2] || '');
+    // which keep their own heads and so get no app header. A first segment that isn't an app id
+    // may be a BUCKET's slug - a cozy address at rest (slugs.js) - resolved off the live roster:
+    // the app is the bucket's rail, and the URL itself names the bucket.
+    const root = persona.current && persona.current.root;
+    const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);
+    const pathParts = loc.path.split('/'); // ['', 'home', '<app-or-bucket>', '<doc?>']
+    const seg = pathParts[2] || '';
+    const appDirect = appById(seg);
+    const cozyBucketRow =
+        !appDirect && seg ? (roster || []).find((b) => slugify(b.name) === seg) || null : null;
+    const appHere =
+        appDirect || (cozyBucketRow ? appForStyle(appTypeOf(cozyBucketRow.name, roster)) : null);
     const inDoc = !!(appHere && pathParts[3]);
 
     // The Persona app wears the current persona's name (live), everywhere its label shows - the
@@ -239,20 +296,30 @@ const Inside = ({ session }) => {
     // The current bucket, lifted like the search query: the header owns the switcher, the app
     // reads the choice. Null means "the app's home bucket" (the eponymous one). Entering an app
     // returns you to the bucket you last had open there (the same session memory as the
-    // last-open document); home when there's no memory. The roster (live, from the mirror) is
-    // what the switcher pages over.
-    const root = persona.current && persona.current.root;
-    const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);
+    // last-open document); home when there's no memory. A cozy URL trumps everything - the
+    // address names the notebook. Switching buckets while resting on a cozy address first steps
+    // back to the app's own route, so the URL stops overriding the choice.
     const [bucketPick, setBucketPick] = useState(null);
     const switchBucket = (name) => {
         setBucketPick(name);
         if (root && appHere) lastBucketMemory.set(`${root}:${appHere.id}`, name);
+        if (cozyBucketRow) loc.route(`/home/${appHere.id}`);
     };
     useEffect(() => {
         setBucketPick((root && appHere && lastBucketMemory.get(`${root}:${appHere.id}`)) || null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [appHere && appHere.id]);
-    const bucket = bucketPick || (appHere && appHere.style) || '';
+    // Resting on a cozy URL also SETTLES the pick (and the memory): stepping from the cozy
+    // address to an ordinary in-app route keeps you in that notebook instead of bouncing home.
+    useEffect(() => {
+        if (cozyBucketRow && appHere) {
+            setBucketPick(cozyBucketRow.name);
+            if (root) lastBucketMemory.set(`${root}:${appHere.id}`, cozyBucketRow.name);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cozyBucketRow && cozyBucketRow.name, appHere && appHere.id]);
+    const bucket =
+        (cozyBucketRow && cozyBucketRow.name) || bucketPick || (appHere && appHere.style) || '';
 
     // Deep-link bucket correction: arriving on a document URL (a refresh, a pasted link), the
     // in-memory bucket choice is gone but the URL still names the page - and the page knows its
@@ -416,7 +483,7 @@ const Inside = ({ session }) => {
                           bucket=${appHere && appHere.id === app.id ? bucket : app.style}
                       />`
             )}
-            <${NotFound} default />
+            <${SlugRoute} default current=${persona.current} searchQuery=${query} bucket=${bucket} />
         </${Router}>
     `;
     return inApp ? shell(routed) : stage(routed);

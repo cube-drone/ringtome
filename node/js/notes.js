@@ -18,6 +18,7 @@ import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, featuresOf } from './apps.js';
 import { WikiTree, ensureTreeRoot } from './tree.js';
 import { useColWidths } from './panes.js';
+import { useSlugDocId, useCozyAddress, slugPathFor } from './slugs.js';
 import { Icons, formatIcon } from './icons.js';
 
 const html = htm.bind(h);
@@ -119,7 +120,7 @@ const Snippet = ({ root, docId, query }) => {
 // The reader: read-only display of one document's resolved current state. `body` arrives
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
-const Reader = ({ root, docId, onDeleted, nav }) => {
+const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
     const [doc, setDoc] = useState(null);
     const [error, setError] = useState(null);
     // The record around a read-only BODY is still editable: the title (via the media-safe
@@ -129,6 +130,18 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
     const [title, setTitle] = useState('');
     const hydrated = useRef(false); // the body-retry loop refetches; hydrate the input ONCE
     const [showMeta, setShowMeta] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
+    const copyLink = async () => {
+        const p = await slugPathFor(root, docId, bucket);
+        if (!p) return;
+        try {
+            await navigator.clipboard.writeText(p);
+        } catch {
+            return;
+        }
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 1600);
+    };
     const saveTitle = async () => {
         if (!doc || title === (doc.title || '')) return;
         try {
@@ -266,6 +279,13 @@ const Reader = ({ root, docId, onDeleted, nav }) => {
                     <span class="chip">${doc.format}</span>
                     <span class="chip">read-only</span>
                     <button
+                        class=${linkCopied ? 'chip chip-button chip-open' : 'chip chip-button'}
+                        title=${linkCopied
+                            ? 'Copied!'
+                            : 'Copy a link to this document (paste it into another document to crosslink)'}
+                        onClick=${copyLink}
+                    ><${Icons.link} /></button>
+                    <button
                         class=${showMeta ? 'chip chip-button chip-open' : 'chip chip-button'}
                         title="tags, date & description"
                         onClick=${() => setShowMeta((v) => !v)}
@@ -312,7 +332,14 @@ export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucke
             onDeleted=${onDeleted}
         />`;
     }
-    return html`<${Reader} root=${root} docId=${docId} key=${docId} nav=${nav} onDeleted=${onDeleted} />`;
+    return html`<${Reader}
+        root=${root}
+        docId=${docId}
+        key=${docId}
+        nav=${nav}
+        bucket=${bucket}
+        onDeleted=${onDeleted}
+    />`;
 };
 
 // The documents app - the shared surface every "documents" application (Notes, Recipes, ...)
@@ -330,8 +357,11 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
 
     // The selected document lives in the URL (`/home/<app>/<doc_id>`), not local state - so
     // back/forward and deep links just work. Selecting navigates; the route param is the source.
-    const selected = docId || null;
+    // A non-hex :docId is a cozy slug - resolved to the effective id in place, no redirect
+    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (slugs.js).
+    const selected = useSlugDocId(root, app.id, docId);
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
+    useCozyAddress(root, selected, bucket);
 
     // This app shows ONE bucket at a time - the header's bucket switcher picks which, and the
     // pick arrives as the `bucket` prop (the app's home bucket when nothing's picked). A doc is

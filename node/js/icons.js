@@ -49,6 +49,7 @@ import {
     ArrowRight,
     UploadSimple,
     CheckCircle,
+    LinkSimple,
     FileImage,
     FileAudio,
     FileVideo,
@@ -117,6 +118,8 @@ export const Icons = {
     fileImage: FileImage,
     fileAudio: FileAudio,
     fileVideo: FileVideo,
+    // the copy-a-cozy-link chip
+    link: LinkSimple,
 };
 
 /// The icon a MEDIA document's format earns in listings (tree rows, the note picker), or null

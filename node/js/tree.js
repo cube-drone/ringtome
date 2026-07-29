@@ -31,7 +31,7 @@ async function api(path, options = {}) {
 // The root taxonomy's title for a bucket's tree. The prefix keeps user-titled SECTIONS (also
 // taxonomies, also on the roster) from ever colliding with a root lookup. (`wiki:` even when
 // Notes wears the tree - it names the shape, and existing wikis already use it.)
-const rootTitleFor = (bucket) => `wiki:${bucket}`;
+export const rootTitleFor = (bucket) => `wiki:${bucket}`;
 
 // The bucket's tree root, found (mirror roster, lowest id wins a concurrent-mint tie) or minted.
 // ONE module-level dedupe for everyone who might need the root - the tree pane and the list's
