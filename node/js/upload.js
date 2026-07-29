@@ -15,6 +15,7 @@ import htm from 'htm';
 import { Modal, fmtBytes } from './modal.js';
 import { Annotations } from './annotations.js';
 import { ensureTreeRoot } from './tree.js';
+import { takeDocDropSwap } from './slugs.js';
 import { Icons } from './icons.js';
 // The in-browser video pre-encoder (the video-ingest spike, now in service): the HOSTILE decode
 // happens in the browser's hardened, licensed decoder, and the server only ever sees
@@ -373,3 +374,153 @@ export const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded,
         </div>
     </${Modal}>`;
 };
+
+/**
+ * The CAPTURE side of upload, shared by every editing surface (the Editor's three doors, the
+ * journal's drop-and-paste): plants a placeholder at the cursor per file, opens the modal,
+ * swaps the placeholder for the real reference when the upload lands - or removes it on
+ * failure. Also receives dragged document rows (the crosslink drag): the surface's native drop
+ * inserts the link markup at the pointer, and this hook dresses the id-form in its cozy
+ * address. The host renders `extras` (the hidden file input + the modal) and wires
+ * catchDrop/allowFileDrag/catchPaste onto its surface; `pickFiles` opens the file picker.
+ *
+ * @param bucket    where landed uploads FILE (may deliberately differ from the doc's own
+ *                  bucket - the journal files media into TurboNotes' home, never itself)
+ * @param intoTree  also append landed uploads to the bucket's tree root
+ * @param cursorPos () => offset in `body` where placeholders insert (null = append)
+ */
+export function useUploadCapture({
+    root,
+    bucket,
+    intoTree,
+    format,
+    body,
+    setBody,
+    touched,
+    cursorPos,
+}) {
+    const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
+    const filePickRef = useRef(null);
+    const bodyNow = useRef('');
+    bodyNow.current = body;
+    const uploadTokens = useRef([]); // placeholder text per file index, for the open modal
+    const captureFiles = (files) => {
+        if (!files.length) return;
+        const tokens = files.map(
+            (f) => `[uploading "${f.name}" …${Math.random().toString(36).slice(2, 6)}]`
+        );
+        uploadTokens.current = tokens;
+        const at = cursorPos ? cursorPos() : null;
+        const pos = Math.min(at == null ? bodyNow.current.length : at, bodyNow.current.length);
+        setBody(bodyNow.current.slice(0, pos) + tokens.join('\n') + bodyNow.current.slice(pos));
+        touched();
+        setUploadFiles(files);
+    };
+    // The final reference for a landed upload. The extension is guessed from the INPUT kind
+    // (image -> avif, video -> webm, audio -> ogg - what the crush emits); it's decorative,
+    // the served Content-Type is authoritative, and an unknown kind degrades to a plain link.
+    const refFor = (file, uploadedId, name) => {
+        const base = `/api/identity/${root}/docs/${uploadedId}/body`;
+        const t = file.type || '';
+        const ext = t.startsWith('image/')
+            ? 'avif'
+            : t.startsWith('video/')
+            ? 'webm'
+            : t.startsWith('audio/')
+            ? 'ogg'
+            : null;
+        const label = (name || file.name || 'file').replace(/[[\]()]/g, '');
+        const slug = label.replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
+        if (format === 'plaintext') return ext ? `${base}/${slug}.${ext}` : base;
+        return ext ? `![${label}](${base}/${slug}.${ext})` : `[${label}](${base})`;
+    };
+    const swapToken = (i, replacement) => {
+        const tok = uploadTokens.current[i];
+        if (!tok || !bodyNow.current.includes(tok)) return; // deleted by hand: their call
+        setBody(bodyNow.current.replace(tok, replacement));
+        touched();
+    };
+    const onUploaded = (i, file, uploadedId, name) => swapToken(i, refFor(file, uploadedId, name));
+    const onUploadFailed = (i) => swapToken(i, '');
+    const catchDrop = (e) => {
+        const dt = e.dataTransfer;
+        const files = Array.from((dt && dt.files) || []);
+        if (files.length) {
+            e.preventDefault();
+            e.stopPropagation();
+            captureFiles(files);
+            return;
+        }
+        const types = Array.from((dt && dt.types) || []);
+        if (types.includes('application/x-ringtome-section')) {
+            // A SECTION row from the tree isn't text - block the surface's native drop from
+            // inserting its raw taxonomy id.
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        if (types.includes('application/x-ringtome-doc')) {
+            // A document row (list or tree): the editing surface's NATIVE drop inserts the
+            // dragged link markup at the pointer - we deliberately don't preventDefault - and
+            // then the id-form link dresses itself in the cozy address once it computes. The
+            // insertion lands a beat after this handler, so the swap retries briefly.
+            const idText = dt.getData('text/plain');
+            const swap = takeDocDropSwap(idText);
+            if (swap) {
+                swap.then((cozyText) => {
+                    if (!cozyText || cozyText === idText) return;
+                    let tries = 0;
+                    const attempt = () => {
+                        if (bodyNow.current.includes(idText)) {
+                            setBody(bodyNow.current.replace(idText, cozyText));
+                            touched();
+                        } else if (++tries < 12) {
+                            setTimeout(attempt, 100);
+                        }
+                    };
+                    attempt();
+                });
+            }
+        }
+    };
+    const allowFileDrag = (e) => {
+        const types = Array.from((e.dataTransfer && e.dataTransfer.types) || []);
+        if (types.includes('Files')) e.preventDefault();
+    };
+    const catchPaste = (e) => {
+        const files = Array.from((e.clipboardData && e.clipboardData.files) || []);
+        if (!files.length) return; // ordinary text paste - let it through untouched
+        e.preventDefault();
+        captureFiles(files);
+    };
+    const extras = html`
+        <input
+            type="file"
+            multiple
+            hidden
+            ref=${filePickRef}
+            onChange=${(e) => {
+                const files = Array.from(e.currentTarget.files || []);
+                if (files.length) captureFiles(files);
+                e.currentTarget.value = ''; // so picking the same file again re-fires
+            }}
+        />
+        ${uploadFiles &&
+        html`<${UploadFlow}
+            root=${root}
+            bucket=${bucket}
+            intoTree=${intoTree}
+            files=${uploadFiles}
+            onUploaded=${onUploaded}
+            onFailed=${onUploadFailed}
+            onClose=${() => setUploadFiles(null)}
+        />`}
+    `;
+    return {
+        catchDrop,
+        allowFileDrag,
+        catchPaste,
+        pickFiles: () => filePickRef.current && filePickRef.current.click(),
+        extras,
+    };
+}

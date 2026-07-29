@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { openMirror, useLive } from './cache.js';
+import { cachedTree, rememberTree, rosterFingerprint } from './doccache.js';
 import { useSearch } from './search.js';
 // Circular with slugs.js (it imports rootTitleFor from here) - safe: both sides only call the
 // other's functions at runtime, never at module-eval time.
@@ -381,21 +382,42 @@ export const WikiTree = ({
     const [tree, setTree] = useState(null);
     const [bump, setBump] = useState(0);
     const refetch = () => setBump((b) => b + 1);
-    const rosterKey = (taxRows || []).map((t) => `${t.taxonomy_id}:${t.title}:${t.members}`).join(',');
+    const rosterKey = rosterFingerprint(taxRows);
+    // `bump`/`reloadKey` mark OUR OWN writes: the roster stamp hasn't ticked yet but the tree
+    // has changed, so those runs must bypass the cache and go to the node.
+    const lastForce = useRef('0:0');
     useEffect(() => {
         if (!rootId) {
             setTree(null);
             onOrder && onOrder([]);
             return;
         }
+        const forced = `${bump}:${reloadKey}` !== lastForce.current;
+        lastForce.current = `${bump}:${reloadKey}`;
         let alive = true;
-        api(`/api/identity/${root}/taxonomies/${rootId}`)
-            .then((t) => {
+        const finish = (t) => {
+            if (!alive) return;
+            setTree(t);
+            onOrder && onOrder(flatDocs(t));
+        };
+        const fetchTree = () =>
+            api(`/api/identity/${root}/taxonomies/${rootId}`)
+                .then((t) => {
+                    if (!alive) return;
+                    rememberTree(root, rootId, rosterKey, t);
+                    finish(t);
+                })
+                .catch(() => {});
+        // Cache-first (doccache.js): a tree the roster stamp still vouches for paints from
+        // disk - no fetch, no flash; misses and forced runs go to the node.
+        if (forced) fetchTree();
+        else {
+            cachedTree(root, rootId, rosterKey).then((hit) => {
                 if (!alive) return;
-                setTree(t);
-                onOrder && onOrder(flatDocs(t));
-            })
-            .catch(() => {});
+                if (hit) finish(hit);
+                else fetchTree();
+            });
+        }
         return () => {
             alive = false;
         };

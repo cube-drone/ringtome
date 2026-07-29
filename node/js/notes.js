@@ -9,6 +9,7 @@ import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
+import { cachedDoc, rememberDoc } from './doccache.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -191,17 +192,29 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
         setTitle('');
         setShowMeta(false);
         if (!docId) return;
+        let alive = true;
         let timer = null;
         const fetchDoc = () =>
             api(`/api/identity/${root}/docs/${docId}`)
                 .then((d) => {
+                    if (!alive) return;
+                    rememberDoc(root, docId, d); // null bodies are never remembered
                     setDoc(d);
                     // Bodies can trail their headers across computers; retry until they land.
                     if (d.body == null) timer = setTimeout(fetchDoc, 2000);
                 })
-                .catch((e) => setError(e.message));
-        fetchDoc();
-        return () => timer && clearTimeout(timer);
+                .catch((e) => alive && setError(e.message));
+        // Cache-first (doccache.js): a copy the mirror row still vouches for paints with no
+        // fetch and no flash; misses (and pending bodies) go to the node.
+        cachedDoc(root, docId).then((hit) => {
+            if (!alive) return;
+            if (hit) setDoc(hit);
+            else fetchDoc();
+        });
+        return () => {
+            alive = false;
+            if (timer) clearTimeout(timer);
+        };
     }, [root, docId]);
 
     if (!docId) {

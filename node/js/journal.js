@@ -11,8 +11,11 @@ import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { openMirror, useLive } from './cache.js';
+import { cachedDoc, rememberDoc } from './doccache.js';
 import { useSearch, queryWords } from './search.js';
 import { useDocSession } from './docsession.js';
+import { useUploadCapture } from './upload.js';
+import { DEFAULT_STYLE } from './apps.js';
 import { Annotations } from './annotations.js';
 import { claimedMs, hasClaimedDate } from './docdate.js';
 import { LiveMarquee } from './livemarquee.js';
@@ -98,6 +101,24 @@ const JournalEditor = ({ root, docId, onSeal, dateMs, tags, actions, meta }) => 
     const s = useDocSession(root, docId, { onDeleted: () => {} });
     const tlProfile = useTurbolinks(s.body, s.format);
 
+    // Where the caret last sat in THIS entry (the marquee reports every move) - so a dropped or
+    // pasted image lands where you were writing, not at the end.
+    const caret = useRef(null);
+    // Drop-and-paste uploads, via the shared capture hook. The bucket is DELIBERATELY not the
+    // journal's: media records file into TurboNotes' home, where they're findable as documents -
+    // the journal shows finished entries, never loose image records. The embed lands here in
+    // the entry either way (the reference is by id, bucket-independent).
+    const up = useUploadCapture({
+        root,
+        bucket: DEFAULT_STYLE,
+        intoTree: false,
+        format: s.format,
+        body: s.body,
+        setBody: s.setBody,
+        touched: s.touched,
+        cursorPos: () => caret.current,
+    });
+
     if (s.status === 'opening' && !s.loaded) {
         return html`<p class="null-sub">opening…</p>`;
     }
@@ -108,7 +129,12 @@ const JournalEditor = ({ root, docId, onSeal, dateMs, tags, actions, meta }) => 
         </p>`;
     }
     return html`
-        <div class="journal-editor">
+        <div
+            class="journal-editor"
+            onDrop=${up.catchDrop}
+            onDragOver=${up.allowFileDrag}
+            onPaste=${up.catchPaste}
+        >
             <${JournalHead} dateMs=${dateMs} tags=${tags} actions=${actions}>
                 <input
                     class="journal-title"
@@ -130,8 +156,11 @@ const JournalEditor = ({ root, docId, onSeal, dateMs, tags, actions, meta }) => 
                     s.touched();
                 }}
                 onBlur=${s.save}
-                onCursor=${() => {}}
+                onCursor=${(start, end) => {
+                    caret.current = typeof end === 'number' ? end : start;
+                }}
             />
+            ${up.extras}
             <div class="journal-editor-foot">
                 <${StatusDot} status=${s.status} />
                 <button
@@ -158,9 +187,22 @@ const JournalReader = ({ root, docId }) => {
     const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
     useEffect(() => {
         let alive = true;
-        api(`/api/identity/${root}/docs/${docId}`)
-            .then((d) => alive && setDoc(d))
-            .catch(() => {});
+        // Cache-first (doccache.js): a sealed entry the mirror row still vouches for paints
+        // straight from disk; only a genuinely new copy fetches.
+        cachedDoc(root, docId).then((hit) => {
+            if (!alive) return;
+            if (hit) {
+                setDoc(hit);
+                return;
+            }
+            api(`/api/identity/${root}/docs/${docId}`)
+                .then((d) => {
+                    if (!alive) return;
+                    rememberDoc(root, docId, d);
+                    setDoc(d);
+                })
+                .catch(() => {});
+        });
         return () => {
             alive = false;
         };
@@ -387,9 +429,13 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
     }, []);
 
     // This journal is ONE bucket - the header's switcher picks which (several journals can sit
-    // on the same shelf). Every entry is filed into its bucket at creation, so membership is the
-    // whole test.
-    const inJournal = (d) => (d.buckets || []).includes(bucket);
+    // on the same shelf). Every entry is filed into its bucket at creation, so membership is
+    // most of the test - plus TEXT format: the journal shows finished entries, never loose
+    // media records (an embedded image's record files into TurboNotes, but even one that lands
+    // in this bucket some other way stays out of the stream).
+    const inJournal = (d) =>
+        (d.buckets || []).includes(bucket) &&
+        (d.format === 'plaintext' || d.format === 'marquee');
 
     // Newest first by the entry's date - the user-claimed date when one is set, else CREATION
     // (never update); ties broken stably by id. Backdate an entry and it files itself into the

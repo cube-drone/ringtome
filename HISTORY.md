@@ -2038,3 +2038,32 @@ and Notes is renamed TurboNotes (ids, styles, routes, and bucket names all uncha
 and `default` still carry the plumbing; only the labels and bucket nouns moved); and the shelf
 order is now Persona, Journal, Recipes, Wikibook, TurboNotes - console tiles and quickbar hexes
 alike, since both read registry order.
+
+## 2026-07-28: the journal takes images (but never shows the records)
+
+The capture side of upload extracted into a shared hook (upload.js `useUploadCapture`:
+placeholders at the cursor, the modal, the reference swap, the crosslink-drag dressing - the
+Editor now composes it instead of owning it), and the journal's entry editor mounts it: drop or
+paste an image into an open entry and it embeds where the caret sat (the journal editor now
+tracks its own caret; it had no cursor memory). Two deliberate choices: journal-borne media
+RECORDS file into TurboNotes' home bucket, not the journal's - findable as documents there,
+embedded in the entry either way (references are by id, bucket-independent) - and the stream
+filter now requires TEXT format besides bucket membership, so the journal shows finished
+entries, never loose image records, whatever lands in its bucket.
+
+## 2026-07-29: the read-your-cache layer - no more opening flash
+
+Doc bodies and taxonomy trees now live in Dexie beside the streamed rows that VOUCH for them
+(doccache.js + two new mirror tables, docdetails/trees): opening a document you've seen paints
+straight from disk, and the network runs only when the stream says a new copy exists - the
+contract headers and annotations always had, extended to the fetch-on-click surfaces. The
+freshness handshake: doc details are stamped with the live row's `head:heads:diverged` trio
+(the exact fingerprint the divergence lookout watches, so cached save-parents are as
+trustworthy as a fetch under the same row); trees are stamped with the whole taxonomy-roster
+fingerprint (coarse on purpose - trees span taxonomies and the roster is the only streamed
+signal). Null bodies (blobs still travelling) are never remembered - the waiting room keeps
+asking the node. Converted consumers: the doc session (editor open), the notes Reader, the
+journal's sealed-entry reader, the tree pane (with a force-bypass when our own writes bump it,
+since the roster stamp lags a beat behind them), and the slug resolver's treeFor - so cozy
+addresses resolve instantly too. Race stamps self-heal: a mid-race stamp mismatches on the
+next stream tick and forces one honest refetch.

@@ -18,6 +18,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from './cache.js';
+import { cachedTree, rememberTree, rosterFingerprint } from './doccache.js';
 import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from './apps.js';
 import { rootTitleFor } from './tree.js';
 
@@ -54,16 +55,22 @@ function bucketFor(seg, roster) {
     return { name: row.name, app: appForStyle(appTypeOf(row.name, roster)) };
 }
 
-// The bucket's tree, fetched whole, or null when the bucket has none (or the fetch fails -
-// the caller falls back to bucket-wide resolution either way).
+// The bucket's tree, cache-first (doccache.js - resolution and link-generation ride the same
+// fingerprinted cache as the tree pane), fetched when the roster stamp says it moved, or null
+// when the bucket has no tree (the caller falls back to bucket-wide resolution either way).
 async function treeFor(root, bucketName) {
     const tax = await openMirror(root).taxonomies.toArray();
     const rootRow = tax
         .filter((t) => t.title === rootTitleFor(bucketName))
         .sort((a, b) => (a.taxonomy_id < b.taxonomy_id ? -1 : 1))[0];
     if (!rootRow) return null;
+    const fp = rosterFingerprint(tax);
+    const hit = await cachedTree(root, rootRow.taxonomy_id, fp);
+    if (hit) return hit;
     try {
-        return await api(`/api/identity/${root}/taxonomies/${rootRow.taxonomy_id}`);
+        const tree = await api(`/api/identity/${root}/taxonomies/${rootRow.taxonomy_id}`);
+        rememberTree(root, rootRow.taxonomy_id, fp, tree);
+        return tree;
     } catch {
         return null;
     }

@@ -27,8 +27,8 @@ import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
-import { UploadFlow } from './upload.js';
-import { slugPathFor, takeDocDropSwap } from './slugs.js';
+import { useUploadCapture } from './upload.js';
+import { slugPathFor } from './slugs.js';
 import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
@@ -117,112 +117,28 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         setTimeout(() => setLinkCopied(false), 1600);
     };
 
-    // File upload: three doors - the upload chip, a drop from the desktop, a pasted image
-    // buffer - all landing in `captureFiles`, which plants a PLACEHOLDER in the document at
-    // the current cursor for each file and opens the upload modal. When an upload lands its
-    // doc_id (the 202), the placeholder is swapped for the real reference - a marquee embed
-    // (`![name](…/body/name.ext)` - the decorative filename carries the extension the
-    // renderer's kind sniff needs) or, in plaintext, the bare URL. A failed upload removes
-    // its placeholder; a placeholder the user deleted meanwhile is respected (no swap).
-    const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
-    const filePickRef = useRef(null);
-    const bodyNow = useRef('');
-    bodyNow.current = body;
-    const uploadTokens = useRef([]); // placeholder text per file index, for the open modal
-    const captureFiles = (files) => {
-        if (!files.length) return;
-        const tokens = files.map(
-            (f) => `[uploading "${f.name}" …${Math.random().toString(36).slice(2, 6)}]`
-        );
-        uploadTokens.current = tokens;
-        const c = recallCursor(root, docId);
-        const pos = Math.min(
-            c ? (typeof c.end === 'number' ? c.end : c.start) || 0 : bodyNow.current.length,
-            bodyNow.current.length
-        );
-        setBody(
-            bodyNow.current.slice(0, pos) + tokens.join('\n') + bodyNow.current.slice(pos)
-        );
-        touched();
-        setUploadFiles(files);
-    };
-    // The final reference for a landed upload. The extension is guessed from the INPUT kind
-    // (image -> avif, video -> webm, audio -> ogg - what the crush emits); it's decorative,
-    // the served Content-Type is authoritative, and an unknown kind degrades to a plain link.
-    const refFor = (file, uploadedId, name) => {
-        const base = `/api/identity/${root}/docs/${uploadedId}/body`;
-        const t = file.type || '';
-        const ext = t.startsWith('image/')
-            ? 'avif'
-            : t.startsWith('video/')
-            ? 'webm'
-            : t.startsWith('audio/')
-            ? 'ogg'
-            : null;
-        const label = (name || file.name || 'file').replace(/[[\]()]/g, '');
-        const slug = label.replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
-        if (format === 'plaintext') return ext ? `${base}/${slug}.${ext}` : base;
-        return ext ? `![${label}](${base}/${slug}.${ext})` : `[${label}](${base})`;
-    };
-    const swapToken = (i, replacement) => {
-        const tok = uploadTokens.current[i];
-        if (!tok || !bodyNow.current.includes(tok)) return; // deleted by hand: their call
-        setBody(bodyNow.current.replace(tok, replacement));
-        touched();
-    };
-    const onUploaded = (i, file, uploadedId, name) => swapToken(i, refFor(file, uploadedId, name));
-    const onUploadFailed = (i) => swapToken(i, '');
-    const catchDrop = (e) => {
-        const dt = e.dataTransfer;
-        const files = Array.from((dt && dt.files) || []);
-        if (files.length) {
-            e.preventDefault();
-            e.stopPropagation();
-            captureFiles(files);
-            return;
-        }
-        const types = Array.from((dt && dt.types) || []);
-        if (types.includes('application/x-ringtome-section')) {
-            // A SECTION row from the tree isn't text - block the surface's native drop from
-            // inserting its raw taxonomy id.
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-        }
-        if (types.includes('application/x-ringtome-doc')) {
-            // A document row (list or tree): the editing surface's NATIVE drop inserts the
-            // dragged link markup at the pointer - we deliberately don't preventDefault - and
-            // then the id-form link dresses itself in the cozy address once it computes. The
-            // insertion lands a beat after this handler, so the swap retries briefly.
-            const idText = dt.getData('text/plain');
-            const swap = takeDocDropSwap(idText);
-            if (swap) {
-                swap.then((cozyText) => {
-                    if (!cozyText || cozyText === idText) return;
-                    let tries = 0;
-                    const attempt = () => {
-                        if (bodyNow.current.includes(idText)) {
-                            setBody(bodyNow.current.replace(idText, cozyText));
-                            touched();
-                        } else if (++tries < 12) {
-                            setTimeout(attempt, 100);
-                        }
-                    };
-                    attempt();
-                });
-            }
-        }
-    };
-    const allowFileDrag = (e) => {
-        const types = Array.from((e.dataTransfer && e.dataTransfer.types) || []);
-        if (types.includes('Files')) e.preventDefault();
-    };
-    const catchPaste = (e) => {
-        const files = Array.from((e.clipboardData && e.clipboardData.files) || []);
-        if (!files.length) return; // ordinary text paste - let it through untouched
-        e.preventDefault();
-        captureFiles(files);
-    };
+    // File upload + crosslink drops: the shared capture hook (upload.js) - placeholders at the
+    // cursor, the modal, the reference swap, and the dragged-document cozy dressing. The chip
+    // opens the picker; drop and paste land on the surface handlers below.
+    const {
+        catchDrop,
+        allowFileDrag,
+        catchPaste,
+        pickFiles,
+        extras: uploadExtras,
+    } = useUploadCapture({
+        root,
+        bucket,
+        intoTree: !!feat.tree,
+        format,
+        body,
+        setBody,
+        touched,
+        cursorPos: () => {
+            const c = recallCursor(root, docId);
+            return c ? (typeof c.end === 'number' ? c.end : c.start) || 0 : null;
+        },
+    });
 
     // The remembered view mode: hydrate this doc's last pick from the mirror's local-only
     // prefs table; picking writes it back. The functional set means a click that beats the
@@ -439,7 +355,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                     <button
                         class="chip chip-button"
                         title="Upload — attach a file to this document (drop or paste works too)"
-                        onClick=${() => filePickRef.current && filePickRef.current.click()}
+                        onClick=${pickFiles}
                     ><${Icons.upload} /></button>
                     <button
                         class=${linkCopied ? 'chip chip-button chip-open' : 'chip chip-button'}
@@ -540,27 +456,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                       <div class="editor-side-preview">${rendered}</div>
                   </div>`
                 : sourcePane}
-            <input
-                type="file"
-                multiple
-                hidden
-                ref=${filePickRef}
-                onChange=${(e) => {
-                    const files = Array.from(e.currentTarget.files || []);
-                    if (files.length) captureFiles(files);
-                    e.currentTarget.value = ''; // so picking the same file again re-fires
-                }}
-            />
-            ${uploadFiles &&
-            html`<${UploadFlow}
-                root=${root}
-                bucket=${bucket}
-                intoTree=${!!feat.tree}
-                files=${uploadFiles}
-                onUploaded=${onUploaded}
-                onFailed=${onUploadFailed}
-                onClose=${() => setUploadFiles(null)}
-            />`}
+            ${uploadExtras}
         </div>
     `;
 };

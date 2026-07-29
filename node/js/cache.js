@@ -32,6 +32,11 @@ export function openMirror(root) {
             search: 'doc_id', // token bags, stream-fed like docs (search runs local)
             buckets: 'name', // the bucket roster: name -> app-type + member count
             prefs: 'key', // local-only, never stream-fed (module doc)
+            // Fingerprinted FETCH caches (doccache.js): GET responses kept beside the streamed
+            // rows that vouch for their freshness - docdetails against the doc row's head
+            // fingerprint, trees against the taxonomy-roster fingerprint. Local-only, like prefs.
+            docdetails: 'doc_id',
+            trees: 'taxonomy_id',
         });
         mirrors.set(root, db);
     }

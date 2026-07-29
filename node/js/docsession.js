@@ -9,6 +9,7 @@
 // moved verbatim from the old Editor; keep it faithful.
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { openMirror, useLive } from './cache.js';
+import { cachedDoc, rememberDoc } from './doccache.js';
 import { needsReload } from './lookout.js';
 import { keepaliveOk } from './keepalive.js';
 
@@ -54,7 +55,15 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     const load = async () => {
         setStatus('opening');
         setError(null);
-        const doc = await api(`/api/identity/${root}/docs/${docId}`);
+        // Cache-first (doccache.js): a doc the mirror row still vouches for opens straight from
+        // disk - no fetch, no "opening…" flash. The row's fingerprint moving (a save, a sync)
+        // is exactly what invalidates it, so parents/heads from the cache are as trustworthy
+        // as a fetch under the same row. Misses fetch and remember.
+        let doc = await cachedDoc(root, docId);
+        if (!doc) {
+            doc = await api(`/api/identity/${root}/docs/${docId}`);
+            rememberDoc(root, docId, doc); // fire-and-forget; a failed write is a miss later
+        }
         // A null body means blobs this resolution needs haven't reached this computer yet
         // (headers travel ahead of bodies). This is a WAITING ROOM, never an empty buffer:
         // pouring null into the textarea as "" is how a divergence once ate a paragraph -
