@@ -2114,3 +2114,27 @@ typing past waves it off - the picker never blocks a key. Styled for the house: 
 ink border, teal selection, the glyph riding each row's right edge. Phases two and three are
 sketched in the module: `[` a link picker over the bucket's documents, `!` a media picker over
 its files.
+
+## 2026-07-29: caret pickers, phase two - the link picker
+
+Type `[` in any interactive editor and a searchable list of the CURRENT BUCKET's documents
+hovers at the caret (completions.js `linkCompletions` - a factory, since it needs the notebook
+in view; the source reads the mirror live per pop, so the list is always current). Picking
+fills the whole `[title](link)` tag: the id-form immediately (always valid), dressed in its
+cozy address the moment it computes - the drag-a-document swap, reused. The match region
+starts AFTER the bracket so titles filter cleanly; typing your own closing `]` folds the picker
+away (a hand-written link is never interfered with); media docs appear too, marked by format,
+linking to their page. The journal threads its bucket down so entries can crosslink each
+other. TurboNotes' home also lists unbucketed docs (the app rule, mirrored). Phase three
+remains: `!` for media embeds.
+
+## 2026-07-29: caret pickers, phase three - the media picker (the trio complete)
+
+Type `!` and a searchable list of the current bucket's MEDIA hovers at the caret
+(completions.js `mediaCompletions`); picking fills the whole `![title](…/body/name.ext)` embed
+- the byte-URL form uploads and drags write - so the media renders inline immediately. Pops on
+a bare `!` (word characters filter; a space folds it, so "wow! " never holds it open) and on
+the `![` opener, with the match region re-derived per keystroke as `!` grows into `![`; the
+link picker learned to step aside when `[` follows `!` (the embed opener belongs to media).
+The journal's `!` searches TurboNotes' home - where journal-borne media records actually live.
+The trio is complete: `:` emoji, `[` links, `!` media.

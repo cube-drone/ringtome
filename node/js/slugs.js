@@ -204,7 +204,7 @@ export async function slugPathFor(root, docId, bucket) {
 // Ordinary docs carry an id-form link (valid immediately), and the cozy form computes in
 // flight - the receiving editor swaps id-form for cozy when it lands.
 
-const MEDIA_EXT = { avif: 'avif', apng: 'png', webm: 'webm', opus: 'ogg' };
+export const MEDIA_EXT = { avif: 'avif', apng: 'png', webm: 'webm', opus: 'ogg' };
 const dragSwaps = new Map(); // inserted id-form text -> Promise<cozy-form text>
 
 /// Begin dragging a document row (list or tree). Writes the drag payload; registers the cozy

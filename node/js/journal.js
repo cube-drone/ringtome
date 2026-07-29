@@ -15,7 +15,7 @@ import { cachedDoc, rememberDoc } from './doccache.js';
 import { useSearch, queryWords } from './search.js';
 import { useDocSession } from './docsession.js';
 import { useUploadCapture } from './upload.js';
-import { emojiCompletions } from './completions.js';
+import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
 import { DEFAULT_STYLE } from './apps.js';
 import { Annotations } from './annotations.js';
 import { claimedMs, hasClaimedDate } from './docdate.js';
@@ -98,7 +98,7 @@ const JournalHead = ({ dateMs, tags, actions, children }) => html`
 // The editable surface for a journal entry: the shared session + the live marquee, plus the
 // minimum chrome - the head (an editable title over the date), the annotations panel when the
 // tag button has it open, and a foot with the save-status dot, seal, and delete.
-const JournalEditor = ({ root, docId, onSeal, dateMs, tags, actions, meta }) => {
+const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, meta }) => {
     const s = useDocSession(root, docId, { onDeleted: () => {} });
     const tlProfile = useTurbolinks(s.body, s.format);
 
@@ -152,7 +152,12 @@ const JournalEditor = ({ root, docId, onSeal, dateMs, tags, actions, meta }) => 
             <${LiveMarquee}
                 body=${s.body}
                 profile=${tlProfile}
-                completions=${[emojiCompletions]}
+                completions=${[
+                    emojiCompletions,
+                    linkCompletions(root, bucket),
+                    // `!` searches TurboNotes' home - where journal-borne media records live.
+                    mediaCompletions(root, DEFAULT_STYLE),
+                ]}
                 onInput=${(text) => {
                     s.setBody(text);
                     s.touched();
@@ -283,7 +288,7 @@ const JournalFonts = ({ value, onPick }) => html`
     </div>
 `;
 
-const JournalEntry = ({ root, entry, open, onOverride }) => {
+const JournalEntry = ({ root, entry, bucket, open, onOverride }) => {
     // The corner tag button opens the same annotations panel as every other document - tags,
     // claimed date, description. Annotations are decoupled from the version lifecycle, so a
     // SEALED entry can still be tagged and dated: the seal locks the words, not the filing.
@@ -306,6 +311,7 @@ const JournalEntry = ({ root, entry, open, onOverride }) => {
                       key=${entry.doc_id}
                       root=${root}
                       docId=${entry.doc_id}
+                      bucket=${bucket}
                       onSeal=${() => onOverride('locked')}
                       dateMs=${dateMs}
                       tags=${entry.tags}
@@ -566,6 +572,7 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
                                 key=${e.doc_id}
                                 root=${root}
                                 entry=${e}
+                                bucket=${bucket}
                                 open=${openOf(e, todayKey)}
                                 onOverride=${(v) => setOverride(e.doc_id, v)}
                             />`

@@ -28,7 +28,7 @@ import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture } from './upload.js';
-import { emojiCompletions } from './completions.js';
+import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
 import { slugPathFor } from './slugs.js';
 import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
@@ -443,7 +443,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                 ? html`<${LiveMarquee}
                       body=${body}
                       profile=${tlProfile}
-                      completions=${[emojiCompletions]}
+                      completions=${[emojiCompletions, linkCompletions(root, bucket), mediaCompletions(root, bucket)]}
                       initialSelection=${recallCursor(root, docId)}
                       onCursor=${(start, end) => rememberCursor(root, docId, start, end)}
                       onInput=${(text) => {
