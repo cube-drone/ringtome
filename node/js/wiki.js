@@ -9,7 +9,7 @@ import { useLocation } from 'preact-iso';
 import { openMirror, useLive } from './cache.js';
 import { WikiTree } from './tree.js';
 import { useColWidths } from './panes.js';
-import { RightColumn } from './notes.js';
+import { RightColumn, useArrowNav } from './notes.js';
 import { useSlugDocId, useCozyAddress } from './slugs.js';
 import { featuresOf } from './apps.js';
 
@@ -52,6 +52,8 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                   nextTip: 'Next — down the tree',
               }
             : null;
+    // The arrow keys walk the book too.
+    useArrowNav(nav, order, selected, select);
 
     // Resume where you left off - the Notes pattern verbatim: remember the open page, and when
     // you ENTER the app with nothing selected, return to it (once, if it's still in the current

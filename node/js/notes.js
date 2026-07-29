@@ -44,6 +44,36 @@ async function api(path, options = {}) {
 
 const when = (ms) => new Date(ms).toLocaleString();
 
+/// Left/right ARROW KEYS walk the prev/next order - but only while the keyboard is FREE: no
+/// input, textarea, select, or editor focused, no modifier held. While typing, arrows move the
+/// caret, never the page. With no document selected, right opens the order's first document and
+/// left its last - the book falls open at either cover. Exported: the wiki walks the same way.
+export function useArrowNav(nav, order, selected, select) {
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+            const t = e.target;
+            const tag = t && t.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            if (t && t.closest && t.closest('.cm-editor, [contenteditable="true"]')) return;
+            if (selected) {
+                if (!nav) return;
+                const to = e.key === 'ArrowLeft' ? nav.prev : nav.next;
+                if (to) {
+                    e.preventDefault();
+                    nav.go(to);
+                }
+            } else if (order && order.length) {
+                e.preventDefault();
+                select(e.key === 'ArrowRight' ? order[0] : order[order.length - 1]);
+            }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [nav, order, selected, select]);
+}
+
 // A tucked-away column: the slim rail left standing when a column is minimized - its icon and
 // name run vertically, and a click brings the column back.
 const Rail = ({ icon, label, onClick }) => html`<button
@@ -496,6 +526,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                   nextTip: bookish ? 'Next — down the tree' : 'Next — older',
               }
             : null;
+    // The arrow keys walk the same order the chips do.
+    useArrowNav(nav, navOrder, selected, select);
 
     const createNew = async () => {
         setBusy(true);

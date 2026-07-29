@@ -2094,3 +2094,11 @@ freshest ASYNC resolution - which was still doc A's. Fix in SlugRoute: async res
 tagged with the path they answered (a resolution for a path we've left is ignored at render,
 not just at set), and the fallback is now the last actually-PAINTED view (a ref), never the
 last resolved one. Mid-flight you keep seeing exactly what you last saw.
+
+## 2026-07-29: arrow-key navigation
+
+Left/right arrow keys now walk the prev/next order in TurboNotes, Recipes, and the Wikibook
+(`useArrowNav`, shared from notes.js) - but only while the keyboard is FREE: any focused input,
+textarea, or editor keeps the arrows for the caret, and modifier combos pass through untouched.
+With no document selected, right opens the order's first document and left its last - the book
+falls open at either cover.
