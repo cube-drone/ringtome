@@ -15,7 +15,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
-import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
+import { useDocDetail } from '../doc/detail.js';
 import { Editor } from '../doc/editor.js';
 import { Annotations } from '../doc/annotations.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
@@ -145,8 +145,11 @@ const Snippet = ({ root, docId, query }) => {
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
 const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
-    const [doc, setDoc] = useState(null);
-    const [error, setError] = useState(null);
+    // The shared read-only loader (doc/detail.js). Write failures below get their own state; the
+    // header shows whichever error is live.
+    const { doc, error: loadError } = useDocDetail(root, docId);
+    const [writeError, setWriteError] = useState(null);
+    const error = loadError || writeError;
     // The record around a read-only BODY is still editable: the title (via the media-safe
     // retitle route - a new version reusing the head's blobs) and the annotations (tags, date,
     // description - version-independent by design). "Read-only" is about the bytes, not the
@@ -174,7 +177,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                 body: JSON.stringify({ title }),
             });
         } catch (e) {
-            setError(e.message);
+            setWriteError(e.message);
         }
     };
     useEffect(() => {
@@ -194,7 +197,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                 method: pinned ? 'DELETE' : 'PUT',
             });
         } catch (e) {
-            setError(e.message);
+            setWriteError(e.message);
         }
     };
 
@@ -204,40 +207,16 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
             await api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' });
             onDeleted && onDeleted();
         } catch (e) {
-            setError(e.message);
+            setWriteError(e.message);
         }
     };
 
+    // A fresh document: re-hydrate the title input from the new detail and close the meta panel.
     useEffect(() => {
-        setDoc(null);
-        setError(null);
         hydrated.current = false;
         setTitle('');
         setShowMeta(false);
-        if (!docId) return;
-        let alive = true;
-        let timer = null;
-        const fetchDoc = () =>
-            api(`/api/identity/${root}/docs/${docId}`)
-                .then((d) => {
-                    if (!alive) return;
-                    rememberDoc(root, docId, d); // null bodies are never remembered
-                    setDoc(d);
-                    // Bodies can trail their headers across computers; retry until they land.
-                    if (d.body == null) timer = setTimeout(fetchDoc, 2000);
-                })
-                .catch((e) => alive && setError(e.message));
-        // Cache-first (mirror/doccache.js): a copy the mirror row still vouches for paints with no
-        // fetch and no flash; misses (and pending bodies) go to the node.
-        cachedDoc(root, docId).then((hit) => {
-            if (!alive) return;
-            if (hit) setDoc(hit);
-            else fetchDoc();
-        });
-        return () => {
-            alive = false;
-            if (timer) clearTimeout(timer);
-        };
+        setWriteError(null);
     }, [root, docId]);
 
     if (!docId) {

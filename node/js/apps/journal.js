@@ -13,7 +13,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { usePrefMap, usePref, setPref, sealKey, SEAL_PREFIX, JOURNAL_FONT } from '../mirror/prefs.js';
-import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
+import { useDocDetail } from '../doc/detail.js';
 import { useSearch, queryWords } from '../search.js';
 import { useDocSession } from '../doc/session.js';
 import { useUploadCapture } from '../doc/upload.js';
@@ -179,32 +179,16 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
 
 // Read-only display for a locked entry: fetch and render the resolved body (marquee/plaintext).
 const JournalReader = ({ root, docId }) => {
-    const [doc, setDoc] = useState(null);
+    // The shared read-only loader (doc/detail.js): cache-first, so a sealed entry the mirror row
+    // still vouches for paints from disk, and patient about a body still in flight.
+    const { doc } = useDocDetail(root, docId);
     const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
-    useEffect(() => {
-        let alive = true;
-        // Cache-first (mirror/doccache.js): a sealed entry the mirror row still vouches for paints
-        // straight from disk; only a genuinely new copy fetches.
-        cachedDoc(root, docId).then((hit) => {
-            if (!alive) return;
-            if (hit) {
-                setDoc(hit);
-                return;
-            }
-            api(`/api/identity/${root}/docs/${docId}`)
-                .then((d) => {
-                    if (!alive) return;
-                    rememberDoc(root, docId, d);
-                    setDoc(d);
-                })
-                .catch(() => {});
-        });
-        return () => {
-            alive = false;
-        };
-    }, [root, docId]);
     if (!doc) return html`<p class="null-sub">…</p>`;
-    if (doc.body == null) return html`<p class="null-sub">(not on this computer yet)</p>`;
+    if (doc.body == null) {
+        return html`<p class="null-sub">
+            <span class="waiting-dot"></span> still arriving from another computer.
+        </p>`;
+    }
     if (doc.format === 'marquee') {
         let parses = true;
         try {
