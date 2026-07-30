@@ -299,18 +299,6 @@ on its first run, orphaned when C3 deleted the component it dressed.
   enforceable, and it names the exceptions: the cross-prefix rules (`.journal .editor-live`,
   `.editor-side-preview .reader-marquee`, `.notes-columns .tag-column`) are all "a host
   re-dressing a borrowed component," and belong in the *host's* file with that said once.
-- [ ] **E4. Four house primitives, and no more than four.** The repetition is concentrated and
-  countable: **the bare icon button** — `.bucket-btn`, `.pane-min`, `.wiki-act`, `.journal-tag`,
-  `.journal-seal`, `.journal-delete`, `.journal-font` (7 near-copies of `inline-flex` /
-  `background:none` / `border:0` / `color:muted` / `cursor:pointer` / `opacity:.75` + hover-teal);
-  **the field** — `.welcome-form input`, `.name-input`, `.spare-paste`, `.profile-bio`,
-  `.annot-desc`, `.upload-name` (6 copies of surface + `1px solid border-strong` + `radius:6px` +
-  `font:inherit`); **the pill** — `.note-row-tag`, `.annot-tag`, `.journal-tag-chip` (3 copies of
-  `radius:999px` + surface-2 + border); **the panel** — already done right via `--panel-clip`,
-  which is the proof the approach works. STYLE.md's "no inner platforms" applies and its test is
-  nameability: each of these has 3–7 *existing, named* consumers, so each passes. This is the CSS
-  analogue of `icons.js` — one place maps meaning→look, as one place maps meaning→glyph. **Hold
-  the line at four**; the moment anyone writes `.u-flex-gap-2` the rule has been broken.
 
 ## Reviewed and left alone (standing decisions, not history)
 
@@ -326,6 +314,20 @@ Re-litigating these costs more than reading this list.
   form is uniform across every module. Not revisited.
 - **XHR for uploads** (A8): `fetch` still has no upload-progress event. The duplication goes; the
   XHR stays.
+- **No house primitives for the bare icon buttons, fields, or pills** (was E4, closed 2026-07-29
+  after measuring it). The review counted 7 near-identical icon buttons, 6 fields and 3 pills by
+  eyeballing their shape. Extracting each class's EFFECTIVE declarations per state from the built
+  bundle told a different story: a `.icon-btn` primitive would need **five of its seven consumers
+  to undo part of it** - `bucket-btn` and `journal-delete` cancelling the hover colour (a delete
+  stays coral; a button on the ink band does not go teal), `pane-min` and `wiki-act` cancelling the
+  opacity, `journal-font` cancelling `border: 0`. What is genuinely universal is
+  `display: inline-flex; background: none; cursor: pointer` - three boilerplate declarations, which
+  is exactly what STYLE.md blesses over "one parameterized engine". `.field` is worse: its six
+  consumers span three backgrounds, two border weights, four paddings and two focus treatments, all
+  of which look deliberate. `.pill` shares three declarations across three consumers. A primitive
+  its consumers fight is a wrong average, and flattening the properties that carry the meaning is
+  not a saving. `--panel-clip` and `.chip` + its modifiers remain the two places the shape really
+  IS shared, and they are the examples to copy if a fourth ever appears.
 - **`console.js`'s `chunk` stays untested** (the one P5 target skipped). Four lines of
   `for (i += n) push(slice(i, i + n))`, in an impure module; moving it somewhere testable to prove
   that array slicing works is ceremony, and STYLE.md's unit-test rule says *isolated boundaries and
@@ -344,10 +346,10 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **E4** — the four house primitives, now that the partials give them somewhere to live.
-2. **P1 + B3** together (the same file splits), and **S1** alongside — the cop wants the pure set
-   to have stopped moving.
-3. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
+1. **P1 + B3** together (the same file splits). `conventions.cjs` will want `doc/slugs.js`'s pure
+   half added to its declared pure set once it exists.
+2. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
    `clock.js` out of `index.js`).
-4. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
-5. **S2** — count `integration/test/pure/`; if it holds eight files, decide on `rules/`.
+3. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
+4. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so this arrives on its own as a
+   failing test when the eighth zero-import module lands.

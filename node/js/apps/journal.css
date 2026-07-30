@@ -155,7 +155,15 @@
 }
 
 /* The corner tag button (annotations toggle), in the same quiet register as the seal. */
-.journal-tag {
+/* The entry's three corner buttons - tag, seal, delete - are one family: bare glyphs that only
+   brighten on hover. Grouped because they are the same control in three moods, in one file; the
+   per-button rules below carry only what actually differs (the delete's colour, and that it stays
+   coral rather than going teal). Deliberately NOT a shared `.icon-btn` primitive: the other bare
+   buttons in the app disagree about colour, opacity and hover, and five of seven would have had to
+   undo it - see REFACTOR_UI, "Reviewed and left alone". */
+.journal-tag,
+.journal-seal,
+.journal-delete {
     display: inline-flex;
     background: none;
     border: 0;
@@ -235,15 +243,6 @@
     color: var(--coral);
 }
 
-.journal-seal {
-    display: inline-flex;
-    background: none;
-    border: 0;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 1.1rem;
-    opacity: 0.75;
-}
 
 .journal-seal:hover {
     opacity: 1;
@@ -251,12 +250,7 @@
 }
 
 .journal-delete {
-    display: inline-flex;
-    background: none;
-    border: 0;
     color: var(--coral);
-    cursor: pointer;
-    font-size: 1.1rem;
     opacity: 0.7;
 }
 
