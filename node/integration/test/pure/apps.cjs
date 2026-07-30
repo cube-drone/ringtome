@@ -5,10 +5,12 @@
 // else in the codebase states it.
 const assert = require('node:assert');
 
-let DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, featuresOf;
+let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, featuresOf;
+let Icons;
 before(async () => {
-    ({ DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, featuresOf } =
+    ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, featuresOf } =
         await import('../../../js/apps.js'));
+    ({ Icons } = await import('../../../js/icons.js'));
 });
 
 describe('app registry', () => {
@@ -131,6 +133,21 @@ describe('app registry', () => {
 
         it('is safe on no app', () => {
             assert.equal(appLabel(null, 'Curtis'), '');
+        });
+    });
+
+    // The registry names its icons by role rather than importing them, which is what keeps this
+    // module import-free - at the cost of a typo becoming a silent fallback glyph instead of an
+    // import error. This is the check that buys the indirection back.
+    describe('icon names', () => {
+        it('every app names a glyph that icons.js actually has', () => {
+            const missing = APPS.filter((a) => !a.blank).filter((a) => !Icons[a.icon])
+                .map((a) => `${a.id}: '${a.icon}'`);
+            assert.deepEqual(missing, []);
+        });
+
+        it('and no app forgets to name one', () => {
+            assert.deepEqual(APPS.filter((a) => !a.blank && !a.icon).map((a) => a.id), []);
         });
     });
 });

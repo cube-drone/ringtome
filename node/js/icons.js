@@ -116,6 +116,12 @@ export const Icons = {
     link: LinkSimple,
 };
 
+/// The glyph an app's registry entry names. The registry (apps.js) carries a role name rather than
+/// a component so that it can stay import-free and testable; this is where the name becomes a
+/// drawing. An unknown name degrades to the page glyph rather than crashing a render - and
+/// integration/test/pure/apps.cjs asserts no registry entry actually relies on that.
+export const iconFor = (app) => (app && Icons[app.icon]) || Icons.page;
+
 /// The icon a MEDIA document's format earns in listings (tree rows, the note picker), or null
 /// for text formats - text rows keep their default look. Wire names from the server's
 /// `Format::as_str`: avif/apng render as images, webm as video, opus as audio.

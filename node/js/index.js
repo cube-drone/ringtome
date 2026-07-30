@@ -24,7 +24,7 @@ import { liveApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } fr
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
 import { slugify, HEX_ID } from './doc/naming.js';
-import { Icons, IconContext } from './icons.js';
+import { Icons, IconContext, iconFor } from './icons.js';
 import { beats } from './swatch.js';
 
 const html = htm.bind(h);
@@ -378,7 +378,7 @@ const Inside = ({ session }) => {
                         key=${app.id}
                         title=${appLabel(app, personaName)}
                         onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
-                    ><span class="quickbar-hex-face"><${app.icon} /></span></button>`;
+                    ><span class="quickbar-hex-face"><${iconFor(app)} /></span></button>`;
                 })}
             </span>
             <${Clock} />

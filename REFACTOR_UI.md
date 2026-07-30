@@ -77,18 +77,18 @@ lines is nearly there; the tiers ahead (chat, boards, pages, webrings) will arri
 rule `net.rs` followed.
 
 
-- [ ] **S2. Revisit `rules/` once the pure set passes ~8 modules.** The directory was rejected on
-  2026-07-29 against a pure set of THREE, where a cop naming them costs less than a tree change.
-  The P section below deliberately grows that set; past roughly eight, S1's "declared pure set"
-  becomes a hand-maintained list living in a script, and a directory *is* that declaration - which
-  is precisely why the Rust side gives its pure core a whole crate rather than a convention. The
-  trigger is a count, so it can be checked rather than argued: **when eight modules have zero
-  local imports, reopen this.** (The original trigger counted files in `integration/test/pure/`,
-  which tripped on 2026-07-29 at eight files while the strict set was only four - `test/pure/` is
-  "tests that need no browser", which includes tests of pure FUNCTIONS inside impure modules like
-  `apps.js` and `mirror/doccache.js`. Two different counts; the module one is the one that decides
-  a directory. `conventions.cjs` now asserts it, so this reopens itself with a failing test.) It stays a directory question, not a crate question:
-  a second client sharing these rules is speculation, and the nameability test says no.
+- [ ] **S2. Revisit `rules/` once the pure set passes eight modules.** The directory was rejected on
+  2026-07-29 against a pure set of THREE, where a cop naming them costs less than a tree change. The
+  P section deliberately grows that set - it is at **six** (`lookout`, `keepalive`, `docdate`,
+  `swatch`, `apps`, `doc/naming`) - and past roughly eight, the declared list living inside
+  `conventions.cjs` stops being worth maintaining by hand, at which point a directory *is* the
+  declaration. That is why the Rust side gives its pure core a whole crate rather than a convention.
+  `conventions.cjs` asserts the count, so this reopens itself as a failing test rather than waiting
+  for anyone to remember. (Two earlier versions of this trigger measured the wrong thing - test
+  files in `test/pure/`, then zero-import modules - and are recorded in git; the declared set is the
+  faithful measure because it is the thing that gets unwieldy.) It stays a directory question, not a
+  crate question: a second client sharing these rules is speculation, and the nameability test says
+  no.
 
 ## A — Simplification
 
@@ -214,16 +214,6 @@ function; do not contort the rest to reach a coverage number.
 The pleasant surprise is that most of the work below is a **move, not a rewrite** - these are
 already pure functions living inside component files, where nothing can see or test them. Thinning
 those components is also most of B4 by another route.
-
-- [ ] **P6. Let the addressing rules into the declared pure set.** `doc/naming.js` is the most
-  load-bearing pure module in the UI and cannot join the cop's pure set, because that rule is
-  "imports nothing at all" and naming.js imports the app registry. Two steps fix it: make `apps.js`
-  itself importless by having the registry carry icon NAMES (`icon: 'recipes'`) that `icons.js`
-  resolves at the two render sites - the registry is data and should not depend on a rendering
-  library - and then relax the cop from "no imports" to "imports only the pure set", which is the
-  actual firewall and still mechanically checkable. That would take the set from four modules to
-  six and put the round-trip property behind the same gate as everything else. (It also feeds S2's
-  count, which is the trigger for the `rules/` directory question.)
 
 - [ ] **P3. The app surfaces' decision logic.** Two extractions, both of which also thin a fat
   component: from `apps/notes.js`, the list pipeline (`orderDocs(docs, { bucket, appStyle, hits,

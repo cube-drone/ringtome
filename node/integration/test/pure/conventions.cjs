@@ -136,16 +136,29 @@ describe('the pure core', () => {
     // The declared pure set: the UI's conformance boundary, the client-side echo of
     // ringtome-proto. Growing this list is the point (REFACTOR_UI P); it is a list rather than a
     // directory only until it reaches eight (S2).
-    const PURE = ['lookout.js', 'keepalive.js', 'docdate.js', 'swatch.js'];
+    const PURE = ['lookout.js', 'keepalive.js', 'docdate.js', 'swatch.js', 'apps.js',
+                  'doc/naming.js'];
     const BROWSER = ['fetch', 'document', 'window', 'Dexie', 'preact', 'localStorage'];
 
     for (const name of PURE) {
         describe(name, () => {
             const src = () => code(path.join(JS_DIR, name));
 
-            it('imports nothing at all - values in, values out', () => {
-                const imports = [...src().matchAll(/^import\s.*$/gm)].map((m) => m[0]);
-                assert.deepEqual(imports, []);
+            it('imports only other pure modules', () => {
+                // The rule used to be "imports nothing at all", which was simple but excluded the
+                // most valuable pure module in the UI: doc/naming.js legitimately needs the app
+                // registry. Closing the set under its own imports is the actual firewall - every
+                // member's dependencies are members, so the whole closure is checked here - and it
+                // is what made apps.js drop its icon import to get in.
+                const outside = [...src().matchAll(/^import\s.*?from\s+'([^']+)'/gms)]
+                    .map((m) => m[1])
+                    .map((spec) =>
+                        spec.startsWith('.')
+                            ? path.relative(JS_DIR, path.resolve(path.dirname(path.join(JS_DIR, name)), spec))
+                                  .split(path.sep).join('/')
+                            : spec)
+                    .filter((dep) => !PURE.includes(dep));
+                assert.deepEqual(outside, [], `${name} imports outside the pure set`);
             });
 
             it('never reaches for the browser', () => {
@@ -166,9 +179,12 @@ describe('the pure core', () => {
     }
 
     it('is still small enough to be a list rather than a directory (REFACTOR_UI S2)', () => {
-        const zeroImport = jsFiles.filter((f) => !/^import\s/m.test(read(f)));
-        assert.ok(zeroImport.length < 8,
-            `${zeroImport.length} modules now have zero imports (${zeroImport.map(rel).join(', ')}) ` +
-            '- at eight, reopen the rules/ directory question in REFACTOR_UI S2');
+        // The trigger S2 is waiting on. Counting the DECLARED SET is the faithful measure: it is
+        // this list, living in a script, that stops being worth maintaining by hand - not the
+        // number of test files (which also cover pure functions inside impure modules) and not the
+        // number of zero-import modules (which no longer describes the set at all).
+        assert.ok(PURE.length < 8,
+            `the pure set is now ${PURE.length} modules (${PURE.join(', ')}) - at eight, reopen ` +
+            'the rules/ directory question in REFACTOR_UI S2');
     });
 });

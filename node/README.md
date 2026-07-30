@@ -82,10 +82,16 @@ nested three are `mirror.js` + `mirror/` (the Dexie mirror: the stream and handl
 and `doccache`), `doc/` (the document machinery every document app composes: session, editor,
 tree, slugs, annotations, upload, completions, turbolinks, livemarquee), and `apps.js` + `apps/`
 (the registry beside its apps - notes, journal, wiki). Everything else stays flat: `index.js` is
-the composition root, `net.js` is the only HTTP client, and `lookout.js`/`keepalive.js`/`docdate.js`
-are the pure core - no imports, no browser, no fetch. Their tests live in
-`integration/test/pure/`, which is the directory's whole meaning: everything in it runs with no
-node booted and no browser, and `just ui-check` globs it. No barrel files: a directory re-exports nothing, so you import the file you want. **An app
+the composition root and `net.js` is the only HTTP client (both enforced by
+`integration/test/pure/conventions.cjs`, along with an acyclic import graph and no dead CSS).
+
+**The pure core** is the UI's own conformance boundary, the client-side echo of `ringtome-proto`:
+`lookout.js`, `keepalive.js`, `docdate.js`, `swatch.js`, `apps.js` and `doc/naming.js` touch no
+browser API and import nothing outside that set, so every rule they hold can be interrogated
+without a node or a DOM. Their tests live in `integration/test/pure/`, which is the directory's
+whole meaning - everything in it runs with nothing booted, and `just ui-check` globs it in about a
+second. Growing this set is deliberate: logic that can be a value-in, value-out function belongs in
+a file that is one. No barrel files: a directory re-exports nothing, so you import the file you want. **An app
 is one file until it needs two**, then it becomes `apps/journal.js` + `apps/journal/`.
 
 ## HTTP surface (unstable, pre-4C)

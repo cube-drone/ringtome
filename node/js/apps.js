@@ -7,7 +7,11 @@
 // the `recipes` bucket. The registry (`name -> app`, on the server) is only consulted for
 // USER-named buckets like `grandmas-recipes`. Anything we can't resolve falls back to `default`
 // (Notes), so an unknown style never strands you.
-import { Icons } from './icons.js';
+//
+// The registry imports NOTHING. An app's `icon` is a role name that icons.js resolves at the two
+// render sites (`iconFor`), not a component - a table of app metadata and the rules over it has no
+// business depending on a rendering library. That is what lets this module join the pure set and be
+// tested without a browser (integration/test/pure/apps.cjs, which also checks every name resolves).
 
 export const DEFAULT_STYLE = 'default';
 
@@ -15,13 +19,13 @@ export const APPS = [
     // Persona is a SYSTEM app: a real app with its own tile and the unified header, but its own
     // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
     // is excluded from the document-app routes. Its dock tile wears the persona's own name.
-    { id: 'persona', name: 'Persona', icon: Icons.persona, live: true, system: true },
+    { id: 'persona', name: 'Persona', icon: 'persona', live: true, system: true },
     // `bucketNoun` is what ONE bucket of this app is called to the user - the word the bucket
     // switcher builds its labels from ("New Recipe Book", "Delete this Journal…").
     {
         id: 'journal',
         name: 'Journal',
-        icon: Icons.journal,
+        icon: 'journal',
         style: 'journal',
         live: true,
         bucketNoun: 'Journal',
@@ -32,7 +36,7 @@ export const APPS = [
     {
         id: 'recipes',
         name: 'Recipes',
-        icon: Icons.recipes,
+        icon: 'recipes',
         style: 'recipes',
         live: true,
         bucketNoun: 'Recipe Book',
@@ -50,7 +54,7 @@ export const APPS = [
     {
         id: 'wiki',
         name: 'Wikibook',
-        icon: Icons.wiki,
+        icon: 'wiki',
         style: 'wiki',
         live: true,
         bucketNoun: 'Wikibook',
@@ -65,7 +69,7 @@ export const APPS = [
     {
         id: 'notes',
         name: 'TurboNotes',
-        icon: Icons.notes,
+        icon: 'notes',
         style: 'default',
         live: true,
         bucketNoun: 'TurboNotes',

@@ -5,6 +5,7 @@ import { h } from 'preact';
 import htm from 'htm';
 
 import { APPS, appLabel } from './apps.js';
+import { iconFor } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -30,7 +31,7 @@ function Hex(app, key, onLaunch, personaName) {
     const content = app.blank
         ? ''
         : html`
-              <span class="app-tile-icon"><${app.icon} /></span>
+              <span class="app-tile-icon"><${iconFor(app)} /></span>
               <span class="app-tile-name" title=${label}>${shown}</span>
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
