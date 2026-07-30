@@ -93,19 +93,26 @@ rule `net.rs` followed.
 
 ## A — Simplification
 
+Empty. Every entry here was the same finding wearing a different hat: the same code written a second
+time, the copies then drifting apart, and one of them missing a clause. That is where the real bug
+was each time - the journal reader that never retried a pending body, the wiki that silently lacked
+the unbucketed catch-all, three `api()` variants disagreeing about `err.status`. When you catch
+yourself writing something a second time, that is the finding, not the tidying.
 
 ## B — Modularity
 
-- [ ] **B4. `DocsApp`'s render is still three components in one.** Its decision logic left for
-  `pure/doclist.js` (P3) and its spine for `doc/docapp.js` (B5), so what remains is markup: a
-  50-line inlined list-row template, the tag cloud's column, and the four-column arrangement that
-  hosts them. The row and the tag column are each a clean extraction. While in there: the
-  `.pane-head` markup (label + tuck button) is written out twice, in `apps/notes.js`'s `paneHead`
-  and again inline in `doc/tree.js`'s toolbar — one `<PaneHead label= onTuck= />` in `panes.js`
-  (which owns the tuck state) serves both, and the `Rail` component belongs there too.
+Empty. What the section was about, kept because the shape is the point: `index.js` composes and
+implements nothing, an app composes what is BELOW it in `doc/` and never a sibling app, the two
+document apps share a spine (`doc/docapp.js`) without sharing a render, and every module's name
+predicts its contents. `conventions.cjs` holds the two rules that can regress - an acyclic graph and
+no app importing another app.
 
 
 ## C — Readability
+
+Empty. The chip row is `doc/chips.js`, the editor's body render is five early returns, and the
+shadow-buffer machine is `shadow.js`. Watch for the pattern that produced all three: a block of
+markup or state written out a second time "just for now".
 
 
 *(The untested-pure-logic item that used to sit here is now P1/P2, under the principle that
@@ -143,9 +150,12 @@ sequence, `index.js`'s document flash was render timing, the journal's duplicate
 ref-vs-state race. Purity would have caught none of those three. Extract what is genuinely a
 function; do not contort the rest to reach a coverage number.
 
-The pleasant surprise is that most of the work below is a **move, not a rewrite** - these are
-already pure functions living inside component files, where nothing can see or test them. Thinning
-those components is also most of B4 by another route.
+The set is at nine (`pure/`): the app registry, the cozy-address rules, the tree walks, the list
+order, the day book's shape, the divergence lookout, the keepalive cap, claimed dates, and Swatch
+time. Most of getting there was a **move, not a rewrite** - they were already pure functions living
+inside component files, where nothing could see or test them. Two real bugs fell out of writing the
+vectors (a forgeable cache fingerprint, and a cozy link that opened the wrong document), which is
+the argument for the whole exercise.
 
 
 ## D — Stale context in comments and in-app text
@@ -234,5 +244,9 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **B4** — the last one: `apps/notes.js`'s list row and tag column want to be components, and
-   `panes.js` wants the `<PaneHead>` and `Rail` that two files draw by hand.
+Nothing queued. The balance is zero for the first time since this file was opened on 2026-07-29.
+
+What to do instead, when the UI next gets worked on: read `node/README.md`'s layout section first,
+put decision-shaped logic in `pure/` with vectors beside it, and let `just ui-check` tell you when
+you have broken one of the house rules. The sections above that are "empty" are kept deliberately -
+each one records what the category was about, so a future entry has somewhere obvious to land.

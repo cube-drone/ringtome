@@ -19,6 +19,7 @@ import { rootTitleFor } from '../pure/naming.js';
 import { docsInsideOnly, dropIndex, filedDocIds, flatDocs, pathToDoc, sectionIdsUnder }
     from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
+import { PaneHead } from '../panes.js';
 
 const html = htm.bind(h);
 
@@ -604,13 +605,7 @@ export const WikiTree = ({
                 if (tree) completeDrag({ intoId: tree.taxonomy_id });
             }}
         >
-            ${onMinimize &&
-            html`<div class="pane-head">
-                <span class="pane-head-label">tree</span>
-                <button class="pane-min" title="tuck the tree column away" onClick=${onMinimize}>
-                    <${Icons.back} />
-                </button>
-            </div>`}
+            ${onMinimize && html`<${PaneHead} label="tree" onTuck=${onMinimize} />`}
             <div class="tree-toolbar">
                 <button class="tree-tool" onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> ${itemNoun}

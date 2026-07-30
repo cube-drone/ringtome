@@ -33,6 +33,7 @@ export const APPS = [
         live: true,
         bucketNoun: 'Journal',
         itemNoun: 'entry',
+        itemPlural: 'entries',
         // A day book: its own component (JournalApp), a stream of one entry per day - NOT the
         // notes list. It composes the shared editing session directly, so it needs no `features`.
         journal: true,
@@ -101,6 +102,11 @@ const DEFAULT_FEATURES = {
 /// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back
 /// to "item" for an app that hasn't named its own - which reads as placeholder text, and is meant to.
 export const itemNoun = (app) => (app && app.itemNoun) || 'item';
+
+/// And MANY of them, for the places that need a plural (a column header). Naive `+ 's'` by default,
+/// which is right for notes and recipes and pages and wrong for entries - so an app whose plural is
+/// irregular says so, rather than every caller reaching for a pluralizer or dodging the plural.
+export const itemPlural = (app) => (app && app.itemPlural) || `${itemNoun(app)}s`;
 
 /// The resolved feature set for an app (defaults, then the app's overrides). Safe on undefined.
 export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.features) || {}) });

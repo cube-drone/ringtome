@@ -6,11 +6,11 @@
 const assert = require('node:assert');
 
 let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp,
-    bucketHolds, featuresOf, itemNoun;
+    bucketHolds, featuresOf, itemNoun, itemPlural;
 let Icons;
 before(async () => {
     ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds,
-       featuresOf, itemNoun } = await import('../../../js/pure/apps.js'));
+       featuresOf, itemNoun, itemPlural } = await import('../../../js/pure/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
 
@@ -181,6 +181,14 @@ describe('app registry', () => {
         it('falls back to placeholder-ish "item" for an app that never named one', () => {
             assert.equal(itemNoun(appById('persona')), 'item'); // a system app has no things
             assert.equal(itemNoun(undefined), 'item');
+        });
+
+        it('pluralizes naively by default, and by declaration when that is wrong', () => {
+            assert.equal(itemPlural(appById('recipes')), 'recipes');
+            assert.equal(itemPlural(appById('notes')), 'notes');
+            assert.equal(itemPlural(appById('wiki')), 'pages');
+            assert.equal(itemPlural(appById('journal')), 'entries'); // NOT "entrys"
+            assert.equal(itemPlural(undefined), 'items');
         });
 
         it('is lowercase, for mid-sentence use', () => {

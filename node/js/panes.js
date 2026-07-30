@@ -13,8 +13,29 @@ import htm from 'htm';
 
 import { usePrefMap, flagsOf, setPref, setFlag, widthKey, widthPrefix, tuckKey, tuckPrefix }
     from './mirror/prefs.js';
+import { Icons } from './icons.js';
 
 const html = htm.bind(h);
+
+/// A column's little header: its name, and the button that tucks it away. Two files drew this by
+/// hand - the documents app for each of its three columns, the tree pane for itself.
+export const PaneHead = ({ label, onTuck }) => html`<div class="pane-head">
+    <span class="pane-head-label">${label}</span>
+    <button class="pane-min" title=${`tuck the ${label} column away`} onClick=${onTuck}>
+        <${Icons.back} />
+    </button>
+</div>`;
+
+/// What a tucked column leaves behind: a slim vertical strip, its icon above its name running
+/// downward, which brings the column back when clicked.
+export const Rail = ({ icon, label, onClick }) => html`<button
+    class="pane-rail"
+    title=${`show ${label}`}
+    onClick=${onClick}
+>
+    <${icon} />
+    <span class="pane-rail-label">${label}</span>
+</button>`;
 
 /// Which of an app's columns are tucked away (minimized to a rail), and the toggle. The main
 /// surface can't tuck; everything to its left can.

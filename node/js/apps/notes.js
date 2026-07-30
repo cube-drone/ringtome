@@ -18,10 +18,10 @@ import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
-import { featuresOf, itemNoun } from '../pure/apps.js';
+import { featuresOf, itemNoun, itemPlural } from '../pure/apps.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
-import { useColWidths, useColTucks } from '../panes.js';
+import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 
@@ -59,16 +59,6 @@ export function useArrowNav(nav, order, selected, select) {
     }, [nav, order, selected, select]);
 }
 
-// A tucked-away column: the slim rail left standing when a column is minimized - its icon and
-// name run vertically, and a click brings the column back.
-const Rail = ({ icon, label, onClick }) => html`<button
-    class="pane-rail"
-    title=${`show ${label}`}
-    onClick=${onClick}
->
-    <${icon} />
-    <span class="pane-rail-label">${label}</span>
-</button>`;
 
 // --- search snippets: the first few body lines that contain the query, with hits highlighted.
 // The mirror only holds a token bag (no line structure), so the body is fetched per result and
@@ -134,6 +124,72 @@ const Snippet = ({ root, docId, query }) => {
 };
 
 
+// One row in the list: title, and whatever this app has asked to show beneath it. Everything
+// conditional here is a `features` flag or a piece of the document's own filing - a row with no
+// description, no date and no tags is one line tall, which is what Recipes wants.
+const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilter, onSelect,
+                   onToggleTag }) => html`<button
+    class=${doc.doc_id === selected ? 'note-row selected' : 'note-row'}
+    onClick=${() => onSelect(doc.doc_id)}
+    draggable=${true}
+    onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
+>
+    <span class="note-row-title">
+        ${doc.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}
+        ${formatIcon(doc.format) &&
+        html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `}
+        ${doc.title || 'untitled'}
+    </span>
+    ${feat.description &&
+    doc.fields &&
+    doc.fields.description &&
+    html`<small class="note-row-desc">${doc.fields.description}</small>`}
+    ${hits !== null && html`<${Snippet} root=${root} docId=${doc.doc_id} query=${searchQuery} />`}
+    ${(feat.date || doc.diverged) &&
+    html`<span class="note-row-when">
+        ${feat.date &&
+        (hasClaimedDate(doc)
+            ? html`<span
+                  class="note-row-claimed"
+                  title="a date you set for this document (its real last edit was ${when(doc.updated_ms)})"
+              >${formatClaimed(doc.fields[DISPLAY_DATE_FIELD])}</span>`
+            : when(doc.updated_ms))}${doc.diverged
+            ? (feat.date ? ' · ' : '') + 'two versions'
+            : ''}
+    </span>`}
+    ${(doc.tags || []).length > 0 &&
+    html`<span class="note-row-tags">
+        ${doc.tags.map(
+            (t) => html`<span
+                class=${tagFilter.includes(t) ? 'note-row-tag active' : 'note-row-tag'}
+                key=${t}
+                role="button"
+                onClick=${(e) => {
+                    e.stopPropagation();
+                    onToggleTag(t);
+                }}
+            >${t}</span>`
+        )}
+    </span>`}
+</button>`;
+
+// The tag cloud: every tag in view, most-used first, clicking one into (or out of) the filter the
+// list reads. An optional column - only apps whose `features.tagColumn` asks for it.
+const TagColumn = ({ cloud, active, onToggleTag, onTuck }) => html`<aside class="tag-column">
+    <${PaneHead} label="tags" onTuck=${onTuck} />
+    ${cloud.map(
+        ([tag, count]) => html`<button
+            key=${tag}
+            class=${active.includes(tag) ? 'tag-cloud-row active' : 'tag-cloud-row'}
+            onClick=${() => onToggleTag(tag)}
+        >
+            <span class="tag-cloud-name">${tag}</span>
+            <span class="tag-cloud-count">${count}</span>
+        </button>`
+    )}
+    ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">no tags yet</p>`}
+</aside>`;
+
 // The documents app - the shared surface every "documents" application (Notes, Recipes, ...)
 // currently renders. `app` is its registry entry (id, name, icon, style); the document
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
@@ -142,7 +198,8 @@ const Snippet = ({ root, docId, query }) => {
 export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     const root = current.root;
     const feat = featuresOf(app);
-    const noun = itemNoun(app); // what this app calls one of its things
+    const noun = itemNoun(app); // what this app calls one of its things, and many of them
+    const nouns = itemPlural(app);
     const [busy, setBusy] = useState(false);
     const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
 
@@ -160,10 +217,6 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
 
-    // The tag cloud (an optional sidebar): every tag across this app's documents that match the
-    // current search, most-used first. Counted over the search results (not the tag filter), so
-    // it narrows with a query but still shows every tag you could add; clicking one toggles it
-    // into the same tag filter the list uses.
     // Counted over the SEARCH results rather than the tag-filtered list, so the cloud narrows with
     // a query but still shows every tag you could add.
     const tagCloud = feat.tagColumn
@@ -173,12 +226,6 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
     // widths.
     const { tucked, toggleTuck } = useColTucks(root, app.id);
-    const paneHead = (label, col) => html`<div class="pane-head">
-        <span class="pane-head-label">${label}</span>
-        <button class="pane-min" title=${`tuck the ${label} column away`} onClick=${() => toggleTuck(col)}>
-            <${Icons.back} />
-        </button>
-    </div>`;
 
     // The tree's depth-first doc order (the "book order"), reported by the tree pane.
     const [treeOrder, setTreeOrder] = useState(null);
@@ -238,27 +285,16 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                 ${feat.tagColumn &&
                 (tucked.has('tags')
                     ? html`<${Rail} icon=${Icons.tag} label="tags" onClick=${() => toggleTuck('tags')} />`
-                    : html`<aside class="tag-column">
-                          ${paneHead('tags', 'tags')}
-                          ${tagCloud.map(
-                              ([tag, count]) => html`<button
-                                  key=${tag}
-                                  class=${tagFilter.includes(tag)
-                                      ? 'tag-cloud-row active'
-                                      : 'tag-cloud-row'}
-                                  onClick=${() => toggleTag(tag)}
-                              >
-                                  <span class="tag-cloud-name">${tag}</span>
-                                  <span class="tag-cloud-count">${count}</span>
-                              </button>`
-                          )}
-                          ${tagCloud.length === 0 &&
-                          html`<p class="null-sub tag-column-empty">no tags yet</p>`}
-                      </aside>${resizer('tags')}`)}
+                    : html`<${TagColumn}
+                          cloud=${tagCloud}
+                          active=${tagFilter}
+                          onToggleTag=${toggleTag}
+                          onTuck=${() => toggleTuck('tags')}
+                      />${resizer('tags')}`)}
                 ${tucked.has('list')
                     ? html`<${Rail} icon=${Icons.list} label="items" onClick=${() => toggleTuck('list')} />`
                     : html`<aside class="notes-list">
-                    ${paneHead('items', 'list')}
+                    <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
                     <button class="notes-new" disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : `+ new ${noun}`}
                     </button>
@@ -274,56 +310,19 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                         )}
                     </div>`}
                     ${list.map(
-                        (d) => html`<button
+                        (d) => html`<${NoteRow}
                             key=${d.doc_id}
-                            class=${d.doc_id === selected ? 'note-row selected' : 'note-row'}
-                            onClick=${() => select(d.doc_id)}
-                            draggable=${true}
-                            onDragStart=${(e) => startDocDrag(e, root, d, bucket)}
-                        >
-                            <span class="note-row-title">
-                                ${d.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}${formatIcon(d.format) &&
-                                html`<span class="note-row-kind"><${formatIcon(d.format)} /></span> `}${d.title || 'untitled'}
-                            </span>
-                            ${feat.description &&
-                            d.fields &&
-                            d.fields.description &&
-                            html`<small class="note-row-desc">${d.fields.description}</small>`}
-                            ${hits !== null &&
-                            html`<${Snippet}
-                                root=${root}
-                                docId=${d.doc_id}
-                                query=${searchQuery}
-                            />`}
-                            ${(feat.date || d.diverged) &&
-                            html`<span class="note-row-when">
-                                ${feat.date &&
-                                (hasClaimedDate(d)
-                                    ? html`<span
-                                          class="note-row-claimed"
-                                          title="a date you set for this document (its real last edit was ${when(d.updated_ms)})"
-                                      >${formatClaimed(d.fields[DISPLAY_DATE_FIELD])}</span>`
-                                    : when(d.updated_ms))}${d.diverged
-                                    ? (feat.date ? ' · ' : '') + 'two versions'
-                                    : ''}
-                            </span>`}
-                            ${(d.tags || []).length > 0 &&
-                            html`<span class="note-row-tags">
-                                ${d.tags.map(
-                                    (t) => html`<span
-                                        class=${tagFilter.includes(t)
-                                            ? 'note-row-tag active'
-                                            : 'note-row-tag'}
-                                        key=${t}
-                                        role="button"
-                                        onClick=${(e) => {
-                                            e.stopPropagation();
-                                            toggleTag(t);
-                                        }}
-                                    >${t}</span>`
-                                )}
-                            </span>`}
-                        </button>`
+                            doc=${d}
+                            root=${root}
+                            bucket=${bucket}
+                            selected=${selected}
+                            feat=${feat}
+                            searchQuery=${searchQuery}
+                            hits=${hits}
+                            tagFilter=${tagFilter}
+                            onSelect=${select}
+                            onToggleTag=${toggleTag}
+                        />`
                     )}
                     ${docs && list.length === 0 &&
                     html`<p class="null-sub notes-empty">
