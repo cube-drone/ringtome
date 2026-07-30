@@ -5,10 +5,12 @@
 // file; they are HTTP POSTs elsewhere, and their effects arrive back down the stream like
 // anyone else's.
 //
-// The one exception is `prefs`: local-only UI preferences (per-doc view mode), the single
-// table the stream never feeds and refreshes never clear. Still disposable - prefs share the
-// mirror's lifetime, so "forget this browser" forgets them too, which is the right privacy
-// posture for a table that records which documents you touch.
+// Three tables are exceptions, all local-only: `prefs` (UI preferences - prefs.js owns its key
+// vocabulary and is the only module that touches the table) and the two fingerprinted fetch
+// caches, `docdetails` and `trees` (doccache.js). The stream never feeds these and a refresh
+// never clears them. Still disposable - they share the mirror's lifetime, so "forget this
+// browser" forgets them too, which is the right privacy posture for tables that record which
+// documents you touch.
 import Dexie, { liveQuery } from 'dexie';
 import { useState, useEffect } from 'preact/hooks';
 

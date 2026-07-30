@@ -22,18 +22,6 @@ real debugging living as pure functions with unit tests (`integration/test/looko
 
 ## A — Simplification
 
-- [ ] **A2. The `prefs` table has five owners.** STYLE.md's "a table has one owner; raw SQL naming
-  a table lives only in that table's module" is violated in the mirror. Six key schemes are
-  hand-built and hand-parsed across five files: `col:<app>:<c>` (`notes.js:481`, parsed
-  `split(':')[2]`), `colw:<app>:<c>` (`panes.js:21`, same), `wikifold:<id>` (`tree.js:430`,
-  `slice('wikifold:'.length)`), `seal:<id>` (`journal.js:399`, `slice(5)` — a magic number),
-  `mode:<docId>` (`editor.js:152`), `journal:font` (`journal.js:419`). A `prefs.js` owning the
-  key vocabulary plus `usePref(root, key)` and `usePrefSet(root, prefix)` collapses all six to
-  declarations. It also settles a live contradiction: `journal.js:412` carries a comment
-  explaining that `.where().equals().toArray()` "reliably re-fires" unlike a bare `.get()`,
-  while `editor.js:152` uses the bare `.get()` — one of those is wrong, and one owner is how we
-  find out. Land with B4 (tuck state moves to `panes.js`); they are the same concern.
-
 - [ ] **A3. Three copies of the shadow-buffer field hook.** `persona.js:463 useProfileField`,
   `annotations.js:38 useField`, `annotations.js:94 useClaimedDate` are the same ~50-line machine:
   local value, `dirty` ref, `valueRef` mirror, debounce, flush on blur + unmount, adopt the
@@ -96,12 +84,13 @@ real debugging living as pure functions with unit tests (`integration/test/looko
   the concepts, and gives the `application/x-ringtome-doc` / `-section` MIME strings a single
   owner (currently spelled out in `tree.js:175`, `upload.js:455,462`, `slugs.js:214`).
 
-- [ ] **B4. `DocsApp` is 300 lines doing seven jobs** (`notes.js:393-691`): scope filter, search
-  filter, tag filter + cloud, sort, tuck state, nav order, create, and a four-column render with a
-  50-line inlined list-row template. The tag column and the list row are each a clean extraction;
-  `tucked`/`toggleCol` (`:480-497`) belongs in `panes.js` beside `useColWidths` — tuck state and
-  column width are the same concern (durable local column chrome) split across two files for no
-  reason. Land the `panes.js` half with A2.
+- [ ] **B4. `DocsApp` is ~290 lines doing six jobs** (`notes.js`): scope filter, search filter, tag
+  filter + cloud, sort, nav order, create, and a four-column render with a 50-line inlined
+  list-row template. The tag column and the list row are each a clean component extraction. While
+  in there: the `.pane-head` markup (label + tuck button) is written out twice, in `notes.js`'s
+  `paneHead` and again inline in `tree.js`'s toolbar — one `<PaneHead label= onTuck= />` in
+  `panes.js` (which now owns the tuck state) serves both, and the `Rail` component in `notes.js`
+  belongs there too.
 
 - [ ] **B5. `WikiApp` is `DocsApp` minus two columns**, but **do not merge the components** —
   STYLE.md's "four similar-but-honest decode functions beat one parameterized decode engine"
@@ -155,9 +144,6 @@ then wrong about the file's shape.
 - [ ] **D2. `upload.js:1-10`** — "File upload, **phase two** … **Phase three** adds the
   in-document placeholder and the final file reference." Phase three is in this same file
   (`useUploadCapture`, `:392`).
-- [ ] **D3. `cache.js:8-11`** — "`prefs`: local-only UI preferences (per-doc view mode), **the
-  single table** the stream never feeds." There are three such tables (`prefs`, `docdetails`,
-  `trees` — declared 25 lines below) and prefs holds six key families, not one.
 - [ ] **D4. The gear that no longer exists**, in three places: `index.js:290` ("reached by the
   dock gear"), `persona.js:411` ("reached by the gear in the dock"), `apps.js:19` ("Also
   reachable from the footer gear"). `index.js:383-385` explains the gear's *removal* — so the
@@ -239,16 +225,20 @@ Re-litigating these costs more than reading this list.
   form is uniform across every module. Not revisited.
 - **XHR for uploads** (A8): `fetch` still has no upload-progress event. The duplication goes; the
   XHR stays.
+- **The editor's view mode READS its pref once instead of watching it** (`editor.js`, via
+  `readPref`). `prefs.js` now offers a live `usePref` that would also sync the mode across tabs,
+  and it was deliberately not used: the mode is a local buffer whose "a click that beats the read
+  wins" rule is load-bearing, and two tabs on one document silently re-moding each other is the
+  cursor-memory mistake in a different coat. Revisit only if someone actually wants it.
 
 ## Suggested working order
 
-1. **A2** (`prefs.js`) + the `panes.js` half of **B4** — one coherent unit.
-2. **D1–D9** and **C3** — one sweep, no behaviour change, and it stops the docs lying while we
-   refactor underneath them.
-3. **A5** — an actual bug, fixed by extracting the hook.
-4. **E1 + E3 + E5** as one commit (mechanical; verifiable by diffing the built bundle
+1. **D1, D2, D4–D9** and **C3** — one sweep, no behaviour change, and it stops the docs lying
+   while we refactor underneath them.
+2. **A5** — an actual bug, fixed by extracting the hook.
+3. **E1 + E3 + E5** as one commit (mechanical; verifiable by diffing the built bundle
    byte-for-byte), then **E4** on its own.
-5. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
+4. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
    `clock.js` out of `index.js`).
-6. **A3**, **A4**, **A7**, **A8**, **B3**, **C1**, **C2**.
-7. **C4** — vectors for `slugs.js` and `apps.js`.
+5. **A3**, **A4**, **A7**, **A8**, **B3**, **C1**, **C2**, **B4**.
+6. **C4** — vectors for `slugs.js` and `apps.js`.

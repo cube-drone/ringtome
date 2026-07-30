@@ -11,6 +11,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
+import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from './prefs.js';
 import { cachedTree, rememberTree, rosterFingerprint } from './doccache.js';
 import { useSearch } from './search.js';
 // Circular with slugs.js (it imports rootTitleFor from here) - safe: both sides only call the
@@ -412,20 +413,12 @@ export const WikiTree = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, rootId, rosterKey, bump, reloadKey]);
 
-    // Fold state lives in Dexie prefs (like the journal's seals): per-section, durable in this
-    // browser, live across tabs, never synced.
-    const foldRows = useLive(
-        () => openMirror(root).prefs.where('key').startsWith('wikifold:').toArray(),
-        [root]
-    );
-    const folded = new Set(
-        (foldRows || []).filter((r) => r.value === '1').map((r) => r.key.slice('wikifold:'.length))
-    );
-    const toggleFold = (taxId) => {
-        openMirror(root)
-            .prefs.put({ key: `wikifold:${taxId}`, value: folded.has(taxId) ? '0' : '1' })
-            .catch(() => {});
-    };
+    // Fold state is a local pref (prefs.js): per-section, durable in this browser, live across
+    // tabs, never synced. The map form, not just the flag set, because the reveal pass below has
+    // to know whether the prefs have LOADED yet.
+    const foldPrefs = usePrefMap(root, FOLD_PREFIX);
+    const folded = flagsOf(foldPrefs);
+    const toggleFold = (taxId) => setFlag(root, foldKey(taxId), !folded.has(taxId));
 
     // Arriving somewhere you can't see isn't arriving: when the selection changes (prev/next
     // walking into a folded section, a deep link, a list click), unfold every ancestor of the
@@ -435,7 +428,7 @@ export const WikiTree = ({
     // reveals. A diamond-placed page reveals its first-occurrence path (the nav order's path).
     const revealed = useRef(null);
     useEffect(() => {
-        if (!selected || !tree || foldRows === undefined) return;
+        if (!selected || !tree || foldPrefs === undefined) return;
         if (revealed.current === selected) return;
         revealed.current = selected;
         const trail = [];
@@ -454,12 +447,10 @@ export const WikiTree = ({
         };
         find(tree, []);
         for (const id of trail) {
-            if (folded.has(id)) {
-                openMirror(root).prefs.put({ key: `wikifold:${id}`, value: '0' }).catch(() => {});
-            }
+            if (folded.has(id)) setFlag(root, foldKey(id), false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selected, tree, foldRows]);
+    }, [selected, tree, foldPrefs]);
 
     const newPage = async (parentTaxId) => {
         try {

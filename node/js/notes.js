@@ -19,7 +19,7 @@ import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './
 import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, featuresOf } from './apps.js';
 import { WikiTree, ensureTreeRoot } from './tree.js';
-import { useColWidths } from './panes.js';
+import { useColWidths, useColTucks } from './panes.js';
 import { useSlugDocId, useCozyAddress, slugPathFor, startDocDrag } from './slugs.js';
 import { Icons, formatIcon } from './icons.js';
 
@@ -462,24 +462,12 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
           ).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
         : [];
 
-    // Which columns are tucked away (minimized to a rail): per-app, in Dexie prefs like the
-    // journal seals and tree folds - durable in this browser, live across tabs, never synced.
-    // The main surface can't tuck; everything to its left can.
-    const colRows = useLive(
-        () => openMirror(root).prefs.where('key').startsWith(`col:${app.id}:`).toArray(),
-        [root, app.id]
-    );
-    const tucked = new Set(
-        (colRows || []).filter((r) => r.value === '1').map((r) => r.key.split(':')[2])
-    );
-    const toggleCol = (c) => {
-        openMirror(root)
-            .prefs.put({ key: `col:${app.id}:${c}`, value: tucked.has(c) ? '0' : '1' })
-            .catch(() => {});
-    };
+    // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
+    // widths.
+    const { tucked, toggleTuck } = useColTucks(root, app.id);
     const paneHead = (label, col) => html`<div class="pane-head">
         <span class="pane-head-label">${label}</span>
-        <button class="pane-min" title=${`tuck the ${label} column away`} onClick=${() => toggleCol(col)}>
+        <button class="pane-min" title=${`tuck the ${label} column away`} onClick=${() => toggleTuck(col)}>
             <${Icons.back} />
         </button>
     </div>`;
@@ -554,7 +542,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
             <div class="notes-columns" style=${colStyle}>
                 ${feat.tagColumn &&
                 (tucked.has('tags')
-                    ? html`<${Rail} icon=${Icons.tag} label="tags" onClick=${() => toggleCol('tags')} />`
+                    ? html`<${Rail} icon=${Icons.tag} label="tags" onClick=${() => toggleTuck('tags')} />`
                     : html`<aside class="tag-column">
                           ${paneHead('tags', 'tags')}
                           ${tagCloud.map(
@@ -573,7 +561,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                           html`<p class="null-sub tag-column-empty">no tags yet</p>`}
                       </aside>${resizer('tags')}`)}
                 ${tucked.has('list')
-                    ? html`<${Rail} icon=${Icons.list} label="items" onClick=${() => toggleCol('list')} />`
+                    ? html`<${Rail} icon=${Icons.list} label="items" onClick=${() => toggleTuck('list')} />`
                     : html`<aside class="notes-list">
                     ${paneHead('items', 'list')}
                     <button class="notes-new" disabled=${busy} onClick=${createNew}>
@@ -649,7 +637,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                 </aside>${resizer('list')}`}
                 ${feat.tree &&
                 (tucked.has('tree')
-                    ? html`<${Rail} icon=${Icons.tree} label="tree" onClick=${() => toggleCol('tree')} />`
+                    ? html`<${Rail} icon=${Icons.tree} label="tree" onClick=${() => toggleTuck('tree')} />`
                     : html`<${WikiTree}
                           root=${root}
                           bucket=${bucket}
@@ -658,7 +646,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                           searchQuery=${searchQuery}
                           reloadKey=${treeReload}
                           showUnfiled=${false}
-                          onMinimize=${() => toggleCol('tree')}
+                          onMinimize=${() => toggleTuck('tree')}
                           onOrder=${setTreeOrder}
                       />${resizer('tree')}`)}
                 <${RightColumn}

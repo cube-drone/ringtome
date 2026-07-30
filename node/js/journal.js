@@ -12,6 +12,7 @@ import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
+import { usePrefMap, usePref, setPref, sealKey, SEAL_PREFIX, JOURNAL_FONT } from './prefs.js';
 import { cachedDoc, rememberDoc } from './doccache.js';
 import { useSearch, queryWords } from './search.js';
 import { useDocSession } from './docsession.js';
@@ -240,17 +241,16 @@ const LockButton = ({ onUnlocked }) => {
 };
 
 // One row in the stack: the date heading, plus the editor (today / unlocked) or the reader
-// (locked, with the lock button).
-// Seal/unlock overrides persist in Dexie's local `prefs` table (keyed `seal:<doc_id>` ->
-// 'open' | 'locked'; absent = follow the day). Local-only - never synced to the node, but durable
-// across reloads and live across tabs of this browser (via `useLive`), which is the right weight:
-// "this page is closed" is a personal, per-device gesture, not a document fact.
-const sealKey = (docId) => `seal:${docId}`;
+// (locked, with the lock button). A seal/unlock override is a local pref (prefs.js owns the key
+// and its 'open' | 'locked' domain; absent = follow the day) - never synced, but durable across
+// reloads and live across this browser's tabs, which is the right weight: "this page is closed"
+// is a personal, per-device gesture, not a document fact.
+const EMPTY_SEALS = new Map(); // stands in while the prefs load: no overrides, follow the day
 
 // The page's writing hand: one font override for the WHOLE journal, chosen from three moods -
 // typewriter (Special Elite), handwritten (Caveat), or plain-legible (Atkinson Hyperlegible).
-// Stored in Dexie prefs alongside the seals (local, durable, live across tabs); it flows in as
-// the CSS var `--journal-font` on `.journal`, which every entry heading, reader, and editor
+// A local pref like the seals; it flows in as the CSS var `--journal-font` on `.journal`, which
+// every entry heading, reader, and editor
 // inherits. A per-page default (not per-entry) - the journal reads in one voice.
 // `scale` normalizes each face's optical size to the others (the same factors as the global
 // `mq-font-*` normalization in index.css): Special Elite is the reference, Atkinson runs a touch
@@ -382,40 +382,19 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
     const [busy, setBusy] = useState(false);
     const creating = useRef(false); // synchronous guard against duplicate today-entry creation
 
-    // Seal/unlock overrides, live from Dexie (across reloads and tabs). Read here too so the
-    // phantom can key off whether an OPEN today entry exists.
-    const seals = useLive(
-        () => openMirror(root).prefs.where('key').startsWith('seal:').toArray(),
-        [root]
-    );
-    const sealMap = new Map((seals || []).map((r) => [r.key.slice(5), r.value])); // 'seal:'.length
-    const setOverride = (docId, v) => {
-        openMirror(root).prefs.put({ key: sealKey(docId), value: v }).catch(() => {});
-    };
+    // Seal/unlock overrides, live (across reloads and tabs). Read here too so the phantom can key
+    // off whether an OPEN today entry exists. An ABSENT override means "follow the day", so this
+    // is a map of what's present - never a set of flags.
+    const sealMap = usePrefMap(root, SEAL_PREFIX) || EMPTY_SEALS;
+    const setOverride = (docId, v) => setPref(root, sealKey(docId), v);
     const openOf = (e, todayKey) => {
         const o = sealMap.get(e.doc_id);
         return o !== undefined ? o === 'open' : dayKey(e.created_ms) === todayKey;
     };
 
-    // The page font override (same durable Dexie home as the seals). Read with the same
-    // `.where().equals().toArray()` shape the seals use - which reliably re-fires - rather than a
-    // bare `.get()`. An optimistic `pick` makes the click land instantly (no wait on the Dexie
-    // round-trip); once the write echoes back through the live query, the pick is dropped so a
-    // change from another tab can take over again.
-    const fontRows = useLive(
-        () => openMirror(root).prefs.where('key').equals('journal:font').toArray(),
-        [root]
-    );
-    const persistedFont = fontRows && fontRows[0] && fontRows[0].value;
-    const [fontPick, setFontPick] = useState(null);
-    const font = fontPick || persistedFont || DEFAULT_FONT;
-    useEffect(() => {
-        if (fontPick && persistedFont === fontPick) setFontPick(null);
-    }, [persistedFont, fontPick]);
-    const setFont = (f) => {
-        setFontPick(f);
-        openMirror(root).prefs.put({ key: 'journal:font', value: f }).catch(() => {});
-    };
+    // The page font override. `usePref` makes the click land instantly and then defers to the
+    // stored value, so another tab's change can still take over.
+    const [font, setFont] = usePref(root, JOURNAL_FONT, DEFAULT_FONT);
 
     // A minute tick re-checks the day boundary, so today's entry locks shut when the day ends.
     const [now, setNow] = useState(() => Date.now());

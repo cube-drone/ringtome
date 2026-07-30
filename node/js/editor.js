@@ -23,7 +23,7 @@ import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { api } from './net.js';
-import { openMirror } from './cache.js';
+import { readPref, setPref, viewModeKey } from './prefs.js';
 import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -129,21 +129,16 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         },
     });
 
-    // The remembered view mode: hydrate this doc's last pick from the mirror's local-only
-    // prefs table; picking writes it back. The functional set means a click that beats the
-    // read wins - hydration never clobbers a human. A remembered mode the current format
-    // can't offer just sits clamped (the effective-mode rule below) and resurfaces if the
-    // doc converts back.
+    // The remembered view mode: hydrate this doc's last pick from prefs, then let the local
+    // buffer own it. READ once rather than watched, deliberately - the functional set means a
+    // click that beats the read wins, so hydration never clobbers a human. A remembered mode the
+    // current format can't offer just sits clamped (the effective-mode rule below) and resurfaces
+    // if the doc converts back.
     useEffect(() => {
         let alive = true;
-        openMirror(root)
-            .prefs.get(`mode:${docId}`)
-            .then((row) => {
-                if (alive && row && MODES[row.value]) {
-                    setChosenMode((cur) => cur ?? row.value);
-                }
-            })
-            .catch(() => {});
+        readPref(root, viewModeKey(docId)).then((value) => {
+            if (alive && value && MODES[value]) setChosenMode((cur) => cur ?? value);
+        });
         return () => {
             alive = false;
         };
@@ -151,9 +146,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
 
     const pickMode = (m) => {
         setChosenMode(m);
-        openMirror(root)
-            .prefs.put({ key: `mode:${docId}`, value: m })
-            .catch(() => {});
+        setPref(root, viewModeKey(docId), m);
     };
 
     if (status === 'opening' && !loaded) {
