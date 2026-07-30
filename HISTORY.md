@@ -871,3 +871,61 @@ through a new `completions` prop:
   byte-URL form uploads and drags write, so media renders inline immediately. The link picker
   learned to step aside when `[` follows `!`, since the embed opener belongs to media. The
   journal's `!` searches TurboNotes' home, where journal-borne media records actually live.
+
+## The doctrine day: lanes, pairs, and the retirement that vanished (2026-07-30)
+
+A design-review conversation ("what makes a friend?") pulled one thread and re-wove three
+sections of the plan, then walked into shipped code and found a real hole. No feature work; one
+protocol-adjacent bug fix and a doctrine restructure, all in PROJECT_PLAN unless noted.
+
+**Groups moved off the epoch machinery.** The sketch's tortured half was minted secrecy - every
+membership change had to mint a key while every membership *fact* was merely computed. Settled:
+**a group is an identity for its public face and a roster for everything else** - group content
+is plaintext on a **member lane**, served only against member proofs (confidentiality by
+refusal, not mathematics), the roster is the ACL (plaintext, member-only, never published), and
+governance is the **invite tree** over members' own keys (rank-path pointed at a different
+tree), the group's own key tree demoted to its public voice. Supergroups nest now - gated access
+is a predicate, and predicates compose. The honest costs are stated in place: fail-open serving
+surfaces, member-lane blobs needing a gate the blob transport doesn't have (the File Layer's
+"ungated because the hash is the boundary" names its premise now), and operator moderation
+surface. "Public Means Public" grew the three-lane statement: sealed / member-gated / public,
+always a property of the service slot, never a bit (Copy, Don't Flip).
+
+**DMs are the sealed pair.** Two is not an arbitrary cut: it is the only size at which
+membership is not a mutable object - a pair has no roster, no admission, no ejection, and its
+membership changes only through identity events the shipped machinery already handles. A DM is
+two chains interleaved at read; the key is an epoch scoped to two; you cannot add a third person
+- doing it *mints a room*, a copy-don't-flip ceremony. The Inbound Gate (Trust section) now
+states the one predicate DMs, follow receipts, and group invites all pass: above your floor and
+not muted - anti-spam, explicitly not anti-safety.
+
+**The Adult In The Room audit hit shipped code.** Re-reading the sketch's defect list against
+the implementation found the minter rule violated live (a self-retiring key minted the epoch
+excluding itself) and, worse, **self-retirement did not survive sync at all**: a revoke can
+never anchor itself, so it sits beyond its own seal - one seq past it when the chain had
+history, or as an anchorless chain's *only* entry (the adopted-leaf shape the API actually
+produces) - and the gate's seal-or-nothing refusal dropped it both ways. A peer resolved
+Retired in passing, stored nothing, and un-retired the key on the next resolve: the exact
+dumpster-diver attack retirement exists to stop. Fix: `Crown::revocation_of` (proto) names the
+credited revoke - one source of truth, competing forked revokes already settled by resolution -
+and the gate keeps exactly that entry in both shapes (`admit_ceilinged_chain` carve-out +
+founding-entry arm). The minter rule is enforced (self-retirement defers rotation; `rotate_epoch`
+refuses a signer that is its own exclude). Tests at all three levels: proto (phantom-beyond-seal,
+forked competing retirements converge on one credited revoke, anchorless first-entry), gate
+(both shapes stored, dumpster continuation refused from the stored set alone; planted red before
+fix), integration (real two-node self-retirement persists across syncs).
+
+**Doctrine caught up with its own findings.** Repudiation's blast radius generalized to every
+authority-conferring statement (the sketch's item 4, fixed at the source); retirement is
+senior-issuable and the UI will prefer that path; **Exit examined and declined** - its group
+consumer dissolved with the member lane, and the remainder composes from existing verbs (a
+repudiation anchored at the current heads distrusts nothing and kills the subtree; a
+self-issued exit is retire-plus-repudiate-each-child, complete because a key's children all
+live on its own chain); the standing principle stated: friendly departures are self-service,
+hostile ones need a senior. Private
+Chains gained the **Rotation rules**: recipients verified never asserted (smuggle = refusal,
+omission = loud flag + re-seal), any Active member may mint a missing rotation ("rank orders the
+delay, never the right" - seniormost-surviving is unknowable and doesn't need to be known),
+concurrent mints converge by (minter rank, entry hash) with readers trying keys in the same
+order. Residuals ledgered in REFACTOR.md: the liveness watcher (owed - self-retirement currently
+never rotates) and `key-epoch` recipient verification, paired.

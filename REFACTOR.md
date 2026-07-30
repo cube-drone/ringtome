@@ -24,7 +24,23 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   `identity_peers` to. Deliberately deferred: not yet earning its churn. The revisit condition
   has now fired: NEXT_STEPS' "Peer set derived from the key tree" residual (2026-07-25) is
   exactly peer management growing real behavior - do the split as part of that unit.
-- [ ] **Taxonomy rank rebalancing** (`record/rank.rs` module doc names it): ranks grow ~one
+- [ ] **Rotation liveness watcher** (owed by the minter rule, 2026-07-30; PROJECT_PLAN, Private
+  Chains "Rotation rules"): self-retirement no longer mints its own excluding epoch (an epoch
+  you mint is an epoch you know) and nothing else mints one yet, so a self-retired key's era
+  currently never closes - members keep writing under the epoch the trashed device holds. The
+  design is settled: on observing an ejection with no matching rotation (a revoked leaf still
+  in the newest epoch's recipient list), any Active member's node mints; rank-scaled delay is
+  an optimization, duplicates are absorbed by the existing try-all-keys reader. Land alongside
+  it: sort each epoch's key list by (minter rank, entry hash) - `EpochKeys` currently returns
+  insertion order - so writers converge on one key and readers try in write-preference order.
+- [ ] **`key-epoch` recipient verification** (rule stated in PROJECT_PLAN, Private Chains
+  "Rotation rules"; verified-never-asserted is also what makes who-mints-doesn't-matter true):
+  today any well-formed `key-epoch` passes the gate and readers just trial-decrypt their own
+  boxes, so a mint that smuggles a non-Active recipient or silently drops a member is accepted
+  without complaint. Enforce at the gate/fold: smuggled recipient = hard refusal; omitted
+  member = loud flag whose remedy is a re-seal; completeness binds only the newest epoch
+  (adoption re-seals are legitimately recipient-lists-of-one for historical epochs). Grows
+  teeth the day any epoch seals to a second person (DMs); do it with the watcher above.
   digit per 18 appends / per same-spot insert hit; a bloated list is repaired by rewriting its
   ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead
   of need otherwise. The compact-append `after()` already keeps the common bulk-import case

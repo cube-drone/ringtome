@@ -394,18 +394,25 @@ on its own.
 
 Bloody ~~revolution~~ **revocation**! Civil war at last!
 
-There are two kinds of revocation, soon to be three: repudiation, retirement ( and exit, TODO).
+There are two kinds of revocation: repudiation and retirement. (A third, exit, was examined and declined -
+below.)
 
-Revocations are signed statements that remove a node from the identity tree.
+Revocations are signed statements that remove a node from the identity tree. The standing principle (settled
+2026-07-30): **friendly departures are self-service; hostile ones need a senior.** Retirement is self-issuable by
+a key that is not adversarial at the moment of the act; repudiation is never self-issued, because it is precisely
+the claim that the key cannot be trusted to speak for itself.
 
 #### Repudiation
 
 This is The Juicy One For Murders. Someone has misused your identity from a node and it's time for that node to be _excised_.
 This is a removal _with prejudice_.
 
-* Repudiation **must come from a senior node**. 
- * (TODO: A node can also repudiate itself, co-operatively, which is different from retirement because it kills the child tree)
-* Repudiation **kills all of the node's children, as well**. The entire subtree goes down with the ship.
+* Repudiation **must come from a senior node**.
+* Repudiation **distrusts every authority-conferring statement past the cut-point** (generalized 2026-07-30; the
+    Groups sketch caught the old wording claiming only "child authorizations" - a key-tree word that would leave
+    the wrong people inside things). Child authorizations die - the entire subtree goes down with the ship - and
+    so do the key's epoch mints, and, when they exist, its vouches and group admissions. Any future consumer that
+    folds authority from entries inherits this rule, not the narrow one.
 * Repudiation **distrusts all history after a cut-point** - and that cut-point can be _anywhere_ in logical history,
     so a node can have everything its ever done since its birth struck permanently from the record.
 
@@ -423,10 +430,41 @@ This one's a little harder, because what stops the dumpster diver from simply mi
 The answer is determined by the history baked in to the retirement document: new children won't be in that history
 and will be distrusted.
 
-* Retirement **can only come from the node that is being retired**. It is self-issuable and self-issued.
+* Retirement **can come from the retiring node itself** (self-issuable - the common decommission), **or from a
+    senior** ("retire the laptop, from the desktop" - mechanically identical to repudiation's issuance path, and
+    the UI's preferred route when another device is in reach, because the surviving signer can rotate the private
+    epoch in the same act; a self-retiring key cannot - see Private Chains, the minter rule).
 * The retirement chooses a point across all of its chains and signs that with its retirement, 
     a final call sign sealing its entire history. Anything written after this point is distrusted.
 * It **does not kill the children**, they can go about their merry lives. 
+* One wrinkle the implementation must honor (found and fixed 2026-07-30): **a revoke can never anchor itself**, so
+    a self-retirement's own entry sits just beyond the seal it declares - or, for a key that never wrote identity
+    history, stands as its chain's only entry with nothing anchored at all. Seal-or-nothing enforcement that
+    forgets this refuses the retirement itself, and the store forgets the key ever retired - which un-retires a
+    dumpster-dived key on the next resolve. `Crown::revocation_of` names the credited revoke so enforcers keep
+    exactly that one statement, and nothing else beyond the seal.
+
+#### Exit: the third disposition, examined and declined (2026-07-30)
+
+A departing *group* member wanted a disposition that didn't exist: **honor the history, kill the subtree,
+self-issuable** - retirement can't say it (the subtree lives) and repudiation says too much (quarantines honest
+history, senior-only). Then the member-lane groups design made group departure a roster removal rather than a key
+event, and the remaining cases dissolve on inspection, because the combination is already expressible:
+
+- **Hostile flavor** (severing a distrusted operator's branch): repudiation's cut-point can be *anywhere*,
+  including now. A senior repudiation **anchored at the branch's current heads** distrusts nothing that exists -
+  everything already written is the sealed prefix - and kills the subtree. Exit-by-senior, delivered by the
+  existing verb.
+- **Cooperative flavor** (self-issued): a key's children are exactly the authorize entries **on its own chain**,
+  so it can enumerate them completely - no unseen-child gap. **Repudiate each child** (anchored at their heads;
+  each takes its whole subtree, unseen grandchildren included), **then retire.** N+1 statements instead of one,
+  converging eventually like everything else does.
+
+So a distinct disposition would be sugar, and it fails the nameability test twice over: no named consumer, and no
+capability the existing verbs can't compose. If a real consumer ever wants the atomic form, this paragraph is the
+revisit point - and note the deadline shape: pre-ship it's a free additive enum variant; post-ship it's a protocol
+addition that strict readers reject until they learn it, which for a *revocation* means the dangerous kind of
+divergence. The UI may still render the composite under one cozy verb; the protocol doesn't need a third one.
 
 ### Recovery Planning
 
@@ -1324,6 +1362,31 @@ rotation happens on the revoking node and reaches others by ordinary sync, so a 
 under the old epoch until it hears - members hold old keys, so nothing is lost, but the boundary is eventual, not
 instantaneous. The `identity-private` service is reserved and gated but has no writer yet.
 
+**Rotation rules (settled 2026-07-30).** Three rules keep rotation safe without an owner - what secures it is
+never *who* mints, but that everything about a mint is checkable:
+
+- **Recipients are verified, never asserted.** Every node derives the correct recipient set itself (the Active
+  leaves' enc pubkeys, from the chain), so a `key-epoch` that smuggles a non-Active recipient is malformed - a
+  hard refusal. An *omitted* member is only flagged, loudly: the minter's chain view may honestly have lacked the
+  pubkey (the fail-closed skip above), and the flag's remedy is a re-seal. Completeness binds only the newest
+  epoch - adoption re-seals are recipient-lists-of-one for historical epochs, the mechanism working as designed.
+  *(Rule stated now; gate enforcement is ledgered in REFACTOR.md.)*
+- **Any Active member's node may mint a missing rotation; rank orders the delay, never the right.** "Seniormost
+  surviving" is not computable - liveness never is - and never needs to be: an Active member minting an epoch
+  learns nothing it didn't already hold, so there is no election to get right. On observing an ejection with no
+  matching rotation, seniormost-by-rank acts at once; each rank behind waits longer and acts only if nothing
+  arrived. A wrong liveness guess costs latency in one direction and a harmless duplicate in the other - never
+  security. The timers are legal under **No Clocks!** (they tune liveness; nothing is wrong if all of them
+  misfire), and the degenerate case closes itself: no surviving member means no future writes, and rotation only
+  ever protected a future someone writes. *(The watcher is ledgered in REFACTOR.md; until it lands, the only
+  unrotated case is self-retirement.)*
+- **Concurrent mints converge, and the next rotation unifies.** Racing mints of "epoch N" are not a fork
+  (single-writer chains) and not a danger (each is fresh, excludes the departed, and stays readable forever by
+  everyone it sealed to). Writers converge on one key per epoch number by **(minter rank, entry hash)** - a
+  write-preference pick, not a verdict - and readers try keys in that same order, so first-try decryption stays
+  the norm even mid-race. Whatever else happens, the next rotation steps to max+1 sealed to the full Active set:
+  a race's split ends at the following epoch no matter what anyone does.
+
 ### Open Items
 
 - **Deletability: split headers from content from day one** (**Immutable Chains ≠ Immutable Content**, Doctrine). Chains store entry headers + blob hashes; content
@@ -1615,8 +1678,9 @@ and five devices:
 1. **Nobody is named as the minter.** "Revocation - either disposition - rotates" says a rotation happens; it never
    says *who performs it*. For a senior-issued repudiation the revoker is obviously online and can. For a
    **self-issued retirement** - which is explicitly allowed - the retiring key cannot, because an epoch you mint is
-   an epoch you know. The one hard rule, and it is not written anywhere: **you may not sign the epoch that excludes
-   you.** Everything else about rotation authority follows from that single line.
+   an epoch you know. The one hard rule: **you may not sign the epoch that excludes you.** Everything else about
+   rotation authority follows from that single line. *(Written and enforced 2026-07-30: Private Chains states it,
+   self-retirement no longer self-rotates, and `rotate_epoch` refuses a signer that is its own exclude.)*
 2. **Rotation is a free operation, and trying to gate it is a trap.** The tempting fix - "an epoch is only valid if
    it rides on a revocation" - buys nothing, because revocations are free to manufacture: rule 1 lets any key mint a
    throwaway child and rule 2 lets it immediately repudiate that child, yielding a well-formed revocation to hang a
@@ -1625,14 +1689,19 @@ and five devices:
    derivable, not that the minter is authorized** - every node computes the Active recipient set itself, so a
    rotation that quietly drops a member, or smuggles in a non-Active key, is malformed and rejected by everyone.
    Recipients are verified, never asserted. Given that, who mints does not matter, and rotation frequency becomes a
-   *performance* question rather than a security one.
+   *performance* question rather than a security one. *(Rule stated 2026-07-30 - Private Chains, Rotation rules;
+   gate enforcement ledgered in REFACTOR.md.)*
 3. **Rotation liveness has no owner.** If nobody is obliged to mint, the departed read until somebody feels like it.
    The total order is already a leader election waiting to happen: any Active member may mint, seniority breaks
    ties, and a **rank-ordered backoff** (seniormost acts immediately, juniors wait and step in only if no senior
    has) yields one rotation in the common case, harmless duplicates otherwise. Duplicates *are* harmless - both
-   epochs are fresh, neither is known to the target, and the junior one is discarded on convergence.
+   epochs are fresh, neither is known to the target, and the junior one is discarded on convergence. *(Designed
+   2026-07-30 - Private Chains, Rotation rules: "rank orders the delay, never the right"; the watcher itself is
+   ledgered in REFACTOR.md.)*
 4. **Repudiation's blast radius is described in key-tree vocabulary** and must be generalized to every
    authority-conferring statement (above). Today, a repudiation would leave the wrong people inside things.
+   *(Fixed in doctrine 2026-07-30 - Revocation now states the generalized rule; the gate's per-service anchors
+   already enforced it structurally for everything that exists today.)*
 5. **A departing member wants a disposition that does not exist.** Retirement honors history but **the subtree
    lives** - correct for a root migrating off its first server, and exactly backwards for a person leaving a group,
    whose devices would remain members after them. Repudiation kills the subtree but quarantines the history and is
@@ -1641,8 +1710,8 @@ and five devices:
    **whether the retiring key is the top of a tree that should continue, or a member of someone else's tree that
    should not** - and the current text cannot tell those apart. *(Mostly dissolved by the member lane, above: with
    a roster of references there is no group subtree to kill, so leaving is a roster removal and the question stops
-   arising there. The narrower identity-level version survives - the current text still cannot tell a migrating
-   root from a departing member - and it is cheaper to fix now that only one caller needs it.)*
+   arising there. The narrower identity-level version was then examined at the source and declined - the existing
+   verbs already compose it. See Revocation, "Exit: the third disposition, examined and declined".)*
 6. **"Because the key is not adversarial"** underwrites self-issued retirement. Safe when you hold both ends. Not
    safe for a person storming out of a community - and the tool for a hostile exit is repudiation, which is
    correctly senior-only. So friendly departures are self-service and hostile ones need a sysop. That is the right
