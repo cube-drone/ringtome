@@ -22,7 +22,8 @@ import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
 import { liveApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } from './apps.js';
 import { openMirror, useLive } from './mirror.js';
-import { resolveSlugPath, slugify, HEX_ID } from './doc/slugs.js';
+import { resolveSlugPath } from './doc/address.js';
+import { slugify, HEX_ID } from './doc/naming.js';
 import { Icons, IconContext } from './icons.js';
 import { beats } from './swatch.js';
 
@@ -275,7 +276,7 @@ const Inside = ({ session }) => {
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
     // inside it - the two facts the unified app header needs. Null for persona/not-found routes,
     // which keep their own heads and so get no app header. A first segment that isn't an app id
-    // may be a BUCKET's slug - a cozy address at rest (doc/slugs.js) - resolved off the live roster:
+    // may be a BUCKET's slug - a cozy address at rest (doc/naming.js) - resolved off the live roster:
     // the app is the bucket's rail, and the URL itself names the bucket.
     const root = persona.current && persona.current.root;
     const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);

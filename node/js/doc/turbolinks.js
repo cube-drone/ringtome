@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { nameToEmoji } from 'gemoji';
 import { parse } from '@cube-drone/marquee-react-renderer';
+import { api } from '../net.js';
 import {
     composeTurbolinks,
     defaultPlugins,
@@ -27,11 +28,12 @@ const ogPlugin = {
     name: 'ringtome-og',
     match: (target) => /^https?:\/\//i.test(target),
     resolve: async (target) => {
-        const res = await fetch(`/api/unfurl?url=${encodeURIComponent(target)}`, {
-            credentials: 'same-origin',
-        });
-        if (!res.ok) return null; // refused/limited/failed: the link stays plain
-        return await res.json(); // a summary, or null for "that page has no card"
+        try {
+            // A summary, or null for "that page has no card".
+            return await api(`/api/unfurl?url=${encodeURIComponent(target)}`);
+        } catch {
+            return null; // refused, rate-limited, or failed: the link stays plain
+        }
     },
     render: (target, { level, data }) => (data ? renderCard(target, data, level) : null),
 };

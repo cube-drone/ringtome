@@ -25,7 +25,8 @@ import { useLocation } from 'preact-iso';
 import { DEFAULT_STYLE, featuresOf } from '../apps.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks } from '../panes.js';
-import { useSlugDocId, useCozyAddress, slugPathFor, startDocDrag } from '../doc/slugs.js';
+import { useSlugDocId, useCozyAddress, slugPathFor } from '../doc/address.js';
+import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 
 const html = htm.bind(h);
@@ -373,7 +374,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     // The selected document lives in the URL (`/home/<app>/<doc_id>`), not local state - so
     // back/forward and deep links just work. Selecting navigates; the route param is the source.
     // A non-hex :docId is a cozy slug - resolved to the effective id in place, no redirect
-    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (doc/slugs.js).
+    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (doc/address.js).
     const selected = useSlugDocId(root, app.id, docId);
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
     useCozyAddress(root, selected, bucket);

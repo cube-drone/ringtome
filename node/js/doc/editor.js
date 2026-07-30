@@ -30,7 +30,7 @@ import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture } from './upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
-import { slugPathFor } from './slugs.js';
+import { slugPathFor } from './address.js';
 import { featuresOf } from '../apps.js';
 import { Icons } from '../icons.js';
 
@@ -91,7 +91,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
     const [dump, setDump] = useState(null); // the merge-debug version-history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
-    // The copy-a-cozy-link chip: computes this doc's derived address (doc/slugs.js) and puts it on
+    // The copy-a-cozy-link chip: computes this doc's derived address (doc/address.js) and puts it on
     // the clipboard - the crosslink you paste into another document.
     const [linkCopied, setLinkCopied] = useState(false);
     const copyLink = async () => {

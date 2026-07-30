@@ -90,21 +90,6 @@ rule `net.rs` followed.
   a directory. `conventions.cjs` now asserts it, so this reopens itself with a failing test.) It stays a directory question, not a crate question:
   a second client sharing these rules is speculation, and the nameability test says no.
 
-### What the move changed about the items below
-
-- **B2** (`apps/wiki.js` importing `RightColumn` and `useArrowNav` from `apps/notes.js`) is now
-  positioned rather than fixed: both apps sit in `apps/` with `doc/` beneath them, so the fix is a
-  three-symbol extraction into `doc/reader.js` and `doc/nav.js` instead of a cross-layer redesign.
-  Still open; the sideways import survived the move because splitting a file is not a rename.
-- **B3** (`doc/slugs.js` holding three jobs) is unchanged in substance, but its target is now
-  named: `doc/slugs.js` splits into `doc/address.js` and `doc/crosslink.js`.
-- The **`doc/slugs.js` ↔ `doc/tree.js` cycle** is now internal to `doc/` - still a cycle, but an
-  implementation detail of one module rather than a cross-module one.
-- **E1** (splitting the stylesheet) should colocate: `doc/editor.css` beside `doc/editor.js`, with
-  `index.css` keeping its `@import` list pointed into the tree. That leaves the two-build setup
-  alone - CSS stays its own esbuild entry, so `npm run css` remains the separate step it is today
-  rather than JS-imported styles quietly changing what `npm run build` emits.
-
 ## A — Simplification
 
 - [ ] **A3. Three copies of the shadow-buffer field hook.** `persona.js:463 useProfileField`,
@@ -150,18 +135,13 @@ rule `net.rs` followed.
   appHere, cozyBucketRow)` returning `{ bucket, switchBucket }`) and `clock.js` takes `index.js`
   from 537 lines to ~200 of pure wiring, and lets the four effects be read as one story.
 
-- [ ] **B2. `apps/wiki.js` imports two things from `apps/notes.js`** (`apps/wiki.js:12`:
-  `RightColumn`, `useArrowNav`). Both are shared surfaces, not notes surfaces — `RightColumn` to a
+- [ ] **B2. `apps/wiki.js` imports two things from `apps/notes.js`** - positioned by the directory
+  move, not fixed by it: both apps sit in `apps/` with `doc/` beneath them, so this is now a
+  three-symbol extraction downward rather than a cross-layer redesign. The sideways import survived
+  because splitting a file is not a rename. The two symbols are `RightColumn` and `useArrowNav`;
+  both are shared surfaces, not notes surfaces — `RightColumn` to a
   `docsurface.js` next to the editor/reader pair, `useArrowNav` to `docnav.js` (A6). Right now the
   dependency graph says "the wiki is downstream of notes," which isn't the design.
-
-- [ ] **B3. `doc/slugs.js` holds three jobs**: the address rules (slugify / resolve / generate),
-  the drag-and-drop wire protocol (`startDocDrag`, `takeDocDropSwap`), and the in-flight swap
-  registry (`dragSwaps` + its 60s leak sweep). The drag protocol is only there because it needs
-  `slugPathFor`; a `crosslink.js` importing `doc/slugs.js` states that dependency instead of
-  merging the concepts, and gives the `application/x-ringtome-doc` / `-section` MIME strings a
-  single owner (currently spelled out in `doc/tree.js:175`, `doc/upload.js:455,462`,
-  `doc/slugs.js:214`).
 
 - [ ] **B4. `DocsApp` is ~290 lines doing six jobs** (`apps/notes.js`): scope filter, search
   filter, tag filter + cloud, sort, nav order, create, and a four-column render with a 50-line
@@ -235,15 +215,16 @@ The pleasant surprise is that most of the work below is a **move, not a rewrite*
 already pure functions living inside component files, where nothing can see or test them. Thinning
 those components is also most of B4 by another route.
 
-- [ ] **P1. The cozy-address rules (the highest-value bite).** Split `doc/slugs.js` into a pure
-  matcher - `matchSlugPath(segs, { roster, docs, tree })` and the path *generator* beside it - and
-  a thin shell that fetches those three things from the mirror. Then vector the rules that are
-  currently load-bearing and unexercised: strict-walk-then-forgiving-fallback, lowest-id ties
-  throughout, the "would this slug resolve back to US?" check, and `slugify`'s Unicode property
-  escapes (no vector anywhere today). **Then the property test**, which is the real prize:
-  *`slugPathFor` followed by `resolveSlugPath` must return the document you started from*, for any
-  roster/tree/title shape - the client-side echo of proto's test vectors, and a test that catches
-  breakage no example-based case would think to check. Land with B3 (the same file is splitting).
+- [ ] **P6. Let the addressing rules into the declared pure set.** `doc/naming.js` is the most
+  load-bearing pure module in the UI and cannot join the cop's pure set, because that rule is
+  "imports nothing at all" and naming.js imports the app registry. Two steps fix it: make `apps.js`
+  itself importless by having the registry carry icon NAMES (`icon: 'recipes'`) that `icons.js`
+  resolves at the two render sites - the registry is data and should not depend on a rendering
+  library - and then relax the cop from "no imports" to "imports only the pure set", which is the
+  actual firewall and still mechanically checkable. That would take the set from four modules to
+  six and put the round-trip property behind the same gate as everything else. (It also feeds S2's
+  count, which is the trigger for the `rules/` directory question.)
+
 - [ ] **P3. The app surfaces' decision logic.** Two extractions, both of which also thin a fat
   component: from `apps/notes.js`, the list pipeline (`orderDocs(docs, { bucket, appStyle, hits,
   tags })` - bucket scope, then search hits, then every active tag, then pinned-float →
@@ -346,10 +327,8 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **P1 + B3** together (the same file splits). `conventions.cjs` will want `doc/slugs.js`'s pure
-   half added to its declared pure set once it exists.
-2. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
+1. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
    `clock.js` out of `index.js`).
-3. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
-4. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so this arrives on its own as a
+2. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
+3. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so this arrives on its own as a
    failing test when the eighth zero-import module lands.

@@ -14,17 +14,11 @@ import { openMirror, useLive } from '../mirror.js';
 import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from '../mirror/prefs.js';
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
 import { useSearch } from '../search.js';
-// Circular with doc/slugs.js (it imports rootTitleFor from here) - safe: both sides only call the
-// other's functions at runtime, never at module-eval time.
-import { startDocDrag } from './slugs.js';
+import { startDocDrag, SECTION_DRAG } from './crosslink.js';
+import { rootTitleFor } from './naming.js';
 import { Icons, formatIcon } from '../icons.js';
 
 const html = htm.bind(h);
-
-// The root taxonomy's title for a bucket's tree. The prefix keeps user-titled SECTIONS (also
-// taxonomies, also on the roster) from ever colliding with a root lookup. (`wiki:` even when
-// Notes wears the tree - it names the shape, and existing wikis already use it.)
-export const rootTitleFor = (bucket) => `wiki:${bucket}`;
 
 // The bucket's tree root, found (mirror roster, lowest id wins a concurrent-mint tie) or minted.
 // ONE module-level dedupe for everyone who might need the root - the tree pane and the list's
@@ -161,7 +155,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('text/plain', node.taxonomy_id);
                 // Marked so an editor drop can refuse it - a section isn't insertable text.
-                e.dataTransfer.setData('application/x-ringtome-section', node.taxonomy_id);
+                e.dataTransfer.setData(SECTION_DRAG, node.taxonomy_id);
                 // Its whole subtree's taxonomy ids ride along - the client-side cycle guard
                 // (the server refuses these too; this keeps the drop from even offering).
                 const taxIds = [];

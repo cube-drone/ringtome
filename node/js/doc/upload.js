@@ -19,7 +19,7 @@ import { api } from '../net.js';
 import { Modal, fmtBytes } from '../modal.js';
 import { Annotations } from './annotations.js';
 import { ensureTreeRoot } from './tree.js';
-import { takeDocDropSwap } from './slugs.js';
+import { takeDocDropSwap, SECTION_DRAG, DOC_DRAG } from './crosslink.js';
 import { Icons } from '../icons.js';
 // The in-browser video pre-encoder (the video-ingest spike, now in service): the HOSTILE decode
 // happens in the browser's hardened, licensed decoder, and the server only ever sees
@@ -459,14 +459,14 @@ export function useUploadCapture({
             return;
         }
         const types = Array.from((dt && dt.types) || []);
-        if (types.includes('application/x-ringtome-section')) {
+        if (types.includes(SECTION_DRAG)) {
             // A SECTION row from the tree isn't text - block the surface's native drop from
             // inserting its raw taxonomy id.
             e.preventDefault();
             e.stopPropagation();
             return;
         }
-        if (types.includes('application/x-ringtome-doc')) {
+        if (types.includes(DOC_DRAG)) {
             // A document row (list or tree): the editing surface's NATIVE drop inserts the
             // dragged link markup at the pointer - we deliberately don't preventDefault - and
             // then the id-form link dresses itself in the cozy address once it computes. The

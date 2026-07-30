@@ -86,6 +86,52 @@ describe('css conventions', () => {
     });
 });
 
+describe('the import graph', () => {
+    // Local imports only; a package or an out-of-tree path (video-ingest) is somebody else's graph.
+    function localDeps(file) {
+        const dir = path.dirname(file);
+        return [...read(file).matchAll(/from\s+'(\.[^']+)'/g)]
+            .map((m) => path.resolve(dir, m[1]))
+            .filter((t) => t.startsWith(JS_DIR + path.sep) && fs.existsSync(t));
+    }
+
+    it('is acyclic', () => {
+        // It became acyclic when `rootTitleFor` moved to doc/naming.js, which retired the
+        // slugs<->tree cycle that had carried an apologetic comment ("safe: both sides only call
+        // the other's functions at runtime"). A cycle is survivable in ES modules and miserable to
+        // reason about; now that there are none, keep it that way.
+        const seen = new Set();
+        const stack = [];
+        const cycles = [];
+        const visit = (node) => {
+            if (stack.includes(node)) {
+                cycles.push([...stack.slice(stack.indexOf(node)), node].map(rel).join(' -> '));
+                return;
+            }
+            if (seen.has(node)) return;
+            seen.add(node);
+            stack.push(node);
+            for (const dep of localDeps(node)) visit(dep);
+            stack.pop();
+        };
+        for (const f of jsFiles) visit(f);
+        assert.deepEqual([...new Set(cycles)], []);
+    });
+
+    it('has exactly one HTTP client and one mirror owner', () => {
+        // net.js owns fetch; mirror.js owns the Dexie handle. Anyone else reaching for either is
+        // how twelve copies of `api()` and five owners of the prefs table happened.
+        const offenders = { fetch: [], Dexie: [] };
+        for (const f of jsFiles) {
+            const base = rel(f);
+            const src = code(f);
+            if (base !== 'net.js' && /\bfetch\s*\(/.test(src)) offenders.fetch.push(base);
+            if (base !== 'mirror.js' && /\bDexie\b/.test(src)) offenders.Dexie.push(base);
+        }
+        assert.deepEqual(offenders, { fetch: [], Dexie: [] });
+    });
+});
+
 describe('the pure core', () => {
     // The declared pure set: the UI's conformance boundary, the client-side echo of
     // ringtome-proto. Growing this list is the point (REFACTOR_UI P); it is a list rather than a

@@ -10,7 +10,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { WikiTree } from '../doc/tree.js';
 import { useColWidths } from '../panes.js';
 import { RightColumn, useArrowNav } from './notes.js';
-import { useSlugDocId, useCozyAddress } from '../doc/slugs.js';
+import { useSlugDocId, useCozyAddress } from '../doc/address.js';
 import { featuresOf } from '../apps.js';
 
 const html = htm.bind(h);
@@ -24,7 +24,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
     const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     // A non-hex :docId is a cozy slug - resolved to the effective id in place, no redirect
-    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (doc/slugs.js).
+    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (doc/address.js).
     const selected = useSlugDocId(root, app.id, docId);
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
     useCozyAddress(root, selected, bucket);
