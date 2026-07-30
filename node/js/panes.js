@@ -1,6 +1,6 @@
 // Column chrome, shared by every app with columns (Notes' three, the wiki's tree): how WIDE each
 // column is, and whether it's tucked away to a rail at all. Both are per-app choices that settle
-// into the mirror's prefs (prefs.js owns the keys) - durable in this browser, live across its
+// into the mirror's prefs (mirror/prefs.js owns the keys) - durable in this browser, live across its
 // tabs, never synced.
 //
 // Widths: each resizable column drags at its right edge via a slim resizer strip; the live drag
@@ -12,7 +12,7 @@ import { useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { usePrefMap, flagsOf, setPref, setFlag, widthKey, widthPrefix, tuckKey, tuckPrefix }
-    from './prefs.js';
+    from './mirror/prefs.js';
 
 const html = htm.bind(h);
 

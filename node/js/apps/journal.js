@@ -2,7 +2,7 @@
 // one per day, infinite-scroll style. Today's entry sits at the top waiting to be written - it
 // doesn't exist as a document until you start (a nudge, not a commitment). Once a day ends its
 // entry locks shut (even mid-edit); a locked entry is editable again only after a deliberate
-// 15-second unlock. Journal composes the SHARED editing session (docsession.js) and the live
+// 15-second unlock. Journal composes the SHARED editing session (doc/session.js) and the live
 // marquee surface directly - there's no Notes chrome to strip, so it's its own app, not the
 // notes app in a costume.
 import { h } from 'preact';
@@ -10,20 +10,20 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
-import { api } from './net.js';
-import { openMirror, useLive } from './cache.js';
-import { usePrefMap, usePref, setPref, sealKey, SEAL_PREFIX, JOURNAL_FONT } from './prefs.js';
-import { cachedDoc, rememberDoc } from './doccache.js';
-import { useSearch, queryWords } from './search.js';
-import { useDocSession } from './docsession.js';
-import { useUploadCapture } from './upload.js';
-import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
-import { DEFAULT_STYLE } from './apps.js';
-import { Annotations } from './annotations.js';
-import { claimedMs, hasClaimedDate } from './docdate.js';
-import { LiveMarquee } from './livemarquee.js';
-import { useTurbolinks } from './turbolinks.js';
-import { Icons } from './icons.js';
+import { api } from '../net.js';
+import { openMirror, useLive } from '../mirror.js';
+import { usePrefMap, usePref, setPref, sealKey, SEAL_PREFIX, JOURNAL_FONT } from '../mirror/prefs.js';
+import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
+import { useSearch, queryWords } from '../search.js';
+import { useDocSession } from '../doc/session.js';
+import { useUploadCapture } from '../doc/upload.js';
+import { emojiCompletions, linkCompletions, mediaCompletions } from '../doc/completions.js';
+import { DEFAULT_STYLE } from '../apps.js';
+import { Annotations } from '../doc/annotations.js';
+import { claimedMs, hasClaimedDate } from '../docdate.js';
+import { LiveMarquee } from '../doc/livemarquee.js';
+import { useTurbolinks } from '../doc/turbolinks.js';
+import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
 
@@ -183,7 +183,7 @@ const JournalReader = ({ root, docId }) => {
     const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
     useEffect(() => {
         let alive = true;
-        // Cache-first (doccache.js): a sealed entry the mirror row still vouches for paints
+        // Cache-first (mirror/doccache.js): a sealed entry the mirror row still vouches for paints
         // straight from disk; only a genuinely new copy fetches.
         cachedDoc(root, docId).then((hit) => {
             if (!alive) return;
@@ -241,7 +241,7 @@ const LockButton = ({ onUnlocked }) => {
 };
 
 // One row in the stack: the date heading, plus the editor (today / unlocked) or the reader
-// (locked, with the lock button). A seal/unlock override is a local pref (prefs.js owns the key
+// (locked, with the lock button). A seal/unlock override is a local pref (mirror/prefs.js owns the key
 // and its 'open' | 'locked' domain; absent = follow the day) - never synced, but durable across
 // reloads and live across this browser's tabs, which is the right weight: "this page is closed"
 // is a personal, per-device gesture, not a document fact.

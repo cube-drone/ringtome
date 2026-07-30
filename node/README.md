@@ -71,6 +71,17 @@ SQL naming a table lives only in that table's owner (enforced by `tests/conventi
 architecture cop). The `entries` table is protocol law: rows appear only via `imaol::append`
 (local authorship) or the sync gate (validated arrival).
 
+**UI layout (`js/`):** the same shape as `src/` - flat modules, with a directory only where one
+concept outgrew one file, so `x.js` + a sibling `x/` reads the way `net.rs` + `net/` does. The
+nested three are `mirror.js` + `mirror/` (the Dexie mirror: the stream and handle, plus `prefs`
+and `doccache`), `doc/` (the document machinery every document app composes: session, editor,
+tree, slugs, annotations, upload, completions, turbolinks, livemarquee), and `apps.js` + `apps/`
+(the registry beside its apps - notes, journal, wiki). Everything else stays flat: `index.js` is
+the composition root, `net.js` is the only HTTP client, and `lookout.js`/`keepalive.js`/`docdate.js`
+are the pure core - no imports, no browser, unit-tested from `integration/test/*.cjs` without a
+node. No barrel files: a directory re-exports nothing, so you import the file you want. **An app
+is one file until it needs two**, then it becomes `apps/journal.js` + `apps/journal/`.
+
 ## HTTP surface (unstable, pre-4C)
 
 Auth (`/api/auth/*`: register, login, logout, whoami, check-username), tags (`/api/admin/*`),

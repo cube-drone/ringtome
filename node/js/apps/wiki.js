@@ -1,4 +1,4 @@
-// The wiki app: pages in a tree, and nothing else - the whole tree apparatus lives in tree.js
+// The wiki app: pages in a tree, and nothing else - the whole tree apparatus lives in doc/tree.js
 // (WikiTree, shared with the Notes everything-app); this file is just the app shell around it:
 // routing, the last-open-page memory, and the shared Editor as the page surface.
 import { h } from 'preact';
@@ -6,12 +6,12 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
-import { openMirror, useLive } from './cache.js';
-import { WikiTree } from './tree.js';
-import { useColWidths } from './panes.js';
+import { openMirror, useLive } from '../mirror.js';
+import { WikiTree } from '../doc/tree.js';
+import { useColWidths } from '../panes.js';
 import { RightColumn, useArrowNav } from './notes.js';
-import { useSlugDocId, useCozyAddress } from './slugs.js';
-import { featuresOf } from './apps.js';
+import { useSlugDocId, useCozyAddress } from '../doc/slugs.js';
+import { featuresOf } from '../apps.js';
 
 const html = htm.bind(h);
 
@@ -24,7 +24,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
     const loc = useLocation();
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     // A non-hex :docId is a cozy slug - resolved to the effective id in place, no redirect
-    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (slugs.js).
+    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (doc/slugs.js).
     const selected = useSlugDocId(root, app.id, docId);
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
     useCozyAddress(root, selected, bucket);
@@ -88,7 +88,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                     onOrder=${setTreeOrder}
                 />${resizer('tree')}
                 <div class="wiki-main">
-                    ${/* The shared right column (notes.js): text formats open the Editor, media
+                    ${/* The shared right column (apps/notes.js): text formats open the Editor, media
                         opens the Reader - so an uploaded image/video page renders instead of
                         landing in a text editor that can't hold it. */ ''}
                     <${RightColumn}

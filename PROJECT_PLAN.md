@@ -2278,7 +2278,7 @@ bookkeeping on the node, the Dexie mirror + shadow overlay in the client. Sequen
 consequence, deliberate: this **precedes the notes UI** - once an identity's view streams and
 its writes echo, the notes app is mostly rendering.
 
-*(Stage 1 IMPLEMENTED 2026-07-25 - `/api/identity/{root}/stream` + `cache.js`. The v1
+*(Stage 1 IMPLEMENTED 2026-07-25 - `/api/identity/{root}/stream` + `mirror.js`. The v1
 simplifications, named so their refinements stay honest: updates are **whole-kind refreshes**
 (every row of profile/docs/taxonomies - the degenerate delta, same shapes, idempotent; row
 deltas when a library is big enough to care); the **cursor is a frontier fingerprint**

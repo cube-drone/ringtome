@@ -87,7 +87,7 @@ const DEFAULT_FEATURES = {
     description: true, // the description annotation
     debug: true, // the TEMPORARY debug-dump chip
     tagColumn: false, // a sidebar listing every tag by frequency
-    tree: false, // the wiki tree pane (tree.js), right of the list
+    tree: false, // the wiki tree pane (doc/tree.js), right of the list
 };
 
 /// The resolved feature set for an app (defaults, then the app's overrides). Safe on undefined.

@@ -22,17 +22,17 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
-import { api } from './net.js';
-import { readPref, setPref, viewModeKey } from './prefs.js';
-import { useDocSession } from './docsession.js';
+import { api } from '../net.js';
+import { readPref, setPref, viewModeKey } from '../mirror/prefs.js';
+import { useDocSession } from './session.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture } from './upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
 import { slugPathFor } from './slugs.js';
-import { featuresOf } from './apps.js';
-import { Icons } from './icons.js';
+import { featuresOf } from '../apps.js';
+import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
 
@@ -91,7 +91,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
     const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
-    // The copy-a-cozy-link chip: computes this doc's derived address (slugs.js) and puts it on
+    // The copy-a-cozy-link chip: computes this doc's derived address (doc/slugs.js) and puts it on
     // the clipboard - the crosslink you paste into another document.
     const [linkCopied, setLinkCopied] = useState(false);
     const copyLink = async () => {
@@ -106,7 +106,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         setTimeout(() => setLinkCopied(false), 1600);
     };
 
-    // File upload + crosslink drops: the shared capture hook (upload.js) - placeholders at the
+    // File upload + crosslink drops: the shared capture hook (doc/upload.js) - placeholders at the
     // cursor, the modal, the reference swap, and the dragged-document cozy dressing. The chip
     // opens the picker; drop and paste land on the surface handlers below.
     const {

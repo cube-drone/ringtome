@@ -9,7 +9,7 @@
 // prefix within - "jum fo" finds a doc with "jumped" and "fox"). Prefix, not exact, is what
 // makes type-ahead feel alive; AND is what makes adding a word narrow rather than widen.
 import { useMemo } from 'preact/hooks';
-import { openMirror, useLive } from './cache.js';
+import { openMirror, useLive } from './mirror.js';
 
 // Same normalization the node's tokenizer uses (record::documents::tokenize_into): lowercase,
 // split on non-alphanumerics. No length band here - a one-letter query prefix is a fine

@@ -10,7 +10,7 @@
 // isn't JSON (a 204, an HTML error page from a proxy) reads as `{}` rather than throwing a parse
 // error over top of the real failure.
 //
-// `options` passes through to fetch untouched, which is how `docsession.js` sets `keepalive` on
+// `options` passes through to fetch untouched, which is how `doc/session.js` sets `keepalive` on
 // the unload path (see keepalive.js for why that flag is conditional).
 
 export async function api(path, options = {}) {

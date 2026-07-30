@@ -12,11 +12,11 @@
 // tucked away" or "this page is closed": a personal, per-device gesture, not a document fact.
 // They share the mirror's lifetime, so "forget this browser" (logout) forgets them too - the
 // right posture for a table that records which documents you touch. Incidental working state that
-// is NOT a choice stays out: the per-document cursor lives in a module Map in editor.js, because
+// is NOT a choice stays out: the per-document cursor lives in a module Map in doc/editor.js, because
 // two tabs on one document would clobber each other's caret and a stale one is just noise.
 import { useState, useEffect, useMemo } from 'preact/hooks';
 
-import { openMirror, useLive } from './cache.js';
+import { openMirror, useLive } from '../mirror.js';
 
 // --- the key vocabulary ---
 // Families are `<prefix>:<member>` (some scoped by app first); a read hands back the member as
@@ -39,10 +39,10 @@ export const FOLD_PREFIX = 'wikifold:';
 export const sealKey = (docId) => `seal:${docId}`;
 export const SEAL_PREFIX = 'seal:';
 
-/// A document's remembered editor view mode. Domain: a key of editor.js's `MODES`.
+/// A document's remembered editor view mode. Domain: a key of doc/editor.js's `MODES`.
 export const viewModeKey = (docId) => `mode:${docId}`;
 
-/// The journal's page font. Domain: a `FONTS` id from journal.js.
+/// The journal's page font. Domain: a `FONTS` id from apps/journal.js.
 export const JOURNAL_FONT = 'journal:font';
 
 // --- reading ---
@@ -96,7 +96,7 @@ export function usePref(root, key, fallback) {
 }
 
 /// One pref, once - for a surface that hydrates a local buffer instead of following the value
-/// (editor.js's view mode: a pick that beats the read must win, so it reads rather than watches).
+/// (doc/editor.js's view mode: a pick that beats the read must win, so it reads rather than watches).
 /// Resolves to the stored string, or null if unset or unreadable.
 export async function readPref(root, key) {
     try {

@@ -1,16 +1,16 @@
-// The live cache (PROJECT_PLAN, The Browser Is a View): a per-persona Dexie mirror of the
-// node's view rows, fed by a read-only WebSocket. The mirror is DISPOSABLE by design - a pure
-// function of the node's stream, never a source of truth: any doubt about the cursor and the
-// server sends a full snapshot, which we apply by clear-and-replace. Writes never touch this
-// file; they are HTTP POSTs elsewhere, and their effects arrive back down the stream like
-// anyone else's.
+// THE MIRROR: a per-persona Dexie database of the node's view rows, and the live cache that keeps
+// it current (PROJECT_PLAN, The Browser Is a View) - fed by a read-only WebSocket. The mirror is
+// DISPOSABLE by design - a pure function of the node's stream, never a source of truth: any doubt
+// about the cursor and the server sends a full snapshot, which we apply by clear-and-replace.
+// Writes never touch this file; they are HTTP POSTs elsewhere (net.js), and their effects arrive
+// back down the stream like anyone else's.
 //
-// Three tables are exceptions, all local-only: `prefs` (UI preferences - prefs.js owns its key
-// vocabulary and is the only module that touches the table) and the two fingerprinted fetch
-// caches, `docdetails` and `trees` (doccache.js). The stream never feeds these and a refresh
-// never clears them. Still disposable - they share the mirror's lifetime, so "forget this
-// browser" forgets them too, which is the right privacy posture for tables that record which
-// documents you touch.
+// This file owns the handle and the stream; `mirror/` holds the tables the stream does NOT feed.
+// Three are exceptions that way, all local-only: `prefs` (UI preferences - mirror/prefs.js owns
+// its key vocabulary and is the only module that touches the table) and the two fingerprinted
+// fetch caches, `docdetails` and `trees` (mirror/doccache.js). A refresh never clears these.
+// Still disposable - they share the mirror's lifetime, so "forget this browser" forgets them too,
+// which is the right privacy posture for tables that record which documents you touch.
 import Dexie, { liveQuery } from 'dexie';
 import { useState, useEffect } from 'preact/hooks';
 
@@ -34,7 +34,7 @@ export function openMirror(root) {
             search: 'doc_id', // token bags, stream-fed like docs (search runs local)
             buckets: 'name', // the bucket roster: name -> app-type + member count
             prefs: 'key', // local-only, never stream-fed (module doc)
-            // Fingerprinted FETCH caches (doccache.js): GET responses kept beside the streamed
+            // Fingerprinted FETCH caches (mirror/doccache.js): GET responses kept beside the streamed
             // rows that vouch for their freshness - docdetails against the doc row's head
             // fingerprint, trees against the taxonomy-roster fingerprint. Local-only, like prefs.
             docdetails: 'doc_id',

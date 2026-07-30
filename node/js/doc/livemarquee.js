@@ -27,7 +27,7 @@ export const LiveMarquee = ({
     onInput,
     onBlur,
     onCursor,
-    // Contextual pop-up helpers (completions.js sources): pickers that hover at the caret when
+    // Contextual pop-up helpers (doc/completions.js sources): pickers that hover at the caret when
     // their trigger character is typed. Optional; absent means no autocompletion extension.
     completions,
 }) => {
@@ -40,7 +40,7 @@ export const LiveMarquee = ({
     // typing, and must not reach onInput (which arms the dirty flag).
     const syncing = useRef(false);
     // Fresh callbacks every render, stable identity for the extensions (the timer-and-unmount
-    // stale-closure lesson from editor.js, applied here).
+    // stale-closure lesson from doc/editor.js, applied here).
     const hooks = useRef({});
     hooks.current = { onInput, onBlur, onCursor };
 

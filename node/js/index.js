@@ -16,19 +16,19 @@ import {
     usePersonaName,
 } from './persona.js';
 import { Computers } from './computers.js';
-import { DocsApp } from './notes.js';
-import { JournalApp } from './journal.js';
-import { WikiApp } from './wiki.js';
+import { DocsApp } from './apps/notes.js';
+import { JournalApp } from './apps/journal.js';
+import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
 import { liveApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } from './apps.js';
-import { openMirror, useLive } from './cache.js';
-import { resolveSlugPath, slugify, HEX_ID } from './slugs.js';
+import { openMirror, useLive } from './mirror.js';
+import { resolveSlugPath, slugify, HEX_ID } from './doc/slugs.js';
 import { Icons, IconContext } from './icons.js';
 
 const html = htm.bind(h);
 
 // The bucket you last had open in each app, keyed `${root}:${app.id}` - the same idea (and
-// lifetime) as the last-open-document memory in notes.js: an in-memory session convenience,
+// lifetime) as the last-open-document memory in apps/notes.js: an in-memory session convenience,
 // forgotten on reload.
 const lastBucketMemory = new Map();
 
@@ -287,7 +287,7 @@ const Inside = ({ session }) => {
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
     // inside it - the two facts the unified app header needs. Null for persona/not-found routes,
     // which keep their own heads and so get no app header. A first segment that isn't an app id
-    // may be a BUCKET's slug - a cozy address at rest (slugs.js) - resolved off the live roster:
+    // may be a BUCKET's slug - a cozy address at rest (doc/slugs.js) - resolved off the live roster:
     // the app is the bucket's rail, and the URL itself names the bucket.
     const root = persona.current && persona.current.root;
     const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);

@@ -15,7 +15,7 @@
 //   - stamps can lag mid-race (a fetch landing while the stream catches up); the next roster
 //     or row tick mismatches the stamp and forces one honest refetch. Self-healing, never
 //     silently stale beyond a stream beat.
-import { openMirror } from './cache.js';
+import { openMirror } from '../mirror.js';
 
 /// The doc row's freshness fingerprint - the same trio `needsReload` watches (lookout.js).
 export const docFingerprint = (row) =>

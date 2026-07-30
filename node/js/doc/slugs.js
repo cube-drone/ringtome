@@ -17,10 +17,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
-import { api } from './net.js';
-import { openMirror, useLive } from './cache.js';
-import { cachedTree, rememberTree, rosterFingerprint } from './doccache.js';
-import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from './apps.js';
+import { api } from '../net.js';
+import { openMirror, useLive } from '../mirror.js';
+import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
+import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from '../apps.js';
 import { rootTitleFor } from './tree.js';
 
 export const HEX_ID = /^[0-9a-f]{32}$/;
@@ -43,7 +43,7 @@ function bucketFor(seg, roster) {
     return { name: row.name, app: appForStyle(appTypeOf(row.name, roster)) };
 }
 
-// The bucket's tree, cache-first (doccache.js - resolution and link-generation ride the same
+// The bucket's tree, cache-first (mirror/doccache.js - resolution and link-generation ride the same
 // fingerprinted cache as the tree pane), fetched when the roster stamp says it moved, or null
 // when the bucket has no tree (the caller falls back to bucket-wide resolution either way).
 async function treeFor(root, bucketName) {

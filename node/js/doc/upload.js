@@ -12,16 +12,16 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from './net.js';
-import { Modal, fmtBytes } from './modal.js';
+import { api } from '../net.js';
+import { Modal, fmtBytes } from '../modal.js';
 import { Annotations } from './annotations.js';
 import { ensureTreeRoot } from './tree.js';
 import { takeDocDropSwap } from './slugs.js';
-import { Icons } from './icons.js';
+import { Icons } from '../icons.js';
 // The in-browser video pre-encoder (the video-ingest spike, now in service): the HOSTILE decode
 // happens in the browser's hardened, licensed decoder, and the server only ever sees
 // our-encoder bytes - AV1-in-WebM (happy lane) or 320p APNG + Ogg Opus (universal fallback).
-import { ingestVideo } from '../../video-ingest/src/index.js';
+import { ingestVideo } from '../../../video-ingest/src/index.js';
 
 const html = htm.bind(h);
 

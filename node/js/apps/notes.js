@@ -8,20 +8,20 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
-import { api } from './net.js';
-import { openMirror, useLive } from './cache.js';
-import { cachedDoc, rememberDoc } from './doccache.js';
-import { Editor } from './editor.js';
-import { Annotations } from './annotations.js';
-import { useTurbolinks } from './turbolinks.js';
-import { useSearch, queryWords } from './search.js';
-import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from './docdate.js';
+import { api } from '../net.js';
+import { openMirror, useLive } from '../mirror.js';
+import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
+import { Editor } from '../doc/editor.js';
+import { Annotations } from '../doc/annotations.js';
+import { useTurbolinks } from '../doc/turbolinks.js';
+import { useSearch, queryWords } from '../search.js';
+import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../docdate.js';
 import { useLocation } from 'preact-iso';
-import { DEFAULT_STYLE, featuresOf } from './apps.js';
-import { WikiTree, ensureTreeRoot } from './tree.js';
-import { useColWidths, useColTucks } from './panes.js';
-import { useSlugDocId, useCozyAddress, slugPathFor, startDocDrag } from './slugs.js';
-import { Icons, formatIcon } from './icons.js';
+import { DEFAULT_STYLE, featuresOf } from '../apps.js';
+import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
+import { useColWidths, useColTucks } from '../panes.js';
+import { useSlugDocId, useCozyAddress, slugPathFor, startDocDrag } from '../doc/slugs.js';
+import { Icons, formatIcon } from '../icons.js';
 
 const html = htm.bind(h);
 
@@ -222,7 +222,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                     if (d.body == null) timer = setTimeout(fetchDoc, 2000);
                 })
                 .catch((e) => alive && setError(e.message));
-        // Cache-first (doccache.js): a copy the mirror row still vouches for paints with no
+        // Cache-first (mirror/doccache.js): a copy the mirror row still vouches for paints with no
         // fetch and no flash; misses (and pending bodies) go to the node.
         cachedDoc(root, docId).then((hit) => {
             if (!alive) return;
@@ -389,7 +389,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     // The selected document lives in the URL (`/home/<app>/<doc_id>`), not local state - so
     // back/forward and deep links just work. Selecting navigates; the route param is the source.
     // A non-hex :docId is a cozy slug - resolved to the effective id in place, no redirect
-    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (slugs.js).
+    // (cozy URLs REST); and a hex URL dresses itself in the doc's cozy address (doc/slugs.js).
     const selected = useSlugDocId(root, app.id, docId);
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
     useCozyAddress(root, selected, bucket);

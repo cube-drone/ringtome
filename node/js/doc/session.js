@@ -8,11 +8,11 @@
 // "Never lose words" is the whole contract, and it has scars (keepalive.js, lookout.js). This is
 // moved verbatim from the old Editor; keep it faithful.
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { api } from './net.js';
-import { openMirror, useLive } from './cache.js';
-import { cachedDoc, rememberDoc } from './doccache.js';
-import { needsReload } from './lookout.js';
-import { keepaliveOk } from './keepalive.js';
+import { api } from '../net.js';
+import { openMirror, useLive } from '../mirror.js';
+import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
+import { needsReload } from '../lookout.js';
+import { keepaliveOk } from '../keepalive.js';
 
 const AUTOSAVE_MS = 10_000;
 
@@ -43,7 +43,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     const load = async () => {
         setStatus('opening');
         setError(null);
-        // Cache-first (doccache.js): a doc the mirror row still vouches for opens straight from
+        // Cache-first (mirror/doccache.js): a doc the mirror row still vouches for opens straight from
         // disk - no fetch, no "opening…" flash. The row's fingerprint moving (a save, a sync)
         // is exactly what invalidates it, so parents/heads from the cache are as trustworthy
         // as a fetch under the same row. Misses fetch and remember.

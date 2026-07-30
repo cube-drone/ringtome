@@ -11,7 +11,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
-import { startLiveCache, forgetMirror, openMirror, useLive } from './cache.js';
+import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);

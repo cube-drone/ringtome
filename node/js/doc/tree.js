@@ -9,15 +9,15 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from './net.js';
-import { openMirror, useLive } from './cache.js';
-import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from './prefs.js';
-import { cachedTree, rememberTree, rosterFingerprint } from './doccache.js';
-import { useSearch } from './search.js';
-// Circular with slugs.js (it imports rootTitleFor from here) - safe: both sides only call the
+import { api } from '../net.js';
+import { openMirror, useLive } from '../mirror.js';
+import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from '../mirror/prefs.js';
+import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
+import { useSearch } from '../search.js';
+// Circular with doc/slugs.js (it imports rootTitleFor from here) - safe: both sides only call the
 // other's functions at runtime, never at module-eval time.
 import { startDocDrag } from './slugs.js';
-import { Icons, formatIcon } from './icons.js';
+import { Icons, formatIcon } from '../icons.js';
 
 const html = htm.bind(h);
 
@@ -397,7 +397,7 @@ export const WikiTree = ({
                     finish(t);
                 })
                 .catch(() => {});
-        // Cache-first (doccache.js): a tree the roster stamp still vouches for paints from
+        // Cache-first (mirror/doccache.js): a tree the roster stamp still vouches for paints from
         // disk - no fetch, no flash; misses and forced runs go to the node.
         if (forced) fetchTree();
         else {
@@ -413,7 +413,7 @@ export const WikiTree = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, rootId, rosterKey, bump, reloadKey]);
 
-    // Fold state is a local pref (prefs.js): per-section, durable in this browser, live across
+    // Fold state is a local pref (mirror/prefs.js): per-section, durable in this browser, live across
     // tabs, never synced. The map form, not just the flag set, because the reveal pass below has
     // to know whether the prefs have LOADED yet.
     const foldPrefs = usePrefMap(root, FOLD_PREFIX);

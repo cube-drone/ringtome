@@ -7,8 +7,8 @@
 // by the hosting editor.
 import { nameToEmoji } from 'gemoji';
 
-import { openMirror } from './cache.js';
-import { DEFAULT_STYLE } from './apps.js';
+import { openMirror } from '../mirror.js';
+import { DEFAULT_STYLE } from '../apps.js';
 import { slugify, slugPathFor, MEDIA_EXT } from './slugs.js';
 
 // Built once: every gemoji as a completion - the label is the marquee source form (`:smile:`,
