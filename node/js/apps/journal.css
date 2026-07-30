@@ -160,7 +160,8 @@
    per-button rules below carry only what actually differs (the delete's colour, and that it stays
    coral rather than going teal). Deliberately NOT a shared `.icon-btn` primitive: the other bare
    buttons in the app disagree about colour, opacity and hover, and five of seven would have had to
-   undo it - see REFACTOR_UI, "Reviewed and left alone". */
+   undo it, and what is genuinely shared comes to three lines (STYLE.md: measure before you
+   consolidate). */
 .journal-tag,
 .journal-seal,
 .journal-delete {

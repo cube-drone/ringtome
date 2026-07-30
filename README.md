@@ -113,7 +113,6 @@ embedded UI, and background sync with eager push. Current work is Tier 4's clien
   the pragmatism rules; the patterns every new file is expected to hold.
 - [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
   a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
-  [`REFACTOR_UI.md`](REFACTOR_UI.md) is the same ledger for the embedded UI (`node/js`).
 - [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
   cautionary tales.
 

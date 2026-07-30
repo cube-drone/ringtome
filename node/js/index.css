@@ -11,10 +11,11 @@
  * re-dresses a borrowed component: apps/journal.css flattens `.editor-live` for its entries, so it
  * has to land after doc/editor.css. Add a partial where its section belongs, not at the bottom.
  *
- * A rule's home is its class prefix (`journal-*` -> apps/journal.css). Two partials knowingly hold
- * rules that belong elsewhere - apps/notes.css carries the shared reader/chip/annotation rules, and
- * apps/wiki.css carries the tree ROWS that doc/tree.js draws - because moving them would have
- * changed the cascade in a commit whose whole point was not to. Queued as REFACTOR_UI E2.
+ * A rule's home is its class prefix, and the prefix names the file (`journal-*` ->
+ * apps/journal.css, `tree-*` -> doc/tree.css). The exceptions are the cross-prefix rules -
+ * `.journal .editor-live`, `.editor-side-preview .reader-marquee`, `.notes-columns .tree-pane` -
+ * and each lives in the HOST's file, because "a host re-dressing a borrowed component" is whose
+ * business it is.
  */
 @import "@cube-drone/marquee-css/marquee.css";   /* the mq-* class contract */
 

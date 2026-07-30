@@ -5,9 +5,9 @@ The forward-looking ledger of known compromises and queued cleanups. Tech debt i
 in anyone's memory. **Completed entries are deleted, not checked off** — git history is the
 archive; this file is only ever the current balance.
 
-This file holds the Rust side. The embedded UI (`node/js`) has its own balance in
-[`REFACTOR_UI.md`](REFACTOR_UI.md) — same contract, split only because the two are worked in
-different sittings and the UI list is long.
+Covers the whole tree. The UI carried its own ledger through a long refactor (opened and emptied
+2026-07-29/30, `git log --diff-filter=D -- REFACTOR_UI.md`); what outlived it are the rules now in
+STYLE.md, and the architecture cops in `node/integration/test/pure/conventions.cjs`.
 
 Judge entries against STYLE.md; when one gets picked up, work it as its own commit-sized fix.
 

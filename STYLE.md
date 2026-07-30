@@ -17,6 +17,10 @@ weeks; every rule here is a defense against that prison of context.
   `recovery_seed` beats `rs`. Tolerated shorthand: `i`/`j` in loops, `x` in lambdas, and
   pervasive tightly-local idiom (`w`/`r` in the CBOR codec, `e` for an entry in a loop over
   entries). Two-letter abbreviations for domain types are not in the tolerated set.
+- **Never assemble a name at runtime.** `chip-${tone}`, `format!("{}_id", table)` - a name built
+  from fragments is invisible to grep, to a reader, and to every architecture cop, which is how a
+  check quietly stops guarding the thing it was written for. Spell the whole name at every use
+  site; the repetition is the searchability.
 - **Name the tuple.** A function returning `(SqlitePool, SigningKey, EpochKeys)` should return a
   struct whose field names document it (`PrivateStore`). Interfaces are documentation.
 - Shared vocabulary gets written down (api_old's `nomenclature.md`; here, GLOSSARY.md). Words
@@ -27,6 +31,11 @@ weeks; every rule here is a defense against that prison of context.
 - **Comments carry context, not narration.** The module doc argues *why this design*; a function
   doc states the contract and its non-obvious constraints; nothing restates what the next line
   does. If a comment explains a decision, cite the source (PROJECT_PLAN section, API_OLD lesson).
+- **Context rots; scars do not.** A comment recording a decision and its evidence ("field-found
+  2026-07-25 pasting a ~600KB document, which never saved") stays true forever and is worth
+  paragraphs. A comment recording *where the build was* ("v0", "phase two adds…", "comes later")
+  is false within the month and lies to whoever trusts it next. Write the first kind; when you
+  catch the second, it is not tidying, it is a fix.
 - **A stale context comment is a bug.** These comments are load-bearing, so they are maintained
   like code: a change that falsifies a header updates the header in the same pass.
 - Config structs use the commented-field style (every field: inline purpose + default). It is the
@@ -40,6 +49,11 @@ weeks; every rule here is a defense against that prison of context.
 - **No event buses, no service registries, no two-phase init.** If module A needs module B, call
   B's function — it was always one `await` away (API_OLD, Cut #1–2). Security-relevant effects
   happen synchronously inside the action, never as a hoped-for echo.
+- **Flat modules; a directory only when one concept outgrows one file** - `net.rs` beside
+  `net/{sync,discovery,…}.rs`, `apps.js` beside `apps/{notes,journal}.js`. The sibling keeps its
+  name, so a module's home stays where the reader already looked. Layered directories
+  (`data/`, `view/`) and per-feature slices are both refused: this codebase's layers are its
+  dependency graph, which is readable from the imports, and its features are not independent.
 - **A table has one owner.** Raw SQL naming a table lives only in that table's module; everyone
   else calls its functions. Enforced by `node/tests/conventions.rs` — architecture cops are
   tests, not runtime machinery.
@@ -78,6 +92,21 @@ weeks; every rule here is a defense against that prison of context.
 - **Unit tests are reserved for isolated boundaries and pure logic:** codecs, chain validation,
   key-tree resolution, LWW folds, crypto round-trips — the proto crate and the node's pure
   corners. That's also where the hard tests (property tests, fuzz targets) attach.
+- **Logic that can be a value-in, value-out function belongs in a file that is one** - gathered
+  where it can be interrogated without a node, a browser, or a fixture (`ringtome-proto`;
+  `node/js/pure/`). Extract freely when the logic is a *decision over values the caller already
+  holds* - ordering, matching, formatting, arithmetic, predicates. **The tell that you have gone
+  too far: extracting it requires a new parameter that is a callback.** At that point the logic
+  IS the effect sequence - what to write first so a failure leaves a duplicate rather than a
+  loss, what to await, what invalidates what - and a "pure" version of it only tests your mocks.
+  Those belong to the integration suite and its real nodes.
+- **Prefer an invariant to an example where one exists.** The pure corners are where property
+  tests and fuzz targets attach, and a round trip is the cheapest invariant going: generate a
+  document's derived address, resolve it, and you must land back on that document. That test
+  found a link that silently opened the wrong page; no example-based case would have thought to.
+- **A cop that cannot fail is decoration.** After writing one, plant the violation and watch it
+  go red. Architecture cops are tests, not runtime machinery - but an untested test is just a
+  comment with a runtime cost.
 - **Published test vectors are the conformance boundary**: exact bytes, hash, signature, grown
   with every wire format. They are what makes a second implementation possible and regression a
   tripwire.
@@ -112,6 +141,23 @@ weeks; every rule here is a defense against that prison of context.
   still designed to last, because ship day freezes them — the wire format gets test vectors
   precisely so it can survive its own success), and forgetting that **ship day flips this rule
   permanently** — the same discipline that squashes migrations today writes them forever after.
+- **The second copy is the finding.** Every deduplication worth doing in this codebase announced
+  itself the same way: the same code written twice, the copies drifting, and *one of them missing
+  a clause* - a reader that never retried a pending body, a filter silently lacking its
+  catch-all, three fetch wrappers disagreeing about whether an error carries its status. The bug
+  lives in the drift, not the repetition, which is why "I am writing this a second time" is the
+  moment to stop rather than a tidying task for later.
+- **But measure before you consolidate: a shared thing its consumers must undo is a wrong
+  average.** Seven near-identical buttons turned out to disagree on colour, opacity and hover -
+  five of seven would have had to cancel part of any primitive covering them, and what was
+  genuinely shared came to three lines of boilerplate. Compare the *effective* behaviour of the
+  copies, not their shape. Honest boilerplate beats a wrong abstraction; this is the nameability
+  test's other half.
+- **Prove a behaviour-preserving change by comparing output, not by reading it.** A mechanical
+  refactor - splitting a stylesheet, renaming across files, moving rules between modules - gets
+  verified by diffing what it builds: the bundle byte-for-byte, or the effective declarations of
+  every selector before and after. That is what makes a 47-line rename safe to do without eyes
+  on the result, and it is the difference between "should be identical" and "is".
 - **Tech debt is a mortgage**: taking it on to ship is correct and normal, as long as the balance
   is recorded and serviced. REFACTOR.md is the mortgage statement — known compromises live there
   with reasons, not in anyone's memory. Purity is not a goal; *managed* imperfection is.
