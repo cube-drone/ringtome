@@ -115,6 +115,60 @@ async function profileValue(fetch, root, field) {
         assert.equal(treeA.keys.find((k) => k.pubkey === leaf).status, "repudiated");
     });
 
+    it("a self-retirement crosses the gate and is remembered", async function () {
+        // A revoke can never anchor itself, so a self-retirement sits beyond its own seal -
+        // and an adopted leaf usually has no identity history at all, making the revoke its
+        // chain's only entry, with nothing anchored. Regression: A's gate refused that entry,
+        // so the retirement never persisted on A and the trashed key looked active again.
+        const alice = await makeUserFetch({ prefix: "retiree" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+        await setField(alice, root, "name", "Going Away");
+
+        const aliceOnB = await makeUserFetch({ prefix: "retireeb", host: HOST_B });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+        const leaf = decodeCode(request.code).leaf_pubkey;
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        // B decommissions itself: the friendly disposition, signed by the departing key.
+        const retire = await (
+            await aliceOnB(`api/identity/${root}/keys/${leaf}/revoke`, {
+                method: "POST",
+                body: JSON.stringify({ disposition: "retirement" }),
+            })
+        ).json();
+        assert.match(retire.entry_hash, /^[0-9a-f]{64}$/);
+
+        // A pulls; the retirement must cross the gate and land in storage.
+        const syncResults = await (
+            await alice(`api/identity/${root}/sync`, { method: "POST" })
+        ).json();
+        assert.ok(syncResults.some((r) => r.ok), "A reached at least one peer");
+        const treeA = await (await alice(`api/identity/${root}/keys`)).json();
+        assert.equal(
+            treeA.keys.find((k) => k.pubkey === leaf).status,
+            "retired",
+            "the self-retirement is stored on A, not just resolved in passing"
+        );
+
+        // And it is memory, not a lucky in-flight view: a fresh exchange with nothing new
+        // still shows the seal.
+        await alice(`api/identity/${root}/sync`, { method: "POST" });
+        const treeAgain = await (await alice(`api/identity/${root}/keys`)).json();
+        assert.equal(treeAgain.keys.find((k) => k.pubkey === leaf).status, "retired");
+    });
+
     it("serving is an act: no record until marked, a signed record after", async function () {
         const dhtDir = process.env.RINGTOME_TEST_DISCOVERY_DIR;
         if (!dhtDir) this.skip();

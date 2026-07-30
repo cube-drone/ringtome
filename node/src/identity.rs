@@ -602,14 +602,30 @@ pub async fn revoke_key(
     // revocation - retirement included, however friendly - rotates to a fresh epoch sealed to
     // everyone but the departed. It reads its era forever; the future is closed. (Rotation
     // failing must not unwind the revocation itself: eviction now, re-key ASAP beats neither.)
-    let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
-    match crate::record::private::rotate_epoch(&db, &signer, &tree, &target).await {
-        Ok(epoch_entry) => tracing::info!(
+    //
+    // Except self-retirement, by the minter rule: **you may not sign the epoch that excludes
+    // you.** A retiring key that mints the "fresh" epoch knows it - the key was in this
+    // machine's memory on its way to the dumpster, which is exactly what rotation exists to
+    // survive. The rotation falls to a surviving member's node on observing the retirement;
+    // until then members keep writing under the old epoch, the honest window of the
+    // cooperative disposition (a hostile exit is repudiation, senior-issued and windowless).
+    if signer_pub == target {
+        tracing::info!(
             root = %root_hex,
-            entry = %hex::encode(epoch_entry.hash()),
-            "rotated private epoch after revocation"
-        ),
-        Err(e) => tracing::error!(root = %root_hex, "epoch rotation after revocation failed: {e}"),
+            "self-retirement: epoch rotation deferred to a surviving member (minter rule)"
+        );
+    } else {
+        let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
+        match crate::record::private::rotate_epoch(&db, &signer, &tree, &target).await {
+            Ok(epoch_entry) => tracing::info!(
+                root = %root_hex,
+                entry = %hex::encode(epoch_entry.hash()),
+                "rotated private epoch after revocation"
+            ),
+            Err(e) => {
+                tracing::error!(root = %root_hex, "epoch rotation after revocation failed: {e}")
+            }
+        }
     }
 
     tracing::info!(root = %root_hex, target = %target_hex, ?disposition, "revoked key");

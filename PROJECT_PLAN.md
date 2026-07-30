@@ -1310,7 +1310,12 @@ mechanism has two independent layers, and both are load-bearing:
 - **Revocation - either disposition - rotates**: a fresh epoch sealed to every Active member except the target.
   The departed key's server still physically holds its old epoch keys, so the guarantee is exactly this: **it
   reads its era forever; the future is closed.** And because the revoked leaf stops being Active, the gate stops
-  shipping it post-rotation ciphertext at all - forward secrecy backed by refusal, not just math.
+  shipping it post-rotation ciphertext at all - forward secrecy backed by refusal, not just math. One exception,
+  the **minter rule** (settled 2026-07-30): *you may not sign the epoch that excludes you* - an epoch you mint is
+  an epoch you know. So a **self-retirement does not rotate**; the rotation falls to a surviving member's node on
+  observing the retirement (the liveness machinery is designed, not yet built - see The Adult In The Room, items
+  1-3), and until it lands, members writing under the old epoch are the honest window of the cooperative
+  disposition. A hostile exit is repudiation: senior-issued, rotated by its signer in the same act, windowless.
 
 Honest wrinkles, accepted for v1: two nodes racing a rotation can both mint "epoch N" (single-writer chains, so
 not a fork) - readers try all keys for an epoch and the AEAD tag disambiguates; a member whose encryption pubkey

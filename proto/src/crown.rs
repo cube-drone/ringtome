@@ -119,6 +119,11 @@ struct Node {
     /// root. A ceiling on the parent's identity chain consults this: children born beyond the
     /// sealed prefix are phantoms.
     birth_seq: u64,
+    /// Entry hash of the revocation this tree credited against the key, if any. A revoke can
+    /// never anchor itself, so a *self*-retirement sits where seal-or-nothing would refuse it
+    /// (one seq beyond its own anchor - or an anchorless chain's only entry); this names the
+    /// one statement an enforcer must keep anyway, competing forks already settled.
+    revocation: Option<[u8; HASH_LEN]>,
 }
 
 /// How one accepted chain stands against a ceiling's anchor.
@@ -191,6 +196,7 @@ impl Crown {
                 rank_path: Vec::new(),
                 status: KeyStatus::Active,
                 birth_seq: 0,
+                revocation: None,
             },
         );
 
@@ -315,6 +321,7 @@ impl Crown {
                     rank_path,
                     status: KeyStatus::Active,
                     birth_seq: e.entry().seq,
+                    revocation: None,
                 },
             );
             self.children
@@ -430,10 +437,12 @@ impl Crown {
                 continue;
             }
 
-            self.nodes.get_mut(&revocation.target).unwrap().status = match revocation.disposition {
+            let target_node = self.nodes.get_mut(&revocation.target).unwrap();
+            target_node.status = match revocation.disposition {
                 Disposition::Retirement => KeyStatus::Retired,
                 Disposition::Repudiation => KeyStatus::Repudiated,
             };
+            target_node.revocation = Some(entry_hash);
             for Anchor {
                 service: svc,
                 seq,
@@ -544,6 +553,17 @@ impl Crown {
 
     /// The total authority order: `Less` means `a` is senior to `b`. `None` if either key is not
     /// a tree member - unknown keys have no rank, which is the point.
+    /// The entry hash of the revocation this tree credited against `key`, if any. This is what
+    /// lets an enforcer keep the one statement seal-or-nothing would otherwise refuse: a
+    /// *self*-retirement's revoke can never sit on its own sealed prefix (a revoke cannot
+    /// anchor itself), landing instead one seq beyond the anchor - or, for a key that retired
+    /// before ever writing identity history, as an anchorless chain's only entry. Competing
+    /// revokes forked at the same seat were already settled by resolution; this names the
+    /// winner.
+    pub fn revocation_of(&self, key: &Pubkey) -> Option<[u8; HASH_LEN]> {
+        self.nodes.get(key).and_then(|n| n.revocation)
+    }
+
     pub fn compare(&self, a: &Pubkey, b: &Pubkey) -> Option<core::cmp::Ordering> {
         let (na, nb) = (self.nodes.get(a)?, self.nodes.get(b)?);
         Some(na.rank_path.cmp(&nb.rank_path))
@@ -853,7 +873,9 @@ mod tests {
         // authorize-phone entry at seq 0; the retirement entry itself sits just beyond the
         // seal, hash-linked onto the anchored head).
         let anchor = laptop.head_anchor();
-        entries.push(laptop.revoke(laptop.pk(), Disposition::Retirement, vec![anchor]));
+        let retirement = laptop.revoke(laptop.pk(), Disposition::Retirement, vec![anchor]);
+        let origin = *retirement.hash();
+        entries.push(retirement);
 
         let tree = Crown::build(root.pk(), &entries).unwrap();
         assert_eq!(tree.status(&laptop.pk()), KeyStatus::Retired);
@@ -870,6 +892,105 @@ mod tests {
                 head_hash: anchor.head_hash,
             })
         );
+        assert_eq!(
+            tree.revocation_of(&laptop.pk()),
+            Some(origin),
+            "the credited revoke is named, for enforcers to keep beyond the seal"
+        );
+    }
+
+    #[test]
+    fn an_anchorless_first_entry_self_retirement_is_credited() {
+        // A key that retires before ever writing identity history: the revoke is its chain's
+        // only entry, with nothing to anchor. Seal-or-nothing has no prefix to credit -
+        // `revocation_of` is what still names the statement enforcers must keep.
+        let (root, _recovery, _laptop, mut phone, mut entries) = family();
+
+        let retirement = phone.revoke(phone.pk(), Disposition::Retirement, vec![]);
+        let origin = *retirement.hash();
+        entries.push(retirement);
+
+        let tree = Crown::build(root.pk(), &entries).unwrap();
+        assert_eq!(tree.status(&phone.pk()), KeyStatus::Retired);
+        assert_eq!(tree.ceiling(&phone.pk(), service::IDENTITY_PUBLIC), None);
+        assert_eq!(tree.revocation_of(&phone.pk()), Some(origin));
+    }
+
+    #[test]
+    fn a_phantom_child_beyond_a_self_retirement_is_invalid() {
+        // The dumpster-diver's first move: extend the retired key's chain past its own seal
+        // with a fresh authorize. The ceiling makes it a phantom: the subtree dies, the
+        // retirement stands, the honest pre-seal child is untouched.
+        let (root, _recovery, mut laptop, phone, mut entries) = family();
+
+        entries.push(laptop.revoke(
+            laptop.pk(),
+            Disposition::Retirement,
+            vec![laptop.head_anchor()],
+        ));
+        let (phantom, e_phantom) = laptop.authorize(9); // beyond both the seal and the revoke
+        entries.push(e_phantom);
+
+        let tree = Crown::build(root.pk(), &entries).unwrap();
+        assert_eq!(tree.status(&laptop.pk()), KeyStatus::Retired);
+        assert_eq!(tree.status(&phone.pk()), KeyStatus::Active);
+        assert_eq!(
+            tree.status(&phantom.pk()),
+            KeyStatus::Invalid,
+            "a post-seal mint is a phantom"
+        );
+    }
+
+    #[test]
+    fn competing_self_retirements_converge_on_one_origin() {
+        // The dumpster-diver's second move: the retired key is attacker-held, so nothing
+        // stops it signing an *alternative* self-retirement at the same seat - a fork over
+        // the revoke itself. Both candidates retire the key; what must converge is which one
+        // the tree credits, because `origin` is the one beyond-seal entry enforcers keep.
+        // (The anchors are attacker-chosen on the forged branch - the accepted bound; the
+        // remedy is senior repudiation, tested elsewhere.)
+        let (root, _recovery, mut laptop, _phone, entries) = family();
+
+        let anchor = laptop.head_anchor();
+        let (seat_seq, seat_prev) = (laptop.seq, laptop.prev);
+        let honest = laptop.revoke(laptop.pk(), Disposition::Retirement, vec![anchor]);
+        laptop.seq = seat_seq;
+        laptop.prev = seat_prev; // same key, rewound: the fork
+        let forged = laptop.revoke(
+            laptop.pk(),
+            Disposition::Retirement,
+            vec![
+                anchor,
+                Anchor {
+                    service: service::POSTS,
+                    seq: 7,
+                    head_hash: [0xEE; 32],
+                },
+            ],
+        );
+
+        let winner_hash = *if forged.hash() < honest.hash() {
+            &forged
+        } else {
+            &honest
+        }
+        .hash();
+
+        let mut ab = entries.clone();
+        ab.extend([honest.clone(), forged.clone()]);
+        let mut ba = entries;
+        ba.extend([forged, honest]);
+
+        for input in [ab, ba] {
+            let tree = Crown::build(root.pk(), &input).unwrap();
+            assert_eq!(tree.status(&laptop.pk()), KeyStatus::Retired);
+            assert_eq!(tree.forks().len(), 1, "the revoke seat forked");
+            assert_eq!(
+                tree.revocation_of(&laptop.pk()),
+                Some(winner_hash),
+                "the credited revoke follows the fork winner"
+            );
+        }
     }
 
     #[test]

@@ -291,6 +291,15 @@ pub async fn rotate_epoch(
 ) -> Result<SignedEntry, AppError> {
     use ringtome_proto::crown::KeyStatus;
 
+    // The minter rule: you may not sign the epoch that excludes you - a key that mints an
+    // epoch knows it, excluded or not, so the boundary it claims to draw is fiction. Callers
+    // route self-retirement rotations to a surviving member; this guard keeps them honest.
+    if signer.verifying_key().to_bytes() == *exclude {
+        return Err(AppError::Internal(anyhow!(
+            "minter rule: a key may not sign the epoch that excludes it"
+        )));
+    }
+
     let roster = enc_roster(db).await?;
     let mut recipients: Vec<([u8; 32], [u8; 32])> = Vec::new();
     for (member, status) in tree.members() {

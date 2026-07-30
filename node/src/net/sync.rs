@@ -208,8 +208,15 @@ pub(crate) async fn ingest_batch(
     }
     for (author, entries) in identity_by_author {
         if let Some(c) = tree.ceiling(&author, service::IDENTITY_PUBLIC) {
-            let (stored_now, refused, evicted) =
-                admit_ceilinged_chain(db, &author, service::IDENTITY_PUBLIC, &c, &entries).await?;
+            let (stored_now, refused, evicted) = admit_ceilinged_chain(
+                db,
+                &author,
+                service::IDENTITY_PUBLIC,
+                &c,
+                tree.revocation_of(&author),
+                &entries,
+            )
+            .await?;
             received += stored_now.len() as u64;
             rejected += refused;
             evicted_rows += evicted;
@@ -239,8 +246,28 @@ pub(crate) async fn ingest_batch(
             // Invalid: structurally void - nothing it signs can earn a row. Retired/Repudiated
             // *without* an identity ceiling: the revocation anchored no identity chain, so an
             // identity chain from that key has no proven standing - seal-or-nothing, same as
-            // content.
-            _ => rejected += entries.len() as u64,
+            // content. One exception: the credited *self*-revocation as the chain's first
+            // entry. A key that retired before ever writing identity history had nothing to
+            // anchor - the revoke IS the whole chain - and refusing it forgets the retirement.
+            _ => {
+                let origin = tree.revocation_of(&author);
+                for e in entries {
+                    let is_founding_self_revoke = Some(*e.hash()) == origin
+                        && e.entry().seq == 0
+                        && e.entry().prev_hash == ZERO_HASH;
+                    if is_founding_self_revoke {
+                        if stored_chain_head(db, &author, service::IDENTITY_PUBLIC)
+                            .await?
+                            .is_none()
+                        {
+                            store_entry(db, &e).await?;
+                            received += 1;
+                        }
+                    } else {
+                        rejected += 1;
+                    }
+                }
+            }
         }
     }
 
@@ -272,7 +299,7 @@ pub(crate) async fn ingest_batch(
         }
         if let Some(c) = tree.ceiling(&author, svc) {
             let (stored_now, refused, evicted) =
-                admit_ceilinged_chain(db, &author, svc, &c, &entries).await?;
+                admit_ceilinged_chain(db, &author, svc, &c, None, &entries).await?;
             for e in &stored_now {
                 apply_content_views(db, e).await?;
             }
@@ -395,6 +422,9 @@ async fn admit_ceilinged_chain(
     author: &[u8; 32],
     svc: u32,
     ceiling: &Ceiling,
+    // The credited revocation's entry hash (`Crown::revocation_of`), passed only for the
+    // author's identity chain - the one chain a self-revocation can live on.
+    origin: Option<[u8; 32]>,
     incoming: &[SignedEntry],
 ) -> Result<(Vec<SignedEntry>, u64, u64)> {
     let stored = stored_chain(db, author, svc).await?;
@@ -463,10 +493,25 @@ async fn admit_ceilinged_chain(
         }
     }
 
+    // The one entry allowed beyond the seal: the revoke that *created* this ceiling. A revoke
+    // can never anchor itself, so a self-retirement's revoke sits one seq past its own sealed
+    // prefix - refuse it and this store forgets the retirement ever happened, then re-admits
+    // fresh writes from a dumpster-dived key. The hash pins the exact entry the resolved tree
+    // credited (competing forks already settled), and a senior-issued revoke lives on the
+    // senior's unceilinged chain, so it never lands in this author's batch.
+    if let Some(origin) = origin {
+        if !stored.iter().any(|e| e.hash() == &origin) {
+            if let Some(e) = incoming.iter().find(|e| *e.hash() == origin) {
+                store_entry(db, e).await?;
+                stored_now.push(e.clone());
+            }
+        }
+    }
+
     let on_prefix: HashSet<[u8; 32]> = prefix.iter().map(|e| *e.hash()).collect();
     let refused = incoming
         .iter()
-        .filter(|e| !on_prefix.contains(e.hash()))
+        .filter(|e| !on_prefix.contains(e.hash()) && Some(*e.hash()) != origin)
         .count() as u64;
     Ok((stored_now, refused, evicted))
 }
@@ -1120,6 +1165,139 @@ mod tests {
         assert_eq!(
             stored_hashes(&db, &s.k, service::POSTS).await,
             hashes(&s.honest)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_self_retirement_is_stored_and_outlives_its_own_seal() {
+        // A revoke can never anchor itself, so a self-retirement lands one seq beyond its own
+        // seal. Regression: the gate used to admit only the sealed prefix, so the retirement
+        // never persisted here - and on the next resolve from storage the dumpster-dived key
+        // was Active again. The `origin` carve-out keeps exactly that one entry, nothing after.
+        let db = test_db().await;
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut k_ident = Chain::new(2, service::IDENTITY_PUBLIC);
+        let k = k_ident.pk();
+
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let grandchild = Chain::new(3, service::IDENTITY_PUBLIC);
+        let g_auth = k_ident.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: grandchild.pk(),
+                usurpers: vec![root_chain.pk(), k],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let retire = k_ident.append(
+            entry_type::REVOKE,
+            Revoke {
+                target: k,
+                disposition: Disposition::Retirement,
+                anchors: vec![Anchor {
+                    service: service::IDENTITY_PUBLIC,
+                    seq: 0,
+                    head_hash: *g_auth.hash(),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        );
+
+        let batch = [authorize, g_auth.clone(), retire.clone()];
+        let (received, rejected) = ingest(&db, root_chain.pk(), &batch).await;
+        assert_eq!((received, rejected), (3, 0), "the retirement itself lands");
+        assert_eq!(
+            stored_hashes(&db, &k, service::IDENTITY_PUBLIC).await,
+            vec![*g_auth.hash(), *retire.hash()],
+            "sealed prefix plus the origin revoke, in place"
+        );
+
+        // The dumpster-diver continuation: the retired key mints a phantom child beyond its
+        // seal. The *stored* set alone must still know the retirement and refuse it.
+        let phantom = Chain::new(9, service::IDENTITY_PUBLIC);
+        let phantom_auth = k_ident.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: phantom.pk(),
+                usurpers: vec![root_chain.pk(), k],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let (received, rejected) = ingest(&db, root_chain.pk(), &[phantom_auth]).await;
+        assert_eq!((received, rejected), (0, 1), "post-seal mints stay refused");
+    }
+
+    #[tokio::test]
+    async fn an_anchorless_self_retirement_is_stored_and_remembered() {
+        // The adopted-leaf shape: a key that never wrote identity history retires itself, so
+        // the revoke is its chain's FIRST entry and the revocation anchors no identity chain
+        // at all. Seal-or-nothing would refuse the whole chain - and forget the retirement.
+        let db = test_db().await;
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut k_ident = Chain::new(2, service::IDENTITY_PUBLIC);
+        let k = k_ident.pk();
+
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let retire = k_ident.append(
+            entry_type::REVOKE,
+            Revoke {
+                target: k,
+                disposition: Disposition::Retirement,
+                anchors: vec![],
+            }
+            .encode()
+            .unwrap(),
+        );
+
+        let (received, rejected) =
+            ingest(&db, root_chain.pk(), &[authorize, retire.clone()]).await;
+        assert_eq!((received, rejected), (2, 0), "the founding self-revoke lands");
+        assert_eq!(
+            stored_hashes(&db, &k, service::IDENTITY_PUBLIC).await,
+            vec![*retire.hash()],
+            "the revoke is the whole stored chain"
+        );
+
+        // The dumpster-diver continuation must bounce off the stored set alone.
+        let phantom = Chain::new(9, service::IDENTITY_PUBLIC);
+        let phantom_auth = k_ident.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: phantom.pk(),
+                usurpers: vec![root_chain.pk(), k],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let (received, rejected) = ingest(&db, root_chain.pk(), &[phantom_auth]).await;
+        assert_eq!(
+            (received, rejected),
+            (0, 1),
+            "post-retirement mints stay refused"
         );
     }
 
