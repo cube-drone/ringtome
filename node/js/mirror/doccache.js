@@ -18,7 +18,7 @@
 import { openMirror } from '../mirror.js';
 
 /// The doc row's freshness fingerprint - the same trio `needsReload` watches (lookout.js).
-export const docFingerprint = (row) =>
+const docFingerprint = (row) =>
     row ? `${row.head}:${row.heads}:${row.diverged ? 1 : 0}` : null;
 
 /// The taxonomy roster's fingerprint - shared by every tree consumer so stamps agree.

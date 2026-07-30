@@ -1,8 +1,13 @@
-// The notes app, v0: two columns and honesty. Left: every document that exists, newest
-// first, straight off the live mirror (so another computer's save re-sorts the list within
-// seconds, no fetching). Right: the reader - read-only display of the resolved body, format
-// dispatched (plaintext | marquee | media). The editor, taxonomies in the left column, tag
-// filters, and the flexible cozy-OS window all come later; this is the skeleton they hang on.
+// The documents app: the surface every "documents" application wears (TurboNotes, Recipes), and
+// the everything-app at full stretch - up to four columns, each tuckable. Left to right: the tag
+// cloud, the document list (newest-claimed-date first, straight off the live mirror, so another
+// computer's save re-sorts it within seconds and nothing fetches), the tree, and the open
+// document. Which columns appear is the app registry's `features` (apps.js); the document
+// machinery underneath is shared (doc/), so a new app style is a registry line.
+//
+// This file also holds two things the wiki borrows - `RightColumn` (text opens the editor, media
+// the reader) and `useArrowNav` - which is why apps/wiki.js imports sideways from here. That is a
+// known wart, queued as REFACTOR_UI B2.
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';

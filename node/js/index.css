@@ -74,8 +74,9 @@
 
 /* --- the palette ---
  * Warm and beachy, mid-tone (neither dark nor light): sand and cream surfaces, teal water,
- * shell pink, sunset coral, sea-green. Every colour in the app is one of these tokens, so the
- * whole scheme re-tunes from here. */
+ * shell pink, sunset coral, sea-green. Every colour in the app is one of these tokens - including
+ * the translucent ones (shadows, the scrim, the marker pen) - so the whole scheme re-tunes from
+ * here, and a literal colour anywhere below is a bug. */
 :root {
     /* The house panel shape, shared by the app frame and the modal (each layer of a panel wears
        it, so the chrome shows through as a pixel-cornered border): sharp square top corners,
@@ -108,6 +109,11 @@
 
     --hex-border-dark: #bf9152;   /* the outer 2px ring of an application hexagon: caramel */
     --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */
+
+    --marker: #f3e08c;                      /* search hits: a warm highlighter pen */
+    --scrim: rgba(43, 38, 34, 0.45);        /* behind a modal */
+    --shadow-drop: rgba(43, 38, 34, 0.35);  /* panels floating over content (menus, tooltips) */
+    --shadow-punch: rgba(51, 40, 20, 0.28); /* inset: a hole punched through the ink chrome */
 }
 
 /* --- app shell --- */
@@ -297,7 +303,7 @@ body {
     color: var(--ink);
     border: 2px solid var(--ink);
     border-radius: 8px;
-    box-shadow: 0 8px 20px rgba(43, 38, 34, 0.35);
+    box-shadow: 0 8px 20px var(--shadow-drop);
 }
 
 .bucket-menu-item {
@@ -386,7 +392,7 @@ body {
     cursor: pointer;
     font: inherit;
     font-size: 1.45rem; /* Phosphor icons are 1em - this is the "big" */
-    box-shadow: inset 0 1px 2px rgba(51, 40, 20, 0.28);
+    box-shadow: inset 0 1px 2px var(--shadow-punch);
     transition: color 0.12s ease, transform 0.12s ease;
 }
 
@@ -957,7 +963,7 @@ body {
     transition: transform 0.12s ease, filter 0.12s ease;
 }
 
-.app-tile:not(.blank):not(.soon):hover {
+.app-tile:not(.blank):hover {
     transform: scale(1.04);
     filter: brightness(1.04);
 }
@@ -999,15 +1005,6 @@ body {
         var(--hex-border-dark) 100%
     );
     z-index: 1;
-}
-
-.app-tile.soon {
-    cursor: default;
-}
-
-.app-tile.soon .hex-face {
-    background: var(--surface-2);
-    color: var(--faint);
 }
 
 .app-tile.blank {
@@ -1308,7 +1305,7 @@ body {
 }
 
 .snippet-hit {
-    background: #f3e08c;
+    background: var(--marker);
     color: var(--ink);
     border-radius: 2px;
     padding: 0 1px;
@@ -1519,7 +1516,7 @@ body {
     background: var(--surface);
     border: 1px solid var(--border-strong);
     border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(51, 40, 20, 0.2);
+    box-shadow: 0 8px 20px var(--shadow-drop);
 }
 
 /* An open toggle chip wears the "on" look, like a pinned chip. */
@@ -1550,7 +1547,7 @@ body {
     background: var(--surface);
     border: 2px solid var(--ink);
     border-radius: 8px;
-    box-shadow: 0 8px 20px rgba(43, 38, 34, 0.35);
+    box-shadow: 0 8px 20px var(--shadow-drop);
     overflow: hidden;
 }
 
@@ -1946,7 +1943,7 @@ video.reader-media {
    using the CSS Custom Highlight API (ranges registered from JS, no DOM surgery - so it works over
    both the marquee readers and the live editor). Same warm marker as the Notes snippet hits. */
 ::highlight(journal-search) {
-    background: #f3e08c;
+    background: var(--marker);
     color: var(--ink);
 }
 
@@ -2408,7 +2405,7 @@ video.reader-media {
     position: fixed;
     inset: 0;
     z-index: 100;
-    background: rgba(43, 38, 34, 0.45);
+    background: var(--scrim);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2464,7 +2461,7 @@ video.reader-media {
     cursor: pointer;
     font: inherit;
     font-size: 1.3rem;
-    box-shadow: inset 0 1px 2px rgba(51, 40, 20, 0.28);
+    box-shadow: inset 0 1px 2px var(--shadow-punch);
 }
 
 .modal-close:hover {

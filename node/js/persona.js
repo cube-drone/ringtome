@@ -19,7 +19,7 @@ const html = htm.bind(h);
 // A deterministic little color chip from the root pubkey - the identicon's humble seed
 // (the real root-derived identicon is its own future feature; a persona should never render
 // as bare hex in the meantime).
-export function personaHue(rootHex) {
+function personaHue(rootHex) {
     const n = parseInt(rootHex.slice(0, 6), 16);
     return n % 360;
 }
@@ -369,9 +369,6 @@ export const NamePicker = ({ persona, account }) => {
     `;
 };
 
-// The persona badge: chip + name (or shortcode) - a persona never renders as bare hex. The
-// name reads from the live mirror first, so a rename on ANY of your computers lands here
-// within seconds; the fetched-at-open name is the fallback while the mirror fills.
 // The persona's live display name, or '' if it has none yet. Reads the mirror first so a rename
 // on any computer lands within seconds; the fetched-at-open name is the fallback while the mirror
 // fills. Safe on a null persona (pre-open) - returns ''. Callers add their own shortcode fallback.
@@ -383,20 +380,7 @@ export function usePersonaName(current) {
     return (liveName && liveName.value) || (current && current.name) || '';
 }
 
-export const PersonaBadge = ({ current }) => {
-    const name = usePersonaName(current);
-    return html`
-        <span class="persona-badge">
-            <span
-                class="persona-chip"
-                style="background: hsl(${personaHue(current.root)}, 60%, 55%)"
-            ></span>
-            ${name || `persona ${shortcode(current.root)}`}
-        </span>
-    `;
-};
-
-// The persona home: the root of identity management (reached by the gear in the dock). A small
+// The persona home: the root of identity management (reached by the dock's persona tile). A small
 // menu - profile, your computers, log out - each its own place under /home/persona.
 export const PersonaHome = ({ persona, session }) => {
     const current = persona.current;

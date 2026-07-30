@@ -1,13 +1,16 @@
-// File upload, phase two: the machinery behind the modal. Each captured File uploads to
-// `POST /docs/binary` (raw bytes, title in the query; XHR because fetch has no upload
-// progress), lands a `202 { doc_id, job_id }` - the doc exists version-less, quarantined for
+// File upload: the machinery behind the modal, and the capture hook every editing surface uses.
+// Each captured File uploads to `POST /docs/binary` (raw bytes, title in the query; XHR because
+// fetch has no upload progress), lands a `202 { doc_id, job_id }` - the doc exists
+// version-less, quarantined for
 // AVIF transcode - and then the modal follows the job through the server's ingest queue
 // (`GET /ingest`, polled) to done or failed. While all that happens the file's NAME is
 // editable (a PATCH on the queued job - the title is baked into the version at transcode, so
 // the server reports honestly when a rename arrives too late) and its TAGS are editable
 // immediately (annotations live on the doc-meta chain, version-independent). New docs file
-// into the CURRENT bucket the moment their id exists. Phase three adds the in-document
-// placeholder and the final file reference.
+// into the CURRENT bucket the moment their id exists. The in-document side - a placeholder at the
+// cursor per file, swapped for the real file reference when the upload lands - is
+// `useUploadCapture` at the bottom of this file, shared by the Editor's three doors (chip, drop,
+// paste) and the journal's entry editor.
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
@@ -85,7 +88,7 @@ const QUEUE_WORD = {
     processing: 'processing…',
 };
 
-export const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFailed }) => {
+const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFailed }) => {
     // One row per file. `phase`: uploading -> queued -> done | failed.
     const [rows, setRows] = useState(() =>
         files.map((f) => ({

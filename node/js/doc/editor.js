@@ -89,7 +89,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     } = useDocSession(root, docId, { onDeleted });
 
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
-    const [dump, setDump] = useState(null); // TEMPORARY: the merge-debug history dump
+    const [dump, setDump] = useState(null); // the merge-debug version-history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
     // The copy-a-cozy-link chip: computes this doc's derived address (doc/slugs.js) and puts it on
     // the clipboard - the crosslink you paste into another document.

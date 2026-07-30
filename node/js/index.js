@@ -276,7 +276,7 @@ const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
 // persona is open, routing takes over. The whole internal UI lives under /home (root bounces
 // there, and stays free for the API / a future public face): `/home` is the console,
 // `/home/notes[/<doc_id>]` the notes app, and `/home/persona[/profile|/computers]` is identity
-// management (reached by the dock gear). Routes are session-relative and identity-free by
+// management (reached by the dock's persona tile). Routes are session-relative and identity-free by
 // design (PROJECT_PLAN, The Client Is a Console).
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
@@ -370,7 +370,7 @@ const Inside = ({ session }) => {
     // TALLER than the bar and bottom-align, so their teal rim pokes up above it; within the bar
     // that rim is the same teal as the backdrop and vanishes, so it only reads on the part above.
     // The user's own tile (Persona, first) runs a little bigger. Persona being the first tile is
-    // why the old name + gear on the right are gone - the persona tile IS both now.
+    // why there's no name or gear on the right - the persona tile IS both.
     const bar = html`
         <footer class="quickbar">
             <span class="quickbar-apps">

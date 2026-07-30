@@ -197,11 +197,6 @@ rule `net.rs` followed.
   `<Chip icon= title= on= onClick= />` plus a `<NavChips nav= />` halves both headers and makes
   the chip row scannable as a list of capabilities.
 
-- [ ] **C3. Dead exports and vocabulary** (all free to delete): `PersonaBadge`
-  (`persona.js:398`, no consumers); `Icons.gear`, `Icons.blog`, `Icons.book`
-  (`icons.js:72,67,68`, none); `docApps` (`apps.js:101`, exported but used only in its own file);
-  `app.soon`, handled in `console.js:37` and styled at `index.css:1004-1011` but carried by no
-  app.
 
 - [ ] **C4. Untested pure logic that has earned tests.** The pattern exists —
   `integration/test/lookout.cjs` imports the ESM module from mocha and interrogates it. Two
@@ -212,49 +207,33 @@ rule `net.rs` followed.
 
 ## D — Stale context in comments and in-app text
 
-There is a clear split here, and it matters for how this category gets worked. The **field-report**
-comments are excellent and must be protected: `lookout.js`'s scar history, `keepalive.js`'s 64 KiB
-story, `index.js:70-76` on the flash the ref prevents, `apps/journal.js:529-531` on why the guard is a
-ref. What follows is the other kind — "where we were in the build," which a reader trusts and is
-then wrong about the file's shape.
+The **field-report** comments are excellent and must be protected: `lookout.js`'s scar history,
+`keepalive.js`'s 64 KiB story, `index.js`'s note on the flash the ref prevents,
+`apps/journal.js`'s on why the create guard is a ref. The build-narration kind ("v0", "phase two",
+the removed gear) has been swept; what is left below needs a decision from Curtis, not a cleanup.
 
-- [ ] **D1. `apps/notes.js:1-5`** — "The notes app, v0: two columns and honesty… The editor, taxonomies
-  in the left column, tag filters, and the flexible cozy-OS window all come later; this is the
-  skeleton they hang on." Every one of those has landed; the file now describes four columns and
-  an editor. Worst offender.
-- [ ] **D2. `doc/upload.js:1-10`** — "File upload, **phase two** … **Phase three** adds the
-  in-document placeholder and the final file reference." Phase three is in this same file
-  (`useUploadCapture`, `:392`).
-- [ ] **D4. The gear that no longer exists**, in three places: `index.js:290` ("reached by the
-  dock gear"), `persona.js:411` ("reached by the gear in the dock"), `apps.js:19` ("Also
-  reachable from the footer gear"). `index.js:383-385` explains the gear's *removal* — so the
-  codebase both documents the removal and points at the removed thing.
-- [ ] **D5. `persona.js:384-389`** — two stacked doc comments saying the same thing; the first
-  describes `PersonaBadge` but sits above `usePersonaName`, left behind by a move.
-- [ ] **D6. `index.css:77`** — "Every colour in the app is one of these tokens, so the whole
-  scheme re-tunes from here." Eight hard-coded colours say otherwise (E3). By STYLE.md's own rule
-  ("a stale context comment is a bug") this is load-bearing-false, not just untidy.
-- [ ] **D7. `doc/editor.js:104`** — `// TEMPORARY: the merge-debug history dump`, with
-  `features.debug` defaulting true for every app. Either it's permanent (drop the word) or it
-  gets a line here with a removal condition.
-- [ ] **D8. `apps.js:57-62`** — the Wikibook rename explains itself for six lines. That id ≠
-  label is worth one line; the changelog belongs in git.
-- [ ] **D9. In-app text.** The persona null state (`persona.js:220-224`) ends mid-thought —
-  "That's what happens when you..." trailing into a button — reading as unfinished rather than as
-  a deliberate sentence-completing link. And the noun vocabulary disagrees across three surfaces
-  of the same app: `apps/notes.js:591` says "+ new item", `doc/tree.js:708` says "page", `apps.js` names
-  them by `bucketNoun`.
+- [ ] **D9. The item noun disagrees across three surfaces of one app.** The list button says
+  "+ new item", the tree toolbar says "page", and the bucket switcher builds its labels from
+  `bucketNoun` ("New Recipe Book"). A recipe book's list button should probably say "+ new
+  recipe" — which wants an `itemNoun` beside `bucketNoun` in the registry, so it is a small
+  feature rather than a copy fix, which is why it wasn't swept with the rest of D.
+- [ ] **D10. The debug dump has no gate.** `doc/editor.js`'s version-history dump is a
+  development tool reached by a chip, and `features.debug` defaults ON for every app. The word
+  TEMPORARY is gone from the code and the honest condition is written there instead ("off at ship
+  day") — but the condition is now only a comment. Either gate it on a dev flag or drop the chip;
+  it must not be the thing a first user finds behind a skull icon.
 
-## E — The stylesheet (`index.css`, 2604 lines)
+## E — The stylesheet (`index.css`, ~2600 lines)
 
 Size isn't the problem — 2.6k lines of CSS against ~6.6k of JS is proportionate. The problem is
 that **one flat file with one flat namespace has no seams**, so ordering has already drifted and
-dead rules can't be found. Evidence: `.chip` at `:1594` and its `.chip-merged` modifier at
-`:2601`, the last line of the file; `--- your computers ---` (`:733`) immediately followed by
-`--- persona management pages ---` (`:735`) with the computers rules actually at `:845`;
-`.skip-link` at `:707` and `.skip-link:hover` at `:1866`; `.editor-waiting` at `:1883`, *after*
-the mobile `@media` at `:1870`; three dead rules (`.marquee-page` `:411`, `.reader-title` `:1532`,
-`.modal-note` `:2484`).
+dead rules can't be found. Evidence: `.chip` at `:1591` and its `.chip-merged` modifier at
+`:2598`, the last line of the file; `--- your computers ---` (`:739`) immediately followed by
+`--- persona management pages ---` (`:741`) with the computers rules actually at `:851`;
+`.skip-link` at `:713` and `.skip-link:hover` at `:1863`; `.editor-waiting` at `:1880`, *after*
+the mobile `@media` at `:1867`; three dead rules (`.marquee-page` `:417`, `.reader-title` `:1529`,
+`.modal-note` `:2481`). The token block at the top is now complete and authoritative - a colour
+literal anywhere below it is a bug, which E5's cop can check for free.
 
 - [ ] **E1. Split into partials, one per JS module family, bundled by esbuild.** The mechanism is
   already proven — `index.css:2` `@import`s `marquee-css`, `--bundle` inlines local imports, and
@@ -270,11 +249,6 @@ the mobile `@media` at `:1870`; three dead rules (`.marquee-page` `:411`, `.read
   enforceable, and it names the exceptions: the cross-prefix rules (`.journal .editor-live`,
   `.editor-side-preview .reader-marquee`, `.notes-columns .tag-column`) are all "a host
   re-dressing a borrowed component," and belong in the *host's* file with that said once.
-- [ ] **E3. Finish the token story.** Eight hard-coded colours remain: `#f3e08c` twice (`:1311`
-  snippet-hit, `:1949` `::highlight`) — the *same* marker colour in two places, exactly the drift
-  tokens exist to prevent; `rgba(43,38,34,0.35)` twice; `rgba(51,40,20,0.28)` twice; plus the
-  scrim and one shadow variant. Add `--marker`, `--scrim`, `--shadow-drop`, `--shadow-punch` and
-  D6's comment becomes true again.
 - [ ] **E4. Four house primitives, and no more than four.** The repetition is concentrated and
   countable: **the bare icon button** — `.bucket-btn`, `.pane-min`, `.wiki-act`, `.journal-tag`,
   `.journal-seal`, `.journal-delete`, `.journal-font` (7 near-copies of `inline-flex` /
@@ -314,12 +288,10 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **D1, D2, D4–D9** and **C3** — one sweep, no behaviour change, and it stops the docs lying
-   while we refactor underneath them.
-2. **A5** — an actual bug, fixed by extracting the hook.
-3. **E1 + E3 + E5** as one commit (mechanical; verifiable by diffing the built bundle
+1. **A5** — an actual bug, fixed by extracting the hook.
+2. **E1 + E5** as one commit (mechanical; the split is verifiable by diffing the built bundle
    byte-for-byte), then **E4** on its own.
-4. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
+3. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
    `clock.js` out of `index.js`).
-5. **A3**, **A4**, **A7**, **A8**, **B3**, **C1**, **C2**, **B4**.
-6. **C4** — vectors for `doc/slugs.js` and `apps.js`.
+4. **A3**, **A4**, **A7**, **A8**, **B3**, **C1**, **C2**, **B4**.
+5. **C4** — vectors for `doc/slugs.js` and `apps.js`.

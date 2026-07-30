@@ -14,7 +14,7 @@ export const DEFAULT_STYLE = 'default';
 export const APPS = [
     // Persona is a SYSTEM app: a real app with its own tile and the unified header, but its own
     // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
-    // is excluded from the document-app routes. Also reachable from the footer gear.
+    // is excluded from the document-app routes. Its dock tile wears the persona's own name.
     { id: 'persona', name: 'Persona', icon: Icons.persona, live: true, system: true },
     // `bucketNoun` is what ONE bucket of this app is called to the user - the word the bucket
     // switcher builds its labels from ("New Recipe Book", "Delete this Journal…").
@@ -57,9 +57,8 @@ export const APPS = [
         // A knowledge base: pages in a TREE. Its own component (WikiApp) - the tree is a root
         // taxonomy (titled `wiki:<bucket>`), sections are child taxonomies, pages are document
         // leaves. Composes the shared Editor for the page surface. `features.tree` marks it
-        // tree-having for the shared surfaces (uploads file into the tree root). Renamed
-        // Wikibook 2026-07-28; the id, style, and bucket all stay `wiki` (User-1 or not, the
-        // routes and roster carry the old word fine - only the label changed).
+        // tree-having for the shared surfaces (uploads file into the tree root). The label is
+        // "Wikibook" but the id, style, and bucket are all `wiki`: only the display name changed.
         wiki: true,
         features: { tree: true },
     },
@@ -85,7 +84,7 @@ const DEFAULT_FEATURES = {
     format: true, // the format-convert chip
     date: true, // the claimed date/time annotation
     description: true, // the description annotation
-    debug: true, // the TEMPORARY debug-dump chip
+    debug: true, // the version-history dump: a development tool, off at ship day
     tagColumn: false, // a sidebar listing every tag by frequency
     tree: false, // the wiki tree pane (doc/tree.js), right of the list
 };
@@ -96,9 +95,10 @@ export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.featu
 /// The launchable apps, in registry order (the console tiles).
 export const liveApps = APPS.filter((a) => a.live);
 
-/// The document apps: live apps that own a document surface (a `style`). These get the generated
-/// `/home/<app>/<doc?>` routes; system apps like Persona carry their own routes instead.
-export const docApps = liveApps.filter((a) => a.style);
+/// The document apps: live apps that own a document surface (a `style`). System apps like Persona
+/// have none and carry their own routes instead. Internal - the styles set below is what callers
+/// actually want.
+const docApps = liveApps.filter((a) => a.style);
 
 /// An app by its route id (live apps only) - Persona included, so the shell gives it the header.
 export const appById = (id) => liveApps.find((a) => a.id === id) || null;
