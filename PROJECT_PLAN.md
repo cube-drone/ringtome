@@ -837,7 +837,9 @@ Mechanically, a follow has **three disclosure tiers**, chosen per-follow:
   the subject of a datum, receive the datum.* Nobody can ask "who does A follow?" or "does A follow X?"; only
   "does A follow **me**?", and only by being me. Honest limit: a signed statement proves it was true when signed
   - unfollow is silent and receipts go stale. That matches the social norm every network's users quietly rely
-  on, and endpoints who have already disclosed to each other can re-ask cheaply for freshness.
+  on, and endpoints who have already disclosed to each other can re-ask cheaply for freshness. Because delivery is
+  a *write to the recipient's private chain*, an inbound receipt from a stranger passes The Inbound Gate like any
+  other inbound act; without that it is an unbounded write anyone can mint identities to spam.
 - **Help host** - the serving-follow: necessarily public (fronting appears in pkarr records regardless), per the
   Rehosting Policy above. The UI must keep this tier visibly distinct or users will leak interest they meant to
   keep private.
@@ -1016,6 +1018,32 @@ Instead we use a **network-flow model** (the Advogato approach):
 
 Trust is a continuous number, but we also expose a simple **floor** for coarse gates ("below this, you cannot DM me or
 appear in my feed") so features do not each have to reason about flow.
+
+### The Inbound Gate: One Floor, Three Surfaces (settled 2026-07-30)
+
+Everything a stranger can cause to land on your node passes one predicate: **they clear your trust floor and you
+have not muted them.** Three surfaces consume it, and they are one gate rather than three policies:
+
+- **A DM** from someone you have no conversation with. (An existing conversation is its own standing consent.)
+- **A follow receipt** - the "tell them" disclosure tier writes to your private chain, so an ungated one is an
+  unbounded inbound write from an arbitrary stranger (see Edge-Endpoint Visibility).
+- **A group invite** - an admission entry offered to a root that never asked for one (see Groups).
+
+Four properties, each a decision rather than an accident:
+
+- **It is anti-spam, not anti-harassment.** The floor answers "probably a real, distinct human", and the people best
+  placed to hurt you score *highest* on it - your ex is extremely real. Mute does the safety work, and mute is
+  per-root, reactive, and needs you to already know who they are. The cozy copy must never sell the floor as safety;
+  it will be believed.
+- **Refusal is visible to the sender, and that leaks exactly one bit.** A silent drop is the worst failure mode in
+  messaging, so we take the bit: "they are not accepting messages from you" confirms the sender sits below the
+  floor, and says nothing about its value or the graph behind it.
+- **There is no sender-side preflight.** The floor is computed in the *recipient's* graph and deliberately
+  unknowable to the sender (Privacy of the graph, below), so no client can grey the button out ahead of time. The
+  compose surface always works; the refusal arrives from the network.
+- **The bootstrap out is physical.** Someone you know in person who joined independently has no vouch path and
+  cannot reach you - correct, and still a real human hitting a wall. The escape hatch is the one the system already
+  has: hand them a token (Friend Tokens and the Bootstrap Problem). A second reason tokens want to ship early.
 
 ### The layer boundary: Trust flows down, never up
 
@@ -1322,45 +1350,114 @@ instantaneous. The `identity-private` service is reserved and gated but has no w
 
 ---
 
+## Direct Messages: The Sealed Pair (settled 2026-07-30)
+
+A DM is a two-party conversation on the sealed lane, and **two is not an arbitrary threshold - it is the only size
+at which membership is not a mutable object.** A pair has no roster, no admission, no ejection, no invite tree, no
+blast radius. Its membership changes only through *identity* events - Alice adopts a phone, Bob repudiates a laptop
+- which are the adoption re-seal and the revocation rotation, both already specified and already IMPLEMENTED.
+
+That is the whole argument for the cut, and it is a better one than group size: node count is a gradient (three
+people is six to nine nodes, five is ten to fifteen) and a gradient argues for cutting *somewhere*, not here. Read
+The Adult In The Room (Groups, below) with the membership framing in hand and every defect in that list is
+downstream of **membership-triggered** rotation - who mints when the ejection was derived rather than signed, who
+is obliged to mint at all, the window an ejected member can watch open. None of them exist at N=2, because there is
+nothing to be ejected *from*. The epoch machinery works at two exactly as written.
+
+- **A DM is two chains, not one.** Single-writer is the core invariant (Chains: One Per Key, Per Service), so a
+  conversation is Alice's chain and Bob's chain, interleaved into a view at read time. No shared writable object,
+  therefore no conflicts; ordering is The Ordering Contract, unchanged. Typing indicators and read receipts are
+  gossip - ephemeral, never persisted.
+- **The key is an epoch scoped to two**, sealed to both parties' Active leaf encryption pubkeys - parent-attested
+  from birth, so no round-trip. It re-seals on device adoption and rotates on device revocation, and it never
+  rotates for membership, because there is none.
+- **Opening one passes The Inbound Gate.** A stranger may start a conversation if they clear your floor and are not
+  muted; an existing conversation is its own standing consent.
+- **You cannot add a third person to a DM.** There is no such operation. Attempting it *mints a room* - a new group
+  identity, an explicit ceremony, history that stays behind unless deliberately re-signed across (**Copy, Don't
+  Flip**). This is load-bearing product design rather than bookkeeping: every messenger anyone has used makes 1:1
+  and group look identical and be equally secure, so the user's prior is actively wrong here. The change of lane
+  has to be something a person *did*, with different chrome on the other side of it, and never a property that
+  quietly changed underneath them.
+
+The honest cost of the cut is the sympathetic three-person case - three friends planning a surprise, a couple and
+their lawyer - which lands in the gated lane along with the thousand-person room. That is a real trade, taken
+deliberately: the alternative is a mutable roster and everything it drags in, at every size above one pair.
+
+---
+
 ## Groups: Identity-Shaped, and the Complexity That Adds (SKETCH)
 
-**Status: sketch, not doctrine.** Nothing here is committed; it is written down because the exercise turned up
-real defects in machinery that *is* committed (see *The Adult In The Room*, at the end - the honest yield of this
-whole section). Groups are not on any tier and want none of this built yet.
+**Status: sketch, not doctrine** - with one decision inside it settled (the lane, below). Groups are not on any
+tier and want none of this built yet; the section is written down because the exercise turned up real defects in
+machinery that *is* committed (see *The Adult In The Room*, at the end - the honest yield of this whole section).
 
 **The shower thought that started it:** a group of thirty people wants exactly what one person's five devices want.
 Members join by invitation, members can be kicked, the kicked stop reading, there is shared private state and a
 public face. That is the key tree, the revocation rules, and the epoch-key membership boundary - already built, all
-three. **A group is an identity, and the machinery is already there.** Almost.
+three. **A group is an identity, and the machinery is already there.**
+
+**The correction (settled 2026-07-30):** half of that is right, and the half that isn't is what made this section
+tortured. The social and public half maps for free and always did. The *epoch* half does not: it drags minted
+secrecy into a place where every membership change has to mint something, while every membership *fact* is merely
+computed - and the gap between those two is where all the difficulty lived. So the claim narrows to **a group is
+an identity for its public face, and a roster for everything else.** Group content lives on a **member lane** -
+plaintext, served only to peers who prove membership - and the sealed lane is kept for the pair (Direct Messages,
+above). Confidentiality by refusal, not by mathematics.
+
+The trade, stated once and honestly: a group's content sits readable on every member's node, so every member's node
+*operator* can read it, and it lands on that operator's moderation surface rather than staying opaque bytes they
+have no duty to look at. Two things keep that from being the catastrophe it first sounds like. First, the delta is
+narrower than it reads - an epoch seals to every member's Active leaves, so every member's node decrypts anyway,
+and **We Trust the Node Operator** already says the quiet part: "against a malicious operator who actively *wants
+in*? We might as well be plaintext." What is genuinely surrendered is ciphertext-at-rest and fail-closed behaviour
+when a serving surface has a bug - real, and the price of the lane. Second, what it buys is that ejection becomes a
+computed fact rather than a minted one, which deletes most of what this section used to be about.
+
+The scale argument is the plan's own, borrowed from Supergroups below: a shared secret "works precisely at the
+scale where a shared secret is meaningful, and gets expensive precisely as it stops being." Two is that scale.
+Thirty is not, and a thousand-person room is para-public whatever the mathematics claims.
 
 ### What maps for free
 
-- **The epoch-key membership boundary already is a group key.** "Sealed separately to every member," members trial-
-  decrypt, and revocation of either disposition "rotates: a fresh epoch sealed to every Active member except the
-  target." Read *member* as *a person* rather than *a device* and it is a group with forward-secure ejection,
-  unmodified.
-- **The member proof already is the group's sync gate.** Unproven peers get neither private entries nor private
-  *frontiers*, so the volume and cadence of a private group's traffic is itself private. That property would have
-  been expensive to design and is simply inherited.
+- **The epoch-key membership boundary looks like a group key, and that is the trap.** "Sealed separately to every
+  member," members trial-decrypt, and revocation of either disposition "rotates: a fresh epoch sealed to every
+  Active member except the target." Read *member* as *a person* rather than *a device* and it appears to be a group
+  with forward-secure ejection, unmodified. It is not: above the pair, the rotation trigger becomes somebody else's
+  key event, and secrecy must be *minted* on every membership change while validity is only *computed*. The
+  boundary keeps its real job at the two sizes where the trigger is always a device event - one person with N
+  devices, and the sealed pair.
+- **The member proof already is the group's sync gate** - and in the design this section lands on, it is the *only*
+  gate. Unproven peers get neither member-lane entries nor member-lane *frontiers*, so the volume and cadence of a
+  group's traffic is itself private. That property would have been expensive to design and is simply inherited;
+  what changes is that it is now load-bearing rather than a bonus, which raises the cost of a bug in it
+  correspondingly. That is the honest price of the lane, and it is stated again below.
 - **Everything social is inherited.** A group has a profile, a posts chain, followers, slugs, taxonomies,
   publication-is-an-act. Following a group is following an identity. The notes app's version DAG was built so one
   person's devices could diverge without losing words; point it at thirty people and it is a collaborative wiki with
   the same guarantee, no changes.
-- **Governance arrives pre-answered, and the answer is IRC.** Rule 2 makes seniority the entire authority relation
-  and rule 5 makes it a *total order computable from local data*. For thirty people that is a strict pecking order:
-  no peers, the seniormost can eject anyone, and no one can eject them. For a person this is obviously correct
-  (your root outranks your laptop). For a group it is a **monarchy with a publicly computable line of succession** -
-  which is a founder and their ranked ops, which is a sysop and their co-sysops, which is *precisely the Old
-  Internet's governance model*, delivered exactly. Rule 6 even hands over succession: if the root vanishes, "any key
-  can act as a root for its own subtree," so the group outlives its founder. Formation ceremony falls out for free:
-  mint the group root, spawn N ranked co-founder keys, vault or destroy the root.
+- **Governance arrives pre-answered, and the answer is IRC** - but over the **invite tree**, not the key tree.
+  Because the roster references identities and holds no member keys (next section), rank-path has nothing to order:
+  members act with their own keys, which live in their own trees. So the authority structure is the invite tree -
+  Alice's leaf signs "I admit Bob", Bob's signs "I admit Carla" - and seniority is invite depth. The *algorithm* is
+  inherited unchanged: ties between equal depths resolve by walking up to the common ancestor and comparing there,
+  terminating at the founder. That is rank-path pointed at a different tree, computable from local data and just as
+  clock-free (**No Clocks!**). What it yields is a strict pecking order with no peers - a **monarchy with a
+  publicly computable line of succession**, which is a founder and their ranked ops, which is a sysop and their
+  co-sysops, which is *precisely the Old Internet's governance model*, delivered exactly. Formation ceremony:
+  mint the group root, admit the co-founders, vault or destroy the root.
+
+  The group's own key tree keeps a narrower job - it is the group's **public voice**, the keys held by the nodes
+  agenting the group, signing its profile and its posts for strangers to verify. Two authority structures in one
+  object, and conflating them is the mistake this bullet used to make.
 
 ### The one structural decision: the roster references identities, it does not contain them
 
 The tempting move - the group's tree *contains* its members' identity trees - is not constructible. A root key is
 unparented by definition, and "structural seniority is fixed at signing time and cannot be honestly granted
 retroactively," so no existing identity can be grafted under a group root. Two weaker versions were tried and both
-fail on the same rock:
+fail on the same rock - and note that they fail on *authority* grounds, independent of how content is protected, so
+the conclusion survived the move to the member lane unchanged:
 
 - **A key per member** (`root -> M_alice`, held by Alice on all her devices, epoch sealed to `M_alice`). Broken:
   the key is not device-scoped, so a compromised laptop *is* Alice, permanently. Worse, `M_alice` lives in the
@@ -1373,27 +1470,25 @@ fail on the same rock:
 
 **The shape that works: the group's roster names member identity *roots*, and members act with their ordinary
 personal keys.** The group holds no per-member keys at all. Alice proves membership with the chain from her leaf to
-her own root (which she already has, for everything else) plus the group's admission entry for that root. The
-group's epoch seals to **each of Alice's Active leaf encryption pubkeys**, read from her identity-public chain -
-where they are parent-attested from birth, so no round-trip is needed.
+her own root (which she already has, for everything else) plus the group's admission entry for that root; a verifier
+walks that admission back to the founder, checking that nothing along the path has been ejected or repudiated.
 
-The distinction that makes it work is the **unit of sealing**. Seal to a *member* and you cannot revoke part of
-one. Seal to a *device* and revocation already works, because devices are exactly what the existing machinery
-revokes. Alice repudiates a laptop: one statement, on her own chain, and every group she belongs to independently
-*observes* it and rotates. One event, N reactions, **no directive crosses a tree boundary** - which is why nothing
-cascades, conflicts, or double-fires.
+Every step of that is **computed from public and member-lane facts, with no secret anywhere in it**, which is the
+property that makes the design cheap. Alice repudiates a laptop: one statement, on her own chain, and every group
+she belongs to independently *observes* it and stops honouring that leaf's proofs. One event, N reactions, **no
+directive crosses a tree boundary** - which is why nothing cascades, conflicts, or double-fires. Unlike the sealed
+version this replaces, no reaction has to mint anything.
 
 Consequences:
 
-- **A roster entry is a pointer, not a key.** Nobody holds it; there is nothing to steal. The secrets are all leaf
-  keys, already device-scoped and already revocable.
+- **A roster entry is a pointer, not a key.** Nobody holds it; there is nothing to steal.
 - **Pseudonymous membership needs no invention**: join under a pseudonym identity. "Identities are cheap and users
-  are encouraged to run several" already shipped that.
-- **Adding a device costs the group nothing.** Alice holds the current epoch and seals it to her own new phone -
-  the existing adoption flow, with Alice as the granting node.
-- **Cost:** the group must sync every member's identity-public chain and recompute recipients from their Active leaf
-  set. And group rotation is now triggered by events on *other people's* chains - a new kind of trigger, but an
-  **observation of a public fact**, never a command.
+  are encouraged to run several" already shipped that. It extends to ops, since the invite tree names roots and a
+  root may be a persona.
+- **Adding a device costs the group nothing, and costs it nothing to know.** Alice's new phone is Active on her own
+  identity-public chain, so her proofs simply start working from it - no re-seal, no notification, no group event.
+- **Cost:** the group must sync every member's identity-public chain, to verify proofs against live key trees. That
+  was already true of the sealed version, which needed the same chains to compute epoch recipients.
 
 ### The invite tree, and what a repudiation blows up
 
@@ -1419,36 +1514,92 @@ Two things this exposes:
   re-affirmations atomically so nobody gets ejected-then-readmitted. The UI owes Bob the blast radius before he
   presses the button; the group can compute it exactly.
 
-### Validity is computed; secrecy is minted
+### The Member Lane: The Roster Is the ACL
 
-Carla's *authority* dies instantly and for free - every node derives it from the chain, and from that moment her
-signatures confer nothing. But **Carla still holds the current epoch key**, and no derived fact can take it from
-her. Somebody has to mint a fresh one.
+This section used to be called *Validity is computed; secrecy is minted*, and it was an accounting of the gap
+between those two halves. Carla's authority died the instant a node computed it, but Carla still **held the epoch
+key**, and no derived fact could take it from her, so somebody had to mint a fresh one - and because a *derived*
+ejection is a consequence everyone computed rather than a statement someone signed, it could not carry its own
+replacement. She was silenced immediately and deafened eventually, and, the repudiation being public, she could
+watch the window open. Closing that gap is the whole of what the member lane does: with no secret to mint, ejection
+is computed like every other fact and lands at the speed of sync.
 
-**She is silenced immediately and deafened eventually.** The dangerous powers (speak, invite, vouch) evaporate on
-the instant; the passive one (read) lingers. That is the right way round, but the window is real, and - because the
-repudiation is public - **Carla can watch it open.**
+**The roster is plaintext, member-only.** Three distinctions, all load-bearing:
 
-A *direct* revocation can close the window to zero by carrying its replacement epoch. A *derived* ejection cannot:
-Carla's removal is not a statement anyone signed, it is a consequence everyone computed, and consequences cannot
-carry keys. So the repudiator should rotate every group it ejects someone from, in the same act, where it can - and
-where it cannot (the repudiating senior is an offline root with no group state), some remaining member's node must
-notice an **ejection with no matching rotation** and mint one. Honest bound: Carla reads until that lands. The cost
-is small, because she already has all the history; rotation only ever protected the future.
+- **Not encrypted.** The roster *is* the ACL, and every node enforcing the gate must evaluate it. Encrypt it and
+  those nodes need a key, and distributing that key on membership change is precisely the machinery this design
+  exists to remove. An encrypted ACL is a contradiction in terms.
+- **Not published.** Membership is not a public fact - "who is in the organizing committee" is the trust graph's
+  enumeration problem in a different hat (How people find each other). Note what the sealed design got right here
+  almost by accident: epoch entries carry anonymous sealed boxes and members *trial-decrypt*, so recipients were
+  never on the wire and only the count leaked. A member-only roster does better - it hides the count too.
+- **A lane, not a bit.** Gating is a property of the service slot the entry lives on, never a flag on the entry
+  (**Copy, Don't Flip**). Publishing group content is a re-sign onto the group's public chain, exactly as crossing
+  any other membrane is. There is no switch for a bug to throw.
 
-### Supergroups: public composition nests, private composition does not
+So a group is one identity with two lanes. The **public** chains carry its key tree, profile, posts, follows and
+slugs, and anyone may read them. The **member lane** carries the roster and all group content, and the member proof
+gates it. There is no circularity: you receive your admission entry *at* admission and present it to get in, and
+the roster only tells a serving node whether to keep answering you.
 
-A supergroup's roster names *group* identity roots, and its epoch seals to those groups' Active leaves - which are
-**the nodes agenting the group**, not the humans inside it. To make a supergroup's private lane readable by members,
-someone must re-encrypt it into each group's private lane; that re-encryption puts the supergroup's secret on every
-member's laptop and makes its forward secrecy hostage to the most careless of hundreds. It also demands a *rekey
-without a revocation*, which nothing in the model can verify.
+**Blobs on the member lane are plaintext, so membership has to become the capability - and that is new machinery,
+not an inherited property.** The File Layer's rule for private bodies (encrypt-then-hash, random nonce, no dedup by
+design) cannot apply, because there is no key to encrypt under. That matters more than it first looks, because the
+File Layer's *serving* rule is "ungated, because the hash is the boundary" - safe only while every non-public body
+is ciphertext. It isn't here. **Member-lane blobs must be served behind the member proof**, which means a real
+authorization check on the blob transport that does not exist today; this is the one place the member lane costs
+implementation rather than saving it, and it must not be discovered late.
 
-So the boundary is a mechanism, not a judgment call: **the private lane reaches exactly as far as the epoch seals,
-and no further.** Public composition - federation, shared feeds, co-signed announcements, webrings of groups -
-nests freely and forever, because there is no secret to fan out. This is the same self-selection the epoch machinery
-shows everywhere: it works precisely at the scale where a shared secret is meaningful, and gets expensive precisely
-as it stops being.
+Given that gate, what remains is a correlation channel rather than a disclosure: a plaintext group blob is
+byte-identical to the same file held publicly elsewhere, so anyone holding both can match them, and dedup will link
+them if it is left on. Accepted, in the same class as the device-attribution and timing caveats already logged under
+Hosting - but the honest reading is that a group is *not* a place to put a file you would not put on a friend's
+hard drive.
+
+**Ejection** is an entry on the member lane, signed by a member senior to the target in the invite tree. Every
+serving node computes it and refuses: no window, no minting, nothing for the target to watch. The honest bound is
+the one that always applied - the departed node keeps everything it already synced, in plaintext, forever. **It
+reads its era; the future is closed.** That is the sealed design's bound exactly, minus the rotation lag.
+
+Three merge rules, which are decisions rather than details:
+
+- **Ejection dominates a concurrent admission of the same root**, unless the later admission is signed by someone
+  senior to the ejector. Fail-closed by default, seniority overrides. The roster is an LWW-element-set, so without
+  this rule an admit/eject race resolves by the ordinary total order - a coin flip on a security question.
+- **Re-admission after ejection is an ordinary add**, and must order against the removal by its LWW stamp: the
+  classic re-add trap, and the reason the stamps are `(timestamp, seq, hash)` rather than a bare counter.
+- **A stale roster admits the recently ejected.** A member's node behind on sync will honour a proof it should have
+  refused. Same eventual-consistency bound as everything else here, and shorter than the rotation lag it replaces -
+  but it is now the *only* thing standing between an ejected member and the content, where encryption used to be a
+  second answer. Fail closed on a proof that cannot be resolved, and log it.
+
+**Departure resolves for free** - the disposition The Adult In The Room asks for below (item 5) and cannot express.
+Once the roster holds references rather than keys, departure and repudiation stop competing. **Repudiation** (your
+key was stolen) kills the subtree, so every admission that key signed dies with it: fail-closed, and correct.
+**Departure** (you are leaving) drops you from the roster and leaves the admissions you signed *standing*, because
+they were honest when you made them. It is self-issuable without the hazard item 6 worries about, because a
+departing member cannot take the room's secrets with them: there are none, and their reading stops when the roster
+says so.
+
+### Supergroups: composition nests, because there is nothing to fan out
+
+Under the sealed design this section was a wall, and taking it down is the largest thing the member lane buys. A
+supergroup's roster names *group* identity roots, and its epoch would have sealed to those groups' Active leaves -
+**the nodes agenting the group**, not the humans inside it - so making its private lane readable by the humans meant
+re-encrypting into each member group's own lane. That fans the supergroup's secret onto every member's laptop, makes
+its forward secrecy hostage to the most careless of hundreds, and demands a *rekey without a revocation*, which
+nothing in the model can verify. The verdict was that the private lane reaches exactly as far as the epoch seals and
+no further.
+
+Gated access is a **predicate**, and predicates compose. A supergroup serves anyone who can prove membership in a
+member group - a proof chained one hop further, computed from rosters the verifier already holds, with no secret
+crossing any boundary. Federation, shared feeds, co-signed announcements and webrings of groups nested freely
+before because there was nothing to fan out; the gated lane now nests for exactly the same reason.
+
+The self-selection the old verdict described is still real: a shared secret "works precisely at the scale where a
+shared secret is meaningful, and gets expensive precisely as it stops being." That observation now has a better
+home - it is the argument for the pair being sealed and everything above it being gated (Direct Messages) - rather
+than a ceiling on how far groups may compose.
 
 ### The Adult In The Room (the actual yield)
 
@@ -1483,7 +1634,10 @@ and five devices:
    senior-only. Departure wants *honor the history, kill the subtree, self-issuable* - a third disposition on the
    same statement type, and cheap. The distinguishing question turns out not to be the disposition at all, but
    **whether the retiring key is the top of a tree that should continue, or a member of someone else's tree that
-   should not** - and the current text cannot tell those apart.
+   should not** - and the current text cannot tell those apart. *(Mostly dissolved by the member lane, above: with
+   a roster of references there is no group subtree to kill, so leaving is a roster removal and the question stops
+   arising there. The narrower identity-level version survives - the current text still cannot tell a migrating
+   root from a departing member - and it is cheaper to fix now that only one caller needs it.)*
 6. **"Because the key is not adversarial"** underwrites self-issued retirement. Safe when you hold both ends. Not
    safe for a person storming out of a community - and the tool for a hostile exit is repudiation, which is
    correctly senior-only. So friendly departures are self-service and hostile ones need a sysop. That is the right
@@ -1493,6 +1647,13 @@ and five devices:
 gate, and the governance model all arrive for free. But the *revocation-and-rotation* half of the identity model is
 carrying more weight than it was specified to carry, and pointing it at thirty people is simply what made that
 audible. **Fix it at the identity level, where it is already load-bearing and already shipped.** Groups can wait.
+
+Moving groups to the member lane does not retire that list; it **scopes** it. Items 1-3 are epoch-rotation defects,
+and the epoch survives at exactly the two sizes that keep it - one person with N devices, and the sealed pair -
+where the trigger is always a device event and the minter is always someone the user controls. Items 4 and 6 are
+authority defects and are untouched (item 4 now bites the invite tree, which makes it more load-bearing, not less).
+Item 5 mostly dissolves, as noted. The instruction is unchanged and slightly easier than it was: fix the epoch
+where it actually lives, and let the roster carry the rest.
 
 ---
 
@@ -1999,11 +2160,15 @@ statement here; first implementation `node/src/files.rs`.)
 - **Public files are the same substrate with the encryption off.** Plaintext bytes, addressed by
   plaintext hash - so dedup returns exactly where it's safe (two posts embedding the same image
   share one blob), and serving is open because the content is public anyway.
-- **Serving is ungated, because the hash is the boundary.** iroh-blobs is *dark by default*: it
-  announces nothing to any DHT or index, has no enumeration primitive, and a fetch needs both the
-  exact hash and a node address. Private hashes exist only inside encrypted headers, so only
-  members ever hold one; an unproven peer has nothing to ask for, and would get useless ciphertext
-  if it did. The one residual is **size** (disclosed to anyone holding a hash - member-bounded,
+- **Serving is ungated, because the hash is the boundary** - and this holds *only* while every
+  non-public body is ciphertext. iroh-blobs is *dark by default*: it announces nothing to any DHT
+  or index, has no enumeration primitive, and a fetch needs both the exact hash and a node address.
+  Private hashes exist only inside encrypted headers, so only members ever hold one; an unproven
+  peer has nothing to ask for, and would get useless ciphertext if it did. (**The exception, and
+  the reason this bullet names its premise:** a group's member lane is plaintext by design, so its
+  bodies are plaintext blobs and the hash stops being a boundary. Member-lane blobs must be served
+  *behind the member proof* - a real gate on the blob transport, which does not exist today. See
+  Groups: The Member Lane.) The one residual is **size** (disclosed to anyone holding a hash - member-bounded,
   pad-able later, ignorable for text).
 - **No content discovery, ever, on either side.** Discovery is the taxonomy and identity layer's
   job: a hash never arrives naked - it arrives inside a signed document you synced, with
@@ -2541,15 +2706,28 @@ the person legal reality actually visits, and the design owes them a defensible 
 
 ### Public Means Public
 
-Content is either encrypted or it isn't. Encrypted content is the *pull* side - your private input stream, whom you
-trust, what you consume. Everything else is **public, and public means public**: a reachable node serves it to
-whoever asks, over HTTP and Iroh alike, no standing in the network required.
+Content sits in one of three lanes, and **the lane is a property of the service slot the entry lives on, never a
+flag on the entry** (**Copy, Don't Flip**) - so crossing between them is always a re-sign, and there is no bit a bug
+can throw:
+
+- **Sealed** - epoch-key ciphertext: your own private chains, and the two-party DM. The *pull* side - your private
+  input stream, whom you trust, what you consume. Opaque to any node that is not a member.
+- **Member-gated** - plaintext, served only to peers presenting a member proof: the group member lane (see Groups:
+  The Member Lane). Confidential by refusal rather than by mathematics, with the honest bounds that implies.
+- **Public** - and **public means public**: a reachable node serves it to whoever asks, over HTTP and Iroh alike, no
+  standing in the network required.
 
 The earlier posture here - "public-readable but never served to anonymous HTTP" - is retired. It contradicted
 **Not Hermetically Sealed** (Doctrine), and worse, it protected nothing: public content served to even one follower
 over Iroh can be rebroadcast to the open web by that follower the instant they choose, so withholding it from an
 anonymous HTTP client at your own node buys zero privacy and costs a working web presence. If it is public, it is on
 the web the moment anyone wants it there - own that instead of pretending otherwise.
+
+The member-gated lane is not that posture returning under a new name, and the difference is the whole reason it is
+sound: the retired one gated content that *also* existed publicly, where the gate was theatre because a second copy
+was already loose. Member-lane content has no public copy - the gate is not a second answer over a leaky one, it is
+the only answer, and a member choosing to re-sign something across to the public lane is a deliberate act by an
+accountable person, exactly as it is everywhere else.
 
 What varies is never *what a node serves* but *whom it hosts* and *whether it is reachable*:
 

@@ -173,6 +173,22 @@ are ever allowed to meet, and in what costume.
 - **monotonic memory** — a relying party never un-learns: the highest-authority statement seen
   is remembered forever, so eclipse can delay truth but not roll it back. (Implicit in the
   append-only store today; becomes an explicit component for remote identities.)
+- **the three lanes** — how visible a chain's content is, always a property of the *service
+  slot* and never a flag on an entry (**Copy, Don't Flip**): **sealed** (epoch-key ciphertext —
+  your private chains, and the two-party DM), **member-gated** (plaintext, served only to a peer
+  presenting a member proof — a group's member lane), and **public** (served to whoever asks).
+  Crossing between them is a re-sign, never a toggle.
+- **member proof** — a leaf signature over (root, its endpoint, our endpoint), channel-bound to
+  the iroh connection, verified against the local key tree. What gates the sealed and
+  member-gated lanes; unproven peers get neither entries nor frontiers, so cadence stays private.
+- **roster** *(planned — groups)* — a group's membership, as an LWW-element-set of member
+  identity **roots** on its member lane: plaintext (it *is* the ACL, so every serving node must
+  read it), but member-only (membership is not a public fact). It names identities and holds no
+  keys, which is what makes ejection a computed fact rather than a minted one.
+- **invite tree** *(planned — groups)* — who admitted whom, in members' own personal keys. A
+  group's authority structure: seniority is invite depth, ties resolved by walking to the common
+  ancestor — rank-path pointed at a different tree. Distinct from the group's own key tree, which
+  is only its public voice.
 
 ## Trust *(planned — Tier 5)*
 

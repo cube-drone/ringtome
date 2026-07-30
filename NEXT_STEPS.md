@@ -452,7 +452,8 @@ Arrive"). What stays later is refinements of a running system, labeled honestly.
 
 ## Deliberately not yet
 
-Passkeys/WebAuthn, recovery helpers (email/social), iroh-gossip real-time + DMs, the scripting
+Passkeys/WebAuthn, recovery helpers (email/social), iroh-gossip real-time + DMs (*designed*
+2026-07-30 - PROJECT_PLAN, Direct Messages: The Sealed Pair; unscheduled, not undesigned), the scripting
 rung of the markup ladder, Godot anything, phones (PWA rides along for free), the push-gateway
 role, snapshots/checkpoints, ActivityPub bridges. All named in the plan; none on the critical
 path through Tier 6.
