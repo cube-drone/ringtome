@@ -10,11 +10,12 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
-import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { useDocDetail } from './detail.js';
+import { Chip, NavChips } from './chips.js';
+import { MarqueeBody } from './marqueebody.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -114,27 +115,10 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
     if (doc.format === 'plaintext') {
         body = html`<pre class="reader-plain">${doc.body ?? '(body not on this computer yet)'}</pre>`;
     } else if (doc.format === 'marquee') {
-        if (doc.body == null) {
-            body = html`<p class="null-sub">(body not on this computer yet)</p>`;
-        } else {
-            // A conflict hunk can split a block element and fail the strict parse (the
-            // accepted cost of per-hunk marquee conflicts). Degrade to source, honestly.
-            let parses = true;
-            try {
-                parse(doc.body);
-            } catch {
-                parses = false;
-            }
-            body = parses
-                ? html`<div class="reader-marquee"><${Marquee} source=${doc.body} animate="visible" profile=${tlProfile} /></div>`
-                : html`<div>
-                      <p class="null-sub">
-                          this marquee doesn't parse right now (likely a conflict split a
-                          block) - showing the source; edit to tidy it.
-                      </p>
-                      <pre class="reader-plain">${doc.body}</pre>
-                  </div>`;
-        }
+        body =
+            doc.body == null
+                ? html`<p class="null-sub">(body not on this computer yet)</p>`
+                : html`<${MarqueeBody} source=${doc.body} profile=${tlProfile} />`;
     } else if (doc.format === 'avif' || doc.format === 'apng') {
         body = html`<img class="reader-media" src=${mediaUrl} alt=${doc.title} />`;
     } else if (doc.format === 'webm') {
@@ -157,49 +141,41 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                 />
                 <span class="reader-chips">
                     ${onDeleted &&
-                    html`<button
-                        class="chip chip-button chip-delete"
+                    html`<${Chip}
+                        icon=${Icons.trash}
+                        modifier="chip-delete"
                         title="Delete — removes this document from every list (its history is kept)"
                         onClick=${remove}
-                    ><${Icons.trash} /></button>`}
+                    />`}
                     ${doc.diverged &&
                     (doc.resolution === 'conflict'
-                        ? html`<span class="chip chip-diverged" title="edited in the same place on two computers; every version is shown below">conflict</span>`
-                        : html`<span class="chip chip-merged" title="changes from two computers, woven together cleanly">merged</span>`)}
-                    <span class="chip">${doc.format}</span>
-                    <span class="chip">read-only</span>
-                    <button
-                        class=${linkCopied ? 'chip chip-button chip-open' : 'chip chip-button'}
+                        ? html`<${Chip} modifier="chip-diverged" title="edited in the same place on two computers; every version is shown below">conflict</${Chip}>`
+                        : html`<${Chip} modifier="chip-merged" title="changes from two computers, woven together cleanly">merged</${Chip}>`)}
+                    <${Chip}>${doc.format}</${Chip}>
+                    <${Chip}>read-only</${Chip}>
+                    <${Chip}
+                        icon=${Icons.link}
+                        on=${linkCopied}
                         title=${linkCopied
                             ? 'Copied!'
                             : 'Copy a link to this document (paste it into another document to crosslink)'}
                         onClick=${copyLink}
-                    ><${Icons.link} /></button>
-                    <button
-                        class=${showMeta ? 'chip chip-button chip-open' : 'chip chip-button'}
+                    />
+                    <${Chip}
+                        icon=${Icons.tag}
+                        on=${showMeta}
                         title="tags, date & description"
                         onClick=${() => setShowMeta((v) => !v)}
-                    ><${Icons.tag} /></button>
-                    <button
-                        class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
+                    />
+                    <${Chip}
+                        icon=${Icons.pin}
+                        modifier=${pinned ? 'chip-pinned' : null}
                         title=${pinned
                             ? 'Pinned — click to unpin it from the top of the list'
                             : 'Not pinned — click to pin it to the top of the list'}
                         onClick=${togglePin}
-                    ><${Icons.pin} /></button>
-                    ${nav &&
-                    html`<button
-                            class="chip chip-button"
-                            title=${nav.prevTip || 'the previous document'}
-                            disabled=${!nav.prev}
-                            onClick=${() => nav.prev && nav.go(nav.prev)}
-                        ><${Icons.navPrev} /></button>
-                        <button
-                            class="chip chip-button"
-                            title=${nav.nextTip || 'the next document'}
-                            disabled=${!nav.next}
-                            onClick=${() => nav.next && nav.go(nav.next)}
-                        ><${Icons.navNext} /></button>`}
+                    />
+                    <${NavChips} nav=${nav} />
                 </span>
                 ${showMeta &&
                 html`<div class="editor-meta">

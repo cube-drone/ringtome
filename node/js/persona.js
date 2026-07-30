@@ -11,6 +11,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
+import { useShadowValue } from './shadow.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { Icons } from './icons.js';
 
@@ -430,55 +431,19 @@ export const PersonaHome = ({ persona, session }) => {
     `;
 };
 
-// One editable profile field as a shadow buffer: local while you type (so the live stream
-// never repaints mid-edit), saved on a debounce and on blur, adopting the mirror when clean.
+// One editable profile field: a shadow buffer (shadow.js) over the mirror's value, saved on a
+// debounce and on blur. Writes land on the profile chain and echo to every computer within seconds.
 function useProfileField(root, field, { debounceMs = 800 } = {}) {
     const live = useLive(() => openMirror(root).profile.get(field), [root, field]);
-    const mirror = (live && live.value) || '';
-    const [value, setValue] = useState(mirror);
-    const valueRef = useRef(value);
-    valueRef.current = value;
-    const dirty = useRef(false);
-    const timer = useRef(null);
-
-    useEffect(() => {
-        if (!dirty.current) setValue(mirror);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mirror]);
-
-    const flush = async () => {
-        if (!dirty.current) return;
-        const v = valueRef.current;
-        dirty.current = false;
-        try {
-            await api(`/api/identity/${root}/profile`, {
+    return useShadowValue((live && live.value) || '', {
+        debounceMs,
+        key: `${root}:${field}`,
+        save: (value) =>
+            api(`/api/identity/${root}/profile`, {
                 method: 'POST',
-                body: JSON.stringify({ field, value: v }),
-            });
-        } catch {
-            dirty.current = true; // a failed save stays dirty; blur/next edit retries
-        }
-    };
-
-    const onInput = (e) => {
-        const v = e.currentTarget.value;
-        setValue(v);
-        valueRef.current = v;
-        dirty.current = true;
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(flush, debounceMs);
-    };
-
-    useEffect(
-        () => () => {
-            if (timer.current) clearTimeout(timer.current);
-            if (dirty.current) flush();
-        },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [root, field]
-    );
-
-    return { value, onInput, flush };
+                body: JSON.stringify({ field, value }),
+            }),
+    });
 }
 
 // The profile editor: your public self-claims (name, bio). Writes land on the profile chain

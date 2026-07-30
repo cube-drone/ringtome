@@ -20,9 +20,10 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
-import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { readPref, setPref, viewModeKey } from '../mirror/prefs.js';
+import { Chip, NavChips } from './chips.js';
+import { MarqueeBody, marqueeApology, parseError } from './marqueebody.js';
 import { useDocSession } from './session.js';
 import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -245,33 +246,19 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, loaded && docId]);
 
-    // The rendered document, shared by side-by-side and read-only. Strict parse first: a
-    // broken document (usually a conflict that split a block) degrades honestly - the side
-    // pane shows the parse error, read-only falls back to source, and nothing is lost.
-    let rendered = null;
-    if (format === 'marquee' && (mode === 'side' || mode === 'read')) {
-        try {
-            parse(body);
-            rendered = html`<div class="reader-marquee"><${Marquee}
-                ref=${previewRef}
-                source=${body}
-                animate="visible"
-                profile=${tlProfile}
-                onNodeClick=${syncToNode}
-            /></div>`;
-        } catch (e) {
-            rendered =
-                mode === 'read'
-                    ? html`<div>
-                          <p class="null-sub">
-                              this marquee doesn't parse right now (likely a conflict split a
-                              block) - showing the source; edit to tidy it
-                          </p>
-                          <pre class="reader-plain">${body}</pre>
-                      </div>`
-                    : html`<p class="form-error">marquee doesn't parse: ${e.message}</p>`;
-        }
-    }
+    // The rendered document, shared by side-by-side and read-only (doc/marqueebody.js owns the
+    // parse gate). The side pane wants the parse ERROR - you are editing, so the reason is the
+    // useful thing - while read-only degrades to the source with an apology.
+    const rendered =
+        format === 'marquee' && (mode === 'side' || mode === 'read')
+            ? html`<${MarqueeBody}
+                  source=${body}
+                  profile=${tlProfile}
+                  handle=${previewRef}
+                  onNodeClick=${syncToNode}
+                  onUnparsable=${mode === 'read' ? marqueeApology : parseError}
+              />`
+            : null;
 
     const sourcePane = html`<textarea
         class="editor-body"
@@ -287,6 +274,51 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         onKeyUp=${noteCaret}
         spellcheck="true"
     ></textarea>`;
+
+    // Which surface you write on. Five cases, read as five early returns rather than a nested
+    // ternary: the waiting room preempts everything (there are no words to edit yet), then the
+    // mode, and a mode the format cannot honour falls through to the plain textarea. That last
+    // fall-through is why this is not a switch - `interactive` and `side` are marquee-only, and
+    // clamping them here means the mode tabs never have to.
+    const writingSurface = () => {
+        if (status === 'waiting') {
+            return html`<div class="editor-waiting">
+                <p class="null-sub">
+                    <span class="waiting-dot"></span> Some of this document's words are still on
+                    their way from another computer. They'll appear here on their own - nothing is
+                    lost.
+                </p>
+            </div>`;
+        }
+        if (mode === 'read') {
+            return format === 'marquee' ? rendered : html`<pre class="reader-plain">${body}</pre>`;
+        }
+        if (mode === 'interactive' && format === 'marquee') {
+            return html`<${LiveMarquee}
+                body=${body}
+                profile=${tlProfile}
+                completions=${[
+                    emojiCompletions,
+                    linkCompletions(root, bucket),
+                    mediaCompletions(root, bucket),
+                ]}
+                initialSelection=${recallCursor(root, docId)}
+                onCursor=${(start, end) => rememberCursor(root, docId, start, end)}
+                onInput=${(text) => {
+                    setBody(text);
+                    touched();
+                }}
+                onBlur=${save}
+            />`;
+        }
+        if (mode === 'side' && format === 'marquee') {
+            return html`<div class="editor-side">
+                <div class="editor-side-source">${sourcePane}</div>
+                <div class="editor-side-preview">${rendered}</div>
+            </div>`;
+        }
+        return sourcePane;
+    };
 
     return html`
         <div class="reader" onDrop=${catchDrop} onDragOver=${allowFileDrag} onPaste=${catchPaste}>
@@ -305,18 +337,27 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                       />`}
                 <span class="reader-chips">
                     ${onDeleted &&
-                    html`<button
-                        class="chip chip-button chip-delete"
+                    html`<${Chip}
+                        icon=${Icons.trash}
+                        modifier="chip-delete"
                         title="Delete — removes this document from every list (its history is kept)"
                         onClick=${remove}
-                    ><${Icons.trash} /></button>`}
+                    />`}
                     ${loaded.diverged &&
                     (loaded.resolution === 'conflict'
-                        ? html`<span class="chip chip-diverged" title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"><${Icons.conflict} /></span>`
-                        : html`<span class="chip chip-merged" title="Merged — changes from two computers woven together cleanly; your next save seals the weave"><${Icons.merged} /></span>`)}
+                        ? html`<${Chip}
+                              icon=${Icons.conflict}
+                              modifier="chip-diverged"
+                              title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"
+                          />`
+                        : html`<${Chip}
+                              icon=${Icons.merged}
+                              modifier="chip-merged"
+                              title="Merged — changes from two computers woven together cleanly; your next save seals the weave"
+                          />`)}
                     ${feat.format &&
-                    html`<button
-                        class="chip chip-button"
+                    html`<${Chip}
+                        icon=${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain}
                         title=${format === 'marquee'
                             ? 'Marquee — click to convert this document to plaintext'
                             : 'Plaintext — click to convert this document to Marquee'}
@@ -324,52 +365,42 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                             setFormat(format === 'plaintext' ? 'marquee' : 'plaintext');
                             touched();
                         }}
-                    ><${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain} /></button>`}
-                    <button
-                        class="chip chip-button"
+                    />`}
+                    <${Chip}
+                        icon=${Icons.upload}
                         title="Upload — attach a file to this document (drop or paste works too)"
                         onClick=${pickFiles}
-                    ><${Icons.upload} /></button>
-                    <button
-                        class=${linkCopied ? 'chip chip-button chip-open' : 'chip chip-button'}
+                    />
+                    <${Chip}
+                        icon=${Icons.link}
+                        on=${linkCopied}
                         title=${linkCopied
                             ? 'Copied!'
                             : 'Copy a link to this document (paste it into another document to crosslink)'}
                         onClick=${copyLink}
-                    ><${Icons.link} /></button>
-                    <span
-                        class=${status === 'error' ? 'chip chip-diverged' : 'chip'}
-                        title=${statusTip}
-                    >${status === 'clean'
-                        ? html`<${Icons.saved} />`
-                        : status === 'error'
-                        ? html`<${Icons.warn} />`
-                        : html`<span class="status-spin"><${Icons.spinner} /></span>`}</span>
-                    <button
-                        class=${showMeta ? 'chip chip-button chip-open' : 'chip chip-button'}
+                    />
+                    <${Chip} modifier=${status === 'error' ? 'chip-diverged' : null} title=${statusTip}>
+                        ${status === 'clean'
+                            ? html`<${Icons.saved} />`
+                            : status === 'error'
+                            ? html`<${Icons.warn} />`
+                            : html`<span class="status-spin"><${Icons.spinner} /></span>`}
+                    </${Chip}>
+                    <${Chip}
+                        icon=${Icons.tag}
+                        on=${showMeta}
                         title="tags, date & description"
                         onClick=${() => setShowMeta((v) => !v)}
-                    ><${Icons.tag} /></button>
-                    <button
-                        class=${row && row.pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
+                    />
+                    <${Chip}
+                        icon=${Icons.pin}
+                        modifier=${row && row.pinned ? 'chip-pinned' : null}
                         title=${row && row.pinned
                             ? 'Pinned — click to unpin it from the top of the list'
                             : 'Not pinned — click to pin it to the top of the list'}
                         onClick=${() => togglePin(row && row.pinned)}
-                    ><${Icons.pin} /></button>
-                    ${nav &&
-                    html`<button
-                            class="chip chip-button"
-                            title=${nav.prevTip || 'the previous document'}
-                            disabled=${!nav.prev}
-                            onClick=${() => nav.prev && nav.go(nav.prev)}
-                        ><${Icons.navPrev} /></button>
-                        <button
-                            class="chip chip-button"
-                            title=${nav.nextTip || 'the next document'}
-                            disabled=${!nav.next}
-                            onClick=${() => nav.next && nav.go(nav.next)}
-                        ><${Icons.navNext} /></button>`}
+                    />
+                    <${NavChips} nav=${nav} />
                 </span>
                 ${showMeta &&
                 html`<div class="editor-meta">
@@ -388,37 +419,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                 )}
             </div>`}
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
-            ${status === 'waiting'
-                ? html`<div class="editor-waiting">
-                      <p class="null-sub">
-                          <span class="waiting-dot"></span> Some of this document's words are
-                          still on their way from another computer. They'll appear here on
-                          their own - nothing is lost.
-                      </p>
-                  </div>`
-                : mode === 'read'
-                ? format === 'marquee'
-                    ? rendered
-                    : html`<pre class="reader-plain">${body}</pre>`
-                : mode === 'interactive' && format === 'marquee'
-                ? html`<${LiveMarquee}
-                      body=${body}
-                      profile=${tlProfile}
-                      completions=${[emojiCompletions, linkCompletions(root, bucket), mediaCompletions(root, bucket)]}
-                      initialSelection=${recallCursor(root, docId)}
-                      onCursor=${(start, end) => rememberCursor(root, docId, start, end)}
-                      onInput=${(text) => {
-                          setBody(text);
-                          touched();
-                      }}
-                      onBlur=${save}
-                  />`
-                : mode === 'side' && format === 'marquee'
-                ? html`<div class="editor-side">
-                      <div class="editor-side-source">${sourcePane}</div>
-                      <div class="editor-side-preview">${rendered}</div>
-                  </div>`
-                : sourcePane}
+            ${writingSurface()}
             ${uploadExtras}
         </div>
     `;

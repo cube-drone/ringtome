@@ -55,6 +55,9 @@ describe('css conventions', () => {
                 if (FOREIGN.test(cls)) continue;
                 // A module names a class as a bare string, inside a class attribute, or via a
                 // template expression - so a substring search over all the JS is the honest test.
+                // Its one requirement, and the reason doc/chips.js takes FULL class names rather
+                // than fragments: a name built as `chip-${tone}` is invisible here, which turns
+                // this check off for that rule without telling anyone.
                 if (!allJs.includes(cls)) dead.push(`${rel(file)}: .${cls}`);
             }
         }

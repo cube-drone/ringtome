@@ -1,0 +1,121 @@
+/* The annotations panel: a document's tags, description, and claimed display date - the things
+   you can assert about a document without minting a version. Dropped into the header of every
+   surface that offers them (the editor, the reader, a journal entry, an upload row). */
+
+/* The annotations panel in the editor: date + tag chips + a description field. */
+.annotations {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0.3rem 0 0.5rem;
+}
+
+.annot-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.annot-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    min-width: 3rem;
+}
+
+.annot-date,
+.annot-time {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.2rem 0.4rem;
+    color-scheme: light;
+}
+
+.annot-date:focus,
+.annot-time:focus {
+    outline: none;
+    border-color: var(--border-strong);
+}
+
+.annot-time:disabled {
+    opacity: 0.4;
+}
+
+.annot-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.annot-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--pink);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.08rem 0.5rem;
+}
+
+.annot-tag-active {
+    cursor: pointer;
+    background: var(--pink);
+    color: var(--surface);
+    border-color: var(--pink);
+    font: inherit;
+    font-size: 0.72rem;
+}
+
+.annot-tag-x {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.6;
+}
+
+.annot-tag-x:hover {
+    opacity: 1;
+}
+
+.annot-tag-input {
+    background: none;
+    border: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.75rem;
+    width: 6rem;
+    padding: 0.1rem 0.2rem;
+}
+
+.annot-tag-input:focus {
+    outline: none;
+}
+
+.annot-desc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    padding: 0.4rem 0.6rem;
+    resize: vertical;
+    width: 100%;
+}
+
+.annot-desc:focus {
+    outline: none;
+    border-color: var(--border-strong);
+}

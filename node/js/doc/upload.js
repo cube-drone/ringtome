@@ -15,8 +15,8 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from '../net.js';
-import { Modal, fmtBytes } from '../modal.js';
+import { api, xhrUpload } from '../net.js';
+import { Modal } from '../modal.js';
 import { Annotations } from './annotations.js';
 import { ensureTreeRoot } from './tree.js';
 import { takeDocDropSwap, SECTION_DRAG, DOC_DRAG } from './crosslink.js';
@@ -28,59 +28,30 @@ import { ingestVideo } from '../../../video-ingest/src/index.js';
 
 const html = htm.bind(h);
 
-// The one job fetch() can't do: report upload progress. Resolves with the 202's JSON.
-function uploadBinary(root, file, title, onPct) {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `/api/identity/${root}/docs/binary?title=${encodeURIComponent(title)}`);
-        xhr.responseType = 'json';
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
-            else {
-                reject(
-                    new Error(
-                        (xhr.response && xhr.response.message) || `upload failed (${xhr.status})`
-                    )
-                );
-            }
-        };
-        xhr.onerror = () => reject(new Error('upload failed (network)'));
-        xhr.send(file);
-    });
+/// Bytes as a short human label - "312 B", "4.7 KB", "12.3 MB". Lives here because the upload rows
+/// are the only place in the app that shows a byte count.
+export function fmtBytes(n) {
+    if (!(n >= 0)) return '';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-// The fallback lane's two blobs travel as multipart parts (`video` + `audio`); the happy lane's
-// WebM goes through the plain binary route like any single blob. Same progress, same 202.
+// The two upload lanes, both over net.js's `xhrUpload`: a single blob goes to the plain binary
+// route, and the video fallback's frames+audio pair travels as multipart parts. Same progress, same
+// 202, same error contract.
+const titled = (root, path, title) =>
+    `/api/identity/${root}/docs/${path}?title=${encodeURIComponent(title)}`;
+
+const uploadBinary = (root, file, title, onPct) =>
+    xhrUpload(titled(root, 'binary', title), file, onPct);
+
 function uploadVideoParts(root, videoBlob, audioBlob, title, onPct) {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open(
-            'POST',
-            `/api/identity/${root}/docs/binary/video?title=${encodeURIComponent(title)}`
-        );
-        xhr.responseType = 'json';
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
-            else {
-                reject(
-                    new Error(
-                        (xhr.response && xhr.response.message) || `upload failed (${xhr.status})`
-                    )
-                );
-            }
-        };
-        xhr.onerror = () => reject(new Error('upload failed (network)'));
-        const parts = new FormData();
-        parts.append('video', videoBlob, 'video');
-        if (audioBlob) parts.append('audio', audioBlob, 'audio');
-        xhr.send(parts);
-    });
+    const parts = new FormData();
+    parts.append('video', videoBlob, 'video');
+    if (audioBlob) parts.append('audio', audioBlob, 'audio');
+    return xhrUpload(titled(root, 'binary/video', title), parts, onPct);
 }
 
 const QUEUE_WORD = {

@@ -1,0 +1,75 @@
+/* The document surface: the framed, scrolling card ONE document lives in, shared by the reader
+   and the editor (both render `.reader` as their root - the editor is a reader you can type
+   in). The rendered-body looks live here too, since a marquee or a plaintext body renders the
+   same whichever surface is hosting it. */
+
+.reader-empty {
+    align-items: center;
+    justify-content: center;
+}
+
+/* The metadata dropdown: tags, date & description, tucked out of the way and dropped over the
+   editor on demand so they stop eating writing space. */
+.editor-meta {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    margin-top: 0.35rem;
+    padding: 0.6rem 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px var(--shadow-drop);
+}
+
+.reader-chips {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.reader-file .reader-head {
+    flex-shrink: 0;
+}
+
+.reader-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* The rendered note in read mode is paper too, so the note itself stands out from the UI. */
+.reader-marquee {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.7rem 0.9rem;
+}
+
+.reader-plain {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0;
+    overflow-y: auto;
+}
+
+.reader-media {
+    max-width: 100%;
+    border-radius: 6px;
+}
+
+/* Video is stored at 320p (the in-browser pre-encoder's bound), so display it at native scale -
+   stretching it into blur would just advertise the crush. Images stay full-width above. */
+video.reader-media {
+    max-width: min(100%, 320px);
+    max-height: 320px;
+}

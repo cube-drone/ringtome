@@ -9,9 +9,10 @@
 // from lagging its own clicks. Text/date fields are shadow buffers over the mirror value
 // (local while dirty, adopt the mirror when clean); tags use an optimistic pending overlay.
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 import { api } from '../net.js';
+import { useShadowValue } from '../shadow.js';
 import { openMirror, useLive } from '../mirror.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 
@@ -19,115 +20,40 @@ const html = htm.bind(h);
 
 const DESC_DEBOUNCE_MS = 1200;
 
-// A named annotation field bound as a shadow buffer: local while dirty so the stream never
-// repaints mid-edit, adopts the mirror when clean, flushes on debounce/blur/unmount. Empty
-// value clears the field (an absent value is an LWW clear). A custom hook - called once per
-// field, unconditionally, so hook order is stable.
+// A named annotation field as a shadow buffer (shadow.js). An EMPTY value clears the field, since
+// an absent value is how LWW says "no longer set" - so the save picks its own verb.
 function useField(root, docId, field, mirrorValue, { debounceMs } = {}) {
-    const [value, setValue] = useState(mirrorValue);
-    const valueRef = useRef(value);
-    valueRef.current = value;
-    const dirty = useRef(false);
-    const timer = useRef(null);
     const url = `/api/identity/${root}/docs/${docId}/annotations/fields/${field}`;
-
-    useEffect(() => {
-        if (!dirty.current) setValue(mirrorValue);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mirrorValue]);
-
-    const flush = async () => {
-        if (!dirty.current) return;
-        const v = valueRef.current;
-        dirty.current = false;
-        try {
-            if (v.trim() === '') {
-                await api(url, { method: 'DELETE' });
-            } else {
-                await api(url, { method: 'PUT', body: JSON.stringify({ value: v }) });
-            }
-        } catch {
-            dirty.current = true; // a failed write stays dirty; blur/next edit retries
-        }
-    };
-
-    const onInput = (e) => {
-        const v = e.currentTarget.value;
-        setValue(v);
-        valueRef.current = v;
-        dirty.current = true;
-        if (debounceMs) {
-            if (timer.current) clearTimeout(timer.current);
-            timer.current = setTimeout(flush, debounceMs);
-        } else {
-            flush();
-        }
-    };
-
-    useEffect(
-        () => () => {
-            if (timer.current) clearTimeout(timer.current);
-            if (dirty.current) flush();
-        },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [docId]
-    );
-
-    return { value, onInput, flush };
+    return useShadowValue(mirrorValue, {
+        debounceMs,
+        key: docId,
+        save: (value) =>
+            value.trim() === ''
+                ? api(url, { method: 'DELETE' })
+                : api(url, { method: 'PUT', body: JSON.stringify({ value }) }),
+    });
 }
 
-// The claimed display date is a composite of two controls (date + time) over ONE field. Same
-// shadow-buffer discipline as useField, but the stored value is `joinClaimed(date, time)`:
-// date alone, date+time, or empty (clear). A time without a date is meaningless and clears.
+// The claimed display date is TWO controls over ONE stored field, so the shadow buffer holds the
+// stored form and the controls split and rejoin it at the edges - which puts `joinClaimed`'s rule (a
+// time without a date is meaningless and clears) in exactly one place. Saves immediately: a date
+// picker has no keystrokes to debounce.
 function useClaimedDate(root, docId, mirrorValue) {
-    const [parts, setParts] = useState(() => splitClaimed(mirrorValue));
-    const partsRef = useRef(parts);
-    partsRef.current = parts;
-    const dirty = useRef(false);
     const url = `/api/identity/${root}/docs/${docId}/annotations/fields/${DISPLAY_DATE_FIELD}`;
-
-    useEffect(() => {
-        if (!dirty.current) setParts(splitClaimed(mirrorValue));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mirrorValue]);
-
-    const flush = async () => {
-        if (!dirty.current) return;
-        const value = joinClaimed(partsRef.current.date, partsRef.current.time);
-        dirty.current = false;
-        try {
-            if (value === '') {
-                await api(url, { method: 'DELETE' });
-            } else {
-                await api(url, { method: 'PUT', body: JSON.stringify({ value }) });
-            }
-        } catch {
-            dirty.current = true;
-        }
-    };
-
-    const set = (patch) => {
-        const next = { ...partsRef.current, ...patch };
-        setParts(next);
-        partsRef.current = next;
-        dirty.current = true;
-        flush();
-    };
-
-    useEffect(
-        () => () => {
-            if (dirty.current) flush();
-        },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [docId]
-    );
-
+    const shadow = useShadowValue(mirrorValue, {
+        key: docId,
+        save: (value) =>
+            value === ''
+                ? api(url, { method: 'DELETE' })
+                : api(url, { method: 'PUT', body: JSON.stringify({ value }) }),
+    });
+    const parts = splitClaimed(shadow.value);
     return {
         date: parts.date,
         time: parts.time,
-        onDate: (e) => set({ date: e.currentTarget.value }),
-        onTime: (e) => set({ time: e.currentTarget.value }),
-        flush,
+        onDate: (e) => shadow.set(joinClaimed(e.currentTarget.value, parts.time)),
+        onTime: (e) => shadow.set(joinClaimed(parts.date, e.currentTarget.value)),
+        flush: shadow.flush,
     };
 }
 

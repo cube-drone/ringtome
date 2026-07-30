@@ -8,31 +8,25 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
-import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { usePrefMap, usePref, setPref, sealKey, SEAL_PREFIX, JOURNAL_FONT } from '../mirror/prefs.js';
 import { useDocDetail } from '../doc/detail.js';
+import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch, queryWords } from '../search.js';
 import { useDocSession } from '../doc/session.js';
 import { useUploadCapture } from '../doc/upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from '../doc/completions.js';
 import { DEFAULT_STYLE } from '../pure/apps.js';
 import { Annotations } from '../doc/annotations.js';
-import { claimedMs, hasClaimedDate } from '../pure/docdate.js';
+import { dayKey, entryMs, isOpen, journalStack } from '../pure/daybook.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
 
-// Local-day helpers. `dayKey` groups entries by the viewer's calendar day (so "today" is the
-// user's today); the heading is the entry's creation date, spelled out.
-const dayKey = (ms) => {
-    const d = new Date(ms);
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-};
 const dateTitle = (ms) =>
     new Date(ms).toLocaleDateString(undefined, {
         weekday: 'long',
@@ -41,11 +35,6 @@ const dateTitle = (ms) =>
         day: 'numeric',
     });
 
-// The moment an entry files under: the user's CLAIMED date if one is set (backdating a memory
-// to the day it happened), else the entry's real creation. Sorting and the displayed date both
-// read this; the day-lock machinery deliberately does not (an entry seals when its REAL day
-// ends, whatever day it claims to be about).
-const entryMs = (d) => (hasClaimedDate(d) ? claimedMs(d) : d.created_ms || 0);
 
 const STATUS_TIP = {
     clean: 'Saved',
@@ -190,19 +179,13 @@ const JournalReader = ({ root, docId }) => {
         </p>`;
     }
     if (doc.format === 'marquee') {
-        let parses = true;
-        try {
-            parse(doc.body);
-        } catch {
-            parses = false;
-        }
-        return parses
-            ? html`<div class="reader-marquee"><${Marquee}
-                  source=${doc.body}
-                  animate="visible"
-                  profile=${tlProfile}
-              /></div>`
-            : html`<pre class="reader-plain">${doc.body}</pre>`;
+        // A bare fallback, not the apology: an unparsable entry in a scrolling day book should show
+        // its words, not a paragraph of explanation per card.
+        return html`<${MarqueeBody}
+            source=${doc.body}
+            profile=${tlProfile}
+            onUnparsable=${bareSource}
+        />`;
     }
     return html`<pre class="reader-plain">${doc.body}</pre>`;
 };
@@ -371,10 +354,6 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
     // is a map of what's present - never a set of flags.
     const sealMap = usePrefMap(root, SEAL_PREFIX) || EMPTY_SEALS;
     const setOverride = (docId, v) => setPref(root, sealKey(docId), v);
-    const openOf = (e, todayKey) => {
-        const o = sealMap.get(e.doc_id);
-        return o !== undefined ? o === 'open' : dayKey(e.created_ms) === todayKey;
-    };
 
     // The page font override. `usePref` makes the click land instantly and then defers to the
     // stored value, so another tab's change can still take over.
@@ -392,35 +371,16 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
     // most of the test - plus TEXT format: the journal shows finished entries, never loose
     // media records (an embedded image's record files into TurboNotes, but even one that lands
     // in this bucket some other way stays out of the stream).
-    const inJournal = (d) =>
-        (d.buckets || []).includes(bucket) &&
-        (d.format === 'plaintext' || d.format === 'marquee');
-
-    // Newest first by the entry's date - the user-claimed date when one is set, else CREATION
-    // (never update); ties broken stably by id. Backdate an entry and it files itself into the
-    // past, exactly like the Notes list.
-    const entries = (docs || [])
-        .filter(inJournal)
-        .sort((a, b) => entryMs(b) - entryMs(a) || (a.doc_id < b.doc_id ? 1 : -1));
-
-    // Search: the same top-level header box as Notes/Recipes, but here it FILTERS the day book to
-    // matching entries (and the hit words get painted in place, below). No phantom while searching -
-    // "start today's page" isn't a search result.
+    // The stream: which entries show, in what order, and whether today's blank page is offered at
+    // the top (pure/daybook.js holds those rules and their vectors).
     const hits = useSearch(root, searchQuery);
-    const searching = queryWords(searchQuery).length > 0;
-    const matched = searching ? entries.filter((e) => hits && hits.has(e.doc_id)) : entries;
-
+    const { entries, stack, searching } = journalStack(docs, {
+        bucket,
+        seals: sealMap,
+        now,
+        hits,
+    });
     const todayKey = dayKey(now);
-    // The phantom trigger: the only time NOT to offer a fresh page is when the TOP of the
-    // stream is an unsealed entry - the page you're mid-writing. An unsealed entry buried in
-    // the past (unlocked for repairs, or backdated away by a claimed date) shouldn't suppress
-    // the prompt: the book's open spot is at the top, or it's nowhere.
-    const topOpen = entries.length > 0 && openOf(entries[0], todayKey);
-    const stack = searching
-        ? matched
-        : topOpen
-        ? entries
-        : [{ phantom: true, created_ms: now }, ...entries];
 
     // Free the create guard when the roster of entries changes size - the click's new document
     // landing in the mirror is exactly such a change, WHEREVER it sorts (a backdated or
@@ -512,7 +472,7 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
             style=${`--journal-font: ${face.family}; --journal-font-scale: ${face.scale}`}
         >
             <${JournalFonts} value=${font} onPick=${setFont} />
-            ${searching && !matched.length
+            ${searching && !stack.length
                 ? html`<p class="null-sub journal-empty">
                       no entries match “${searchQuery}”.
                   </p>`
@@ -524,7 +484,7 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
                                 root=${root}
                                 entry=${e}
                                 bucket=${bucket}
-                                open=${openOf(e, todayKey)}
+                                open=${isOpen(e, sealMap, todayKey)}
                                 onOverride=${(v) => setOverride(e.doc_id, v)}
                             />`
                   )}

@@ -307,124 +307,6 @@
     color: var(--teal);
 }
 
-/* The annotations panel in the editor: date + tag chips + a description field. */
-.annotations {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    margin: 0.3rem 0 0.5rem;
-}
-
-.annot-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.annot-label {
-    font-size: 0.72rem;
-    color: var(--muted);
-    min-width: 3rem;
-}
-
-.annot-date,
-.annot-time {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--ink);
-    font: inherit;
-    font-size: 0.78rem;
-    padding: 0.2rem 0.4rem;
-    color-scheme: light;
-}
-
-.annot-date:focus,
-.annot-time:focus {
-    outline: none;
-    border-color: var(--border-strong);
-}
-
-.annot-time:disabled {
-    opacity: 0.4;
-}
-
-.annot-tags {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem;
-}
-
-.annot-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.72rem;
-    color: var(--pink);
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0.08rem 0.5rem;
-}
-
-.annot-tag-active {
-    cursor: pointer;
-    background: var(--pink);
-    color: var(--surface);
-    border-color: var(--pink);
-    font: inherit;
-    font-size: 0.72rem;
-}
-
-.annot-tag-x {
-    background: none;
-    border: none;
-    color: inherit;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.85rem;
-    line-height: 1;
-    padding: 0;
-    opacity: 0.6;
-}
-
-.annot-tag-x:hover {
-    opacity: 1;
-}
-
-.annot-tag-input {
-    background: none;
-    border: none;
-    color: var(--ink);
-    font: inherit;
-    font-size: 0.75rem;
-    width: 6rem;
-    padding: 0.1rem 0.2rem;
-}
-
-.annot-tag-input:focus {
-    outline: none;
-}
-
-.annot-desc {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--ink-soft);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1.4;
-    padding: 0.4rem 0.6rem;
-    resize: vertical;
-    width: 100%;
-}
-
-.annot-desc:focus {
-    outline: none;
-    border-color: var(--border-strong);
-}
-
 .reader {
     flex: 1;
     min-width: 0;
@@ -434,11 +316,6 @@
     gap: 0.6rem;
     /* The right column (reader or editor) scrolls within the app frame, reaching its bottom. */
     overflow-y: auto;
-}
-
-.reader-empty {
-    align-items: center;
-    justify-content: center;
 }
 
 .reader-head {
@@ -451,63 +328,11 @@
     padding-bottom: 0.4rem;
 }
 
-/* The metadata dropdown: tags, date & description, tucked out of the way and dropped over the
-   editor on demand so they stop eating writing space. */
-.editor-meta {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 30;
-    margin-top: 0.35rem;
-    padding: 0.6rem 0.8rem;
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    box-shadow: 0 8px 20px var(--shadow-drop);
-}
-
 /* An open toggle chip wears the "on" look, like a pinned chip. */
 .chip-open {
     color: var(--dock-text);
     background: var(--teal);
     border-color: var(--teal);
-}
-
-.reader-chips {
-    display: flex;
-    gap: 0.35rem;
-    flex-shrink: 0;
-}
-
-/* The caret pickers (CodeMirror autocomplete - completions.js), dressed for the house: cream
-   card, ink border, teal selection; an option's detail (the emoji glyph) rides to the right,
-   upright and full-size. */
-.cm-tooltip.cm-tooltip-autocomplete {
-    background: var(--surface);
-    border: 2px solid var(--ink);
-    border-radius: 8px;
-    box-shadow: 0 8px 20px var(--shadow-drop);
-    overflow: hidden;
-}
-
-.cm-tooltip-autocomplete > ul {
-    font-family: inherit;
-}
-
-.cm-tooltip-autocomplete > ul > li {
-    padding: 3px 10px;
-}
-
-.cm-tooltip-autocomplete > ul > li[aria-selected] {
-    background: var(--teal);
-    color: var(--dock-text);
-}
-
-.cm-completionDetail {
-    margin-left: 0.7em;
-    font-style: normal;
-    font-size: 1.1em;
 }
 
 /* Files scroll BELOW the header, like documents do: the file reader pins its head and scrolls
@@ -516,16 +341,6 @@
    chips out of reach mid-scroll.) */
 .reader-file {
     overflow: hidden; /* the body region below scrolls instead */
-}
-
-.reader-file .reader-head {
-    flex-shrink: 0;
-}
-
-.reader-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
 }
 
 .chip {
@@ -550,38 +365,4 @@
 .chip-merged {
     border-color: var(--sea);
     color: var(--sea);
-}
-
-/* The rendered note in read mode is paper too, so the note itself stands out from the UI. */
-.reader-marquee {
-    background: var(--paper);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.7rem 0.9rem;
-}
-
-.reader-plain {
-    background: var(--paper);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.8rem;
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-family: "JetBrains Mono", monospace;
-    font-size: 0.85rem;
-    line-height: 1.5;
-    margin: 0;
-    overflow-y: auto;
-}
-
-.reader-media {
-    max-width: 100%;
-    border-radius: 6px;
-}
-
-/* Video is stored at 320p (the in-browser pre-encoder's bound), so display it at native scale -
-   stretching it into blur would just advertise the crush. Images stay full-width above. */
-video.reader-media {
-    max-width: min(100%, 320px);
-    max-height: 320px;
 }

@@ -27,3 +27,35 @@ export async function api(path, options = {}) {
     }
     return body;
 }
+
+/**
+ * The one job `fetch` cannot do: report upload progress. Same JSON-out, same thrown-Error contract
+ * as `api()`, so a caller cannot tell which transport it got - only the progress callback differs.
+ *
+ * `body` is whatever XHR can send directly: a `File`/`Blob` for a single blob, or a `FormData` for
+ * the video fallback's two parts. That difference was two 27-line twins before.
+ *
+ * @param onPct  called with 0-100 as the bytes go up (only while the length is known)
+ */
+export function xhrUpload(url, body, onPct) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        xhr.responseType = 'json';
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && onPct) onPct(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(xhr.response);
+                return;
+            }
+            const message = (xhr.response && xhr.response.message) || `upload failed (${xhr.status})`;
+            const err = new Error(message);
+            err.status = xhr.status;
+            reject(err);
+        };
+        xhr.onerror = () => reject(new Error('upload failed (network)'));
+        xhr.send(body);
+    });
+}

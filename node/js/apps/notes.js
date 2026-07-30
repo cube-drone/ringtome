@@ -17,8 +17,9 @@ import { api } from '../net.js';
 import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
-import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
-import { bucketHolds, featuresOf, itemNoun } from '../pure/apps.js';
+import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
+import { featuresOf, itemNoun } from '../pure/apps.js';
+import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
@@ -150,29 +151,11 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     // -you-left-off jump, and the tree-reload bump a delete needs.
     const { docs, selected, select, treeReload, bumpTree } = useDocApp(root, app, docId, bucket);
 
-    // This app shows ONE bucket at a time - the header's switcher picks which, and the pick arrives
-    // as the `bucket` prop. `bucketHolds` is the shared rule (pure/apps.js): membership, plus the
-    // default app's home gathering the unbucketed. Per-notebook scoping is why searching a recipe
-    // book never turns up a journal entry.
-    const inThisBucket = (d) => bucketHolds(d, app, bucket);
 
-    // Filters stack: this app's scope, THEN search hits, THEN every active tag. Search stays a
-    // filter over the current view (Curtis's preference) rather than a separate ranked screen.
+    // The list: this app's scope, then the search hits, then every active tag, newest-claimed-date
+    // first with pinned documents floating (pure/doclist.js holds the rules and their vectors).
     const hits = useSearch(root, searchQuery);
-    // Newest first by the CLAIMED date - a doc's own display_date if it set one, else its real
-    // last-updated stamp. So a note backdated to 2015 files itself under 2015, not the day you
-    // typed it (the user's date is authoritative, per Curtis's ask).
-    // Pinned documents float to the top (a doc-meta flag), then newest-claimed-date first.
-    const list = (docs || [])
-        .filter(inThisBucket)
-        .filter((d) => hits === null || hits.has(d.doc_id))
-        .filter((d) => tagFilter.every((t) => (d.tags || []).includes(t)))
-        .sort(
-            (a, b) =>
-                (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
-                claimedMs(b) - claimedMs(a) ||
-                (a.doc_id < b.doc_id ? 1 : -1)
-        );
+    const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter });
 
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
@@ -181,16 +164,10 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     // current search, most-used first. Counted over the search results (not the tag filter), so
     // it narrows with a query but still shows every tag you could add; clicking one toggles it
     // into the same tag filter the list uses.
+    // Counted over the SEARCH results rather than the tag-filtered list, so the cloud narrows with
+    // a query but still shows every tag you could add.
     const tagCloud = feat.tagColumn
-        ? Object.entries(
-              (docs || [])
-                  .filter(inThisBucket)
-                  .filter((d) => hits === null || hits.has(d.doc_id))
-                  .reduce((counts, d) => {
-                      for (const t of d.tags || []) counts[t] = (counts[t] || 0) + 1;
-                      return counts;
-                  }, {})
-          ).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+        ? tagCounts(orderDocs(docs, { app, bucket, hits }))
         : [];
 
     // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
