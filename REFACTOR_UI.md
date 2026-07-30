@@ -198,21 +198,13 @@ those components is also most of B4 by another route.
 
 ## D — Stale context in comments and in-app text
 
-The **field-report** comments are excellent and must be protected: `lookout.js`'s scar history,
-`keepalive.js`'s 64 KiB story, `index.js`'s note on the flash the ref prevents,
-`apps/journal.js`'s on why the create guard is a ref. The build-narration kind ("v0", "phase two",
-the removed gear) has been swept; what is left below needs a decision from Curtis, not a cleanup.
+Empty, and worth keeping as a heading so the distinction survives: the **field-report** comments are
+excellent and must be protected - `lookout.js`'s scar history, `keepalive.js`'s 64 KiB story,
+`index.js`'s note on the flash the ref prevents, `apps/journal.js`'s on why the create guard is a
+ref. The build-narration kind ("v0", "phase two", the gear that no longer exists) is what got swept,
+along with the two in-app wording decisions - the debug chip is deleted and every app now names its
+own things (`itemNoun`).
 
-- [ ] **D9. The item noun disagrees across three surfaces of one app.** The list button says "+
-  new item", the tree toolbar says "page", and the bucket switcher builds its labels from
-  `bucketNoun` ("New Recipe Book"). A recipe book's list button should probably say "+ new recipe"
-  — which wants an `itemNoun` beside `bucketNoun` in the registry, so it is a small feature rather
-  than a copy fix, which is why it wasn't swept with the rest of D.
-- [ ] **D10. The debug dump has no gate.** `doc/editor.js`'s version-history dump is a development
-  tool reached by a chip, and `features.debug` defaults ON for every app. The word TEMPORARY is
-  gone from the code and the honest condition is written there instead ("off at ship day") — but
-  the condition is now only a comment. Either gate it on a dev flag or drop the chip; it must not
-  be the thing a first user finds behind a skull icon.
 
 ## E — The stylesheet
 
@@ -293,6 +285,5 @@ Re-litigating these costs more than reading this list.
 1. **A7 + P4** together (the same recursions), then **A3**, **A4**, **A8**, **C1**, **C2**, and
    **B4 + P3** together.
 2. **E2** — finish the two mis-homed CSS partials the split left, and make the prefix rule a rule.
-3. **D9** and **D10** need a decision from Curtis, not a refactor.
-4. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so it arrives on its own as a
+3. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so it arrives on its own as a
    failing test when the pure set reaches eight modules.

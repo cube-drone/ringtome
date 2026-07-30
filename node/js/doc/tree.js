@@ -22,7 +22,7 @@ const html = htm.bind(h);
 
 // The bucket's tree root, found (mirror roster, lowest id wins a concurrent-mint tie) or minted.
 // ONE module-level dedupe for everyone who might need the root - the tree pane and the list's
-// "+ new item" alike - so two writes racing on first touch still share a single create.
+// list's new-thing button alike - so two writes racing on first touch share a single create.
 const rootMints = new Map(); // `${root}:${bucket}` -> in-flight create promise
 export async function ensureTreeRoot(root, bucket) {
     const rows = await openMirror(root).taxonomies.toArray();
@@ -215,7 +215,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
             <span class="wiki-row-actions" onClick=${(e) => e.stopPropagation()}>
                 <button
                     class="wiki-act"
-                    title="a new page in this section"
+                    title=${`a new ${itemNoun} in this section`}
                     onClick=${() => ops.newPage(node.taxonomy_id)}
                 ><${Icons.pageNew} /></button>
                 <button
@@ -230,7 +230,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                 ><${Icons.rename} /></button>
                 <button
                     class="wiki-act danger"
-                    title="delete this section (its pages are not deleted)"
+                    title=${`delete this section (nothing inside it is deleted)`}
                     onClick=${() => ops.deleteSection(node, parent.taxonomy_id)}
                 ><${Icons.trash} /></button>
             </span>
@@ -320,6 +320,8 @@ function flatDocs(node, out = [], seen = new Set()) {
  * @param showUnfiled  the unfiled bin; off when a sibling list column already plays that role
  * @param onMinimize   when present, the toolbar grows a tuck-away button (collapsible column)
  * @param onOrder      called with the depth-first doc order (the "book order") after each fetch
+ * @param itemNoun     what the hosting app calls one of its things ("page", "note") - the tree grows
+ *                     pages in a Wikibook and notes in TurboNotes, and says so
  */
 export const WikiTree = ({
     root,
@@ -331,6 +333,7 @@ export const WikiTree = ({
     showUnfiled = true,
     onMinimize,
     onOrder,
+    itemNoun = 'page',
 }) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const taxRows = useLive(() => openMirror(root).taxonomies.toArray(), [root]);
@@ -346,7 +349,7 @@ export const WikiTree = ({
     const rootId = (rootRow && rootRow.taxonomy_id) || mintedRoot;
 
     // Mint the root lazily, on the first write that needs it - opening an empty tree creates
-    // nothing. The shared `ensureTreeRoot` dedupe means the list's "+ new item" and the tree's
+    // nothing. The shared `ensureTreeRoot` dedupe means the list's new-thing button and the tree's
     // own toolbar can race on first touch and still share one create.
     useEffect(() => {
         setMintedRoot(null);
@@ -464,7 +467,7 @@ export const WikiTree = ({
             refetch();
             onSelect(made.doc_id);
         } catch (e) {
-            alert(`couldn't start the page: ${e.message}`);
+            alert(`couldn't start the ${itemNoun}: ${e.message}`);
         }
     };
 
@@ -524,7 +527,7 @@ export const WikiTree = ({
             !confirm(
                 `Delete the section “${node.title || '(untitled)'}”?` +
                     (subs ? ` Its ${subs} sub-section${subs === 1 ? '' : 's'} go too.` : '') +
-                    ` Pages are not deleted - they ${showUnfiled ? 'land in unfiled' : 'move to the top level'}.`
+                    ` Nothing inside is deleted - it ${showUnfiled ? 'lands in unfiled' : 'moves to the top level'}.`
             )
         )
             return;
@@ -679,7 +682,7 @@ export const WikiTree = ({
             </div>`}
             <div class="wiki-toolbar">
                 <button class="wiki-tool" onClick=${() => newPage(null)}>
-                    <${Icons.pageNew} /> page
+                    <${Icons.pageNew} /> ${itemNoun}
                 </button>
                 <button class="wiki-tool" onClick=${() => newSection(null)}>
                     <${Icons.sectionNew} /> section
@@ -689,7 +692,7 @@ export const WikiTree = ({
             ${empty &&
             !unfiled.length &&
             html`<p class="null-sub wiki-empty">
-                nothing here yet - start a page, or a section to put pages in.
+                nothing here yet - start a ${itemNoun}, or a section to put them in.
             </p>`}
             ${!!unfiled.length && html`<${UnfiledBin} unfiled=${unfiled} ops=${ops} />`}
         </aside>

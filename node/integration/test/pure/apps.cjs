@@ -6,11 +6,11 @@
 const assert = require('node:assert');
 
 let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp,
-    bucketHolds, featuresOf;
+    bucketHolds, featuresOf, itemNoun;
 let Icons;
 before(async () => {
     ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds,
-       featuresOf } = await import('../../../js/apps.js'));
+       featuresOf, itemNoun } = await import('../../../js/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
 
@@ -170,6 +170,31 @@ describe('app registry', () => {
     // The registry names its icons by role rather than importing them, which is what keeps this
     // module import-free - at the cost of a typo becoming a silent fallback glyph instead of an
     // import error. This is the check that buys the indirection back.
+    describe('itemNoun', () => {
+        it('gives each app its own word for one of its things', () => {
+            assert.equal(itemNoun(appById('recipes')), 'recipe');
+            assert.equal(itemNoun(appById('wiki')), 'page');
+            assert.equal(itemNoun(appById('notes')), 'note');
+            assert.equal(itemNoun(appById('journal')), 'entry');
+        });
+
+        it('falls back to placeholder-ish "item" for an app that never named one', () => {
+            assert.equal(itemNoun(appById('persona')), 'item'); // a system app has no things
+            assert.equal(itemNoun(undefined), 'item');
+        });
+
+        it('is lowercase, for mid-sentence use', () => {
+            const nouns = APPS.filter((a) => a.itemNoun).map((a) => a.itemNoun);
+            assert.ok(nouns.length >= 4);
+            assert.deepEqual(nouns.filter((n) => n !== n.toLowerCase()), []);
+        });
+
+        it('gives every DOCUMENT app one (the surfaces put it in front of the user)', () => {
+            const missing = APPS.filter((a) => a.style && !a.itemNoun).map((a) => a.id);
+            assert.deepEqual(missing, []);
+        });
+    });
+
     describe('icon names', () => {
         it('every app names a glyph that icons.js actually has', () => {
             const missing = APPS.filter((a) => !a.blank).filter((a) => !Icons[a.icon])

@@ -18,7 +18,7 @@ import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
 import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../docdate.js';
-import { bucketHolds, featuresOf } from '../apps.js';
+import { bucketHolds, featuresOf, itemNoun } from '../apps.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
@@ -141,6 +141,7 @@ const Snippet = ({ root, docId, query }) => {
 export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     const root = current.root;
     const feat = featuresOf(app);
+    const noun = itemNoun(app); // what this app calls one of its things
     const [busy, setBusy] = useState(false);
     const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
 
@@ -237,7 +238,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
                 { method: 'PUT' }
             );
-            // When the tree column exists, a new item also takes its place in the tree - the
+            // When the tree column exists, a new document also takes its place in the tree - the
             // last child of the root (append), where it's visible and draggable into shape,
             // rather than invisibly unfiled.
             if (feat.tree) {
@@ -282,7 +283,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                     : html`<aside class="notes-list">
                     ${paneHead('items', 'list')}
                     <button class="notes-new" disabled=${busy} onClick=${createNew}>
-                        ${busy ? '…' : '+ new item'}
+                        ${busy ? '…' : `+ new ${noun}`}
                     </button>
                     ${tagFilter.length > 0 &&
                     html`<div class="notes-tagfilter">
@@ -365,6 +366,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                           showUnfiled=${false}
                           onMinimize=${() => toggleTuck('tree')}
                           onOrder=${setTreeOrder}
+                          itemNoun=${noun}
                       />${resizer('tree')}`)}
                 <${RightColumn}
                     root=${root}

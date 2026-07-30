@@ -211,7 +211,7 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                     ).catch(() => {});
                 }
                 // A tree-having app (Notes, Wiki) also files the upload into the tree - the
-                // root's last child, same as "+ new item" - so it's visible and draggable into
+                // root's last child, same as the list's new-thing button - so it's visible and draggable into
                 // place instead of invisibly unfiled. (The tree row appears once the transcode
                 // lands a version; taxonomy membership itself works immediately.)
                 if (intoTree && bucket) {

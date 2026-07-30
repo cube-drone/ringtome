@@ -20,8 +20,11 @@ export const APPS = [
     // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
     // is excluded from the document-app routes. Its dock tile wears the persona's own name.
     { id: 'persona', name: 'Persona', icon: 'persona', live: true, system: true },
-    // `bucketNoun` is what ONE bucket of this app is called to the user - the word the bucket
-    // switcher builds its labels from ("New Recipe Book", "Delete this Journal…").
+    // The app's two nouns, both in the user's words rather than ours. `bucketNoun` is what ONE
+    // bucket is called, Capitalised because it lands in titles and prompts ("New Recipe Book",
+    // "Delete this Journal…"); `itemNoun` is what one THING INSIDE a bucket is called, lowercase
+    // because it lands mid-sentence ("+ new recipe", "a new page in this section"). A recipe book
+    // holds recipes, a wikibook holds pages, and neither of them holds "items".
     {
         id: 'journal',
         name: 'Journal',
@@ -29,6 +32,7 @@ export const APPS = [
         style: 'journal',
         live: true,
         bucketNoun: 'Journal',
+        itemNoun: 'entry',
         // A day book: its own component (JournalApp), a stream of one entry per day - NOT the
         // notes list. It composes the shared editing session directly, so it needs no `features`.
         journal: true,
@@ -40,14 +44,14 @@ export const APPS = [
         style: 'recipes',
         live: true,
         bucketNoun: 'Recipe Book',
+        itemNoun: 'recipe',
         // A recipe book: just the interactive editor, tags and title, and a tag cloud beside
-        // the list. No dates, no descriptions, no format-juggling, no debug chip.
+        // the list. No dates, no descriptions, no format-juggling.
         features: {
             modes: ['interactive'],
             format: false,
             date: false,
             description: false,
-            debug: false,
             tagColumn: true,
         },
     },
@@ -58,6 +62,7 @@ export const APPS = [
         style: 'wiki',
         live: true,
         bucketNoun: 'Wikibook',
+        itemNoun: 'page',
         // A knowledge base: pages in a TREE. Its own component (WikiApp) - the tree is a root
         // taxonomy (titled `wiki:<bucket>`), sections are child taxonomies, pages are document
         // leaves. Composes the shared Editor for the page surface. `features.tree` marks it
@@ -73,6 +78,7 @@ export const APPS = [
         style: 'default',
         live: true,
         bucketNoun: 'TurboNotes',
+        itemNoun: 'note',
         // The everything-app, embraced at last (and renamed to match its ambition): the recipe
         // app's tag column on the left, the wikibook's tree on the right, the list between -
         // each column tuckable, so it's only as monstrous as you choose to make it.
@@ -88,10 +94,13 @@ const DEFAULT_FEATURES = {
     format: true, // the format-convert chip
     date: true, // the claimed date/time annotation
     description: true, // the description annotation
-    debug: true, // the version-history dump: a development tool, off at ship day
     tagColumn: false, // a sidebar listing every tag by frequency
     tree: false, // the wiki tree pane (doc/tree.js), right of the list
 };
+
+/// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back
+/// to "item" for an app that hasn't named its own - which reads as placeholder text, and is meant to.
+export const itemNoun = (app) => (app && app.itemNoun) || 'item';
 
 /// The resolved feature set for an app (defaults, then the app's overrides). Safe on undefined.
 export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.features) || {}) });

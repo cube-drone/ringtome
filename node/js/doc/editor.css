@@ -242,11 +242,3 @@
     min-height: 30vh;
     text-align: center;
 }
-
-/* The debug chip's version-history dump: a .reader-plain that may run tall and gets selected
-   wholesale for pasting into a bug report. */
-.debug-dump {
-    user-select: all;
-    max-height: 70vh;
-    font-size: 0.7rem;
-}

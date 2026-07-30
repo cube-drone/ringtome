@@ -9,7 +9,7 @@ import { WikiTree } from '../doc/tree.js';
 import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useColWidths } from '../panes.js';
-import { featuresOf } from '../apps.js';
+import { featuresOf, itemNoun } from '../apps.js';
 
 const html = htm.bind(h);
 
@@ -41,6 +41,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                     searchQuery=${searchQuery}
                     reloadKey=${treeReload}
                     onOrder=${setTreeOrder}
+                    itemNoun=${itemNoun(app)}
                 />${resizer('tree')}
                 <div class="wiki-main">
                     ${/* The shared right column (doc/reader.js): text formats open the Editor, media

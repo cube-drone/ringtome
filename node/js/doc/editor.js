@@ -89,7 +89,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     } = useDocSession(root, docId, { onDeleted });
 
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
-    const [dump, setDump] = useState(null); // the merge-debug version-history dump
     const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
     // The copy-a-cozy-link chip: computes this doc's derived address (doc/address.js) and puts it on
     // the clipboard - the crosslink you paste into another document.
@@ -347,22 +346,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                         : status === 'error'
                         ? html`<${Icons.warn} />`
                         : html`<span class="status-spin"><${Icons.spinner} /></span>`}</span>
-                    ${feat.debug &&
-                    html`<button
-                        class="chip chip-button"
-                        title=${dump
-                            ? 'Debug — click to close the version-history dump'
-                            : 'Debug — click to dump this document’s full version history'}
-                        onClick=${async () => {
-                            if (dump) return setDump(null);
-                            try {
-                                const d = await api(`/api/identity/${root}/docs/${docId}/debug`);
-                                setDump(JSON.stringify(d, null, 2));
-                            } catch (e) {
-                                setDump(`debug dump failed: ${e.message}`);
-                            }
-                        }}
-                    ><${Icons.debug} /></button>`}
                     <button
                         class=${showMeta ? 'chip chip-button chip-open' : 'chip chip-button'}
                         title="tags, date & description"
@@ -406,9 +389,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                 )}
             </div>`}
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
-            ${dump != null
-                ? html`<pre class="reader-plain debug-dump">${dump}</pre>`
-                : status === 'waiting'
+            ${status === 'waiting'
                 ? html`<div class="editor-waiting">
                       <p class="null-sub">
                           <span class="waiting-dot"></span> Some of this document's words are
