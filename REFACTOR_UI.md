@@ -16,9 +16,8 @@ by category, not priority; the suggested working order is at the bottom.
 Named first because it calibrates the rest. `doc/session.js`, `lookout.js`, `keepalive.js`,
 `mirror/doccache.js`, and `icons.js` are the patterns the rest of the UI should be measured against: the
 save engine extracted from its chrome and shared by two surfaces; the two predicates that cost
-real debugging living as pure functions with unit tests (`integration/test/lookout.cjs`,
-`keepalive.cjs`) and comments that are scar records rather than narration; one place mapping
-*meaning* → glyph. Several fixes below are "do what that module did."
+real debugging living as pure functions with unit tests (`integration/test/pure/`) and comments
+that are scar records rather than narration; one place mapping *meaning* → glyph. Several fixes below are "do what that module did."
 
 ## Structure — the directory layout (decided 2026-07-29)
 
@@ -79,12 +78,14 @@ rule `net.rs` followed.
 - [ ] **S1. The purity cop.** A `rules/` directory was considered and rejected: on the Rust side
   that firewall is not a directory but a separate crate (`ringtome-proto` - "values in, `Result`
   out, no async/storage/clocks"), and the JS analogue of compiler-enforced is a test, because
-  architecture cops are tests (STYLE.md). Add one to `just ui-check`: **`lookout.js`, `keepalive.js` and
-  `docdate.js` may import nothing from `js/` and may not mention `fetch`, `document`, `window`,
-  `Dexie`, or `preact`.** Those three are exactly the modules that already have mocha tests, which
-  is the evidence the boundary is real. `search.js` is the fourth by intent but imports the mirror
-  for `useSearch`; it joins the cop once that hook moves to `mirror/queries.js`. Land with E5 -
-  same twenty-line script.
+  architecture cops are tests (STYLE.md). Add one to `just ui-check`, asserting two things about
+  the declared pure set (`lookout.js`, `keepalive.js`, `docdate.js`):
+  **(a)** each imports nothing from `js/` and mentions no `fetch`, `document`, `window`, `Dexie`,
+  or `preact`; **(b)** each has a test file in `integration/test/pure/`. Clause (b) is the one the
+  test glob can never provide - a glob finds the tests that exist, so only a cop that enumerates
+  the modules can catch a pure module nobody tested. `search.js` is the fourth by intent but
+  imports the mirror for `useSearch`; it joins the set once that hook moves to
+  `mirror/queries.js`. Land with E5 - same twenty-line script.
 
 ### What the move changed about the items below
 

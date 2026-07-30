@@ -5,7 +5,7 @@ const assert = require('node:assert');
 
 let needsReload;
 before(async () => {
-    ({ needsReload } = await import('../../js/lookout.js'));
+    ({ needsReload } = await import('../../../js/lookout.js'));
 });
 
 describe('editor lookout', () => {

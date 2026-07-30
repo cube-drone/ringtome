@@ -3,7 +3,7 @@ const assert = require('node:assert');
 
 let matchDocs, queryWords;
 before(async () => {
-    ({ matchDocs, queryWords } = await import('../../js/search.js'));
+    ({ matchDocs, queryWords } = await import('../../../js/search.js'));
 });
 
 const rows = [

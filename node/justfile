@@ -215,13 +215,19 @@ ui-watch:
 # stale bundle silently compiles on an old one. That is why the GitHub action builds the UI before
 # `just ci`, and why `ci` now depends on this instead of assuming someone did.
 #
-# The four test files below ARE the UI's pure core - no imports from `js/`, no DOM, no fetch, no
-# node to boot - and a new pure-module test belongs in this list (it also runs inside the full
-# integration suite either way, via mocha's spec glob). `--no-config` is required: .mocharc.json's
-# `test/**/*.cjs` spec MERGES with CLI file args rather than yielding to them, so without it this
-# runs the whole suite against nodes nobody booted - the same trap `mainline-smoke` documents.
+# `integration/test/pure/` is the home for tests that need nothing - no browser, no node, no HTTP -
+# which is exactly the UI's pure core. Living in their own directory means this gate is glob-driven:
+# a new pure-module test is picked up by existing there, never by being added to a list here. (They
+# also still run inside the full integration suite, whose `test/**/*.cjs` spec reaches them.)
+#
+# `--no-config` is required: .mocharc.json's spec MERGES with CLI args rather than yielding to
+# them, so without it this runs the whole suite against nodes nobody booted - the same trap
+# `mainline-smoke` documents. The glob is quoted so mocha expands it, not the shell.
+#
+# What a glob CANNOT catch is a pure module nobody wrote a test for; that is the purity cop's job
+# (REFACTOR_UI S1), and this recipe is where it will live.
 ui-check: ui-build
-    cd "{{justfile_directory()}}/integration" && npx mocha --no-config test/lookout.cjs test/keepalive.cjs test/docdate.cjs test/search.cjs
+    cd "{{justfile_directory()}}/integration" && npx mocha --no-config 'test/pure/*.cjs'
 
 # Watch-rebuild the CSS bundle on save (run in a separate terminal).
 ui-csswatch:

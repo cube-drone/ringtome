@@ -65,7 +65,9 @@ just mainline-smoke           # the mainline field test: two nodes on the REAL p
 ```
 
 The integration suite talks to real nodes over real HTTP (and real iroh QUIC for the two-node
-sync tests). Two-node tests skip themselves if `RINGTOME_TEST_HOST_B` is absent.
+sync tests). Two-node tests skip themselves if `RINGTOME_TEST_HOST_B` is absent. The one exception
+is `test/pure/`: pure-logic tests over the UI's browser-free modules, which need no node at all -
+they run in the full suite like everything else, and on their own in seconds via `just ui-check`.
 
 ## Code conventions
 
@@ -81,8 +83,9 @@ and `doccache`), `doc/` (the document machinery every document app composes: ses
 tree, slugs, annotations, upload, completions, turbolinks, livemarquee), and `apps.js` + `apps/`
 (the registry beside its apps - notes, journal, wiki). Everything else stays flat: `index.js` is
 the composition root, `net.js` is the only HTTP client, and `lookout.js`/`keepalive.js`/`docdate.js`
-are the pure core - no imports, no browser, unit-tested from `integration/test/*.cjs` without a
-node. No barrel files: a directory re-exports nothing, so you import the file you want. **An app
+are the pure core - no imports, no browser, no fetch. Their tests live in
+`integration/test/pure/`, which is the directory's whole meaning: everything in it runs with no
+node booted and no browser, and `just ui-check` globs it. No barrel files: a directory re-exports nothing, so you import the file you want. **An app
 is one file until it needs two**, then it becomes `apps/journal.js` + `apps/journal/`.
 
 ## HTTP surface (unstable, pre-4C)
