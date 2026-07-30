@@ -8,6 +8,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
+import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
 import { cachedDoc, rememberDoc } from './doccache.js';
 import { Editor } from './editor.js';
@@ -28,19 +29,6 @@ const html = htm.bind(h);
 // you to where you were. In-memory (a session convenience), the same idea as the per-document
 // cursor memory; forgotten on reload.
 const lastDocMemory = new Map();
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 const when = (ms) => new Date(ms).toLocaleString();
 

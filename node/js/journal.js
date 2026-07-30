@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
+import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
 import { cachedDoc, rememberDoc } from './doccache.js';
 import { useSearch, queryWords } from './search.js';
@@ -24,19 +25,6 @@ import { useTurbolinks } from './turbolinks.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 // Local-day helpers. `dayKey` groups entries by the viewer's calendar day (so "today" is the
 // user's today); the heading is the entry's creation date, spelled out.

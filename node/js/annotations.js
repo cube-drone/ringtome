@@ -11,25 +11,13 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
+import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from './docdate.js';
 
 const html = htm.bind(h);
 
 const DESC_DEBOUNCE_MS = 1200;
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return res.json().catch(() => ({}));
-}
 
 // A named annotation field bound as a shadow buffer: local while dirty so the stream never
 // repaints mid-edit, adopts the mirror when clean, flushes on debounce/blur/unmount. Empty

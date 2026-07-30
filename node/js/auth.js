@@ -1,29 +1,16 @@
 // Node login and registration - the bargain-basement front door. Accounts here are
 // node-local (username + password on THIS node); identities come later and are a
 // separate, grander ceremony. Sessions ride an HttpOnly cookie the server sets, so
-// this file never touches a token - `credentials: 'same-origin'` does all the work.
+// this file never touches a token - net.js's `credentials: 'same-origin'` does all the work.
+// The recovery flow reads `err.status` (the 409 re-homing branch), which is why net.js sets it
+// on every failure rather than only where someone remembered to.
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-const html = htm.bind(h);
+import { api } from './net.js';
 
-// Minimal fetch wrapper: JSON in/out, cookie riding along, server `{message}` surfaced
-// as the thrown Error's message so forms can show it verbatim.
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        const err = new Error(body.message || `request failed (${res.status})`);
-        err.status = res.status;
-        throw err;
-    }
-    return body;
-}
+const html = htm.bind(h);
 
 // The session, as a hook: `account` is null until whoami answers (or 401s).
 // `checking` covers the first paint so we don't flash the login screen at

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso';
 
+import { api } from './net.js';
 import { useSession, Welcome } from './auth.js';
 import {
     usePersona,
@@ -30,19 +31,6 @@ const html = htm.bind(h);
 // lifetime) as the last-open-document memory in notes.js: an in-memory session convenience,
 // forgotten on reload.
 const lastBucketMemory = new Map();
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 // Nothing lives at this address. Internal URLs are session-relative (no identity in them, so
 // they never look shareable - PROJECT_PLAN, The Client Is a Console); an unknown one just

@@ -17,23 +17,11 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
+import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
 import { cachedTree, rememberTree, rosterFingerprint } from './doccache.js';
 import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from './apps.js';
 import { rootTitleFor } from './tree.js';
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 export const HEX_ID = /^[0-9a-f]{32}$/;
 

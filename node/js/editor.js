@@ -22,6 +22,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
+import { api } from './net.js';
 import { openMirror } from './cache.js';
 import { useDocSession } from './docsession.js';
 import { LiveMarquee } from './livemarquee.js';
@@ -34,19 +35,6 @@ import { featuresOf } from './apps.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 // The view modes. Modes are a VIEW choice, format is a DOCUMENT property - they meet in
 // modesFor: a Marquee doc offers all four, a plaintext doc only the two that make sense

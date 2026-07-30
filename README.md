@@ -99,8 +99,9 @@ embedded UI, and background sync with eager push. Current work is Tier 4's clien
 - [`NEXT_STEPS.md`](NEXT_STEPS.md) — the trajectory: where the ladder stands, the standing
   residuals, and the unordered tiers ahead. Forward-looking only.
 - [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status notes and
-  residuals as recorded at the time. Append-only; the past holds still. Read the tail for recent
-  status.
+  residuals as recorded at the time. New work appends at the bottom in full detail; when the tail
+  grows unwieldy it is folded into the era narrative above it (last compressed 2026-07-29, with the
+  per-unit originals left in git). Read the tail for recent status.
 - [`NOTES_APP.md`](NOTES_APP.md) — the first application spec: multi-device encrypted notes on
   the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
   Also the discovery narrative for the file layer, versioned documents, and taxonomies — the
@@ -111,6 +112,7 @@ embedded UI, and background sync with eager push. Current work is Tier 4's clien
   the pragmatism rules; the patterns every new file is expected to hold.
 - [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
   a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
+  [`REFACTOR_UI.md`](REFACTOR_UI.md) is the same ledger for the embedded UI (`node/js`).
 - [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
   cautionary tales.
 

@@ -9,6 +9,7 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
+import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
 import { cachedTree, rememberTree, rosterFingerprint } from './doccache.js';
 import { useSearch } from './search.js';
@@ -18,19 +19,6 @@ import { startDocDrag } from './slugs.js';
 import { Icons, formatIcon } from './icons.js';
 
 const html = htm.bind(h);
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 // The root taxonomy's title for a bucket's tree. The prefix keeps user-titled SECTIONS (also
 // taxonomies, also on the roster) from ever colliding with a root lookup. (`wiki:` even when

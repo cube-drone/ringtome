@@ -8,25 +8,13 @@
 // "Never lose words" is the whole contract, and it has scars (keepalive.js, lookout.js). This is
 // moved verbatim from the old Editor; keep it faithful.
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { api } from './net.js';
 import { openMirror, useLive } from './cache.js';
 import { cachedDoc, rememberDoc } from './doccache.js';
 import { needsReload } from './lookout.js';
 import { keepaliveOk } from './keepalive.js';
 
 const AUTOSAVE_MS = 10_000;
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 // A live document editing session. Returns the buffer state and the actions a surface needs;
 // `onDeleted` is called after a successful delete (a surface uses it to navigate away).

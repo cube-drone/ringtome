@@ -12,6 +12,7 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
+import { api } from './net.js';
 import { Modal, fmtBytes } from './modal.js';
 import { Annotations } from './annotations.js';
 import { ensureTreeRoot } from './tree.js';
@@ -23,19 +24,6 @@ import { Icons } from './icons.js';
 import { ingestVideo } from '../../video-ingest/src/index.js';
 
 const html = htm.bind(h);
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 // The one job fetch() can't do: report upload progress. Resolves with the 202's JSON.
 function uploadBinary(root, file, title, onPct) {

@@ -5,6 +5,10 @@ The forward-looking ledger of known compromises and queued cleanups. Tech debt i
 in anyone's memory. **Completed entries are deleted, not checked off** — git history is the
 archive; this file is only ever the current balance.
 
+This file holds the Rust side. The embedded UI (`node/js`) has its own balance in
+[`REFACTOR_UI.md`](REFACTOR_UI.md) — same contract, split only because the two are worked in
+different sittings and the UI list is long.
+
 Judge entries against STYLE.md; when one gets picked up, work it as its own commit-sized fix.
 
 ## Open items

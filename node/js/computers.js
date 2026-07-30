@@ -6,24 +6,10 @@ import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
+import { api } from './net.js';
 import { shortcode } from './persona.js';
 
 const html = htm.bind(h);
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        const err = new Error(body.message || `request failed (${res.status})`);
-        err.status = res.status;
-        throw err;
-    }
-    return body;
-}
 
 // The key's authority status, in cozy words - and the normal state says NOTHING: "active" is
 // the crown's word for not-revoked (an authority fact, not liveness - the spare key is

@@ -10,23 +10,11 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
+import { api } from './net.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './cache.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
-
-async function api(path, options = {}) {
-    const res = await fetch(path, {
-        credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-        ...options,
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(body.message || `request failed (${res.status})`);
-    }
-    return body;
-}
 
 // A deterministic little color chip from the root pubkey - the identicon's humble seed
 // (the real root-derived identicon is its own future feature; a persona should never render
