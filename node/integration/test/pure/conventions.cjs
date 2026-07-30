@@ -152,7 +152,7 @@ describe('the pure core', () => {
     // ringtome-proto. Growing this list is the point (REFACTOR_UI P); it is a list rather than a
     // directory only until it reaches eight (S2).
     const PURE = ['lookout.js', 'keepalive.js', 'docdate.js', 'swatch.js', 'apps.js',
-                  'doc/naming.js'];
+                  'doc/naming.js', 'doc/treewalk.js'];
     // Patterns that match USE, not mention. A bare word list kept tripping on prose - this
     // codebase's comments legitimately discuss `fetch` (keepalive.js's whole module doc) and
     // documents (everywhere) - and comment-stripping only got the whole-line cases. Asking for

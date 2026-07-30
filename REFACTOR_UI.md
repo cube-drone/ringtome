@@ -79,8 +79,8 @@ rule `net.rs` followed.
 
 - [ ] **S2. Revisit `rules/` once the pure set passes eight modules.** The directory was rejected on
   2026-07-29 against a pure set of THREE, where a cop naming them costs less than a tree change. The
-  P section deliberately grows that set - it is at **six** (`lookout`, `keepalive`, `docdate`,
-  `swatch`, `apps`, `doc/naming`) - and past roughly eight, the declared list living inside
+  P section deliberately grows that set - it is at **seven** (`lookout`, `keepalive`, `docdate`,
+  `swatch`, `apps`, `doc/naming`, `doc/treewalk`), so ONE more trips it - and past roughly eight, the declared list living inside
   `conventions.cjs` stops being worth maintaining by hand, at which point a directory *is* the
   declaration. That is why the Rust side gives its pure core a whole crate rather than a convention.
   `conventions.cjs` asserts the count, so this reopens itself as a failing test rather than waiting
@@ -103,13 +103,6 @@ rule `net.rs` followed.
   with near-identical apology prose. A `<MarqueeBody source= profile= onUnparsable= />` owns the
   parse gate and the "(body not on this computer yet)" state once.
 
-
-- [ ] **A7. Eight ad-hoc tree recursions.** `doc/tree.js` has `collect` twice (`:179`, `:542`),
-  `walk` (`:565`), `sweep` (`:601`), `find` (`:454`), `flatDocs` (`:317`); `doc/slugs.js` has
-  another `walk` (`:158`) and an inline strict-descent loop (`:100`). Four named helpers in a
-  `treewalk.js` — `flatDocs(tree)`, `pathToDoc(tree, docId)`, `descendantTaxIds(node)`,
-  `eachMember(node, fn)` — replace all eight, and become the natural home for the "lowest id wins"
-  tie-break currently re-implemented as an inline `.sort()` in five places.
 
 - [ ] **A8. The two XHR uploaders.** `doc/upload.js:41 uploadBinary` and `doc/upload.js:66
   uploadVideoParts` are 27-line twins differing only in URL and body shape (a `File` vs a
@@ -190,11 +183,6 @@ those components is also most of B4 by another route.
   unbucketed documents); and from `apps/journal.js`, the stream shape (`journalStack(entries,
   seals, now)` - `entryMs`, `dayKey`, the seal-override-vs-day-boundary rule, and the phantom
   rule, which needs six lines of comment today because it is subtle).
-- [ ] **P4. The tree's walks and drag arithmetic.** `flatDocs` (book order, first occurrence
-  only), descendant collection, `deleteSection`'s inside/outside sort, and the drop-index
-  arithmetic - which is counted *without* the dragged member and is exactly the kind of off-by-one
-  that a vector pins forever. Land with A7, which is already extracting these into
-  `doc/treewalk.js`; the only addition is that the extracted module takes data and returns data.
 
 ## D — Stale context in comments and in-app text
 
@@ -282,8 +270,8 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **A7 + P4** together (the same recursions), then **A3**, **A4**, **A8**, **C1**, **C2**, and
-   **B4 + P3** together.
+1. **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together - all small and mechanical.
+   **P3** is the one that trips S2: it makes the pure set eight.
 2. **E2** — finish the two mis-homed CSS partials the split left, and make the prefix rule a rule.
 3. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so it arrives on its own as a
    failing test when the pure set reaches eight modules.

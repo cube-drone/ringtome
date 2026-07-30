@@ -16,6 +16,8 @@ import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.
 import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
 import { rootTitleFor } from './naming.js';
+import { docsInsideOnly, dropIndex, filedDocIds, flatDocs, pathToDoc, sectionIdsUnder }
+    from './treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
 
 const html = htm.bind(h);
@@ -156,21 +158,12 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                 e.dataTransfer.setData('text/plain', node.taxonomy_id);
                 // Marked so an editor drop can refuse it - a section isn't insertable text.
                 e.dataTransfer.setData(SECTION_DRAG, node.taxonomy_id);
-                // Its whole subtree's taxonomy ids ride along - the client-side cycle guard
-                // (the server refuses these too; this keeps the drop from even offering).
-                const taxIds = [];
-                const collect = (n) => {
-                    taxIds.push(n.taxonomy_id);
-                    for (const m of n.members || []) {
-                        if (m.taxonomy && m.taxonomy.members) collect(m.taxonomy);
-                    }
-                };
-                collect(node);
                 ops.drag.current = {
                     kind: 'section',
                     id: node.taxonomy_id,
                     parentId: parent.taxonomy_id,
-                    taxIds,
+                    // Its whole subtree rides along, for the client-side cycle guard.
+                    taxIds: sectionIdsUnder(node),
                 };
                 setLifting(true);
             }}
@@ -295,20 +288,6 @@ const UnfiledBin = ({ unfiled, ops }) => {
     </div>`;
 };
 
-// The tree read as a book: every own page in depth-first order, first occurrence only (a
-// diamond-placed page reads once). This is the prev/next walking order for document nav.
-function flatDocs(node, out = [], seen = new Set()) {
-    for (const m of node.members || []) {
-        if (m.taxonomy) {
-            if (m.taxonomy.members) flatDocs(m.taxonomy, out, seen);
-        } else if (m.doc && !seen.has(m.doc_id)) {
-            seen.add(m.doc_id);
-            out.push(m.doc_id);
-        }
-    }
-    return out;
-}
-
 /**
  * The tree pane. Self-contained: finds (or lazily mints) the bucket's root taxonomy, fetches
  * and renders the expanded tree, and owns every tree operation (new page/section, rename,
@@ -428,22 +407,8 @@ export const WikiTree = ({
         if (!selected || !tree || foldPrefs === undefined) return;
         if (revealed.current === selected) return;
         revealed.current = selected;
-        const trail = [];
-        const find = (n, path) => {
-            for (const m of n.members || []) {
-                if (m.taxonomy) {
-                    if (m.taxonomy.members && find(m.taxonomy, [...path, m.taxonomy.taxonomy_id])) {
-                        return true;
-                    }
-                } else if (m.doc_id === selected) {
-                    trail.push(...path);
-                    return true;
-                }
-            }
-            return false;
-        };
-        find(tree, []);
-        for (const id of trail) {
+        const trail = pathToDoc(tree, selected) || [];
+        for (const { taxonomy_id: id } of trail) {
             if (folded.has(id)) setFlag(root, foldKey(id), false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -514,14 +479,7 @@ export const WikiTree = ({
     // page lost from the tree. A page that also lives in another section (a diamond) is left
     // alone - its other home keeps it in the tree already.
     const deleteSection = async (node, parentId) => {
-        const descendants = [];
-        const collect = (n) => {
-            descendants.push(n.taxonomy_id);
-            for (const m of n.members || []) {
-                if (m.taxonomy && m.taxonomy.members) collect(m.taxonomy);
-            }
-        };
-        collect(node);
+        const descendants = sectionIdsUnder(node);
         const subs = descendants.length - 1;
         if (
             !confirm(
@@ -533,25 +491,10 @@ export const WikiTree = ({
             return;
         try {
             if (!showUnfiled && tree) {
-                // Which pages live ONLY inside the doomed subtree? Walk the whole tree sorting
-                // page occurrences into inside/outside; only the inside-only ones move to root.
-                const doomed = new Set(descendants);
-                const inside = new Set();
-                const outside = new Set();
-                const walk = (n, inSub) => {
-                    const here = inSub || doomed.has(n.taxonomy_id);
-                    for (const m of n.members || []) {
-                        if (m.taxonomy) {
-                            if (m.taxonomy.members) walk(m.taxonomy, here);
-                        } else if (m.doc) {
-                            (here ? inside : outside).add(m.doc_id);
-                        }
-                    }
-                };
-                walk(tree, false);
+                // Only the pages this delete would ORPHAN move to the root; one also filed
+                // elsewhere is already kept in the tree by its other home.
                 const rid = await ensureRoot();
-                for (const id of inside) {
-                    if (outside.has(id)) continue;
+                for (const id of docsInsideOnly(tree, descendants)) {
                     await api(`/api/identity/${root}/taxonomies/${rid}/members/${id}`, {
                         method: 'PUT',
                         body: JSON.stringify({}),
@@ -573,14 +516,7 @@ export const WikiTree = ({
     // The bucket's pages (live), the tree's filed doc ids, and the difference: unfiled.
     const pages = (docs || []).filter((d) => (d.buckets || []).includes(bucket));
     const byId = new Map(pages.map((d) => [d.doc_id, d]));
-    const filed = new Set();
-    const sweep = (n) => {
-        for (const m of n.members || []) {
-            if (m.taxonomy) sweep(m.taxonomy);
-            else filed.add(m.doc_id);
-        }
-    };
-    if (tree) sweep(tree);
+    const filed = filedDocIds(tree);
     const unfiled = showUnfiled ? pages.filter((d) => !filed.has(d.doc_id)) : [];
 
     const hits = useSearch(root, searchQuery);
@@ -615,12 +551,7 @@ export const WikiTree = ({
             } else {
                 if (drag.id === drop.refId) return; // dropped beside itself: nothing to do
                 destParent = drop.parentNode.taxonomy_id;
-                // The arrival index, counted without the dragged member (the PUT's contract).
-                const list = (drop.parentNode.members || [])
-                    .map((m) => m.doc_id)
-                    .filter((x) => x !== drag.id);
-                const i = list.indexOf(drop.refId);
-                index = i === -1 ? undefined : drop.after ? i + 1 : i;
+                index = dropIndex(drop.parentNode.members, drag.id, drop.refId, drop.after);
             }
             if (drag.kind === 'section' && drag.taxIds && drag.taxIds.includes(destParent)) {
                 return; // cycle: into itself or its own subtree (the server refuses these too)

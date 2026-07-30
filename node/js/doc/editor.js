@@ -22,7 +22,6 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
 
-import { api } from '../net.js';
 import { readPref, setPref, viewModeKey } from '../mirror/prefs.js';
 import { useDocSession } from './session.js';
 import { LiveMarquee } from './livemarquee.js';

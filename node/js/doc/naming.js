@@ -26,6 +26,7 @@
 // like - which is why `buildSlugPath` falls back to the honest id whenever a slug would lose its
 // own tie. See integration/test/pure/naming.cjs.
 import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from '../apps.js';
+import { pathToDoc } from './treewalk.js';
 
 export const HEX_ID = /^[0-9a-f]{32}$/;
 
@@ -165,7 +166,7 @@ export function buildSlugPath(row, rows = {}) {
     // path at all; a trail containing one is no trail.
     let mids = [];
     if (rows.tree) {
-        const trail = firstOccurrence(rows.tree, docId);
+        const trail = pathToDoc(rows.tree, docId);
         if (trail && trail.length) {
             const titles = trail.map((t) => slugify(t.title));
             if (titles.every(Boolean)) mids = titles;
@@ -185,20 +186,4 @@ export function buildSlugPath(row, rows = {}) {
     }
     // The honest tail: a canonical id resolves directly, whatever the sections say.
     return `/home/${[head, ...mids, docId].join('/')}`;
-}
-
-/// The trail of sections down to a document's FIRST occurrence in a tree, or null if it isn't in
-/// there. An empty array means "at the root".
-function firstOccurrence(node, docId, trail = []) {
-    for (const m of node.members || []) {
-        if (m.taxonomy) {
-            if (m.taxonomy.members) {
-                const found = firstOccurrence(m.taxonomy, docId, [...trail, m.taxonomy]);
-                if (found) return found;
-            }
-        } else if (m.doc_id === docId) {
-            return trail;
-        }
-    }
-    return null;
 }
