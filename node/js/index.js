@@ -24,6 +24,7 @@ import { liveApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } fr
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath, slugify, HEX_ID } from './doc/slugs.js';
 import { Icons, IconContext } from './icons.js';
+import { beats } from './swatch.js';
 
 const html = htm.bind(h);
 
@@ -124,19 +125,6 @@ const SlugRoute = ({ current, searchQuery, bucket }) => {
         bucket=${bucket}
     />`;
 };
-
-// Swatch Internet Time: the day cut into 1000 ".beats" on Biel Mean Time (UTC+1, no DST). One
-// beat is 86.4 seconds; @000 is midnight in Biel. Silly, beloved, exactly right for a retro-web
-// corner clock. Shown to two decimals so it visibly ticks; the real local time is a hover away.
-function beats(date) {
-    const bmt = new Date(date.getTime() + 3600000); // shift to UTC+1 (Biel)
-    const secs =
-        bmt.getUTCHours() * 3600 +
-        bmt.getUTCMinutes() * 60 +
-        bmt.getUTCSeconds() +
-        bmt.getUTCMilliseconds() / 1000;
-    return (secs / 86.4) % 1000;
-}
 
 const Clock = () => {
     const [now, setNow] = useState(() => Date.now());

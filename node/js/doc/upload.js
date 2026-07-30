@@ -367,6 +367,33 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
 };
 
 /**
+ * The in-document reference for a landed upload - the text that replaces the placeholder.
+ *
+ * The extension is guessed from the INPUT kind (image -> avif, video -> webm, audio -> ogg, what
+ * the crush emits): it is decorative, the served Content-Type is authoritative, and the renderer's
+ * kind sniff is what actually needs it. An unknown kind degrades to a plain link rather than
+ * guessing. Plaintext documents get a bare URL, since there is no markup to hang a label on.
+ *
+ * Pure, and exported for its vectors: this builds a URL out of user-supplied filenames, so the
+ * label and slug scrubbing are the interesting part.
+ */
+export function mediaReference({ root, format, mimeType, docId, name }) {
+    const base = `/api/identity/${root}/docs/${docId}/body`;
+    const t = mimeType || '';
+    const ext = t.startsWith('image/')
+        ? 'avif'
+        : t.startsWith('video/')
+        ? 'webm'
+        : t.startsWith('audio/')
+        ? 'ogg'
+        : null;
+    const label = (name || 'file').replace(/[[\]()]/g, '');
+    const slug = label.replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
+    if (format === 'plaintext') return ext ? `${base}/${slug}.${ext}` : base;
+    return ext ? `![${label}](${base}/${slug}.${ext})` : `[${label}](${base})`;
+}
+
+/**
  * The CAPTURE side of upload, shared by every editing surface (the Editor's three doors, the
  * journal's drop-and-paste): plants a placeholder at the cursor per file, opens the modal,
  * swaps the placeholder for the real reference when the upload lands - or removes it on
@@ -407,31 +434,20 @@ export function useUploadCapture({
         touched();
         setUploadFiles(files);
     };
-    // The final reference for a landed upload. The extension is guessed from the INPUT kind
-    // (image -> avif, video -> webm, audio -> ogg - what the crush emits); it's decorative,
-    // the served Content-Type is authoritative, and an unknown kind degrades to a plain link.
-    const refFor = (file, uploadedId, name) => {
-        const base = `/api/identity/${root}/docs/${uploadedId}/body`;
-        const t = file.type || '';
-        const ext = t.startsWith('image/')
-            ? 'avif'
-            : t.startsWith('video/')
-            ? 'webm'
-            : t.startsWith('audio/')
-            ? 'ogg'
-            : null;
-        const label = (name || file.name || 'file').replace(/[[\]()]/g, '');
-        const slug = label.replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
-        if (format === 'plaintext') return ext ? `${base}/${slug}.${ext}` : base;
-        return ext ? `![${label}](${base}/${slug}.${ext})` : `[${label}](${base})`;
-    };
     const swapToken = (i, replacement) => {
         const tok = uploadTokens.current[i];
         if (!tok || !bodyNow.current.includes(tok)) return; // deleted by hand: their call
         setBody(bodyNow.current.replace(tok, replacement));
         touched();
     };
-    const onUploaded = (i, file, uploadedId, name) => swapToken(i, refFor(file, uploadedId, name));
+    const onUploaded = (i, file, uploadedId, name) =>
+        swapToken(i, mediaReference({
+            root,
+            format,
+            mimeType: file.type,
+            docId: uploadedId,
+            name: name || file.name,
+        }));
     const onUploadFailed = (i) => swapToken(i, '');
     const catchDrop = (e) => {
         const dt = e.dataTransfer;

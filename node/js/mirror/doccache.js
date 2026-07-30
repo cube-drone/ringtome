@@ -18,12 +18,19 @@
 import { openMirror } from '../mirror.js';
 
 /// The doc row's freshness fingerprint - the same trio `needsReload` watches (lookout.js).
-const docFingerprint = (row) =>
+/// Exported for its vectors; nothing else outside this module needs it.
+export const docFingerprint = (row) =>
     row ? `${row.head}:${row.heads}:${row.diverged ? 1 : 0}` : null;
 
 /// The taxonomy roster's fingerprint - shared by every tree consumer so stamps agree.
+///
+/// JSON, not string interpolation, because a TITLE is user input and titles are in here. The old
+/// form was `id:title:members` joined on ',', which a section titled `notes:2,t2:more` could forge:
+/// it produced byte-identical output to a two-section roster, so a cached tree would be served as
+/// fresh when the roster had actually changed underneath it. Found while writing this module's
+/// first vectors, 2026-07-29. JSON escaping makes the separators unforgeable.
 export const rosterFingerprint = (taxRows) =>
-    (taxRows || []).map((t) => `${t.taxonomy_id}:${t.title}:${t.members}`).join(',');
+    JSON.stringify((taxRows || []).map((t) => [t.taxonomy_id, t.title, t.members]));
 
 /// The cached doc detail, IF it's current per the live mirror row; null means fetch.
 export async function cachedDoc(root, docId) {

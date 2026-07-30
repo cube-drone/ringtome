@@ -135,5 +135,12 @@ export function bucketsForApp(app, roster) {
 }
 
 /// Which app opens a bucket of this style - the default app when the style has no live app.
+///
+/// `a.style && ...` is load-bearing: a SYSTEM app (Persona) has no `style` at all, so a bare
+/// equality match would answer `appForStyle(undefined)` with Persona - a styleless app that owns
+/// no documents - instead of falling through to the default. No caller passes undefined today
+/// (they all come via `appTypeOf`, which always returns a style), which is exactly why the trap
+/// would have waited for the one that eventually did. Found by this module's vectors, 2026-07-29.
 export const appForStyle = (style) =>
-    liveApps.find((a) => a.style === style) || liveApps.find((a) => a.style === DEFAULT_STYLE);
+    liveApps.find((a) => a.style && a.style === style) ||
+    liveApps.find((a) => a.style === DEFAULT_STYLE);

@@ -93,9 +93,13 @@ rule `net.rs` followed.
   The P section below deliberately grows that set; past roughly eight, S1's "declared pure set"
   becomes a hand-maintained list living in a script, and a directory *is* that declaration - which
   is precisely why the Rust side gives its pure core a whole crate rather than a convention. The
-  trigger is a count, so it can be checked rather than argued: when `integration/test/pure/` holds
-  eight files, reopen this. (It stays a directory question, not a crate question: a second client
-  sharing these rules is speculation, and the nameability test says no.)
+  trigger is a count, so it can be checked rather than argued: **when eight modules have zero
+  local imports, reopen this.** (The original trigger counted files in `integration/test/pure/`,
+  which tripped on 2026-07-29 at eight files while the strict set was only four - `test/pure/` is
+  "tests that need no browser", which includes tests of pure FUNCTIONS inside impure modules like
+  `apps.js` and `mirror/doccache.js`. Two different counts; the module one is the one that decides
+  a directory. The S1 cop computes it anyway.) It stays a directory question, not a crate question:
+  a second client sharing these rules is speculation, and the nameability test says no.
 
 ### What the move changed about the items below
 
@@ -251,10 +255,6 @@ those components is also most of B4 by another route.
   *`slugPathFor` followed by `resolveSlugPath` must return the document you started from*, for any
   roster/tree/title shape - the client-side echo of proto's test vectors, and a test that catches
   breakage no example-based case would think to check. Land with B3 (the same file is splitting).
-- [ ] **P2. `apps.js` vectors - no refactor at all.** `appTypeOf`, `bucketsForApp`, `featuresOf`
-  and `appForStyle` are already pure and decide what appears in every list in the product. They
-  need tests, not surgery: the implicit "a bucket named `recipes` IS a recipes bucket" rule, the
-  registry fallback, and the unknown-style-never-strands-you default.
 - [ ] **P3. The app surfaces' decision logic.** Two extractions, both of which also thin a fat
   component: from `apps/notes.js`, the list pipeline (`orderDocs(docs, { bucket, appStyle, hits,
   tags })` - bucket scope, then search hits, then every active tag, then pinned-float →
@@ -267,10 +267,6 @@ those components is also most of B4 by another route.
   arithmetic - which is counted *without* the dragged member and is exactly the kind of off-by-one
   that a vector pins forever. Land with A7, which is already extracting these into
   `doc/treewalk.js`; the only addition is that the extracted module takes data and returns data.
-- [ ] **P5. The strays.** Small, pure, and untested: `mirror/doccache.js`'s `docFingerprint` and
-  `rosterFingerprint` (they *are* the read-your-cache freshness contract), `doc/upload.js`'s
-  `refFor` (extension guess + label sanitising), `index.js`'s `beats` (Swatch time, with
-  hand-rolled UTC+1 arithmetic), and `console.js`'s `chunk`. Each is a handful of assertions.
 
 ## D — Stale context in comments and in-app text
 
@@ -347,6 +343,10 @@ Re-litigating these costs more than reading this list.
   form is uniform across every module. Not revisited.
 - **XHR for uploads** (A8): `fetch` still has no upload-progress event. The duplication goes; the
   XHR stays.
+- **`console.js`'s `chunk` stays untested** (the one P5 target skipped). Four lines of
+  `for (i += n) push(slice(i, i + n))`, in an impure module; moving it somewhere testable to prove
+  that array slicing works is ceremony, and STYLE.md's unit-test rule says *isolated boundaries and
+  pure logic*, not every expression.
 - **`doc/session.js` keeps its own loader** rather than sharing `doc/detail.js`. A5 consolidated
   the two READ-ONLY loaders; the session's `load()` also sets the save machine's `parents` and its
   divergence fingerprint, and drives the status transitions including the waiting room whose
