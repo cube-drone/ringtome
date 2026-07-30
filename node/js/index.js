@@ -1,9 +1,17 @@
+// The composition root: the front door, the signed-in shell, and the router - wiring, and as little
+// else as this can get away with. Everything that used to be implemented here now lives beside its
+// own concern: the bucket switcher and its state machine in buckets.js, the corner clock in
+// clock.js, Swatch time in swatch.js, the documents-app spine in doc/docapp.js.
+//
+// Routes are session-relative and identity-free by design (PROJECT_PLAN, The Client Is a Console).
+// The whole internal UI lives under /home: `/home` is the console, `/home/<app>[/<doc>]` an app, and
+// `/home/persona[/profile|/computers]` is identity management. Root bounces to /home, which keeps
+// the bare paths free for the API and a future public face.
 import { h, render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso';
 
-import { api } from './net.js';
 import { useSession, Welcome } from './auth.js';
 import {
     usePersona,
@@ -20,19 +28,15 @@ import { DocsApp } from './apps/notes.js';
 import { JournalApp } from './apps/journal.js';
 import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
-import { liveApps, appById, appLabel, bucketsForApp, appTypeOf, appForStyle } from './apps.js';
+import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './apps.js';
+import { BucketSwitcher, useBucketChoice } from './buckets.js';
+import { Clock } from './clock.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
 import { slugify, HEX_ID } from './doc/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
-import { beats } from './swatch.js';
 
 const html = htm.bind(h);
-
-// The bucket you last had open in each app, keyed `${root}:${app.id}` - the same idea (and
-// lifetime) as the last-open-document memory in apps/notes.js: an in-memory session convenience,
-// forgotten on reload.
-const lastBucketMemory = new Map();
 
 // Nothing lives at this address. Internal URLs are session-relative (no identity in them, so
 // they never look shareable - PROJECT_PLAN, The Client Is a Console); an unknown one just
@@ -127,139 +131,6 @@ const SlugRoute = ({ current, searchQuery, bucket }) => {
     />`;
 };
 
-const Clock = () => {
-    const [now, setNow] = useState(() => Date.now());
-    useEffect(() => {
-        const id = setInterval(() => setNow(Date.now()), 1000);
-        return () => clearInterval(id);
-    }, []);
-    const date = new Date(now);
-    const beat = '@' + beats(date).toFixed(2).padStart(6, '0');
-    return html`<span
-        class="quickbar-clock"
-        title=${`your time: ${date.toLocaleTimeString()}`}
-    >${beat}</span>`;
-};
-
-// The bucket switcher: a doc-app is a shelf of notebooks (buckets), and this is how you move
-// along the shelf. It sits in the app header next to the title: a plus (bind a fresh, empty
-// notebook of this app's type), arrows that page left/right along the rail (wrapping), and the
-// current bucket's name - click it for the full list, where the current one can also be deleted.
-// Deleting is the heavy hammer: every document inside is tombstoned, then the bucket itself is
-// undefined - hence the BIG confirm. The home bucket (the eponymous one) can't be deleted.
-const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
-    const [menu, setMenu] = useState(false);
-    const boxRef = useRef(null);
-
-    // The menu closes on any press outside it (the usual dropdown contract).
-    useEffect(() => {
-        if (!menu) return;
-        const onDown = (e) => {
-            if (boxRef.current && !boxRef.current.contains(e.target)) setMenu(false);
-        };
-        document.addEventListener('pointerdown', onDown);
-        return () => document.removeEventListener('pointerdown', onDown);
-    }, [menu]);
-
-    const names = bucketsForApp(app, roster);
-    const at = Math.max(0, names.indexOf(bucket));
-    const step = (d) => onSwitch(names[(at + d + names.length) % names.length]);
-    const isHome = bucket === app.style;
-    const membersOf = (name) => {
-        const row = (roster || []).find((b) => b.name === name);
-        return row ? row.members : 0;
-    };
-
-    const create = async () => {
-        const name = (prompt(`A name for the new ${app.bucketNoun}:`) || '').trim();
-        if (!name) return;
-        try {
-            await api(`/api/identity/${root}/buckets`, {
-                method: 'POST',
-                body: JSON.stringify({ name, app: app.style }),
-            });
-            onSwitch(name); // it exists empty right away; the roster row follows via the stream
-        } catch (e) {
-            alert(`couldn't create it: ${e.message}`);
-        }
-    };
-
-    const destroy = async () => {
-        // Count from the mirror, not the roster row - same docs the view shows.
-        const docs = await openMirror(root).docs.toArray();
-        const members = docs.filter((d) => (d.buckets || []).includes(bucket));
-        const inside =
-            members.length === 0
-                ? 'It is empty - nothing else is lost.'
-                : `EVERY DOCUMENT INSIDE IT - all ${members.length} of ${
-                      members.length === 1 ? 'it' : 'them'
-                  } - GOES TOO.`;
-        if (
-            !confirm(
-                `DELETE THE ${app.bucketNoun.toUpperCase()} “${bucket}”?\n\n${inside}\n\n` +
-                    `This is the big one. Are you sure?`
-            )
-        )
-            return;
-        setMenu(false);
-        try {
-            for (const d of members) {
-                await api(`/api/identity/${root}/docs/${d.doc_id}`, { method: 'DELETE' });
-            }
-            await api(`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}`, {
-                method: 'DELETE',
-            });
-            onSwitch(app.style); // land back on the shelf's home notebook
-        } catch (e) {
-            alert(`couldn't delete it: ${e.message}`);
-        }
-    };
-
-    return html`
-        <span class="bucket-switch" ref=${boxRef}>
-            <button class="bucket-btn" title="New ${app.bucketNoun}" onClick=${create}>
-                <${Icons.plus} />
-            </button>
-            <button
-                class="bucket-btn"
-                title="the previous ${app.bucketNoun}"
-                disabled=${names.length < 2}
-                onClick=${() => step(-1)}
-            ><${Icons.back} /></button>
-            <button
-                class="bucket-name"
-                title="all of your notebooks"
-                onClick=${() => setMenu((m) => !m)}
-            >${bucket}</button>
-            <button
-                class="bucket-btn"
-                title="the next ${app.bucketNoun}"
-                disabled=${names.length < 2}
-                onClick=${() => step(1)}
-            ><${Icons.forward} /></button>
-            ${menu &&
-            html`<div class="bucket-menu">
-                ${names.map(
-                    (name) => html`<button
-                        key=${name}
-                        class=${name === bucket ? 'bucket-menu-item current' : 'bucket-menu-item'}
-                        onClick=${() => {
-                            onSwitch(name);
-                            setMenu(false);
-                        }}
-                    >
-                        <span>${name}</span>
-                        <span class="bucket-menu-count">${membersOf(name)}</span>
-                    </button>`
-                )}
-                ${!isHome &&
-                html`<button class="bucket-menu-item bucket-menu-delete" onClick=${destroy}>
-                    Delete this ${app.bucketNoun}…
-                </button>`}
-            </div>`}
-        </span>
-    `;
-};
 
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
 // persona is open, routing takes over. The whole internal UI lives under /home (root bounces
@@ -304,55 +175,15 @@ const Inside = ({ session }) => {
         setQuery('');
     }, [appHere && appHere.id]);
 
-    // The current bucket, lifted like the search query: the header owns the switcher, the app
-    // reads the choice. Null means "the app's home bucket" (the eponymous one). Entering an app
-    // returns you to the bucket you last had open there (the same session memory as the
-    // last-open document); home when there's no memory. A cozy URL trumps everything - the
-    // address names the notebook. Switching buckets while resting on a cozy address first steps
-    // back to the app's own route, so the URL stops overriding the choice.
-    const [bucketPick, setBucketPick] = useState(null);
-    const switchBucket = (name) => {
-        setBucketPick(name);
-        if (root && appHere) lastBucketMemory.set(`${root}:${appHere.id}`, name);
-        if (cozyBucketRow) loc.route(`/home/${appHere.id}`);
-    };
-    useEffect(() => {
-        setBucketPick((root && appHere && lastBucketMemory.get(`${root}:${appHere.id}`)) || null);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [appHere && appHere.id]);
-    // Resting on a cozy URL also SETTLES the pick (and the memory): stepping from the cozy
-    // address to an ordinary in-app route keeps you in that notebook instead of bouncing home.
-    useEffect(() => {
-        if (cozyBucketRow && appHere) {
-            setBucketPick(cozyBucketRow.name);
-            if (root) lastBucketMemory.set(`${root}:${appHere.id}`, cozyBucketRow.name);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cozyBucketRow && cozyBucketRow.name, appHere && appHere.id]);
-    const bucket =
-        (cozyBucketRow && cozyBucketRow.name) || bucketPick || (appHere && appHere.style) || '';
-
-    // Deep-link bucket correction: arriving on a document URL (a refresh, a pasted link), the
-    // in-memory bucket choice is gone but the URL still names the page - and the page knows its
-    // notebook. Once the mirror answers, if the current bucket doesn't hold the document, switch
-    // to the doc's bucket that belongs on this app's rail. Corrected AT MOST ONCE per document
-    // (the ref), so it never fights a deliberate later bucket switch made while a doc is open.
-    const deepDoc = (appHere && appHere.style && pathParts[3]) || null;
-    const docsRows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
-    const correctedFor = useRef(null);
-    useEffect(() => {
-        if (!deepDoc || correctedFor.current === deepDoc) return;
-        if (!docsRows || !roster) return; // wait for the mirror before judging membership
-        const row = docsRows.find((d) => d.doc_id === deepDoc);
-        if (!row) return; // not mirrored (yet) - leave the bucket alone
-        correctedFor.current = deepDoc;
-        const names = row.buckets || [];
-        if (names.includes(bucket)) return; // the current bucket already holds it
-        if (!names.length) return; // unbucketed: the default app's home gathers it
-        const target = names.find((n) => appTypeOf(n, roster) === appHere.style);
-        if (target) switchBucket(target);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [deepDoc, docsRows, roster, bucket, appHere && appHere.id]);
+    // The bucket in view, and the way to change it (buckets.js owns the state machine: the
+    // last-open memory, cozy addresses outranking it, and the deep-link correction).
+    const { bucket, switchBucket } = useBucketChoice({
+        root,
+        appHere,
+        roster,
+        cozyBucketRow,
+        docSegment: pathParts[3],
+    });
 
     // The Quickbar: the persistent bottom bar, now purely the app dock - a hexagon per app (icon
     // only, the console glyphs without their names), a fast switch between apps. The tiles run

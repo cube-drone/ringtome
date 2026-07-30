@@ -119,15 +119,6 @@ rule `net.rs` followed.
 
 ## B — Modularity
 
-- [ ] **B1. `index.js` is not a composition root.** STYLE.md: main "wires modules together and
-  starts loops; it implements nothing." Today it implements the Swatch-time clock (`:143-165`),
-  the whole `BucketSwitcher` including `prompt`/`confirm`/`alert`, its own API calls, and a
-  delete-every-document loop (`:173-285`), and — the dense part — a four-effect bucket state
-  machine (`:336-378`) juggling `bucketPick`, `lastBucketMemory`, `cozyBucketRow`, and a deep-link
-  correction guarded by a ref. Extracting `buckets.js` (the switcher + `useBucketChoice(root,
-  appHere, cozyBucketRow)` returning `{ bucket, switchBucket }`) and `clock.js` takes `index.js`
-  from 537 lines to ~200 of pure wiring, and lets the four effects be read as one story.
-
 - [ ] **B4. `DocsApp` is ~290 lines doing six jobs** (`apps/notes.js`): scope filter, search
   filter, tag filter + cloud, sort, nav order, create, and a four-column render with a 50-line
   inlined list-row template. The tag column and the list row are each a clean component
@@ -299,7 +290,9 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **B1** — `buckets.js` and `clock.js` out of `index.js`, so the composition root only composes.
-2. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
-3. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so this arrives on its own as a
-   failing test when the eighth zero-import module lands.
+1. **A7 + P4** together (the same recursions), then **A3**, **A4**, **A8**, **C1**, **C2**, and
+   **B4 + P3** together.
+2. **E2** — finish the two mis-homed CSS partials the split left, and make the prefix rule a rule.
+3. **D9** and **D10** need a decision from Curtis, not a refactor.
+4. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so it arrives on its own as a
+   failing test when the pure set reaches eight modules.
