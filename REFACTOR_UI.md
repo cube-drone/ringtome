@@ -93,49 +93,19 @@ rule `net.rs` followed.
 
 ## A — Simplification
 
-- [ ] **A3. Three copies of the shadow-buffer field hook.** `persona.js:463 useProfileField`,
-  `doc/annotations.js:38 useField`, `doc/annotations.js:94 useClaimedDate` are the same ~50-line
-  machine: local value, `dirty` ref, `valueRef` mirror, debounce, flush on blur + unmount, adopt
-  the mirror when clean. One `useShadowField(mirrorValue, { save, debounceMs })`; the claimed-date
-  variant passes a composite through `joinClaimed`. ~110 lines out.
-
-- [ ] **A4. Three copies of marquee-render-with-honest-fallback.** `apps/notes.js:265`,
-  `apps/journal.js:219`, `doc/editor.js:273` each do `try { parse(body) } catch { degrade }`, two
-  with near-identical apology prose. A `<MarqueeBody source= profile= onUnparsable= />` owns the
-  parse gate and the "(body not on this computer yet)" state once.
-
-
-- [ ] **A8. The two XHR uploaders.** `doc/upload.js:41 uploadBinary` and `doc/upload.js:66
-  uploadVideoParts` are 27-line twins differing only in URL and body shape (a `File` vs a
-  `FormData`); progress, onload, onerror, and the error prose are identical. One `xhrUpload(url,
-  body, onPct)` in `net.js` beside the shared `api()`, and both callers become three-liners. (XHR
-  stays: `fetch` still has no upload-progress event.)
 
 ## B — Modularity
 
-- [ ] **B4. `DocsApp` is ~290 lines doing six jobs** (`apps/notes.js`): scope filter, search
-  filter, tag filter + cloud, sort, nav order, create, and a four-column render with a 50-line
-  inlined list-row template. The tag column and the list row are each a clean component
-  extraction. While in there: the `.pane-head` markup (label + tuck button) is written out twice,
-  in `apps/notes.js`'s `paneHead` and again inline in `doc/tree.js`'s toolbar — one `<PaneHead
-  label= onTuck= />` in `panes.js` (which now owns the tuck state) serves both, and the `Rail`
-  component in `apps/notes.js` belongs there too.
+- [ ] **B4. `DocsApp`'s render is still three components in one.** Its decision logic left for
+  `pure/doclist.js` (P3) and its spine for `doc/docapp.js` (B5), so what remains is markup: a
+  50-line inlined list-row template, the tag cloud's column, and the four-column arrangement that
+  hosts them. The row and the tag column are each a clean extraction. While in there: the
+  `.pane-head` markup (label + tuck button) is written out twice, in `apps/notes.js`'s `paneHead`
+  and again inline in `doc/tree.js`'s toolbar — one `<PaneHead label= onTuck= />` in `panes.js`
+  (which owns the tuck state) serves both, and the `Rail` component belongs there too.
 
-- [ ] **B6. `fmtBytes` lives in `modal.js`** (`:48`). Byte formatting isn't modal chrome; it's an
-  upload-flow display helper. Small, but it's the drift that makes a module's name stop predicting
-  its contents.
 
 ## C — Readability
-
-- [ ] **C1. The six-branch nested ternary in the editor's body render** (`doc/editor.js:428-460`),
-  32 lines across `dump` / `waiting` / `read` / `interactive` / `side` / default — the least
-  readable block in the UI. A `renderBody()` with early returns, or a `switch (mode)` after the
-  two special cases, reads in one pass.
-
-- [ ] **C2. Icon-only chip buttons copy-pasted 11 times** in `doc/editor.js:327-410` and again in
-  `apps/notes.js:304-349`; the prev/next nav pair is byte-identical between the two files. A
-  `<Chip icon= title= on= onClick= />` plus a `<NavChips nav= />` halves both headers and makes
-  the chip row scannable as a list of capabilities.
 
 
 *(The untested-pure-logic item that used to sit here is now P1/P2, under the principle that
@@ -177,13 +147,6 @@ The pleasant surprise is that most of the work below is a **move, not a rewrite*
 already pure functions living inside component files, where nothing can see or test them. Thinning
 those components is also most of B4 by another route.
 
-- [ ] **P3. The app surfaces' decision logic.** Two extractions into `pure/`, both of which also
-  thin a fat component: from `apps/notes.js`, the list pipeline (`orderDocs(docs, { bucket, appStyle, hits,
-  tags })` - bucket scope, then search hits, then every active tag, then pinned-float →
-  claimed-date → id tiebreak, including the rule that only the DEFAULT app's home bucket gathers
-  unbucketed documents); and from `apps/journal.js`, the stream shape (`journalStack(entries,
-  seals, now)` - `entryMs`, `dayKey`, the seal-override-vs-day-boundary rule, and the phantom
-  rule, which needs six lines of comment today because it is subtle).
 
 ## D — Stale context in comments and in-app text
 
@@ -197,28 +160,28 @@ own things (`itemNoun`).
 
 ## E — The stylesheet
 
-`index.css` is now a 33-line table of contents over 13 partials, each sitting beside the module it
-dresses. The split was cut on the section markers the file had already drawn for itself, so the
+`index.css` is a table of contents over 18 partials, each sitting beside the module it dresses. The split was cut on the section markers the file had already drawn for itself, so the
 cascade is unchanged - proven by diffing the built bundle, which came out identical once esbuild's
 own filename markers were stripped. **The import order IS the cascade**, and it matters wherever a
 host re-dresses a borrowed component (`apps/journal.css` flattens `.editor-live`, so it must land
 after `doc/editor.css`); `index.css` says so at the top.
 
-The cop that keeps it honest is `integration/test/pure/conventions.cjs` - dead classes, colour
-literals outside `tokens.css`, and every partial imported exactly once. It found `.persona-badge`
-on its first run, orphaned when C3 deleted the component it dressed.
+**A rule's home is its class prefix, and the prefix names the file** - `journal-*` in
+`apps/journal.css`, `annot-*` in `doc/annotations.css`, `tree-*` in `doc/tree.css`. Two partials
+knowingly held other modules' rules until 2026-07-30; both were emptied out, and the tree's rows were
+renamed `wiki-*` → `tree-*` in the same pass, because a class called `wiki-row` inside a TurboNotes
+notebook was a lie the stylesheet told. `.wiki`, `.wiki-columns` and `.wiki-main` stayed behind:
+those really are the Wikibook's own two-column arrangement. Cross-prefix rules are the stated
+exception - `.journal .editor-live`, `.editor-side-preview .reader-marquee`,
+`.notes-columns .tree-pane` - and each lives in the HOST's file, because "a host re-dressing a
+borrowed component" is whose business it is.
 
-- [ ] **E2. Make the prefix convention a rule** - and finish the two partials that knowingly hold
-  rules belonging elsewhere (recorded at the top of `index.css`): `apps/notes.css` carries the
-  shared reader/chip/annotation rules, which want `doc/surface.css` and `doc/annotations.css`, and
-  `apps/wiki.css` carries the tree ROWS that `doc/tree.js` draws - whose `wiki-` prefix spans two
-  modules and should become `tree-`. Both were left alone because moving them changes the cascade,
-  which the splitting commit deliberately did not do. There is already a module system in the class
-  names — `journal-*`, `wiki-*`, `upload-*`, `annot-*`, `note-row-*`, `bucket-*`, `app-header-*`,
-  `pane-*`. Promoting it to "one prefix per file, prefix names the file" makes it greppable and
-  enforceable, and it names the exceptions: the cross-prefix rules (`.journal .editor-live`,
-  `.editor-side-preview .reader-marquee`, `.notes-columns .tag-column`) are all "a host
-  re-dressing a borrowed component," and belong in the *host's* file with that said once.
+The cop that keeps it honest is `integration/test/pure/conventions.cjs` - dead classes, colour
+literals outside `tokens.css`, and every partial imported exactly once. It found `.persona-badge` on
+its first run, orphaned when C3 deleted the component it dressed, and later caught a `chip-${tone}`
+constructed class name - which is invisible to a literal search, so building one silently switches
+the check off for that rule.
+
 
 ## Reviewed and left alone (standing decisions, not history)
 
@@ -271,6 +234,5 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together - all small and mechanical.
-   **P3**'s two extractions land in `pure/`, where the cop will require their vectors.
-2. **E2** — finish the two mis-homed CSS partials the split left, and make the prefix rule a rule.
+1. **B4** — the last one: `apps/notes.js`'s list row and tag column want to be components, and
+   `panes.js` wants the `<PaneHead>` and `Rail` that two files draw by hand.

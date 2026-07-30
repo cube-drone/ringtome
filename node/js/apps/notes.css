@@ -123,8 +123,8 @@
     width: var(--w-list, 240px);
 }
 
-.notes-columns .wiki-tree,
-.wiki-columns .wiki-tree {
+.notes-columns .tree-pane,
+.wiki-columns .tree-pane {
     width: var(--w-tree, 270px);
 }
 

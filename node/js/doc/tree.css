@@ -1,0 +1,166 @@
+/* The document tree: sections (interior taxonomies) and pages (document leaves), drawn by
+   doc/tree.js. `tree-` rather than `wiki-` because the Wikibook is not the only app that wears it -
+   TurboNotes mounts the same pane as one of its four columns, and a class called `wiki-row` in a
+   notebook was a lie the stylesheet told. The pane's WIDTH lives with the columns that host it
+   (panes.js's `--w-tree`), since how wide a column is belongs to the arrangement, not the tree. */
+
+.tree-pane {
+    width: 270px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding-right: 0.5rem;
+    border-right: 1px solid var(--border);
+}
+
+.tree-toolbar {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+
+.tree-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.25rem 0.55rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.tree-tool:hover {
+    border-color: var(--teal);
+}
+
+/* One tree row - a section header or a page leaf. Indentation rides an inline padding-left. */
+.tree-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.tree-row:hover {
+    background: var(--surface-2);
+}
+
+.tree-row.selected {
+    border-color: var(--teal);
+    background: var(--surface-2);
+}
+
+.tree-row-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tree-row-section .tree-row-title {
+    font-weight: 600;
+}
+
+.tree-caret {
+    display: inline-flex;
+    font-size: 0.8em;
+    color: var(--muted);
+    transition: transform 0.12s;
+}
+
+.tree-caret.open {
+    transform: rotate(90deg);
+}
+
+/* Hover-revealed per-section actions (new page/section, rename, delete). */
+.tree-row-actions {
+    display: none;
+    margin-left: auto;
+    gap: 0.15rem;
+}
+
+.tree-row:hover .tree-row-actions {
+    display: inline-flex;
+}
+
+.tree-act {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    padding: 0.1rem;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.95em;
+}
+
+.tree-act:hover {
+    color: var(--teal);
+}
+
+.tree-act.danger:hover {
+    color: var(--coral);
+}
+
+/* Drag-to-reorganize indicators: an insertion line above/below the row, a teal wash for
+   drop-into (sections), a lifted look on the dragged row, and a dashed ring on the unfiled bin
+   when a page can land there. */
+.tree-row.drop-before {
+    box-shadow: 0 -2px 0 0 var(--teal);
+}
+
+.tree-row.drop-after {
+    box-shadow: 0 2px 0 0 var(--teal);
+}
+
+.tree-row.drop-into {
+    background: color-mix(in srgb, var(--teal) 18%, transparent);
+    border-color: var(--teal);
+}
+
+.tree-row.lifting {
+    opacity: 0.45;
+}
+
+.tree-unfiled.drop-hover {
+    outline: 2px dashed var(--teal);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+/* A stub: this section appears again here (a diamond's second parent or a cycle) - a marker,
+   not a second expansion. */
+.tree-stub {
+    color: var(--muted);
+    font-style: italic;
+    cursor: default;
+}
+
+.tree-empty {
+    padding: 0.6rem 0.2rem;
+}
+
+/* The unfiled bin: pages in the bucket but not (yet, or no longer) in the tree. */
+.tree-unfiled {
+    margin-top: 0.8rem;
+    border-top: 1px dashed var(--border-strong);
+    padding-top: 0.5rem;
+}
+
+.tree-unfiled-title {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3rem;
+}

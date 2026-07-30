@@ -28,9 +28,10 @@
 @import "./doc/surface.css";  /* the framed card one document lives in, reader and editor alike */
 @import "./doc/annotations.css"; /* the tags/date/description panel every surface can drop open */
 @import "./doc/completions.css"; /* the caret pickers */
+@import "./doc/tree.css";     /* the document tree: sections and pages */
 @import "./apps/notes.css";   /* the documents app: columns, list rows, the tag cloud */
 @import "./doc/editor.css";   /* the editing surfaces and their mode tabs */
 @import "./apps/journal.css"; /* the day book (and its flattening of the shared editor) */
-@import "./apps/wiki.css";    /* the wiki app shell and the document tree's rows */
+@import "./apps/wiki.css";    /* the Wikibook's two-column arrangement */
 @import "./modal.css";        /* the house modal */
 @import "./doc/upload.css";   /* the upload flow inside it */

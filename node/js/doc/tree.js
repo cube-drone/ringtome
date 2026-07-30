@@ -70,7 +70,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     const icon =
         formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
     const cls = [
-        'wiki-row',
+        'tree-row',
         isSelected ? 'selected' : '',
         hover ? `drop-${hover}` : '',
         lifting ? 'lifting' : '',
@@ -120,7 +120,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         }}
     >
         <${icon} />
-        <span class="wiki-row-title">${title}</span>
+        <span class="tree-row-title">${title}</span>
     </div>`;
 };
 
@@ -132,15 +132,15 @@ const SectionNode = ({ node, parent, depth, ops }) => {
     const [hover, setHover] = useState(null); // 'before' | 'after' | 'into' | null
     const [lifting, setLifting] = useState(false);
     if (!node.members) {
-        return html`<div class="wiki-row wiki-stub" style=${`padding-left: ${0.4 + depth * 0.9}rem`}>
+        return html`<div class="tree-row tree-stub" style=${`padding-left: ${0.4 + depth * 0.9}rem`}>
             <${Icons.section} />
-            <span class="wiki-row-title">${node.title || '(untitled section)'} ↩</span>
+            <span class="tree-row-title">${node.title || '(untitled section)'} ↩</span>
         </div>`;
     }
     const open = !ops.folded.has(node.taxonomy_id);
     const cls = [
-        'wiki-row',
-        'wiki-row-section',
+        'tree-row',
+        'tree-row-section',
         hover ? `drop-${hover}` : '',
         lifting ? 'lifting' : '',
     ]
@@ -202,27 +202,27 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                 }
             }}
         >
-            <span class=${open ? 'wiki-caret open' : 'wiki-caret'}><${Icons.forward} /></span>
+            <span class=${open ? 'tree-caret open' : 'tree-caret'}><${Icons.forward} /></span>
             <${open ? Icons.sectionOpen : Icons.section} />
-            <span class="wiki-row-title">${node.title || '(untitled section)'}</span>
-            <span class="wiki-row-actions" onClick=${(e) => e.stopPropagation()}>
+            <span class="tree-row-title">${node.title || '(untitled section)'}</span>
+            <span class="tree-row-actions" onClick=${(e) => e.stopPropagation()}>
                 <button
-                    class="wiki-act"
+                    class="tree-act"
                     title=${`a new ${itemNoun} in this section`}
                     onClick=${() => ops.newPage(node.taxonomy_id)}
                 ><${Icons.pageNew} /></button>
                 <button
-                    class="wiki-act"
+                    class="tree-act"
                     title="a new section inside this one"
                     onClick=${() => ops.newSection(node.taxonomy_id)}
                 ><${Icons.sectionNew} /></button>
                 <button
-                    class="wiki-act"
+                    class="tree-act"
                     title="rename this section"
                     onClick=${() => ops.renameSection(node.taxonomy_id, node.title)}
                 ><${Icons.rename} /></button>
                 <button
-                    class="wiki-act danger"
+                    class="tree-act danger"
                     title=${`delete this section (nothing inside it is deleted)`}
                     onClick=${() => ops.deleteSection(node, parent.taxonomy_id)}
                 ><${Icons.trash} /></button>
@@ -263,7 +263,7 @@ const MemberList = ({ node, depth, ops }) => html`${node.members.map((m) => {
 const UnfiledBin = ({ unfiled, ops }) => {
     const [over, setOver] = useState(false);
     return html`<div
-        class=${over ? 'wiki-unfiled drop-hover' : 'wiki-unfiled'}
+        class=${over ? 'tree-unfiled drop-hover' : 'tree-unfiled'}
         onDragOver=${(e) => {
             const drag = ops.drag.current;
             if (!drag || drag.kind !== 'page' || !drag.parentId) return;
@@ -281,7 +281,7 @@ const UnfiledBin = ({ unfiled, ops }) => {
             ops.completeDrag({ unfile: true });
         }}
     >
-        <div class="wiki-unfiled-title">unfiled</div>
+        <div class="tree-unfiled-title">unfiled</div>
         ${unfiled.map(
             (d) => html`<${PageRow} key=${d.doc_id} id=${d.doc_id} summary=${d} depth=${0} ops=${ops} />`
         )}
@@ -593,7 +593,7 @@ export const WikiTree = ({
 
     return html`
         <aside
-            class="wiki-tree"
+            class="tree-pane"
             onDragOver=${(e) => {
                 // The pane background is the root's drop zone (rows stopPropagation, so only
                 // true background drags reach here): drop to file at top level.
@@ -611,18 +611,18 @@ export const WikiTree = ({
                     <${Icons.back} />
                 </button>
             </div>`}
-            <div class="wiki-toolbar">
-                <button class="wiki-tool" onClick=${() => newPage(null)}>
+            <div class="tree-toolbar">
+                <button class="tree-tool" onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> ${itemNoun}
                 </button>
-                <button class="wiki-tool" onClick=${() => newSection(null)}>
+                <button class="tree-tool" onClick=${() => newSection(null)}>
                     <${Icons.sectionNew} /> section
                 </button>
             </div>
             ${tree && html`<${MemberList} node=${tree} depth=${0} ops=${ops} />`}
             ${empty &&
             !unfiled.length &&
-            html`<p class="null-sub wiki-empty">
+            html`<p class="null-sub tree-empty">
                 nothing here yet - start a ${itemNoun}, or a section to put them in.
             </p>`}
             ${!!unfiled.length && html`<${UnfiledBin} unfiled=${unfiled} ops=${ops} />`}
