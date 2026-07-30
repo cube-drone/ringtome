@@ -104,13 +104,6 @@ rule `net.rs` followed.
   parse gate and the "(body not on this computer yet)" state once.
 
 
-- [ ] **A6. Three last-open memories; one restore effect twice verbatim.** `lastDocMemory`
-  (`apps/notes.js:30`), `lastPageMemory` (`apps/wiki.js:20`), `lastBucketMemory` (`index.js:32`)
-  share the `${root}:${id}` discipline. `apps/wiki.js:63-76` is a character-for-character copy of
-  `apps/notes.js:425-438`, comment included; the `nav` object at `apps/notes.js:519` and
-  `apps/wiki.js:45` is the same again. A `docnav.js` with `useResumeMemory(…)` and
-  `buildNav(order, selected, go, tips)` beside the existing `useArrowNav` closes both.
-
 - [ ] **A7. Eight ad-hoc tree recursions.** `doc/tree.js` has `collect` twice (`:179`, `:542`),
   `walk` (`:565`), `sweep` (`:601`), `find` (`:454`), `flatDocs` (`:317`); `doc/slugs.js` has
   another `walk` (`:158`) and an inline strict-descent loop (`:100`). Four named helpers in a
@@ -135,14 +128,6 @@ rule `net.rs` followed.
   appHere, cozyBucketRow)` returning `{ bucket, switchBucket }`) and `clock.js` takes `index.js`
   from 537 lines to ~200 of pure wiring, and lets the four effects be read as one story.
 
-- [ ] **B2. `apps/wiki.js` imports two things from `apps/notes.js`** - positioned by the directory
-  move, not fixed by it: both apps sit in `apps/` with `doc/` beneath them, so this is now a
-  three-symbol extraction downward rather than a cross-layer redesign. The sideways import survived
-  because splitting a file is not a rename. The two symbols are `RightColumn` and `useArrowNav`;
-  both are shared surfaces, not notes surfaces — `RightColumn` to a
-  `docsurface.js` next to the editor/reader pair, `useArrowNav` to `docnav.js` (A6). Right now the
-  dependency graph says "the wiki is downstream of notes," which isn't the design.
-
 - [ ] **B4. `DocsApp` is ~290 lines doing six jobs** (`apps/notes.js`): scope filter, search
   filter, tag filter + cloud, sort, nav order, create, and a four-column render with a 50-line
   inlined list-row template. The tag column and the list row are each a clean component
@@ -150,14 +135,6 @@ rule `net.rs` followed.
   in `apps/notes.js`'s `paneHead` and again inline in `doc/tree.js`'s toolbar — one `<PaneHead
   label= onTuck= />` in `panes.js` (which now owns the tuck state) serves both, and the `Rail`
   component in `apps/notes.js` belongs there too.
-
-- [ ] **B5. `WikiApp` is `DocsApp` minus two columns**, but **do not merge the components** —
-  STYLE.md's "four similar-but-honest decode functions beat one parameterized decode engine"
-  applies and should win. Both apps run the same spine: `useSlugDocId` → `select` →
-  `useCozyAddress` → `treeReload` → `useColWidths` → `treeOrder`/`nav` → `useArrowNav` →
-  resume-memory → `RightColumn`. Extract that as `useDocApp(root, app, docId, bucket)` returning
-  `{ selected, select, nav, treeOrder, setTreeOrder, treeReload, bumpTree }`; both keep their own
-  honest render and ~80 lines of duplicated plumbing go.
 
 - [ ] **B6. `fmtBytes` lives in `modal.js`** (`:48`). Byte formatting isn't modal chrome; it's an
   upload-flow display helper. Small, but it's the drift that makes a module's name stop predicting
@@ -275,8 +252,13 @@ on its first run, orphaned when C3 deleted the component it dressed.
 
 Re-litigating these costs more than reading this list.
 
-- **Merging `WikiApp` into `DocsApp`** (see B5): the duplication is real but the two honest
-  renders are the point. Share the spine as a hook; leave the components apart.
+- **`WikiApp` and `DocsApp` stay separate components** (B5, done 2026-07-29 by extracting
+  `doc/docapp.js` rather than merging them). The spine they shared - live documents, URL-held
+  selection, resume-where-you-left-off, the tree-reload bump, prev/next plus arrow keys - is two
+  hooks now, in that order because an app computes its own document ORDER out of `docs`, so the
+  order is an output of the app rather than an input to the spine. What is left in each app is its
+  own honest arrangement: four tuckable columns against one tree. Merging them would have meant a
+  render full of feature flags, which is what the ledger's own no-inner-platforms rule forbids.
 - **The field-report comments** (`lookout.js`, `keepalive.js`, `index.js:70-76`,
   `apps/journal.js:529-531`): long, and load-bearing. D is not a licence to thin these.
 - **The stylesheet's absolute size**: proportionate to the JS. E is about seams and namespacing,
@@ -317,8 +299,7 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
-   `clock.js` out of `index.js`).
+1. **B1** — `buckets.js` and `clock.js` out of `index.js`, so the composition root only composes.
 2. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
 3. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so this arrives on its own as a
    failing test when the eighth zero-import module lands.

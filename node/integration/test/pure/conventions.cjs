@@ -2,10 +2,12 @@
 // same job for the Rust side (STYLE.md: "architecture cops are tests, not runtime machinery").
 // Nothing here needs a browser or a node; it reads the source tree and asserts things about it.
 //
-// Three rules, each of which has already been broken once by hand:
-//   1. no dead CSS - a class the stylesheet dresses but no module ever names;
-//   2. no colour literals outside tokens.css - the palette's comment claims to be exhaustive;
-//   3. the pure core stays pure - and stays tested.
+// Every rule here has already been broken once by hand, which is the only reason it is a rule:
+//   - no dead CSS, and no colour literal outside tokens.css (the palette claims to be exhaustive);
+//   - index.css imports every partial exactly once - it IS the table of contents;
+//   - the import graph is acyclic, no app imports another app, and `fetch`/`Dexie` have one owner
+//     each (twelve copies of `api()` and five owners of the prefs table are how we got here);
+//   - the pure core imports only itself, never touches a browser API, and always has vectors.
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -118,6 +120,19 @@ describe('the import graph', () => {
         assert.deepEqual([...new Set(cycles)], []);
     });
 
+    it('has no app importing another app', () => {
+        // Apps compose what is below them in doc/, never each other. The Wikibook used to import
+        // `RightColumn` and `useArrowNav` out of apps/notes.js, which made the dependency graph
+        // claim the wiki was downstream of notes - it isn't, they are siblings over one spine.
+        const sideways = [];
+        for (const f of jsFiles.filter((f) => rel(f).startsWith('apps' + path.sep))) {
+            for (const dep of localDeps(f).map(rel)) {
+                if (dep.startsWith('apps' + path.sep)) sideways.push(`${rel(f)} -> ${dep}`);
+            }
+        }
+        assert.deepEqual(sideways, []);
+    });
+
     it('has exactly one HTTP client and one mirror owner', () => {
         // net.js owns fetch; mirror.js owns the Dexie handle. Anyone else reaching for either is
         // how twelve copies of `api()` and five owners of the prefs table happened.
@@ -138,7 +153,19 @@ describe('the pure core', () => {
     // directory only until it reaches eight (S2).
     const PURE = ['lookout.js', 'keepalive.js', 'docdate.js', 'swatch.js', 'apps.js',
                   'doc/naming.js'];
-    const BROWSER = ['fetch', 'document', 'window', 'Dexie', 'preact', 'localStorage'];
+    // Patterns that match USE, not mention. A bare word list kept tripping on prose - this
+    // codebase's comments legitimately discuss `fetch` (keepalive.js's whole module doc) and
+    // documents (everywhere) - and comment-stripping only got the whole-line cases. Asking for
+    // `document.` rather than `document` is both stricter about what it catches and blind to
+    // English. Importing preact needs no pattern: the imports-only-pure-set rule above covers it.
+    const BROWSER = [
+        ['fetch', /\bfetch\s*\(/],
+        ['document', /\bdocument\s*[.[]/],
+        ['window', /\bwindow\s*[.[]/],
+        ['localStorage', /\blocalStorage\s*[.[]/],
+        ['Dexie', /\bnew\s+Dexie\b|\bDexie\s*\./],
+        ['IndexedDB', /\bindexedDB\s*[.[]/],
+    ];
 
     for (const name of PURE) {
         describe(name, () => {
@@ -162,8 +189,8 @@ describe('the pure core', () => {
             });
 
             it('never reaches for the browser', () => {
-                const found = BROWSER.filter((g) => new RegExp(`\\b${g}\\b`).test(src()));
-                assert.deepEqual(found, [], `${name} mentions ${found.join(', ')}`);
+                const found = BROWSER.filter(([, re]) => re.test(src())).map(([g]) => g);
+                assert.deepEqual(found, [], `${name} uses ${found.join(', ')}`);
             });
 
             it('has vectors in test/pure/', () => {

@@ -5,11 +5,12 @@
 // else in the codebase states it.
 const assert = require('node:assert');
 
-let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, featuresOf;
+let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp,
+    bucketHolds, featuresOf;
 let Icons;
 before(async () => {
-    ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, featuresOf } =
-        await import('../../../js/apps.js'));
+    ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds,
+       featuresOf } = await import('../../../js/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
 
@@ -96,6 +97,36 @@ describe('app registry', () => {
         it('gives the tree-having app its tree', () => {
             assert.equal(featuresOf(appForStyle('wiki')).tree, true);
             assert.equal(featuresOf(appForStyle(DEFAULT_STYLE)).tree, true);
+        });
+    });
+
+    describe('bucketHolds (what a documents app has in view)', () => {
+        const notes = () => appForStyle(DEFAULT_STYLE);
+        const wiki = () => appForStyle('wiki');
+
+        it('holds a document that is a member of the bucket on screen', () => {
+            assert.equal(bucketHolds({ buckets: ['recipes'] }, appForStyle('recipes'), 'recipes'),
+                true);
+            assert.equal(bucketHolds({ buckets: ['a', 'b'] }, wiki(), 'b'), true);
+        });
+
+        it('does not hold a document filed somewhere else', () => {
+            assert.equal(bucketHolds({ buckets: ['other'] }, wiki(), 'wiki'), false);
+        });
+
+        it('gathers UNBUCKETED documents into the default app s home, and only there', () => {
+            const orphan = { buckets: [] };
+            assert.equal(bucketHolds(orphan, notes(), DEFAULT_STYLE), true);
+            // Not the default app: the catch-all clause is self-guarding, which is why one
+            // predicate serves every documents app.
+            assert.equal(bucketHolds(orphan, wiki(), 'wiki'), false);
+            // The default APP, but not its home bucket.
+            assert.equal(bucketHolds(orphan, notes(), 'some-other-notebook'), false);
+        });
+
+        it('is safe on a missing document or app', () => {
+            assert.equal(bucketHolds(null, notes(), DEFAULT_STYLE), false);
+            assert.equal(bucketHolds({ buckets: [] }, null, DEFAULT_STYLE), false);
         });
     });
 

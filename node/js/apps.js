@@ -138,6 +138,22 @@ export function bucketsForApp(app, roster) {
     return [app.style, ...others];
 }
 
+/// Does this app, showing this bucket, hold that document?
+///
+/// Membership is most of it - a document is in view when it's a member of the notebook on screen.
+/// The extra clause is the catch-all: the DEFAULT app's home bucket also gathers UNBUCKETED
+/// documents, because they resolve to the default type and something has to hold them. That clause
+/// is self-guarding, which is why every documents app can share this one predicate: for Recipes or
+/// the Wikibook, `app.style !== DEFAULT_STYLE`, so it reduces to plain membership. (The wiki app
+/// used to hand-roll the membership half and silently lacked the catch-all - correct only because
+/// it is never the default app.)
+export function bucketHolds(doc, app, bucket) {
+    if (!doc || !app) return false; // nothing holds a document that isn't there
+    const names = doc.buckets || [];
+    if (names.includes(bucket)) return true;
+    return bucket === app.style && app.style === DEFAULT_STYLE && names.length === 0;
+}
+
 /// Which app opens a bucket of this style - the default app when the style has no live app.
 ///
 /// `a.style && ...` is load-bearing: a SYSTEM app (Persona) has no `style` at all, so a bare
