@@ -1,7 +1,7 @@
 // The composition root: the front door, the signed-in shell, and the router - wiring, and as little
 // else as this can get away with. Everything that used to be implemented here now lives beside its
 // own concern: the bucket switcher and its state machine in buckets.js, the corner clock in
-// clock.js, Swatch time in swatch.js, the documents-app spine in doc/docapp.js.
+// clock.js, Swatch time in pure/swatch.js, the documents-app spine in doc/docapp.js.
 //
 // Routes are session-relative and identity-free by design (PROJECT_PLAN, The Client Is a Console).
 // The whole internal UI lives under /home: `/home` is the console, `/home/<app>[/<doc>]` an app, and
@@ -28,12 +28,12 @@ import { DocsApp } from './apps/notes.js';
 import { JournalApp } from './apps/journal.js';
 import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
-import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './apps.js';
+import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
-import { slugify, HEX_ID } from './doc/naming.js';
+import { slugify, HEX_ID } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
 
 const html = htm.bind(h);
@@ -147,7 +147,7 @@ const Inside = ({ session }) => {
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
     // inside it - the two facts the unified app header needs. Null for persona/not-found routes,
     // which keep their own heads and so get no app header. A first segment that isn't an app id
-    // may be a BUCKET's slug - a cozy address at rest (doc/naming.js) - resolved off the live roster:
+    // may be a BUCKET's slug - a cozy address at rest (pure/naming.js) - resolved off the live roster:
     // the app is the bucket's rail, and the URL itself names the bucket.
     const root = persona.current && persona.current.root;
     const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);

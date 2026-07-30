@@ -9,7 +9,7 @@ import { WikiTree } from '../doc/tree.js';
 import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useColWidths } from '../panes.js';
-import { featuresOf, itemNoun } from '../apps.js';
+import { featuresOf, itemNoun } from '../pure/apps.js';
 
 const html = htm.bind(h);
 

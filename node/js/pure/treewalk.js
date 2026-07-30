@@ -10,7 +10,7 @@
 //     identity's, which the tree can represent but not render. Whether that counts depends on the
 //     question being asked, which is why `flatDocs` and `filedDocIds` disagree on purpose.
 //
-// These were seven closures written inline across doc/tree.js and doc/naming.js, each subtly its
+// These were seven closures written inline across doc/tree.js and pure/naming.js, each subtly its
 // own dialect. Pure and gathered here, they are testable without a browser - which matters most for
 // the drop-index arithmetic at the bottom, the fiddliest three lines in the drag.
 

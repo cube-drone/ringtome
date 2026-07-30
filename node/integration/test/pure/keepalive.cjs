@@ -3,7 +3,7 @@ const assert = require('node:assert');
 
 let keepaliveOk, KEEPALIVE_MAX_BYTES;
 before(async () => {
-    ({ keepaliveOk, KEEPALIVE_MAX_BYTES } = await import('../../../js/keepalive.js'));
+    ({ keepaliveOk, KEEPALIVE_MAX_BYTES } = await import('../../../js/pure/keepalive.js'));
 });
 
 describe('save keepalive guard', () => {

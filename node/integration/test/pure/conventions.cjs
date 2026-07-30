@@ -148,11 +148,17 @@ describe('the import graph', () => {
 });
 
 describe('the pure core', () => {
-    // The declared pure set: the UI's conformance boundary, the client-side echo of
-    // ringtome-proto. Growing this list is the point (REFACTOR_UI P); it is a list rather than a
-    // directory only until it reaches eight (S2).
-    const PURE = ['lookout.js', 'keepalive.js', 'docdate.js', 'swatch.js', 'apps.js',
-                  'doc/naming.js', 'doc/treewalk.js'];
+    // The declared pure set is now a DIRECTORY, not a list: `js/pure/` is the UI's conformance
+    // boundary, the client-side echo of ringtome-proto, and membership is where a file lives. It
+    // mirrors this directory - `js/pure/x.js` is tested by `test/pure/x.cjs` - so both halves of
+    // the declaration are self-evident and neither can drift out of a hand-written array.
+    const PURE = fs.readdirSync(path.join(JS_DIR, 'pure'))
+        .filter((f) => f.endsWith('.js'))
+        .map((f) => `pure/${f}`);
+
+    it('is not empty (a glob that finds nothing would pass every check below)', () => {
+        assert.ok(PURE.length >= 7, `only found ${PURE.length} pure modules`);
+    });
     // Patterns that match USE, not mention. A bare word list kept tripping on prose - this
     // codebase's comments legitimately discuss `fetch` (keepalive.js's whole module doc) and
     // documents (everywhere) - and comment-stripping only got the whole-line cases. Asking for
@@ -195,23 +201,33 @@ describe('the pure core', () => {
 
             it('has vectors in test/pure/', () => {
                 // The clause a test glob can never provide: a glob finds the tests that exist, so
-                // only a cop that enumerates the MODULES catches one nobody tested.
-                const stem = name.replace(/\.js$/, '');
+                // something has to enumerate the MODULES to catch one nobody tested. That is what
+                // js/pure/ now is.
                 const tests = fs.readdirSync(PURE_TEST_DIR).filter((f) => f.endsWith('.cjs'));
                 const covered = tests.some((t) => read(path.join(PURE_TEST_DIR, t))
-                    .includes(`/js/${stem}.js`));
-                assert.ok(covered, `no test in test/pure/ imports js/${stem}.js`);
+                    .includes(`/js/${name}`));
+                assert.ok(covered, `no test in test/pure/ imports js/${name}`);
             });
         });
     }
 
-    it('is still small enough to be a list rather than a directory (REFACTOR_UI S2)', () => {
-        // The trigger S2 is waiting on. Counting the DECLARED SET is the faithful measure: it is
-        // this list, living in a script, that stops being worth maintaining by hand - not the
-        // number of test files (which also cover pure functions inside impure modules) and not the
-        // number of zero-import modules (which no longer describes the set at all).
-        assert.ok(PURE.length < 8,
-            `the pure set is now ${PURE.length} modules (${PURE.join(', ')}) - at eight, reopen ` +
-            'the rules/ directory question in REFACTOR_UI S2');
+    it('holds every module that qualifies - nothing pure hides outside it', () => {
+        // A module with no local imports that touches no browser API belongs in pure/. This is the
+        // nudge, not a law: it catches the case where someone writes a genuinely pure module in the
+        // wrong place, which is how the set got scattered in the first place. Modules that import a
+        // package we cannot inspect (icons.js pulls in Phosphor) are exempt, since "that package
+        // renders" is not visible from here.
+        // Match on `from '...'` rather than the start of an import: this codebase's package
+        // imports are often multi-line (icons.js names 45 glyphs before saying where from).
+        const strays = jsFiles
+            .map(rel)
+            .filter((f) => !f.startsWith('pure' + path.sep) && f !== 'index.js')
+            .filter((f) => {
+                const src = code(path.join(JS_DIR, f));
+                if (/from\s+'\./.test(src)) return false; // has local imports
+                if (/from\s+'[^.']/.test(src)) return false; // leans on a package we cannot judge
+                return !BROWSER.some(([, re]) => re.test(src));
+            });
+        assert.deepEqual(strays, [], 'these look pure and belong in js/pure/');
     });
 });

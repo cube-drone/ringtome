@@ -13,7 +13,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
-import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../docdate.js';
+import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 
 const html = htm.bind(h);
 

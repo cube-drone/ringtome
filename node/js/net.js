@@ -11,7 +11,7 @@
 // error over top of the real failure.
 //
 // `options` passes through to fetch untouched, which is how `doc/session.js` sets `keepalive` on
-// the unload path (see keepalive.js for why that flag is conditional).
+// the unload path (see pure/keepalive.js for why that flag is conditional).
 
 export async function api(path, options = {}) {
     const res = await fetch(path, {

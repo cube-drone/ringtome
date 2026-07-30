@@ -25,7 +25,7 @@
 // `matchSlugPath` must return the document you started from, whatever the roster and tree look
 // like - which is why `buildSlugPath` falls back to the honest id whenever a slug would lose its
 // own tie. See integration/test/pure/naming.cjs.
-import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from '../apps.js';
+import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from './apps.js';
 import { pathToDoc } from './treewalk.js';
 
 export const HEX_ID = /^[0-9a-f]{32}$/;

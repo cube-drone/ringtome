@@ -10,7 +10,7 @@ const assert = require('node:assert');
 let flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex;
 before(async () => {
     ({ flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex } =
-        await import('../../../js/doc/treewalk.js'));
+        await import('../../../js/pure/treewalk.js'));
 });
 
 const sec = (id, members, title = id) => ({ taxonomy_id: id, title, members });

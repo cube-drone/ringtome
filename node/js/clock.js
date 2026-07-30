@@ -1,11 +1,11 @@
-// The corner clock, in Swatch Internet Time. The arithmetic is swatch.js (pure, and tested); this
+// The corner clock, in Swatch Internet Time. The arithmetic is pure/swatch.js (pure, and tested); this
 // is the once-a-second tick and the little mono pill it lives in - two decimals so it visibly
 // moves, with the real local time a hover away.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
-import { beats } from './swatch.js';
+import { beats } from './pure/swatch.js';
 
 const html = htm.bind(h);
 

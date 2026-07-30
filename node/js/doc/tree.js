@@ -15,9 +15,9 @@ import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from '../mirror/pr
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
 import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
-import { rootTitleFor } from './naming.js';
+import { rootTitleFor } from '../pure/naming.js';
 import { docsInsideOnly, dropIndex, filedDocIds, flatDocs, pathToDoc, sectionIdsUnder }
-    from './treewalk.js';
+    from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
 
 const html = htm.bind(h);

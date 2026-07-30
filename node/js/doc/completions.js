@@ -8,9 +8,9 @@
 import { nameToEmoji } from 'gemoji';
 
 import { openMirror } from '../mirror.js';
-import { DEFAULT_STYLE } from '../apps.js';
+import { DEFAULT_STYLE } from '../pure/apps.js';
 import { slugPathFor } from './address.js';
-import { slugify, MEDIA_EXT } from './naming.js';
+import { slugify, MEDIA_EXT } from '../pure/naming.js';
 
 // Built once: every gemoji as a completion - the label is the marquee source form (`:smile:`,
 // what filling inserts; marquee renders it via the profile's emoji table), the detail shows

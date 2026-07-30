@@ -2,7 +2,7 @@
 // the everything-app at full stretch - up to four columns, each tuckable. Left to right: the tag
 // cloud, the document list (newest-claimed-date first, straight off the live mirror, so another
 // computer's save re-sorts it within seconds and nothing fetches), the tree, and the open
-// document. Which columns appear is the app registry's `features` (apps.js); the document
+// document. Which columns appear is the app registry's `features` (pure/apps.js); the document
 // machinery underneath is shared (doc/), so a new app style is a registry line.
 //
 // Everything reusable has moved below this file: the routing/resume/nav spine is doc/docapp.js, the
@@ -17,8 +17,8 @@ import { api } from '../net.js';
 import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
-import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../docdate.js';
-import { bucketHolds, featuresOf, itemNoun } from '../apps.js';
+import { claimedMs, hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
+import { bucketHolds, featuresOf, itemNoun } from '../pure/apps.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
@@ -151,7 +151,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     const { docs, selected, select, treeReload, bumpTree } = useDocApp(root, app, docId, bucket);
 
     // This app shows ONE bucket at a time - the header's switcher picks which, and the pick arrives
-    // as the `bucket` prop. `bucketHolds` is the shared rule (apps.js): membership, plus the
+    // as the `bucket` prop. `bucketHolds` is the shared rule (pure/apps.js): membership, plus the
     // default app's home gathering the unbucketed. Per-notebook scoping is why searching a recipe
     // book never turns up a journal entry.
     const inThisBucket = (d) => bucketHolds(d, app, bucket);

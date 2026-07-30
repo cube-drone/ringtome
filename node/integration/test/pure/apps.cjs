@@ -10,7 +10,7 @@ let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForAp
 let Icons;
 before(async () => {
     ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds,
-       featuresOf, itemNoun } = await import('../../../js/apps.js'));
+       featuresOf, itemNoun } = await import('../../../js/pure/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
 

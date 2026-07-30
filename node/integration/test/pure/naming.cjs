@@ -13,7 +13,7 @@ let slugify, bucketFor, bucketNameFor, needsTree, matchSlugPath, buildSlugPath, 
     HEX_ID, MEDIA_EXT, pathSegments;
 before(async () => {
     ({ slugify, bucketFor, bucketNameFor, needsTree, matchSlugPath, buildSlugPath, rootTitleFor,
-       HEX_ID, MEDIA_EXT, pathSegments } = await import('../../../js/doc/naming.js'));
+       HEX_ID, MEDIA_EXT, pathSegments } = await import('../../../js/pure/naming.js'));
 });
 
 // 32 hex chars, so ids look like the real thing (and HEX_ID accepts them).

@@ -5,14 +5,14 @@
 // dirty). None of the chrome - title inputs, chips, view modes - lives here; a surface composes
 // its own around the values this hook returns.
 //
-// "Never lose words" is the whole contract, and it has scars (keepalive.js, lookout.js). This is
+// "Never lose words" is the whole contract, and it has scars (pure/keepalive.js, pure/lookout.js). This is
 // moved verbatim from the old Editor; keep it faithful.
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
-import { needsReload } from '../lookout.js';
-import { keepaliveOk } from '../keepalive.js';
+import { needsReload } from '../pure/lookout.js';
+import { keepaliveOk } from '../pure/keepalive.js';
 
 const AUTOSAVE_MS = 10_000;
 
@@ -93,7 +93,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
             parents: snapshot.parents,
         });
         // keepalive only on the unload path, only when the body fits its 64 KiB cap - see
-        // keepalive.js for the whole painful reason.
+        // pure/keepalive.js for the whole painful reason.
         const keepalive = keepaliveOk(unloading, new TextEncoder().encode(payload).length);
         try {
             const res = await api(`/api/identity/${root}/docs/${docId}`, {
@@ -184,7 +184,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     }, []);
 
     // The lookout: watch this doc's mirror row, reload when the row knows something this buffer
-    // hasn't presented. The judgment lives in lookout.js as a pure predicate - field-tested wrong
+    // hasn't presented. The judgment lives in pure/lookout.js as a pure predicate - field-tested wrong
     // twice (the module's comment is the scar record). Change + dirty → keep typing; the fork is
     // deliberate and presents right after the next save lands.
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);

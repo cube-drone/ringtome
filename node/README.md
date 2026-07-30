@@ -78,21 +78,26 @@ architecture cop). The `entries` table is protocol law: rows appear only via `im
 
 **UI layout (`js/`):** the same shape as `src/` - flat modules, with a directory only where one
 concept outgrew one file, so `x.js` + a sibling `x/` reads the way `net.rs` + `net/` does. The
-nested three are `mirror.js` + `mirror/` (the Dexie mirror: the stream and handle, plus `prefs`
-and `doccache`), `doc/` (the document machinery every document app composes: session, editor,
-tree, slugs, annotations, upload, completions, turbolinks, livemarquee), and `apps.js` + `apps/`
-(the registry beside its apps - notes, journal, wiki). Everything else stays flat: `index.js` is
-the composition root and `net.js` is the only HTTP client (both enforced by
-`integration/test/pure/conventions.cjs`, along with an acyclic import graph and no dead CSS).
+directories are `pure/` (below), `mirror.js` + `mirror/` (the Dexie mirror: the stream and handle,
+plus `prefs` and `doccache`), `doc/` (the document machinery every document app composes: session,
+editor, reader, tree, address, crosslink, annotations, upload, completions, turbolinks,
+livemarquee, docapp), and `apps/` (the app surfaces - notes, journal, wiki). Everything else stays
+flat: `index.js` is the composition root and `net.js` is the only HTTP client. No barrel files: a
+directory re-exports nothing, so you import the file you want.
 
-**The pure core** is the UI's own conformance boundary, the client-side echo of `ringtome-proto`:
-`lookout.js`, `keepalive.js`, `docdate.js`, `swatch.js`, `apps.js` and `doc/naming.js` touch no
-browser API and import nothing outside that set, so every rule they hold can be interrogated
-without a node or a DOM. Their tests live in `integration/test/pure/`, which is the directory's
-whole meaning - everything in it runs with nothing booted, and `just ui-check` globs it in about a
-second. Growing this set is deliberate: logic that can be a value-in, value-out function belongs in
-a file that is one. No barrel files: a directory re-exports nothing, so you import the file you want. **An app
-is one file until it needs two**, then it becomes `apps/journal.js` + `apps/journal/`.
+**`pure/` is the UI's conformance boundary** - the client-side echo of `ringtome-proto`. Everything
+in it is values-in, values-out: no browser API, no mirror, no fetch, and no import from outside
+`pure/`. That is where the rules live, which is why it holds the app registry, the cozy-address
+rules, the tree walks, the divergence lookout, the keepalive cap, the claimed-date arithmetic and
+Swatch time. It mirrors `integration/test/pure/` file for file - `js/pure/x.js` is interrogated by
+`test/pure/x.cjs`, with nothing booted, in about a second via `just ui-check` - so membership is
+self-evident on both sides rather than listed anywhere. **Growing it is the point:** logic that can
+be a value-in, value-out function belongs in a file that is one.
+
+`integration/test/pure/conventions.cjs` enforces all of the above - `pure/`'s three rules, an
+acyclic import graph, no app importing another app, one owner each for `fetch` and `Dexie`, no dead
+CSS, and no colour literal outside `tokens.css`. **An app is one file until it needs two**, then it
+becomes `apps/journal.js` + `apps/journal/`.
 
 ## HTTP surface (unstable, pre-4C)
 

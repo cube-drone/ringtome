@@ -11,7 +11,7 @@
 // protocol between two surfaces - the MIME types below are the whole vocabulary - and the swap
 // registry is mutable module state, which the rules deliberately have none of.
 import { slugPathFor } from './address.js';
-import { MEDIA_EXT, slugify } from './naming.js';
+import { MEDIA_EXT, slugify } from '../pure/naming.js';
 
 /// The drag's own MIME types: what a payload IS, so a receiving surface can decide before it reads.
 /// A section is marked so an editor drop can refuse it - a section isn't insertable text.

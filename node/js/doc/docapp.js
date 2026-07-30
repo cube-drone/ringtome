@@ -11,7 +11,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
-import { bucketHolds } from '../apps.js';
+import { bucketHolds } from '../pure/apps.js';
 import { useSlugDocId, useCozyAddress } from './address.js';
 
 // The document each app last had open, keyed `${root}:${app.id}`. In-memory on purpose: a session

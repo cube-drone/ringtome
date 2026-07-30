@@ -1,4 +1,4 @@
-// The shell around doc/naming.js: gather the rows the pure rules want (the bucket roster, the doc
+// The shell around pure/naming.js: gather the rows the pure rules want (the bucket roster, the doc
 // rows, the bucket's expanded tree), call them, and wire the two hooks that keep the address bar
 // honest. Everything decision-shaped lives next door and is tested without a browser; everything
 // here is fetching and effects.
@@ -17,7 +17,7 @@ import {
     needsTree,
     pathSegments,
     rootTitleFor,
-} from './naming.js';
+} from '../pure/naming.js';
 
 // The bucket's tree, cache-first (mirror/doccache.js - resolution and link-generation ride the same
 // fingerprinted cache as the tree pane), fetched when the roster stamp says it moved, or null when

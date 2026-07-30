@@ -17,7 +17,7 @@
 //     silently stale beyond a stream beat.
 import { openMirror } from '../mirror.js';
 
-/// The doc row's freshness fingerprint - the same trio `needsReload` watches (lookout.js).
+/// The doc row's freshness fingerprint - the same trio `needsReload` watches (pure/lookout.js).
 /// Exported for its vectors; nothing else outside this module needs it.
 export const docFingerprint = (row) =>
     row ? `${row.head}:${row.heads}:${row.diverged ? 1 : 0}` : null;

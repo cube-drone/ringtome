@@ -11,7 +11,7 @@ before(async () => {
         splitClaimed,
         joinClaimed,
         DISPLAY_DATE_FIELD,
-    } = await import('../../../js/docdate.js'));
+    } = await import('../../../js/pure/docdate.js'));
 });
 
 const withDate = (iso, updated_ms) => ({ fields: { [DISPLAY_DATE_FIELD]: iso }, updated_ms });

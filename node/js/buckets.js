@@ -22,7 +22,7 @@ import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
-import { appTypeOf, bucketsForApp } from './apps.js';
+import { appTypeOf, bucketsForApp } from './pure/apps.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);

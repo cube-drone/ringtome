@@ -50,22 +50,35 @@ are the same document machinery with different feature flags (B5), so slicing yi
 slices and one enormous `shared/`.
 
     node/js/
-      index.js          the composition root - wiring only (B1)
-      net.js  icons.js  modal.js  panes.js            single-purpose; stay flat
-      auth.js  persona.js  computers.js  console.js   the shell; flat until it grows
-      lookout.js  keepalive.js  docdate.js  search.js the pure core (see the cop)
-      mirror.js  + mirror/{prefs,doccache}.js         the Dexie side
-      doc/      session, editor, tree, slugs, annotations, upload,
-                completions, turbolinks, livemarquee
-      apps.js   + apps/{notes,journal,wiki}.js        registry beside its apps
+      index.js       the composition root - wiring only
+      net.js  icons.js  modal.js  panes.js  search.js  clock.js  buckets.js
+      auth.js  persona.js  computers.js  console.js     the shell; flat until it grows
+      pure/          the conformance boundary: apps (the registry), naming, treewalk,
+                     lookout, keepalive, docdate, swatch
+      mirror.js  + mirror/{prefs,doccache}.js           the Dexie side
+      doc/           session, detail, editor, reader, tree, address, crosslink,
+                     annotations, upload, completions, turbolinks, livemarquee, docapp
+      apps/          notes, journal, wiki - the app surfaces
 
-`doc/` is `record/`; `mirror.js` + `mirror/` is `db.rs` grown parts; `apps.js` + `apps/` is
-precisely `media.rs` + `media/{audio,image,video}.rs` - a registry beside a family of same-shaped
-things. The old `cache.js` was renamed on the way in, because `cache/prefs.js` would have been a
-lie (prefs are not a cache) while `mirror/prefs.js` is exactly right - they live in the mirror
-database, which is what `openMirror` has always called it. Filenames
-stay squashed-lowercase with no hyphens, as `doccache`/`docdate`/`livemarquee`/`keepalive` already
-were.
+`doc/` is `record/` and `mirror.js` + `mirror/` is `db.rs` grown parts. The old `cache.js` was
+renamed on the way in, because `cache/prefs.js` would have been a lie (prefs are not a cache) while
+`mirror/prefs.js` is exactly right - they live in the mirror database, which is what `openMirror`
+has always called it. Filenames stay squashed-lowercase with no hyphens, as
+`doccache`/`docdate`/`livemarquee`/`keepalive` already were.
+
+**`pure/` (decided 2026-07-30).** A directory for the pure core was rejected on 2026-07-29 against a
+set of three, on the grounds that the Rust side's equivalent firewall is a CRATE rather than a
+folder and the JS analogue of compiler-enforced is a test - so the cop came first and the modules
+stayed scattered. Two things settled it the other way once the set reached seven. First, the cop's
+membership list was a hand-written array inside `conventions.cjs`, and purity cannot be derived to
+replace it (`icons.js` has no local imports and touches no DOM API, but it is a table of React
+components - "that package renders" is invisible from an import path). So the declaration must be
+explicit, and the only question was list-in-a-script versus location-in-the-tree. Second - the
+argument that actually decided it - `integration/test/pure/` already existed, so the tests were
+collocated while the modules were not: `js/pure/x.js` tested by `test/pure/x.cjs` makes the
+declaration self-evident on BOTH sides, and neither half can drift. The cost, accepted knowingly, is
+that `pure/naming.js` and `pure/treewalk.js` now sit away from the `doc/` code that consumes them,
+and the app registry sits away from `apps/`.
 
 **No barrel files.** The Rust side has `record.rs` because the language requires a module
 declaration; that is a language tax, not a design choice, so the faithful translation is a
@@ -77,18 +90,6 @@ lines is nearly there; the tiers ahead (chat, boards, pages, webrings) will arri
 rule `net.rs` followed.
 
 
-- [ ] **S2. Revisit `rules/` once the pure set passes eight modules.** The directory was rejected on
-  2026-07-29 against a pure set of THREE, where a cop naming them costs less than a tree change. The
-  P section deliberately grows that set - it is at **seven** (`lookout`, `keepalive`, `docdate`,
-  `swatch`, `apps`, `doc/naming`, `doc/treewalk`), so ONE more trips it - and past roughly eight, the declared list living inside
-  `conventions.cjs` stops being worth maintaining by hand, at which point a directory *is* the
-  declaration. That is why the Rust side gives its pure core a whole crate rather than a convention.
-  `conventions.cjs` asserts the count, so this reopens itself as a failing test rather than waiting
-  for anyone to remember. (Two earlier versions of this trigger measured the wrong thing - test
-  files in `test/pure/`, then zero-import modules - and are recorded in git; the declared set is the
-  faithful measure because it is the thing that gets unwieldy.) It stays a directory question, not a
-  crate question: a second client sharing these rules is speculation, and the nameability test says
-  no.
 
 ## A — Simplification
 
@@ -176,8 +177,8 @@ The pleasant surprise is that most of the work below is a **move, not a rewrite*
 already pure functions living inside component files, where nothing can see or test them. Thinning
 those components is also most of B4 by another route.
 
-- [ ] **P3. The app surfaces' decision logic.** Two extractions, both of which also thin a fat
-  component: from `apps/notes.js`, the list pipeline (`orderDocs(docs, { bucket, appStyle, hits,
+- [ ] **P3. The app surfaces' decision logic.** Two extractions into `pure/`, both of which also
+  thin a fat component: from `apps/notes.js`, the list pipeline (`orderDocs(docs, { bucket, appStyle, hits,
   tags })` - bucket scope, then search hits, then every active tag, then pinned-float →
   claimed-date → id tiebreak, including the rule that only the DEFAULT app's home bucket gathers
   unbucketed documents); and from `apps/journal.js`, the stream shape (`journalStack(entries,
@@ -271,7 +272,5 @@ Re-litigating these costs more than reading this list.
 ## Suggested working order
 
 1. **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together - all small and mechanical.
-   **P3** is the one that trips S2: it makes the pure set eight.
+   **P3**'s two extractions land in `pure/`, where the cop will require their vectors.
 2. **E2** — finish the two mis-homed CSS partials the split left, and make the prefix rule a rule.
-3. **S2** — not scheduled: `conventions.cjs` asserts the trigger, so it arrives on its own as a
-   failing test when the pure set reaches eight modules.

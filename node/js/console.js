@@ -1,10 +1,10 @@
 // The console: the root point after you open a persona, a launcher of applications (see
-// PROJECT_PLAN, The Client Is a Console of Applications). The app registry lives in apps.js;
+// PROJECT_PLAN, The Client Is a Console of Applications). The app registry lives in pure/apps.js;
 // `live` apps launch; `blank` cells fill out the honeycomb.
 import { h } from 'preact';
 import htm from 'htm';
 
-import { APPS, appLabel } from './apps.js';
+import { APPS, appLabel } from './pure/apps.js';
 import { iconFor } from './icons.js';
 
 const html = htm.bind(h);

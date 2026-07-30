@@ -30,7 +30,7 @@ import { Annotations } from './annotations.js';
 import { useUploadCapture } from './upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
 import { slugPathFor } from './address.js';
-import { featuresOf } from '../apps.js';
+import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 
 const html = htm.bind(h);

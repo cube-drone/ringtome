@@ -6,7 +6,7 @@ const assert = require('node:assert');
 
 let beats;
 before(async () => {
-    ({ beats } = await import('../../../js/swatch.js'));
+    ({ beats } = await import('../../../js/pure/swatch.js'));
 });
 
 // A UTC instant, spelled out, so nothing here depends on the machine's own zone.
