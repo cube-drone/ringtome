@@ -76,17 +76,6 @@ it needs two, then it becomes `apps/journal.js` plus a sibling `apps/journal/`.*
 lines is nearly there; the tiers ahead (chat, boards, pages, webrings) will arrive past it. Same
 rule `net.rs` followed.
 
-- [ ] **S1. The purity cop.** A `rules/` directory was considered and deferred, not settled - see
-  S2: on the Rust side that firewall is not a directory but a separate crate (`ringtome-proto` -
-  "values in, `Result` out, no async/storage/clocks"), and the JS analogue of compiler-enforced is
-  a test, because architecture cops are tests (STYLE.md). Add one to `just ui-check`, asserting
-  two things about the declared pure set (`lookout.js`, `keepalive.js`, `docdate.js`): **(a)**
-  each imports nothing from `js/` and mentions no `fetch`, `document`, `window`, `Dexie`, or
-  `preact`; **(b)** each has a test file in `integration/test/pure/`. Clause (b) is the one the
-  test glob can never provide - a glob finds the tests that exist, so only a cop that enumerates
-  the modules can catch a pure module nobody tested. `search.js` is the fourth by intent but
-  imports the mirror for `useSearch`; it joins the set once that hook moves to
-  `mirror/queries.js`. Land with E5 - same twenty-line script.
 
 - [ ] **S2. Revisit `rules/` once the pure set passes ~8 modules.** The directory was rejected on
   2026-07-29 against a pure set of THREE, where a cop naming them costs less than a tree change.
@@ -98,7 +87,7 @@ rule `net.rs` followed.
   which tripped on 2026-07-29 at eight files while the strict set was only four - `test/pure/` is
   "tests that need no browser", which includes tests of pure FUNCTIONS inside impure modules like
   `apps.js` and `mirror/doccache.js`. Two different counts; the module one is the one that decides
-  a directory. The S1 cop computes it anyway.) It stays a directory question, not a crate question:
+  a directory. `conventions.cjs` now asserts it, so this reopens itself with a failing test.) It stays a directory question, not a crate question:
   a second client sharing these rules is speculation, and the nameability test says no.
 
 ### What the move changed about the items below
@@ -286,27 +275,25 @@ the removed gear) has been swept; what is left below needs a decision from Curti
   the condition is now only a comment. Either gate it on a dev flag or drop the chip; it must not
   be the thing a first user finds behind a skull icon.
 
-## E — The stylesheet (`index.css`, ~2600 lines)
+## E — The stylesheet
 
-Size isn't the problem — 2.6k lines of CSS against ~6.6k of JS is proportionate. The problem is
-that **one flat file with one flat namespace has no seams**, so ordering has already drifted and
-dead rules can't be found. Evidence: `.chip` at `:1591` and its `.chip-merged` modifier at
-`:2598`, the last line of the file; `--- your computers ---` (`:739`) immediately followed by
-`--- persona management pages ---` (`:741`) with the computers rules actually at `:851`;
-`.skip-link` at `:713` and `.skip-link:hover` at `:1863`; `.editor-waiting` at `:1880`, *after*
-the mobile `@media` at `:1867`; three dead rules (`.marquee-page` `:417`, `.reader-title` `:1529`,
-`.modal-note` `:2481`). The token block at the top is now complete and authoritative - a colour
-literal anywhere below it is a bug, which E5's cop can check for free.
+`index.css` is now a 33-line table of contents over 13 partials, each sitting beside the module it
+dresses. The split was cut on the section markers the file had already drawn for itself, so the
+cascade is unchanged - proven by diffing the built bundle, which came out identical once esbuild's
+own filename markers were stripped. **The import order IS the cascade**, and it matters wherever a
+host re-dresses a borrowed component (`apps/journal.css` flattens `.editor-live`, so it must land
+after `doc/editor.css`); `index.css` says so at the top.
 
-- [ ] **E1. Split into partials, one per JS module family, bundled by esbuild.** The mechanism is
-  already proven — `index.css:2` `@import`s `marquee-css`, `--bundle` inlines local imports, and
-  `--watch` tracks the import graph, so `just csswatch` keeps working. The split mirrors the JS
-  layout (the self-similarity STYLE.md prizes): `tokens.css`, `fonts.css` (the 30 `@font-face` +
-  optical normalization — ~65 lines nobody ever needs to read), `base.css`, `shell.css`,
-  `console.css`, `auth.css`, `persona.css`, `chips.css`, `docs.css`, `editor.css`, `reader.css`,
-  `tree.css`, `journal.css`, `modal.css`, `upload.css`. `index.css` becomes ~16 `@import` lines: a
-  table of contents, and the one place a section header can't drift from its section.
-- [ ] **E2. Make the prefix convention a rule.** There is already a module system in the class
+The cop that keeps it honest is `integration/test/pure/conventions.cjs` - dead classes, colour
+literals outside `tokens.css`, and every partial imported exactly once. It found `.persona-badge`
+on its first run, orphaned when C3 deleted the component it dressed.
+
+- [ ] **E2. Make the prefix convention a rule** - and finish the two partials that knowingly hold
+  rules belonging elsewhere (recorded at the top of `index.css`): `apps/notes.css` carries the
+  shared reader/chip/annotation rules, which want `doc/surface.css` and `doc/annotations.css`, and
+  `apps/wiki.css` carries the tree ROWS that `doc/tree.js` draws - whose `wiki-` prefix spans two
+  modules and should become `tree-`. Both were left alone because moving them changes the cascade,
+  which the splitting commit deliberately did not do. There is already a module system in the class
   names — `journal-*`, `wiki-*`, `upload-*`, `annot-*`, `note-row-*`, `bucket-*`, `app-header-*`,
   `pane-*`. Promoting it to "one prefix per file, prefix names the file" makes it greppable and
   enforceable, and it names the exceptions: the cross-prefix rules (`.journal .editor-live`,
@@ -324,10 +311,6 @@ literal anywhere below it is a bug, which E5's cop can check for free.
   nameability: each of these has 3–7 *existing, named* consumers, so each passes. This is the CSS
   analogue of `icons.js` — one place maps meaning→look, as one place maps meaning→glyph. **Hold
   the line at four**; the moment anyone writes `.u-flex-gap-2` the rule has been broken.
-- [ ] **E5. A dead-class cop in `just ui-check`.** ~20 lines intersecting `^\.[a-z-]+` in the CSS
-  against string literals in the JS, allowlisting the external contracts (`mq-*`, `cm-*`, `ph`).
-  It found three dead rules in about two seconds. STYLE.md: "architecture cops are tests, not
-  runtime machinery"; `node/tests/conventions.rs` is the precedent.
 
 ## Reviewed and left alone (standing decisions, not history)
 
@@ -361,13 +344,10 @@ Re-litigating these costs more than reading this list.
 
 ## Suggested working order
 
-1. **P2** then **P5** — pure vectors with no refactor attached, so `integration/test/pure/` and the
-   habit of adding to it both grow before the bigger extractions land on top.
-2. **E1 + E5** as one commit (mechanical; the split is verifiable by diffing the built bundle
-   byte-for-byte), then **E4** on its own.
-3. **P1 + B3** together (the same file splits), and **S1** alongside — the cop wants the pure set
+1. **E4** — the four house primitives, now that the partials give them somewhere to live.
+2. **P1 + B3** together (the same file splits), and **S1** alongside — the cop wants the pure set
    to have stopped moving.
-4. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
+3. **A6 / B2 / B5** (`docnav.js`, `docsurface.js`, `useDocApp`), then **B1** (`buckets.js`,
    `clock.js` out of `index.js`).
-5. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
-6. **S2** — count `integration/test/pure/`; if it holds eight files, decide on `rules/`.
+4. **A7 + P4** together, then **A3**, **A4**, **A8**, **C1**, **C2**, and **B4 + P3** together.
+5. **S2** — count `integration/test/pure/`; if it holds eight files, decide on `rules/`.

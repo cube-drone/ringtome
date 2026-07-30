@@ -1,0 +1,103 @@
+/* --- the front door (login / registration) --- */
+
+.welcome {
+    max-width: 340px;
+    margin: 14vh auto 0;
+    text-align: center;
+}
+
+.welcome-title {
+    font-family: "Press Start 2P", monospace;
+    font-size: 1.6rem;
+    color: var(--teal);
+    margin: 0 0 0.4rem;
+}
+
+.welcome-sub {
+    color: var(--muted);
+    margin: 0 0 2rem;
+}
+
+.welcome-tabs {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 1.2rem;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    background: none;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px 6px 0 0;
+    color: var(--muted);
+    padding: 0.3rem 0.6rem;
+    font-size: 1.2rem; /* icon-only tabs; the name is in the tooltip */
+    cursor: pointer;
+    line-height: 1;
+}
+
+.tab.active {
+    color: var(--teal);
+    border-color: var(--teal);
+}
+
+.welcome-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    text-align: left;
+}
+
+.welcome-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.welcome-form input {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--ink);
+    padding: 0.55rem 0.7rem;
+    font: inherit;
+}
+
+.welcome-form input:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.field-note {
+    margin: -0.4rem 0 0;
+    font-size: 0.8rem;
+}
+
+.field-note.ok { color: var(--sea); }
+.field-note.bad { color: var(--coral); }
+
+.form-error {
+    margin: 0;
+    color: var(--coral);
+    font-size: 0.85rem;
+}
+
+.welcome-go {
+    background: var(--teal);
+    border: none;
+    border-radius: 6px;
+    color: var(--bg);
+    padding: 0.6rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.welcome-go:disabled {
+    opacity: 0.6;
+    cursor: default;
+}

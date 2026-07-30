@@ -1,0 +1,587 @@
+/* --- the notes app --- */
+
+.notes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    /* Fill the app frame and clip: the columns below scroll inside it, so the list and editor
+       reach the bottom of the app without the whole page moving. */
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.notes-columns {
+    display: flex;
+    gap: 1rem;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+}
+
+.notes-list {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.notes-new {
+    background: none;
+    border: 1px dashed var(--border-strong);
+    border-radius: 6px;
+    color: var(--sea);
+    padding: 0.45rem;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+.notes-new:hover {
+    border-color: var(--sea);
+}
+
+/* A thin tag-frequency sidebar (Recipes), left of the document list. */
+.tag-column {
+    width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* --- collapsible columns (the everything-app's tuckable panes) --- */
+/* A pane's little header: its name and the tuck-away button. */
+.pane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.2rem 0.3rem 0.3rem;
+}
+
+.pane-min {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    padding: 0.1rem;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.pane-min:hover {
+    color: var(--teal);
+}
+
+/* The rail a tucked column leaves behind: a slim vertical strip - icon on top, the name running
+   down it - that restores the column on click. */
+.pane-rail {
+    flex-shrink: 0;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    width: 1.9rem;
+    padding: 0.5rem 0.2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.pane-rail:hover {
+    color: var(--teal);
+    border-color: var(--teal);
+}
+
+.pane-rail-label {
+    writing-mode: vertical-rl;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* Adjustable column widths: the stylesheet defaults hold until a drag sets the CSS var (per
+   app, persisted in prefs). Scoped to .notes-columns so the wiki app's tree keeps its width. */
+.notes-columns .tag-column {
+    width: var(--w-tags, 180px);
+}
+
+.notes-columns .notes-list {
+    width: var(--w-list, 240px);
+}
+
+.notes-columns .wiki-tree,
+.wiki-columns .wiki-tree {
+    width: var(--w-tree, 270px);
+}
+
+/* The resizer strip between columns: an invisible grab area that shows a teal seam on hover
+   and while dragging. */
+.col-resizer {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 8px;
+    /* Eat most of the flex gap on either side, so a gutter with a resizer in it reads about as
+       wide as one without. */
+    margin: 0 -0.5rem;
+    cursor: col-resize;
+    border-radius: 3px;
+    touch-action: none;
+}
+
+.col-resizer:hover,
+.col-resizer:active {
+    background: var(--teal);
+    opacity: 0.5;
+}
+
+.tag-cloud-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.28rem 0.5rem;
+    cursor: pointer;
+    text-align: left;
+}
+
+.tag-cloud-row:hover {
+    background: var(--surface);
+}
+
+.tag-cloud-row.active {
+    background: var(--pink);
+    color: var(--surface);
+}
+
+.tag-cloud-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tag-cloud-count {
+    color: var(--muted);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.tag-cloud-row.active .tag-cloud-count {
+    color: var(--surface);
+    opacity: 0.85;
+}
+
+.tag-column-empty {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+}
+
+.note-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.45rem 0.6rem;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    color: var(--ink);
+}
+
+.note-row:hover {
+    border-color: var(--border-strong);
+}
+
+.note-row.selected {
+    border-color: var(--teal);
+}
+
+.note-row-title {
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The row's description subtitle: muted, and clamped to two lines so a long one can't balloon
+   the row. */
+.note-row-desc {
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Search snippet: the first few body lines that mention the query, hits highlighted. */
+.note-row-snippet {
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.snippet-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.snippet-hit {
+    background: var(--marker);
+    color: var(--ink);
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+.note-row-when {
+    color: var(--faint);
+    font-size: 0.7rem;
+}
+
+.notes-empty {
+    text-align: center;
+    margin-top: 1rem;
+}
+
+/* Tag filters active over the list (stacked with search). */
+.notes-tagfilter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.note-row-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.1rem;
+}
+
+.note-row-tag {
+    font-size: 0.65rem;
+    color: var(--pink);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.02rem 0.4rem;
+}
+
+.note-row-tag:hover {
+    border-color: var(--pink);
+}
+
+.note-row-tag.active {
+    background: var(--pink);
+    color: var(--surface);
+    border-color: var(--pink);
+}
+
+/* A user-claimed display date shown on a list row - subtly marked so it reads as a claim. */
+.note-row-claimed {
+    color: var(--teal);
+}
+
+/* The annotations panel in the editor: date + tag chips + a description field. */
+.annotations {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0.3rem 0 0.5rem;
+}
+
+.annot-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.annot-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    min-width: 3rem;
+}
+
+.annot-date,
+.annot-time {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.2rem 0.4rem;
+    color-scheme: light;
+}
+
+.annot-date:focus,
+.annot-time:focus {
+    outline: none;
+    border-color: var(--border-strong);
+}
+
+.annot-time:disabled {
+    opacity: 0.4;
+}
+
+.annot-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.annot-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--pink);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.08rem 0.5rem;
+}
+
+.annot-tag-active {
+    cursor: pointer;
+    background: var(--pink);
+    color: var(--surface);
+    border-color: var(--pink);
+    font: inherit;
+    font-size: 0.72rem;
+}
+
+.annot-tag-x {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.6;
+}
+
+.annot-tag-x:hover {
+    opacity: 1;
+}
+
+.annot-tag-input {
+    background: none;
+    border: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.75rem;
+    width: 6rem;
+    padding: 0.1rem 0.2rem;
+}
+
+.annot-tag-input:focus {
+    outline: none;
+}
+
+.annot-desc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    padding: 0.4rem 0.6rem;
+    resize: vertical;
+    width: 100%;
+}
+
+.annot-desc:focus {
+    outline: none;
+    border-color: var(--border-strong);
+}
+
+.reader {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    /* The right column (reader or editor) scrolls within the app frame, reaching its bottom. */
+    overflow-y: auto;
+}
+
+.reader-empty {
+    align-items: center;
+    justify-content: center;
+}
+
+.reader-head {
+    position: relative; /* the metadata dropdown anchors to this */
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.6rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+}
+
+/* The metadata dropdown: tags, date & description, tucked out of the way and dropped over the
+   editor on demand so they stop eating writing space. */
+.editor-meta {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    margin-top: 0.35rem;
+    padding: 0.6rem 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px var(--shadow-drop);
+}
+
+/* An open toggle chip wears the "on" look, like a pinned chip. */
+.chip-open {
+    color: var(--dock-text);
+    background: var(--teal);
+    border-color: var(--teal);
+}
+
+.reader-chips {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+/* The caret pickers (CodeMirror autocomplete - completions.js), dressed for the house: cream
+   card, ink border, teal selection; an option's detail (the emoji glyph) rides to the right,
+   upright and full-size. */
+.cm-tooltip.cm-tooltip-autocomplete {
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px var(--shadow-drop);
+    overflow: hidden;
+}
+
+.cm-tooltip-autocomplete > ul {
+    font-family: inherit;
+}
+
+.cm-tooltip-autocomplete > ul > li {
+    padding: 3px 10px;
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+    background: var(--teal);
+    color: var(--dock-text);
+}
+
+.cm-completionDetail {
+    margin-left: 0.7em;
+    font-style: normal;
+    font-size: 1.1em;
+}
+
+/* Files scroll BELOW the header, like documents do: the file reader pins its head and scrolls
+   the body region itself. (Documents get this for free - CodeMirror caps and scrolls
+   internally - but a tall image used to overflow the whole card, dragging the title and nav
+   chips out of reach mid-scroll.) */
+.reader-file {
+    overflow: hidden; /* the body region below scrolls instead */
+}
+
+.reader-file .reader-head {
+    flex-shrink: 0;
+}
+
+.reader-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 1rem; /* the chips are icon-only now; this sizes the glyph */
+    line-height: 1;
+    padding: 0.25rem 0.4rem;
+}
+
+.chip-diverged {
+    border-color: var(--coral);
+    color: var(--coral);
+}
+
+/* The other half of the divergence pair: changes woven together cleanly, not a conflict. */
+.chip-merged {
+    border-color: var(--sea);
+    color: var(--sea);
+}
+
+/* The rendered note in read mode is paper too, so the note itself stands out from the UI. */
+.reader-marquee {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.7rem 0.9rem;
+}
+
+.reader-plain {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0;
+    overflow-y: auto;
+}
+
+.reader-media {
+    max-width: 100%;
+    border-radius: 6px;
+}
+
+/* Video is stored at 320p (the in-browser pre-encoder's bound), so display it at native scale -
+   stretching it into blur would just advertise the crush. Images stay full-width above. */
+video.reader-media {
+    max-width: min(100%, 320px);
+    max-height: 320px;
+}

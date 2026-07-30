@@ -1,0 +1,329 @@
+/* --- the Journal app: a centered stream of day entries --- */
+
+.journal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1rem 1rem 4rem;
+    /* The page writing hand: set per-journal via JournalFonts, inherited by every heading, reader,
+       and editor below (the cm-scroller inherits its font). Falls back to the legible face. */
+    font-family: var(--journal-font, "Atkinson Hyperlegible", sans-serif);
+    /* The day book reads a touch large: 1.1x the surrounding text, times the chosen face's
+       optical-size scale (so Caveat, naturally tiny, lands even bigger). Entries, readers, and the
+       editor all inherit this; the toolbar and chrome keep their own absolute sizes. */
+    font-size: calc(1.1em * var(--journal-font-scale, 1));
+}
+
+/* The font selector: a small toolbar at the top of the stream, above the entry column and the
+   same 600px width. It scrolls away with the page - not pinned. Its own icons stay in the UI font
+   (they're glyphs, unaffected) - only the entries wear the chosen hand. */
+.journal-fonts {
+    align-self: center;
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.3rem;
+    padding: 0.4rem 0;
+}
+
+.journal-font {
+    display: inline-flex;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0.25rem 0.4rem;
+    opacity: 0.7;
+}
+
+.journal-font:hover {
+    opacity: 1;
+    color: var(--teal);
+}
+
+.journal-font.active {
+    opacity: 1;
+    color: var(--ink);
+    border-color: var(--border-strong);
+    background: var(--surface-2);
+}
+
+/* Search in the Journal filters the stream to matching entries and paints the hit words in place,
+   using the CSS Custom Highlight API (ranges registered from JS, no DOM surgery - so it works over
+   both the marquee readers and the live editor). Same warm marker as the Notes snippet hits. */
+::highlight(journal-search) {
+    background: var(--marker);
+    color: var(--ink);
+}
+
+.journal-entry {
+    width: 100%;
+    max-width: 600px;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.4rem;
+}
+
+.journal-entry.locked {
+    opacity: 0.92;
+}
+
+.journal-entry-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start; /* corner actions sit at the TOP right */
+    gap: 0.8rem;
+    margin-bottom: 0.7rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+}
+
+.journal-date {
+    margin: 0;
+    font-size: 1.1em; /* proportional to the entry's (now enlarged) body, not a fixed rem */
+    font-weight: 600;
+    color: var(--ink);
+}
+
+/* The head's left side: the title row over a smaller date line. */
+.journal-head-main {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The editable title: bare ink on the paper - no box until you're in it. */
+.journal-title {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-bottom: 1px dashed transparent;
+    padding: 0;
+    font: inherit;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.journal-title:focus {
+    outline: none;
+    border-bottom-color: var(--teal);
+}
+
+.journal-title::placeholder {
+    color: var(--muted);
+    opacity: 0.6;
+}
+
+.journal-title-read {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.journal-date-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.45rem;
+    font-size: 0.75em;
+    color: var(--muted);
+    margin-top: 0.1rem;
+}
+
+/* The entry's tags, riding the date line as quiet little pills. */
+.journal-tag-chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 0.55em;
+    font-size: 0.9em;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.journal-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+}
+
+/* The corner tag button (annotations toggle), in the same quiet register as the seal. */
+.journal-tag {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    opacity: 0.75;
+}
+
+.journal-tag:hover,
+.journal-tag.active {
+    opacity: 1;
+    color: var(--teal);
+}
+
+/* The annotations panel, journal-dressed: back to UI scale so the form reads as chrome, not as
+   an entry in the book. */
+.journal-meta {
+    font-size: 1rem;
+    margin-bottom: 0.7rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px dashed var(--border);
+}
+
+/* Inside a journal entry the card IS the paper, so the editor/reader surfaces blend flat - no
+   nested boxes, no per-entry scroll (the whole stream scrolls). */
+/* The host div carries its own 50vh min-height (that's what made an empty entry huge) plus the
+   surface/border - flatten all of it so a journal entry sizes to its content. */
+.journal .editor-live {
+    min-height: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+
+.journal .editor-live .cm-editor {
+    background: none;
+    border: 0;
+    min-height: 5rem;
+    max-height: none;
+}
+
+.journal .editor-live .cm-scroller {
+    padding: 0;
+}
+
+/* A clickable writing area: clicking below the text lands the cursor at the entry's end (the same
+   fix as the Notes editor, just journal-sized). Without a content min-height, a click below a
+   short entry hits nothing. */
+.journal .editor-live .cm-content {
+    min-height: 4.5rem;
+    padding: 0;
+}
+
+.journal .reader-marquee,
+.journal .reader-plain {
+    background: none;
+    border: 0;
+    padding: 0;
+}
+
+.journal-editor-foot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+}
+
+.journal-status {
+    display: inline-flex;
+    color: var(--muted);
+    font-size: 1rem;
+}
+
+.journal-status.error {
+    color: var(--coral);
+}
+
+.journal-seal {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    opacity: 0.75;
+}
+
+.journal-seal:hover {
+    opacity: 1;
+    color: var(--teal);
+}
+
+.journal-delete {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    color: var(--coral);
+    cursor: pointer;
+    font-size: 1.1rem;
+    opacity: 0.7;
+}
+
+.journal-delete:hover {
+    opacity: 1;
+}
+
+/* The lock: click to start a 15-second fill; the bar sweeps the button, then unlocks. */
+.journal-lock {
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.journal-lock-face {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+}
+
+.journal-unlock-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    z-index: 0;
+    background: var(--teal);
+    opacity: 0.4;
+    animation: journal-unlock 15s linear forwards;
+}
+
+@keyframes journal-unlock {
+    from {
+        width: 0;
+    }
+    to {
+        width: 100%;
+    }
+}
+
+/* The phantom today entry: an inviting blank page. */
+.journal-phantom-start {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 2px dashed var(--border-strong);
+    border-radius: 8px;
+    padding: 1.6rem;
+    cursor: pointer;
+    text-align: center;
+    font: inherit;
+}
+
+.journal-phantom-start:hover {
+    border-color: var(--teal);
+}
+
+.journal-sentinel {
+    height: 1px;
+    width: 100%;
+}

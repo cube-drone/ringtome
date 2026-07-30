@@ -1,0 +1,142 @@
+/* --- the console (application launcher) --- */
+
+.console {
+    flex: 1;
+    padding: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Honeycomb: fixed-width rows, every other row shifted half a cell so hexagons nestle, rows
+   pulled up 25% of a hexagon's height (their points slot into the row above). The hexagon and
+   its double border are three nested clipped layers - outer dark ring, inner light ring, then
+   the surface face. Corners are sharp: clip-path polygons can't round, so the "tiny rounding"
+   would need an SVG shape (a follow-up). All the sizes are tokens here, tunable. */
+.hex-comb {
+    --hex-w: 156px;
+    --hex-h: 180px;               /* regular pointy-top: h = w * 1.1547 */
+    --hex-gap: 6px;
+    --hex-clip: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.hex-row {
+    display: flex;
+    gap: var(--hex-gap);
+}
+
+.hex-row + .hex-row {
+    /* Even gap on every side: a regular hexagon's neighbours all sit one center-distance
+       (hex-w + gap) away, so the row advance is that distance times sin(60deg) = √3/2. Pulling
+       up by exactly hex-h/4 (the touching amount) is what made diagonal neighbours tighter than
+       row neighbours. */
+    margin-top: calc((var(--hex-w) + var(--hex-gap)) * 0.866025 - var(--hex-h));
+}
+
+.hex-row.shift {
+    margin-left: calc((var(--hex-w) + var(--hex-gap)) / 2);
+}
+
+.app-tile {
+    flex: 0 0 auto;
+    width: var(--hex-w);
+    height: var(--hex-h);
+    clip-path: var(--hex-clip);
+    background: var(--hex-border-light);   /* outer ring: lighter, 2px */
+    padding: 2px;
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    display: block;
+    transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.app-tile:not(.blank):hover {
+    transform: scale(1.04);
+    filter: brightness(1.04);
+}
+
+.hex-mid {
+    display: block;
+    width: 100%;
+    height: 100%;
+    clip-path: var(--hex-clip);
+    background: var(--hex-border-dark);   /* inner ring: darker, 4px */
+    padding: 4px;
+}
+
+.hex-face {
+    display: block; /* it's a <span>; without this it stays inline and width/height are ignored */
+    position: relative;
+    width: 100%;
+    height: 100%;
+    clip-path: var(--hex-clip);
+    background: var(--surface);
+    color: var(--ink);
+    isolation: isolate; /* own stacking context, so the layer z-indexes below order cleanly */
+}
+
+/* The diagonal fill, as a GRADIENT rather than a clipped triangle - nesting a second clip-path
+   inside the hex clip-path is what flooded the whole tile. `to bottom right` lands the hard edge
+   exactly on the bottom-left -> top-right diagonal at any aspect ratio: the lower-right half is
+   the border colour, the upper-left is transparent so the icon shows through. It sits ABOVE the
+   icon (swallowing its lower half) and BELOW the name. */
+.app-tile:not(.blank) .hex-face::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to bottom right,
+        transparent 0%,
+        transparent 50%,
+        var(--hex-border-dark) 50%,
+        var(--hex-border-dark) 100%
+    );
+    z-index: 1;
+}
+
+.app-tile.blank {
+    cursor: default;
+}
+
+.app-tile.blank .hex-face {
+    background: var(--surface-2);
+}
+
+/* The icon: large, sat BEHIND the diagonal fill - its top-left shows over the surface, its
+   bottom-right is swallowed by the fill (partially obscured, still visible). */
+.app-tile-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* Nudged up-and-left off centre so more of it clears the diagonal fill (less gets swallowed). */
+    transform: translate(calc(-50% - 20px), calc(-50% - 20px));
+    font-size: 4.6rem;
+    line-height: 1;
+    z-index: 0;
+}
+
+/* The name: a horizontal nameplate strip in the lower third, filled with the hex-background
+   colour and laid OVER everything else (the diagonal fill and the icon), so the name always reads
+   cleanly. Clipped to the hexagon by the face, so it stays within the border. */
+.app-tile-name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 26%;
+    height: 22%;
+    z-index: 3;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+    font-family: "Radio Canada", sans-serif;
+    font-weight: 800;
+    font-size: 1rem;
+    white-space: nowrap;
+    color: var(--ink);
+}

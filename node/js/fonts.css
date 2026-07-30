@@ -1,0 +1,70 @@
+/* --- marquee fonts: @font-face declarations pointing to /fonts/*.woff2 ---
+ * The Rust server serves these from the node_modules font directory (dev)
+ * or from embedded bytes (prod). Using absolute paths so they resolve
+ * correctly regardless of where the CSS is served from. */
+@font-face { font-family: "Radio Canada"; src: url("/fonts/radio-canada.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Atkinson Hyperlegible"; src: url("/fonts/atkinson-hyperlegible.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Lexend"; src: url("/fonts/lexend.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Zilla Slab"; src: url("/fonts/zilla-slab.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Playfair Display"; src: url("/fonts/playfair-display.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Cormorant"; src: url("/fonts/cormorant.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "IM Fell English"; src: url("/fonts/im-fell-english.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Uncial Antiqua"; src: url("/fonts/uncial-antiqua.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "UnifrakturMaguntia"; src: url("/fonts/unifraktur.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "VT323"; src: url("/fonts/vt323.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Press Start 2P"; src: url("/fonts/press-start.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Silkscreen"; src: url("/fonts/silkscreen.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Major Mono Display"; src: url("/fonts/major-mono.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Orbitron"; src: url("/fonts/orbitron.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Bungee"; src: url("/fonts/bungee.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Monoton"; src: url("/fonts/monoton.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Creepster"; src: url("/fonts/creepster.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Special Elite"; src: url("/fonts/special-elite.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Fredericka the Great"; src: url("/fonts/fredericka.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Lobster"; src: url("/fonts/lobster.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Pacifico"; src: url("/fonts/pacifico.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Caveat"; src: url("/fonts/caveat.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Comic Neue"; src: url("/fonts/comic-neue.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Audiowide"; src: url("/fonts/audiowide.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Kablammo"; src: url("/fonts/kablammo.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Henny Penny"; src: url("/fonts/henny-penny.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Oi"; src: url("/fonts/oi.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Rye"; src: url("/fonts/rye.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Bitcount"; src: url("/fonts/bitcount.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Quicksand"; src: url("/fonts/quicksand.woff2") format("woff2"); font-display: swap; }
+
+/* --- optical-size normalization ---
+ * These faces render visibly smaller than the rest of the grab bag at the same font-size (small
+ * x-heights / narrow em). Nudge each up in `em` (relative to context, so it composes with the size
+ * rungs) until the whole set reads at roughly one size. Applied on the marquee `mq-font-*` classes,
+ * so it holds wherever a font is chosen; the Journal mirrors these same factors on its base text. */
+.mq-font-atkinson-hyperlegible,
+.mq-font-zilla-slab,
+.mq-font-im-fell-english,
+.mq-font-uncial-antiqua,
+.mq-font-major-mono,
+.mq-font-bitcount,
+.mq-font-orbitron,
+.mq-font-audiowide,
+.mq-font-creepster,
+.mq-font-monoton,
+.mq-font-oi,
+.mq-font-kablammo,
+.mq-font-henny-penny,
+.mq-font-lobster,
+.mq-font-pacifico,
+.mq-font-fredericka,
+.mq-font-unifraktur,
+.mq-font-comic-neue {
+    font-size: 1.15em;
+}
+
+.mq-font-vt323,
+.mq-font-cormorant {
+    font-size: 1.3em;
+}
+
+.mq-font-caveat {
+    font-size: 1.5em;
+}

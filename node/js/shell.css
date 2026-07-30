@@ -1,0 +1,303 @@
+/* --- app shell --- */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+/* Phosphor icons (the `ph` class comes from the root IconContext): they're `<svg>` boxes, which
+   sit on the baseline and read a touch high next to text - nudge them down so a glyph and its
+   label share a line cleanly. Icon-only containers (app tiles, menu rows) are unaffected. */
+.ph {
+    vertical-align: -0.15em;
+}
+
+/* The duotone second colour is our teal. Phosphor draws the secondary layer as a path at
+   opacity 0.2 inheriting currentColor; just repaint it teal, keeping that original 0.2. */
+.ph path[opacity="0.2"] {
+    fill: var(--teal);
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+}
+
+.app-main {
+    /* The fixed frame: a full-viewport flex column that never itself scrolls. The app region
+       (`.app-frame`) takes all the room above the footer (`.quickbar`); the two are stacked
+       flex bands, so neither ever overlaps the other. Full viewport width - space is at a
+       premium on a small laptop, and the notes app's right column (flex:1 beside a fixed 240px
+       list) puts every extra pixel into the editor. */
+    width: 100%;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* The app region: the bordered box between the top of the window and the footer. It fills the
+   space the footer doesn't, and its inner layer scrolls INSIDE the border (the page never
+   scrolls) - so the footer sits below it, never over it.
+
+   The chunky border is drawn like the hexagon tiles: two clip-path layers sharing one polygon
+   whose corners STEP like pixels (a staircase), not a smooth arc. The outer layer is the dark
+   frame (its 10px padding is the visible border thickness); the inner layer is the surface,
+   clipped to the same jagged shape, so the dark shows through as a pixel-cornered border. No
+   image, no `border-radius` - the jaggedness IS the corner. */
+.app-frame {
+    flex: 1;
+    min-height: 0;
+    margin: 12px;
+    /* No top border: the ink app header IS the top edge, so a border there would just be
+       redundant ink stealing height. Sides and bottom keep the chunky frame. */
+    padding: 0 10px 10px;
+    background: var(--ink);
+    clip-path: var(--panel-clip);
+    display: flex;
+    flex-direction: column;
+}
+
+.app-frame-inner {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 20px;
+    background: var(--surface);
+    clip-path: var(--panel-clip);
+}
+
+/* The bare desktop: the region the app selector (and the pre-persona flows) live on. No frame,
+   no surface - just the warm page beneath, because the launcher isn't an app. Same footer below,
+   same fill-the-space-above-it job as the shell. */
+.app-stage {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The unified app header: the same ink as the frame it sits in, so the top border and the header
+   read as one solid band. Title left, back/close right. Every app gets this identical bar from
+   the shell - no app draws its own. */
+.app-header {
+    flex-shrink: 0;
+    /* Three tracks so the search sits DEAD CENTER of the header: title hugs the left, actions the
+       right, and the middle column (the search) is centred by the equal 1fr flanks. minmax(0,1fr)
+       keeps a long title from stealing the centre - it truncates instead. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.8rem;
+    /* No right padding: the close button sits flush against the frame's right border. */
+    padding: 0.35rem 0 0.45rem 0.5rem;
+    background: var(--ink);
+    color: var(--dock-text);
+}
+
+/* The header's left column: the title and, for document apps, the bucket switcher beside it. */
+.app-header-lead {
+    grid-column: 1;
+    justify-self: start;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.app-header-title {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: "Press Start 2P", monospace;
+    font-size: 1.05rem;
+    color: var(--dock-text);
+}
+
+/* The bucket switcher: plus (a new notebook), arrows (page along the shelf), and the current
+   bucket's name - a little mono pill; click it for the full list. Lives on the ink band, so
+   everything wears the dock text colour. */
+.bucket-switch {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    flex-shrink: 0;
+}
+
+.bucket-btn {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: 0;
+    padding: 0.15rem;
+    color: var(--dock-text);
+    opacity: 0.7;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.bucket-btn:hover:not(:disabled) {
+    opacity: 1;
+}
+
+.bucket-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.bucket-name {
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--dock-text) 40%, transparent);
+    border-radius: 6px;
+    padding: 0.15rem 0.55rem;
+    color: var(--dock-text);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    cursor: pointer;
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bucket-name:hover {
+    border-color: var(--dock-text);
+}
+
+/* The full list: a dropdown off the pill. Every bucket of this app (name + how many documents),
+   the current one bolded, and - for a non-home bucket - the delete row at the bottom. */
+.bucket-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 60;
+    min-width: 230px;
+    display: flex;
+    flex-direction: column;
+    padding: 0.3rem;
+    background: var(--surface);
+    color: var(--ink);
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px var(--shadow-drop);
+}
+
+.bucket-menu-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    background: none;
+    border: 0;
+    border-radius: 5px;
+    padding: 0.4rem 0.55rem;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.bucket-menu-item:hover {
+    background: var(--surface-2);
+}
+
+.bucket-menu-item.current {
+    font-weight: 700;
+}
+
+.bucket-menu-count {
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+.bucket-menu-delete {
+    margin-top: 0.3rem;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 5px 5px;
+    color: var(--coral);
+}
+
+/* The search box: a top-level fixture next to the title, in the same spot across every app that
+   offers it. Cream on the ink header, so it reads as an input, not a hole. */
+.app-header-search {
+    grid-column: 2;
+    justify-self: center;
+    width: 240px;
+    max-width: 100%;
+    min-width: 0;
+    background: var(--surface);
+    border: 0;
+    border-radius: 6px;
+    padding: 0.35rem 0.65rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+}
+
+.app-header-search::placeholder {
+    color: var(--muted);
+}
+
+.app-header-search:focus {
+    outline: 2px solid var(--teal);
+    outline-offset: 1px;
+}
+
+.app-header-actions {
+    grid-column: 3;
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+/* Back/close are holes punched through the ink header: filled with the app surface (the content
+   colour beneath), so they read as negative space, with a big dark icon. The inset shadow gives
+   the punched-through depth. Icon-only - the title tooltip carries the label. */
+.app-header-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.3rem;
+    height: 2.3rem;
+    padding: 0;
+    background: var(--surface);
+    border: 0;
+    border-radius: 50%;
+    color: var(--ink);
+    cursor: pointer;
+    font: inherit;
+    font-size: 1.45rem; /* Phosphor icons are 1em - this is the "big" */
+    box-shadow: inset 0 1px 2px var(--shadow-punch);
+    transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.app-header-btn:hover {
+    color: var(--teal);
+    transform: scale(1.06);
+}
+
+/* Close is a sharp square hole, distinct from the round back hole. */
+.app-header-btn-square {
+    border-radius: 0;
+}
+
+.loading-shell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    color: var(--muted);
+}
+
+/* Marquee override: it renders each list item as `<li><p>…</p></li>` and never resets the
+   paragraph's default 1em block margins, so list items sit way too far apart. Halve it. */
+.mq-doc li > p {
+    margin-block: 0.1em;
+}

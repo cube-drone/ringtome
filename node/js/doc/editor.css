@@ -1,0 +1,252 @@
+/* --- the editor --- */
+
+.editor-title {
+    background: none;
+    border: none;
+    border-bottom: 1px dashed transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 1.1rem;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+}
+
+.editor-title:focus {
+    outline: none;
+    border-bottom-color: var(--teal);
+}
+
+.editor-body {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    padding: 0.8rem;
+    min-height: 50vh;
+    resize: vertical;
+    width: 100%;
+}
+
+.editor-body:focus {
+    outline: none;
+    border-color: var(--border-strong);
+}
+
+.editor-tabs {
+    display: flex;
+    gap: 0.4rem;
+    /* Fold-tabs sit right on top of the text: pull the body up to nearly meet them (the .reader
+       flex-column adds 0.6rem between children). */
+    margin-bottom: -0.4rem;
+}
+
+/* Read-only mode's title: the input's look without the input. */
+.editor-title-read {
+    display: block;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--ink);
+    padding: 0.2rem 0;
+}
+
+/* The interactive (live preview) surface: CodeMirror hosts its own scrolling. The mq-doc
+   look inside comes from the marquee extension's bundled theme + marquee-css. */
+.editor-live {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-height: 50vh;
+    overflow: hidden;
+}
+
+/* The writing surface itself is the paper - near-white, so the note you're editing stands out
+   from the cream UI around it. The chrome (title, chips, tabs, annotations) stays on the backdrop. */
+.editor-live .cm-editor {
+    min-height: 50vh;
+    max-height: 75vh;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.editor-live .cm-content {
+    padding: 0.7rem 0.85rem;
+}
+
+.editor-live .cm-editor.cm-focused {
+    outline: none;
+}
+
+.editor-live .cm-scroller {
+    font-family: inherit;
+    line-height: 1.5;
+    padding: 0.8rem;
+}
+
+/* Make the editable content fill the box, not just wrap the text - so a click anywhere in the
+   editor (below a short document) lands in the content area and drops the caret at the end of
+   the document, instead of in dead space the editor ignores. */
+.editor-live .cm-content {
+    min-height: 46vh;
+}
+
+/* Side by side: source and rendering as equal panes, each scrolling alone. */
+.editor-side {
+    display: flex;
+    gap: 0.8rem;
+    align-items: stretch;
+}
+
+.editor-side-source,
+.editor-side-preview {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.editor-side-source .editor-body {
+    height: 100%;
+    min-height: 50vh;
+}
+
+.editor-side-preview {
+    max-height: 75vh;
+    overflow-y: auto;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.8rem;
+    /* scrollToSource centers the cursor's node; smooth keeps the tracking legible. */
+    scroll-behavior: smooth;
+}
+
+/* Inside the side-preview pane the pane IS the paper box, so the render fills it flat (no
+   box-in-a-box). */
+.editor-side-preview .reader-marquee,
+.editor-side-preview .reader-plain {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+}
+
+/* The preview node the source cursor is inside - the scroll sync, made visible. */
+.editor-cursor-node {
+    outline: 2px solid var(--glow);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.chip-button {
+    cursor: pointer;
+    font: inherit;
+    font-size: 1rem;
+    color: var(--sea);
+}
+
+.chip-button:hover {
+    border-color: var(--sea);
+}
+
+/* An end-of-the-book nav arrow: still present (the pair keeps its shape), just quiet. */
+.chip-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.chip-button:disabled:hover {
+    border-color: var(--border);
+}
+
+/* Delete is the one destructive chip: coral, and it only warms up on hover so it never shouts
+   from the header until you reach for it. */
+.chip-delete {
+    color: var(--coral);
+}
+
+.chip-delete:hover {
+    border-color: var(--coral);
+    background: var(--coral);
+    color: var(--dock-text);
+}
+
+/* A pinned document's chip reads as "on": teal fill, so pin state is legible at a glance. */
+.chip-pinned {
+    color: var(--dock-text);
+    background: var(--teal);
+    border-color: var(--teal);
+}
+
+/* The little pin ahead of a pinned row's title. */
+.note-row-pin {
+    font-size: 0.8em;
+}
+
+/* A media row's kind glyph (file-image / file-video / file-audio), quiet beside the title. */
+.note-row-kind {
+    font-size: 0.9em;
+    color: var(--muted);
+}
+
+.waiting-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--teal);
+    animation: waiting-pulse 1.6s ease-in-out infinite;
+    margin-right: 0.3rem;
+}
+
+@keyframes waiting-pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}
+
+/* The unsaved/saving status spinner - actually spins. */
+.status-spin {
+    display: inline-flex;
+    animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.skip-link:hover {
+    color: var(--muted);
+}
+
+@media (max-width: 500px) {
+    .app-frame {
+        margin: 8px;
+        padding: 0 7px 7px;
+    }
+    .app-frame-inner {
+        padding: 12px;
+    }
+    .quickbar {
+        padding: 0.4rem 10px;
+    }
+}
+
+.editor-waiting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30vh;
+    text-align: center;
+}
+
+/* The debug chip's version-history dump: a .reader-plain that may run tall and gets selected
+   wholesale for pasting into a bug report. */
+.debug-dump {
+    user-select: all;
+    max-height: 70vh;
+    font-size: 0.7rem;
+}

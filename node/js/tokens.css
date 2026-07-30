@@ -1,0 +1,43 @@
+/* --- the palette ---
+ * Warm and beachy, mid-tone (neither dark nor light): sand and cream surfaces, teal water,
+ * shell pink, sunset coral, sea-green. Every colour in the app is one of these tokens - including
+ * the translucent ones (shadows, the scrim, the marker pen) - so the whole scheme re-tunes from
+ * here, and a literal colour anywhere below is a bug. */
+:root {
+    /* The house panel shape, shared by the app frame and the modal (each layer of a panel wears
+       it, so the chrome shows through as a pixel-cornered border): sharp square top corners,
+       and the two BOTTOM corners cut back in two 6px steps - a pixel-rounded corner only where
+       it grounds. */
+    --panel-clip: polygon(
+        0 0, 100% 0,
+        100% calc(100% - 12px), calc(100% - 6px) calc(100% - 12px), calc(100% - 6px) calc(100% - 6px), calc(100% - 12px) calc(100% - 6px), calc(100% - 12px) 100%,
+        12px 100%, 12px calc(100% - 6px), 6px calc(100% - 6px), 6px calc(100% - 12px), 0 calc(100% - 12px)
+    );
+    --bg: #e7dbc3;            /* page: warm sand */
+    --surface: #f6efe0;      /* cards, inputs, tiles: cream (a touch lighter than the sand) */
+    --surface-2: #efe3cd;    /* chips, secondary fills */
+    --paper: #fffefb;        /* the note itself: near-white, clearly lighter than the backdrop */
+    --ink: #40382c;          /* primary text: warm dark brown */
+    --ink-soft: #574d3d;     /* softer body text */
+    --muted: #8a7a5f;        /* secondary text, labels */
+    --faint: #a89777;        /* placeholders, tertiary */
+    --border: #d7c6a2;       /* soft warm borders */
+    --border-strong: #c1aa80;/* hover / emphasis borders */
+
+    --teal: #1f9e90;         /* primary accent: water - focus, selection, hover, highlight */
+    --teal-deep: #227d71;    /* the bottom dock band */
+    --sea: #4bab7f;          /* good / merged / friendly sea-green */
+    --pink: #d97a97;         /* tags: shell pink */
+    --coral: #db6a63;        /* danger / conflict / logout-hover: sunset coral */
+
+    --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */
+    --dock-text: #fbf6ec;    /* light text that sits on the teal dock */
+
+    --hex-border-dark: #bf9152;   /* the outer 2px ring of an application hexagon: caramel */
+    --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */
+
+    --marker: #f3e08c;                      /* search hits: a warm highlighter pen */
+    --scrim: rgba(43, 38, 34, 0.45);        /* behind a modal */
+    --shadow-drop: rgba(43, 38, 34, 0.35);  /* panels floating over content (menus, tooltips) */
+    --shadow-punch: rgba(51, 40, 20, 0.28); /* inset: a hole punched through the ink chrome */
+}
