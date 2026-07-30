@@ -79,7 +79,7 @@ rule `net.rs` followed.
 - [ ] **S1. The purity cop.** A `rules/` directory was considered and rejected: on the Rust side
   that firewall is not a directory but a separate crate (`ringtome-proto` - "values in, `Result`
   out, no async/storage/clocks"), and the JS analogue of compiler-enforced is a test, because
-  architecture cops are tests (STYLE.md). Add one to `just ci`: **`lookout.js`, `keepalive.js` and
+  architecture cops are tests (STYLE.md). Add one to `just ui-check`: **`lookout.js`, `keepalive.js` and
   `docdate.js` may import nothing from `js/` and may not mention `fetch`, `document`, `window`,
   `Dexie`, or `preact`.** Those three are exactly the modules that already have mocha tests, which
   is the evidence the boundary is real. `search.js` is the fourth by intent but imports the mirror
@@ -261,7 +261,7 @@ literal anywhere below it is a bug, which E5's cop can check for free.
   nameability: each of these has 3–7 *existing, named* consumers, so each passes. This is the CSS
   analogue of `icons.js` — one place maps meaning→look, as one place maps meaning→glyph. **Hold
   the line at four**; the moment anyone writes `.u-flex-gap-2` the rule has been broken.
-- [ ] **E5. A dead-class cop in `just ci`.** ~20 lines intersecting `^\.[a-z-]+` in the CSS
+- [ ] **E5. A dead-class cop in `just ui-check`.** ~20 lines intersecting `^\.[a-z-]+` in the CSS
   against string literals in the JS, allowlisting the external contracts (`mq-*`, `cm-*`, `ph`).
   It found three dead rules in about two seconds. STYLE.md: "architecture cops are tests, not
   runtime machinery"; `node/tests/conventions.rs` is the precedent.
