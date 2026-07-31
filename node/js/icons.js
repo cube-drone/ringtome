@@ -5,7 +5,9 @@
 // `<${Icons.pin} />` comes out duotone, in `currentColor`, sized to its container's font
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
+    Files,
     Funnel,
+    Path,
     NotePencil,
     CookingPot,
     PenNib,
@@ -115,6 +117,9 @@ export const Icons = {
     link: LinkSimple,
     // the search-options dropdown (the funnel beside the search box)
     filter: Funnel,
+    // the everything-view (All Documents): the app tile, and follow-me-home on each row
+    all: Files,
+    path: Path,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

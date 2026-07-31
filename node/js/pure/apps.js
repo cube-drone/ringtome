@@ -85,6 +85,23 @@ export const APPS = [
         // each column tuckable, so it's only as monstrous as you choose to make it.
         features: { tagColumn: true, tree: true },
     },
+    {
+        id: 'all',
+        name: 'All Documents',
+        icon: 'all',
+        live: true,
+        // The everything-view: every document from every notebook, PLUS the unbucketed - the
+        // one surface where nothing can be orphaned out of sight (a repudiation striking a
+        // bucket's definition relocates its documents; this is where they remain findable).
+        // No `style` on purpose: it owns no bucket type, mints no implicit bucket, and the
+        // bucket switcher never shows. A browsing surface: rows carry their bucket names and
+        // a follow-me-home button to each document's own app; creation stays with the real
+        // apps. Its URLs live under /all and never re-dress into cozy bucket addresses -
+        // one document shows in many places, but an /all link means the everything-view.
+        everything: true,
+        bucketNoun: 'Archive',
+        itemNoun: 'file',
+    },
     { blank: true },
 ];
 
@@ -164,6 +181,7 @@ export function bucketsForApp(app, roster) {
 /// it is never the default app.)
 export function bucketHolds(doc, app, bucket) {
     if (!doc || !app) return false; // nothing holds a document that isn't there
+    if (app.everything) return true; // the everything-view: all notebooks, plus the unbucketed
     const names = doc.buckets || [];
     if (names.includes(bucket)) return true;
     return bucket === app.style && app.style === DEFAULT_STYLE && names.length === 0;
@@ -179,3 +197,12 @@ export function bucketHolds(doc, app, bucket) {
 export const appForStyle = (style) =>
     liveApps.find((a) => a.style && a.style === style) ||
     liveApps.find((a) => a.style === DEFAULT_STYLE);
+
+/// A document's OFFICIAL home: the app that opens its first bucket (resolved through the
+/// roster), or the default app for the unbucketed. What the everything-view's follow-me-home
+/// button navigates to - the router's deep-link correction then picks the right notebook,
+/// because the document itself knows which buckets hold it.
+export const homeAppFor = (doc, roster) => {
+    const first = ((doc && doc.buckets) || [])[0];
+    return first ? appForStyle(appTypeOf(first, roster)) : appForStyle(DEFAULT_STYLE);
+};

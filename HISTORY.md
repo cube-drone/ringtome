@@ -1057,3 +1057,26 @@ entries are always prose, and a knob that does nothing is worse than no knob. Ve
 real UI by the harness's media probe: a real image beside a text note, filed into a tree
 section - rotate the dial, the list and tree pages narrow at each stop, the section count
 never moves.
+
+## All Documents: the everything-view (2026-07-31)
+
+The resolution to "where did my files go": a new app, last on the dock, showing every document
+from every notebook PLUS the unbucketed - the one surface where nothing can be orphaned out of
+sight (a repudiation striking a bucket's definition relocates documents; here they remain
+findable). Registry-wise it is an app with `everything: true` and no `style`: it owns no
+bucket type, mints no implicit bucket, shows no bucket switcher, and `bucketHolds`
+short-circuits to yes - one flag, and the whole documents skeleton (search, the kind dial,
+descriptions, dates) just works on it. A browsing surface, not a making one: no new-thing
+button (creation belongs to real apps; stray editor-drop writes land in the default app's
+home), no tree, no tag column.
+
+Its rows carry the finding aids: the notebook name(s) that hold each file ("unfiled" when
+none), 64px thumbnails (double the sidebar's - browsing media is half the job), and
+**follow me home** - a path-icon button routing to the document's official app
+(`homeAppFor`: first bucket's type via the roster; unbucketed to the default app), where the
+existing deep-link correction picks the right notebook and the cozy re-dress settles the true
+address. URLs live in their own `/home/all/<id>` namespace and never re-dress - one document
+shows in many places, but an /all link always means the everything-view. Field-verified by
+the harness probe: bucket labels, big thumbs, the stable /all URL, and a follow-me-home that
+landed on `/home/shots/bowie` - the official cozy address, minted by machinery that predates
+the feature.

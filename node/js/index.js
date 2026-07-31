@@ -207,7 +207,7 @@ const Inside = ({ session }) => {
     // column), the same place across every app that offers it. The query is lifted here so the
     // header owns the input and the app reads it; it clears when you switch apps. Only document
     // apps (those with a `style`) offer search.
-    const showSearch = !!(appHere && appHere.style);
+    const showSearch = !!(appHere && (appHere.style || appHere.everything));
     const [query, setQuery] = useState('');
     // The kind dial rides the search state's lifecycle: chosen beside the box, cleared with
     // it on app switch - a filter you set in Recipes shouldn't silently empty TurboNotes.

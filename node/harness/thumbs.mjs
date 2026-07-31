@@ -77,4 +77,29 @@ for (let i = 0; i < 3; i++) {
     await sleep(300);
     console.log('dial:', dial().textContent.trim(), '->', JSON.stringify(titles()), 'tree:', JSON.stringify(tree()));
 }
+
+// --- The everything-view: file the image into a recipes-typed bucket, then browse /home/all.
+await s.fetch(`/api/identity/${root}/buckets`, { method: 'POST', headers: J, body: JSON.stringify({ name: 'shots', app: 'recipes' }) });
+await s.fetch(`/api/identity/${root}/docs/${queued.doc_id}/buckets/shots`, { method: 'PUT', headers: J });
+click(dom.window, [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'All Documents'));
+await waitFor(doc, () => dom.window.location.pathname === '/home/all' && doc.querySelectorAll('.note-row').length >= 2, 'the everything-view');
+await sleep(500);
+const allRows = [...doc.querySelectorAll('.note-row')].map((r) => ({
+    title: r.querySelector('.note-row-title-text').textContent.trim(),
+    buckets: r.querySelector('.note-row-buckets')?.textContent.trim(),
+    bigThumb: !!r.querySelector('.note-row-thumb-big'),
+    home: !!r.querySelector('.note-row-home'),
+}));
+console.log('all-view rows:', JSON.stringify(allRows, null, 2));
+console.log('new-button hidden:', !doc.querySelector('.notes-new'));
+
+// Open the image IN the everything-view: the URL must stay in /all (no cozy re-dress).
+click(dom.window, [...doc.querySelectorAll('.note-row')].find((r) => r.textContent.includes('bowie')));
+await sleep(1500);
+console.log('selected in /all, url:', dom.window.location.pathname);
+
+// Follow me home: the image lives in a recipes-typed bucket, so home is the Recipes app.
+click(dom.window, doc.querySelector('.note-row.selected .note-row-home') || doc.querySelector('.note-row-home'));
+await sleep(1500);
+console.log('after follow-me-home, url:', dom.window.location.pathname);
 process.exit(0);

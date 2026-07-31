@@ -41,7 +41,10 @@ export function useDocApp(root, app, docId, bucket) {
 
     const selected = useSlugDocId(root, app.id, docId);
     const select = (id) => loc.route(id ? `/home/${app.id}/${id}` : `/home/${app.id}`);
-    useCozyAddress(root, selected, bucket);
+    // The everything-view's URLs stay in their own /all namespace, never re-dressed into a
+    // cozy bucket address: one document shows in many places, but an /all link must keep
+    // meaning "the everything-view", not whichever official home the re-dress would pick.
+    useCozyAddress(root, app.everything ? null : selected, bucket);
 
     const restored = useRef(false);
     useEffect(() => {

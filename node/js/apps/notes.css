@@ -231,7 +231,8 @@
     text-overflow: ellipsis;
 }
 
-/* The 32px thumbnail a media row wears where a text row wears its format glyph. */
+/* The 32px thumbnail a media row wears where a text row wears its format glyph; the
+   everything-view (All Documents) doubles it - browsing media is half its job. */
 .note-row-thumb {
     width: 32px;
     height: 32px;
@@ -240,6 +241,33 @@
     border: 1px solid var(--border);
     flex-shrink: 0;
     background: var(--surface-2);
+}
+
+.note-row-thumb-big {
+    width: 64px;
+    height: 64px;
+}
+
+/* The everything-view's row extras: which notebook(s) hold the file, and follow-me-home. */
+.note-row-buckets {
+    color: var(--faint);
+    font-size: 0.78rem;
+}
+
+.note-row-home {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: none;
+    padding: 0 0 0 0.4rem;
+    color: var(--faint);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.note-row-home:hover {
+    color: var(--sea);
 }
 
 /* The row's description subtitle: muted, and clamped to two lines so a long one can't balloon

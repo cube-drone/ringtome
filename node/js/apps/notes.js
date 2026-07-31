@@ -12,13 +12,15 @@
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
+import { useLocation } from 'preact-iso';
 
 import { api } from '../net.js';
+import { openMirror, useLive } from '../mirror.js';
 import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
-import { featuresOf, itemNoun, itemPlural } from '../pure/apps.js';
+import { featuresOf, itemNoun, itemPlural, homeAppFor } from '../pure/apps.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
@@ -128,7 +130,7 @@ const Snippet = ({ root, docId, query }) => {
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
 // description, no date and no tags is one line tall, which is what Recipes wants.
 const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilter, onSelect,
-                   onToggleTag }) => html`<button
+                   onToggleTag, everything, onFollowHome }) => html`<button
     class=${doc.doc_id === selected ? 'note-row selected' : 'note-row'}
     onClick=${() => onSelect(doc.doc_id)}
     draggable=${true}
@@ -138,7 +140,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
         ${doc.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}
         ${doc.media && doc.media.has_thumb
             ? html`<img
-                  class="note-row-thumb"
+                  class=${everything ? 'note-row-thumb note-row-thumb-big' : 'note-row-thumb'}
                   src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
                   alt=""
                   loading="lazy"
@@ -152,7 +154,20 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
             : formatIcon(doc.format) &&
               html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `}
         <span class="note-row-title-text">${doc.title || 'untitled'}</span>
+        ${everything &&
+        html`<button
+            class="note-row-home"
+            title="follow me home — open this in its own app"
+            onClick=${(e) => {
+                e.stopPropagation();
+                onFollowHome(doc);
+            }}
+        ><${Icons.path} /></button>`}
     </span>
+    ${everything &&
+    html`<span class="note-row-buckets">
+        ${(doc.buckets || []).length ? (doc.buckets || []).join(' · ') : 'unfiled'}
+    </span>`}
     ${feat.description &&
     doc.fields &&
     doc.fields.description &&
@@ -226,6 +241,13 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // first with pinned documents floating (pure/doclist.js holds the rules and their vectors).
     const hits = useSearch(root, searchQuery);
     const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter, kind: searchKind });
+
+    // The everything-view's follow-me-home: route to the document's OFFICIAL app (first
+    // bucket's type, via the live roster; unbucketed goes to the default app) - the deep-link
+    // bucket correction picks the right notebook once there, because the doc knows its own.
+    const loc = useLocation();
+    const roster = useLive(() => (app.everything ? openMirror(root).buckets.toArray() : []), [root]);
+    const followHome = (d) => loc.route(`/home/${homeAppFor(d, roster).id}/${d.doc_id}`);
 
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
@@ -308,9 +330,12 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     ? html`<${Rail} icon=${Icons.list} label="items" onClick=${() => toggleTuck('list')} />`
                     : html`<aside class="notes-list">
                     <${PaneHead} label=${nouns} onTuck=${() => toggleTuck('list')} />
-                    <button class="notes-new" disabled=${busy} onClick=${createNew}>
+                    ${/* The everything-view is for finding, not making - new things are born
+                        in their own apps, where they land in a real notebook. */ ''}
+                    ${!app.everything &&
+                    html`<button class="notes-new" disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : `+ new ${noun}`}
-                    </button>
+                    </button>`}
                     ${tagFilter.length > 0 &&
                     html`<div class="notes-tagfilter">
                         ${tagFilter.map(
@@ -335,6 +360,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                             tagFilter=${tagFilter}
                             onSelect=${select}
                             onToggleTag=${toggleTag}
+                            everything=${!!app.everything}
+                            onFollowHome=${followHome}
                         />`
                     )}
                     ${docs && list.length === 0 &&

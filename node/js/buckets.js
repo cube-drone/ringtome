@@ -22,7 +22,7 @@ import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
-import { appTypeOf, bucketsForApp } from './pure/apps.js';
+import { appTypeOf, bucketsForApp, DEFAULT_STYLE } from './pure/apps.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
@@ -62,8 +62,13 @@ export function useBucketChoice({ root, appHere, roster, cozyBucketRow, docSegme
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cozyBucketRow && cozyBucketRow.name, appHere && appHere.id]);
 
+    // The everything-view owns no notebook; its stray write paths (an editor drop while
+    // browsing) land in the default app's home rather than minting a nameless bucket.
     const bucket =
-        (cozyBucketRow && cozyBucketRow.name) || bucketPick || (appHere && appHere.style) || '';
+        (cozyBucketRow && cozyBucketRow.name) ||
+        bucketPick ||
+        (appHere && (appHere.style || (appHere.everything && DEFAULT_STYLE))) ||
+        '';
 
     const deepDoc = (appHere && appHere.style && docSegment) || null;
     const docsRows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);

@@ -6,10 +6,10 @@
 const assert = require('node:assert');
 
 let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp,
-    bucketHolds, featuresOf, itemNoun, itemPlural;
+    bucketHolds, featuresOf, itemNoun, itemPlural, homeAppFor;
 let Icons;
 before(async () => {
-    ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds,
+    ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds, homeAppFor,
        featuresOf, itemNoun, itemPlural } = await import('../../../js/pure/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
@@ -127,6 +127,28 @@ describe('app registry', () => {
         it('is safe on a missing document or app', () => {
             assert.equal(bucketHolds(null, notes(), DEFAULT_STYLE), false);
             assert.equal(bucketHolds({ buckets: [] }, null, DEFAULT_STYLE), false);
+        });
+
+        it('the everything-view holds every document, filed or not', () => {
+            const all = appById('all');
+            assert.equal(all.everything, true, 'the registry carries the flag');
+            assert.equal(bucketHolds({ buckets: ['recipes'] }, all, undefined), true);
+            assert.equal(bucketHolds({ buckets: [] }, all, undefined), true);
+        });
+    });
+
+    describe('homeAppFor (follow me home)', () => {
+        it('routes a bucketed document to its bucket type s app', () => {
+            const roster = [{ name: 'grandmas-recipes', app: 'recipes' }];
+            assert.equal(homeAppFor({ buckets: ['grandmas-recipes'] }, roster).id, 'recipes');
+            assert.equal(homeAppFor({ buckets: ['wiki'] }, []).id, 'wiki', 'implicit names too');
+        });
+
+        it('routes the unbucketed (and the unknown) to the default app', () => {
+            assert.equal(homeAppFor({ buckets: [] }, []).id, 'notes');
+            assert.equal(homeAppFor({}, []).id, 'notes');
+            assert.equal(homeAppFor({ buckets: ['mystery'] }, []).id, 'notes',
+                'an unregistered bucket resolves to the default type');
         });
     });
 
