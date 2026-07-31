@@ -192,9 +192,10 @@ pub(crate) async fn ingest_batch(
     let tree = Crown::build(root, &tree_input)
         .map_err(|e| anyhow!("key tree resolution during ingest: {e}"))?;
 
-    // Phase 2: proven-forgery eviction. A just-arrived revocation may disprove chains we
-    // already stored (the attacker raced its forged prefix in ahead of the revoke); sweep
-    // every ceiling against the store before deciding admissions.
+    // Phase 2: eviction. A just-arrived revocation may disprove chains we already stored (the
+    // attacker raced its forged prefix in ahead of the revoke) or quarantine chains it never
+    // anchored (a genesis-cut repudiation anchors nothing on purpose); sweep the store against
+    // the resolved tree before deciding admissions.
     evicted_rows += evict_disproven_chains(db, &tree).await?;
 
     // Phase 3: identity entries, per author in seq order.
@@ -363,6 +364,49 @@ pub(crate) async fn ingest_batch(
 /// being over-trusted meanwhile.
 async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
     let mut evicted = 0u64;
+
+    // Sweep one: content chains of the quarantined that no revocation anchored. The gate
+    // refuses these as arrivals ("revoked keys on chains the revocation never anchored"), so
+    // stored rows are pre-revocation leftovers with no proven standing - and for a
+    // genesis-cut repudiation ("it was never me", zero anchors) they are the entire point:
+    // nothing the key ever signed is credited, so nothing it signed keeps a row. Repudiated
+    // and Invalid (the killed subtree) alike; Retired keys keep their rows - friendly
+    // straggler tolerance - and identity chains stay everywhere, as evidence the crown reads.
+    for (key, status) in tree.members() {
+        if !matches!(status, KeyStatus::Repudiated | KeyStatus::Invalid) {
+            continue;
+        }
+        let author_hex = hex::encode(key);
+        let chains: Vec<(i64,)> = db
+            .fetch_all(
+                "SELECT DISTINCT service FROM entries WHERE author_pubkey = ?1",
+                (author_hex.as_str(),),
+            )
+            .await
+            .context("listing a quarantined key's stored chains")?;
+        for (svc,) in chains {
+            let svc = svc as u32;
+            if svc == service::IDENTITY_PUBLIC || tree.ceiling(key, svc).is_some() {
+                continue;
+            }
+            let rows_affected = db
+                .execute(
+                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2",
+                    (author_hex.as_str(), i64::from(svc)),
+                )
+                .await
+                .context("evicting a quarantined key's unanchored chain")?;
+            evicted += rows_affected;
+            tracing::warn!(
+                author = %author_hex,
+                service = svc,
+                rows = rows_affected,
+                "quarantined key's chain has no anchoring revocation; evicted uncredited rows"
+            );
+        }
+    }
+
+    // Sweep two: anchored chains whose stored prefix contradicts the anchor.
     for ((key, svc), c) in tree.ceilings() {
         // A final_seq beyond i64 can have no stored row at all; nothing to disprove.
         let Ok(final_seq) = i64::try_from(c.final_seq) else {
@@ -381,7 +425,34 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
             continue; // incomplete: unproven either way, leave it
         };
         if hash.as_slice() == c.head_hash {
-            continue; // sealed: the stored prefix is the anchored one
+            // Sealed - but a seal bounds the PAST. Rows beyond the cut are exactly the future
+            // the revocation distrusts, stored here only because they raced in while the key
+            // still looked Active (the revoker's own store can't hold any - its anchors ARE
+            // its heads - but a peer that had synced further can). The one lawful survivor is
+            // the credited self-revocation, which can only live one seq past its own seal.
+            let origin: Vec<u8> = tree
+                .revocation_of(key)
+                .map(|h| h.to_vec())
+                .unwrap_or_default();
+            let rows_affected = db
+                .execute(
+                    "DELETE FROM entries
+                     WHERE author_pubkey = ?1 AND service = ?2 AND seq > ?3 AND entry_hash != ?4",
+                    (author_hex.as_str(), i64::from(*svc), final_seq, origin),
+                )
+                .await
+                .context("evicting rows beyond a revocation ceiling")?;
+            if rows_affected > 0 {
+                evicted += rows_affected;
+                tracing::warn!(
+                    author = %author_hex,
+                    service = *svc,
+                    final_seq = c.final_seq,
+                    rows = rows_affected,
+                    "stored rows beyond the revocation cut; evicted distrusted suffix"
+                );
+            }
+            continue;
         }
         let rows_affected = db
             .execute(
@@ -1239,6 +1310,98 @@ mod tests {
         );
         let (received, rejected) = ingest(&db, root_chain.pk(), &[phantom_auth]).await;
         assert_eq!((received, rejected), (0, 1), "post-seal mints stay refused");
+    }
+
+    #[tokio::test]
+    async fn stored_rows_beyond_the_cut_are_evicted_when_the_revocation_arrives() {
+        // The racing peer: this node had synced MORE of K than the revoker ever saw, so the
+        // revocation's anchor falls below our stored head. The rows beyond the cut are the
+        // future the revocation distrusts - accepted honestly while K looked Active, and
+        // swept the moment the revocation lands.
+        let db = test_db().await;
+        let s = scenario();
+        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, &s.honest).await, (3, 0)); // seqs 0..=2 stored
+
+        // Root repudiates K anchoring seq 1 - it never saw seq 2.
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let _reauthorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: s.k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let revoke = root_chain.append(
+            entry_type::REVOKE,
+            Revoke {
+                target: s.k,
+                disposition: Disposition::Repudiation,
+                anchors: vec![Anchor {
+                    service: service::POSTS,
+                    seq: 1,
+                    head_hash: *s.honest[1].hash(),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        );
+
+        let (received, _rejected) = ingest(&db, s.root, &[revoke]).await;
+        assert_eq!(received, 1, "the revocation lands");
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            hashes(&s.honest[..2]),
+            "the sealed prefix stands; the row beyond the cut is swept"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_genesis_repudiation_evicts_everything_the_key_signed() {
+        // "It was never me": a repudiation with zero anchors credits no history, so stored
+        // content the key signed before the revocation arrived - accepted honestly while it
+        // looked Active - is swept. Contrast the anchored ("it was me until now") cut, whose
+        // sealed prefix stays: that case is a_stored_consistent_prefix_completes_across_the_
+        // ceiling, above.
+        let db = test_db().await;
+        let s = scenario();
+        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, &s.honest).await, (3, 0));
+
+        // Root repudiates K anchoring NOTHING - built directly, since scenario()'s revoke is
+        // the anchored kind. Root's chain already holds the authorize at seq 0.
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let _reauthorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: s.k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let genesis_revoke = root_chain.append(
+            entry_type::REVOKE,
+            Revoke {
+                target: s.k,
+                disposition: Disposition::Repudiation,
+                anchors: vec![],
+            }
+            .encode()
+            .unwrap(),
+        );
+
+        let (received, _rejected) = ingest(&db, s.root, &[genesis_revoke]).await;
+        assert_eq!(received, 1, "the revocation itself lands");
+        assert_eq!(
+            stored_hashes(&db, &s.k, service::POSTS).await,
+            Vec::<[u8; 32]>::new(),
+            "no anchor, no credit: the posts are gone"
+        );
     }
 
     #[tokio::test]

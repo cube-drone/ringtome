@@ -55,17 +55,21 @@ describe("key tree endpoint", function () {
         const recovery = tree.keys.find((k) => k.pubkey === created.recovery_pubkey);
         // The founding key is born named after its node (the integration node boots as
         // "alpha"); the recovery key is a role, not a device - no name, rendered by rank.
+        // Removal is what THIS node may do: its own working key (the root, here) can leave;
+        // the spare key is junior to the root, so the crown's node could lock it out.
         assert.deepEqual(root, {
             pubkey: created.root_pubkey,
             status: "active",
             rank_path: [],
             name: "alpha",
+            removal: "self",
         });
         assert.deepEqual(recovery, {
             pubkey: created.recovery_pubkey,
             status: "active",
             rank_path: [0],
             name: null,
+            removal: "senior",
         });
     });
 

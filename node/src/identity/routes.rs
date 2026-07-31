@@ -11,6 +11,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
+use ringtome_proto::crown::KeyStatus;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::Session;
@@ -482,6 +483,10 @@ async fn serve_handler(
 #[derive(Deserialize)]
 struct RevokeRequest {
     disposition: String,
+    /// Where the cut-point falls, repudiation only: "now" (default) anchors the target's
+    /// current heads - it was you until this moment; "genesis" anchors nothing - it was never
+    /// you, and no history is credited.
+    cut: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -506,8 +511,23 @@ async fn revoke_key_handler(
             )));
         }
     };
+    let cut = match (req.cut.as_deref(), disposition) {
+        (None | Some("now"), _) => super::Cut::Now,
+        (Some("genesis"), ringtome_proto::Disposition::Repudiation) => super::Cut::Genesis,
+        (Some("genesis"), ringtome_proto::Disposition::Retirement) => {
+            // A retirement IS the honoring of history - "it was never me" contradicts it.
+            return Err(AppError::BadRequest(
+                "cut \"genesis\" only applies to repudiation".into(),
+            ));
+        }
+        (Some(other), _) => {
+            return Err(AppError::BadRequest(format!(
+                "unknown cut {other:?} (now | genesis)"
+            )));
+        }
+    };
     let entry_hash =
-        super::revoke_key(&state, &session.account.id, &root, &target, disposition).await?;
+        super::revoke_key(&state, &session.account.id, &root, &target, disposition, cut).await?;
     Ok(Json(RevokeResponse { entry_hash }))
 }
 
@@ -520,6 +540,12 @@ struct KeyInfo {
     /// unnamed. Rendering only: the pubkey is always alongside, because names are pointers,
     /// never authority.
     name: Option<String>,
+    /// What THIS node may do about the key, decided here so the client never re-derives
+    /// authority: "self" (it is this node's own active leaf - self-retirement only), "senior"
+    /// (this node is strictly senior to an active key - lock out, or have it leave), absent
+    /// otherwise. Display gating only; the revoke route re-checks on POST.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    removal: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -551,16 +577,32 @@ async fn keys_handler(
         Err(_) => Default::default(),
     };
 
+    // This node's own leaf, best-effort for the same reason: without it, keys render with no
+    // removal affordance rather than failing the screen.
+    let this_leaf = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+        .await
+        .ok()
+        .map(|k| k.verifying_key().to_bytes());
+
     let mut keys: Vec<KeyInfo> = tree
         .members()
         .map(|(pk, status)| {
             let pubkey = hex::encode(pk);
             let name = names.get(&pubkey).cloned();
+            // Removal is an authority fact, so the crown decides it: self-retirement for this
+            // node's own leaf, either disposition for keys it is strictly senior to - and only
+            // over active keys, because the revoked have nothing left to remove.
+            let removal = match (status, this_leaf) {
+                (KeyStatus::Active, Some(me)) if *pk == me => Some("self"),
+                (KeyStatus::Active, Some(me)) if tree.is_senior(&me, pk) => Some("senior"),
+                _ => None,
+            };
             KeyInfo {
                 pubkey,
                 status: status.name(),
                 rank_path: tree.rank_path(pk).unwrap_or_default().to_vec(),
                 name,
+                removal,
             }
         })
         .collect();

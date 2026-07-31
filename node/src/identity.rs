@@ -540,12 +540,24 @@ pub async fn load_node_leaf_key(
 /// at our stored heads of every chain the target has written. Seniority is pre-checked here for
 /// a friendly error; every other node's ingest gate re-checks it independently, which is the
 /// check that actually matters.
+/// Where a repudiation's cut-point falls (PROJECT_PLAN, Revocation: the cut-point can be
+/// anywhere in logical history).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cut {
+    /// Anchor the target's current heads: it was you until this moment. Also the only cut a
+    /// retirement can take - retirement IS the honoring of history.
+    Now,
+    /// Anchor nothing: it was never you, and no history is credited.
+    Genesis,
+}
+
 pub async fn revoke_key(
     state: &crate::AppState,
     account_id: &Uuid,
     root_hex: &str,
     target_hex: &str,
     disposition: Disposition,
+    cut: Cut,
 ) -> Result<String, AppError> {
     require_owned(&state.node_db, account_id, root_hex).await?;
     let target = pubkey::require(target_hex, "target pubkey")?;
@@ -571,16 +583,20 @@ pub async fn revoke_key(
     }
 
     // Anchors: our stored head of every chain the target has written (via imaol - the entries
-    // table's owner).
-    let anchors: Vec<Anchor> = crate::record::imaol::chain_heads_for_author(&db, target_hex)
-        .await?
-        .into_iter()
-        .map(|(service, seq, head_hash)| Anchor {
-            service,
-            seq,
-            head_hash,
-        })
-        .collect();
+    // table's owner) - unless the cut is genesis, where anchoring nothing IS the statement:
+    // no sealed prefix, no credited history, the gate refuses everything the key ever signed.
+    let anchors: Vec<Anchor> = match cut {
+        Cut::Genesis => Vec::new(),
+        Cut::Now => crate::record::imaol::chain_heads_for_author(&db, target_hex)
+            .await?
+            .into_iter()
+            .map(|(service, seq, head_hash)| Anchor {
+                service,
+                seq,
+                head_hash,
+            })
+            .collect(),
+    };
 
     let payload = Revoke {
         target,
@@ -626,6 +642,15 @@ pub async fn revoke_key(
                 tracing::error!(root = %root_hex, "epoch rotation after revocation failed: {e}")
             }
         }
+    }
+
+    // The revocation is on the chain; now let the gate's sweep apply it to what this node
+    // already stores (a genesis cut evicts the target's uncredited chains and rebuilds the
+    // views). An empty batch through the ordinary gate: one sweeper, no second code path.
+    // Failure doesn't unwind the revocation - the next real ingest runs the same sweep.
+    let root_pk = pubkey::require(root_hex, "root pubkey")?;
+    if let Err(e) = crate::net::sync::ingest_batch(&db, root_pk, Vec::new(), false).await {
+        tracing::error!(root = %root_hex, "post-revocation sweep failed: {e}");
     }
 
     tracing::info!(root = %root_hex, target = %target_hex, ?disposition, "revoked key");

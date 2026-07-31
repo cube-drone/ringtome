@@ -281,3 +281,93 @@
 .computer-status {
     color: var(--coral);
 }
+
+/* The removal ceremony: the trash affordance stays quiet until hovered - deletion is offered,
+   never advertised - and the flow's two doors are big, honest buttons whose weight matches
+   their words (leave = surface, lock out = coral-edged). */
+.computer-remove {
+    background: none;
+    border: none;
+    padding: 0 0 0 0.5rem;
+    color: var(--faint);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.computer-remove:hover {
+    color: var(--coral);
+}
+
+.computer-remove svg {
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
+.removal-option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    width: 100%;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+    margin-top: 0.5rem;
+    cursor: pointer;
+}
+
+.removal-option:hover,
+.removal-option-picked {
+    border-color: var(--sea);
+}
+
+.removal-option-forceful:hover,
+.removal-option-forceful.removal-option-picked {
+    border-color: var(--coral);
+}
+
+.removal-option-title {
+    color: var(--sea);
+    font-weight: 600;
+}
+
+.removal-option-forceful .removal-option-title {
+    color: var(--coral);
+}
+
+.removal-option-sub {
+    color: var(--faint);
+    font-size: 0.85rem;
+}
+
+.removal-fact {
+    color: var(--faint);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.75rem;
+    margin: 0.7rem 0 0.3rem;
+}
+
+.removal-blast {
+    color: var(--coral);
+    font-size: 0.85rem;
+    margin: 0.7rem 0 0;
+}
+
+.removal-go {
+    display: block;
+    width: 100%;
+    margin-top: 0.4rem;
+    padding: 0.5rem 0.8rem;
+    background: var(--coral);
+    color: var(--paper);
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.removal-go:disabled {
+    opacity: 0.6;
+    cursor: default;
+}

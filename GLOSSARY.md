@@ -222,5 +222,6 @@ column is **banned from the UI permanently** (PROJECT_PLAN, The Cozyweb Surface)
 | node / agenting | your computers / your places |
 | serve + publish record | **share** (sharing is what makes you findable) |
 | sync, chain, entry, seq, hash | *(invisible — no costume; they simply never surface)* |
-| revoke / repudiate | *(surfaces only inside recovery flows, as "lock out that computer")* |
+| repudiate | "**lock out** this computer" — the forceful door: its invitees are shut out with it, and the one question that decides the record is "was this computer you?" ("it was me until now" = anchored cut / "it was never me" = genesis cut). Status chip: "locked out" |
+| retire | "**have this computer leave**" — the voluntary door, gentle on purpose (everything it wrote stays good, invitees stay); on your own computer, "**leave this persona**". Status chip: "left". The two doors deliberately differ in *agency*, not just severity (settled 2026-07-30) |
 | pubkey | *(never text; rendered as the identicon)* |

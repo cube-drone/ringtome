@@ -169,6 +169,82 @@ async function profileValue(fetch, root, field) {
         assert.equal(treeAgain.keys.find((k) => k.pubkey === leaf).status, "retired");
     });
 
+    it("removal capability and the genesis cut: 'it was never me' strikes the record", async function () {
+        // The Computers screen's trash icon is gated by the per-key `removal` field (authority
+        // decided server-side, never re-derived in JS), and a repudiation may choose its
+        // cut-point: "now" (anchored heads - it was me until this moment) or "genesis"
+        // (anchors nothing - it was never me, and everything it signed is swept).
+        const alice = await makeUserFetch({ prefix: "neverme" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+        await setField(alice, root, "name", "The Real One");
+
+        const aliceOnB = await makeUserFetch({ prefix: "nevermeb", host: HOST_B });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+        const leaf = decodeCode(request.code).leaf_pubkey;
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        // Removal capability, from each side of the tree. On A (the crown's node): its own
+        // key is "self", the junior leaf is "senior". On B: its own leaf is "self", and the
+        // crown - senior to B - offers no removal at all.
+        const treeOnA = await (await alice(`api/identity/${root}/keys`)).json();
+        assert.equal(treeOnA.keys.find((k) => k.pubkey === root).removal, "self");
+        assert.equal(treeOnA.keys.find((k) => k.pubkey === leaf).removal, "senior");
+        const treeOnB = await (await aliceOnB(`api/identity/${root}/keys`)).json();
+        assert.equal(treeOnB.keys.find((k) => k.pubkey === leaf).removal, "self");
+        assert.equal(treeOnB.keys.find((k) => k.pubkey === root).removal, undefined);
+
+        // B speaks - both nodes agree it's the latest word.
+        await setField(aliceOnB, root, "name", "The Impostor");
+        await alice(`api/identity/${root}/sync`, { method: "POST" });
+        assert.equal(await profileValue(alice, root, "name"), "The Impostor");
+
+        // Guardrail: a retirement cannot claim "it was never me" - that contradicts what a
+        // retirement is.
+        const contradiction = await alice(`api/identity/${root}/keys/${leaf}/revoke`, {
+            method: "POST",
+            body: JSON.stringify({ disposition: "retirement", cut: "genesis" }),
+        });
+        assert.equal(contradiction.status, 400);
+
+        // The genesis cut: everything the leaf ever signed is struck, on the revoking node
+        // immediately (the revoke route runs the gate's sweep on its own store)...
+        const revoke = await (
+            await alice(`api/identity/${root}/keys/${leaf}/revoke`, {
+                method: "POST",
+                body: JSON.stringify({ disposition: "repudiation", cut: "genesis" }),
+            })
+        ).json();
+        assert.match(revoke.entry_hash, /^[0-9a-f]{64}$/);
+        assert.equal(
+            await profileValue(alice, root, "name"),
+            "The Real One",
+            "the impostor's write is struck from A's record"
+        );
+
+        // ...and on every other node as the revocation syncs in - including the impostor's
+        // own, whose gate evicts its unanchored chains and rebuilds the views.
+        await aliceOnB(`api/identity/${root}/sync`, { method: "POST" });
+        assert.equal(
+            await profileValue(aliceOnB, root, "name"),
+            "The Real One",
+            "B's own record converges on the surviving history"
+        );
+        const treeAfter = await (await alice(`api/identity/${root}/keys`)).json();
+        assert.equal(treeAfter.keys.find((k) => k.pubkey === leaf).status, "repudiated");
+    });
+
     it("serving is an act: no record until marked, a signed record after", async function () {
         const dhtDir = process.env.RINGTOME_TEST_DISCOVERY_DIR;
         if (!dhtDir) this.skip();

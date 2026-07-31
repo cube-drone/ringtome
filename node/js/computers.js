@@ -8,16 +8,21 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { shortcode } from './persona.js';
+import { Modal } from './modal.js';
+import { Icons } from './icons.js';
+import { blastRadius } from './pure/removal.js';
 
 const html = htm.bind(h);
 
 // The key's authority status, in cozy words - and the normal state says NOTHING: "active" is
 // the crown's word for not-revoked (an authority fact, not liveness - the spare key is
 // "active" in the only sense the tree knows), and rendering it reads to a human as "recently
-// seen", which it is not. Only the exceptional states get a word.
+// seen", which it is not. Only the exceptional states get a word. The removal verbs set the
+// vocabulary (GLOSSARY, Cozyweb mapping): "leave"/"have it leave" is the voluntary door,
+// "lock out" is the forceful one, and the states read as their past tenses.
 function cozyStatus(status) {
     if (status === 'active') return null;
-    if (status === 'retired') return 'retired';
+    if (status === 'retired') return 'left';
     if (status === 'repudiated') return 'locked out';
     return status; // an unknown future state shows honestly rather than hiding
 }
@@ -38,6 +43,122 @@ function describe(key) {
     return { label: name, detail: null };
 }
 
+// The removal ceremony. Two doors with deliberately different agency (settled 2026-07-30):
+// "leave" is voluntary and gentle - this computer stops being you, everything it wrote stays
+// good, computers it invited stay; "lock out" is forceful - for a computer you no longer
+// trust, and every computer it invited is shut out with it. Locking out then asks the one
+// question that decides the record: was this computer ever you? "Until now" keeps its history;
+// "never" strikes everything it ever wrote. The confirmation always echoes the fingerprint,
+// never just the name - names are pointers, never authority.
+const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
+    const isSelf = target.removal === 'self';
+    // 'choose' (senior only) -> 'leave' | 'lockout'; lockout also picks a cut before confirm.
+    const [step, setStep] = useState(isSelf ? 'leave' : 'choose');
+    const [cut, setCut] = useState(null); // 'now' | 'genesis', lockout only
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+
+    const d = describe(target);
+    const radius = blastRadius(keys, target.rank_path);
+
+    const revoke = async (disposition, cutChoice) => {
+        setBusy(true);
+        setError(null);
+        try {
+            await api(`/api/identity/${current.root}/keys/${target.pubkey}/revoke`, {
+                method: 'POST',
+                body: JSON.stringify(
+                    cutChoice ? { disposition, cut: cutChoice } : { disposition }
+                ),
+            });
+            onDone();
+        } catch (e) {
+            setError(e.message);
+            setBusy(false);
+        }
+    };
+
+    // Every terminal screen echoes the key itself: the name is how you found the row, the
+    // fingerprint is what actually leaves the tree.
+    const fingerprint = html`<p class="removal-fact" title=${target.pubkey}>
+        this computer's key: ${shortcode(target.pubkey)}
+    </p>`;
+
+    const title = isSelf
+        ? 'leave this persona'
+        : step === 'lockout'
+          ? `lock out ${d.label}`
+          : `remove ${d.label}`;
+
+    return html`<${Modal} title=${title} onClose=${onClose}>
+        ${step === 'choose' &&
+        html`<p class="null-sub">How should ${d.label} go?</p>
+            <button class="removal-option" onClick=${() => setStep('leave')}>
+                <span class="removal-option-title">have this computer leave</span>
+                <span class="removal-option-sub">
+                    A graceful goodbye. Everything it wrote stays good, and any computers it
+                    invited stay too.
+                </span>
+            </button>
+            <button class="removal-option removal-option-forceful" onClick=${() => setStep('lockout')}>
+                <span class="removal-option-title">lock this computer out</span>
+                <span class="removal-option-sub">
+                    For a computer you don't trust anymore. It is shut out - and every computer
+                    it invited is shut out with it.
+                </span>
+            </button>`}
+        ${step === 'leave' &&
+        html`<p class="null-sub">
+                ${isSelf
+                    ? `This computer stops being you. Everything it already wrote stays good,
+                       your other computers carry on without it - and this one is left out of
+                       everything new, for keeps.`
+                    : `${d.label} stops being you, gracefully. Everything it wrote stays good,
+                       and any computers it invited stay too.`}
+            </p>
+            ${fingerprint}
+            <button class="removal-go" disabled=${busy} onClick=${() => revoke('retirement')}>
+                ${busy ? '…' : isSelf ? 'leave this persona' : 'have it leave'}
+            </button>`}
+        ${step === 'lockout' &&
+        html`<p class="null-sub">Was this computer really you?</p>
+            <button
+                class="removal-option ${cut === 'now' ? 'removal-option-picked' : ''}"
+                onClick=${() => setCut('now')}
+            >
+                <span class="removal-option-title">it was me, until now</span>
+                <span class="removal-option-sub">
+                    It was mine, but it isn't safe anymore. What it already wrote stands;
+                    nothing new gets in.
+                </span>
+            </button>
+            <button
+                class="removal-option ${cut === 'genesis' ? 'removal-option-picked' : ''}"
+                onClick=${() => setCut('genesis')}
+            >
+                <span class="removal-option-title">it was never me</span>
+                <span class="removal-option-sub">
+                    An impostor all along. Everything it ever wrote is struck from the record.
+                </span>
+            </button>
+            ${cut &&
+            html`${radius.length > 0 &&
+                html`<p class="removal-blast">
+                    locked out with it:${' '}
+                    ${radius.map((k) => describe(k).label).join(', ')}
+                </p>`}
+                ${fingerprint}
+                <button
+                    class="removal-go"
+                    disabled=${busy}
+                    onClick=${() => revoke('repudiation', cut)}
+                >
+                    ${busy ? '…' : 'lock it out'}
+                </button>`}`}
+        ${error && html`<p class="form-error">${error}</p>`}
+    <//>`;
+};
+
 export const Computers = ({ current }) => {
     const [keys, setKeys] = useState(null);
     const [requestCode, setRequestCode] = useState('');
@@ -45,6 +166,7 @@ export const Computers = ({ current }) => {
     const [delivered, setDelivered] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
+    const [removing, setRemoving] = useState(null); // the key whose removal flow is open
 
     const load = () =>
         api(`/api/identity/${current.root}/keys`)
@@ -99,6 +221,16 @@ export const Computers = ({ current }) => {
                         <span class="computer-facts" title=${k.pubkey}>
                             ${cozyStatus(k.status) && html`<span class="computer-status">${cozyStatus(k.status)}${' · '}</span>`}${shortcode(k.pubkey)}
                         </span>
+                        ${k.removal &&
+                        html`<button
+                            class="computer-remove"
+                            title=${k.removal === 'self'
+                                ? 'leave this persona'
+                                : 'remove this computer'}
+                            onClick=${() => setRemoving(k)}
+                        >
+                            <${Icons.trash} />
+                        </button>`}
                     </li>`;
                 })}
             </ul>`}
@@ -141,6 +273,17 @@ export const Computers = ({ current }) => {
                           </button>
                       </form>`}
             ${error && html`<p class="form-error">${error}</p>`}
+            ${removing &&
+            html`<${RemovalFlow}
+                current=${current}
+                target=${removing}
+                keys=${keys || []}
+                onDone=${() => {
+                    setRemoving(null);
+                    load(); // the tree changed; show the new status
+                }}
+                onClose=${() => setRemoving(null)}
+            />`}
         </div>
     `;
 };

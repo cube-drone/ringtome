@@ -929,3 +929,28 @@ delay, never the right" - seniormost-surviving is unknowable and doesn't need to
 concurrent mints converge by (minter rank, entry hash) with readers trying keys in the same
 order. Residuals ledgered in REFACTOR.md: the liveness watcher (owed - self-retirement currently
 never rotates) and `key-epoch` recipient verification, paired.
+
+## The trash icon: removal comes to the Computers screen (2026-07-30)
+
+The key tree's exits, in cozy clothing. Every row of "your computers" whose removal this node
+has authority over grows a quiet trash affordance; the flow behind it is the removal ceremony,
+two doors with deliberately different *agency* (not just severity): "**have this computer
+leave**" - gentle, voluntary, everything it wrote stays good and its invitees stay - versus
+"**lock this computer out**" - forceful, its invitees shut out with it. On your own row the
+voluntary door reads "**leave this persona**." Locking out asks the one question that decides
+the record - *was this computer you?* - "it was me, until now" (anchored cut, history stands)
+or "it was never me" (genesis cut, everything it ever signed is struck). Status chips: "left"
+and "locked out."
+
+The plumbing under it: the keys response carries a per-key `removal` capability ("self" |
+"senior") decided by the crown server-side - the client never re-derives authority, it only
+shows consequences (the lock-out confirm lists the blast radius via `pure/removal.js`, and
+every terminal screen echoes the fingerprint, names being pointers). The revoke route gained
+the `cut` parameter ("now" default | "genesis", repudiation-only, retirement+genesis is a
+400 because a retirement IS the honoring of history). The genesis cut is made real by a new
+gate sweep: a quarantined key's stored chains that no revocation anchored are uncredited -
+the gate already refused them as arrivals - so they are evicted and the views rebuilt, on the
+revoking node immediately (the revoke route pushes an empty batch through the ordinary gate:
+one sweeper, no second code path) and on every other node as the revocation syncs in.
+Integration proves the round trip: the impostor's profile write is struck from the revoker's
+record at once and from the impostor's own node after its next sync.
