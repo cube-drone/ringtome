@@ -88,10 +88,11 @@ const FLOOR_BITRATE_BPS: u32 = 12_000;
 /// a different budget pass [`CrushOpts::max_bytes`]; tests use tiny caps to force fit-to-cap.
 const DEFAULT_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
-/// The duration ceiling: where the floor bitrate meets the default cap (~116 minutes). Past this,
-/// even maximum crunch cannot fit the cap, so the upload is [`CrushError::TooLong`]. A smaller
-/// `max_bytes` tightens the effective ceiling proportionally (see [`effective_max_duration_ms`]).
-const MAX_DURATION_MS: u64 = DEFAULT_CAP_BYTES * 8_000 / FLOOR_BITRATE_BPS as u64;
+/// The duration ceiling: where the floor bitrate - container overhead and VBR headroom included
+/// ([`FLOOR_SPEND_BPS`]) - meets the default cap (~107 minutes). Past this, even maximum crunch
+/// cannot fit the cap, so the upload is [`CrushError::TooLong`]. A smaller `max_bytes` tightens
+/// the effective ceiling proportionally (see [`effective_max_duration_ms`]).
+const MAX_DURATION_MS: u64 = DEFAULT_CAP_BYTES * 8_000 / FLOOR_SPEND_BPS;
 
 /// Bomb guard: reject inputs declaring more channels than this before decoding anything. Real
 /// uploads are mono/stereo/5.1/7.1; a header declaring hundreds of channels is an allocation bomb.
@@ -216,16 +217,37 @@ pub fn crush(input: &[u8], opts: CrushOpts) -> Result<Crushed, CrushError> {
     crush_via_decode(input, cap_bytes, max_ms)
 }
 
-/// The duration ceiling for a given byte cap: the point where the floor bitrate exactly fills the
-/// cap, bounded by the global [`MAX_DURATION_MS`].
+/// What the Ogg container costs per encoded second: one page per [`OGG_PAGE_PACKETS`] 20 ms
+/// packets (= one page/second) at a 27-byte header plus one lacing byte per packet. ~616 bps -
+/// noise at the house bitrate, but a full 5% of the stream at the floor, which is exactly the
+/// margin by which long fit-to-cap encodes used to land OVER the cap (field-found 2026-07-31:
+/// the estimator spent the whole budget on the bitstream and none on the box it ships in).
+const OGG_OVERHEAD_BPS: u64 = (27 + OGG_PAGE_PACKETS as u64) * 8;
+
+/// VBR breathing room: the requested bitrate is an average *target* - libopus lands around it,
+/// not under it - so the estimator spends 97% of the payload budget and the encode loop's
+/// re-encode backstop covers whatever variance remains.
+const VBR_HEADROOM_PCT: u64 = 97;
+
+/// The floor bitrate as the estimator actually spends it: grossed back up for the VBR headroom
+/// and carrying the container - what a second of output really costs at maximum crunch.
+const FLOOR_SPEND_BPS: u64 =
+    (FLOOR_BITRATE_BPS as u64 * 100).div_ceil(VBR_HEADROOM_PCT) + OGG_OVERHEAD_BPS;
+
+/// The duration ceiling for a given byte cap: the point where the floor bitrate - container and
+/// VBR headroom included - exactly fills the cap, bounded by the global [`MAX_DURATION_MS`].
 fn effective_max_duration_ms(cap_bytes: u64) -> u64 {
-    MAX_DURATION_MS.min(cap_bytes.saturating_mul(8_000) / u64::from(FLOOR_BITRATE_BPS))
+    MAX_DURATION_MS.min(cap_bytes.saturating_mul(8_000) / FLOOR_SPEND_BPS)
 }
 
-/// The fit-to-cap bitrate: spend the whole byte budget over the whole duration, clamped into
-/// [FLOOR, HOUSE]. Callers have already rejected durations past the floor-meets-cap point.
+/// The fit-to-cap bitrate: spend the byte budget over the whole duration - MINUS the container's
+/// per-second cost, and derated for VBR variance - clamped into [FLOOR, HOUSE]. Callers have
+/// already rejected durations past the floor-meets-cap point, and [`crush_via_decode`]'s encode
+/// loop re-encodes lower in the rare case the estimate still overshoots: the cap is a promise,
+/// not a target.
 fn fit_bitrate_bps(cap_bytes: u64, duration_ms: u64) -> u32 {
-    let fit = cap_bytes.saturating_mul(8_000) / duration_ms.max(1);
+    let gross = cap_bytes.saturating_mul(8_000) / duration_ms.max(1);
+    let fit = gross.saturating_sub(OGG_OVERHEAD_BPS) * VBR_HEADROOM_PCT / 100;
     (fit.min(u64::from(HOUSE_BITRATE_BPS)) as u32).max(FLOOR_BITRATE_BPS)
 }
 
@@ -656,8 +678,49 @@ fn decode_downmixed(
 /// then stream decode -> downmix -> resample -> Opus encode -> Ogg mux with bounded buffers.
 fn crush_via_decode(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Crushed, CrushError> {
     let duration_ms = measure_duration_ms(input, max_ms)?;
-    let bitrate_bps = fit_bitrate_bps(cap_bytes, duration_ms);
+    let mut bitrate_bps = fit_bitrate_bps(cap_bytes, duration_ms);
 
+    // The cap is a promise, not a target. The estimator already budgets for the container and
+    // VBR variance, and this loop is the backstop that makes ≤ cap true BY CONSTRUCTION: on
+    // the rare overshoot, re-encode a step lower (scaled by the observed excess); only a
+    // floor-rate encode that still overflows is honestly too long. Field-found 2026-07-31:
+    // long files used to land a few percent OVER and die downstream at the document cap.
+    for _ in 0..3 {
+        let (bytes, out_duration_ms, channels, waveform_avif) =
+            encode_pass(input, max_ms, duration_ms, bitrate_bps)?;
+        if bytes.len() as u64 <= cap_bytes {
+            return Ok(Crushed {
+                bytes,
+                duration_ms: out_duration_ms,
+                channels,
+                bitrate_bps,
+                passthrough: false,
+                waveform_avif,
+            });
+        }
+        if bitrate_bps <= FLOOR_BITRATE_BPS {
+            return Err(CrushError::TooLong(format!(
+                "even the floor bitrate overflows the byte cap ({} > {cap_bytes} bytes)",
+                bytes.len()
+            )));
+        }
+        let scaled =
+            u64::from(bitrate_bps).saturating_mul(cap_bytes) / (bytes.len().max(1) as u64);
+        bitrate_bps = ((scaled * 98 / 100) as u32).max(FLOOR_BITRATE_BPS);
+    }
+    Err(CrushError::TooLong(
+        "could not fit under the byte cap after re-encoding lower".into(),
+    ))
+}
+
+/// One full decode → resample → encode → mux pass at a fixed bitrate. Split from
+/// [`crush_via_decode`] so its fit-the-cap loop can re-run the pass a step lower.
+fn encode_pass(
+    input: &[u8],
+    max_ms: u64,
+    duration_ms: u64,
+    bitrate_bps: u32,
+) -> Result<(Vec<u8>, u64, u8, Option<Vec<u8>>), CrushError> {
     /// The streaming stages, built lazily at the first PCM chunk (when the channel count is
     /// finally known - see [`decode_downmixed`]).
     struct Pipeline {
@@ -696,15 +759,7 @@ fn crush_via_decode(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Crushed
     let out_duration_ms = encoded.total_samples.saturating_mul(1_000) / u64::from(OPUS_SAMPLE_RATE);
     let bytes = mux_ogg_opus(&encoded, stages.out_channels as u8)?;
     let waveform_avif = Some(stages.waveform.render()?);
-
-    Ok(Crushed {
-        bytes,
-        duration_ms: out_duration_ms,
-        channels: stages.out_channels as u8,
-        bitrate_bps,
-        passthrough: false,
-        waveform_avif,
-    })
+    Ok((bytes, out_duration_ms, stages.out_channels as u8, waveform_avif))
 }
 
 /// Downmix interleaved source channels to at most two. Mono and stereo pass straight through.
@@ -1635,8 +1690,39 @@ mod tests {
             out.bitrate_bps
         );
         assert!(
-            (out.bytes.len() as u64) <= cap + cap / 10,
-            "output {} fits ~cap {cap}",
+            (out.bytes.len() as u64) <= cap,
+            "the cap is a promise, not a target: output {} must fit {cap}",
+            out.bytes.len()
+        );
+    }
+
+    /// The field bug (2026-07-31): a long file at a tight cap used to land a few percent OVER -
+    /// the estimator spent the whole budget on the bitstream, none on the Ogg container (a full
+    /// 5% of the stream at the floor bitrate) or VBR variance. Now the estimator budgets both
+    /// and the encode loop re-encodes lower on any remaining overshoot: ≤ cap, hard, at the
+    /// worst case the estimator faces (floor bitrate, cap exactly at the old fit point).
+    #[test]
+    fn fit_to_cap_never_exceeds_the_cap_even_at_the_floor() {
+        // ~20 s under a 33 kB cap forces a near-floor bitrate - where the container's ~1.5 kB
+        // is proportionally fattest. The OLD formula answered ~13.4 kbps here: ~33 kB of
+        // payload plus the container = over the cap, every time.
+        let cap: u64 = 33_000;
+        let out = crush(
+            &corpus("buck-audio.wav"),
+            CrushOpts {
+                max_bytes: Some(cap),
+            },
+        )
+        .expect("near-floor crush succeeds");
+        assert!(!out.passthrough);
+        assert!(
+            out.bitrate_bps < FLOOR_BITRATE_BPS + 1_000,
+            "bitrate {} sits near the floor, where overhead bites hardest",
+            out.bitrate_bps
+        );
+        assert!(
+            (out.bytes.len() as u64) <= cap,
+            "output {} must fit the {cap}-byte cap, container and all",
             out.bytes.len()
         );
     }

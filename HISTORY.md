@@ -1123,3 +1123,22 @@ ladder is unchanged - it just becomes what a node does when asked for a root it 
 path": strip a dead origin and the always-correct part remains, bootstrap included. The
 doctrine sentence the built system had been implying all along, now stated: the path is the
 address; the origin is the lens.
+
+## The cap is a promise, not a target (2026-07-31)
+
+Field bug: long audio uploads landed a few percent OVER the byte cap instead of under it.
+The fit-to-cap estimator spent the entire budget on the raw bitstream - `cap * 8000 /
+duration` - budgeting nothing for the Ogg container (one page per second: 27-byte header +
+a lacing byte per packet ≈ 616 bps, a full 5% of the stream at the 12 kbps floor, which is
+why the longest files overshot worst) and nothing for VBR variance (the requested rate is an
+average target libopus lands AROUND, not under). And no size check after the mux: the
+overshoot sailed out of the crush and died downstream at the document cap.
+
+Fixed at both layers. The estimator now subtracts the container's per-second cost and spends
+97% of what remains (`OGG_OVERHEAD_BPS`, `VBR_HEADROOM_PCT`), with the duration ceiling
+tightened to match (~116 → ~107 minutes at the default cap - the honest number once the box
+is priced in). And the encode lane became a loop: on the rare remaining overshoot, re-encode
+a step lower scaled by the observed excess; only a floor-rate encode that still overflows is
+TooLong. ≤ cap is now true by construction, and the test suite says so: the old test's
+"fits ~cap" 10% grace clause - the bug's confession, in an assertion - tightened to a hard
+≤, plus a near-floor worst-case vector planted-red against the old formula.
