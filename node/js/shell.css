@@ -226,8 +226,12 @@ body {
 /* The search box: a top-level fixture next to the title, in the same spot across every app that
    offers it. Cream on the ink header, so it reads as an input, not a hole. */
 /* The search box and its options funnel share the header's middle grid slot. `position:
-   relative` is the dropdown's anchor. */
+   relative` is the dropdown's anchor. One height token sizes BOTH the input and the funnel
+   square, so they cannot drift apart - and no flexbox aspect-ratio derivation is involved,
+   which is exactly the trap the first attempt fell into (main-size resolves before the
+   stretched cross-size exists, so the "square" collapsed to icon width). */
 .app-header-search-box {
+    --search-h: 1.8rem;
     grid-column: 2;
     justify-self: center;
     display: flex;
@@ -241,23 +245,31 @@ body {
     width: 240px;
     max-width: 100%;
     min-width: 0;
+    height: var(--search-h);
+    box-sizing: border-box;
     background: var(--surface);
     border: 0;
     border-radius: 6px;
-    padding: 0.35rem 0.65rem;
+    padding: 0 0.65rem;
     font: inherit;
     font-size: 0.9rem;
     color: var(--ink);
 }
 
-/* The search-options dropdown: the funnel button tints while any dial is off its default. */
+/* The search-options funnel: a square exactly the search bar's height (the shared token
+   above), tinting while any dial is off its default. */
 .search-opts-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    width: var(--search-h);
+    height: var(--search-h);
+    flex-shrink: 0;
     background: var(--surface);
     border: 0;
     border-radius: 6px;
-    padding: 0.35rem 0.4rem;
+    padding: 0;
+    font-size: 1.05rem;
     color: var(--faint);
     cursor: pointer;
 }
