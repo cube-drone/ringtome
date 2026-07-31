@@ -1142,3 +1142,22 @@ a step lower scaled by the observed excess; only a floor-rate encode that still 
 TooLong. ≤ cap is now true by construction, and the test suite says so: the old test's
 "fits ~cap" 10% grace clause - the bug's confession, in an assertion - tightened to a hard
 ≤, plus a near-floor worst-case vector planted-red against the old formula.
+
+## The meter and the line: ingest grows honest progress (2026-07-31)
+
+Field report: audio and video processing takes long enough that a spinner reads as "broken".
+Now every stage of an upload's life reports. **The line**: the jobs endpoint annotates pending
+jobs with their position in the node's WHOLE queue (other accounts included - "3 ahead of it"
+is only honest on a shared node), rendered as "next up…" / "N ahead of it…". **The server
+meter**: the crush lanes gained a progress callback (`media::Progress`) - audio reports
+through its decode loop (frames done over frames expected), video per encoded frame from the
+AV1 chunk threads (Sync by necessity) and the APNG stitcher alike - feeding an in-memory
+job_id->percent map on `Ingest` that the jobs endpoint joins in (ephemeral on purpose: a
+reboot honestly resets the bar). All meters cap at 99: "done" is the row's word, never the
+estimator's. **The browser meter**: the video-ingest spike's lanes take `onProgress` - the
+AV1 lane's real-time playback tap IS the meter (currentTime/duration), the frames lane
+reports per extracted frame - and the upload modal shows the bar under the existing elapsed
+readout. Verified live: three racing uploads showed positions 0/1/2 shrinking as the queue
+drained and each processing meter climbing 0→92 in order. The browser-encode path is
+jsdom-unprobeable (no MediaRecorder there) - an event listener and a loop callback, verified
+by read and lint.

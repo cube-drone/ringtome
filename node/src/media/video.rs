@@ -242,6 +242,18 @@ pub fn crush(
     audio_ogg_opus: Option<&[u8]>,
     opts: CrushOpts,
 ) -> Result<Crushed, CrushError> {
+    crush_with_progress(video, audio_ogg_opus, opts, &|_| {})
+}
+
+/// [`crush`], reporting progress: ~15% after the bounded decode, then per-frame through the
+/// dominant encode (AV1 chunks report from their scoped worker threads - hence `Sync`),
+/// capped at 99 so "done" is the caller's word.
+pub fn crush_with_progress(
+    video: &[u8],
+    audio_ogg_opus: Option<&[u8]>,
+    opts: CrushOpts,
+    progress: &(dyn Fn(u8) + Sync),
+) -> Result<Crushed, CrushError> {
     let cap = opts.max_frames.unwrap_or(MAX_FRAMES).max(1) as usize;
 
     // Sniff the container from magic bytes and take the matching decode lane. Each lane yields
@@ -263,6 +275,13 @@ pub fn crush(
     if frames.is_empty() {
         return Err(CrushError::Decode("input contained no frames".into()));
     }
+    progress(15); // decode done; the encode owns the rest of the meter
+    let frames_done = std::sync::atomic::AtomicUsize::new(0);
+    let total_frames = frames.len();
+    let on_frame = || {
+        let done = frames_done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        progress((15 + done * 84 / total_frames.max(1)).min(99) as u8);
+    };
     let width = frames[0].image.width();
     let height = frames[0].image.height();
     let duration_ms = frames.last().map(|f| f.ms + f.dur_ms).unwrap_or(0).max(1);
@@ -287,7 +306,7 @@ pub fn crush(
     // The routing ruling: transparency only survives when there is no audio (APNG); audio always
     // wins the container fight, flattening any alpha onto the background const.
     if transparent && !has_audio {
-        let bytes = encode_apng(&frames, width, height)?;
+        let bytes = encode_apng(&frames, width, height, &on_frame)?;
         return Ok(Crushed {
             format: CrushedFormat::Apng,
             bytes,
@@ -304,7 +323,7 @@ pub fn crush(
     }
 
     let alpha_flattened = transparent;
-    let encoded = encode_av1(&frames, width, height, alpha_flattened, AV1_QUANTIZER)?;
+    let encoded = encode_av1(&frames, width, height, alpha_flattened, AV1_QUANTIZER, &on_frame)?;
     let bytes = mux_webm(&encoded, audio.as_ref(), duration_ms, width, height)?;
     let preview_webm = Some(build_preview_webm(&frames, alpha_flattened)?);
     Ok(Crushed {
@@ -380,7 +399,7 @@ fn build_preview_webm(frames: &[BoundedFrame], flatten: bool) -> Result<Vec<u8>,
         .collect();
 
     let duration_ms = preview.last().map(|f| f.ms + f.dur_ms).unwrap_or(0).max(1);
-    let encoded = encode_av1(&preview, pw, ph, flatten, PREVIEW_QUANTIZER)?;
+    let encoded = encode_av1(&preview, pw, ph, flatten, PREVIEW_QUANTIZER, &|| {})?;
     mux_webm(&encoded, None, duration_ms, pw, ph)
 }
 
@@ -1437,6 +1456,7 @@ fn encode_av1(
     height: u32,
     flatten: bool,
     quantizer: usize,
+    on_frame: &(dyn Fn() + Sync),
 ) -> Result<EncodedVideo, CrushError> {
     let chunk_len = KEYFRAME_INTERVAL_FRAMES as usize;
     // Scoped threads (chunks borrow `frames`); each chunk's rav1e context shares the global
@@ -1445,7 +1465,7 @@ fn encode_av1(
         let handles: Vec<_> = frames
             .chunks(chunk_len)
             .map(|chunk| {
-                scope.spawn(move || encode_av1_chunk(chunk, width, height, flatten, quantizer))
+                scope.spawn(move || encode_av1_chunk(chunk, width, height, flatten, quantizer, on_frame))
             })
             .collect();
         handles
@@ -1481,6 +1501,7 @@ fn encode_av1_chunk(
     height: u32,
     flatten: bool,
     quantizer: usize,
+    on_frame: &(dyn Fn() + Sync),
 ) -> Result<Vec<Av1Packet>, CrushError> {
     let mut enc = EncoderConfig::with_speed_preset(AV1_SPEED);
     enc.width = width as usize;
@@ -1544,6 +1565,7 @@ fn encode_av1_chunk(
         frame.planes[2].copy_from_raw_u8(&v, (width / 2) as usize, 1);
         ctx.send_frame(frame)
             .map_err(|e| CrushError::Decode(format!("rav1e rejected a frame: {e:?}")))?;
+        on_frame();
         // Drain opportunistically so the encoder's queue never balloons.
         receive(&mut ctx, &mut packets)?;
     }
@@ -2004,7 +2026,12 @@ fn mux_webm(
 
 /// Encode bounded RGBA frames as a crushed APNG (the transparent + silent route; alpha survives).
 /// PNG is lossless, so the "crush" here is the 320p bound + the frame-rate cap doing the work.
-fn encode_apng(frames: &[BoundedFrame], width: u32, height: u32) -> Result<Vec<u8>, CrushError> {
+fn encode_apng(
+    frames: &[BoundedFrame],
+    width: u32,
+    height: u32,
+    on_frame: &(dyn Fn() + Sync),
+) -> Result<Vec<u8>, CrushError> {
     let map_png = |e: png::EncodingError| CrushError::Decode(format!("apng encode failed: {e}"));
     let mut out = Vec::new();
     let mut encoder = png::Encoder::new(&mut out, width, height);
@@ -2021,6 +2048,7 @@ fn encode_apng(frames: &[BoundedFrame], width: u32, height: u32) -> Result<Vec<u
         writer
             .write_image_data(frame.image.as_raw())
             .map_err(map_png)?;
+        on_frame();
     }
     writer.finish().map_err(map_png)?;
     Ok(out)

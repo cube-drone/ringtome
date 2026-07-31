@@ -70,15 +70,28 @@ impl std::error::Error for CrushError {}
 /// and errors cleanly on garbage. Every lane re-decodes and re-encodes - laundering - so nothing
 /// here trusts the incoming bytes.
 pub fn crush(bytes: &[u8]) -> Result<Ingested, CrushError> {
+    crush_with_progress(bytes, &|_| {})
+}
+
+/// A crush progress sink: called with 0-100 as the heavy lanes advance ("loosely accurate is
+/// okay" - the UI's spinner-mistrust threshold is what this exists for). Sync because the AV1
+/// encoder reports from its scoped worker threads.
+pub type Progress<'a> = &'a (dyn Fn(u8) + Sync);
+
+/// [`crush`], reporting progress. The image lane never reports (it's quick); audio reports
+/// through its decode loop; video through its per-frame encoders.
+pub fn crush_with_progress(bytes: &[u8], progress: Progress) -> Result<Ingested, CrushError> {
     match image::detect(bytes) {
         image::Detected::Still => image::crush(bytes)
             .map(Ingested::from_image)
             .map_err(CrushError::from_image),
-        image::Detected::Animated => crush_as_video(bytes),
-        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => crush_as_video(bytes),
-        image::Detected::NotImage => audio::crush(bytes, audio::CrushOpts { max_bytes: None })
-            .map(Ingested::from_audio)
-            .map_err(CrushError::from_audio),
+        image::Detected::Animated => crush_as_video(bytes, progress),
+        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => crush_as_video(bytes, progress),
+        image::Detected::NotImage => {
+            audio::crush_with_progress(bytes, audio::CrushOpts { max_bytes: None }, progress)
+                .map(Ingested::from_audio)
+                .map_err(CrushError::from_audio)
+        }
     }
 }
 
@@ -86,17 +99,21 @@ pub fn crush(bytes: &[u8]) -> Result<Ingested, CrushError> {
 /// shipped separately because the frames lane's APNG can't carry sound. Only APNG frames accept
 /// it; a WebM's audio rides inside the container (the sidecar is ignored there), and anything
 /// else with a sidecar is a client speaking a protocol we don't - refused plainly.
-pub fn crush_with_sidecar(bytes: &[u8], audio: Option<&[u8]>) -> Result<Ingested, CrushError> {
+pub fn crush_with_sidecar(
+    bytes: &[u8],
+    audio: Option<&[u8]>,
+    progress: Progress,
+) -> Result<Ingested, CrushError> {
     let Some(audio) = audio else {
-        return crush(bytes);
+        return crush_with_progress(bytes, progress);
     };
     match image::detect(bytes) {
         image::Detected::Animated => {
-            video::crush(bytes, Some(audio), video::CrushOpts { max_frames: None })
+            video::crush_with_progress(bytes, Some(audio), video::CrushOpts { max_frames: None }, progress)
                 .map(Ingested::from_video)
                 .map_err(CrushError::from_video)
         }
-        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => crush_as_video(bytes),
+        image::Detected::NotImage if bytes.starts_with(&EBML_MAGIC) => crush_as_video(bytes, progress),
         _ => Err(CrushError::Unsupported(
             "an audio sidecar only rides with video frames".into(),
         )),
@@ -105,8 +122,8 @@ pub fn crush_with_sidecar(bytes: &[u8], audio: Option<&[u8]>) -> Result<Ingested
 
 /// The video lane, for an animated image or a WebM. A bare upload carries no side-channel audio:
 /// an animated image is silent, and a WebM's audio rides inside the container.
-fn crush_as_video(bytes: &[u8]) -> Result<Ingested, CrushError> {
-    video::crush(bytes, None, video::CrushOpts { max_frames: None })
+fn crush_as_video(bytes: &[u8], progress: Progress) -> Result<Ingested, CrushError> {
+    video::crush_with_progress(bytes, None, video::CrushOpts { max_frames: None }, progress)
         .map(Ingested::from_video)
         .map_err(CrushError::from_video)
 }

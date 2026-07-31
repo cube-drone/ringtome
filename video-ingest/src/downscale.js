@@ -101,6 +101,7 @@ export async function extractFrames(video, opts = {}) {
     const t = i * frameInterval;
     await seekTo(video, t);
     ctx.drawImage(video, 0, 0, width, height);
+    if (opts.onProgress) opts.onProgress(i + 1, frameCount);
     if (opts.onFrame) {
       await opts.onFrame(canvas, i, t);
     } else {

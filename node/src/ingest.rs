@@ -32,6 +32,10 @@ use crate::AppError;
 #[derive(Clone)]
 pub struct Ingest {
     quarantine_dir: PathBuf,
+    /// Live transcode progress for the currently-processing job (job_id -> 0-100), fed by the
+    /// crush lanes' progress callbacks. In-memory on purpose: progress is ephemeral UI truth,
+    /// and a reboot honestly resets the bar to "processing…".
+    progress: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u8>>>,
 }
 
 /// One upload to quarantine and queue. `doc_id` is freshly minted by the caller for a create, or
@@ -56,7 +60,35 @@ fn sidecar_path(quarantine_path: &str) -> String {
 
 impl Ingest {
     pub fn new(quarantine_dir: PathBuf) -> Self {
-        Self { quarantine_dir }
+        Self {
+            quarantine_dir,
+            progress: Default::default(),
+        }
+    }
+
+    /// Record the processing job's progress (called from the crush's blocking thread).
+    pub fn set_progress(&self, job_id: &str, pct: u8) {
+        self.progress
+            .lock()
+            .expect("ingest progress poisoned")
+            .insert(job_id.to_string(), pct);
+    }
+
+    /// The processing job's last-reported progress, if any.
+    pub fn progress_of(&self, job_id: &str) -> Option<u8> {
+        self.progress
+            .lock()
+            .expect("ingest progress poisoned")
+            .get(job_id)
+            .copied()
+    }
+
+    /// Drop a finished job's meter (done or failed alike - the row's status takes over).
+    pub fn clear_progress(&self, job_id: &str) {
+        self.progress
+            .lock()
+            .expect("ingest progress poisoned")
+            .remove(job_id);
     }
 
     /// Create the quarantine directory if absent, `0700` on unix (the plaintext staged here is
@@ -190,10 +222,16 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
 
     // The crush (AV1/AVIF/Opus encode) is CPU-bound: keep it off the async runtime. The
     // sidecar-aware door sniffs the upload and routes it to the image, video, or audio lane.
+    // The progress callback feeds the shared meter the jobs endpoint reads (the UI's bar).
+    let ingest_meter = state.ingest.clone();
+    let meter_job_id = job.job_id.clone();
+    ingest_meter.set_progress(&meter_job_id, 0);
     let outcome = tokio::task::spawn_blocking(move || {
-        crate::media::crush_with_sidecar(&bytes, audio.as_deref())
+        let report = |pct: u8| ingest_meter.set_progress(&meter_job_id, pct);
+        crate::media::crush_with_sidecar(&bytes, audio.as_deref(), &report)
     })
     .await?;
+    state.ingest.clear_progress(&job.job_id);
     let ingested = match outcome {
         Ok(i) => i,
         Err(te) => {
@@ -356,10 +394,16 @@ pub struct JobStatus {
     pub error: Option<String>,
     pub bytes_in: i64,
     pub created_ms: i64,
+    /// Jobs ahead of this one in the node's whole queue (`pending` only): 0 = next up.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<i64>,
+    /// The transcode meter, 0-100, while `processing` (loosely accurate by design).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u8>,
 }
 
 /// The columns behind one `JobStatus`, in `SELECT` order.
-type JobRow = (String, String, String, String, Option<String>, i64, i64);
+type JobRow = (String, String, String, String, Option<String>, i64, i64, Option<i64>);
 
 /// Rename a QUEUED upload. The title is baked into the version at transcode time, and the
 /// worker reads it when it CLAIMS the job (the `RETURNING` in `claim`) - so only a still-
@@ -385,10 +429,19 @@ pub async fn retitle_job(
 
 /// Every ingest job this account has queued, newest first - the "how long until my uploads are
 /// usable" view. Failures show here (with their message); they never appear as ghost documents.
-pub async fn jobs_for_account(node_db: &Db, account: &str) -> Result<Vec<JobStatus>, AppError> {
+pub async fn jobs_for_account(
+    node_db: &Db,
+    ingest: &Ingest,
+    account: &str,
+) -> Result<Vec<JobStatus>, AppError> {
+    // `position` counts the whole node's queue, not just this account's slice: "3 ahead of
+    // you" is only honest if it includes other people's jobs on a shared node.
     let rows: Vec<JobRow> = node_db
         .fetch_all(
-            "SELECT job_id, doc_id, title, status, error, bytes_in, created_ms \
+            "SELECT job_id, doc_id, title, status, error, bytes_in, created_ms, \
+         CASE WHEN status = 'pending' THEN \
+             (SELECT COUNT(*) FROM ingest_job q WHERE q.status = 'pending' AND q.seq < ingest_job.seq) \
+         END \
          FROM ingest_job WHERE account = ?1 ORDER BY seq DESC",
             (account,),
         )
@@ -398,14 +451,21 @@ pub async fn jobs_for_account(node_db: &Db, account: &str) -> Result<Vec<JobStat
     Ok(rows
         .into_iter()
         .map(
-            |(job_id, doc_id, title, status, error, bytes_in, created_ms)| JobStatus {
-                job_id,
-                doc_id,
-                title,
-                status,
-                error,
-                bytes_in,
-                created_ms,
+            |(job_id, doc_id, title, status, error, bytes_in, created_ms, position)| {
+                let progress = (status == "processing")
+                    .then(|| ingest.progress_of(&job_id))
+                    .flatten();
+                JobStatus {
+                    job_id,
+                    doc_id,
+                    title,
+                    status,
+                    error,
+                    bytes_in,
+                    created_ms,
+                    position,
+                    progress,
+                }
             },
         )
         .collect())
@@ -453,6 +513,10 @@ fn parse_parents(csv: &str) -> anyhow::Result<Vec<[u8; 32]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_ingest() -> Ingest {
+        Ingest::new(std::env::temp_dir())
+    }
 
     // The queue and its bookkeeping are testable with just a node DB + a scratch quarantine dir;
     // the transcode-and-land path (worker_pass -> process_job) needs a fully-agented identity with
@@ -505,7 +569,7 @@ mod tests {
             b"ogg opus bytes"
         );
         // bytes_in counts the whole upload, sidecar included.
-        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        let jobs = jobs_for_account(&db, &test_ingest(), "acct-1").await.unwrap();
         assert_eq!(jobs[0].bytes_in, ("apng frames".len() + "ogg opus bytes".len()) as i64);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -528,7 +592,7 @@ mod tests {
             b"raw upload bytes"
         );
         // And the job is visible to the owner as pending, carrying its doc_id - the pending state.
-        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        let jobs = jobs_for_account(&db, &test_ingest(), "acct-1").await.unwrap();
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].status, "pending");
         assert_eq!(jobs[0].error, None);
@@ -579,7 +643,7 @@ mod tests {
 
         // Pending: the rename lands, and the owner's queue view shows the new name.
         assert!(retitle_job(&db, "acct-1", &job_id, "the lighthouse").await.unwrap());
-        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        let jobs = jobs_for_account(&db, &test_ingest(), "acct-1").await.unwrap();
         assert_eq!(jobs[0].title, "the lighthouse");
 
         // Another account can't rename it, even pending.
@@ -588,7 +652,7 @@ mod tests {
         // Claimed (the worker holds the title in memory now): too late, reported honestly.
         claim_next(&db).await.unwrap().unwrap();
         assert!(!retitle_job(&db, "acct-1", &job_id, "too late").await.unwrap());
-        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        let jobs = jobs_for_account(&db, &test_ingest(), "acct-1").await.unwrap();
         assert_eq!(jobs[0].title, "the lighthouse");
 
         std::fs::remove_dir_all(&dir).ok();
@@ -617,7 +681,7 @@ mod tests {
 
         reconcile_on_boot(&db).await.unwrap();
 
-        let jobs = jobs_for_account(&db, "acct-1").await.unwrap();
+        let jobs = jobs_for_account(&db, &test_ingest(), "acct-1").await.unwrap();
         let by = |id: &str| jobs.iter().find(|j| j.job_id == id).unwrap();
         assert_eq!(by(&survivor).status, "pending", "file present -> requeued");
         assert_eq!(by(&lost).status, "failed", "file gone -> failed");

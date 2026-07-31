@@ -206,6 +206,17 @@ pub struct CrushOpts {
 ///
 /// Pure function, no I/O. CPU-bound (callers run it under `spawn_blocking`).
 pub fn crush(input: &[u8], opts: CrushOpts) -> Result<Crushed, CrushError> {
+    crush_with_progress(input, opts, &|_| {})
+}
+
+/// [`crush`], reporting decode/encode progress (0-100, loosely - a re-encode pass restarts the
+/// meter, which is honest enough for a progress bar). The passthrough lane never reports: it is
+/// a re-mux, over before a bar would render.
+pub fn crush_with_progress(
+    input: &[u8],
+    opts: CrushOpts,
+    progress: &(dyn Fn(u8) + Sync),
+) -> Result<Crushed, CrushError> {
     let cap_bytes = opts.max_bytes.unwrap_or(DEFAULT_CAP_BYTES).max(1);
     let max_ms = effective_max_duration_ms(cap_bytes);
 
@@ -214,7 +225,7 @@ pub fn crush(input: &[u8], opts: CrushOpts) -> Result<Crushed, CrushError> {
     if is_ogg_opus(input) {
         return passthrough_ogg_opus(input, cap_bytes, max_ms);
     }
-    crush_via_decode(input, cap_bytes, max_ms)
+    crush_via_decode(input, cap_bytes, max_ms, progress)
 }
 
 /// What the Ogg container costs per encoded second: one page per [`OGG_PAGE_PACKETS`] 20 ms
@@ -676,7 +687,12 @@ fn decode_downmixed(
 
 /// The decode lane end to end: measure duration (demux-only pass), pick the fit-to-cap bitrate,
 /// then stream decode -> downmix -> resample -> Opus encode -> Ogg mux with bounded buffers.
-fn crush_via_decode(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Crushed, CrushError> {
+fn crush_via_decode(
+    input: &[u8],
+    cap_bytes: u64,
+    max_ms: u64,
+    progress: &(dyn Fn(u8) + Sync),
+) -> Result<Crushed, CrushError> {
     let duration_ms = measure_duration_ms(input, max_ms)?;
     let mut bitrate_bps = fit_bitrate_bps(cap_bytes, duration_ms);
 
@@ -687,7 +703,7 @@ fn crush_via_decode(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Crushed
     // long files used to land a few percent OVER and die downstream at the document cap.
     for _ in 0..3 {
         let (bytes, out_duration_ms, channels, waveform_avif) =
-            encode_pass(input, max_ms, duration_ms, bitrate_bps)?;
+            encode_pass(input, max_ms, duration_ms, bitrate_bps, progress)?;
         if bytes.len() as u64 <= cap_bytes {
             return Ok(Crushed {
                 bytes,
@@ -720,7 +736,13 @@ fn encode_pass(
     max_ms: u64,
     duration_ms: u64,
     bitrate_bps: u32,
+    progress: &(dyn Fn(u8) + Sync),
 ) -> Result<(Vec<u8>, u64, u8, Option<Vec<u8>>), CrushError> {
+    // Progress rides the decode loop (decode and encode stream together here): frames
+    // processed over frames expected, reported in ≥2% steps, capped at 99 so "done" is the
+    // caller's word, never the estimator's.
+    let mut done_frames: u64 = 0;
+    let mut last_pct: u8 = 0;
     /// The streaming stages, built lazily at the first PCM chunk (when the channel count is
     /// finally known - see [`decode_downmixed`]).
     struct Pipeline {
@@ -742,6 +764,13 @@ fn encode_pass(
             }),
         };
         stages.waveform.update(chunk.samples, stages.out_channels);
+        done_frames += (chunk.samples.len() / stages.out_channels.max(1)) as u64;
+        let expected = duration_ms.max(1).saturating_mul(u64::from(chunk.rate)) / 1_000;
+        let pct = (done_frames.saturating_mul(100) / expected.max(1)).min(99) as u8;
+        if pct >= last_pct.saturating_add(2) {
+            last_pct = pct;
+            progress(pct);
+        }
         let resampled = stages.resampler.feed(chunk.samples)?;
         stages.opus.push(&resampled)
     })?;

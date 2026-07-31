@@ -94,6 +94,15 @@ export async function ingestAv1Lane(fileOrBlob, opts = {}) {
     rafId = requestAnimationFrame(drawLoop);
   };
 
+  // The tap plays in real time, so playback position IS the encode meter (99-capped:
+  // "done" is the caller's word).
+  const report = opts.onProgress || (() => {});
+  video.addEventListener('timeupdate', () => {
+    if (video.duration > 0) {
+      report(Math.min(99, Math.round((video.currentTime / video.duration) * 100)));
+    }
+  });
+
   recorder.start();
   await video.play();
   drawLoop();

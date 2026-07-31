@@ -59,6 +59,14 @@ const QUEUE_WORD = {
     processing: 'processing…',
 };
 
+/// The queue in human terms: "next up" beats "0 ahead of it".
+const queueLabel = (r) =>
+    r.queueStatus === 'pending' && r.queuePos != null
+        ? r.queuePos === 0
+            ? 'next up in the processing queue…'
+            : `waiting in the processing queue — ${r.queuePos} ahead of it…`
+        : QUEUE_WORD[r.queueStatus] || 'processing…';
+
 const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFailed }) => {
     // One row per file. `phase`: uploading -> queued -> done | failed.
     const [rows, setRows] = useState(() =>
@@ -144,7 +152,9 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                     // hostile decode happens in the browser's hardened decoder, and the server
                     // receives only the normalized intermediary it can decode in safe Rust.
                     patchRow(i, { phase: 'encoding', encStart: Date.now() });
-                    const out = await ingestVideo(file);
+                    const out = await ingestVideo(file, {
+                        onProgress: (pct) => patchRow(i, { encPct: pct }),
+                    });
                     patchRow(i, {
                         lane: out.lane,
                         outBytes: out.video.size + (out.audio ? out.audio.size : 0),
@@ -229,7 +239,12 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                         if (job.status === 'failed') {
                             return { ...r, phase: 'failed', error: job.error || 'processing failed' };
                         }
-                        return { ...r, queueStatus: job.status };
+                        return {
+                            ...r,
+                            queueStatus: job.status,
+                            queuePos: job.position ?? null,
+                            srvPct: job.progress ?? null,
+                        };
                     })
                 );
                 for (const [i, row] of settle) renameNow(i, row);
@@ -292,7 +307,11 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                             (the encoder runs at about playback speed - a two-minute clip takes
                             about two minutes)
                         </span>
-                    </div>`}
+                    </div>
+                    ${r.encPct != null &&
+                    html`<div class="upload-bar">
+                        <div class="upload-bar-fill" style=${`width: ${r.encPct}%`}></div>
+                    </div>`}`}
                     ${r.phase === 'uploading' &&
                     html`<div class="upload-bar">
                         <div class="upload-bar-fill" style=${`width: ${r.pct}%`}></div>
@@ -300,8 +319,13 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                     ${r.phase === 'queued' &&
                     html`<div class="upload-status">
                         <span class="status-spin"><${Icons.spinner} /></span>
-                        ${QUEUE_WORD[r.queueStatus] || 'processing…'}
-                    </div>`}
+                        ${queueLabel(r)}
+                    </div>
+                    ${r.queueStatus === 'processing' &&
+                    r.srvPct != null &&
+                    html`<div class="upload-bar">
+                        <div class="upload-bar-fill" style=${`width: ${r.srvPct}%`}></div>
+                    </div>`}`}
                     ${r.phase === 'done' &&
                     html`<div class="upload-status upload-done">
                         <${Icons.done} /> processed and stored

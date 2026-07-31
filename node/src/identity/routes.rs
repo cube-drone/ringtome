@@ -1082,7 +1082,8 @@ async fn docs_ingest_status_handler(
     // Owner gate before exposing this account's queue.
     store::open(&state, &session.account.id, &root).await?;
     let jobs =
-        crate::ingest::jobs_for_account(&state.node_db, &session.account.id.to_string()).await?;
+        crate::ingest::jobs_for_account(&state.node_db, &state.ingest, &session.account.id.to_string())
+            .await?;
     Ok(Json(jobs))
 }
 
