@@ -1850,51 +1850,69 @@ serves it - not on the wire, where the audience is machines hashing and verifyin
 
 ---
 
-## Addressing: `ringtome://` URLs
+## Addressing: The Path Is the Address, the Origin Is the Lens (rewritten 2026-07-31)
 
-The IM-AOL is the storage substrate; `ringtome://` URLs are the interface to it. An address names *whose* data and
-*what* within it, and deliberately does **not** name *where* - location is resolved at lookup time via pkarr, because
-identities are multi-homed and roam.
+The IM-AOL is the storage substrate; **identity-rooted HTTPS URLs** are the interface to it. An address names
+*whose* data and *what* within it in its **path**; *where* rides the URL's ordinary **origin** - as a suggestion,
+never as authority - because identities are multi-homed and roam.
 
 ```
-ringtome://<root>[:<nodeID>][(<hint>[:<hint>...])]/[path]
+https://<node>/…/<root>/<path>[?via=<key>[,<key>…]]
 ```
 
-### The three slots, each with one job
+**This section originally designed a custom `ringtome://` scheme** (git holds the full form:
+`ringtome://<root>[:<nodeID>][(<hints>)]/path`). Dissolved 2026-07-31, for three reasons that had each quietly
+become decisive. First, the packaging doctrine forecloses the scheme's only consumer: a custom scheme is clickable
+only where a native handler is registered, and Delivery settles on one client carried by the web - a local server
+and the system browser, never a native shell - so no program would ever exist to register it; in every real
+browser, `ringtome://` is the link that doesn't open. Second, the codebase voted with its feet: months in, every
+reference every feature actually mints - cozy addresses, crosslinks, media embeds - is an identity-rooted HTTP
+path, and the scheme appeared in exactly one comment. Third, the out-of-band niche the hint slots served best (the
+just-minted QR at a meetup) already belongs to the `rt1.` code grammar, whose consumers are nodes - which is who
+hints are for. Everything load-bearing survives, re-homed below; the scheme was a costume over a path.
 
-- **`root`** — **authority.** The identity's root public key. This is the *only* trusted element in the URL: any
-  data served for this address must present a signature chain terminating at `root`, or it is discarded. The name is
-  self-certifying - given `root`, you can verify content from anyone, with no trusted host.
-- **`nodeID`** (optional) — **provenance and preferred first contact.** The key of the node that minted the URL.
-  Because minting the URL is itself a proof the node was alive at t=0, `nodeID` is the single best liveness bet - so
-  it is contacted *first*. It doubles as durable "signed by" metadata: even after every routing hint has rotted,
-  `nodeID` still records which node authored this URL. (It is implicitly the first hint - never list it again inside
-  the parens.)
-- **`(hints)`** (optional) — **reachability.** An unordered, best-effort set of additional pubkeys, biased toward
-  nodes that were online at production time, offering more pkarr entry points so discovery does not hinge on any one
-  node. Hints are **keys, never addresses** - a key delegates freshness to pkarr (self-healing while its owner is
-  online); an address would freeze a routing snapshot into the string and rot. Hints are never trusted; they are
-  verified against `root` on arrival and discarded on failure.
+### The three slots, each with one job (now ordinary URL parts)
 
-### Resolution order
+- **`root` - authority - rides the path.** The identity's root public key. The *only* trusted element in the URL:
+  any data served for this address must present a signature chain terminating at `root`, or it is discarded. The
+  name is self-certifying - given `root`, you can verify content from anyone, with no trusted host.
+- **The origin - provenance and preferred first contact.** The node that minted the URL: minting is itself proof
+  the node was alive at t=0, so it is the single best liveness bet and gets tried *first* - and, unlike the old
+  `nodeID` slot, it is **clickable**. A consumer with no ringtome anywhere follows it like any link and reads
+  through that node's public face (Public Means Public); a ringtome-aware consumer may instead **re-home** the path
+  at its own lens. One URL serves both audiences, which the scheme served neither of.
+- **`?via=` - reachability.** An unordered, best-effort set of additional node pubkeys, biased toward nodes online
+  at production time, offering more pkarr entry points so discovery does not hinge on any one node. Hints are
+  **keys, never addresses** - a key delegates freshness to pkarr (self-healing while its owner is online); an
+  address would freeze a routing snapshot into the string and rot. Never trusted; verified against `root` on
+  arrival and discarded on failure.
 
-Try `nodeID` first (freshest liveness evidence), then hints in parallel, then resolve `root` itself as the
-always-correct backstop. Verify whatever answers against `root`; use it; ignore anything that fails to chain. A stale
-or malicious non-root element costs at worst a wasted connection attempt, never a wrong answer. A new node
-bootstraps identically: resolve any resolvable element, sync, and thereafter learn the rest of the tree through the
-anti-entropy mesh - the URL only has to yield *one* live first contact.
+### Resolution: the lens runs the ladder
 
-### Graceful degradation
+Every dereference is served by *some* node - the origin as clicked, or your own node after re-homing. A node asked
+for a root it holds simply serves it; asked for one it doesn't, it runs the ladder: try the reference's origin and
+`via` keys first (freshest liveness evidence, in parallel), then resolve `root` itself via the directory as the
+always-correct backstop; verify whatever answers against `root`; ignore anything that fails to chain. A stale or
+malicious non-root element costs at worst a wasted connection attempt, never a wrong answer. A new node bootstraps
+identically: resolve any resolvable element, sync, and thereafter learn the rest through the anti-entropy mesh -
+the URL only has to yield *one* live first contact. (This is 4S's surface consuming M3.5's directory; the ladder
+is unchanged from the scheme design, only its parser died.)
 
-Every shorter form is valid and a consumer that understands the full form handles all of them:
+### Graceful degradation: a URL degrades to its path
 
-- `ringtome://<root>/path` — minimal, always correct, slowest (root may be cold).
-- `ringtome://<root>:<nodeID>/path` — + provenance; the natural form for a URL that has been sitting around.
-- `ringtome://<root>:<nodeID>(h1:h2)/path` — + fresh reachability; the natural form for a just-minted, immediately-
-  shared URL (chat, QR at a meetup), which commonly resolves in one hop with no DHT round-trip at all.
+Every shorter form is valid, and shorter is what a URL becomes as its context rots:
 
-A full URL whose hints have gone stale simply *becomes* a shorter one in practice - it never breaks, it only gets
-slower. This is the intended failure mode.
+- `/…/<root>/path` (origin-relative) — minimal, always correct; **the form signed documents carry** (a document
+  must never bake in an origin - the paste-time rewrite enforces it; see Content Markup).
+- `https://<node>/…/<root>/path` — + provenance and a clickable first contact; the natural long-lived share.
+- `https://<node>/…/<root>/path?via=k1,k2` — + fresh reachability; the just-minted, immediately-shared form (chat,
+  a QR at a meetup - which now opens on any phone), commonly one hop with no DHT round-trip at all.
+
+A dead origin or rotted hints never break the URL: a ringtome-aware consumer **re-homes** it - recognizes the
+identity-rooted path at any origin, strips the origin, re-roots at its own lens (the shipped paste-time
+origin-strip, generalized) - and the always-correct path remains. Bootstrap survives whole: a fresh node handed
+the full URL may ignore everything but `root` and resolve from the directory. The URL only gets slower or less
+clickable, never wrong. This is the intended failure mode.
 
 ### View vs. log, identity vs. resource
 
@@ -1911,23 +1929,23 @@ slower. This is the intended failure mode.
   enumeration signal). Fine for a public identity being broadcast anyway; a client should **not** auto-populate hints
   for identities the user treats as pseudonymous - bare-root, or root plus a single fronting-node hint, is the
   privacy-friendly form.
-- **Length.** ed25519 keys are ~50 chars each in z-base32; a shareable default should stay short (root + nodeID +
-  2-3 liveliest hints), reserving longer hint sets for robustness contexts (QR codes, config files) rather than
+- **Length.** ed25519 keys are ~50 chars each; a shareable default should stay short (origin + root + 2-3
+  liveliest `via` keys), reserving longer hint sets for robustness contexts (QR codes, config files) rather than
   bios.
 
 ### Naming: Human-Readable Names Are Pointers, Never Authority
 
-A `ringtome://` URL is unspeakable by design - a ~50-char root key is the price of a self-certifying, decentralized
+A raw identity address is unspeakable by design - a ~50-char root key is the price of a self-certifying, decentralized
 name (this is Zooko's Triangle: secure + decentralized + human-meaningful, pick two; the URL picks the first two).
 Human-readable names are a layer *on top*, and the invariant that keeps them safe is absolute: **a human name only
 answers "which root?"; `root` remains the sole authority; resolution always ends in sync-and-verify-against-root.**
 Whoever answers "which root" can misdirect first contact, but can never forge content, impersonate an established
-root, or deceive people who already know the root - so naming lives entirely outside the security core. The raw URL
-is the infohash-equivalent; names are how you find it.
+root, or deceive people who already know the root - so naming lives entirely outside the security core. The raw
+address is the infohash-equivalent; names are how you find it.
 
 Three tiers, by technical bar:
 
-- **Indexes (mass-market).** A directory site maps `some-name -> ringtome://root`, exactly like a BitTorrent
+- **Indexes (mass-market).** A directory site maps `some-name -> root`, exactly like a BitTorrent
   tracker maps a name to an infohash. Near-zero bar: type a name, register a pointer. Ringtome may run a reference
   index (`pub.ringtome.ca`); others can run their own; they **compete and are disposable** - an index can go down
   while the network stays up (thepiratebay vs. BitTorrent), because the protocol never depends on one. An index is
@@ -1952,16 +1970,16 @@ that literally - it is liberating, not hand-waving.
 
 ### Slugs, Views, and the Personal Address Bar (settled 2026-07-09)
 
-Raw addresses are cryptographic and ugly (`ringtome://3f9a.../public/8c2e...`); humans get two
+Raw addresses are cryptographic and ugly (`…/3f9a.../public/8c2e...`); humans get two
 readability layers, one personal and one author-owned - both pointers, never authority (per
 Naming, above):
 
 - **Personal display names in URLs.** The client renders contact names in the address bar -
-  `ringtome://jeff/public/...` - a personal-only DNS. The load-bearing rule is
+  `…/jeff/public/...` - a personal-only DNS. The load-bearing rule is
   **canonical-on-share**: aliases are display-only; copying or sharing always serializes the
   full identity form. Your local "jeff" never leaks into a context where jeff is someone else.
 - **Slugs: an author-owned mutable namespace over immutable content.** A public LWW register
-  maps slug → doc_id, so `ringtome://jeff/public/my-thoughts-on-cheese` resolves through the
+  maps slug → doc_id, so `…/jeff/public/my-thoughts-on-cheese` resolves through the
   author's slug register to a document. Because the mapping is a *register*, retargeting is
   invisible to readers: slug an essay today, repoint it at a taxonomy when it becomes a series
   tomorrow - inbound links survive reorganization without redirects, something the web never
@@ -1984,10 +2002,10 @@ Naming, above):
 A path addresses a typed resource, with the public/private axis **first** because it mirrors the sync boundary:
 
 ```
-ringtome://<url>/public/name        (LWW-register)
-ringtome://<url>/public/links       (set)
-ringtome://<url>/public/            (index: lists resources and their CRDT types)
-ringtome://<url>/private/config     (map of typed fields; self-only)
+…/<root>/public/name        (LWW-register)
+…/<root>/public/links       (set)
+…/<root>/public/            (index: lists resources and their CRDT types)
+…/<root>/private/config     (map of typed fields; self-only)
 ```
 
 - **The prefix is an access namespace, not a folder.** `/public/*` is served across the inter-identity boundary to
@@ -2068,7 +2086,7 @@ first and an aesthetic one second:
 
 **The expressiveness ladder** - ship rungs 1 and 2; rung 3 may never need to exist:
 
-1. **Static markup (v1):** text, headings, links (`ringtome://` and pinned web links), blob-hash images, and the
+1. **Static markup (v1):** text, headings, links (identity-rooted paths and pinned web links), blob-hash images, and the
    shameless tags - marquee, blink, rainbow text, tiled backgrounds, autoplaying MIDI as a media type. The promise
    is a sandbox with the clumsy charm of Old HTML.
 2. **Interactivity as platform widgets, never user code.** Hit counters, guestbooks, webring navigators,
@@ -2723,8 +2741,8 @@ key (and the root may be cold, retired, or gone), records are keyed by each **no
 
 - Each online node **publishes a record under its own node key**, containing its current addresses (~1000 bytes),
   plus the chain proving that node key is authorized to serve the identity (chain-to-root, verified by the resolver).
-- **Discovery is via the node keys in the URL** (`nodeID` / hints), not via the root. The root is the *authority*
-  you verify against; it is not a resolvable address. This is why bare `ringtome://root` alone does not reliably
+- **Discovery is via the node keys in the reference** (the origin's node / `via` hints), not via the root. The root is the *authority*
+  you verify against; it is not a resolvable address. This is why a bare root alone does not reliably
   resolve - it needs a hint, a cache hit, or an index to supply a live node key to look up. This is a feature, not a
   gap: the online nodes are exactly the resolvable ones, and the root need not be online at all.
 - Records **expire after a few hours** if not republished. Each node **republishes its own record on a fixed
@@ -2736,7 +2754,7 @@ key (and the root may be cold, retired, or gone), records are keyed by each **no
 ### Discovery Flow
 
 ```
-Node X wants ringtome://<root>:<nodeID>(<hints>)/...
+Node X wants <root>/... (with an origin node and/or via-hints in hand)
   → Check local cache (instant if we've seen this identity before)
   → Miss? Resolve the node keys from the URL (nodeID first, then hints) via pkarr in parallel
   → Get back the current addresses of whichever of those nodes are online

@@ -369,14 +369,15 @@ marquee, parsed by both implementations to identical ASTs.
 **4S — The social layer ("other people exist").** Everything that crosses the inter-identity
 boundary: the **public serving surface** (`/public/*` reads for non-owners - deliberately
 deferred since M1), the `follow` type with its three disclosure tiers (quiet / tell-them / help-host -
-PROJECT_PLAN, Edge-Endpoint Visibility), serving-follows, **`ringtome://` resolution** (the
-ladder consuming M3.5's directory), identicons + contact names, **monotonic memory for remote identities** (the
+PROJECT_PLAN, Edge-Endpoint Visibility), serving-follows, **foreign-identity resolution** (the
+ladder consuming M3.5's directory, behind the identity-rooted HTTP surface - the `ringtome://`
+scheme itself was dissolved 2026-07-31; PROJECT_PLAN, Addressing), identicons + contact names, **monotonic memory for remote identities** (the
 residual owed since M2: returning-relying-party revocation memory belongs to this surface), and
 the **serving-boundary defaults** from the plan's Moderation and Operator Liability section (the web-gateway question is
 now settled - distinct dual-opt-in role, no anonymous HTTP by default; 4S builds the
 member/peer-facing `/public/*` surface accordingly, gateway role deferred past Tier 6's gate).
 *Track demo:* curl a stranger's profile (as an authenticated member of a node that serves them),
-resolved from a `ringtome://` URL.
+resolved from an identity-rooted URL minted on the other node.
 
 **Leaf dependencies (land in whichever track finishes last):** page-authoring UI = 4C + 4M;
 reading view/feed = 4C + 4S; rendering a *stranger's* page = all three. **Tier exit demo:** two

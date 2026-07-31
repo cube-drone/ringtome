@@ -7,7 +7,7 @@
 // Cozy addresses: `/home/<bucket>/<section>/<section>/<slugified-title>` as a human-readable
 // pointer to a document, DERIVED from what already exists - bucket names, taxonomy-section titles,
 // doc titles - with no register to maintain. This is deliberately NOT the plan's author-owned slug
-// register (PROJECT_PLAN, Slugs - a public LWW namespace for the `ringtome://` face, still
+// register (PROJECT_PLAN, Slugs - a public LWW namespace for the public-address face, still
 // future): that one is a publication surface; this one is the private working-form convenience, in
 // the same spirit ("pointers, never authority") but computed, not curated.
 //

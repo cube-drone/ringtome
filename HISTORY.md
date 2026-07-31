@@ -1100,3 +1100,26 @@ URL copied under one of the node's OTHER names passes through untouched, the hon
 `pure/portable.js` holds the transform and its vectors. The full ingest-on-embed machinery
 (external URLs baked into local blobs) remains 4M's, as planned - a same-node reference needs
 no ingest, just a relative path.
+
+## The scheme dissolves: the path is the address, the origin is the lens (2026-07-31)
+
+The `ringtome://` URL scheme - a designed-ahead section of the plan since the early days -
+examined and dissolved, exit-disposition style. Three reasons had each quietly become
+decisive: the packaging doctrine (one client carried by the web, local server + system
+browser, never a native shell) forecloses the only program that could ever register the
+scheme handler, so `ringtome://` was the link that doesn't open; months of building had voted
+with their feet, every reference every feature actually mints being an identity-rooted HTTP
+path (the scheme appeared in exactly one code comment); and the just-minted-QR niche its hint
+slots served best already belongs to the `rt1.` codes, whose consumers are nodes - which is
+who hints are for.
+
+Everything load-bearing survives, re-homed as ordinary URL parts: **authority rides the path**
+(the root, self-certifying, chain-to-root-or-discard), **provenance and first contact ride
+the origin** (which, unlike the old `nodeID` slot, is clickable - a naive browser reads
+through that node's public face, a ringtome-aware consumer re-homes the path at its own
+lens), **reachability rides `?via=` keys** (never addresses, never trusted). The resolution
+ladder is unchanged - it just becomes what a node does when asked for a root it doesn't hold,
+4S consuming M3.5's directory - and graceful degradation becomes "a URL degrades to its
+path": strip a dead origin and the always-correct part remains, bootstrap included. The
+doctrine sentence the built system had been implying all along, now stated: the path is the
+address; the origin is the lens.
