@@ -1019,3 +1019,22 @@ that detaches (node-local unlink; the persona lives on everywhere else) and retu
 to "nobody lives here". Multi-persona ready: the list opens the first ACTIVE persona, so a
 future node agenting several simply drops the defunct one. Residuals ledgered: detach leaves
 the files on disk, and a passively-reading tab learns only at boot or on a failed write.
+
+## Sidebar thumbnails, and the harness grows a real stream (2026-07-31)
+
+**The feature:** media rows in the notes-family sidebar wear a 32px thumbnail where text rows
+wear their format glyph - `media.has_thumb` was already on every summary and `/thumb` already
+served the display head's AVIF, so the whole feature is a row-level `<img>` with the honest
+edges handled: the URL is version-keyed (`/thumb?v=<head>`), which let the endpoint turn on
+`immutable` caching (fifty media rows cost fifty requests once, then none), a 404 for a
+not-yet-fetched blob hides the image rather than showing the broken-glyph (the next mirror
+refresh retries), and `loading="lazy"` keeps long lists cheap.
+
+**The instrument:** proving it surfaced a harness gap - the notes list is a pure-mirror
+surface, and the harness's WebSocket stub starved the mirror, so the first probe rendered an
+empty list. The stubs had also quietly become four drifting copies. Both findings resolve
+into `harness/boot.mjs`: the shared session jar, the jsdom boot, and a REAL WebSocket bridge
+(npm `ws`, session cookie riding along) - the live-cache stream and Dexie mirror now run for
+real under the harness, and every scenario script (drive, ui, join, state, and the new
+`thumbs.mjs` media probe) is a thin import of it. All five verified against live nodes after
+the refactor.

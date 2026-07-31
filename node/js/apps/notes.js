@@ -136,9 +136,22 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
 >
     <span class="note-row-title">
         ${doc.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}
-        ${formatIcon(doc.format) &&
-        html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `}
-        ${doc.title || 'untitled'}
+        ${doc.media && doc.media.has_thumb
+            ? html`<img
+                  class="note-row-thumb"
+                  src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
+                  alt=""
+                  loading="lazy"
+                  onError=${(e) => {
+                      // has_thumb but the blob hasn't reached this node yet (404): hide
+                      // rather than show the browser's broken-image glyph; the next mirror
+                      // refresh re-renders and retries.
+                      e.currentTarget.style.display = 'none';
+                  }}
+              /> `
+            : formatIcon(doc.format) &&
+              html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `}
+        <span class="note-row-title-text">${doc.title || 'untitled'}</span>
     </span>
     ${feat.description &&
     doc.fields &&

@@ -6,7 +6,7 @@
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
-use axum::http::header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
+use axum::http::header::{CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -1241,6 +1241,10 @@ async fn docs_thumb_handler(
             (CONTENT_TYPE, crate::record::documents::Format::Avif.mime()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (CONTENT_SECURITY_POLICY, "sandbox"),
+            // The sidebar requests thumbs as `/thumb?v=<head>` - the URL changes when the
+            // display head does - so the response is safely immutable: a list of fifty media
+            // rows costs fifty requests once, then none.
+            (CACHE_CONTROL, "private, max-age=31536000, immutable"),
         ],
         bytes,
     ))

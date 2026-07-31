@@ -219,9 +219,27 @@
 
 .note-row-title {
     font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0; /* let the text child shrink and ellipsize inside the flex row */
+}
+
+.note-row-title-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* The 32px thumbnail a media row wears where a text row wears its format glyph. */
+.note-row-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--surface-2);
 }
 
 /* The row's description subtitle: muted, and clamped to two lines so a long one can't balloon
