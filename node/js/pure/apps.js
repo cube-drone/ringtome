@@ -87,7 +87,7 @@ export const APPS = [
     },
     {
         id: 'all',
-        name: 'All Documents',
+        name: 'All',
         icon: 'all',
         live: true,
         // The everything-view: every document from every notebook, PLUS the unbucketed - the

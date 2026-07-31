@@ -81,7 +81,7 @@ for (let i = 0; i < 3; i++) {
 // --- The everything-view: file the image into a recipes-typed bucket, then browse /home/all.
 await s.fetch(`/api/identity/${root}/buckets`, { method: 'POST', headers: J, body: JSON.stringify({ name: 'shots', app: 'recipes' }) });
 await s.fetch(`/api/identity/${root}/docs/${queued.doc_id}/buckets/shots`, { method: 'PUT', headers: J });
-click(dom.window, [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'All Documents'));
+click(dom.window, [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'All'));
 await waitFor(doc, () => dom.window.location.pathname === '/home/all' && doc.querySelectorAll('.note-row').length >= 2, 'the everything-view');
 await sleep(500);
 const allRows = [...doc.querySelectorAll('.note-row')].map((r) => ({
