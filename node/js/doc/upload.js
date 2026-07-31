@@ -238,6 +238,10 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
             }
         }, 1000);
         return () => clearInterval(id);
+        // One poller per waiting-set, deliberately: `renameNow` reads its inputs through refs
+        // at call time (behaviorally stable), and listing it would tear down and recreate the
+        // interval on every render for nothing.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [waiting, root]);
 
     // A once-a-second tick while anything is encoding, so the elapsed readout moves.

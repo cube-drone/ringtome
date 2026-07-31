@@ -970,9 +970,15 @@ Two pieces of tooling came out of the hunt:
 
 - **eslint joins `ui-check`** (`node/js/eslint.config.js`): esbuild cannot tell a typo from a
   browser global, so an undefined identifier ships silently - `no-undef` at error level is the
-  gate (planted a violation, watched it go red). The react-hooks rules ride along at *warn*:
-  the 13 standing findings are ledgered (REFACTOR.md, hooks-lint debt; the headline is six
-  conditionally-called hooks in doc/editor.js), and the rules flip to error when paid down.
+  gate (planted a violation, watched it go red). The react-hooks rules opened at *warn* with
+  13 findings and were paid down to zero the same day - the headline was doc/editor.js, six
+  hooks below two `!loaded` early returns (a hook list that grew once the doc loaded, correct
+  only by accident of monotonic growth): every hook now sits above the returns, their guards
+  carrying the not-yet-loaded case, `modesFor`/`defaultMode` being total making the hoist
+  safe. The rest were split between real fixes (a `useCallback`, extracted dep expressions)
+  and deliberate partial deps annotated with their reasons (the save-flush cleanup reads its
+  ref at teardown time ON PURPOSE; turbolinks' `gen` counter IS the change signal for a map
+  mutated in place). Both rules now run at *error* - the cop gates.
 - **The headless harness** (`node/harness/drive.mjs`): the real bundle in jsdom against a
   throwaway node - browser-global stubs, a cookie-jar fetch bridge, API pre-provisioning that
   skips the onboarding ceremony - which reproduced the exact symptom, confirmed the fix, and

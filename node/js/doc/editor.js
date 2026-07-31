@@ -148,6 +148,51 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         setPref(root, viewModeKey(docId), m);
     };
 
+    // Every hook stays ABOVE the two early returns below - hooks are counted by call order,
+    // and a hook list that grows once `loaded` flips is correct only by accident (field-found
+    // by the lint gate, 2026-07-30). Guards inside each hook carry the not-yet-loaded case.
+
+    // Turbolink cards for whatever the buffer holds - resolves via the node's unfurl
+    // endpoint; the profile's identity changes as cards land, re-rendering every surface.
+    const tlProfile = useTurbolinks(body, format);
+
+    // The scroll-sync/caret ref quartet (their story is with the sync closures, below).
+    const previewRef = useRef(null); // MarqueeHandle
+    const sourceRef = useRef(null); // the side-by-side textarea
+    const markedRef = useRef(null); // the currently-outlined preview element
+    const echoRef = useRef(false);
+
+    // The effective mode: the user's pick if the format still offers it, else the format's
+    // default (a marquee doc opens interactive; converting it to plaintext clamps an
+    // interactive/side pick back to the plain textarea). The app narrows the offered modes
+    // (Recipes offers only interactive); if its list leaves nothing for this format, fall back
+    // to the format's full set rather than trapping the doc.
+    let available = modesFor(format).filter((m) => feat.modes.includes(m));
+    if (available.length === 0) available = modesFor(format);
+    const mode =
+        chosenMode && available.includes(chosenMode)
+            ? chosenMode
+            : available.includes(defaultMode(format))
+            ? defaultMode(format)
+            : available[0];
+
+    // Caret restoration for the textarea surfaces: when one (re)appears - a mode switch, or
+    // a return to this doc - put the caret back where it last sat in this document, clamped
+    // to the current body, focused so it's visibly home. (The interactive surface does the
+    // same itself, via LiveMarquee's initialSelection.)
+    useEffect(() => {
+        if (mode !== 'plain' && mode !== 'side') return;
+        const ta = sourceRef.current;
+        const at = recallCursor(root, docId);
+        if (!ta || !at || !loaded) return;
+        const len = ta.value.length;
+        // Selection BEFORE focus: browsers scroll a focused textarea to its caret, so this
+        // order gets "back where I was" to also mean scrolled there.
+        ta.setSelectionRange(Math.min(at.start, len), Math.min(at.end, len));
+        ta.focus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, loaded && docId]);
+
     if (status === 'opening' && !loaded) {
         return html`<div class="reader"><p class="null-sub">opening…</p></div>`;
     }
@@ -164,10 +209,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         opening: 'Opening…',
     }[status];
 
-    // Turbolink cards for whatever the buffer holds - resolves via the node's unfurl
-    // endpoint; the profile's identity changes as cards land, re-rendering every surface.
-    const tlProfile = useTurbolinks(body, format);
-
     // Side-by-side scroll sync, both directions - the pattern from marquee-react-renderer's
     // own demo ("the honest prototype of the editor we're heading toward"). Forward: the
     // textarea cursor centers the nearest rendered node and outlines it. Reverse: clicking
@@ -175,10 +216,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     // setSelectionRange fires `select`, which would run the forward sync and yank the very
     // node you clicked out from under you; cleared on a timeout so a `select` that never
     // arrives can't leave it stuck.
-    const previewRef = useRef(null); // MarqueeHandle
-    const sourceRef = useRef(null); // the side-by-side textarea
-    const markedRef = useRef(null); // the currently-outlined preview element
-    const echoRef = useRef(false);
     const syncToCursor = () => {
         const handle = previewRef.current;
         const ta = sourceRef.current;
@@ -214,37 +251,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         rememberCursor(root, docId, e.currentTarget.selectionStart, e.currentTarget.selectionEnd);
         syncToCursor();
     };
-
-    // The effective mode: the user's pick if the format still offers it, else the format's
-    // default (a marquee doc opens interactive; converting it to plaintext clamps an
-    // interactive/side pick back to the plain textarea). The app narrows the offered modes
-    // (Recipes offers only interactive); if its list leaves nothing for this format, fall back
-    // to the format's full set rather than trapping the doc.
-    let available = modesFor(format).filter((m) => feat.modes.includes(m));
-    if (available.length === 0) available = modesFor(format);
-    const mode =
-        chosenMode && available.includes(chosenMode)
-            ? chosenMode
-            : available.includes(defaultMode(format))
-            ? defaultMode(format)
-            : available[0];
-
-    // Caret restoration for the textarea surfaces: when one (re)appears - a mode switch, or
-    // a return to this doc - put the caret back where it last sat in this document, clamped
-    // to the current body, focused so it's visibly home. (The interactive surface does the
-    // same itself, via LiveMarquee's initialSelection.)
-    useEffect(() => {
-        if (mode !== 'plain' && mode !== 'side') return;
-        const ta = sourceRef.current;
-        const at = recallCursor(root, docId);
-        if (!ta || !at || !loaded) return;
-        const len = ta.value.length;
-        // Selection BEFORE focus: browsers scroll a focused textarea to its caret, so this
-        // order gets "back where I was" to also mean scrolled there.
-        ta.setSelectionRange(Math.min(at.start, len), Math.min(at.end, len));
-        ta.focus();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, loaded && docId]);
 
     // The rendered document, shared by side-by-side and read-only (doc/marqueebody.js owns the
     // parse gate). The side pane wants the parse ERROR - you are editing, so the reason is the

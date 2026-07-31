@@ -171,9 +171,10 @@ const Inside = ({ session }) => {
     // apps (those with a `style`) offer search.
     const showSearch = !!(appHere && appHere.style);
     const [query, setQuery] = useState('');
+    const appHereId = appHere ? appHere.id : null;
     useEffect(() => {
         setQuery('');
-    }, [appHere && appHere.id]);
+    }, [appHereId]);
 
     // The bucket in view, and the way to change it (buckets.js owns the state machine: the
     // last-open memory, cozy addresses outranking it, and the deep-link correction).

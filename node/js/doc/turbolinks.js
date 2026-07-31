@@ -98,6 +98,10 @@ export function useTurbolinks(source, format) {
             // configuration); this is the table. Unknown slugs stay literal `:slug:`.
             emoji: (slug) => nameToEmoji[slug] || null,
         }),
+        // `gen` IS the dependency: `resolved` is a module-level map mutated in place, so the
+        // counter is the only identity the renderer can see change. The memo exists to mint a
+        // fresh profile object per resolution batch - "unnecessary" is exactly backwards.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [gen]
     );
 }

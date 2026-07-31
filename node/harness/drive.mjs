@@ -84,6 +84,7 @@ async function boot() {
             window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
             window.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
             window.scrollTo = () => {};
+            window.Element.prototype.scrollIntoView = () => {}; // jsdom doesn't implement it
             window.prompt = (msg) => { console.log(`[prompt] ${msg} -> "${window.__nextPrompt}"`); return window.__nextPrompt; };
             window.alert = (m) => console.log(`[alert] ${m}`);
             window.console.warn = (...a) => console.log('[warn]', ...a);
@@ -141,6 +142,13 @@ try {
     click(sectionBtn());
     await waitFor(() => [...doc.querySelectorAll('.tree-row-title')].some((t) => t.textContent.includes('second directory')), 'directory 2 in the tree');
     report('after creating directory 2');
+
+    // Open a page: the editor's opening -> loaded hook transition is the fragile spot the
+    // lint gate polices (hooks above the early returns; editor.js, 2026-07-30).
+    click([...doc.querySelectorAll('.tree-tool')].find((b) => /page/.test(b.textContent)));
+    await waitFor(() => doc.querySelector('.reader, .editor, .wiki-main textarea, .cm-editor'), 'an editor surface');
+    await sleep(1000);
+    report('after opening a page (editor mounted)');
 
     click([...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'TurboNotes'));
     await sleep(1500);

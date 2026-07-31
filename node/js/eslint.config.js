@@ -23,11 +23,12 @@ export default [
             // `_`-prefixed is the house idiom for deliberately-unused.
             'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
             // Preact hooks obey the same laws; the existing eslint-disable comments in the
-            // codebase were written against exactly this rule. Warn, not error: the standing
-            // findings are ledgered (REFACTOR.md, hooks-lint debt) and gate when paid down -
-            // the ERROR-level rules above are the actual CI gate this config exists for.
-            'react-hooks/rules-of-hooks': 'warn',
-            'react-hooks/exhaustive-deps': 'warn',
+            // codebase were written against exactly this rule. Error-level since the debt was
+            // paid down (2026-07-30, same day it was opened): a deliberately-partial dep
+            // array gets a site-level disable comment WITH its reason - the comment is the
+            // documentation the rule exists to force.
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'error',
         },
     },
 ];

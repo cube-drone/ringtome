@@ -75,6 +75,7 @@ export const Annotations = ({ root, docId, features }) => {
     // immediately. A pending entry clears once the mirror reflects it (echo arrived).
     const [pending, setPending] = useState({}); // tag -> 'adding' | 'removing'
     const [tagInput, setTagInput] = useState('');
+    const mirrorTagsKey = mirrorTags.join(' ');
     useEffect(() => {
         setPending((p) => {
             let changed = false;
@@ -87,7 +88,12 @@ export const Annotations = ({ root, docId, features }) => {
             }
             return changed ? next : p;
         });
-    }, [mirrorTags.join(' ')]);
+        // Keyed on the joined VALUE, not the array: the mirror hands back a fresh array
+        // identity every poll, and re-running this settle pass on identical contents would
+        // still be harmless - the key just spares the churn. `mirrorTags` itself is
+        // deliberately not a dep for exactly that identity-churn reason.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mirrorTagsKey]);
 
     // Insertion order: the mirror already delivers tags oldest-first (the server sorts by LWW
     // stamp), and optimistic adds append at the end - so a new tag lands where you'd expect it,

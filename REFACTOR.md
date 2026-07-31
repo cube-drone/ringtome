@@ -41,13 +41,6 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   member = loud flag whose remedy is a re-seal; completeness binds only the newest epoch
   (adoption re-seals are legitimately recipient-lists-of-one for historical epochs). Grows
   teeth the day any epoch seals to a second person (DMs); do it with the watcher above.
-- [ ] **Hooks-lint debt** (opened 2026-07-30 with the eslint gate, `node/js/eslint.config.js`):
-  `react-hooks/rules-of-hooks` and `exhaustive-deps` run at *warn* - 13 standing findings. The
-  headline is `doc/editor.js`: six hooks called conditionally (a real order-of-hooks hazard,
-  not style); the rest are missing or complex dependency arrays. Pay down file by file - the
-  editor deliberately last and carefully, it is the never-lose-words surface - then flip both
-  rules to `error` so the cop gates. No new warnings meanwhile; a deliberately-partial dep
-  array gets the site-level disable comment the codebase already uses.
 - [ ] **Taxonomy rank rebalancing** (`record/rank.rs` module doc names it): ranks grow ~one
   digit per 18 appends / per same-spot insert hit; a bloated list is repaired by rewriting its
   ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead

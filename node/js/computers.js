@@ -3,7 +3,7 @@
 // role). Also the granting half of adoption: "invite this computer to be you" - paste the new
 // computer's request code, carry the answer back.
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
@@ -168,13 +168,16 @@ export const Computers = ({ current }) => {
     const [error, setError] = useState(null);
     const [removing, setRemoving] = useState(null); // the key whose removal flow is open
 
-    const load = () =>
-        api(`/api/identity/${current.root}/keys`)
-            .then((r) => setKeys(r.keys))
-            .catch((e) => setError(e.message));
+    const load = useCallback(
+        () =>
+            api(`/api/identity/${current.root}/keys`)
+                .then((r) => setKeys(r.keys))
+                .catch((e) => setError(e.message)),
+        [current.root]
+    );
     useEffect(() => {
         load();
-    }, [current.root]);
+    }, [load]);
 
     const invite = async (e) => {
         e.preventDefault();

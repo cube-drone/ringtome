@@ -162,8 +162,12 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
             setError(e.message);
             setStatus('error');
         });
-        // Doc switch / unmount: flush whatever's unsaved, drop timers.
+        // Doc switch / unmount: flush whatever's unsaved, drop timers. Reading the ref AT
+        // CLEANUP TIME is the point - flush what is unsaved NOW, not what was unsaved when
+        // the effect mounted. The machine is a mutable state machine behind a stable ref,
+        // never a DOM node the renderer could have swapped underneath us.
         return () => {
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             const m = machine.current;
             if (m.timer) clearTimeout(m.timer);
             if (m.waitTimer) clearTimeout(m.waitTimer);
