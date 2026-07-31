@@ -148,8 +148,12 @@ export function usePersona(account) {
                 const personas = await api('/api/identity');
                 if (personas.length > 0) {
                     clearInterval(timer);
-                    setJoin(null);
+                    // Open FIRST, clear the join state after: `open` is async, and a render
+                    // between `setJoin(null)` and its final `setState('open')` is still in
+                    // the join state - JoinFlow with a null join crashed the whole render
+                    // (field-found 2026-07-30: the new computer showed only the quickbar).
                     await open(personas[0].root_pubkey);
+                    setJoin(null);
                 }
             } catch {
                 // Transient fetch trouble just means we check again next tick.
@@ -163,8 +167,9 @@ export function usePersona(account) {
             method: 'POST',
             body: JSON.stringify({ code: grantCode.trim() }),
         });
-        setJoin(null);
+        // Same ordering rule as the arrival watcher above: open, then clear.
         await open(identity.root_pubkey);
+        setJoin(null);
     };
 
     return {
@@ -237,6 +242,10 @@ export const JoinFlow = ({ persona }) => {
             setBusy(false);
         }
     };
+
+    // A transitional render can arrive with the join already cleared (the arrival watcher
+    // opening the persona); rendering nothing for a frame beats crashing the whole tree.
+    if (!persona.join) return null;
 
     return html`
         <div class="ceremony">

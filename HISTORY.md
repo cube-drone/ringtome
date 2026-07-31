@@ -986,3 +986,15 @@ Two pieces of tooling came out of the hunt:
   no-automated-UI-testing rule stands, and the scenario half is disposable by design. Kept
   because the bug class it catches - rendering failures only a running SPA exhibits - is
   exactly the class every other gate leaves dark.
+
+## The quickbar with nobody behind it (2026-07-30)
+
+Second field catch of the evening, and the harness's first same-day repro: after a one-trip
+adoption, the NEW computer's tab showed only the quickbar. The arrival watcher (persona.js)
+cleared the join state and THEN awaited the async `open` - and any render in that window was
+still in state 'join' with a null join, so JoinFlow threw on `join.requestCode` and took the
+whole tree down with it (no error boundary; the same corrupted-DOM class as the tree-pane
+panels). Fix: open first, clear after - in the watcher and in `completeJoin` alike - plus a
+render guard in JoinFlow, because a transitional frame rendering nothing beats a crash.
+`harness/join.mjs` (promoted) drives the real NullState -> join -> grant -> arrival path and
+proves the tab lands on the open console within one poll tick.
