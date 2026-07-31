@@ -88,7 +88,7 @@ export function useSlugDocId(root, appId, docId) {
         return () => {
             alive = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [root, appId, docId]);
     if (!docId) return null;
     return HEX_ID.test(docId) ? docId : resolved;

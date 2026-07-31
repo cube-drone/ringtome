@@ -209,7 +209,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
             <span class="tree-row-actions" onClick=${(e) => e.stopPropagation()}>
                 <button
                     class="tree-act"
-                    title=${`a new ${itemNoun} in this section`}
+                    title=${`a new ${ops.itemNoun} in this section`}
                     onClick=${() => ops.newPage(node.taxonomy_id)}
                 ><${Icons.pageNew} /></button>
                 <button
@@ -588,6 +588,11 @@ export const WikiTree = ({
         deleteSection,
         drag: dragRef,
         completeDrag,
+        // The hosting app's word for one of its things, for row-level tooltips - SectionNode
+        // reads it from here because the prop's scope ends at this component (field-found
+        // 2026-07-30: a free `itemNoun` in SectionNode threw on the first section rendered,
+        // and every subsequent render aborted mid-diff - orphaned panels piling up).
+        itemNoun,
     };
 
     const empty = !tree || !(tree.members || []).length;

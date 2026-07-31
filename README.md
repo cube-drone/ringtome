@@ -74,7 +74,7 @@ Other useful commands (from `node/`, unless cargo):
 cargo build                 # everything
 cargo test                  # all Rust tests (proto is the fast loop: cargo test -p ringtome-proto)
 just integration            # boot two throwaway nodes, run the full JS integration suite
-just ui-check               # the fast JS gate: rebuild the bundles, run the pure-module tests
+just ui-check               # the fast JS gate: rebuild the bundles, eslint, the pure-module tests
 just ci                     # ui-check + check + lint + unit + integration — what the action runs
 just mainline-smoke         # OPT-IN live test against the real Mainline DHT (publishes throwaway records)
 cargo run --bin ringtome    # run a node (see node/README.md for configuration)

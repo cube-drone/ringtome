@@ -1,0 +1,10 @@
+{
+    "name": "ringtome-harness",
+    "private": true,
+    "description": "Headless SPA driver: runs the real UI bundle in jsdom against a throwaway node, for reproducing UI bugs the pure tests can't reach.",
+    "type": "module",
+    "dependencies": {
+        "fake-indexeddb": "^6.2.2",
+        "jsdom": "^24.1.3"
+    }
+}

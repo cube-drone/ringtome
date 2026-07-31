@@ -456,7 +456,7 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
             // Success: stay "opening…" (guard held) until the new entry shows via the mirror -
             // the entries-count effect clears both - so a click during that catch-up beat can't
             // duplicate.
-        } catch (e) {
+        } catch {
             creating.current = false;
             setBusy(false); // failed: let them try again
         }

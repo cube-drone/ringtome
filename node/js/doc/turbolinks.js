@@ -89,7 +89,7 @@ export function useTurbolinks(source, format) {
             alive = false;
         };
     }, [source, format]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     return useMemo(
         () => ({
             turbolink: composeTurbolinks(plugins, resolved),

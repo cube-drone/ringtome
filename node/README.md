@@ -55,9 +55,10 @@ cargo test                    # unit tests (workspace)
 just test-unit                # same, via the justfile
 just integration              # build, boot TWO throwaway nodes + a shared local-DHT dir,
                               # run the mocha suite in node/integration/, tear down
-just ui-check                 # rebuild the JS/CSS bundles (esbuild is the UI's only
-                              # type-check, and ui.rs embeds its output) + the UI's
-                              # pure-module tests: no browser, no node, ~1s
+just ui-check                 # rebuild the JS/CSS bundles + eslint (esbuild can't tell a
+                              # typo from a browser global; no-undef is the gate that can -
+                              # js/eslint.config.js) + the UI's pure-module tests: no
+                              # browser, no node, ~2s
 just ci                       # ui-check + check + clippy + unit + integration
 just mainline-smoke           # the mainline field test: two nodes on the REAL public DHT +
                               # n0 relays/DNS (networked, on-demand only; also runs as the

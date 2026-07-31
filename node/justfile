@@ -227,6 +227,7 @@ ui-watch:
 # What a glob CANNOT catch is a pure module nobody wrote a test for; that is the purity cop's job
 # (REFACTOR_UI S1), and this recipe is where it will live.
 ui-check: ui-build
+    cd "{{justfile_directory()}}/js" && npx eslint .
     cd "{{justfile_directory()}}/integration" && npx mocha --no-config 'test/pure/*.cjs'
 
 # Watch-rebuild the CSS bundle on save (run in a separate terminal).

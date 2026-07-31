@@ -954,3 +954,29 @@ revoking node immediately (the revoke route pushes an empty batch through the or
 one sweeper, no second code path) and on every other node as the revocation syncs in.
 Integration proves the round trip: the impostor's profile write is struck from the revoker's
 record at once and from the impostor's own node after its next sync.
+
+## The panel that wouldn't die, and the gate it bought (2026-07-30)
+
+A drive-by report - "each new directory spawns a whole new panel that never cleans up" - turned
+out to be a one-word bug with a lesson attached. The refactor that gave apps per-item nouns
+made `itemNoun` a WikiTree prop but left one use inside SectionNode, a sibling component where
+the name resolves to nothing. Sections only render once one exists, so the tree worked
+perfectly until the user created their first directory - then every render threw
+`ReferenceError`, and with no error boundary each render aborted mid-diff, orphaning
+partially-committed DOM: app panels piling up, unkillable, because the unmount diff died on
+the same throw. Server data was provably clean; the bug lived entirely in the render pass.
+
+Two pieces of tooling came out of the hunt:
+
+- **eslint joins `ui-check`** (`node/js/eslint.config.js`): esbuild cannot tell a typo from a
+  browser global, so an undefined identifier ships silently - `no-undef` at error level is the
+  gate (planted a violation, watched it go red). The react-hooks rules ride along at *warn*:
+  the 13 standing findings are ledgered (REFACTOR.md, hooks-lint debt; the headline is six
+  conditionally-called hooks in doc/editor.js), and the rules flip to error when paid down.
+- **The headless harness** (`node/harness/drive.mjs`): the real bundle in jsdom against a
+  throwaway node - browser-global stubs, a cookie-jar fetch bridge, API pre-provisioning that
+  skips the onboarding ceremony - which reproduced the exact symptom, confirmed the fix, and
+  proved clean app-switch teardown. A debugging instrument, not a test suite: STYLE's
+  no-automated-UI-testing rule stands, and the scenario half is disposable by design. Kept
+  because the bug class it catches - rendering failures only a running SPA exhibits - is
+  exactly the class every other gate leaves dark.

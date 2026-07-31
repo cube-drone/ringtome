@@ -114,7 +114,7 @@ export const LiveMarquee = ({
         if (v) {
             v.dispatch({ effects: marqueeConf.current.reconfigure(marquee({ profile })) });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [profile]);
 
     return html`<div class="editor-live" ref=${host}></div>`;
