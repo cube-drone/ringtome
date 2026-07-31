@@ -414,6 +414,47 @@ pub async fn list_for_account(node_db: &Db, account_id: &Uuid) -> Result<Vec<Ide
         .collect())
 }
 
+/// This node's own standing in the identity's key tree: the status name of its signing leaf
+/// ("active", "retired", "repudiated", ...), or "unknown" when the answer can't be computed (a
+/// key or database that won't open must degrade the persona list, never fail it). What the
+/// farewell flow reads: a well-intentioned node discovers its own revocation here and lets go.
+pub async fn standing(
+    state: &crate::AppState,
+    account_id: &Uuid,
+    root_hex: &str,
+) -> &'static str {
+    let Ok(signer) = load_signing_key(&state.node_db, &state.keystore, account_id, root_hex).await
+    else {
+        return "unknown";
+    };
+    let Ok(db) = state.user_dbs.get(root_hex).await else {
+        return "unknown";
+    };
+    let Ok(tree) = crate::record::imaol::load_key_tree(&db, root_hex).await else {
+        return "unknown";
+    };
+    tree.status(&signer.verifying_key().to_bytes()).name()
+}
+
+/// Detach an identity from an account on THIS node - the node-local unlink, nothing signed,
+/// nothing synced. The persona goes on existing everywhere else; this node just stops agenting
+/// it for this account. The farewell flow's final step, and (someday) the multi-persona "drop
+/// one" action. The keystore's key files and the user database stay on disk - a janitor's
+/// concern, not this function's.
+pub async fn detach(node_db: &Db, account_id: &Uuid, root_hex: &str) -> Result<(), AppError> {
+    require_owned(node_db, account_id, root_hex).await?;
+    node_db
+        .execute(
+            "DELETE FROM identities WHERE root_pubkey = ?1 AND account_id = ?2",
+            (root_hex, account_id.to_string()),
+        )
+        .await
+        .context("detaching identity")
+        .map_err(AppError::Internal)?;
+    tracing::info!(root = %root_hex, "detached persona from this node");
+    Ok(())
+}
+
 /// Whether this node agents the identity at all (any account). The sync server consults this -
 /// per the data-access convention, `identities` SQL lives only in this module.
 pub async fn is_agented(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {

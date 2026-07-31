@@ -30,12 +30,13 @@ export const shortcode = (rootHex) => rootHex.slice(0, 4);
 // The persona layer, as a hook. `current` is null while checking, while the account has no
 // personas, and during the ceremony; the caller branches on `state`.
 export function usePersona(account) {
-    // checking | none | ceremony | naming | join | open
+    // checking | none | ceremony | naming | join | open | farewell
     const [state, setState] = useState('checking');
     const [current, setCurrent] = useState(null); // { root, name }
     const [ceremony, setCeremony] = useState(null); // { root, secret }
     const [naming, setNaming] = useState(null); // root awaiting its display name
     const [join, setJoin] = useState(null); // { requestCode } - the outbound half of adoption
+    const [farewell, setFarewell] = useState(null); // { root, standing } - no longer this persona
     const [error, setError] = useState(null);
     const live = useRef(null); // the open persona's live-cache handle
 
@@ -76,9 +77,20 @@ export function usePersona(account) {
         if (!account) return;
         api('/api/identity')
             .then((personas) => {
+                // Auto-open the first persona this computer is still PART of: sign-in should
+                // land you somewhere, not at a menu. A persona whose standing says this
+                // computer was locked out (or left) gets the farewell instead - a
+                // well-intentioned node discovers its own revocation and lets go, rather
+                // than wandering a read-only ghost town (PROJECT_PLAN, Revocation).
+                const active = personas.find((p) => p.standing === 'active');
+                if (active) return open(active.root_pubkey);
                 if (personas.length > 0) {
-                    // Auto-open the first: sign-in should land you somewhere, not at a menu.
-                    return open(personas[0].root_pubkey);
+                    setFarewell({
+                        root: personas[0].root_pubkey,
+                        standing: personas[0].standing,
+                    });
+                    setState('farewell');
+                    return;
                 }
                 setState('none');
             })
@@ -87,6 +99,32 @@ export function usePersona(account) {
                 setState('none');
             });
     }, [account]);
+
+    // The live half of the same discovery: any surface's write bouncing with "revoked-signer"
+    // (net.js announces it) means this computer's key was revoked while the tab was open.
+    // Re-ask the node for standing and start the farewell - the moment a write fails is
+    // exactly the moment the user needs to know why.
+    useEffect(() => {
+        const onRevoked = async () => {
+            try {
+                const personas = await api('/api/identity');
+                const mine = current && personas.find((p) => p.root_pubkey === current.root);
+                if (mine && mine.standing !== 'active') {
+                    if (live.current) {
+                        live.current.stop();
+                        live.current = null;
+                    }
+                    setFarewell({ root: mine.root_pubkey, standing: mine.standing });
+                    setState('farewell');
+                }
+            } catch {
+                // If even the list won't load, the next write will re-announce.
+            }
+        };
+        window.addEventListener('ringtome:revoked-signer', onRevoked);
+        return () => window.removeEventListener('ringtome:revoked-signer', onRevoked);
+         
+    }, [current]);
 
     const create = async () => {
         setError(null);
@@ -172,11 +210,24 @@ export function usePersona(account) {
         setJoin(null);
     };
 
+    // The farewell's acknowledgment: unlink the persona from this node (node-local - the
+    // persona goes on existing everywhere else), drop this browser's mirror of it, and go
+    // back to being a computer with nobody in it.
+    const letGo = async () => {
+        const root = farewell.root;
+        await api(`/api/identity/${root}/detach`, { method: 'POST' });
+        await forgetMirror(root);
+        setFarewell(null);
+        setCurrent(null);
+        setState('none');
+    };
+
     return {
         state,
         current,
         ceremony,
         join,
+        farewell,
         error,
         create,
         ceremonyDone,
@@ -184,9 +235,58 @@ export function usePersona(account) {
         startJoin,
         cancelJoin,
         completeJoin,
+        letGo,
         shutdown,
     };
 }
+
+// The farewell: this computer's key was revoked - locked out by a senior computer, or it left
+// on its own - and the network no longer accepts anything it signs. The honest posture is a
+// plain goodbye and a clean detach, not a read-only ghost town where every save silently
+// bounces. Cozy words match the Computers screen's status chips ("locked out" / "left"); the
+// one button acknowledges and lets go.
+export const FarewellScreen = ({ persona }) => {
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    if (!persona.farewell) return null; // transitional render during the detach
+    const lockedOut = persona.farewell.standing === 'repudiated';
+    const letGo = async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await persona.letGo();
+        } catch (e) {
+            setError(e.message);
+            setBusy(false);
+        }
+    };
+    return html`
+        <div class="null-state">
+            <p class="null-title">
+                ${lockedOut
+                    ? 'This computer has been locked out.'
+                    : 'This computer has left the persona.'}
+            </p>
+            <p class="null-sub">
+                ${lockedOut
+                    ? `Another of the persona's computers locked this one out - it no longer
+                       speaks for the persona, and nothing written here will reach anyone.
+                       If that's a surprise, talk to whoever holds the persona's other
+                       computers (or its spare key).`
+                    : `This computer's key retired. Everything it wrote up to that point still
+                       counts; it just isn't part of the persona anymore.`}
+            </p>
+            <p class="null-sub">
+                The persona itself is fine and lives on its other computers. All that's left
+                here is to let it go.
+            </p>
+            ${error && html`<p class="form-error">${error}</p>`}
+            <button class="welcome-go" disabled=${busy} onClick=${letGo}>
+                ${busy ? '…' : 'okay - let it go'}
+            </button>
+        </div>
+    `;
+};
 
 // The null state: a signed-in account with nobody in it yet. Two doors: make someone new,
 // or bring an existing you from another computer.

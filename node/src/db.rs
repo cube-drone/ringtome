@@ -147,6 +147,11 @@ pub struct Db {
     /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
     /// mechanism - sealed dumps) and for in-memory test databases.
     journal: Option<Journal>,
+    /// Whose database this is: the identity's root pubkey, attached when opened through
+    /// [`UserDbManager`]. `None` for `node.db` and in-memory test databases. Lets code holding
+    /// only the handle answer identity-scoped questions (the signing gate in `imaol::append`
+    /// resolves the key tree with it).
+    root: Option<String>,
     /// The write-nudge broadcast, attached like the journal (per-user databases only). Fired by
     /// [`Db::nudge_sync`] on locally-*signed* writes so every waiter - the eager-sync loop AND
     /// each open live-cache stream - notices a fresh save in milliseconds instead of a poll
@@ -283,6 +288,19 @@ impl Db {
             ..self
         }
     }
+
+    /// The identity's root pubkey, when this is a per-user database. See the field doc.
+    pub fn root(&self) -> Option<&str> {
+        self.root.as_deref()
+    }
+
+    /// This handle (and every clone made from it) knowing whose it is.
+    fn with_root(self, root_hex: String) -> Db {
+        Db {
+            root: Some(root_hex),
+            ..self
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -380,6 +398,7 @@ fn connect(database: turso::Database) -> Result<Db> {
         stmt_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         ingest_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         journal: None,
+        root: None,
         write_nudge: None,
     })
 }
@@ -577,6 +596,7 @@ impl UserDbManager {
         }
         let db = db
             .with_journal(journal)
+            .with_root(root_pubkey.to_string())
             .with_write_nudge(self.write_nudge.clone());
 
         self.handles
@@ -766,7 +786,11 @@ mod tests {
         let mut a = mgr.subscribe_writes();
         let mut b = mgr.subscribe_writes();
 
-        let db = mgr.get("alice_pubkey").await.unwrap();
+        // A well-formed (if fictional) hex root: the manager stamps it onto the handle, and
+        // imaol::append's signing gate resolves the key tree with it - a non-hex root would
+        // now fail loudly, which is correct for real code and wrong for this fixture.
+        let root = "aa".repeat(32);
+        let db = mgr.get(&root).await.unwrap();
         db.nudge_sync();
 
         for (name, rx) in [("a", &mut a), ("b", &mut b)] {
@@ -788,14 +812,18 @@ mod tests {
         let ks = temp_keystore(&dir);
         let mgr = UserDbManager::new(&dir, ks, 8);
 
-        let db = mgr.get("alice_pubkey").await.unwrap();
+        // A well-formed (if fictional) hex root: the manager stamps it onto the handle, and
+        // imaol::append's signing gate resolves the key tree with it - a non-hex root would
+        // now fail loudly, which is correct for real code and wrong for this fixture.
+        let root = "aa".repeat(32);
+        let db = mgr.get(&root).await.unwrap();
         let key = ringtome_proto::SigningKey::from_bytes(&[5u8; 32]);
         let signed = crate::record::imaol::set_profile_field(&db, &key, "name", "Hats Ahoy")
             .await
             .unwrap();
 
         // The manager attached the journal, and the append rode through it write-ahead.
-        let journal_path = dir.join("journals").join("alice_pubkey.jnl");
+        let journal_path = dir.join("journals").join(format!("{root}.jnl"));
         assert_eq!(
             crate::record::journal::read_journal(&journal_path).unwrap(),
             vec![signed.bytes().to_vec()]
@@ -805,7 +833,7 @@ mod tests {
         // keystore) backfills the invariant on open.
         std::fs::remove_file(&journal_path).unwrap();
         let mgr2 = UserDbManager::new(&dir, temp_keystore(&dir), 8);
-        mgr2.get("alice_pubkey").await.unwrap();
+        mgr2.get(&root).await.unwrap();
         assert_eq!(
             crate::record::journal::read_journal(&journal_path).unwrap(),
             vec![signed.bytes().to_vec()],

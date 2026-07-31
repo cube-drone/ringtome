@@ -19,6 +19,7 @@ import {
     SpareKeyCeremony,
     NamePicker,
     JoinFlow,
+    FarewellScreen,
     PersonaHome,
     Profile,
     usePersonaName,
@@ -282,6 +283,9 @@ const Inside = ({ session }) => {
     }
     if (persona.state === 'join') {
         return stage(html`<${JoinFlow} persona=${persona} />`);
+    }
+    if (persona.state === 'farewell') {
+        return stage(html`<${FarewellScreen} persona=${persona} />`);
     }
     if (persona.state === 'none') {
         return stage(html`<${NullState} persona=${persona} />`);

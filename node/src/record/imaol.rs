@@ -56,6 +56,25 @@ pub async fn append(
     let author = key.verifying_key().to_bytes();
     let author_hex = hex::encode(author);
 
+    // A revoked key may read its era; it may not speak. The check is the local tree's own
+    // verdict about the SIGNER, at the one place every locally-authored entry passes -
+    // without it, a revoked node keeps writing entries the network refuses and its own next
+    // sweep evicts, a silent read-only limbo (field-found 2026-07-30; the farewell flow rides
+    // this refusal). Unknown stays allowed on purpose: genesis and a just-adopted leaf both
+    // write before the local tree can know them. Only an explicit revocation refuses.
+    if let Some(root_hex) = db.root() {
+        use ringtome_proto::crown::KeyStatus;
+        let tree = load_key_tree(db, root_hex).await?;
+        match tree.status(&author) {
+            KeyStatus::Retired | KeyStatus::Repudiated | KeyStatus::Invalid => {
+                return Err(AppError::RevokedSigner(
+                    "this computer's key is no longer part of the persona".into(),
+                ));
+            }
+            KeyStatus::Active | KeyStatus::Unknown => {}
+        }
+    }
+
     let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id).await? {
         Some((head_seq, head_hash, head_ts)) => (head_seq + 1, head_hash, head_ts),
         None => (0, ZERO_HASH, 0),

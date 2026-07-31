@@ -352,6 +352,65 @@ async function profileValue(fetch, root, field) {
         assert.ok(v5StillThere);
     });
 
+    it("a revoked computer discovers its fate: standing, refused writes, and the detach", async function () {
+        // The farewell flow's API half (2026-07-31): after its key is revoked, a
+        // well-intentioned node should DISCOVER that - standing in the persona list - refuse
+        // to keep signing (403 revoked-signer, not silent entries the network will refuse),
+        // and be able to let go (the node-local detach).
+        const alice = await makeUserFetch({ prefix: "farewell" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const aliceOnB = await makeUserFetch({ prefix: "farewellb", host: HOST_B });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+        const leaf = decodeCode(request.code).leaf_pubkey;
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        // A locks B out; B hears about it on its next sync.
+        await alice(`api/identity/${root}/keys/${leaf}/revoke`, {
+            method: "POST",
+            body: JSON.stringify({ disposition: "repudiation" }),
+        });
+        await aliceOnB(`api/identity/${root}/sync`, { method: "POST" });
+
+        // Discovery: the persona list carries this node's own standing.
+        const personasB = await (await aliceOnB("api/identity")).json();
+        assert.equal(personasB[0].standing, "repudiated", "B knows it was locked out");
+        const personasA = await (await alice("api/identity")).json();
+        assert.equal(personasA[0].standing, "active", "A is untouched");
+
+        // Refusal: a revoked key may read its era; it may not speak.
+        const write = await aliceOnB(`api/identity/${root}/profile`, {
+            method: "POST",
+            body: JSON.stringify({ field: "name", value: "GHOST" }),
+        });
+        assert.equal(write.status, 403);
+        const body = await write.json();
+        assert.equal(body.code, "revoked-signer", "the refusal is structurally identifiable");
+
+        // Reads still work - its era stays readable until it lets go.
+        const profile = await (await aliceOnB(`api/identity/${root}/profile`)).json();
+        assert.ok(Array.isArray(profile), "reading the era still works");
+
+        // The detach: back to being a computer with nobody in it.
+        const detached = await (
+            await aliceOnB(`api/identity/${root}/detach`, { method: "POST" })
+        ).json();
+        assert.equal(detached.detached, true);
+        assert.deepEqual(await (await aliceOnB("api/identity")).json(), [], "nobody lives here");
+    });
+
     it("serving is an act: no record until marked, a signed record after", async function () {
         const dhtDir = process.env.RINGTOME_TEST_DISCOVERY_DIR;
         if (!dhtDir) this.skip();

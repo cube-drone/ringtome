@@ -998,3 +998,24 @@ panels). Fix: open first, clear after - in the watcher and in `completeJoin` ali
 render guard in JoinFlow, because a transitional frame rendering nothing beats a crash.
 `harness/join.mjs` (promoted) drives the real NullState -> join -> grant -> arrival path and
 proves the tab lands on the open console within one poll tick.
+
+## The farewell: a revoked node learns to let go (2026-07-31)
+
+Field report: a revoked computer's UI carried on as if nothing had happened - a read-only
+ghost town where every save silently bounced at other nodes' gates (and, since the suffix
+sweep, evaporated locally on the next sync). The node HELD the fact of its own revocation the
+whole time - its gate had ingested the revocation and resolved the tree - it just never looked.
+
+Now it looks, at three layers. **Standing**: the persona list annotates each identity with
+this node's own leaf status, computed from the local crown. **Refusal**: `imaol::append` - the
+one place every locally-authored entry passes - refuses when the local tree says the signer is
+revoked (403, stable `code: "revoked-signer"`; the `Db` handle now knows its root, which is
+what lets the deepest layer ask an identity-scoped question). Unknown stays allowed on
+purpose: genesis and a just-adopted leaf both write before the tree can know them. **The
+farewell**: discovery at persona load or the moment a live tab's write bounces (net.js
+announces the code; persona.js listens), then a plain goodbye in the Computers screen's own
+vocabulary - "this computer has been locked out" / "has left the persona" - and one button
+that detaches (node-local unlink; the persona lives on everywhere else) and returns the node
+to "nobody lives here". Multi-persona ready: the list opens the first ACTIVE persona, so a
+future node agenting several simply drops the defunct one. Residuals ledgered: detach leaves
+the files on disk, and a passively-reading tab learns only at boot or on a failed write.

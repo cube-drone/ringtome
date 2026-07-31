@@ -23,6 +23,14 @@ export async function api(path, options = {}) {
     if (!res.ok) {
         const err = new Error(body.message || `request failed (${res.status})`);
         err.status = res.status;
+        // The server's structural discriminator, when it sent one (error.rs `code`). One code
+        // matters enough to announce globally: "revoked-signer" means this computer is no
+        // longer part of the persona - any surface can hit it mid-write, and the farewell
+        // flow (persona.js) listens rather than every caller learning to check.
+        err.code = body.code;
+        if (body.code === 'revoked-signer') {
+            window.dispatchEvent(new CustomEvent('ringtome:revoked-signer'));
+        }
         throw err;
     }
     return body;

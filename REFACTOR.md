@@ -41,6 +41,14 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
   member = loud flag whose remedy is a re-seal; completeness binds only the newest epoch
   (adoption re-seals are legitimately recipient-lists-of-one for historical epochs). Grows
   teeth the day any epoch seals to a second person (DMs); do it with the watcher above.
+- [ ] **Detach leaves the house furnished** (opened with the farewell flow, 2026-07-31):
+  `identity::detach` unlinks the account↔identity row and nothing else - the user database,
+  its journal, and the keystore's leaf/enc key files stay on disk, and peer bookkeeping may
+  keep background sync humming for an identity nobody agents. Harmless (disk and noise, not
+  correctness) but the farewell's "let it go" should eventually mean it: a janitor pass that
+  reclaims the files once no account references the identity, and sync loops that check
+  `is_agented`. Also worth then: a passive read-only tab discovers its revocation only at
+  boot or on a failed write - riding standing into the stream cursor would tell it live.
 - [ ] **Taxonomy rank rebalancing** (`record/rank.rs` module doc names it): ranks grow ~one
   digit per 18 appends / per same-spot insert hit; a bloated list is repaired by rewriting its
   ranks as a burst of ordinary LWW writes. Deferred until a real list bloats - machinery ahead

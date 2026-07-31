@@ -23,6 +23,12 @@ pub enum AppError {
     #[error("{0}")]
     Forbidden(String),
 
+    /// This node's own key for the identity has been revoked (retired or repudiated): it may
+    /// read its era, but every signing act is refused. Carries a stable `code` in the body so
+    /// the UI can tell "no longer you" from an ordinary 403 and start the farewell.
+    #[error("{0}")]
+    RevokedSigner(String),
+
     #[error("{0}")]
     NotFound(String),
 
@@ -45,6 +51,7 @@ impl AppError {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
+            AppError::RevokedSigner(_) => StatusCode::FORBIDDEN,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Unprocessable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
@@ -56,12 +63,20 @@ impl AppError {
 #[derive(Serialize)]
 struct ErrorBody {
     message: String,
+    /// A stable, machine-readable discriminator for the errors the UI must react to
+    /// structurally (not just display). Absent for ordinary errors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<&'static str>,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status();
         let message = self.to_string();
+        let code = match self {
+            AppError::RevokedSigner(_) => Some("revoked-signer"),
+            _ => None,
+        };
 
         // Server errors are worth an error-level log with the full chain; client errors are noise
         // at info level.
@@ -71,6 +86,6 @@ impl IntoResponse for AppError {
             tracing::info!(%status, %message, "request rejected");
         }
 
-        (status, Json(ErrorBody { message })).into_response()
+        (status, Json(ErrorBody { message, code })).into_response()
     }
 }

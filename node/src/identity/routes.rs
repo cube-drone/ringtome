@@ -34,6 +34,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
     Router::new()
         .route("/api/identity", post(create_handler))
         .route("/api/identity", get(list_handler))
+        .route("/api/identity/{root}/detach", post(detach_handler))
         .route(
             "/api/identity/{root}/profile",
             get(get_profile_handler).post(set_profile_handler),
@@ -218,13 +219,18 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
 struct IdentityInfo {
     root_pubkey: String,
     created_at_ms: i64,
+    /// This node's own standing in the persona's key tree ("active" | "retired" |
+    /// "repudiated" | ...) - how a well-intentioned node discovers it has been let go, and
+    /// what starts the UI's farewell.
+    standing: &'static str,
 }
 
-impl From<super::Identity> for IdentityInfo {
-    fn from(i: super::Identity) -> Self {
+impl IdentityInfo {
+    fn new(i: super::Identity, standing: &'static str) -> Self {
         Self {
             root_pubkey: i.root_pubkey,
             created_at_ms: i.created_at_ms,
+            standing,
         }
     }
 }
@@ -268,7 +274,30 @@ async fn list_handler(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<IdentityInfo>>, AppError> {
     let identities = super::list_for_account(&state.node_db, &session.account.id).await?;
-    Ok(Json(identities.into_iter().map(Into::into).collect()))
+    let mut out = Vec::with_capacity(identities.len());
+    for identity in identities {
+        let standing = super::standing(&state, &session.account.id, &identity.root_pubkey).await;
+        out.push(IdentityInfo::new(identity, standing));
+    }
+    Ok(Json(out))
+}
+
+#[derive(Serialize)]
+struct DetachResponse {
+    detached: bool,
+}
+
+/// Unlink a persona from this account on THIS node - node-local, nothing signed or synced.
+/// The farewell flow's last step (a revoked computer letting go), and the future
+/// multi-persona "drop this one" action. Deliberately not standing-gated: a user may detach
+/// a perfectly active persona from a node they no longer want agenting it.
+async fn detach_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<DetachResponse>, AppError> {
+    super::detach(&state.node_db, &session.account.id, &root).await?;
+    Ok(Json(DetachResponse { detached: true }))
 }
 
 #[derive(Deserialize)]
@@ -444,7 +473,8 @@ async fn adopt_complete_handler(
 ) -> Result<Json<IdentityInfo>, AppError> {
     let grant: super::adoption::GrantCode = super::adoption::unpack(&req.code, "grant code")?;
     let identity = super::adoption::complete(&state, &session.account.id, grant).await?;
-    Ok(Json(identity.into()))
+    // A just-adopted leaf is Active by construction; no need to resolve the tree to say so.
+    Ok(Json(IdentityInfo::new(identity, "active")))
 }
 
 /// Run a full exchange with every known peer of this identity. Per-peer failures are reported,
