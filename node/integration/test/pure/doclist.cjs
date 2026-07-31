@@ -4,9 +4,9 @@
 // reshuffles under the pointer on every mirror tick.
 const assert = require('node:assert');
 
-let orderDocs, tagCounts, byPinnedThenClaimed, appForStyle, DEFAULT_STYLE;
+let orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind, appForStyle, DEFAULT_STYLE;
 before(async () => {
-    ({ orderDocs, tagCounts, byPinnedThenClaimed } = await import('../../../js/pure/doclist.js'));
+    ({ orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind } = await import('../../../js/pure/doclist.js'));
     ({ appForStyle, DEFAULT_STYLE } = await import('../../../js/pure/apps.js'));
 });
 
@@ -58,6 +58,22 @@ describe('orderDocs', () => {
     it('is safe on no documents at all', () => {
         assert.deepEqual(orderDocs(undefined, {}), []);
         assert.deepEqual(orderDocs([], {}), []);
+    });
+
+    it('the kind dial: docs vs media, and unknown kinds mean everything', () => {
+        const mixed = [doc(1), doc(2, { media: { has_thumb: true } }), doc(3)];
+        assert.deepEqual(ids(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'docs' })), ['03', '01']);
+        assert.deepEqual(ids(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'media' })), ['02']);
+        assert.equal(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'all' }).length, 3);
+        assert.equal(orderDocs(mixed, { app: recipes(), bucket: 'recipes' }).length, 3, 'absent = all');
+        assert.equal(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'someday' }).length, 3,
+            'an unknown kind never empties the list');
+    });
+
+    it('the kind dial rotates all -> docs -> media -> all', () => {
+        assert.equal(nextSearchKind('all'), 'docs');
+        assert.equal(nextSearchKind('docs'), 'media');
+        assert.equal(nextSearchKind('media'), 'all');
     });
 });
 

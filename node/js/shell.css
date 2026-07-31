@@ -225,9 +225,19 @@ body {
 
 /* The search box: a top-level fixture next to the title, in the same spot across every app that
    offers it. Cream on the ink header, so it reads as an input, not a hole. */
-.app-header-search {
+/* The search box and its options funnel share the header's middle grid slot. `position:
+   relative` is the dropdown's anchor. */
+.app-header-search-box {
     grid-column: 2;
     justify-self: center;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    position: relative;
+}
+
+.app-header-search {
     width: 240px;
     max-width: 100%;
     min-width: 0;
@@ -238,6 +248,62 @@ body {
     font: inherit;
     font-size: 0.9rem;
     color: var(--ink);
+}
+
+/* The search-options dropdown: the funnel button tints while any dial is off its default. */
+.search-opts-btn {
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface);
+    border: 0;
+    border-radius: 6px;
+    padding: 0.35rem 0.4rem;
+    color: var(--faint);
+    cursor: pointer;
+}
+
+.search-opts-btn:hover {
+    color: var(--ink);
+}
+
+.search-opts-btn.active {
+    color: var(--sea);
+}
+
+.search-opts-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--paper);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.45rem 0.6rem;
+    box-shadow: 0 4px 14px var(--shadow-drop);
+    white-space: nowrap;
+}
+
+.search-opts-label {
+    color: var(--faint);
+    font-size: 0.85rem;
+}
+
+.search-opts-kind {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.25rem 0.6rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.search-opts-kind:hover {
+    border-color: var(--border-strong);
 }
 
 .app-header-search::placeholder {

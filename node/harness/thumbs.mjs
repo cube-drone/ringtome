@@ -36,6 +36,16 @@ for (let i = 0; i < 300; i++) {
 }
 console.log('ingest:', job && job.status);
 
+// File both docs inside a SECTION of the tree, so the dial's tree behavior is observable:
+// pages filter, the directory stays as scaffolding.
+const troot = await (await s.fetch(`/api/identity/${root}/taxonomies`, { method: 'POST', headers: J, body: JSON.stringify({ title: 'wiki:default' }) })).json();
+const sect = await (await s.fetch(`/api/identity/${root}/taxonomies`, { method: 'POST', headers: J, body: JSON.stringify({ title: 'stuff' }) })).json();
+await s.fetch(`/api/identity/${root}/taxonomies/${troot.taxonomy_id}/members/${sect.taxonomy_id}`, { method: 'PUT', headers: J, body: '{}' });
+const list0 = await (await s.fetch(`/api/identity/${root}/docs`)).json();
+for (const d of list0.docs) {
+    await s.fetch(`/api/identity/${root}/taxonomies/${sect.taxonomy_id}/members/${d.doc_id}`, { method: 'PUT', headers: J, body: '{}' });
+}
+
 const dom = await s.boot('/home/notes');
 const doc = dom.window.document;
 await waitFor(doc, () => doc.querySelectorAll('.note-row').length >= 2, 'both rows in the list');
@@ -46,4 +56,25 @@ const rows = [...doc.querySelectorAll('.note-row')].map((r) => ({
     kindIcon: !!r.querySelector('.note-row-kind'),
 }));
 console.log(JSON.stringify(rows, null, 2));
+
+// The kind dial (the funnel beside the search box): rotate through the three positions and
+// watch the list narrow - the mixed doc/media list above is exactly its test bed.
+const { click } = await import('./boot.mjs');
+const titles = () =>
+    [...doc.querySelectorAll('.note-row')].map((r) =>
+        (r.querySelector('.note-row-title-text') || r.querySelector('.note-row-title')).textContent.trim()
+    );
+click(dom.window, doc.querySelector('.search-opts-btn'));
+await waitFor(doc, () => doc.querySelector('.search-opts-kind'), 'the options dropdown');
+const dial = () => doc.querySelector('.search-opts-kind');
+const tree = () => ({
+    sections: doc.querySelectorAll('.tree-row-section').length,
+    pages: [...doc.querySelectorAll('.tree-row:not(.tree-row-section)')].length,
+});
+console.log('dial:', dial().textContent.trim(), '->', JSON.stringify(titles()), 'tree:', JSON.stringify(tree()));
+for (let i = 0; i < 3; i++) {
+    click(dom.window, dial());
+    await sleep(300);
+    console.log('dial:', dial().textContent.trim(), '->', JSON.stringify(titles()), 'tree:', JSON.stringify(tree()));
+}
 process.exit(0);

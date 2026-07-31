@@ -13,7 +13,7 @@ import { featuresOf, itemNoun } from '../pure/apps.js';
 
 const html = htm.bind(h);
 
-export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
+export const WikiApp = ({ app, current, docId, searchQuery, searchKind, bucket }) => {
     const root = current.root;
     // The shared documents-app spine (doc/docapp.js): the live documents, the open page and how to
     // change it, and the tree-reload bump a delete needs.
@@ -39,6 +39,7 @@ export const WikiApp = ({ app, current, docId, searchQuery, bucket }) => {
                     selected=${selected}
                     onSelect=${select}
                     searchQuery=${searchQuery}
+                    searchKind=${searchKind}
                     reloadKey=${treeReload}
                     onOrder=${setTreeOrder}
                     itemNoun=${itemNoun(app)}

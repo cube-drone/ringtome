@@ -30,6 +30,7 @@ import { JournalApp } from './apps/journal.js';
 import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
 import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
+import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { openMirror, useLive } from './mirror.js';
@@ -61,7 +62,41 @@ const NotFound = () => html`
 // view stays painted, so "looking that up" shows only on a cold deep link. The doc apps are
 // keyed by app id: same app reconciles (state holds), switching apps remounts (state resets -
 // deliberately, the per-app guards assume it).
-const SlugRoute = ({ current, searchQuery, bucket }) => {
+// The search-options dropdown: a funnel beside the search box holding the extra dials. Today
+// exactly one - the kind dial, a button that rotates "all files / only documents / only
+// media" - but the dropdown is the socket later options plug into. The funnel tints while any
+// dial is off its default, so a filtered list never looks mysteriously short.
+const SearchOptions = ({ kind, onKind }) => {
+    const [open, setOpen] = useState(false);
+    const boxRef = useRef(null);
+    // The usual dropdown contract: any press outside closes it (BucketSwitcher's idiom).
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e) => {
+            if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener('pointerdown', onDown);
+        return () => document.removeEventListener('pointerdown', onDown);
+    }, [open]);
+    return html`<span class="search-opts" ref=${boxRef}>
+        <button
+            class=${kind === 'all' ? 'search-opts-btn' : 'search-opts-btn active'}
+            title="more search options"
+            onClick=${() => setOpen((o) => !o)}
+        ><${Icons.filter} /></button>
+        ${open &&
+        html`<div class="search-opts-menu">
+            <span class="search-opts-label">show</span>
+            <button
+                class="search-opts-kind"
+                title="rotates: all files / only documents / only media"
+                onClick=${() => onKind(nextSearchKind(kind))}
+            >${SEARCH_KIND_LABELS[kind]}</button>
+        </div>`}
+    </span>`;
+};
+
+const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
     const loc = useLocation();
     // Async resolutions are TAGGED with the path they answered, and the last actually-PAINTED
     // view rides a ref. Both are load-bearing (field-tested 2026-07-29): a bare
@@ -119,6 +154,7 @@ const SlugRoute = ({ current, searchQuery, bucket }) => {
             current=${current}
             docId=${view.docId}
             searchQuery=${searchQuery}
+            searchKind=${searchKind}
             bucket=${bucket}
         />`;
     }
@@ -128,6 +164,7 @@ const SlugRoute = ({ current, searchQuery, bucket }) => {
         current=${current}
         docId=${view.docId}
         searchQuery=${searchQuery}
+        searchKind=${searchKind}
         bucket=${bucket}
     />`;
 };
@@ -172,9 +209,13 @@ const Inside = ({ session }) => {
     // apps (those with a `style`) offer search.
     const showSearch = !!(appHere && appHere.style);
     const [query, setQuery] = useState('');
+    // The kind dial rides the search state's lifecycle: chosen beside the box, cleared with
+    // it on app switch - a filter you set in Recipes shouldn't silently empty TurboNotes.
+    const [searchKind, setSearchKind] = useState('all');
     const appHereId = appHere ? appHere.id : null;
     useEffect(() => {
         setQuery('');
+        setSearchKind('all');
     }, [appHereId]);
 
     // The bucket in view, and the way to change it (buckets.js owns the state machine: the
@@ -237,13 +278,19 @@ const Inside = ({ session }) => {
                 />`}
             </span>
             ${showSearch &&
-            html`<input
-                class="app-header-search"
-                type="search"
-                placeholder="search…"
-                value=${query}
-                onInput=${(e) => setQuery(e.currentTarget.value)}
-            />`}
+            html`<span class="app-header-search-box">
+                <input
+                    class="app-header-search"
+                    type="search"
+                    placeholder="search…"
+                    value=${query}
+                    onInput=${(e) => setQuery(e.currentTarget.value)}
+                />
+                ${/* The journal is a single-kind stream (day entries are always prose), so
+                    the kind dial would be a knob that does nothing - no funnel there. */ ''}
+                ${!appHere.journal &&
+                html`<${SearchOptions} kind=${searchKind} onKind=${setSearchKind} />`}
+            </span>`}
             <span class="app-header-actions">
                 ${inDoc &&
                 html`<button
@@ -303,7 +350,7 @@ const Inside = ({ session }) => {
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
-            <${SlugRoute} default current=${persona.current} searchQuery=${query} bucket=${bucket} />
+            <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
         </${Router}>
     `;
     return inApp ? shell(routed) : stage(routed);

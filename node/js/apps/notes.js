@@ -208,7 +208,7 @@ const TagColumn = ({ cloud, active, onToggleTag, onTuck }) => html`<aside class=
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
 // `searchQuery`, not `query` - preact-iso's Router injects its OWN `query` prop (parsed URL search
 // params, an object), which would shadow a prop of that name and break the string search.
-export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
+export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }) => {
     const root = current.root;
     const feat = featuresOf(app);
     const noun = itemNoun(app); // what this app calls one of its things, and many of them
@@ -225,15 +225,15 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
     // The list: this app's scope, then the search hits, then every active tag, newest-claimed-date
     // first with pinned documents floating (pure/doclist.js holds the rules and their vectors).
     const hits = useSearch(root, searchQuery);
-    const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter });
+    const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter, kind: searchKind });
 
     const toggleTag = (tag) =>
         setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
 
-    // Counted over the SEARCH results rather than the tag-filtered list, so the cloud narrows with
-    // a query but still shows every tag you could add.
+    // Counted over the SEARCH results (query + kind dial) rather than the tag-filtered list, so
+    // the cloud narrows with a search but still shows every tag you could add.
     const tagCloud = feat.tagColumn
-        ? tagCounts(orderDocs(docs, { app, bucket, hits }))
+        ? tagCounts(orderDocs(docs, { app, bucket, hits, kind: searchKind }))
         : [];
 
     // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
@@ -351,6 +351,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, bucket }) => {
                           selected=${selected}
                           onSelect=${select}
                           searchQuery=${searchQuery}
+                          searchKind=${searchKind}
                           reloadKey=${treeReload}
                           showUnfiled=${false}
                           onMinimize=${() => toggleTuck('tree')}

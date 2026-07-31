@@ -5,18 +5,37 @@
 import { bucketHolds } from './apps.js';
 import { claimedMs } from './docdate.js';
 
+// The kind filter's dial, in rotation order: what a document IS - prose, or a media file (a
+// summary with `media` facts: image, video, audio). One extra search option today; the
+// dropdown it lives in is where later ones land.
+export const SEARCH_KINDS = ['all', 'docs', 'media'];
+export const SEARCH_KIND_LABELS = {
+    all: 'all files',
+    docs: 'only documents',
+    media: 'only media',
+};
+export const nextSearchKind = (kind) =>
+    SEARCH_KINDS[(SEARCH_KINDS.indexOf(kind) + 1) % SEARCH_KINDS.length];
+
+/// Does this summary pass the kind dial? A media file is a summary carrying `media` facts;
+/// everything else is prose. Unknown kinds behave as 'all' rather than emptying the list.
+export const kindHolds = (doc, kind) =>
+    kind === 'docs' ? !doc.media : kind === 'media' ? !!doc.media : true;
+
 /**
  * @param app    the app registry entry, which decides what its bucket holds
  * @param bucket the notebook on screen
  * @param hits   a Set of matching doc_ids, or null for "not searching" - null and an EMPTY set mean
  *               opposite things (no filter vs no results), which is why this isn't a plain array
  * @param tags   active tag filters, ANDed: a document must carry every one
+ * @param kind   the kind dial: 'all' (default) | 'docs' | 'media'
  */
-export function orderDocs(docs, { app, bucket, hits, tags } = {}) {
+export function orderDocs(docs, { app, bucket, hits, tags, kind } = {}) {
     return (docs || [])
         .filter((d) => bucketHolds(d, app, bucket))
         .filter((d) => !hits || hits.has(d.doc_id))
         .filter((d) => (tags || []).every((t) => (d.tags || []).includes(t)))
+        .filter((d) => kindHolds(d, kind))
         .sort(byPinnedThenClaimed);
 }
 

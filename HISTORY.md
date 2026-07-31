@@ -1038,3 +1038,22 @@ into `harness/boot.mjs`: the shared session jar, the jsdom boot, and a REAL WebS
 real under the harness, and every scenario script (drive, ui, join, state, and the new
 `thumbs.mjs` media probe) is a thin import of it. All five verified against live nodes after
 the refactor.
+
+## The kind dial: search grows its options dropdown (2026-07-31)
+
+A funnel button beside the search box opens the search-options dropdown - the socket future
+options plug into - holding, for now, exactly one dial: a button rotating **all files / only
+documents / only media**, an extra filter over the documents-app lists (TurboNotes and
+Recipes both, via the shared DocsApp). The predicate and rotation live in pure/doclist.js
+(`kind` is a fourth `orderDocs` filter beside bucket/hits/tags, with vectors; an unknown kind
+means "all" rather than an empty list), the dial narrows the tag cloud the same way a query
+does, the funnel tints while the dial is off "all" so a filtered list never looks
+mysteriously short, and the state rides the search lifecycle - cleared on app switch, so a
+filter set in Recipes can't silently empty TurboNotes. The dial reaches the TREE too (the
+wiki, and TurboNotes' tree column), riding the exact rail search already built: pages filter,
+sections stay as scaffolding - a directory empties, never vanishes - and a page whose facts
+aren't held locally passes rather than hiding. The journal shows no funnel at all: day
+entries are always prose, and a knob that does nothing is worse than no knob. Verified in the
+real UI by the harness's media probe: a real image beside a text note, filed into a tree
+section - rotate the dial, the list and tree pages narrow at each stop, the section count
+never moves.

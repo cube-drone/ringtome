@@ -16,6 +16,7 @@ import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.
 import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
 import { rootTitleFor } from '../pure/naming.js';
+import { kindHolds } from '../pure/doclist.js';
 import { docsInsideOnly, dropIndex, filedDocIds, flatDocs, pathToDoc, sectionIdsUnder }
     from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
@@ -66,6 +67,11 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     }, [isSelected]);
     if (ops.hits !== null && !ops.hits.has(id)) return null;
     const live = ops.byId.get(id);
+    // The kind dial filters pages exactly as search does - sections stay as scaffolding, so a
+    // directory never vanishes, only empties. A page whose facts we don't hold (dangling or
+    // not yet synced) passes: only a KNOWN wrong kind hides a row.
+    const facts = live || summary;
+    if (facts && !kindHolds(facts, ops.kind)) return null;
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
     // Media pages wear their kind (image/video/audio); text pages keep the page glyph.
     const icon =
@@ -302,6 +308,8 @@ const UnfiledBin = ({ unfiled, ops }) => {
  * @param onOrder      called with the depth-first doc order (the "book order") after each fetch
  * @param itemNoun     what the hosting app calls one of its things ("page", "note") - the tree grows
  *                     pages in a Wikibook and notes in TurboNotes, and says so
+ * @param searchKind   the kind dial ('all' | 'docs' | 'media'): filters page rows like search
+ *                     does, never sections
  */
 export const WikiTree = ({
     root,
@@ -309,6 +317,7 @@ export const WikiTree = ({
     selected,
     onSelect,
     searchQuery,
+    searchKind = 'all',
     reloadKey = 0,
     showUnfiled = true,
     onMinimize,
@@ -580,6 +589,7 @@ export const WikiTree = ({
         bucket,
         byId,
         hits,
+        kind: searchKind,
         folded,
         toggleFold,
         newPage,
