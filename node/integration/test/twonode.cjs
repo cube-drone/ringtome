@@ -245,6 +245,113 @@ async function profileValue(fetch, root, field) {
         assert.equal(treeAfter.keys.find((k) => k.pubkey === leaf).status, "repudiated");
     });
 
+    it("a genesis repudiation strikes the impostor without losing the survivor's words", async function () {
+        // The field scenario (2026-07-30): A and B share a notepad; a version chain runs
+        // good(A) <- good(A) <- good(A) <- bad(B) <- good(A); then A repudiates B with the
+        // genesis cut. B's version is struck - but A's final version survives ON A'S CHAIN,
+        // and never-lose-words says the resolved document must still carry A's text.
+        const alice = await makeUserFetch({ prefix: "goodbad" });
+        const created = await (await alice("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+
+        const aliceOnB = await makeUserFetch({ prefix: "goodbadb", host: HOST_B });
+        const request = await (
+            await aliceOnB("api/identity/adopt/begin", { method: "POST" })
+        ).json();
+        const leaf = decodeCode(request.code).leaf_pubkey;
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        const save = async (fetch, docId, body, parents) => {
+            const res = await fetch(`api/identity/${root}/docs/${docId}`, {
+                method: "PUT",
+                body: JSON.stringify({ title: "shared", body, parents, format: "plaintext" }),
+            });
+            assert.equal(res.status, 200);
+            return (await res.json()).version;
+        };
+        const sync = async () => {
+            const r = await (await alice(`api/identity/${root}/sync`, { method: "POST" })).json();
+            assert.ok(r.some((x) => x.ok), "the nodes can talk");
+        };
+
+        // The chain: three goods on A, one bad on B, one more good on A atop the bad.
+        const made = await (
+            await alice(`api/identity/${root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "shared", body: "good1", format: "plaintext" }),
+            })
+        ).json();
+        const doc = made.doc_id;
+        const v1 = made.version;
+        const v2 = await save(alice, doc, "good1\ngood2", [v1]);
+        const v3 = await save(alice, doc, "good1\ngood2\ngood3", [v2]);
+        await sync();
+        const v4 = await save(aliceOnB, doc, "good1\ngood2\ngood3\nbad", [v3]);
+        await sync();
+        const v5 = await save(alice, doc, "good1\ngood2\ngood3\nbad\ngood5", [v4]);
+
+        // Also the other two field observations: B defines a bucket and files A's doc in it,
+        // and B spawns a document that A then improves.
+        await aliceOnB(`api/identity/${root}/buckets`, {
+            method: "POST",
+            body: JSON.stringify({ name: "bs-bucket", app: "notes" }),
+        });
+        await aliceOnB(`api/identity/${root}/docs/${doc}/buckets/bs-bucket`, { method: "PUT" });
+        const bMade = await (
+            await aliceOnB(`api/identity/${root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "b-spawned", body: "b-genesis", format: "plaintext" }),
+            })
+        ).json();
+        await sync();
+        const aImprove = await save(alice, bMade.doc_id, "b-genesis\nplus-a", [bMade.version]);
+        assert.ok(aImprove, "A improved B's document");
+
+        // The strike: it was never B.
+        await alice(`api/identity/${root}/keys/${leaf}/revoke`, {
+            method: "POST",
+            body: JSON.stringify({ disposition: "repudiation", cut: "genesis" }),
+        });
+
+        // The shared doc on A: v4 is struck; v3 and v5 both survive as heads (v5's parent
+        // dangles - tolerated). Whatever shape resolution takes, A's words must be there.
+        const after = await (await alice(`api/identity/${root}/docs/${doc}`)).json();
+        assert.ok(after.body !== null && after.body !== "", "the resolved body is not empty");
+        assert.ok(
+            after.body.includes("good5"),
+            `A's final words survive the strike (got: ${JSON.stringify(after.body).slice(0, 200)})`
+        );
+        assert.ok(
+            after.body.includes("good3"),
+            "the pre-bad history is still present in the resolution"
+        );
+
+        // B's spawned doc: its genesis version is struck, but A's improvement is A's -
+        // signed by A, on A's chain - and must still be listed and readable.
+        const bDocAfter = await (
+            await alice(`api/identity/${root}/docs/${bMade.doc_id}`)
+        ).json();
+        assert.ok(
+            bDocAfter.body && bDocAfter.body.includes("plus-a"),
+            `A's improvement to B's doc survives (got: ${JSON.stringify(bDocAfter.body).slice(0, 200)})`
+        );
+        const list = await (await alice(`api/identity/${root}/docs`)).json();
+        const listedIds = list.docs.map((d) => d.doc_id);
+        assert.ok(listedIds.includes(doc), "the shared doc is still listed");
+        assert.ok(listedIds.includes(bMade.doc_id), "the B-spawned doc with A content is still listed");
+        const v5StillThere = v5; // silence nothing: v5 is the load-bearing survivor
+        assert.ok(v5StillThere);
+    });
+
     it("serving is an act: no record until marked, a signed record after", async function () {
         const dhtDir = process.env.RINGTOME_TEST_DISCOVERY_DIR;
         if (!dhtDir) this.skip();
