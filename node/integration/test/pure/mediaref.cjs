@@ -4,9 +4,9 @@
 // it lands in a path. Getting either wrong produces a document that renders as literal text.
 const assert = require('node:assert');
 
-let mediaReference;
+let mediaReference, decoratedBodyUrl;
 before(async () => {
-    ({ mediaReference } = await import('../../../js/doc/upload.js'));
+    ({ mediaReference, decoratedBodyUrl } = await import('../../../js/doc/upload.js'));
 });
 
 const ROOT = 'aabb';
@@ -62,5 +62,33 @@ describe('media reference', () => {
         // A name of only markup characters: the label legitimately empties, but a path segment
         // cannot, so the two fall back independently.
         assert.equal(ref({ name: '()' }), `![](${BASE}/file.avif)`);
+    });
+});
+
+describe('decoratedBodyUrl (the copyable byte URL)', () => {
+    it('derives the sniffable extension from the document format', () => {
+        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'avif', 'holiday snap'),
+            '/api/identity/aabb/docs/doc7/body/holiday_snap.avif');
+        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'webm', 'clip'),
+            '/api/identity/aabb/docs/doc7/body/clip.webm');
+        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'opus', 'song'),
+            '/api/identity/aabb/docs/doc7/body/song.ogg');
+        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'apng', 'loop'),
+            '/api/identity/aabb/docs/doc7/body/loop.apng');
+    });
+
+    it('drops a title s own extension before adding the real one', () => {
+        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'avif', 'photo.png'),
+            '/api/identity/aabb/docs/doc7/body/photo.avif');
+    });
+
+    it('degrades to the bare body URL for text formats', () => {
+        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'marquee', 'notes'),
+            '/api/identity/aabb/docs/doc7/body');
+    });
+
+    it('never emits an empty path segment', () => {
+        assert.equal(decoratedBodyUrl('aabb', 'doc7', 'avif', ''),
+            '/api/identity/aabb/docs/doc7/body/file.avif');
     });
 });

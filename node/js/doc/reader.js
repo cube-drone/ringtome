@@ -16,6 +16,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { useDocDetail } from './detail.js';
 import { Chip, NavChips } from './chips.js';
 import { MarqueeBody } from './marqueebody.js';
+import { decoratedBodyUrl } from './upload.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -41,8 +42,14 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
     const hydrated = useRef(false); // the body-retry loop refetches; hydrate the input ONCE
     const [showMeta, setShowMeta] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
+    // For a MEDIA document the useful link is the file itself: the decorated byte URL pastes
+    // straight into `![](…)` and renders (the cozy document address never can - the embed
+    // sniff needs the extension). Text documents keep the crosslink address.
+    const isMedia = doc && doc.format !== 'marquee' && doc.format !== 'plaintext';
     const copyLink = async () => {
-        const p = await slugPathFor(root, docId, bucket);
+        const p = isMedia
+            ? decoratedBodyUrl(root, docId, doc.format, doc.title)
+            : await slugPathFor(root, docId, bucket);
         if (!p) return;
         try {
             await navigator.clipboard.writeText(p);
@@ -110,7 +117,10 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
     if (error) return html`<div class="reader"><p class="form-error">${error}</p></div>`;
     if (!doc) return html`<div class="reader"><p class="null-sub">opening…</p></div>`;
 
-    const mediaUrl = `/api/identity/${root}/docs/${docId}/body`;
+    // The DECORATED byte URL, not the bare /body: right-click -> "copy image address" on the
+    // rendered media must yield a URL that re-embeds when pasted into a document, and the
+    // embed sniff reads the extension (upload.js, decoratedBodyUrl).
+    const mediaUrl = decoratedBodyUrl(root, docId, doc.format, doc.title);
     let body;
     if (doc.format === 'plaintext') {
         body = html`<pre class="reader-plain">${doc.body ?? '(body not on this computer yet)'}</pre>`;
@@ -158,6 +168,8 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                         on=${linkCopied}
                         title=${linkCopied
                             ? 'Copied!'
+                            : isMedia
+                            ? 'Copy the file’s address (paste it into a document as ![](…) to embed it)'
                             : 'Copy a link to this document (paste it into another document to crosslink)'}
                         onClick=${copyLink}
                     />

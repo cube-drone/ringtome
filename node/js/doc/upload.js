@@ -352,6 +352,23 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
  * Pure, and exported for its vectors: this builds a URL out of user-supplied filenames, so the
  * label and slug scrubbing are the interesting part.
  */
+/**
+ * The extension-carrying byte URL for a media DOCUMENT - the form every copyable surface
+ * should hand out. The marquee embed parser is pure and synchronous, so it classifies
+ * `![](url)` by sniffing the URL's extension: the bare `/body` form serves the same bytes
+ * but can never render when pasted back into a document (field-found 2026-07-31 - a
+ * copied image address wouldn't re-embed). The name is decorative and ignored by the
+ * server; the extension is what the sniff needs, derived from the document's own format
+ * (what the crush actually emitted).
+ */
+export function decoratedBodyUrl(root, docId, format, title) {
+    const base = `/api/identity/${root}/docs/${docId}/body`;
+    const ext = { avif: 'avif', apng: 'apng', webm: 'webm', opus: 'ogg' }[format];
+    const slug =
+        (title || 'file').replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
+    return ext ? `${base}/${slug}.${ext}` : base;
+}
+
 export function mediaReference({ root, format, mimeType, docId, name }) {
     const base = `/api/identity/${root}/docs/${docId}/body`;
     const t = mimeType || '';

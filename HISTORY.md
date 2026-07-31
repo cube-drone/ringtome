@@ -1080,3 +1080,23 @@ shows in many places, but an /all link always means the everything-view. Field-v
 the harness probe: bucket labels, big thumbs, the stable /all URL, and a follow-me-home that
 landed on `/home/shots/bowie` - the official cozy address, minted by machinery that predates
 the feature.
+
+## Copyable, pasteable, portable: the byte-URL round trip (2026-07-31)
+
+Field report: copy an image's address out of the reader, paste it into a document as
+`![](url)`, nothing renders. Two defects hiding in one papercut. First, the reader was the
+one surface handing out the BARE `/body` URL - and the marquee embed parser is pure and
+synchronous, so it classifies embeds by sniffing the URL's extension; the bare form serves
+the bytes fine and can never render. The reader now renders (and therefore copy-address now
+yields) the decorated form via `decoratedBodyUrl` - extension derived from the document's own
+format, title as decoration - so the round trip works. Second, the copied URL was ABSOLUTE
+(`http://localhost:5281/...`): correct today, wrong the moment the persona is read anywhere
+else. Now every editing surface relativizes pasted self-URLs at paste time (never at save
+time, where a rewrite would move text under the cursor): CodeMirror's clipboardInputFilter on
+the interactive surface (which the journal shares), a text-only onPaste on the editor's
+textarea modes that lets file pastes fall through to the upload capture. The self-test is
+`location.origin` - complete because the SPA only ever talks to the node that served it; a
+URL copied under one of the node's OTHER names passes through untouched, the honest boundary.
+`pure/portable.js` holds the transform and its vectors. The full ingest-on-embed machinery
+(external URLs baked into local blobs) remains 4M's, as planned - a same-node reference needs
+no ingest, just a relative path.

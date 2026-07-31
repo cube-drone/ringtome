@@ -15,6 +15,7 @@ import htm from 'htm';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { stripSelfOrigin } from '../pure/portable.js';
 import { autocompletion } from '@codemirror/autocomplete';
 import { marquee } from '@cube-drone/marquee-codemirror';
 
@@ -83,6 +84,12 @@ export const LiveMarquee = ({
                     EditorView.domEventHandlers({
                         blur: () => hooks.current.onBlur && hooks.current.onBlur(),
                     }),
+                    // Pasted absolute self-URLs arrive as their portable relative form
+                    // (pure/portable.js) - the transform happens at paste, never under the
+                    // user's cursor at save time.
+                    EditorView.clipboardInputFilter.of((text) =>
+                        stripSelfOrigin(text, window.location.origin)
+                    ),
                 ],
             }),
         });

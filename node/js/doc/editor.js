@@ -29,6 +29,7 @@ import { LiveMarquee } from './livemarquee.js';
 import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture } from './upload.js';
+import { stripSelfOrigin } from '../pure/portable.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
 import { slugPathFor } from './address.js';
 import { featuresOf } from '../pure/apps.js';
@@ -272,6 +273,21 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
         value=${body}
         onInput=${(e) => {
             setBody(e.currentTarget.value);
+            touched();
+        }}
+        onPaste=${(e) => {
+            // Pasted absolute self-URLs land in their portable relative form (the interactive
+            // surface does the same via CodeMirror's clipboard filter). Text only, and only
+            // when the transform changes something - file pastes and ordinary text fall
+            // through untouched, so the upload capture upstream still gets its turn.
+            const text = e.clipboardData && e.clipboardData.getData('text/plain');
+            if (!text) return;
+            const fixed = stripSelfOrigin(text, window.location.origin);
+            if (fixed === text) return;
+            e.preventDefault();
+            const ta = e.currentTarget;
+            ta.setRangeText(fixed, ta.selectionStart, ta.selectionEnd, 'end');
+            setBody(ta.value);
             touched();
         }}
         onBlur=${save}
