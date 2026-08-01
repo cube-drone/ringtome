@@ -1206,3 +1206,14 @@ the everything-view labeled with their journal's name. The `!` media picker foll
 the journal's own attachments, not TurboNotes'. Verified live across all three surfaces: the
 journal shows the entry and not the record, All shows both labeled `journal`, TurboNotes shows
 neither.
+
+## Two nodes, one browser, one cookie jar (2026-08-01)
+
+Field report confirmed as diagnosed: logging into localhost:5281 logged the user out of
+localhost:5282, because browsers scope cookies by HOST alone - never by port - so the two
+nodes fought over a single `ringtome_session` cookie on the shared `localhost` jar. The fix
+puts the port where the browser refuses to: in the cookie's NAME
+(`ringtome_session_<port>`), so each node reads and writes only its own and the jars coexist.
+Proven with a browser-faithful shared jar: log into A, log into B, and A's session survives -
+`ringtome_session_5297` and `ringtome_session_5296` side by side where one clobbered the
+other before. Sessions in dev browsers invalidate once (the cookie was renamed); log in again.

@@ -8,7 +8,7 @@ use axum::{Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::{Deserialize, Serialize};
 
-use super::extractor::{AdminSession, NodeAdminSession, Session, SESSION_COOKIE};
+use super::extractor::{session_cookie_name, AdminSession, NodeAdminSession, Session};
 use super::{
     account_by_username, add_tag, delete_session, has_tag, is_username_taken, login, register,
     remove_tag, tags_for, TAG_NODE_ADMIN,
@@ -65,8 +65,8 @@ struct UsernameAvailability {
 
 /// Build the session cookie. HttpOnly and SameSite=Lax; Secure is omitted so it works over plain
 /// HTTP on localhost (a node behind TLS terminates upstream). Path=/ so it covers the whole API.
-fn session_cookie(token: String) -> Cookie<'static> {
-    Cookie::build((SESSION_COOKIE, token))
+fn session_cookie(token: String, port: u16) -> Cookie<'static> {
+    Cookie::build((session_cookie_name(port), token))
         .http_only(true)
         .same_site(SameSite::Lax)
         .path("/")
@@ -202,7 +202,7 @@ async fn login_handler(
         .await?
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("session vanished after creation")))?;
 
-    let jar = jar.add(session_cookie(token));
+    let jar = jar.add(session_cookie(token, state.config.port));
     Ok((
         jar,
         Json(AccountInfo {
@@ -216,13 +216,14 @@ async fn logout_handler(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
-    if let Some(cookie) = jar.get(SESSION_COOKIE) {
+    let name = session_cookie_name(state.config.port);
+    if let Some(cookie) = jar.get(&name) {
         delete_session(&state.node_db, cookie.value())
             .await
             .map_err(AppError::Internal)?;
     }
     // Clear the cookie regardless.
-    Ok(jar.remove(Cookie::from(SESSION_COOKIE)))
+    Ok(jar.remove(Cookie::from(name)))
 }
 
 async fn whoami_handler(session: Session) -> Json<AccountInfo> {

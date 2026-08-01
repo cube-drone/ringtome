@@ -15,8 +15,14 @@ use crate::config::Tenancy;
 use crate::error::AppError;
 use crate::AppState;
 
-/// Name of the cookie carrying the opaque session token.
-pub const SESSION_COOKIE: &str = "ringtome_session";
+/// Name of the cookie carrying the opaque session token - suffixed with the node's PORT,
+/// because browsers scope cookies by host alone, never by port: two nodes on one host (the
+/// localhost:5281/5282 dev pair, or any self-hosted stack) otherwise fight over a single
+/// cookie, and each login logs the other node out (field-found 2026-08-01). Distinct names
+/// let the jars coexist; a node only ever reads its own.
+pub fn session_cookie_name(port: u16) -> String {
+    format!("ringtome_session_{port}")
+}
 
 /// An authenticated session. Currently just wraps the account; identity scoping attaches later.
 #[derive(Debug, Clone)]
@@ -48,7 +54,7 @@ impl FromRequestParts<AppState> for Session {
             .map_err(|_| AppError::Unauthorized("no cookies".into()))?;
 
         let token = jar
-            .get(SESSION_COOKIE)
+            .get(&session_cookie_name(state.config.port))
             .map(|c| c.value().to_string())
             .ok_or_else(|| AppError::Unauthorized("not logged in".into()))?;
 
