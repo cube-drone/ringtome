@@ -99,14 +99,22 @@ const MEDIA_KIND = { avif: 'image', apng: 'image', webm: 'video', opus: 'audio' 
 /// The `!` picker, also a factory: a searchable list of the bucket's MEDIA (images, video,
 /// audio). Picking fills the whole embed - `![title](…/body/name.ext)`, the byte-URL form
 /// with the extension the renderer's kind sniff needs (the same reference uploads and drags
-/// write), so the media renders inline immediately. Pops on a bare `!` (word characters keep
-/// it filtering; a space folds it - "wow! " never holds it open) and on the `![` opener; no
-/// `validFor`, so the region re-derives per keystroke as `!` grows into `![`.
+/// write), so the media renders inline immediately. A bare `!` pops only at the START of a
+/// line (leading whitespace allowed): everywhere else it's ordinary punctuation, and Enter
+/// with the picker open ACCEPTS - "Hello!" then a newline once embedded a donut (field-found
+/// 2026-08-01). The explicit `![` opener still pops anywhere, because typing markdown's own
+/// embed syntax is never an accident. No `validFor`, so the region re-derives per keystroke
+/// as `!` grows into `![`.
 export function mediaCompletions(root, bucket) {
     return async (context) => {
         const word = context.matchBefore(/!(\[[^\]\n]*|[\w-]*)$/);
         if (!word) return null;
-        const prefixLen = word.text.startsWith('![') ? 2 : 1;
+        const explicit = word.text.startsWith('![');
+        if (!explicit) {
+            const line = context.state.doc.lineAt(word.from);
+            if (context.state.sliceDoc(line.from, word.from).trim() !== '') return null;
+        }
+        const prefixLen = explicit ? 2 : 1;
         const docs = await openMirror(root).docs.toArray();
         const options = docs
             .filter((d) => MEDIA_EXT[d.format])

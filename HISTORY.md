@@ -1228,3 +1228,13 @@ day: locale-awareness is the superior design (right rendering for every locale, 
 pop-up, mobile keyboards, accessibility, zero code we own), and the display order is properly
 the reader's machine's business, not the app's. Anyone who wants ISO order sets their OS
 region format to one that renders it. The stored form was ISO throughout and never moved.
+
+## "Hello!" is not a donut (2026-08-01)
+
+The media picker popped on a bare `!` anywhere in the text, and Enter with a picker open
+ACCEPTS - so typing "Hello!" and pressing Enter for a new line embedded the top media match
+instead. A bare `!` is ordinary punctuation nearly everywhere; it now only means "media" at
+the start of a line (leading whitespace allowed). The explicit `![` opener still pops
+anywhere, because typing markdown's own embed syntax is never an accident. One guard in
+`mediaCompletions` (doc/completions.js); the `:` emoji and `[` link pickers are untouched -
+their trigger characters don't end sentences.
