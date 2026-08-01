@@ -23,8 +23,9 @@ export const isOpen = (entry, seals, todayKey) => {
 };
 
 /// An entry belongs to this journal when it is filed in the bucket AND holds text. The format test
-/// is what keeps loose media records out of the stream: an embedded image files its record into
-/// TurboNotes, but even one that lands in this bucket some other way is not an entry.
+/// is what keeps loose media records out of the stream - and it is load-bearing now that an
+/// embedded image files its record into the journal's OWN bucket (2026-08-01): attachments live
+/// with their journal, invisible here, findable in the everything-view.
 const isEntry = (d, bucket) =>
     (d.buckets || []).includes(bucket) && (d.format === 'plaintext' || d.format === 'marquee');
 

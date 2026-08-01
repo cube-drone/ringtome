@@ -1193,3 +1193,16 @@ each carried their own membership filter and one had drifted (the media picker s
 catch-all clause; the classic second-copy finding) - both now share one `inBucket`. Vectors
 updated to pin the new law; field-verified: a never-filed stray appears nowhere in TurboNotes'
 home and exactly once in All.
+
+## Journal attachments come home (2026-08-01)
+
+The other half of the teleporting-image mystery: journal attachments were DELIBERATELY filed
+into TurboNotes' home ("findable as documents"), a decision documented only where users can't
+read it - a code comment - and experienced as documents materializing in the wrong app. Now
+they file into the journal's OWN bucket: attachments live with their journal, the stream stays
+clean because daybook's `isEntry` format test already kept media records out (its comment now
+records that the test is load-bearing rather than defensive), and the records are findable in
+the everything-view labeled with their journal's name. The `!` media picker follows: it offers
+the journal's own attachments, not TurboNotes'. Verified live across all three surfaces: the
+journal shows the entry and not the record, All shows both labeled `journal`, TurboNotes shows
+neither.

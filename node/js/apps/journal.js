@@ -18,7 +18,6 @@ import { useSearch, queryWords } from '../search.js';
 import { useDocSession } from '../doc/session.js';
 import { useUploadCapture } from '../doc/upload.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from '../doc/completions.js';
-import { DEFAULT_STYLE } from '../pure/apps.js';
 import { Annotations } from '../doc/annotations.js';
 import { dayKey, entryMs, isOpen, journalStack } from '../pure/daybook.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
@@ -83,13 +82,15 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
     // Where the caret last sat in THIS entry (the marquee reports every move) - so a dropped or
     // pasted image lands where you were writing, not at the end.
     const caret = useRef(null);
-    // Drop-and-paste uploads, via the shared capture hook. The bucket is DELIBERATELY not the
-    // journal's: media records file into TurboNotes' home, where they're findable as documents -
-    // the journal shows finished entries, never loose image records. The embed lands here in
-    // the entry either way (the reference is by id, bucket-independent).
+    // Drop-and-paste uploads, via the shared capture hook. Attachments file into the
+    // JOURNAL'S OWN bucket (settled 2026-08-01: they live with their journal; the All view is
+    // where loose records are found) - and the stream stays clean because daybook's `isEntry`
+    // format test keeps media records out of it. Before this they filed into TurboNotes'
+    // home, which read as documents teleporting between apps. The embed in the entry works
+    // either way: the reference is by id, bucket-independent.
     const up = useUploadCapture({
         root,
-        bucket: DEFAULT_STYLE,
+        bucket,
         intoTree: false,
         format: s.format,
         body: s.body,
@@ -134,7 +135,7 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
                     emojiCompletions,
                     linkCompletions(root, bucket),
                     // `!` searches TurboNotes' home - where journal-borne media records live.
-                    mediaCompletions(root, DEFAULT_STYLE),
+                    mediaCompletions(root, bucket),
                 ]}
                 onInput=${(text) => {
                     s.setBody(text);
