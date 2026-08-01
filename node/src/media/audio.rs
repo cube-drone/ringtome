@@ -702,31 +702,39 @@ fn crush_via_decode(
     // floor-rate encode that still overflows is honestly too long. Field-found 2026-07-31:
     // long files used to land a few percent OVER and die downstream at the document cap.
     for _ in 0..3 {
-        let (bytes, out_duration_ms, channels, waveform_avif) =
-            encode_pass(input, max_ms, duration_ms, bitrate_bps, progress)?;
-        if bytes.len() as u64 <= cap_bytes {
+        let pass = encode_pass(input, max_ms, duration_ms, bitrate_bps, progress)?;
+        if pass.bytes.len() as u64 <= cap_bytes {
             return Ok(Crushed {
-                bytes,
-                duration_ms: out_duration_ms,
-                channels,
+                bytes: pass.bytes,
+                duration_ms: pass.duration_ms,
+                channels: pass.channels,
                 bitrate_bps,
                 passthrough: false,
-                waveform_avif,
+                waveform_avif: pass.waveform_avif,
             });
         }
         if bitrate_bps <= FLOOR_BITRATE_BPS {
             return Err(CrushError::TooLong(format!(
                 "even the floor bitrate overflows the byte cap ({} > {cap_bytes} bytes)",
-                bytes.len()
+                pass.bytes.len()
             )));
         }
         let scaled =
-            u64::from(bitrate_bps).saturating_mul(cap_bytes) / (bytes.len().max(1) as u64);
+            u64::from(bitrate_bps).saturating_mul(cap_bytes) / (pass.bytes.len().max(1) as u64);
         bitrate_bps = ((scaled * 98 / 100) as u32).max(FLOOR_BITRATE_BPS);
     }
     Err(CrushError::TooLong(
         "could not fit under the byte cap after re-encoding lower".into(),
     ))
+}
+
+/// What one encode pass produces - [`Crushed`] before the fit-the-cap loop has settled the
+/// bitrate it will stamp on the final one.
+struct EncodedPass {
+    bytes: Vec<u8>,
+    duration_ms: u64,
+    channels: u8,
+    waveform_avif: Option<Vec<u8>>,
 }
 
 /// One full decode → resample → encode → mux pass at a fixed bitrate. Split from
@@ -737,7 +745,7 @@ fn encode_pass(
     duration_ms: u64,
     bitrate_bps: u32,
     progress: &(dyn Fn(u8) + Sync),
-) -> Result<(Vec<u8>, u64, u8, Option<Vec<u8>>), CrushError> {
+) -> Result<EncodedPass, CrushError> {
     // Progress rides the decode loop (decode and encode stream together here): frames
     // processed over frames expected, reported in ≥2% steps, capped at 99 so "done" is the
     // caller's word, never the estimator's.
@@ -788,7 +796,12 @@ fn encode_pass(
     let out_duration_ms = encoded.total_samples.saturating_mul(1_000) / u64::from(OPUS_SAMPLE_RATE);
     let bytes = mux_ogg_opus(&encoded, stages.out_channels as u8)?;
     let waveform_avif = Some(stages.waveform.render()?);
-    Ok((bytes, out_duration_ms, stages.out_channels as u8, waveform_avif))
+    Ok(EncodedPass {
+        bytes,
+        duration_ms: out_duration_ms,
+        channels: stages.out_channels as u8,
+        waveform_avif,
+    })
 }
 
 /// Downmix interleaved source channels to at most two. Mono and stereo pass straight through.

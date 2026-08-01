@@ -1278,3 +1278,23 @@ construction, and a visible affordance besides. Upstream half ledgered in NEXT_S
 hand-typing an empty pair still bricks the closing `]` until plan() skips empty inline spans.
 Diagnosed end-to-end with harness/pickers.mjs probes - the tooltip DOM said "open, selected",
 the keydown said "unhandled", and the uncaught RangeError between them told the story.
+
+## The conflict that spoke two dialects (2026-08-01)
+
+Field report: a Marquee merge conflict came out half-dressed - `:::conflict` scaffolding on
+the first half, raw `=======`/`>>>>>>>` on the second. Root cause: the two-head Marquee
+presentation re-parsed diffy's marked TEXT with a line state machine, and a content line
+that merely LOOKS like a marker inside a disputed hunk (your own `=======` underline, or
+markers a criss-cross virtual base let surface) is undecidable from the text - the machine
+switched sides at the lookalike, and the real separator fell through as literal git syntax.
+The fix deletes the state machine: two-head Marquee conflicts now render from merge
+STRUCTURE via `align_heads` + `render_segments`, the same engine the N-way path has trusted
+since 2026-07-25 - lookalike lines are just content there, and the misparse is impossible by
+construction, not by cleverness. Plaintext keeps diffy's marked output verbatim (markers ARE
+its vocabulary; the ambiguity is git's own native hazard). Violation planted:
+`marker_lookalike_content_inside_a_hunk_stays_content` failed against the old code with the
+field symptom reproduced verbatim, passes now; every previously-pinned conflict shape
+(two-head, N-way, criss-cross, per-hunk boundaries) survived the engine swap untouched.
+Also swept while lint was red: the orphaned no-progress `crush` wrapper is `#[cfg(test)]`
+now (production always wants the meter), and audio's `encode_pass` returns a named
+`EncodedPass` instead of a four-way tuple.

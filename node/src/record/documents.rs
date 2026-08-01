@@ -1310,54 +1310,6 @@ fn variant_open(v: &Version, names: &BTreeMap<[u8; 32], String>) -> String {
     )
 }
 
-/// Per-hunk Marquee conflicts (amended 2026-07-25): diffy's marker lines become `:::conflict`
-/// / `:::variant` vocabulary at the same line boundaries, so non-overlapping edits stay merged
-/// and only the disputed hunks wear scaffolding - the whole-document presentation was a cure
-/// worse than the disease. The accepted risk, stated: a hunk boundary can split a multi-line
-/// block element, leaving a fragment inside a version block that fails the strict parse; the
-/// clients degrade to showing source (honest, lossless), and resolution happens in the write
-/// tab regardless. A line state machine, not blind replace: marker lines are only special in
-/// the states diffy emits them from, so a user's own "=======" line outside a conflict is
-/// left alone.
-fn hunk_conflict_directives(
-    marked: &str,
-    a: &Version,
-    b: &Version,
-    names: &BTreeMap<[u8; 32], String>,
-) -> String {
-    #[derive(PartialEq)]
-    enum State {
-        Outside,
-        Ours,
-        Theirs,
-    }
-    let mut state = State::Outside;
-    let mut out = String::new();
-    for line in marked.lines() {
-        match (&state, line) {
-            (State::Outside, "<<<<<<< ours") => {
-                out.push_str(":::conflict\n");
-                out.push_str(&variant_open(a, names));
-                state = State::Ours;
-            }
-            (State::Ours, "=======") => {
-                out.push_str("::: variant\n");
-                out.push_str(&variant_open(b, names));
-                state = State::Theirs;
-            }
-            (State::Theirs, ">>>>>>> theirs") => {
-                out.push_str("::: variant\n::: conflict\n");
-                state = State::Outside;
-            }
-            _ => {
-                out.push_str(line);
-                out.push('\n');
-            }
-        }
-    }
-    out
-}
-
 /// One stretch of an N-way merge: lines every head agrees on, or a region where two-plus
 /// heads propose different text.
 enum Segment {
@@ -1755,6 +1707,14 @@ pub async fn resolve(
     // Clean = every line from both sides present, nobody asked anything. Overlap presents the
     // conflict per-hunk - inline markers for plaintext, `:::conflict`/`:::variant` vocabulary
     // for Marquee (its markers-are-vocabulary is the whole reason we split the formats).
+    //
+    // The Marquee presentation is built from merge STRUCTURE (align_heads segments - the same
+    // engine the N-way path trusts), never by re-parsing diffy's marked text: a content line
+    // that LOOKS like a marker inside a disputed hunk (the user's own "=======", or markers a
+    // criss-cross virtual base let surface) is undecidable from the text, and the old line-
+    // state-machine translation switched sides at the lookalike, leaving half the conflict in
+    // git dialect (field-found 2026-08-01). Plaintext keeps diffy's marked output verbatim -
+    // markers ARE its vocabulary, and the same ambiguity is git's own native hazard there.
     match merge_lines(&base, &text_a, &text_b) {
         Ok(merged) => Ok(ResolvedDoc {
             resolution: Resolution::Merged,
@@ -1768,7 +1728,10 @@ pub async fn resolve(
                 Format::Plaintext => marked
                     .replace("<<<<<<< ours", &format!("<<<<<<< {}", side_label(a, names)))
                     .replace(">>>>>>> theirs", &format!(">>>>>>> {}", side_label(b, names))),
-                Format::Marquee => hunk_conflict_directives(&marked, a, b, names),
+                Format::Marquee => {
+                    let segments = align_heads(&base, &[text_a.as_str(), text_b.as_str()]);
+                    render_segments(format, &segments, &[a, b], names)
+                }
                 Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
                     unreachable!("media never reaches text merge")
                 }
@@ -2621,6 +2584,86 @@ mod tests {
         assert!(
             body.contains("*blue*") && body.contains("*green*"),
             "both sides' words present"
+        );
+    }
+
+    /// The mixed-dialect trap (field-found 2026-08-01: "the first half of the conflict wore
+    /// `:::conflict`, the second half wore `=======`/`>>>>>>>`"): a content line that LOOKS
+    /// like a marker, sitting inside a disputed hunk, is undecidable from diffy's marked TEXT
+    /// - a `=======` of the user's own in the ours side reads exactly like the separator, the
+    /// translation switches sides early, and the real separator then falls through as
+    /// literal git syntax. The presentation must therefore be built from merge STRUCTURE,
+    /// never re-parsed from marker text. Both sides carry the trap so the assertion holds
+    /// whichever side house order makes "ours".
+    #[tokio::test]
+    async fn marker_lookalike_content_inside_a_hunk_stays_content() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        let doc_id = new_doc_id();
+        let m = Format::Marquee;
+        let v1 = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![],
+            "t",
+            b"intro\nalpha\ntail\n",
+            m,
+        )
+        .await;
+        let _a = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"intro\nTitle A\n=======\nchanged A\ntail\n",
+            m,
+        )
+        .await;
+        let _b = save_fmt(
+            &db,
+            &key,
+            &keys,
+            &files,
+            doc_id,
+            vec![v1],
+            "t",
+            b"intro\nTitle B\n=======\nchanged B\ntail\n",
+            m,
+        )
+        .await;
+
+        let r = resolve_doc(&db, &keys, &files, &doc_id).await;
+        assert_eq!(r.resolution, Resolution::Conflict);
+        let body = r.body.unwrap();
+        assert!(body.contains(":::conflict"), "marquee vocabulary:\n{body}");
+        assert!(
+            !body.contains("<<<<<<<") && !body.contains(">>>>>>>"),
+            "no git markers in a marquee doc:\n{body}"
+        );
+        // The discriminator: each side's heading, lookalike line, and edit stay TOGETHER in
+        // one variant - no directive seam may split them, which is exactly what the old
+        // text-reparsing translation did at the lookalike.
+        for side in ["A", "B"] {
+            let start = body.find(&format!("Title {side}")).unwrap();
+            let end = body.find(&format!("changed {side}")).unwrap();
+            assert!(
+                start < end && !body[start..end].contains(":::"),
+                "side {side}'s lines were split across variants:\n{body}"
+            );
+        }
+        assert_eq!(
+            body.matches("=======").count(),
+            2,
+            "both lookalike lines survive as content, none consumed, none synthesized:\n{body}"
         );
     }
 

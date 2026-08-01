@@ -64,11 +64,9 @@ impl std::fmt::Display for CrushError {
 
 impl std::error::Error for CrushError {}
 
-/// The one door. Sniff an upload and route it to the still-image, video, or audio lane, returning a
-/// uniform [`Ingested`]. Animated images route to the VIDEO lane (transparency there decides APNG
-/// vs AV1-WebM). A non-image that is not a WebM is handed to the audio lane, which sniffs it itself
-/// and errors cleanly on garbage. Every lane re-decodes and re-encodes - laundering - so nothing
-/// here trusts the incoming bytes.
+/// [`crush_with_progress`] without a sink - the tests' door. Production always wants the
+/// meter, so the ingest worker calls the progress form directly and this stays test-only.
+#[cfg(test)]
 pub fn crush(bytes: &[u8]) -> Result<Ingested, CrushError> {
     crush_with_progress(bytes, &|_| {})
 }
@@ -78,8 +76,12 @@ pub fn crush(bytes: &[u8]) -> Result<Ingested, CrushError> {
 /// encoder reports from its scoped worker threads.
 pub type Progress<'a> = &'a (dyn Fn(u8) + Sync);
 
-/// [`crush`], reporting progress. The image lane never reports (it's quick); audio reports
-/// through its decode loop; video through its per-frame encoders.
+/// The one door. Sniff an upload and route it to the still-image, video, or audio lane, returning a
+/// uniform [`Ingested`]. Animated images route to the VIDEO lane (transparency there decides APNG
+/// vs AV1-WebM). A non-image that is not a WebM is handed to the audio lane, which sniffs it itself
+/// and errors cleanly on garbage. Every lane re-decodes and re-encodes - laundering - so nothing
+/// here trusts the incoming bytes. The image lane never reports progress (it's quick); audio
+/// reports through its decode loop; video through its per-frame encoders.
 pub fn crush_with_progress(bytes: &[u8], progress: Progress) -> Result<Ingested, CrushError> {
     match image::detect(bytes) {
         image::Detected::Still => image::crush(bytes)
