@@ -1217,3 +1217,14 @@ puts the port where the browser refuses to: in the cookie's NAME
 Proven with a browser-faithful shared jar: log into A, log into B, and A's session survives -
 `ringtome_session_5297` and `ringtome_session_5296` side by side where one clobbered the
 other before. Sessions in dev browsers invalidate once (the cookie was renamed); log in again.
+
+## The date field stays native (2026-08-01)
+
+Examined and declined: replacing the claimed-date control's native `<input type="date">` with
+a yyyy/mm/dd text field. The mm/dd/yyyy it shows is not our formatting - the native widget
+renders in the BROWSER'S locale and ignores everything the page says about format - and a
+first pass traded the widget for a text field that owned the dialect. Walked back the same
+day: locale-awareness is the superior design (right rendering for every locale, calendar
+pop-up, mobile keyboards, accessibility, zero code we own), and the display order is properly
+the reader's machine's business, not the app's. Anyone who wants ISO order sets their OS
+region format to one that renders it. The stored form was ISO throughout and never moved.
