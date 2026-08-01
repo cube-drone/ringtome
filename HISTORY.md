@@ -1161,3 +1161,21 @@ readout. Verified live: three racing uploads showed positions 0/1/2 shrinking as
 drained and each processing meter climbing 0→92 in order. The browser-encode path is
 jsdom-unprobeable (no MediaRecorder there) - an event listener and a loop callback, verified
 by read and lint.
+
+## The repudiation compact: what documents do after the strike (2026-07-31)
+
+Field report: "a complex history, then repudiated a device to the nub - it FELT like some
+stuff may have been lost, but I didn't keep good track going in." The new
+`integration/test/repudiation.cjs` IS the good track, kept permanently: it builds one
+composite world - five documents with interleaved authorship (A-only, B-only, A→B→A linear,
+B-created-A-improved, a live divergence), buckets and filings and tags from both devices, a
+taxonomy tree with a section and a placement from each - strikes B with the genesis cut, and
+asserts the entire surviving shape on BOTH nodes, plus rebuild-from-journal invariance and a
+no-document-resolves-empty sweep. Every behavior held on the first run: A's ends of a linear
+chain survive as a two-head conflict around B's dangling middle; a B-created doc survives AS
+A's improvement; a live divergence RESOLVES when the other branch was the impostor's; A's
+placement of B's dead doc degrades to a dangling reference; and a document only B ever
+touched vanishes entirely - pinned explicitly as the CORRECT loss, so the next person who
+feels like something went missing can read exactly what was supposed to. The now-cut
+companion pins the contrast: everything synced before the strike survives whole; the cut
+closes the future, not the past.
