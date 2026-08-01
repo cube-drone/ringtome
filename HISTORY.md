@@ -1179,3 +1179,17 @@ touched vanishes entirely - pinned explicitly as the CORRECT loss, so the next p
 feels like something went missing can read exactly what was supposed to. The now-cut
 companion pins the contrast: everything synced before the strike survives whole; the cut
 closes the future, not the past.
+
+## Strays move out: the everything-view becomes the one home for the unfiled (2026-08-01)
+
+"Wait, unbucketed files end up in TurboNotes?" They did - a deliberate pre-All catch-all in
+`bucketHolds` ("something has to hold them"), which quietly mingled strike-orphans and script
+strays into someone's actual home notebook, indistinguishable from things they filed there.
+With All shipped as the formal home for the unfiled, the clause retired: membership IS the
+rule now, a notebook shows what's in it, and the unbucketed appear only in the
+everything-view, labeled "unfiled". Follow-me-home agrees: an unbucketed document's official
+home is All itself. The sweep also caught the rule's SECOND copy - the link and media pickers
+each carried their own membership filter and one had drifted (the media picker still had the
+catch-all clause; the classic second-copy finding) - both now share one `inBucket`. Vectors
+updated to pin the new law; field-verified: a never-filed stray appears nowhere in TurboNotes'
+home and exactly once in All.

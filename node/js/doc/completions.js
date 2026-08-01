@@ -8,9 +8,14 @@
 import { nameToEmoji } from 'gemoji';
 
 import { openMirror } from '../mirror.js';
-import { DEFAULT_STYLE } from '../pure/apps.js';
 import { slugPathFor } from './address.js';
 import { slugify, MEDIA_EXT } from '../pure/naming.js';
+
+/// Plain membership - the app rule (`bucketHolds`) mirrored for the pickers, ONE copy for
+/// both (the link and media pickers each carried their own and one drifted - the second copy
+/// was the finding). The unbucketed live only in the everything-view now (settled 2026-08-01),
+/// so no picker offers strays.
+const inBucket = (d, bucket) => (d.buckets || []).includes(bucket);
 
 // Built once: every gemoji as a completion - the label is the marquee source form (`:smile:`,
 // what filling inserts; marquee renders it via the profile's emoji table), the detail shows
@@ -52,12 +57,7 @@ export function linkCompletions(root, bucket) {
         }
         const docs = await openMirror(root).docs.toArray();
         const options = docs
-            .filter(
-                (d) =>
-                    (d.buckets || []).includes(bucket) ||
-                    // The default app's home gathers unbucketed docs - the app rule, mirrored.
-                    (bucket === DEFAULT_STYLE && !(d.buckets || []).length)
-            )
+            .filter((d) => inBucket(d, bucket))
             .map((d) => {
                 const label = (d.title || 'untitled').replace(/[[\]()]/g, '') || 'untitled';
                 const isText = d.format === 'plaintext' || d.format === 'marquee';
@@ -110,11 +110,7 @@ export function mediaCompletions(root, bucket) {
         const docs = await openMirror(root).docs.toArray();
         const options = docs
             .filter((d) => MEDIA_EXT[d.format])
-            .filter(
-                (d) =>
-                    (d.buckets || []).includes(bucket) ||
-                    (bucket === DEFAULT_STYLE && !(d.buckets || []).length)
-            )
+            .filter((d) => inBucket(d, bucket))
             .map((d) => {
                 const label = (d.title || 'untitled').replace(/[[\]()]/g, '') || 'untitled';
                 return {

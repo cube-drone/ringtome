@@ -81,7 +81,7 @@ export function useBucketChoice({ root, appHere, roster, cozyBucketRow, docSegme
         correctedFor.current = deepDoc;
         const names = row.buckets || [];
         if (names.includes(bucket)) return; // the current bucket already holds it
-        if (!names.length) return; // unbucketed: the default app's home gathers it
+        if (!names.length) return; // unbucketed: only the everything-view holds it; no notebook to switch to
         const target = names.find((n) => appTypeOf(n, roster) === appHere.style);
         if (target) switchBucket(target);
         // eslint-disable-next-line react-hooks/exhaustive-deps

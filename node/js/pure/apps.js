@@ -175,19 +175,16 @@ export function bucketsForApp(app, roster) {
 
 /// Does this app, showing this bucket, hold that document?
 ///
-/// Membership is most of it - a document is in view when it's a member of the notebook on screen.
-/// The extra clause is the catch-all: the DEFAULT app's home bucket also gathers UNBUCKETED
-/// documents, because they resolve to the default type and something has to hold them. That clause
-/// is self-guarding, which is why every documents app can share this one predicate: for Recipes or
-/// the Wikibook, `app.style !== DEFAULT_STYLE`, so it reduces to plain membership. (The wiki app
-/// used to hand-roll the membership half and silently lacked the catch-all - correct only because
-/// it is never the default app.)
+/// Membership IS the rule: a document is in view when it's a member of the notebook on screen,
+/// and the everything-view holds everything. The unbucketed live ONLY in the everything-view
+/// (labeled "unfiled" there) - that surface is the formal home for strays, and it retired the
+/// old catch-all clause that quietly mingled them into TurboNotes' home notebook (settled
+/// 2026-08-01; the default-app clause predated All, when "something has to hold them" had
+/// nowhere better to point).
 export function bucketHolds(doc, app, bucket) {
     if (!doc || !app) return false; // nothing holds a document that isn't there
     if (app.everything) return true; // the everything-view: all notebooks, plus the unbucketed
-    const names = doc.buckets || [];
-    if (names.includes(bucket)) return true;
-    return bucket === app.style && app.style === DEFAULT_STYLE && names.length === 0;
+    return (doc.buckets || []).includes(bucket);
 }
 
 /// Which app opens a bucket of this style - the default app when the style has no live app.
@@ -202,10 +199,10 @@ export const appForStyle = (style) =>
     liveApps.find((a) => a.style === DEFAULT_STYLE);
 
 /// A document's OFFICIAL home: the app that opens its first bucket (resolved through the
-/// roster), or the default app for the unbucketed. What the everything-view's follow-me-home
-/// button navigates to - the router's deep-link correction then picks the right notebook,
-/// because the document itself knows which buckets hold it.
+/// roster) - and the unbucketed's official home IS the everything-view, since nothing else
+/// holds them anymore. What the follow-me-home button navigates to; the router's deep-link
+/// correction then picks the right notebook, because the document knows which buckets hold it.
 export const homeAppFor = (doc, roster) => {
     const first = ((doc && doc.buckets) || [])[0];
-    return first ? appForStyle(appTypeOf(first, roster)) : appForStyle(DEFAULT_STYLE);
+    return first ? appForStyle(appTypeOf(first, roster)) : appById('all');
 };

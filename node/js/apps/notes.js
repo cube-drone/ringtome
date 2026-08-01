@@ -243,7 +243,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter, kind: searchKind });
 
     // The everything-view's follow-me-home: route to the document's OFFICIAL app (first
-    // bucket's type, via the live roster; unbucketed goes to the default app) - the deep-link
+    // bucket's type, via the live roster; unbucketed stays home in All) - the deep-link
     // bucket correction picks the right notebook once there, because the doc knows its own.
     const loc = useLocation();
     const roster = useLive(() => (app.everything ? openMirror(root).buckets.toArray() : []), [root]);

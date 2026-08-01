@@ -119,14 +119,13 @@ describe('app registry', () => {
             assert.equal(bucketHolds({ buckets: ['other'] }, wiki(), 'wiki'), false);
         });
 
-        it('gathers UNBUCKETED documents into the default app s home, and only there', () => {
+        it('UNBUCKETED documents live ONLY in the everything-view (settled 2026-08-01)', () => {
+            // The old catch-all put them in TurboNotes' home; All is the formal home for
+            // strays now, labeled "unfiled", so no ordinary notebook quietly mingles them.
             const orphan = { buckets: [] };
-            assert.equal(bucketHolds(orphan, notes(), DEFAULT_STYLE), true);
-            // Not the default app: the catch-all clause is self-guarding, which is why one
-            // predicate serves every documents app.
+            assert.equal(bucketHolds(orphan, notes(), DEFAULT_STYLE), false);
             assert.equal(bucketHolds(orphan, wiki(), 'wiki'), false);
-            // The default APP, but not its home bucket.
-            assert.equal(bucketHolds(orphan, notes(), 'some-other-notebook'), false);
+            assert.equal(bucketHolds(orphan, appById('all'), undefined), true);
         });
 
         it('is safe on a missing document or app', () => {
@@ -149,11 +148,12 @@ describe('app registry', () => {
             assert.equal(homeAppFor({ buckets: ['wiki'] }, []).id, 'wiki', 'implicit names too');
         });
 
-        it('routes the unbucketed (and the unknown) to the default app', () => {
-            assert.equal(homeAppFor({ buckets: [] }, []).id, 'notes');
-            assert.equal(homeAppFor({}, []).id, 'notes');
+        it('routes the unbucketed HOME to the everything-view, the unknown to the default app', () => {
+            assert.equal(homeAppFor({ buckets: [] }, []).id, 'all',
+                'nothing else holds a stray anymore');
+            assert.equal(homeAppFor({}, []).id, 'all');
             assert.equal(homeAppFor({ buckets: ['mystery'] }, []).id, 'notes',
-                'an unregistered bucket resolves to the default type');
+                'an unregistered bucket still resolves to the default type');
         });
     });
 

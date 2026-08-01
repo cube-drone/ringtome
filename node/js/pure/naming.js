@@ -72,7 +72,9 @@ export function bucketFor(seg, roster) {
 }
 
 /// The bucket a document's path is built under: the notebook in view when the document is really
-/// in it, else the document's first, else the default app's home (which gathers the unbucketed).
+/// in it, else the document's first, else the default style (a last-resort head for a doc
+/// with no better witness - the truly unbucketed live in the everything-view, whose /all URLs
+/// never take the cozy form at all).
 /// The shell reads this to know whose tree to fetch; `buildSlugPath` reads it to build the head.
 /// One definition, because a disagreement between those two produces a path that cannot resolve.
 export const bucketNameFor = (row, bucket) => {
@@ -80,9 +82,9 @@ export const bucketNameFor = (row, bucket) => {
     // An EMPTY bucket list is ambiguous: genuinely unbucketed, or a fresh row whose filing
     // write hasn't echoed yet ("+ new recipe" is create-then-file, and the mirror can stream
     // the row between the two). The screen the caller is on is the better witness, so a
-    // passed bucket wins the tie - and the legit unbucketed case is unharmed, because
-    // `bucketHolds` only ever shows a truly unbucketed doc in the default app's home, where
-    // the passed bucket already IS the default. Without this, the re-dress minted a
+    // passed bucket wins the tie - and the legit unbucketed case is unharmed, because a
+    // truly unbucketed doc is only ever VIEWED in the everything-view, whose /all URLs never
+    // reach this builder (the re-dress is suppressed there). Without this, the re-dress minted a
     // default-headed path mid-race and silently teleported the user into TurboNotes
     // (field-found 2026-08-01).
     if (bucket && (names.includes(bucket) || names.length === 0)) return bucket;
