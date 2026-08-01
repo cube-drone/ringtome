@@ -8,8 +8,9 @@ full report in [HISTORY.md](HISTORY.md).
 
 ## Where we are
 
-The sequential ladder (M0-M3.5) is complete; delivery reports with their design notes are in
-HISTORY.md.
+The sequential ladder (M0-M3.5) is complete, and so - in substance - is Tier 4's client track:
+the cozy OS boots, and the notes app inside it is a real product. Delivery reports with their
+design notes are in HISTORY.md; the ledger here is deliberately one line per era.
 
 - **M0 — the skeleton** (done): Axum node, accounts/sessions, keystore, per-identity DBs, test rig.
 - **M1 — entries that sign** (2026-07-06): canonical CBOR, signed chains, LWW profile, published
@@ -22,375 +23,173 @@ HISTORY.md.
   mainline), dial-by-key everywhere.
 - **Private chains** (2026-07-08): epoch keys, sealed membership, member-proven sync - Tier 5's
   prerequisite, pulled forward.
-- **The store layer** (2026-07-08): the data map + typed CRDT handles; application code stopped
-  touching chains directly.
-- **Doctrine interlude + license** (2026-07-09 → 07-14): NOTES_APP.md born, slugs/address-bar
-  designed, groups sketched; AGPL-3.0.
-- **The file layer + CI** (2026-07-15): encrypted content-addressed bodies over iroh-blobs
-  (holding the hash is the capability); CI runs `just ci` verbatim.
-- **Versioned documents** (2026-07-15 → 07-17): the notes lane - stable `doc_id`, version DAG,
-  keep-both divergence, per-format merge with conflicts presented in-document.
-- **Media ingest** (2026-07-18 → 07-20): the async quarantine → transcode pipeline; AVIF
-  stills, WebM video/audio through one crush, thumbnails and micro-previews.
-- **Crown hardening** (2026-07-20): revocation anchors enforced by hash - sealed-prefix-as-unit
-  crediting, seal-or-nothing admission, proven-forgery eviction.
-- **The substrate** (2026-07-20 → 07-21): Turso with at-rest encryption, the raw-entry journal,
-  persisted materialized views with per-chain watermarks.
-- **The embedded UI** (2026-07-21): the Preact SPA baked into the binary; `just start`.
-- **Mainline field test** (2026-07-22): the real DHT touched - publish/resolve/adopt/re-sync,
-  same-box; `just mainline-smoke` + dispatch-only action.
-- **Background sync + eager push** (2026-07-22): sync stopped being manual - debounced eager
-  push plus periodic anti-entropy, epidemic relay across the peer graph.
-- **Annotations - the doc-meta chain** (2026-07-22): service 7; per-doc fields and tags on
-  `PrivatePlain`, both read directions, the `doc_heads` docs-list memo. Completes the
-  data-layer rewrite sequence (substrate → doc-meta → materializer).
-- **Taxonomies, v1 lists** (2026-07-22): ordered document lists as per-element ranked facts
-  (`tax:` collections, fractional ranks, roster existence); place-is-add-and-move over HTTP.
-- **Taxonomy trees as composition** (2026-07-23): nesting a list in a list IS the tree -
-  local cycle refusal at `place`, visited-set stubs in the tree read, the `parent` slot and
-  its fold-time cycle rule retired unused. The published form is still designed-ahead.
-- **The front door** (2026-07-23): node login + registration in the embedded UI - cookie
-  sessions, live username availability, cozy language. First 4C rung past hello-world.
-- **Device names** (2026-07-23): keys carry private human labels ("macbook-curtis", never
-  fingerprints) - the `devices` register collection, node names from config/hostname, birth
-  writes at creation and adoption, names joined into the keys endpoint.
-- **Personas in the UI** (2026-07-23 → 07-24): the null state ("Nobody lives here yet"), the
-  create flow with the minimal spare-key moment (secret shown once, download, confirm gate),
-  the name picker (pre-filled with the account username, skippable), auto-open of the first
-  persona, the persona badge in the bar. "Persona" confirmed as the UI's single taught
-  concept; the account never gets a noun.
-- **Password floor follows the bind address** (2026-07-24): loopback-only nodes accept short
-  PINs (physical access is the gate there); any network-facing bind keeps 8+ regardless of
-  tenancy; unparseable binds fail closed.
-- **Spare-key password reset, Flow A scratch** (2026-07-24): the seed as reset factor -
-  designated-recovery-key-only, uniform refusals, session purge, "lost your password?" on the
-  front door. Scoping split by account shape: single-persona resets in place (keeps the
-  sign-in name); multi-persona **re-homes** the proven persona into a fresh account, old
-  account untouched. Challenge signing / rotation / cooling-off stay owed. Proven tree-level
-  by the two-node test: the day-one spare key rescues accounts on any node that is the persona.
-- **Adoption in the UI** (2026-07-24): the null state's second door ("bring your persona from
-  another computer") and the "your computers" screen ("invite this computer to be you") -
-  request/grant codes over the M3 ceremony, key tree rendered with device names and roles.
-  Identity wiring in the UI is complete: create, name, recover, re-home, adopt.
-- **One-trip adoption** (2026-07-24): the grant travels by wire (dedicated adopt ALPN,
-  channel pinned to the requested endpoint, no bearer secrets), carried code demoted to
-  fallback, completion idempotent. One human trip; the persona "walks in on its own."
-- **Codes wear a costume** (2026-07-24): `rt1.` + base64url(deflate(JSON)) - opaque,
-  ~40% shorter, envelope-versioned, QR-ready. The gubbins are gone.
-- **Junior grants** (2026-07-24): the M3 root-only trim un-trimmed - any Active key extends
-  the tree (`Crown::usurper_stamp_for_new_child`, any depth), so invitations daisy-chain and
-  rank paths record who vouched for whom. Three-node harness (`alpha`/`bravo`/`charlie`) +
-  `just start_three`; proven by daisychain.cjs end to end. The keys endpoint returns
-  responsibility order (lexicographic rank paths: root, spare, then each inviter directly
-  above its invitees), and "your computers" indents by depth to show the chain.
-- **The live cache, Stage 1** (2026-07-24 → 07-25): the read-only WebSocket stream + Dexie
-  mirror - whole-kind refreshes, frontier-fingerprint cursor (match → live, doubt →
-  snapshot), mirror dropped on logout, badge reads live (a rename on any computer lands in
-  every browser in seconds). Shadow overlay ships with the notes editor. The 4C order is now:
-  ~~login~~ → ~~identity management~~ → ~~stream + mirror~~ → **notes**.
-- **Notes v0** (2026-07-25): two columns and honesty - every document newest-first off the
-  live mirror, "+ new item", and a read-only reader consuming the synthesized body (format
-  dispatched: pre / Marquee / media; divergence shows inline for free). The marquee demo page
-  retired; its renderer now earns real work.
-- **The editor** (2026-07-25): all four NOTES_APP client obligations live - debounced
-  autosave (idle/blur/tab-hide/switch), head-check via the live mirror (clean → fast-forward,
-  dirty → fork knowingly), conflicts edited in-document as the resolution, tangles start
-  clean. The buffer IS the shadow overlay; the status chip is the unsynced indicator's first
-  rung. Marquee write/preview tabs over the real renderer; format conversion as an ordinary
-  save (the no-op bounce learned to respect format - a review-caught silent-swallow bug).
-- **The body lane, both sides** (2026-07-25): field testing's first dragon - the sync
-  responder never fetched bodies, so diverged editors "cleared" each other (null body poured
-  into the textarea). Responder now dials back and backfills after every serving exchange;
-  the editor treats null bodies as a waiting room ("on its way…", editing disabled, retry).
-  Proven by bodies.cjs including the reported stale-tab scenario verbatim.
-- **The oblivious editor + named conflict sides** (2026-07-25): the lookout now watches head
-  count and diverged flag, not just the display head (whichever device's save WAS the display
-  head never noticed the fork); conflict labels speak device names - "from alpha, 2026-07-25
-  03:12" - honoring NOTES_APP's "from your phone, yesterday 9pm". Shell widened to 1100px
-  for the notes app alone.
-- **The recursive base** (2026-07-25): a raced resolution anywhere in a document's history
-  (criss-cross - two maximal fork points) no longer degrades every future fork to a
-  whole-document conflict. Git's recursive strategy, bounded: fork points merge over their
-  own base into a virtual base, conflicted virtuals included (markers cancel against sides
-  that agree). Genuinely ambiguous histories keep the conservative degradation.
-- **Merge shakedown triple** (2026-07-25): fork points sorted by the house total order (a
-  HashSet iteration was a convergence bug - devices could synthesize different tangles);
-  all resolver merges unified on git's plain ours/theirs style (closes the virtual-base
-  marker leak through diff3's base section); and the three-day phantom flake caught and
-  killed - `temp_dir()`'s pid+nanos collided under parallel load, two db tests shared a
-  directory. Atomic counter now; ledger entry retired. TEMPORARY debug button in the editor
-  dumps a document's full DAG as JSON (remove after the thorny-merge era).
-- **The chip learns two words** (2026-07-25): a clean read-time merge shows calm green
-  "merged" (the DAG honestly holds two heads until the next save seals the weave - merges
-  are never auto-committed, by anti-criss-cross design); red "conflict" is reserved for
-  genuine overlap ("diverged" retired to the engine room, per the Cozyweb mapping). Field
-  dump confirmed the recursive base handling a live criss-cross invisibly - the machinery's
-  first production save.
-- **Marquee conflicts go per-hunk** (2026-07-25): diffy's marker lines become `:::conflict` /
-  `:::variant` vocabulary at line boundaries - cleanly-merged regions survive, only disputed
-  hunks wear scaffolding. Accepted risk (spec'd in NOTES_APP): a hunk splitting a multi-line
-  element fails the strict parse; the reader degrades to showing source. Whole-variant blocks
-  remain the degraded form for three-plus heads / no fork point.
-- **The lookout learns about raced resolutions; `:::variant` gets its real name** (2026-07-25):
-  two devices resolving the same fork left one browser oblivious (its own save was the display
-  pick; every watched scalar unchanged while the head set rotated). The lookout's judgment is
-  now a pure tested predicate (`js/lookout.js`, scars documented) with the new clause
-  "linear-in-here + diverged-out-there → reload". Same report caught the conflict vocabulary
-  emitting `:::version` where Marquee shipped `:::variant` - renamed, `when` now quoted civil
-  time (rendered verbatim), NOTES_APP's upstream-or-host open question closed as upstreamed.
-- **Caret memory** (2026-07-25): all editing surfaces share one per-document caret memory -
-  mode switches and doc revisits restore cursor + scroll. Session/tab-local by judgement
-  (module Map, not Dexie prefs: carets are working state, not choices; cross-tab storage
-  would make tabs fight).
-- **Side-by-side scroll sync** (2026-07-25): the renderer's MarqueeHandle API, finally used -
-  source cursor centers + outlines its rendered node; clicking a rendered node puts the
-  cursor on its source span; echo guard against the select-event bounce. The pattern is the
-  react-renderer demo's, ported whole.
-- **Document bucketing (server side)** (2026-07-26): buckets - which project/notebook a doc
-  lives in - as the tag mechanism in a *separate* namespace (`bucket:` beside `annot:`), so
-  they're the axis search and tags are scoped to and never pollute the tag cloud. Name-keyed
-  membership (place/remove/of/own_docs_in), joined onto the docs mirror row like tags. Plus a
-  tiny **registry**: one LWW register `name -> app-type` (which app opens a notebook; also lets
-  an empty bucket exist), NOT a Taxonomy and not a document. `define`/`undefine` + `POST/DELETE
-  /buckets`; the roster (`{name, app, members}`) streams as a new mirror kind. No new SQL table
-  (reuses the doc-meta private sets/registers).
-- **App styles + implicit bucket scoping** (2026-07-26): a client app registry (`apps.js`) with
-  a `style` per app; Recipes is a second live app. A bucket whose NAME is an app-type IS that
-  type (eponymous, no registry row); `appTypeOf` resolves name -> style -> registry -> default.
-  `DocsApp` scopes its list to docs whose buckets resolve to its style (unbucketed -> the default
-  app's catch-all), and files new docs into the app's eponymous bucket. Search/tags now filter
-  within the app. Owed next: managing/switching *multiple* notebooks within an app (a modal),
-  bucket chips on rows, and distinct per-app layouts (a recipe card grid, a journal river).
-- **The console + client-side routing** (2026-07-25): opening a persona lands on an application
-  launcher (one tile, Notes, for now) instead of straight into notes; the console knows an app
-  only as a registry tile (`js/console.js`). preact-iso routing wired under `/home` - `/home`
-  console, `/home/notes[/<doc_id>]` the app (selected doc lives in the URL), `/home/computers`
-  the system view; `/` bounces to `/home`, kept free for the API / a future public face. Design
-  rules recorded in PROJECT_PLAN: internal URLs are session-relative and identity-free
-  (identity-in-the-URL = "shareable"); a persona/doc slug is a publishing prerequisite, not a
-  routing one. Buckets/views get their route shape when built.
-- **Live-cache stream nudged** (2026-07-25): the stream's 1s cursor poll now also wakes on a
-  local write (the write-nudge, upgraded from a single-waiter `Notify` to a `()` broadcast so
-  many sockets can subscribe). Title/annotation edits reflect in the list in a round-trip
-  instead of up to a tick - the "internal broadcast bus" Stage-1 refinement, delivered because
-  it showed in a profile. The tick stays as the backstop; nudging is pure latency.
-- **Annotations UI + tag-filter** (2026-07-25): the editor gained a panel to set a document's
-  description and tags (the two per-doc annotations; title is a header field, separate), and
-  the notes list filters by tag, stacking with search (search stays a filter over the current
-  view, not a ranked results screen - Curtis's preference). Design call, mid-build: annotations
-  are **joined onto the `docs` list row at the stream boundary**, not baked into the persisted
-  `doc_heads` table - `doc_heads` is the notes-chain resolution memo, annotations fold from a
-  different chain, and joining in `gather` (one `annotation_map` helper, shared by the HTTP
-  list/tagged/tree handlers) gives the filter-ready mirror row without coupling two folds.
-  Client writes optimistically (tag overlay clears on echo; description is a shadow buffer).
-- **Turbolinks unfurl** (2026-07-25): every Marquee surface now runs a shared turbolink
-  chain - marquee-turbolink's fetchless plugins (YouTube/Spotify/media) plus a Ringtome
-  OpenGraph plugin backed by `GET /api/unfurl` (the node fetches; browsers can't, CORS).
-  The endpoint's safety envelope, both halves tested: SSRF guard (public-addresses-only per
-  redirect hop, connection pinned to the vetted address) and a global token bucket
-  (`RINGTOME_UNFURL_RATE_PER_MIN`, default 30 - per NODE, so many-user nodes raise it) so a
-  node can't be turned into an attack on a foreign server.
-  Privacy call recorded as deliberate: unfurling private-note links reveals interest to
-  target sites - accepted.
-- **Editor modes + Marquee as the front door** (2026-07-25): write/preview tabs became four
-  view modes (interactive / side by side / plaintext / read only; modes are a view choice,
-  format a document property - each format offers what it can render, and defaults follow).
-  Interactive is `@cube-drone/marquee-codemirror`'s live preview - plain source with styling
-  projected on, so the save/lookout/conflict machinery is untouched. New items default to
-  Marquee.
-- **The write nudge** (2026-07-25): locally-signed writes ring the eager loop's doorbell
-  (`Db::nudge_sync` through `imaol::append`, the one funnel - only local writes sign), plus
-  debounce 3000→750ms and eager tick 2s→1s. Write-to-peer floor drops ~5-7s → ~1s; relays
-  deliberately stay on the lazy tick (the anti-ping-pong damping). The integration suite
-  halved its wall clock as a side effect. The UI's 10s autosave deliberately untouched -
-  that's version thrift, waiting on retention, not sync pacing.
-- **Three-plus heads merge per-hunk** (2026-07-25): the N-way alignment - fork points
-  generalized to head sets; a single shared fork point lets every head diff against it, with
-  overlapping edit runs grouped into disputed regions (one variant per distinct proposal) and
-  disjoint edits weaving fully clean (previously false-conflicted). Whole-document degradation
-  survives only for head sets with no single fork point or a missing base body.
+- **The data layer** (2026-07-08 → 07-22): the store layer's typed CRDT handles, the file layer
+  (encrypted content-addressed bodies; the hash is the capability), versioned documents with
+  keep-both divergence, the media crush pipeline (AVIF/APNG/WebM/Opus), the Turso substrate with
+  journal + materialized views, doc-meta annotations, taxonomies and trees as composition.
+- **Identity in the UI** (2026-07-23 → 07-24): the front door, personas with the spare-key
+  moment, one-trip adoption, junior grants (invitations daisy-chain), device names, password
+  reset (Flow A scratch + re-homing), codes in QR-ready costume.
+- **The live cache + the notes flagship** (2026-07-24 → 07-25): the WebSocket stream + Dexie
+  mirror, the editor with all four NOTES_APP client obligations, the write nudge (~1s
+  write-to-peer), private-document search (the `doc_search` materialized view, matched locally).
+- **The merge era** (2026-07-25): the recursive virtual base for criss-cross histories, N-way
+  per-hunk alignment, Marquee conflict vocabulary, the lookout's pure-predicate hardening,
+  caret memory, side-by-side scroll sync, turbolink unfurling behind the SSRF envelope.
+- **Apps and organization** (2026-07-26 → 07-31): buckets + the app registry (Notes, Recipes,
+  Journal, Wiki, TurboNotes, All), cozy addressing (the path is the address, the origin is the
+  lens; `ringtome://` dissolved), search-kind filters, sidebar thumbnails, media byte-URLs,
+  ingest progress meters, the audio fit-to-cap loop.
+- **CROWN meets the UI** (2026-07-30 → 08-01): groups moved to the member lane + the Inbound
+  Gate + the minter rule (doctrine); self-retirement sync survival, `revocation_of`, the gate
+  sweeps (code); removal flows in cozy language ("lock out this computer" / "leave this
+  persona"), the farewell flow for revoked nodes, the composite repudiation suite.
+- **The QA hardening pass** (2026-08-01): the eslint gate, the jsdom harness family
+  (boot/drive/state/ui/thumbs/pickers), port-suffixed session cookies, the completion-picker
+  fixes, the mixed-dialect conflict fix (presentation from merge structure, never marker text),
+  the lane triad settled (public / gated / private).
+
+## The route from here (settled 2026-08-01)
+
+The notes flagship is relatively complete, so the next arc is **the bottom rungs of the
+relationship graph, then publication** - relationships first because the graph must grow before
+the features that read it (PROJECT_PLAN, Sequencing), and because publication's visibility
+tiers consume the gated lane's predicates (friends, groups) rather than the other way around.
+The rungs, each independently shippable:
+
+1. **Admission modes + friend tokens** (node-local, zero new protocol - PROJECT_PLAN, Friend
+   Tokens and the Bootstrap Problem; design rules all settled): registration
+   `closed`/`invite`/`open` with invite as default, the token mint/redeem ceremony in the
+   registration screens, `{admission, auto_follow, vouch}` flags with the **vouch payload live
+   from day one** - every IRL handoff quietly writes a trust edge. The seed crystal.
+2. **The follow type, quiet tier**: a private-chain write; the carrying mechanism has existed
+   since private chains shipped. Follow UI rides the contact surfaces.
+3. **"Tell them" receipts**: the first real inter-identity delivery, passing the Inbound Gate.
+   Friendship needs no new object - it composes at the second disclosed follow.
+4. **Public serving + the publication act** (the heart of 4S): the `/public/*` surface behind
+   the serving-boundary defaults, foreign-identity resolution, monotonic memory for remote
+   identities, and publication as copy-don't-flip (NOTES_APP, Publication - the notes editor
+   is already the post composer).
+5. **Friends-gated serving**: the gated lane's first consumer - the predicate over receipts,
+   the per-service lane declaration, and the blob gate (all three promissory notes below).
+   Groups trail into the same roster-check interface when they land.
+
+Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
+prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the
+**fork-aftermath dragon** is due before any fork-facing UI; **accessibility** is a standing
+discipline on new surfaces rather than a pre-4S project; **localization** waits (User-1 rule).
 
 ## Standing residuals (owed, with triggers)
 
 Work that survived its milestone lives here until delivered (then it moves to HISTORY):
 
 - **Delete's other half + a visible undo** (opened 2026-07-26, with the delete button): deletion
-  ships as a reversible tombstone (a `deleted` LWW-element-set on doc-meta; the doc leaves every
-  list and search, the version chain stays whole). Two pieces are owed. (1) **Dropping the content
-  blobs** - the doctrine's second half (NOTES_APP: "a tombstone plus dropping its files"); today's
-  delete hides bytes but doesn't reclaim them. Natural home is a GC pass over blobs no live
-  `doc_heads` row references, gated on the deleted set; lands well with snapshots/retention. (2) A
-  **visible restore/undo** - the `Documents::restore` verb exists and is reversible by
-  construction, but no UI calls it, so a deleted doc is currently recoverable only by a direct
-  set-remove. A "recently deleted" tray (read the tombstone roster, offer restore) is the small
-  surface owed. Trigger: the first time someone deletes something they wanted.
+  ships as a reversible tombstone. Owed: (1) **dropping the content blobs** - a GC pass over
+  blobs no live `doc_heads` row references, gated on the deleted set; lands well with
+  snapshots/retention, and becomes a prerequisite when rehosting invites others' bytes; (2) a
+  **visible restore** - `Documents::restore` exists, no UI calls it; a "recently deleted" tray
+  is the small surface owed. Trigger: the first time someone deletes something they wanted.
+- **The gated lane's three promissory notes** (settled 2026-08-01 with the lane triad -
+  PROJECT_PLAN, Lanes: Public, Gated, Private): (1) lane becomes a **per-service declaration**
+  (each service name statically maps to public/gated/private; no dynamic assignment); (2) the
+  **friendship predicate** over disclosed-follow receipts, with its staleness bound stated in
+  the UI's honesty budget (unfollow is silent; a recently-stale friend is served, same eventual
+  bound as the stale-roster admit); (3) the **blob gate, built once and
+  predicate-parameterized** - the real authorization check on the blob transport that plaintext
+  gated bodies require, shared by group content and friends-gated media, built BEFORE either
+  consumer ("must not be discovered late" - The Member Lane). Trigger: the first gated
+  consumer - friends-visible posts or group content, whichever lands first.
 - **Marquee's span vocabulary, exported upstream** (opened 2026-08-01, with the `[` picker's
   tag completions): the editor's tag list is a hardcoded transcription (`SPAN_TAGS`,
-  `doc/completions.js`) of the span switch in `marquee-html-renderer` - the spec's closed
-  vocabulary exists only as code, never as data. The durable home is an exported list from
-  the Marquee packages (we own them), so every editor host completes from the same source the
-  renderer renders. Drift meanwhile costs a completion, nothing else. Trigger: the next time
-  Marquee grows or renames a tag - or the first time attribute completion (by=, speed=,
-  font= names) is wanted, which needs the attrs as data too. Also owed upstream (repo is
-  local: ~/code/marqueemarkup): marquee-codemirror's `plan()` builds an EMPTY mark decoration
-  for a zero-content effect pair (`[rainbow][/rainbow]`), and the RangeError aborts the very
-  transaction completing the pair - the editor refuses the closing `]` (found 2026-08-01 via
-  harness/pickers.mjs; ringtome's picker sidesteps it with placeholder text, but hand-typing
-  the empty pair still bricks the keystroke until plan() skips empty inline spans).
+  `doc/completions.js`) of the span switch in `marquee-html-renderer`. The durable home is an
+  exported list from the Marquee packages (we own them). Drift meanwhile costs a completion,
+  nothing else. Also owed upstream (repo local: ~/code/marqueemarkup): marquee-codemirror's
+  `plan()` builds an empty mark decoration for a zero-content effect pair
+  (`[rainbow][/rainbow]`), and the RangeError makes the editor refuse the closing `]` -
+  ringtome's picker sidesteps it with placeholder text; hand-typing still bricks the keystroke
+  until `plan()` skips empty inline spans. Trigger: the next Marquee release, or the first
+  time attribute completion (by=, speed=, font= names) is wanted.
 - **Fork-aftermath dragon** (owed since M3): schema room for fork *evidence* plus the re-signing
   recovery flow - due before or with whatever first shows a fork to a human (4C's key screens
   are the likely trigger).
 - **Sync-request flooding bounds** (opened with background sync's ship): exchange initiation is
-  open by default (sync triggering is network maintenance, not a hosting decision), so a
-  malicious operator can spray sync requests. Today's bounds: `is_agented` short-circuits
-  unknown identities with an empty Hello, an up-to-date exchange is a kilobyte frontier swap,
-  and the gate validates before any write - exposure is connection/CPU churn, not data. No
-  accept-side rate limiting exists (the HTTP limiter doesn't cover iroh). Explore per-endpoint
-  accept throttling / cost caps; per-identity refusal of contact is the adjacent operator
-  policy hook.
-- **Peer set derived from the key tree** (opened 2026-07-25; no trigger - next up, while we
-  remember it's worth doing): the doctrine already exists (PROJECT_PLAN, "The Identity Tree Is
-  Its Own Peer-Discovery Structure": the chain frontier *is* the peer list, addresses come from
-  discovery) but the implementation still dials only `identity_peers` rows written at adoption
-  time. A daisy-chained node provably knows its cousins from the synced chains yet never dials
-  them - eager push pays an extra relay hop (field-observed as loose sync latency, 2026-07-25)
-  and anti-entropy samples an artificially thin set. The work: derive the dial list from the
-  key-tree frontier + dial-by-key discovery, demoting `identity_peers` to an address cache
-  seeded by adoption and observed dials. NOT peer-list gossip - no new wire surface; the chains
-  already carry who-exists epidemically. REFACTOR's `sync.rs` peer-bookkeeping note names the
-  code seam; its revisit condition ("peer management grows real behavior") fires with this.
-- **Monotonic memory for remote identities** (owed since M2's status note): for *synced*
-  identities the append-only entries table is structurally sufficient; for stranger resolution
-  it does not exist yet. Lands with 4S's public serving surface.
-- **Mainline NAT rung** (what remains of the M3.5 mainline residual after the 2026-07-22
-  same-box field test - see HISTORY): the relay-assisted discovery path is proven against the
-  real DHT; still owed are NAT traversal (two real houses, the Tier 6 distributed run) and the
-  raw-DHT fallback (pkarr relays down), which the smoke test budgets for but has never hit.
-- **PrivatePlain size caps** (4 KiB value / 6 KiB ciphertext): likely resolution - the caps are
-  *correct*, because note/post bodies ride blobs, never inline records (NOTES_APP.md). Confirm
-  and close when the blob lane lands; until then the caps stay unshipped-soft.
-- **The decrypt-and-dump export tool** (a ship gate; re-scoped 2026-07-22 by the User-1 rule,
-  STYLE.md): stock SQLite cannot read an encrypted Turso file, so real users need the tool and
-  its CI dump/restore upgrade gate - but until User 1 there is no data to protect, and a Turso
-  bump may simply wipe and rebuild (the journal replays; worst case, test data dies). Lands
-  with Tier 6, alongside the security pass in the "gates ship" family. Turso stays pinned
-  (`=0.7.0`) for reproducibility meanwhile.
-- **Private-document search: SHIPPED 2026-07-25** (Curtis's materialized-view synthesis). The
-  index is a **materialized view like `doc_heads`** - `doc_search`, a per-doc token-bag row
-  over title + resolved body + annotation text (field values and tags, so a long description
-  is as findable as body prose), maintained by the same fold, living in the per-identity Turso
-  DB so it inherits at-rest encryption *by construction* (no Turso-FTS5 gamble, SQL never needs
-  MATCH). Streamed to the Dexie mirror as one more kind; the browser matches locally (prefix +
-  AND, `js/search.js`), offline and instant. Staleness is a fingerprint over exactly the
-  token inputs - the logical-head SET (not count: raced resolutions rotate it invisibly), which
-  head bodies are locally present (a backfilled body re-indexes with no chain change, carried
-  by the new `view_epochs` counter mixed into the stream cursor), the title, and the annotation
-  text - so only changed docs pay to re-tokenize. The Stage-1 whole-kind refresh still re-ships
-  the corpus per save; that's the standing pressure for **Stage 2 row-level deltas** (below),
-  now with a real customer. Posture, on the record: a token bag is the corpus wearing a haircut,
-  so the mirror holds ~the whole content in IndexedDB - same per-persona logout-dropped
-  disposability, said out loud. **Still owed:** the federated rung (below) and FTS *ranking* -
-  today's match is boolean; relevance ordering waits for a corpus that needs it.
-  **The federated rung, sketched 2026-07-25** (from Curtis's log-search engine - subtoken bloom
-  filters over hierarchical blocks): blooms are mediocre as an index of record at doc
-  granularity (word-exact kills type-ahead; short prefixes match everything; false positives
-  read as bugs) but excellent as a *pre-filter* - if 4S search ever reaches across identities, a
-  small per-identity/per-collection summary bloom (one-way by construction, cheap to sync)
-  narrows "which of the fifty identities I follow might mention this" to a handful worth
-  querying properly. Blocks reassigned from hours to identities; the local index stays a token
-  bag, where localhost bandwidth is free.
-- **Flow A's bells** (deferred at the scratch ship, 2026-07-24): browser-side challenge
-  signing (the pasted seed currently transits to the node - unacceptable once nodes host
-  strangers), post-use spare-key rotation, and the cooling-off window with logged-in cancel.
-  Trigger: before any hosted/multi-tenant deployment; natural build home is 4C's key screens
-  alongside Flow B. (Re-homing shipped 07-24 and left this list.)
+  open by default, so a malicious operator can spray sync requests. Today's bounds:
+  `is_agented` short-circuits unknown identities, an up-to-date exchange is a kilobyte frontier
+  swap, the gate validates before any write - exposure is connection/CPU churn, not data. Owed:
+  accept-side rate limiting (the HTTP limiter doesn't cover iroh); per-identity refusal of
+  contact is the adjacent operator policy hook. Trigger: before any hosted deployment.
+- **Peer set derived from the key tree** (opened 2026-07-25; no trigger - worth doing while we
+  remember): the doctrine exists (the chain frontier *is* the peer list) but the implementation
+  still dials only `identity_peers` rows written at adoption - a daisy-chained node provably
+  knows its cousins yet never dials them (field-observed as loose sync latency). The work:
+  derive the dial list from the key-tree frontier + dial-by-key discovery, demoting
+  `identity_peers` to an address cache. NOT peer-list gossip - no new wire surface. REFACTOR's
+  `sync.rs` peer-bookkeeping note names the code seam.
+- **Monotonic memory for remote identities** (owed since M2): for *synced* identities the
+  append-only entries table is structurally sufficient; for stranger resolution it does not
+  exist yet. Lands with 4S's public serving surface (route step 4).
+- **Mainline NAT rung** (what remains of M3.5 after the 2026-07-22 same-box field test): NAT
+  traversal between two real houses (the Tier 6 distributed run) and the raw-DHT fallback
+  (pkarr relays down), which the smoke test budgets for but has never hit.
+- **Live cache, Stage 2: row-level deltas** (pressure recorded at search's ship, 2026-07-25):
+  Stage 1's whole-kind refresh re-ships the corpus on every save, and the search index - a
+  token bag over ~the whole corpus - is now the real customer. Adjacent owed search work:
+  **ranking** (today's match is boolean; waits for a corpus that needs it) and the **federated
+  bloom pre-filter** sketch for cross-identity search (full sketch in HISTORY, 2026-07-25).
+- **The decrypt-and-dump export tool** (a ship gate; re-scoped 2026-07-22 by the User-1 rule):
+  stock SQLite cannot read an encrypted Turso file, so real users need the tool and its CI
+  dump/restore upgrade gate - but until User 1 a Turso bump may simply wipe and rebuild. Lands
+  with Tier 6, alongside the security pass. Turso stays pinned (`=0.7.0`) meanwhile.
+- **Flow A's bells** (deferred at the scratch ship, 2026-07-24): browser-side challenge signing
+  (the pasted seed currently transits to the node - unacceptable once nodes host strangers),
+  post-use spare-key rotation, the cooling-off window with logged-in cancel. Trigger: before
+  any hosted/multi-tenant deployment; natural home is the key screens alongside Flow B.
 - **Spare-key succession ceremony** (designed 2026-07-24 - PROJECT_PLAN, Recovery Flows): a
-  sole-surviving junior rebuilds recovery by minting its successor spare *first* (seniority
-  over the identity's entire reachable future; lost seniors stay dormant-senior forever). A
-  small out-of-the-way flow in the key screens, and it forces the designation upgrade (`role`
-  attribute or strictly-senior reset rule) to ship WITH Flow B - v1's all-zeros-spine rule
-  can't see an off-spine spare.
-- **Client-side annotation prefill** (deferred at annotations' ship, 2026-07-22): the authoring
-  client may read artist/album/title *before* the pipeline launders the bytes and offer them as
-  pre-filled annotations - persisting is a deliberate user act (bulk import consents once per
-  batch, never silently per file). Rides whichever 4C/4M surface uploads media; the pipeline
-  itself never keeps embedded metadata (PROJECT_PLAN, Annotations: the ingest membrane).
+  sole-surviving junior rebuilds recovery by minting its successor spare *first*. A small
+  out-of-the-way flow in the key screens; forces the designation upgrade to ship WITH Flow B.
+- **Client-side annotation prefill** (deferred 2026-07-22): the authoring client may read
+  artist/album/title *before* the pipeline launders the bytes and offer them as pre-filled
+  annotations - persisting is a deliberate user act. Rides whichever surface uploads media next.
 - *Minor, watched:* concurrent epoch rotations can twin an epoch number (readers try all keys;
   convergent but unlovely); requesters re-offer private chains each exchange (duplicate-skip
   absorbs it; revisit if private chains get big).
 
-## The ladder becomes tiers (restructured 2026-07-07)
+## The tiers (restructured 2026-07-07; statuses updated 2026-08-01)
 
-M1-M3.5 were genuinely sequential: each rung consumed the previous one's output. What remains is
-not - so from here down, work is grouped into **tiers of unordered tracks**. A tier is done when
-its tracks are; tracks within a tier can be taken in any order, interleaved, or abandoned
-mid-stream for a more motivating one. For a solo project, motivation is the scarcest resource,
-and the structure should let it be spent where it lands. Real cross-track dependencies are listed
-explicitly; everything unlisted is genuinely independent.
+M1-M3.5 were genuinely sequential. What remains is not - work is grouped into **tiers of
+unordered tracks**; a tier is done when its tracks are, and tracks can be taken in any order or
+abandoned mid-stream for a more motivating one. For a solo project, motivation is the scarcest
+resource. Real cross-track dependencies are listed explicitly. The recommended route through
+what remains is **The route from here**, above.
 
-**Re-prioritized (2026-07-09) — the recommended route through the tiers.** Motivation still
-rules, but the default path is now: **(1) admission modes + invite tokens** (registration
-`closed`/`invite`/`open`, default invite - PROJECT_PLAN, Registration Modes) with the **vouch
-payload live from day one**, so every IRL invite writes a trust edge and the graph grows before
-the features that read it; **(2) 4C with the notes app as flagship** - the single-player
-product ("come for the tool, stay for the network") that makes identity sync *felt*, and now a
-hard dependency of posts: drafts are notes, and publication is an explicit crossing of the
-private/public membrane (NOTES_APP.md, Publication); **(3) 4S +
-the trust floor as one launch** - social ships wearing its thesis. Each stage independently
-shippable; each makes the next one's demo better.
+## Tier 4 — The product (three tracks)
 
-## Tier 4 — The product (three unordered tracks)
+**4C — The client shell ("the cozy OS boots"). Delivered in substance** (2026-07-23 → 08-01):
+login, personas, adoption, key screens with removal and farewell flows, the live cache, and the
+notes flagship with its apps, buckets, and search - all in cozy language, no JSON visible.
+Remaining tail: the **recovery-key photo ceremony** (labeled QR, blocked-until-captured - the
+spare-key moment ships as download/confirm today), **friend tokens** (promoted to route step 1),
+and the key-screen residuals above (Flow A's bells, spare-key succession).
 
-**4C — The client shell ("the cozy OS boots").** The retro-OS web client over the *existing* API
-- zero new protocol. Toolchain (Preact + htm + esbuild, versioned asset serving), login, desktop
-shell, identity switcher, profile editor, key/device management in cozy language - and the two
-ceremonies that currently exist as raw JSON: the **recovery-key photo ceremony** (labeled QR,
-blocked-until-captured; retires M2's residual) and the **add-a-node ceremony** (request/grant
-codes as QR). Newly in scope (2026-07-09): **friend tokens / open server invites** - the
-admission + redemption ceremony (node-local, no new protocol; PROJECT_PLAN, Friend Tokens and
-the Bootstrap Problem) - and **the notes app**, the shell's flagship (spec: NOTES_APP.md): personal,
-E2E-encrypted, multi-device notes - chain-spine headers + encrypted droppable blobs, version-DAG
-divergence handling ("never silently lose words"). Its prerequisite is the **private blob lane**
-(blob frames on the member-proven sync connection; NOTES_APP.md, Prerequisite), which 4M's media
-reuses. The Cozyweb language budget is enforced from the first screen. *Track demo:* create
-an identity, photograph the spare key, set your name, adopt a second node - all in a browser, no
-JSON visible. *Advisory:* highest motivation-ROI track - it makes all subsequent work visible in
-a UI instead of curl. *Amended 2026-07-23:* the client's substrate is the **live cache**
-(PROJECT_PLAN, The Browser Is a View): a per-identity WebSocket view-delta stream into a
-Dexie/IndexedDB mirror, optimistic shadow writes over the existing HTTP POSTs - websocket out,
-POST in, browser never a device. It precedes the notes app, which then reduces to mostly
-rendering; the build order inside 4C is therefore login (done 07-23) → identity management in
-the UI → the stream + mirror → notes.
+**4M — The markup language ("pages have a language"). Substantially delivered as Marquee** -
+the language grew into its own project (~/code/marqueemarkup: spec, Rust + JS strict parsers
+kept honest by shared vectors, HTML + React renderers, the live-preview editor) and the notes
+app ships all of it. Remaining *in Ringtome*: the `page`/`post` **payload types** (stable
+`doc_id`, the **labels field** for consent machinery - organizational tags stay external
+taxonomy, never on the payload), **proto-side validation** wiring at the serving boundary, and
+formalizing the **media-type admission test** the crush pipeline already implements in practice
+(strict parse in a sandboxed decoder, EXIF stripping as an authoring-client concern).
 
-**4M — The markup language ("pages have a language").** The security-critical content boundary,
-given the undivided attention the key tree got. First deployment target: the notes renderer
-(friendly-content debut before the 4S stranger boundary; the plaintext era's real-note corpus
-feeds the vocabulary cut - NOTES_APP.md, Markup). Vocabulary spec (resolving the open question),
-the `page`/`post` payload types, the **strict parser twice** - Rust in proto (validation), JS in
-the client (rendering) - kept honest by published markup test vectors, exactly the discipline
-that guards the entry format. Safe renderer (AST -> DOM construction, never innerHTML); links out
-left alone, embeds baked into local blobs at authoring time with their origin URL kept as
-provenance (PROJECT_PLAN, An Embed Is an Ingest). Three payload obligations: a stable **`doc_id`**
-on `page`/`post` (references target identities, never version hashes - NOTES_APP.md, Taxonomy),
-a **labels field** (consent machinery rides the payload because strangers' servers filter on it;
-organizational *tags* deliberately do NOT ride the payload - they are external taxonomy, same
-doc), and no tags field ever, and the first blob types pass the **media-type admission test** (strict parse in a
-sandboxed decoder, scanning story, metadata-privacy story - EXIF stripping is an authoring-client,
-pre-sign concern). *Track demo:* a page with a tiled background and a
-marquee, parsed by both implementations to identical ASTs.
-
-**4S — The social layer ("other people exist").** Everything that crosses the inter-identity
-boundary: the **public serving surface** (`/public/*` reads for non-owners - deliberately
-deferred since M1), the `follow` type with its three disclosure tiers (quiet / tell-them / help-host -
-PROJECT_PLAN, Edge-Endpoint Visibility), serving-follows, **foreign-identity resolution** (the
-ladder consuming M3.5's directory, behind the identity-rooted HTTP surface - the `ringtome://`
-scheme itself was dissolved 2026-07-31; PROJECT_PLAN, Addressing), identicons + contact names, **monotonic memory for remote identities** (the
-residual owed since M2: returning-relying-party revocation memory belongs to this surface), and
-the **serving-boundary defaults** from the plan's Moderation and Operator Liability section (the web-gateway question is
-now settled - distinct dual-opt-in role, no anonymous HTTP by default; 4S builds the
-member/peer-facing `/public/*` surface accordingly, gateway role deferred past Tier 6's gate).
-*Track demo:* curl a stranger's profile (as an authenticated member of a node that serves them),
-resolved from an identity-rooted URL minted on the other node.
+**4S — The social layer ("other people exist"). Not started - the main course.** Everything
+that crosses the inter-identity boundary: the **public serving surface** (`/public/*` reads for
+non-owners, deferred since M1), the `follow` type with its three disclosure tiers (quiet /
+tell-them / help-host - PROJECT_PLAN, Edge-Endpoint Visibility), serving-follows,
+**foreign-identity resolution** (the ladder consuming M3.5's directory, behind the
+identity-rooted HTTP surface), identicons + contact names, **monotonic memory for remote
+identities**, and the **serving-boundary defaults** (dual-opt-in gateway role deferred past
+Tier 6's gate; no anonymous HTTP by default). Route steps 2-5 are this track's build order.
+*Track demo:* curl a stranger's profile (as an authenticated member of a node that serves
+them), resolved from an identity-rooted URL minted on the other node.
 
 **Leaf dependencies (land in whichever track finishes last):** page-authoring UI = 4C + 4M;
 reading view/feed = 4C + 4S; rendering a *stranger's* page = all three. **Tier exit demo:** two
@@ -400,57 +199,41 @@ fake OS. The project becomes showable to a non-nerd.
 ## Tier 5 — Trust
 
 Trust is the thesis, not a feature to retrofit - a social launch without at least the floor is
-a different, worse product. The corrected read: only the final *wiring* step depends on 4S; the
-pure core is known math, buildable any time; and the graph should start growing before the
-features that read it exist (PROJECT_PLAN, Trust: "The Graph Grows Before the Features
-Arrive"). What stays later is refinements of a running system, labeled honestly.
+a different, worse product. Only the final *wiring* step depends on 4S; the pure core is known
+math, buildable any time; and the graph starts growing with route step 1 (PROJECT_PLAN, Trust:
+"The Graph Grows Before the Features Arrive").
 
-- **Vouch statements** (deps: none; **promoted** - ships with the invite tokens, not after 4S):
-  the signed "I met this human" payload, public v1 (the public-follows chain's first writer),
-  retractable. Friend tokens carry the vouch flag from day one: every IRL invite quietly writes
-  an edge - the seed crystal. Graph-privacy refinements (rounded scores, hidden nodes,
-  resolution by closeness) stay later; they are subtle, the payload is not.
-- **Flow computation engine** (deps: none - develops against the harness's synthetic graphs):
-  the Advogato-style **joint-flow** calculation (never per-person; that detail is the whole
-  Sybil defense), bounded horizon, as pure crate code, property-tested. Known, decades-old
-  math - not research.
+- **Vouch statements** (deps: none; ships with the invite tokens - route step 1): the signed
+  "I met this human" payload, public v1, retractable. Graph-privacy refinements stay later;
+  they are subtle, the payload is not.
+- **Flow computation engine** (deps: none): the Advogato-style **joint-flow** calculation
+  (never per-person; that detail is the whole Sybil defense), bounded horizon, pure crate
+  code, property-tested. Known, decades-old math - not research.
 - **Adversary-simulation harness** (deps: none): a **calibration instrument and standing
-  tripwire, never a launch gate**. It sanity-checks the joint-flow property before wiring (a
-  week, not a program), tunes the budget/horizon/fade/floor knobs, then runs forever hoping to
-  break things. Shipping ahead of exhaustive validation is covered by the plan's low-payoff
-  principle: v1 trust gates only annoyance-priced, reversible surfaces.
-- **Private chains** (COMPLETE 2026-07-08 - full report in HISTORY.md): the encrypted-chain
-  infrastructure this tier needed, pulled forward and delivered. Vouches and contact names have
-  their substrate.
-- **Contact names** (deps: private chains - done): the private-register annotation and its UI;
-  the "I know this person for real" ceremony belongs to 4C's language budget, on the same
-  screen as the vouch (fork in the UI, never a coupling in the data).
-- **Wiring trust into the product** (deps: 4S + the above): lands *with* the social launch, not
-  after it - the coarse floor applied to the first low-stakes surfaces (feed ordering, a bot
-  floor) as part of 4S's exit demo.
-- **Deferred with honest labels** (refinements of a running system, not prerequisites renamed):
-  credibility (needs track records that don't exist yet), interest/taste recommenders,
-  graph-privacy resolution controls, harness-driven knob refinement.
+  tripwire, never a launch gate**. Sanity-checks the joint-flow property before wiring, tunes
+  the knobs, then runs forever hoping to break things.
+- **Private chains** (COMPLETE 2026-07-08): the substrate, delivered.
+- **Contact names** (deps: none remaining): the private-register annotation and its UI; the
+  vouch shares the screen, forked in the UI, never coupled in the data.
+- **Wiring trust into the product** (deps: 4S + the above): lands *with* the social launch -
+  the coarse floor on the first low-stakes surfaces (feed ordering, a bot floor).
+- **Deferred with honest labels**: credibility (needs track records that don't exist yet),
+  interest/taste recommenders, graph-privacy resolution controls, knob refinement.
 
 ## Tier 6 — Ship (unordered tasks; one gate, not an order)
 
-- **Hosted deploy story** (deps: none): Dockerfile, `testnode-N.ringtome.ca`, ops docs - "some
-  guy running infra in their spare time" made real.
-- **Self-hosting documentation** (deps: deploy story): first-class artifact, per the plan's guard
-  against hosted-first calcifying.
-- **Desktop packaging** (deps: 4C, weakly - the tray needs a UI to open): tray sidecar, autostart,
-  app-mode window, single installer, signing/notarization. The Ollama shape.
+- **Hosted deploy story** (deps: none): Dockerfile, `testnode-N.ringtome.ca`, ops docs.
+- **Self-hosting documentation** (deps: deploy story): first-class artifact, per the plan's
+  guard against hosted-first calcifying.
+- **Desktop packaging** (deps: 4C, weakly): tray sidecar, autostart, app-mode window, single
+  installer, signing/notarization. The Ollama shape.
 - **Mainline field test, distributed rung** (deps: none, startable any weekend): two
   internet-connected nodes on `RINGTOME_DISCOVERY=mainline` - the first genuinely-distributed
-  run, exercising the NAT rung the 2026-07-22 same-box smoke test (see HISTORY) cannot. The
-  opt-in live tier already exists: `just mainline-smoke` + the dispatch-only GitHub action.
-- **Abuse tooling for public roles** (deps: none to build; **gates open/gateway modes** the same
-  way the security pass gates exposure): the blob-layer scanner trait with the Shield by Project
-  Arachnid backend (PDQ computed locally, hash-only queries, per-operator API keys), the
-  quarantine + preserve + report flow, and hardened blob-serving defaults (validated
-  Content-Type, nosniff, CSP sandbox, separate port). Denunciation statements and trust-weighted
-  subscription land with Tier 5's trust wiring; this bullet is only what public-facing roles may
-  not ship without.
+  run, exercising the NAT rung. `just mainline-smoke` + the dispatch-only action already exist.
+- **Abuse tooling for public roles** (deps: none to build; **gates open/gateway modes**): the
+  blob-layer scanner trait with the Shield backend, quarantine + preserve + report, hardened
+  blob-serving defaults. Denunciation statements land with Tier 5's wiring; this bullet is
+  only what public-facing roles may not ship without.
 - **Security pass** (deps: none to *do*; but it **gates public exposure**): a hostile review of
   the whole HTTP + sync surface. The one hard rule in this tier: no publicly-reachable node
   before it happens.
@@ -459,18 +242,19 @@ Arrive"). What stays later is refinements of a running system, labeled honestly.
 
 ## Standing disciplines (all tiers)
 
-- **Test vectors + spec fragments** grow with every wire format (entries, records, markup); they
-  are what makes third-party clients and future-self debugging possible.
+- **Test vectors + spec fragments** grow with every wire format (entries, records, markup).
 - **Integration suite**: every track extends it; the two-node harness is the default proving
   ground.
+- **Accessibility** (added 2026-08-01): new surfaces build it in rather than bolt it on;
+  retrofitting the existing shell is deliberately not a scheduled project yet.
 
 ## Deliberately not yet
 
-Passkeys/WebAuthn, recovery helpers (email/social), iroh-gossip real-time + DMs (*designed*
-2026-07-30 - PROJECT_PLAN, Direct Messages: The Sealed Pair; unscheduled, not undesigned), the scripting
-rung of the markup ladder, Godot anything, phones (PWA rides along for free), the push-gateway
-role, snapshots/checkpoints, ActivityPub bridges. All named in the plan; none on the critical
-path through Tier 6.
+Passkeys/WebAuthn, recovery helpers (email/social), iroh-gossip real-time + DMs (*designed* -
+PROJECT_PLAN, The Sealed Pair; unscheduled, not undesigned), the scripting rung of the markup
+ladder, Godot anything, phones (PWA rides along for free), the push-gateway role,
+snapshots/checkpoints, ActivityPub bridges, localization. All named in the plan; none on the
+critical path through Tier 6.
 
 ## Sequencing rationale, in one paragraph
 

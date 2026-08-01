@@ -1298,3 +1298,48 @@ field symptom reproduced verbatim, passes now; every previously-pinned conflict 
 Also swept while lint was red: the orphaned no-progress `crush` wrapper is `#[cfg(test)]`
 now (production always wants the meter), and audio's `encode_pass` returns a named
 `EncodedPass` instead of a four-way tuple.
+
+## Lanes: the member lane grows up (2026-08-01)
+
+Doctrine amendment, no code: the chain classes are now a settled triad - PUBLIC (plaintext,
+served to anyone), GATED (plaintext, served behind a predicate), PRIVATE (epoch ciphertext,
+the identity's own leaves) - written up in PROJECT_PLAN (IM-AOL, "Lanes: Public, Gated,
+Private"). The gated lane is the groups member lane PROMOTED to an identity-generic class:
+gated access is a predicate and predicates compose, so roster membership, disclosed-mutual-
+follow friendship, and one-hop supergroup proofs are instances of one gate, not three
+features. "Public is public" generalizes to "shared is shared" (gating is disclosure control
+plus enumeration resistance, never secrecy; revocation closes the future only), and
+"unlisted" in the capability-URL sense was considered and explicitly does not exist. Three
+promissory notes ledgered in NEXT_STEPS before any consumer is built: per-service lane
+declaration, the friendship predicate's staleness bound, and the blob gate built once,
+predicate-parameterized. Set up by the session's next-steps discussion: relationships before
+publication, per the recommended route - the bottom rungs (tokens, quiet follows, receipts)
+unlock friends-gated serving without waiting for groups.
+
+## NEXT_STEPS remembers what it's for (2026-08-01)
+
+A cleanup pass on NEXT_STEPS.md, which had drifted into a changelog: the "Where we are" section
+held ~sixty multi-line delivery reports (the file's own preamble says "finished work leaves
+this file - one line below, full report in HISTORY"), one residual was a full shipped report,
+and the tier descriptions still described the delivered client track as future work - which is
+why the supply of next steps FELT dwindling: the real ones were buried. The rewrite: the ledger
+compressed to one line per era; a new "The route from here" section up top carrying the
+2026-08-01 decision (relationships before publication - admission/tokens → quiet follows →
+receipts → public serving + the publication act → friends-gated serving) plus the rough-edge
+triage; tier statuses updated (4C delivered in substance with its named tail, 4M substantially
+delivered as Marquee with the Ringtome-side remainder, 4S the main course); accessibility added
+to the standing disciplines; localization to "deliberately not yet."
+
+Closed with the pass: the **PrivatePlain size-cap** residual - its own close condition
+("confirm when the blob lane lands") has been met since the file layer shipped: bodies ride
+blobs, inline records stay small, the caps are correct as-is.
+
+Preserved here because it lived only in the trimmed entry - **the federated search bloom
+sketch (2026-07-25)**, from Curtis's log-search engine (subtoken bloom filters over
+hierarchical blocks): blooms are mediocre as an index of record at document granularity
+(word-exact kills type-ahead; short prefixes match everything; false positives read as bugs)
+but excellent as a PRE-FILTER - if 4S search ever reaches across identities, a small
+per-identity/per-collection summary bloom (one-way by construction, cheap to sync) narrows
+"which of the fifty identities I follow might mention this" to a handful worth querying
+properly. Blocks reassigned from hours to identities; the local index stays a token bag, where
+localhost bandwidth is free.

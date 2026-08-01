@@ -1387,6 +1387,57 @@ never *who* mints, but that everything about a mint is checkable:
   the norm even mid-race. Whatever else happens, the next rotation steps to max+1 sealed to the full Active set:
   a race's split ends at the following epoch no matter what anyone does.
 
+### Lanes: Public, Gated, Private (settled 2026-08-01)
+
+Every chain lives in exactly one of three **lanes**, and the lane is a property of the *service slot* - never a
+flag on an entry (Copy, Don't Flip: crossing lanes is a re-sign onto another chain, a deliberate act, and there is
+no switch for a bug to throw). The triad was born piecemeal - public chains at M1, private chains above, the
+member lane under Groups - and this section is the promotion: the gated lane is identity-generic, not a groups
+feature.
+
+| lane | bytes at rest | served to |
+|---|---|---|
+| **public** | plaintext | anyone, per the serving-boundary defaults |
+| **gated** | plaintext | requesters proving the lane's predicate |
+| **private** | epoch ciphertext | this identity's own Active leaves (the member proof) |
+
+The symmetry is the design: all three lanes are *serve behind a predicate*. Public's predicate is `true`;
+private's is "a leaf of this same identity" (the sync gate above); **gated is everything in between**, and the
+predicate is the parameter - roster membership (The Member Lane, the first instance), a disclosed mutual follow
+(friends-visible content, over the receipts the serving node already holds), or a proof chained one hop through a
+member group (Supergroups). Gated access is a predicate, and predicates compose. Verify-then-reveal applies to
+every non-`true` predicate alike: an unproven peer gets neither entries nor *frontiers* - strangers cannot learn
+that a gated lane has activity at all, let alone enumerate its audience.
+
+Encryption is the **other axis**, and it stays two-valued: ciphertext or not. The missing cell - encrypted *and*
+selectively shared - is the sealed-group design, examined and declined (The Member Lane tells that story): key
+distribution on membership change is exactly the machinery the gated lane exists to remove. A shared secret
+survives at the one scale it is meaningful, the two-party sealed pair (Direct Messages).
+
+**Shared is shared** - the ruling "public is public" generalizes to the gated lane. Gating is disclosure control
+plus enumeration resistance, **never secrecy**: the serving operator reads the bytes (We Trust the Node Operator),
+every authorized reader copies freely, and revoking access closes the future only - *it reads its era; the future
+is closed*, the same bound ejection and revocation already carry. A gated lane is not a place for a file you would
+not put on a friend's hard drive. And it is deliberately not "unlisted": anyone-with-the-link is a capability-URL
+design - obscurity where the gate offers proof - and does not exist here.
+
+Reach follows the predicate: a gated lane is served only by nodes that can *evaluate* its gate - the identity's
+own agents, which hold the roster, the receipts, or the composed proof's inputs. Gated chains are never
+help-hosted; fronting is a public-lane concept.
+
+Three consequences, settled here and ledgered in NEXT_STEPS before any consumer is built:
+
+- **Lane is a per-service declaration.** Each service name maps statically to its lane; a personal identity gains
+  its first gated slot when friends-visible content arrives. No dynamic lane assignment, ever.
+- **The friendship predicate's staleness bound, stated honestly.** Receipts prove the follow was true when
+  signed; unfollow is silent. The friend gate will therefore serve a recently-stale friend, exactly as a stale
+  roster admits the recently ejected - the same eventual bound as everything else at this layer. Fail closed on a
+  proof that cannot be resolved, and log it.
+- **The blob gate is built once, predicate-parameterized.** Gated blobs are plaintext, so the File Layer's
+  "ungated, the hash is the boundary" rule does not cover them (safe only while every non-public body is
+  ciphertext). Group content and friends-gated media hit the identical requirement - one authorization check on
+  the blob transport, shared by every predicate, built before either consumer so it is not discovered late.
+
 ### Open Items
 
 - **Deletability: split headers from content from day one** (**Immutable Chains ≠ Immutable Content**, Doctrine). Chains store entry headers + blob hashes; content
@@ -1583,6 +1634,10 @@ Two things this exposes:
   presses the button; the group can compute it exactly.
 
 ### The Member Lane: The Roster Is the ACL
+
+*(Since 2026-08-01 this is the first instance of an identity-generic chain class - IM-AOL, Lanes: Public, Gated,
+Private. The lane doctrine, the "shared is shared" ruling, and the shared blob gate live there; this section keeps
+the groups-shaped story and the roster mechanics.)*
 
 This section used to be called *Validity is computed; secrecy is minted*, and it was an accounting of the gap
 between those two halves. Carla's authority died the instant a node computed it, but Carla still **held the epoch
