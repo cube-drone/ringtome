@@ -224,6 +224,19 @@ Work that survived its milestone lives here until delivered (then it moves to HI
   construction, but no UI calls it, so a deleted doc is currently recoverable only by a direct
   set-remove. A "recently deleted" tray (read the tombstone roster, offer restore) is the small
   surface owed. Trigger: the first time someone deletes something they wanted.
+- **Marquee's span vocabulary, exported upstream** (opened 2026-08-01, with the `[` picker's
+  tag completions): the editor's tag list is a hardcoded transcription (`SPAN_TAGS`,
+  `doc/completions.js`) of the span switch in `marquee-html-renderer` - the spec's closed
+  vocabulary exists only as code, never as data. The durable home is an exported list from
+  the Marquee packages (we own them), so every editor host completes from the same source the
+  renderer renders. Drift meanwhile costs a completion, nothing else. Trigger: the next time
+  Marquee grows or renames a tag - or the first time attribute completion (by=, speed=,
+  font= names) is wanted, which needs the attrs as data too. Also owed upstream (repo is
+  local: ~/code/marqueemarkup): marquee-codemirror's `plan()` builds an EMPTY mark decoration
+  for a zero-content effect pair (`[rainbow][/rainbow]`), and the RangeError aborts the very
+  transaction completing the pair - the editor refuses the closing `]` (found 2026-08-01 via
+  harness/pickers.mjs; ringtome's picker sidesteps it with placeholder text, but hand-typing
+  the empty pair still bricks the keystroke until plan() skips empty inline spans).
 - **Fork-aftermath dragon** (owed since M3): schema room for fork *evidence* plus the re-signing
   recovery flow - due before or with whatever first shows a fork to a human (4C's key screens
   are the likely trigger).

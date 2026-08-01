@@ -1238,3 +1238,43 @@ the start of a line (leading whitespace allowed). The explicit `![` opener still
 anywhere, because typing markdown's own embed syntax is never an accident. One guard in
 `mediaCompletions` (doc/completions.js); the `:` emoji and `[` link pickers are untouched -
 their trigger characters don't end sentences.
+
+## One bracket, two grammars (2026-08-01)
+
+A `[` legitimately opens either a link or one of Marquee's inline span tags, and only what
+you type next says which - but the editor's `[` picker only knew the link half. It now
+offers both: the bucket's documents as before, plus the spec's closed span vocabulary
+(rainbow, wave, spoiler, typewriter, the size rungs, the note synonyms - 24 names), marked
+apart in the detail column. Picking a tag fills the whole `[tag][/tag]` pair with the cursor
+between; the three value tags fill `[tag=][/tag]` with the cursor after the `=`. The
+vocabulary is a HARDCODED transcription (SPAN_TAGS in doc/completions.js) of the span switch
+in marquee-html-renderer - deliberate for now; upstreaming an exported list from the Marquee
+packages is the durable home, and drift meanwhile costs a completion, nothing else.
+
+## The bracket that poisoned the line (2026-08-01)
+
+Field report: "[sid unfolds, [rai doesn't." Not the letters - the LINE. The `[` picker's
+match region (`\[[^\]\n]*$`) let `[` inside its interior class, so it anchored at the FIRST
+unclosed bracket before the caret: one stray `[` earlier in the line and every later `[`
+filtered on garbage (" b [rai") that matched nothing, so the picker silently refused the
+rest of the line. Excluding `[` from the interior (match region and validFor both, and the
+media picker's `![` branch to match) anchors at the LAST bracket - a fresh `[` restarts the
+picker instead of feeding the old one. Found with a new harness probe, `harness/pickers.mjs`
+(boot the SPA, type into the real CodeMirror char by char, dump the tooltip per keystroke) -
+the machinery passed every isolated test; only the whole app running showed it, which is
+exactly the bug class the harness doctrine exists for. The probe stays in the family.
+
+## The empty pair that ate its own insertion (2026-08-01)
+
+The tag picker's second field failure, and the real one: Enter and click both dead for every
+EFFECT tag while the tooltip sat there open. The accept ran fine - and the transaction it
+dispatched was killed by the live preview: marquee-codemirror's plan() lays an animated
+effect's mq-* MARK over the span's content, an empty `[rainbow][/rainbow]` has no content to
+cover, and "Mark decorations may not be empty" aborted the very insertion that created it.
+Hence the pattern: sidenote completed (a note-ref WIDGET, no mark) while rainbow/fadein
+refused (marks). The fill now inserts `[wave]text[/wave]` with the placeholder selected (next
+keystroke replaces it; value tags park the cursor after the `=` instead) - never-empty by
+construction, and a visible affordance besides. Upstream half ledgered in NEXT_STEPS:
+hand-typing an empty pair still bricks the closing `]` until plan() skips empty inline spans.
+Diagnosed end-to-end with harness/pickers.mjs probes - the tooltip DOM said "open, selected",
+the keydown said "unhandled", and the uncaught RangeError between them told the story.
