@@ -90,6 +90,15 @@ describe('small rules', () => {
         assert.equal(bucketNameFor({ buckets: [] }, undefined), 'default');
         assert.equal(bucketNameFor(null, undefined), 'default');
     });
+
+    it('an EMPTY bucket list defers to the view: the filing write may not have echoed yet', () => {
+        // "+ new recipe" is create-then-file; the mirror can stream the row between the two.
+        // Preferring the view over the default is what keeps the re-dress from teleporting a
+        // fresh recipe into TurboNotes (field-found 2026-08-01). The truly-unbucketed case is
+        // covered above: it is only ever VIEWED from the default home, where bucket='default'.
+        assert.equal(bucketNameFor({ buckets: [] }, 'recipes'), 'recipes');
+        assert.equal(bucketNameFor(null, 'recipes'), 'recipes');
+    });
 });
 
 describe('bucketFor', () => {

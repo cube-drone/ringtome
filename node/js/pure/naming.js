@@ -75,10 +75,19 @@ export function bucketFor(seg, roster) {
 /// in it, else the document's first, else the default app's home (which gathers the unbucketed).
 /// The shell reads this to know whose tree to fetch; `buildSlugPath` reads it to build the head.
 /// One definition, because a disagreement between those two produces a path that cannot resolve.
-export const bucketNameFor = (row, bucket) =>
-    bucket && ((row && row.buckets) || []).includes(bucket)
-        ? bucket
-        : ((row && row.buckets) || [])[0] || DEFAULT_STYLE;
+export const bucketNameFor = (row, bucket) => {
+    const names = (row && row.buckets) || [];
+    // An EMPTY bucket list is ambiguous: genuinely unbucketed, or a fresh row whose filing
+    // write hasn't echoed yet ("+ new recipe" is create-then-file, and the mirror can stream
+    // the row between the two). The screen the caller is on is the better witness, so a
+    // passed bucket wins the tie - and the legit unbucketed case is unharmed, because
+    // `bucketHolds` only ever shows a truly unbucketed doc in the default app's home, where
+    // the passed bucket already IS the default. Without this, the re-dress minted a
+    // default-headed path mid-race and silently teleported the user into TurboNotes
+    // (field-found 2026-08-01).
+    if (bucket && (names.includes(bucket) || names.length === 0)) return bucket;
+    return names[0] || DEFAULT_STYLE;
+};
 
 /// Does resolving this path need the bucket's tree? Only when there are middle segments to walk
 /// and the tail isn't already canonical - so the shell can skip fetching a tree it won't read.
