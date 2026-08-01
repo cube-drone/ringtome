@@ -21,6 +21,7 @@ import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
 import { slugPathFor } from './address.js';
+import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
@@ -28,7 +29,7 @@ const html = htm.bind(h);
 // The reader: read-only display of one document's resolved current state. `body` arrives
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
-const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
+const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
     // The shared read-only loader (doc/detail.js). Write failures below get their own state; the
     // header shows whichever error is live.
     const { doc, error: loadError } = useDocDetail(root, docId);
@@ -179,14 +180,15 @@ const Reader = ({ root, docId, onDeleted, nav, bucket }) => {
                         title="tags, date & description"
                         onClick=${() => setShowMeta((v) => !v)}
                     />
-                    <${Chip}
+                    ${(features || featuresOf()).pin &&
+                    html`<${Chip}
                         icon=${Icons.pin}
                         modifier=${pinned ? 'chip-pinned' : null}
                         title=${pinned
                             ? 'Pinned — click to unpin it from the top of the list'
                             : 'Not pinned — click to pin it to the top of the list'}
                         onClick=${togglePin}
-                    />
+                    />`}
                     <${NavChips} nav=${nav} />
                 </span>
                 ${showMeta &&
@@ -223,6 +225,7 @@ export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucke
         key=${docId}
         nav=${nav}
         bucket=${bucket}
+        features=${features}
         onDeleted=${onDeleted}
     />`;
 };

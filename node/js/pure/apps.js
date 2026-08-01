@@ -70,7 +70,9 @@ export const APPS = [
         // tree-having for the shared surfaces (uploads file into the tree root). The label is
         // "Wikibook" but the id, style, and bucket are all `wiki`: only the display name changed.
         wiki: true,
-        features: { tree: true },
+        // No pin: pinning floats a document in a LIST, and the wiki has no list - its order
+        // is the tree's. A button that does nothing is worse than no button.
+        features: { tree: true, pin: false },
     },
     {
         id: 'notes',
@@ -114,6 +116,7 @@ const DEFAULT_FEATURES = {
     description: true, // the description annotation
     tagColumn: false, // a sidebar listing every tag by frequency
     tree: false, // the wiki tree pane (doc/tree.js), right of the list
+    pin: true, // the pin chip - floats the doc atop the LIST, so list-less apps drop it
 };
 
 /// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back

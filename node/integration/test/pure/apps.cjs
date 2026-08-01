@@ -98,6 +98,11 @@ describe('app registry', () => {
             assert.equal(featuresOf(appForStyle('wiki')).tree, true);
             assert.equal(featuresOf(appForStyle(DEFAULT_STYLE)).tree, true);
         });
+
+        it('drops the pin from list-less apps: the wiki has no list to float atop', () => {
+            assert.equal(featuresOf(appForStyle('wiki')).pin, false);
+            assert.equal(featuresOf(appForStyle(DEFAULT_STYLE)).pin, true, 'lists keep it');
+        });
     });
 
     describe('bucketHolds (what a documents app has in view)', () => {

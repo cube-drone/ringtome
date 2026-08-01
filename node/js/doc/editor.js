@@ -414,14 +414,15 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
                         title="tags, date & description"
                         onClick=${() => setShowMeta((v) => !v)}
                     />
-                    <${Chip}
+                    ${feat.pin &&
+                    html`<${Chip}
                         icon=${Icons.pin}
                         modifier=${row && row.pinned ? 'chip-pinned' : null}
                         title=${row && row.pinned
                             ? 'Pinned — click to unpin it from the top of the list'
                             : 'Not pinned — click to pin it to the top of the list'}
                         onClick=${() => togglePin(row && row.pinned)}
-                    />
+                    />`}
                     <${NavChips} nav=${nav} />
                 </span>
                 ${showMeta &&
