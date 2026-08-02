@@ -13,7 +13,7 @@ import htm from 'htm';
 import { api } from './net.js';
 import { useShadowValue } from './shadow.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
-import { identityAddress } from './pure/portable.js';
+import { identityAddress, viaHints } from './pure/portable.js';
 import { speakable } from './speakable.js';
 import { Icons } from './icons.js';
 
@@ -494,14 +494,21 @@ export function usePersonaName(current) {
 
 // The persona's shareable identity address (PROJECT_PLAN, Addressing): minted from the
 // operator's declared public URL (`/api/config`) - or the origin-free path form when there
-// isn't one - with this node's endpoint key as the `?via=` reachability hint (`/api/node`).
-// Both fetched once per mount; neither changes underneath a session.
+// isn't one - with `?via=` hints: this node's endpoint key first (`/api/node` - provably
+// alive, it served this page), then the persona's liveliest known peers (`/peers`), capped
+// by `viaHints`. All fetched once per mount; none change underneath a session.
 function useIdentityAddress(root) {
     const [address, setAddress] = useState(null);
     useEffect(() => {
         let live = true;
-        Promise.all([api('/api/config'), api('/api/node')])
-            .then(([config, node]) => {
+        Promise.all([
+            api('/api/config'),
+            api('/api/node'),
+            // Peers are gravy: a persona on one computer has none, and a failed fetch
+            // must not cost the address row its self-hint.
+            api(`/api/identity/${root}/peers`).catch(() => ({ peers: [] })),
+        ])
+            .then(([config, node, { peers }]) => {
                 if (!live) return;
                 // The root travels in its speakable form (pure/speakable.js): the checksum
                 // words are the human anchor, the base58 tail is the key, and hex stays a
@@ -510,7 +517,7 @@ function useIdentityAddress(root) {
                     identityAddress({
                         publicUrl: config.public_url,
                         root: speakable(root),
-                        via: [node.endpoint_id],
+                        via: viaHints(node.endpoint_id, peers),
                     })
                 );
             })

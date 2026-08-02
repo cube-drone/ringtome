@@ -922,6 +922,23 @@ pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
     Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
+/// The same peers ordered by how recently a sync actually reached them - the "biased toward
+/// nodes online at production time" signal minted addresses want for their `?via=` hints
+/// (Addressing). Never-synced peers sort last (recorded at adoption but unproven); ties by
+/// most recently added.
+pub async fn liveliest_peers(node_db: &Db, root_hex: &str, cap: u32) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM identity_peers WHERE root_pubkey = ?1
+             ORDER BY last_synced_ms IS NULL, last_synced_ms DESC, added_at_ms DESC
+             LIMIT ?2",
+            (root_hex, cap),
+        )
+        .await
+        .context("listing liveliest peers")?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 /// Distinct roots that have at least one known peer - the background sync worklist.
 pub async fn roots_with_peers(node_db: &Db) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db

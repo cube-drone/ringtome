@@ -42,6 +42,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/rebuild", post(rebuild_handler))
         .route("/api/identity/{root}/entries", get(entries_handler))
         .route("/api/identity/{root}/keys", get(keys_handler))
+        .route("/api/identity/{root}/peers", get(peers_handler))
         // M3: multi-node.
         .route("/api/identity/adopt/begin", post(adopt_begin_handler))
         .route("/api/identity/adopt/complete", post(adopt_complete_handler))
@@ -587,6 +588,28 @@ struct CrownResponse {
 
 /// The identity's resolved key tree: every known key with its status and rank path, plus a fork
 /// count (any nonzero value is evidence of key duplication or compromise).
+#[derive(serde::Serialize)]
+struct PeersResponse {
+    /// Known peer endpoint ids for this identity, liveliest first (most recently synced,
+    /// never-synced last). The client's `?via=` hints come from the head of this list;
+    /// serving a few extra leaves the cap (a URL-length and linkage dial, not a data one)
+    /// where it belongs, in the minting code.
+    peers: Vec<String>,
+}
+
+/// The identity's known peers, for minting `?via=` hints (Addressing: hints are keys, never
+/// addresses, biased toward nodes recently seen alive). Session-gated like `/api/node`: only
+/// this node's own users compose addresses here.
+async fn peers_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<PeersResponse>, AppError> {
+    super::require_owned(&state.node_db, &session.account.id, &root).await?;
+    let peers = crate::net::sync::liveliest_peers(&state.node_db, &root, 8).await?;
+    Ok(Json(PeersResponse { peers }))
+}
+
 async fn keys_handler(
     session: Session,
     State(state): State<AppState>,

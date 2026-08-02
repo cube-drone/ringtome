@@ -1398,3 +1398,18 @@ speakable form beside every author key (its first Rust consumer), and the person
 now mints `https://my-node.ca/id/frisk-carol-4a8W…?via=…` (field-verified). One sanctum
 lesson: speakable.js lives OUTSIDE pure/ - blake3 is an import, and the pure zone admits
 none; the conventions test caught the breach and the module moved rather than the rule.
+
+## The address learns who else carries it (2026-08-01)
+
+`?via=` grew from one hint to the doctrine's real shape: this node's endpoint key first (the
+one provably alive - it served the page), then the persona's liveliest known peers, capped
+at three. New pieces: `liveliest_peers` in net/sync.rs (identity_peers ordered by
+last_synced_ms, never-synced last - the "biased toward nodes online at production time"
+signal the Addressing section asked for), a session-gated `GET /api/identity/{root}/peers`,
+and `viaHints` in pure/portable.js carrying the cap and the self-first/dedupe rule with
+vectors (the cap is the plan's Costs ruling: a URL that is mostly hints stops being a thing
+you'd paste in a bio). Peers are gravy in the address hook - a one-computer persona or a
+failed fetch never costs the row its self-hint. Field-verified over a real adoption: alpha
+mints `https://alpha.example/id/water-mull-…?via=<alpha>,<bravo>`, bravo mints the path form
+with the same hints reversed - one persona, two lenses, each address warm-starting at either
+computer.

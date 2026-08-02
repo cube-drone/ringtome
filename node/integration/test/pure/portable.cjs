@@ -3,9 +3,9 @@
 // slash (prose mentioning the bare origin survives), and every occurrence in one paste.
 const assert = require('node:assert');
 
-let stripSelfOrigin, identityAddress;
+let stripSelfOrigin, identityAddress, viaHints;
 before(async () => {
-    ({ stripSelfOrigin, identityAddress } = await import('../../../js/pure/portable.js'));
+    ({ stripSelfOrigin, identityAddress, viaHints } = await import('../../../js/pure/portable.js'));
 });
 
 const O = 'http://localhost:5281';
@@ -72,5 +72,25 @@ describe('identityAddress (the minting half)', () => {
             identityAddress({ publicUrl: '', root: ROOT, via: ['', null, 'k'] }),
             `/id/${ROOT}?via=k`
         );
+    });
+});
+
+describe('viaHints (the cap and the order)', () => {
+    it('puts this node first - the one provably alive', () => {
+        assert.deepEqual(viaHints('me', ['a', 'b']), ['me', 'a', 'b']);
+    });
+
+    it('caps at three total, however lively the peer list', () => {
+        assert.deepEqual(viaHints('me', ['a', 'b', 'c', 'd', 'e']), ['me', 'a', 'b']);
+    });
+
+    it('dedupes - a peer row for ourselves never doubles the hint', () => {
+        assert.deepEqual(viaHints('me', ['me', 'a']), ['me', 'a']);
+    });
+
+    it('drops holes and survives no peers at all', () => {
+        assert.deepEqual(viaHints('me', ['', null, 'a']), ['me', 'a']);
+        assert.deepEqual(viaHints('me'), ['me']);
+        assert.deepEqual(viaHints('me', []), ['me']);
     });
 });
