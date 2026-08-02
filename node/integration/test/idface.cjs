@@ -44,6 +44,11 @@ describe("the /id face", () => {
             "profile text is escaped, never trusted"
         );
         assert.ok(!body.includes("app.js"), "the face is static HTML, not the SPA");
+        assert.ok(body.includes("?via="), "the address is the full shareable form, hints and all");
+        assert.ok(
+            body.indexOf("?via=") < body.indexOf("&lt;with&gt;"),
+            "the address sits above the bio"
+        );
     });
 
     it("serves the same face at the speakable spelling, words verified", async () => {

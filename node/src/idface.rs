@@ -186,27 +186,39 @@ pub async fn idface(
     }
 
     if hosted_here(&state, &root_hex).await? {
-        // The shelf: this node chose to host the persona, so its public face serves.
+        // The shelf: this node chose to host the persona, so its public face serves. The
+        // address is the FULL shareable form - origin (when declared), `?via=` hints (this
+        // node first, then the persona's liveliest peers, capped at three - the SPA row's
+        // rule) - shown above the bio and linked to itself, exactly as the lens shows it.
+        // No separate words line: the words are the address's own prefix.
         let fields = public_profile(&state, &root_hex).await.unwrap_or_default();
         let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
         let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
-        let addr = match &state.config.public_url {
-            Some(base) => format!("{base}/id/{speak}"),
-            None => format!("/id/{speak}"),
-        };
+        let mut via = vec![state.endpoint.id().to_string()];
+        for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 8)
+            .await
+            .unwrap_or_default()
+        {
+            if via.len() >= 3 {
+                break;
+            }
+            if !via.contains(&peer) {
+                via.push(peer);
+            }
+        }
+        let base = state.config.public_url.clone().unwrap_or_default();
+        let addr = format!("{base}/id/{speak}?via={}", via.join(","));
         return Ok(face(
             StatusCode::OK,
             page(
                 &name,
                 format!(
                     "<h1>{chip}{name}</h1>\
-                     <p class=\"words\">{words}</p>\
+                     <p class=\"addr\"><a href=\"{addr}\">{addr}</a></p>\
                      {bio}\
-                     <p class=\"addr\">{addr}</p>\
                      <p class=\"foot\">a persona on ringtome, served from this node</p>",
                     chip = chip(&root),
                     name = esc(&name),
-                    words = esc(&words),
                     bio = if bio.is_empty() {
                         String::new()
                     } else {

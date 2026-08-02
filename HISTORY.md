@@ -1490,3 +1490,11 @@ is one character to the person counting - because the cozy caps sit so far under
 4096-byte cap that byte-honesty stopped mattering. A vector pins the safety inequality
 (cap x 4 worst-case bytes <= wire cap) so no future cap bump can silently reopen the
 invisible-400 hole; uncapped fields defer to the wire.
+
+## The static face catches up to the lens (2026-08-02)
+
+The anonymous /id face now shows the FULL shareable address - origin when declared, ?via=
+hints minted by the same rule as the SPA row (this node first, then the persona's liveliest
+peers, capped at three) - above the bio, linked to itself, with the separate words line gone
+(the words are the address's own prefix). The two faces of one persona now agree about what
+an address looks like and where it sits. Integration pins the hints and the ordering.
