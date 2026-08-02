@@ -438,9 +438,13 @@ export const NamePicker = ({ persona, account }) => {
     const [name, setName] = useState(account.username);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
+    // The same cozy cap the profile editor enforces (pure/profile.js) - the first name a
+    // persona ever gets must fit the same field every later rename does.
+    const over = overProfileLimit('name', name);
 
     const submit = async (e) => {
         e.preventDefault();
+        if (over) return;
         setBusy(true);
         setError(null);
         try {
@@ -466,8 +470,15 @@ export const NamePicker = ({ persona, account }) => {
                     onInput=${(e) => setName(e.currentTarget.value)}
                     autocapitalize="off"
                 />
+                ${over &&
+                html`<p class="form-error">
+                    <span class="profile-count profile-count-over">
+                        ${profileChars(name)}/${PROFILE_LIMITS.name}
+                    </span>
+                    ${' '}- a name this long won't fit
+                </p>`}
                 ${error && html`<p class="form-error">${error}</p>`}
-                <button class="welcome-go" type="submit" disabled=${busy}>
+                <button class="welcome-go" type="submit" disabled=${busy || over}>
                     ${busy ? '…' : 'that’s me'}
                 </button>
                 <button
