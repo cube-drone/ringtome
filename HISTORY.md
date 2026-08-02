@@ -1549,3 +1549,29 @@ spellings parse everywhere via is consumed (hex is the eternal escape hatch), an
 ladder went PARALLEL to match - ten sequential 8s timeouts would be an 80s worst case, so
 candidates race and the first success aborts the rest (safe: single-writer chains,
 duplicate-skip ingest). PROJECT_PLAN's Costs ruling amended in place, reversal noted.
+
+## The contact ledger (2026-08-02)
+
+The trust layer's first UI: another persona's id page now carries "your ledger" - block,
+trust (Curtis's six stops, 0/5/20/50/80/95, worded per doctrine: "not how much you like
+them - whether you believe they're real"; the 95 stop is vouch-shaped and Tier 5's vouch
+payload will ride it as its own statement, fork-in-the-UI), a trust-public consent toggle
+with the honest small print, and two interest dials (theirs, and their rebroadcasts -
+0/25/50/75/100). Every fact is a private-chain LWW register on YOUR identity
+(`contact:<their-root>` in the existing private KV - zero new protocol), stored as NUMBERS
+so the scale can grow stops without migration (pure/contact.js, stops pinned by vector;
+`nearestStop` keeps the selects honest over finer values). Two flags are records awaiting
+consumers: trust_public awaits the graph's publication machinery, blocked awaits the
+Inbound Gate. One field find while proving it: rapid dial picks raced the single-writer
+private chain and silently lost writes - the ledger now serializes its writes through a
+queue and reloads the stored truth on failure; the harness rapid-fires all five dials and
+all five land.
+
+## The ledger learns to speak cozy (2026-08-02)
+
+Two field notes on the day-old contact panel: "your ledger" broke the Cozyweb language
+budget (engine-room word, banned from the UI) and became "your relationship"; and the
+trust-visibility checkbox was a floating signifier (label text that changed when clicked -
+an unchecked box saying "private" reads as its opposite), replaced by a select whose two
+options say the whole truth standing still: "private - just my computers" / "public -
+shared with the network".

@@ -501,3 +501,86 @@
 .profile-flash-err {
     color: var(--coral);
 }
+
+/* The contact ledger (idpage.js): what you privately record about another persona. */
+.contact-ledger {
+    margin-top: 1.4rem;
+    padding: 1rem 1.2rem;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.ledger-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ledger-title {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.ledger-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--coral);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.25rem 0.7rem;
+    cursor: pointer;
+}
+
+.ledger-block:hover {
+    border-color: var(--coral);
+}
+
+.ledger-blocked {
+    background: var(--coral);
+    color: var(--surface);
+    border-color: var(--coral);
+}
+
+.ledger-note {
+    margin: 0;
+    color: var(--coral);
+    font-size: 0.8rem;
+}
+
+.ledger-dial {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.ledger-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.85rem;
+    color: var(--ink);
+}
+
+.ledger-label small {
+    color: var(--muted);
+    font-size: 0.72rem;
+    max-width: 18rem;
+}
+
+.ledger-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+    max-width: 16rem;
+}

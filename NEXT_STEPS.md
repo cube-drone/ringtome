@@ -91,7 +91,11 @@ signing key and the root's is offline by design - so "resolve a bare root" needs
 store-at-derived-key design, not just a call; until then the ladder is origin + via, which
 every minted address carries), the **shelf disclaimer** (moot until member follows exist),
 and the **`/home/people` rolodex**. The graph rungs (steps 1-3) ride alongside - the follow
-edge is what converts a lens visit into shelf.
+edge is what converts a lens visit into shelf. **The contact ledger shipped 2026-08-02** (the
+lens page's trust/interest/block dials, private-chain LWW facts per contact): two consent
+flags in it are RECORDS awaiting their consumers - `trust_public` feeds the graph's
+publication machinery (Tier 5's vouch lane), `blocked` feeds the Inbound Gate (route step 3)
+- and the trust dial's stored numbers are edge INPUTS for the flow engine, never the flow.
 
 Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
 prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the
