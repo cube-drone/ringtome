@@ -534,7 +534,10 @@ function useIdentityAddress(root) {
 // The address row: where this persona lives, ready to hand to someone - and, since the /id
 // surface opened, a door: the address links to this persona's own id page (the local path
 // form, so the visit stays at this lens whatever origin the shareable text carries).
-const AddressRow = ({ root }) => {
+// Exported: the id lens page (idpage.js) shows the same row for any hosted persona. The row
+// explains nothing - the whole string, a quiet "address" tag, a copy button. The address is
+// its own document; the label lost its subtitle on field review (2026-08-01).
+export const AddressRow = ({ root }) => {
     const address = useIdentityAddress(root);
     const [copied, setCopied] = useState(false);
     if (!address) return null;
@@ -547,15 +550,9 @@ const AddressRow = ({ root }) => {
             /* clipboard refused (permissions): the text stays selectable by hand */
         }
     };
-    const isLocal = address.startsWith('/');
     return html`
         <div class="persona-address">
-            <span class="persona-address-label">
-                your address
-                <small>${isLocal
-                    ? 'this computer has no public web address - other ringtome folk can still open it from their own node'
-                    : 'where this persona lives on the web'}</small>
-            </span>
+            <span class="persona-address-label">address</span>
             <a class="persona-address-value" href="/id/${speakable(root)}" title="see this persona's page">
                 <code>${address}</code>
             </a>

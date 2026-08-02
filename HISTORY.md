@@ -1448,3 +1448,21 @@ band's next tenant never inherits a stale name. Structural note, recorded as ope
 deliberately NOT an app off the registry yet - a "persona browser" tile is the natural shape
 if it grows one, and the header wiring (an idHeader beside the appHeader, title reported
 upward by the page) is the smallest thing that makes the frame look right meanwhile.
+
+## The id page stops repeating itself (2026-08-01)
+
+The lens page's own-persona view reshaped on field feedback: the standalone fingerprint line
+was redundant (the words are the address's own prefix, one row down), so it's gone - the
+page now shows the SAME shareable/copyable address row the persona home mints (origin, via
+hints, copy button; AddressRow exported from persona.js, its label bending to "your address"
+/ "their address"), and "this is you" became the link home instead of a separate pointer
+paragraph. A hosted persona's page is exactly where you'd reach for its link, so the link
+lives there in its full form.
+
+## The address row goes quiet (2026-08-01)
+
+Field review trimmed the address row to its essentials: the whole identity string, a small
+"address" tag, a copy button - the explanatory subtitles ("this computer has no public web
+address…" / "where this persona lives on the web") are gone. The address is its own
+document; a label that explains it is a label that doubts it. One row, both pages
+(/home/persona and the id lens), no per-audience label bending.

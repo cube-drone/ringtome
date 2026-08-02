@@ -155,20 +155,10 @@
 }
 
 .persona-address-label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
     flex-shrink: 0;
     font-weight: 600;
-    color: var(--ink);
-    font-size: 0.85rem;
-}
-
-.persona-address-label small {
-    font-weight: 400;
     color: var(--muted);
-    font-size: 0.72rem;
-    max-width: 16rem;
+    font-size: 0.8rem;
 }
 
 .persona-address-value {

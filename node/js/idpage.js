@@ -11,7 +11,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { parseSpeakable, speakable } from './speakable.js';
-import { personaHue } from './persona.js';
+import { personaHue, AddressRow } from './persona.js';
 
 const html = htm.bind(h);
 
@@ -99,18 +99,17 @@ export const IdPage = ({ seg, current, onTitle }) => {
     };
     const name = field('name') || words;
 
+    // No separate fingerprint line: the words are already the address's own prefix, one row
+    // down. The address row is the SAME shareable/copyable form the persona home mints -
+    // origin, hints and all - because a hosted persona's page is exactly where you'd reach
+    // for its link.
     return html`<${Card}>
         <h1 class="persona-page-title">
             <span class="persona-chip" style="background: hsl(${personaHue(root)}, 60%, 55%)"></span>
             ${name}
         </h1>
-        <p class="id-words">${words}${isYou ? ' - this is you' : ''}</p>
+        ${isYou && html`<p class="id-words"><a href="/home/persona">this is you</a></p>`}
+        <${AddressRow} root=${root} />
         ${field('bio') && html`<p class="id-bio">${field('bio')}</p>`}
-        <p class="id-address"><code>${speak}</code></p>
-        ${isYou &&
-        html`<p class="id-quiet">
-            <a href="/home/persona">your persona's home</a> has the shareable form of this
-            address, hints and all.
-        </p>`}
     <//>`;
 };
