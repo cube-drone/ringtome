@@ -30,6 +30,7 @@ mod record;
 mod request_context;
 mod seal;
 mod semver;
+mod speakable;
 mod test_endpoints;
 mod ui;
 

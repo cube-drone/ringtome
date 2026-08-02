@@ -91,6 +91,15 @@ pub struct Config {
     /// Purely a label: it appears only as private register values on identities this node
     /// hosts, never in any public surface, and it confers no authority anywhere.
     pub node_name: String,
+    /// `RINGTOME_PUBLIC_URL`: the base URL this node is publicly reachable at
+    /// (`https://my-node.ca`), declared by the operator - the node cannot verify its own
+    /// reachability, so this is an assertion, not a discovery. When set, minted identity
+    /// addresses carry it as the origin (Addressing: the origin slot is provenance and
+    /// preferred first contact); when absent, addresses mint in the origin-free path form,
+    /// which is the honest shape for a node the web cannot reach. `window.location` is
+    /// deliberately NOT the fallback: the origin a browser happens to use (localhost, a LAN
+    /// name, a tailnet alias) proves nothing about what the world can dial.
+    pub public_url: Option<String>,
 }
 
 /// The subset of configuration safe to expose to a browser client.
@@ -98,6 +107,10 @@ pub struct Config {
 pub struct PublicConfig {
     pub app_version: String,
     pub environment: Environment,
+    /// The node's publicly reachable base URL, if the operator declared one - see
+    /// `Config::public_url`. The client mints shareable identity addresses with this as the
+    /// origin; absent, it mints the origin-free path form.
+    pub public_url: Option<String>,
 }
 
 impl Config {
@@ -197,6 +210,13 @@ impl Config {
             raw[..end].to_string()
         };
 
+        // Trailing slashes trimmed once here so every consumer can append `/id/...` blindly;
+        // a blank or whitespace value is the same as unset.
+        let public_url = env::var("RINGTOME_PUBLIC_URL")
+            .ok()
+            .map(|s| s.trim().trim_end_matches('/').to_string())
+            .filter(|s| !s.is_empty());
+
         Self {
             app_version,
             bind_address,
@@ -213,6 +233,7 @@ impl Config {
             resync_interval_secs,
             unfurl_rate_per_min,
             node_name,
+            public_url,
         }
     }
 
@@ -243,6 +264,7 @@ impl Config {
         PublicConfig {
             app_version: self.app_version.clone(),
             environment: self.environment,
+            public_url: self.public_url.clone(),
         }
     }
 }

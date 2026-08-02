@@ -23,6 +23,7 @@
     "@cube-drone/marquee-fonts": "^0.6.0",
     "@cube-drone/marquee-react-renderer": "^0.6.0",
     "@cube-drone/marquee-turbolink": "^0.6.1",
+    "@noble/hashes": "^2.2.0",
     "@phosphor-icons/react": "^2.1.10",
     "dexie": "^4.4.4",
     "gemoji": "^8.1.0",

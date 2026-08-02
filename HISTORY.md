@@ -1343,3 +1343,58 @@ per-identity/per-collection summary bloom (one-way by construction, cheap to syn
 "which of the fifty identities I follow might mention this" to a handful worth querying
 properly. Blocks reassigned from hours to identities; the local index stays a token bag, where
 localhost bandwidth is free.
+
+## The /id endpoint designs itself (2026-08-01)
+
+A three-message design conversation that turned out to be settling 4S's front door, now
+canon. The pieces, in the order they fell: **the prefix got its name** - the Addressing
+template's elided `…` is the literal `/id/`, identical on every node so re-homing stays
+mechanical, with the SPA served there and the SESSION as the lens (the person page is the one
+place the address bar is legitimately shareable as-is; `/home` stays identity-free and the
+console's people surface is a rolodex that navigates OUT to `/id/<root>`). **The gateway went
+default-on** - the dual-opt-in Web Gateway role was judged overwrought by Public Means
+Public's own argument, replaced by three rungs with a sharp line: serve the SHELF (hosted +
+member-followed, the accountable demand edges, disclaimer on not-hosted-here), SIGNPOST the
+reachable (metadata only, never bytes - via hints + serving records, which now carry a
+web-faced node's public HTTPS URL; a road sign, not a rehost), and TOMBSTONE warmly (the
+irreducible residue: content nobody chose to put on the web - honest, and dissolved
+per-identity by one web-faced help-host). Authenticated members get temporary fetch-and-serve
+for off-shelf roots; the anonymous shelf grows only through durable demand, never one
+member's curiosity. Author opt-in flipped to opt-out courtesy; foreign-media scanning stays
+fail-closed and hardened headers move into the default build; the curated gateway survives as
+the "magazine" tier. Ruling recorded with its own caveat: not safety-forward, chosen for
+early usefulness, dials adjustable later. NEXT_STEPS declares the /id endpoint the next unit.
+
+## The persona learns its address (2026-08-01)
+
+First brick of the /id unit: /home/persona now shows "your address" - the persona's shareable
+identity URL, minted per the fresh Addressing doctrine. The origin comes from
+`RINGTOME_PUBLIC_URL` (new operator env var, trimmed once at config load, surfaced to the
+client through `/api/config`'s PublicConfig) and NOWHERE else - never window.location, whose
+origin (localhost, a LAN name, a tailnet alias) proves nothing about what the world can dial.
+Declared URL → `https://my-node.ca/id/<root>?via=<node-key>`; none → the origin-free path
+form with an honest hint ("this computer has no public web address - other ringtome folk can
+still open it from their own node"). The `?via=` hint is this node's endpoint key, read from
+the existing `/api/node`. Minting lives beside its mirror image: `identityAddress` joins
+`stripSelfOrigin` in pure/portable.js (the origin-handling module - one strips origins on the
+way in, the other grants them on the way out), with vectors. Copy is the whole interaction
+for now - the /id surface itself is the next brick, so the link is a thing you give away, not
+yet a place you go. Field-verified through the harness on both node shapes.
+
+## The speakable identicon (2026-08-01)
+
+Roots learned to say their name: `sway-broke-AwTyvw9SPjfiJ4xvMfwDKZeHQH6N1mw3LQtoYtJNPfqU` -
+two checksum words (blake3's first two 4-byte windows, mod 1,296 into the pinned EFF short
+wordlist) and the key in base58btc (0OIl dropped; this string exists to survive handwriting).
+Canon in PROJECT_PLAN (Naming, "The Speakable Identicon"): the grammar accepts worded, bare
+base58, and the hex escape hatch; a checksum mismatch REFUSES loudly with the true words in
+hand; 21 bits is recognition, never authority (a colliding pair costs an attacker minutes -
+words join the pointers-never-authority family). The wordlist is a wire format - words are
+addressed by index, so the list froze at pin time (one amendment: the hyphen-bearing "yo-yo"
+slot became "yonder"; "yoyo" was already taken two lines down, which the vectors now pin).
+Twinned implementation - js/speakable.js + src/speakable.rs - held bit-compatible by shared
+goldens, the entry-format vector discipline at miniature scale; `ringtome inspect` prints the
+speakable form beside every author key (its first Rust consumer), and the persona address row
+now mints `https://my-node.ca/id/frisk-carol-4a8W…?via=…` (field-verified). One sanctum
+lesson: speakable.js lives OUTSIDE pure/ - blake3 is an import, and the pure zone admits
+none; the conventions test caught the breach and the module moved rather than the rule.

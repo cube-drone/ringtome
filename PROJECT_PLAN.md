@@ -1942,6 +1942,36 @@ hints are for. Everything load-bearing survives, re-homed below; the scheme was 
   address would freeze a routing snapshot into the string and rot. Never trusted; verified against `root` on
   arrival and discarded on failure.
 
+### The prefix gets its name: `/id/` (settled 2026-08-01)
+
+The `…` in the template above is the literal path prefix **`/id/`**, identical on every node:
+
+```
+https://<node>/id/<root>/<path>[?via=<key>[,<key>…]]
+```
+
+- **Universal, so re-homing stays mechanical.** The re-homer (the paste-time origin-strip, generalized)
+  recognizes identity-rooted paths by this prefix at any origin - no sniffing key-shaped segments, and the root's
+  text encoding can evolve behind it. It also keeps `/` clean for whatever else the node serves.
+- **The SPA serves there, and the session is the lens.** For a logged-in member, `/id/<root>/…` renders in the
+  console chrome, dressed by *their* lens: contact name in the title bar, follow/vouch controls, trust context,
+  the what-I-know-about-them panel writing to their own private chains. The dressing rides the session, never the
+  URL - so the address bar on a person's page is *legitimately shareable as-is*, origin-as-provenance included.
+  The only place "copy what's in the address bar" is safe is the place where the URL names someone else. An
+  anonymous visitor at the same path gets the gateway's three rungs (Moderation, The Web Gateway): the shelf with
+  its disclaimer, the signpost, or the warm tombstone; an authenticated member asking about an off-shelf root
+  gets the temporary fetch-and-serve.
+- **`/home` stays identity-free, exactly as ruled.** No foreign root ever appears under `/home`; the console's
+  people surface is a **rolodex** (`/home/people` - your follows, friends, contact names, identity-free at the
+  list level) whose entries navigate *out* to `/id/<root>`. The structural signal survives unrefined: a `/home`
+  URL is never shareable, an `/id/` URL always is.
+- **The query namespace is reserved, `/id/`-wide.** `?via=` (reachability hints) and the eventual view/log
+  modifier belong to the address layer; resource paths under `/id/` never define their own query parameters.
+  Costless in practice: signed documents carry the origin-free *path* form, so query strings never survive into
+  stored references anyway - they are envelope, not address.
+- **Handles alias onto it later** (`/@curtis` → `/id/<root>` on nodes that know the handle) - pointers, never
+  authority, per Naming below.
+
 ### Resolution: the lens runs the ladder
 
 Every dereference is served by *some* node - the origin as clicked, or your own node after re-homing. A node asked
@@ -2022,6 +2052,31 @@ contact only; after that the client remembers the root. Confusable-name attacks 
 **root-derived identicon** (the name may collide; the image will not) and by showing trust-graph context rather than
 letting the index adjudicate truth. Everything else about indexes is "someone builds a website," and the doc means
 that literally - it is liberating, not hand-waving.
+
+### The Speakable Identicon (settled 2026-08-01)
+
+The identicon made audible: a root renders for human transport as **two checksum words and the key in base58** -
+`sway-broke-AwTyvw9SPjfiJ4xvMfwDKZeHQH6N1mw3LQtoYtJNPfqU` - the canonical mint everywhere humans see a root (the
+`/id/` segment, the persona page, rolodex, tombstones and signposts). "I'm sway-broke" survives a phone call, a
+sticky note, and a conversation in a way neither hex nor a picture does. The pieces, all wire format:
+
+- **Words**: the first two 4-byte windows of `blake3(root)`, big-endian, each mod 1,296 into a **pinned
+  wordlist** (`wordlist/eff_short_1.txt` - the EFF short list, chosen for unique three-letter prefixes, no
+  homophones, deliberately inoffensive; one amendment: the hyphen-bearing "yo-yo" slot is "yonder"). Words are
+  addressed by *index*, so the list is frozen like the entry format: never reorder, never remove, never improve.
+- **Key**: the 32 bytes in **base58btc** (~44 chars) - `0OIl` dropped because this string exists to survive
+  handwriting and dictation. Length is a wash against hex (~61 vs 64 with the words on); the win is cognitive.
+- **Grammar**: worded form, bare base58, and bare hex-64 all parse; the worded form's checksum is **verified and
+  a mismatch refuses loudly** (with the true words in hand, so the UI can say "did you mean") - lenient
+  acceptance would train everyone to ignore the words, which deletes the feature. `?via=` keys stay raw: their
+  audience is nodes.
+- **Twenty-one bits is recognition, never authority.** Grinding a fresh key to collide two words costs minutes,
+  so the words are how friends recognize an address and how a paste proves it arrived whole - never how a
+  stranger verifies anything. Same family, same rule as every human-facing name above: pointers; the root
+  decides; pin on first resolution; nobody ever promotes the words.
+
+Implementation is twinned - `js/speakable.js` and `src/speakable.rs` - pinned bit-compatible by shared goldens
+(integration/test/pure/speakable.cjs), the entry-format vector discipline at miniature scale.
 
 ### Slugs, Views, and the Personal Address Bar (settled 2026-07-09)
 
@@ -2883,8 +2938,9 @@ What varies is never *what a node serves* but *whom it hosts* and *whether it is
   Registration Modes. Overload and liability are bounded by *whom you host and can eject*, never by hiding readable
   bytes.
 - **Reachability is deployment, not policy.** A home node behind NAT may only ever be reachable by followers over
-  Iroh; a VPS with a domain is a public HTTP endpoint. Serving *other identities'* public content to the web -
-  fronting the broader network - is the further opt-in **Web Gateway** role (below), with its own liability.
+  Iroh; a VPS with a domain is a public HTTP endpoint. A reachable node serves *other identities'* public content
+  to the web by default, in the three rungs of **The Web Gateway** (below; amended 2026-08-01 from the earlier
+  opt-in role) - shelf, signpost, tombstone - with the disclaimer keeping provenance honest.
 - **No node must answer any particular request.** "Anyone *may* read" is not "every node *must* serve every
   request": a node still rate-limits, blocks abusers, and refuses to be an amplifier (**You Can't Push Hosting
   Decisions On Others**, Doctrine).
@@ -3066,23 +3122,55 @@ Operational rules:
   layer, not the scanner. Likewise, perceptual hashes stop *casual redistribution* of known material, not a
   determined adversary with a re-render pipeline: a hygiene layer on the architecture, never the wall.
 
-### The Web Gateway: A Distinct Role, Dual Opt-In
+### The Web Gateway: Default-On, in Three Rungs (amended 2026-08-01; formerly a dual-opt-in role)
 
-(Resolves the open decision in Resource Namespace and Access Protocol.) Some users genuinely want globally-public,
-identity-attributed content - the webcomic case - and the network should serve them without every federated node
-becoming an exit node. The gateway is therefore a **separate role with dual opt-in**:
+Every reachable node is a gateway, automatically. The earlier design here - a separate role, author opt-in via
+gateway-eligibility statement, operator allowlist - was judged overwrought by the same argument that retired
+"never served to anonymous HTTP" above: public content is on the web the moment one reader wants it there, so
+ceremony around re-serving it protects nothing and costs the network a working public face. The ruling, made with
+eyes open: this is not a safety-forward decision, it is an early-usefulness one, and the dials can be fussed with
+later. What is NOT a dial is the shape - the `/id/` surface (Addressing) answers an anonymous request in exactly
+one of three rungs, and the line between them is what keeps Bounded Operator Liability true:
 
-- **The author opts in:** a signed gateway-eligibility statement scoping which of their public content may be
-  re-served over HTTP.
-- **The gateway operator allowlists that specific identity.** Nobody can opt themselves onto a gateway.
+- **Serve the shelf.** Identities the node hosts, plus identities its members durably follow or serve (the demand
+  edges of Rehosting Policy - every one has an accountable human attached). Served to anonymous and authenticated
+  visitors alike; content the node carries for someone it does not host wears a **visible disclaimer** ("not
+  hosted here - carried for a member"). The Three Funnels survive intact: the shelf IS the community's behavior.
+- **Signpost the reachable.** An off-shelf root resolves as *metadata, never bytes*: the URL's own `via` hints
+  plus the root's serving records (rate-limited and cached - the unfurl envelope's discipline; a stranger's GET
+  must not buy unbounded DHT work). To make this rung work, **a web-faced serving node's public HTTPS URL rides
+  the identity's serving records** - an identity that lives anywhere web-reachable says so in its own public
+  record, and any node asked about it relays the list: "this persona may be found at these web addresses." A road
+  sign, not a rehost - the visitor lands on a node that *chose* to serve that identity, which is where the
+  liability belongs. The node adjudicated nothing; it repeated hints the visitor brought and records the identity
+  signed.
+- **Tombstone, warmly.** No web-faced serving node exists → an honest dead end: identicon, the root, "this
+  persona lives on the quiet side of ringtome - open it from your own node," copy-address button. This residue is
+  irreducible without violating You Can't Push Hosting Decisions On Others - it is not the gateway being stingy,
+  it is the true statement that nobody holding that content chose to put it on the web. Its *frequency* is
+  governed by the pull side: one help-host with a web face dissolves it per-identity, and minting discipline (the
+  origin slot means "a node serving this at t=0"; share buttons mint at a serving origin) keeps well-formed links
+  off this rung structurally.
 
-A gateway's liability is proportional to a **curated, enumerated list** - "we publish these 200 authors we chose"
-is a defensible editorial position in a way "we relay whatever arrives" never will be. Curation is also the value:
-a good gateway is a magazine, and its allowlist is taste made legible. An identity whose whole purpose is
-distributing contraband can flag itself gateway-eligible all day; no operator has to take it, and the ones
-vouch-reachable from operators won't. Gateway mode carries the strictest software posture: mandatory scanning,
-fail-closed, hardened serving headers (below), and a genuinely separate serving domain - the one role where asking
-the operator for real infrastructure is appropriate, because it is the one role that is *publishing*.
+**Authenticated visitors get a fourth behavior, not a fourth rung: fetch-and-serve, temporarily.** A member asking
+about an off-shelf root is a demand edge in miniature - funnel 2 with a named human - so the node runs the ladder,
+syncs the identity's public chains, and serves that member a lens view, cached with a TTL. Member-scoped and
+ephemeral, deliberately: **the anonymous shelf grows only through durable demand** (hosting, follows, serving) -
+never through one member's curiosity. A follow converts the visit into shelf.
+
+What replaces the author-side opt-in is an **opt-out courtesy**: a signed "do not gateway me" statement, honored
+the way robots.txt is - a politeness between nodes, never a wall (the content is public; the statement is a
+preference, and the plan does not pretend otherwise). Two hard edges survive from the old posture, cheap and
+deliberate: **foreign media keeps the scanner rule** (fail-closed - a node with no scanning backend serves foreign
+chains and pages freely but holds foreign *blobs*; text is where the usefulness lives, media is where the
+liability lives), and the **hardened serving headers** (validated Content-Type, nosniff, CSP sandbox) move from
+gateway-mode extras into the default build. The security pass still gates reachability entirely - nothing here is
+exposed before it happens.
+
+The curated gateway survives as the deluxe tier, not the only door: a **magazine** - an allowlist of chosen
+authors on its own domain, mandatory scanning, real infrastructure - is still a stronger editorial position and a
+real product ("we publish these 200 authors we chose"). It stopped being the prerequisite for public content
+reaching the web, which is what it was never load-bearing enough to be.
 
 ### The Media-Type Admission Test
 

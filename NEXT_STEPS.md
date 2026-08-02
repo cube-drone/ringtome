@@ -66,13 +66,23 @@ The rungs, each independently shippable:
    since private chains shipped. Follow UI rides the contact surfaces.
 3. **"Tell them" receipts**: the first real inter-identity delivery, passing the Inbound Gate.
    Friendship needs no new object - it composes at the second disclosed follow.
-4. **Public serving + the publication act** (the heart of 4S): the `/public/*` surface behind
-   the serving-boundary defaults, foreign-identity resolution, monotonic memory for remote
-   identities, and publication as copy-don't-flip (NOTES_APP, Publication - the notes editor
-   is already the post composer).
+4. **Public serving + the publication act** (the heart of 4S): the `/id/<root>` surface,
+   foreign-identity resolution, monotonic memory for remote identities, the default-on gateway
+   rungs, and publication as copy-don't-flip (NOTES_APP, Publication - the notes editor is
+   already the post composer).
 5. **Friends-gated serving**: the gated lane's first consumer - the predicate over receipts,
    the per-service lane declaration, and the blob gate (all three promissory notes below).
    Groups trail into the same roster-check interface when they land.
+
+**Next unit (declared 2026-08-01): the `/id` endpoint** - step 4's surface pulled forward as
+the front door (design settled same day: PROJECT_PLAN, Addressing "The prefix gets its name" +
+Moderation "The Web Gateway"). Scope: `/id/<root>/<path>` route recognition + the SPA served
+there; the serving matrix (anonymous: shelf-with-disclaimer / signpost from `via` hints and
+serving records / warm tombstone; authenticated: lens dressing, and temporary fetch-and-serve
+for off-shelf roots); serving records grow the **public web URL** field so signposting has
+something to say; reserved query namespace (`via`, future view modifier). The `/home/people`
+rolodex and the graph rungs (steps 1-3) ride alongside - small, independent, and the follow
+edge is what converts a lens visit into shelf.
 
 Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
 prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the
@@ -180,14 +190,16 @@ taxonomy, never on the payload), **proto-side validation** wiring at the serving
 formalizing the **media-type admission test** the crush pipeline already implements in practice
 (strict parse in a sandboxed decoder, EXIF stripping as an authoring-client concern).
 
-**4S — The social layer ("other people exist"). Not started - the main course.** Everything
-that crosses the inter-identity boundary: the **public serving surface** (`/public/*` reads for
-non-owners, deferred since M1), the `follow` type with its three disclosure tiers (quiet /
-tell-them / help-host - PROJECT_PLAN, Edge-Endpoint Visibility), serving-follows,
-**foreign-identity resolution** (the ladder consuming M3.5's directory, behind the
-identity-rooted HTTP surface), identicons + contact names, **monotonic memory for remote
-identities**, and the **serving-boundary defaults** (dual-opt-in gateway role deferred past
-Tier 6's gate; no anonymous HTTP by default). Route steps 2-5 are this track's build order.
+**4S — The social layer ("other people exist"). Started 2026-08-01 with the `/id` design.**
+Everything that crosses the inter-identity boundary: the **`/id/<root>` surface** (the public
+serving face and the lens page in one URL - PROJECT_PLAN, Addressing, "The prefix gets its
+name"), the `follow` type with its three disclosure tiers (quiet / tell-them / help-host -
+PROJECT_PLAN, Edge-Endpoint Visibility), serving-follows, **foreign-identity resolution** (the
+ladder consuming M3.5's directory), identicons + contact names, **monotonic memory for remote
+identities**, and the **default-on gateway in three rungs** (shelf / signpost / warm
+tombstone - PROJECT_PLAN, The Web Gateway, amended 2026-08-01; the old dual-opt-in role
+survives only as the curated "magazine" tier). Route steps 2-5 are this track's build order,
+with the `/id` endpoint as its front door.
 *Track demo:* curl a stranger's profile (as an authenticated member of a node that serves
 them), resolved from an identity-rooted URL minted on the other node.
 

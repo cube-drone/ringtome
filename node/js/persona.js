@@ -13,6 +13,8 @@ import htm from 'htm';
 import { api } from './net.js';
 import { useShadowValue } from './shadow.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
+import { identityAddress } from './pure/portable.js';
+import { speakable } from './speakable.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
@@ -490,6 +492,71 @@ export function usePersonaName(current) {
     return (liveName && liveName.value) || (current && current.name) || '';
 }
 
+// The persona's shareable identity address (PROJECT_PLAN, Addressing): minted from the
+// operator's declared public URL (`/api/config`) - or the origin-free path form when there
+// isn't one - with this node's endpoint key as the `?via=` reachability hint (`/api/node`).
+// Both fetched once per mount; neither changes underneath a session.
+function useIdentityAddress(root) {
+    const [address, setAddress] = useState(null);
+    useEffect(() => {
+        let live = true;
+        Promise.all([api('/api/config'), api('/api/node')])
+            .then(([config, node]) => {
+                if (!live) return;
+                // The root travels in its speakable form (pure/speakable.js): the checksum
+                // words are the human anchor, the base58 tail is the key, and hex stays a
+                // valid spelling everywhere addresses are parsed.
+                setAddress(
+                    identityAddress({
+                        publicUrl: config.public_url,
+                        root: speakable(root),
+                        via: [node.endpoint_id],
+                    })
+                );
+            })
+            .catch(() => {
+                // No address row is better than a wrong one; the menu stands on its own.
+            });
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    return address;
+}
+
+// The address row: where this persona lives, ready to hand to someone. Copy is the whole
+// interaction - the /id surface itself is the next unit, so the link is a thing you give
+// away, not yet a place you go.
+const AddressRow = ({ root }) => {
+    const address = useIdentityAddress(root);
+    const [copied, setCopied] = useState(false);
+    if (!address) return null;
+    const copy = async () => {
+        try {
+            await navigator.clipboard.writeText(address);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            /* clipboard refused (permissions): the text stays selectable by hand */
+        }
+    };
+    const isLocal = address.startsWith('/');
+    return html`
+        <div class="persona-address">
+            <span class="persona-address-label">
+                your address
+                <small>${isLocal
+                    ? 'this computer has no public web address - other ringtome folk can still open it from their own node'
+                    : 'where this persona lives on the web'}</small>
+            </span>
+            <code class="persona-address-value" title=${address}>${address}</code>
+            <button class="persona-address-copy" onClick=${copy}>
+                ${copied ? 'copied!' : 'copy'}
+            </button>
+        </div>
+    `;
+};
+
 // The persona home: the root of identity management (reached by the dock's persona tile). A small
 // menu - profile, your computers, log out - each its own place under /home/persona.
 export const PersonaHome = ({ persona, session }) => {
@@ -513,6 +580,7 @@ export const PersonaHome = ({ persona, session }) => {
                 ></span>
                 ${name || `persona ${shortcode(current.root)}`}
             </h1>
+            <${AddressRow} root=${current.root} />
             <nav class="persona-menu">
                 <a class="persona-menu-item" href="/home/persona/profile">
                     <span class="persona-menu-icon"><${Icons.profile} /></span>

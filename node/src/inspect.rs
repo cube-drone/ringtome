@@ -21,6 +21,7 @@ pub fn run(arg: &str) -> Result<()> {
         entry_type::name(e.entry_type)
     );
     println!("  author:    {}", hex::encode(e.chain.author));
+    println!("  speaks as: {}", crate::speakable::speakable(&e.chain.author));
     println!(
         "  service:   {} ({})",
         e.chain.service,

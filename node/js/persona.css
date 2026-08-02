@@ -141,6 +141,62 @@
     margin: 0;
 }
 
+/* The address row: where this persona lives, ready to hand to someone. Sits between the
+   title and the menu - informational, so quieter than the menu cards around it. */
+.persona-address {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 0.7rem 1rem;
+    margin: 0 0 1.2rem;
+}
+
+.persona-address-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 0.85rem;
+}
+
+.persona-address-label small {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 0.72rem;
+    max-width: 16rem;
+}
+
+.persona-address-value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+}
+
+.persona-address-copy {
+    flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.25rem 0.7rem;
+    cursor: pointer;
+}
+
+.persona-address-copy:hover {
+    border-color: var(--teal);
+}
+
 .persona-menu {
     display: flex;
     flex-direction: column;
