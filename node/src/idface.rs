@@ -188,24 +188,29 @@ pub async fn idface(
     if hosted_here(&state, &root_hex).await? {
         // The shelf: this node chose to host the persona, so its public face serves. The
         // address is the FULL shareable form - origin (when declared), `?via=` hints (this
-        // node first, then the persona's liveliest peers, capped at three - the SPA row's
-        // rule) - shown above the bio and linked to itself, exactly as the lens shows it.
-        // No separate words line: the words are the address's own prefix.
+        // node first, then the persona's liveliest peers, up to ten, base58-dressed - the
+        // SPA row's rule; the wide list keeps fast-moving identities alive) - shown above
+        // the bio and linked to itself, exactly as the lens shows it. No separate words
+        // line: the words are the address's own prefix.
         let fields = public_profile(&state, &root_hex).await.unwrap_or_default();
         let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
         let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
         let mut via = vec![state.endpoint.id().to_string()];
-        for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 8)
+        for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 16)
             .await
             .unwrap_or_default()
         {
-            if via.len() >= 3 {
+            if via.len() >= 10 {
                 break;
             }
             if !via.contains(&peer) {
                 via.push(peer);
             }
         }
+        let via: Vec<String> = via
+            .iter()
+            .map(|k| speakable::node_key_b58(k).unwrap_or_else(|| k.clone()))
+            .collect();
         let base = state.config.public_url.clone().unwrap_or_default();
         let addr = format!("{base}/id/{speak}?via={}", via.join(","));
         return Ok(face(
@@ -251,25 +256,170 @@ pub async fn idface(
     ))
 }
 
-/// GET `/api/id/{root}/profile` - the anonymous JSON face, same shelf rule as the HTML:
-/// hosted -> the public profile; not carried -> 404. The SPA's lens page reads this (it works
-/// for any hosted persona, not just the caller's own), and it is deliberately anonymous:
-/// it serves only what the HTML face already shows the whole web.
+/// A fetched foreign profile stays fresh this long before a member's next visit re-syncs it.
+const FOREIGN_TTL_MS: i64 = 10 * 60 * 1000;
+
+/// Record a successful foreign fetch - ON DISK (amended 2026-08-02 from an in-memory map):
+/// once an identity's own nodes go permanently dark, it survives exactly in the nodes that
+/// fetched it and their memory of having done so; a fleet of friendly nodes rebooting must
+/// not orphan chains they still hold. Durable KNOWLEDGE, still member-scoped SERVING - this
+/// table never touches the identities table (the anonymous shelf) or identity_peers (the
+/// background sync worklist): a fetch is remembered, never promoted to fronting.
+async fn record_foreign_fetch(state: &AppState, root_hex: &str, via: &str) -> Result<(), AppError> {
+    state
+        .node_db
+        .execute(
+            "INSERT INTO foreign_fetches (root_pubkey, fetched_at_ms, last_via)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(root_pubkey) DO UPDATE SET fetched_at_ms = ?2, last_via = ?3",
+            (root_hex, crate::clock::now_ms(), via),
+        )
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// The fetch memory for a root: (fetched_at_ms, the endpoint key that last answered).
+async fn foreign_fetch_row(
+    state: &AppState,
+    root_hex: &str,
+) -> Result<Option<(i64, Option<String>)>, AppError> {
+    state
+        .node_db
+        .fetch_optional(
+            "SELECT fetched_at_ms, last_via FROM foreign_fetches WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .map_err(AppError::Internal)
+}
+
+/// Per-candidate ceiling on the whole dial-and-sync; the ladder tries at most three, so a
+/// page's worst case stays bounded even when every hinted node is dark.
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+
+#[derive(serde::Deserialize)]
+pub struct IdQuery {
+    /// Comma-separated node endpoint keys - the address's own `?via=` hints, passed through
+    /// by the lens page. Hints are keys, never addresses; anything unparseable is skipped.
+    pub via: Option<String>,
+}
+
+/// Fetch a foreign identity's PUBLIC chains at request time: dial the candidate node keys IN
+/// PARALLEL and take the first success - with the `?via=` list widened to ten keys
+/// (2026-08-02, keeping fast-moving identities alive), a sequential ladder's worst case
+/// would be ten timeouts end to end, and a page can't wait for that. Each task runs the
+/// ordinary sync exchange (an unproven requester with empty frontiers receives exactly the
+/// public lane - the same from-empty path adoption exercises), the gate validates everything
+/// against `root`, and concurrent winners are safe (single-writer chains, duplicate-skip
+/// ingest; the also-rans are aborted). Candidates arrive base58 or hex; the resolve-a-bare-
+/// root directory backstop does not exist yet (serving records publish under LEAF keys;
+/// ledgered in NEXT_STEPS).
+async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool {
+    let mut set = tokio::task::JoinSet::new();
+    for candidate in via.iter().take(10) {
+        // A hint in neither spelling costs a shrug, never the ladder.
+        let Some(key_hex) = speakable::node_key_from_via(candidate) else {
+            continue;
+        };
+        let task_state = state.clone();
+        let task_root = root_hex.to_string();
+        set.spawn(async move {
+            let addr = crate::net::sync::dial_addr(&task_state, &key_hex).await.ok()?;
+            match tokio::time::timeout(
+                FETCH_TIMEOUT,
+                crate::net::sync::sync_with_peer(&task_state, &task_root, addr),
+            )
+            .await
+            {
+                Ok(Ok(stats)) => Some((key_hex, stats.received)),
+                Ok(Err(e)) => {
+                    tracing::debug!(root = %task_root, via = %key_hex, "foreign fetch failed: {e:#}");
+                    None
+                }
+                Err(_) => {
+                    tracing::debug!(root = %task_root, via = %key_hex, "foreign fetch timed out");
+                    None
+                }
+            }
+        });
+    }
+    while let Some(joined) = set.join_next().await {
+        if let Ok(Some((key_hex, received))) = joined {
+            set.abort_all();
+            tracing::info!(root = %root_hex, via = %key_hex, received,
+                "fetched foreign identity on member request");
+            if let Err(e) = record_foreign_fetch(state, root_hex, &key_hex).await {
+                tracing::warn!(root = %root_hex, "could not record foreign fetch: {e:#}");
+            }
+            return true;
+        }
+    }
+    false
+}
+
+/// GET `/api/id/{root}/profile` - the JSON face. Anonymous callers get the shelf rule (hosted
+/// -> the public profile; not carried -> 404: only what the HTML face already shows the whole
+/// web). A MEMBER asking about an off-shelf root triggers fetch-and-serve: a demand edge in
+/// miniature - funnel 2 with a named human - synced at request time, cached with a TTL,
+/// ephemeral by design (the anonymous shelf grows only through durable demand; a fetch here
+/// never touches the identities table, so the HTML face still tombstones this root).
 pub async fn id_profile(
+    session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<IdQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(AppError::NotFound("no such persona here".into()));
     };
     let root_hex = hex::encode(root);
-    if !hosted_here(&state, &root_hex).await? {
-        return Err(AppError::NotFound("no such persona here".into()));
+    let hosted = hosted_here(&state, &root_hex).await?;
+
+    if !hosted {
+        let Some(_member) = session else {
+            return Err(AppError::NotFound("no such persona here".into()));
+        };
+        let now = crate::clock::now_ms();
+        let row = foreign_fetch_row(&state, &root_hex).await?;
+        let fresh = row
+            .as_ref()
+            .is_some_and(|(at, _)| now - at < FOREIGN_TTL_MS);
+        if !fresh {
+            // Candidates: the address's own hints first, then the endpoint that answered
+            // last time (the durable half of the ladder - it works even when the URL was
+            // typed bare, and it is what keeps a quiet identity reachable after every
+            // friendly node has rebooted).
+            let mut via: Vec<String> = query
+                .via
+                .as_deref()
+                .unwrap_or("")
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
+            if let Some((_, Some(last))) = &row {
+                if !via.contains(last) {
+                    via.push(last.clone());
+                }
+            }
+            let fetched = fetch_foreign(&state, &root_hex, &via).await;
+            // A failed fetch still serves what an earlier one left behind (stale beats
+            // blank); a root we've never reached at all is honestly not-found.
+            if !fetched && row.is_none() {
+                return Err(AppError::NotFound(
+                    "not carried here, and none of the address's computers answered".into(),
+                ));
+            }
+        }
     }
+
     let fields = public_profile(&state, &root_hex).await.unwrap_or_default();
     Ok(axum::Json(serde_json::json!({
         "root": root_hex,
         "speakable": speakable::speakable(&root),
+        "foreign": !hosted,
         "fields": fields.iter().map(|f| serde_json::json!({
             "field": f.field, "value": f.value,
         })).collect::<Vec<_>>(),

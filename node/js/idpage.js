@@ -1,13 +1,14 @@
 // The /id lens page: what a logged-in member sees at /id/<address> (the anonymous visitor
 // never reaches this code - the server hands them the static face instead; idface.rs). The
-// same three shapes as the face, dressed for the console: a mangled address refuses with
-// "did you mean", a hosted persona renders its profile, an unreachable one gets the warm
-// tombstone - plus the one thing only a member can be told: whether this persona is *them*.
-// The fetch-and-serve behavior for off-shelf roots arrives with the resolution ladder; the
-// tombstone says so honestly.
+// same shapes as the face, dressed for the console: a mangled address refuses with "did you
+// mean", a hosted persona renders its profile - plus the two things only a member can be
+// told: whether this persona is *them*, and a FOREIGN persona fetched at request time
+// through the address's own ?via= hints (idface.rs does the reaching; the page just passes
+// the hints through). Only when nothing answers does the warm tombstone show.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
+import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
 import { parseSpeakable, speakable } from './speakable.js';
@@ -19,21 +20,27 @@ const html = htm.bind(h);
 const Card = ({ children }) => html`<div class="persona-page id-page">${children}</div>`;
 
 export const IdPage = ({ seg, current, onTitle }) => {
+    const loc = useLocation();
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
-    // profile: undefined = loading, null = not served here, object = the shelf answered
+    // profile: undefined = loading, null = unreachable, object = served (local or fetched)
     const [profile, setProfile] = useState(undefined);
     const root = parsed && parsed.ok ? parsed.root : null;
+    // The address's own reachability hints ride through to the node, which uses them to
+    // fetch an off-shelf persona at request time (idface.rs) - the URL carries exactly the
+    // keys the fetch wants.
+    const via = (loc.query && loc.query.via) || '';
 
     useEffect(() => {
         if (!root) return;
         let live = true;
-        api(`/api/id/${root}/profile`)
+        api(`/api/id/${root}/profile${via ? `?via=${encodeURIComponent(via)}` : ''}`)
             .then((p) => live && setProfile(p))
             .catch(() => live && setProfile(null));
         return () => {
             live = false;
         };
-    }, [root]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root, via]);
 
     // The shell's header band shows whose page this is: the words immediately (always
     // derivable), the display name the moment the shelf answers. Cleared on the way out so
@@ -86,9 +93,10 @@ export const IdPage = ({ seg, current, onTitle }) => {
                 <span class="persona-chip" style="background: hsl(${personaHue(root)}, 60%, 55%)"></span>
                 ${words}
             </h1>
-            <p>This persona isn't served from your node. Reaching across the network for
-            strangers is on its way - for now, an address resolves here only when someone on
-            this node carries it.</p>
+            <p>Couldn't reach this persona just now - it isn't carried on your node, and
+            ${via
+                ? "none of the computers its address points at answered."
+                : 'its address carries no hints about where to find it.'}</p>
             <p class="id-address"><code>/id/${speak}</code></p>
         <//>`;
     }
@@ -109,7 +117,9 @@ export const IdPage = ({ seg, current, onTitle }) => {
             ${name}
         </h1>
         ${isYou && html`<p class="id-words"><a href="/home/persona">this is you</a></p>`}
-        <${AddressRow} root=${root} />
+        ${profile.foreign &&
+        html`<p class="id-words">reached across the network - not carried on this node</p>`}
+        ${profile.foreign ? html`<p class="id-address"><code>/id/${speak}</code></p>` : html`<${AddressRow} root=${root} />`}
         ${field('bio') && html`<p class="id-bio">${field('bio')}</p>`}
     <//>`;
 };

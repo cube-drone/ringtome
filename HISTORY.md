@@ -1498,3 +1498,54 @@ hints minted by the same rule as the SPA row (this node first, then the persona'
 peers, capped at three) - above the bio, linked to itself, with the separate words line gone
 (the words are the address's own prefix). The two faces of one persona now agree about what
 an address looks like and where it sits. Integration pins the hints and the ordering.
+
+## Reaching across the network (2026-08-02)
+
+Fetch-and-serve shipped: a member asking /api/id about an off-shelf root now triggers a
+request-time fetch of the persona's PUBLIC lane, and the machinery turned out to be almost
+entirely already built - `sync_with_peer` is root-general (user dbs open for any root, the
+member proof degrades to None, an unproven requester with empty frontiers receives exactly
+the public lane through the same from-empty path adoption exercises, and the gate validates
+everything against root). The new code is a short ladder: dial each of the address's own
+`?via=` hints (three max, 8s timeout each), first success marks an IN-MEMORY freshness map
+(10-minute TTL; a reboot forgets every fetch - ephemerality is the design), failures fall
+back to whatever an earlier fetch left in the db, and a root never reached is an honest 404.
+The lens page passes its URL's hints through and labels the result ("reached across the
+network - not carried on this node"); the identities table never learns, so the anonymous
+face still tombstones - the shelf grows only through durable demand. Two-node integration
+proves the arc: B's member reads a persona hosted only on A through one via hint, while
+anonymous B keeps tombstoning it. Design finding ledgered: serving records publish under
+LEAF keys (pkarr requires the publisher's signing key; the root's is offline by design), so
+the "resolve a bare root via the directory" backstop is a store-at-derived-key design
+problem, not a missing call - until it lands, the ladder is honestly origin + via, which
+every minted address carries.
+
+## Durable knowledge, member-scoped serving (2026-08-02)
+
+Field review caught a conflation in the day-old fetch-and-serve design: "ephemeral" had
+bundled two different dials - the SERVING scope (anonymous shelf grows only through durable
+demand; the liability doctrine) and the KNOWLEDGE of what was fetched, when, and through
+whom. The second is precious, not disposable: once an identity's own nodes go permanently
+dark, it survives exactly in the nodes that fetched it and their memory of having done so -
+and the in-memory registry meant a reboot would 404 chains the node still held on disk
+(the orphaning bug at one node; friendly-fleet-reboots-kill-the-identity at network scale).
+The registry moved to node.db (`foreign_fetches`: root, fetched_at, last_via - schema
+generation 2; dev nodes rebuild, per the pre-launch rule), with `last_via` joining the
+ladder as the durable refresh candidate - a bare hintless ask now serves from memory, which
+integration proves. Deliberately still OUT of the identities table and identity_peers: a
+fetch is remembered, never promoted to fronting. Doctrine amended in place (Moderation, the
+fetch-and-serve paragraph): durable knowledge, member-scoped serving - the two were never
+the same dial.
+
+## Ten hints, dressed in base58 (2026-08-02)
+
+The via-list re-ruled: the original "2-3 liveliest keys" default optimized URL length, but
+until the root-directory backstop exists the hints ARE the ladder - a fast-moving identity
+survives exactly as long as some listed node answers. Minted addresses now carry up to TEN
+liveliest node keys, base58-dressed (44 chars against hex's 64; node keys get the denser
+coat but no words - their audience is nodes). Both minters follow the rule (the SPA row and
+the static face; the peers endpoint serves sixteen so the cap stays in minting code), both
+spellings parse everywhere via is consumed (hex is the eternal escape hatch), and the fetch
+ladder went PARALLEL to match - ten sequential 8s timeouts would be an 80s worst case, so
+candidates race and the first success aborts the rest (safe: single-writer chains,
+duplicate-skip ingest). PROJECT_PLAN's Costs ruling amended in place, reversal noted.

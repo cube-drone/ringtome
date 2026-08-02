@@ -2014,9 +2014,12 @@ clickable, never wrong. This is the intended failure mode.
   enumeration signal). Fine for a public identity being broadcast anyway; a client should **not** auto-populate hints
   for identities the user treats as pseudonymous - bare-root, or root plus a single fronting-node hint, is the
   privacy-friendly form.
-- **Length.** ed25519 keys are ~50 chars each; a shareable default should stay short (origin + root + 2-3
-  liveliest `via` keys), reserving longer hint sets for robustness contexts (QR codes, config files) rather than
-  bios.
+- **Length.** (Re-ruled 2026-08-02, reversing the original short-default.) Until the root-directory backstop
+  exists, the hints ARE the ladder: a fast-moving identity survives exactly as long as some listed node answers,
+  and a fleet of friendly nodes going quiet must not strand it. So the minted default is now **up to ten
+  liveliest `via` keys, base58-dressed** (44 chars each against hex's 64 - the denser coat claws back half the
+  cost; node keys get base58 but no words, their audience being nodes). A ~500-char URL is an accepted price for
+  liveness; the privacy dial above still governs WHICH identities auto-populate hints at all.
 
 ### Naming: Human-Readable Names Are Pointers, Never Authority
 
@@ -3152,11 +3155,15 @@ one of three rungs, and the line between them is what keeps Bounded Operator Lia
   origin slot means "a node serving this at t=0"; share buttons mint at a serving origin) keeps well-formed links
   off this rung structurally.
 
-**Authenticated visitors get a fourth behavior, not a fourth rung: fetch-and-serve, temporarily.** A member asking
-about an off-shelf root is a demand edge in miniature - funnel 2 with a named human - so the node runs the ladder,
-syncs the identity's public chains, and serves that member a lens view, cached with a TTL. Member-scoped and
-ephemeral, deliberately: **the anonymous shelf grows only through durable demand** (hosting, follows, serving) -
-never through one member's curiosity. A follow converts the visit into shelf.
+**Authenticated visitors get a fourth behavior, not a fourth rung: fetch-and-serve.** A member asking about an
+off-shelf root is a demand edge in miniature - funnel 2 with a named human - so the node runs the ladder, syncs
+the identity's public chains, and serves that member a lens view, cached with a freshness TTL. Member-scoped,
+deliberately: **the anonymous shelf grows only through durable demand** (hosting, follows, serving) - never
+through one member's curiosity. A follow converts the visit into shelf. The fetch's KNOWLEDGE, though, is durable
+(amended 2026-08-02 from "ephemeral"): the registry of what was fetched, when, and through whom lives on disk,
+because once an identity's own nodes go permanently dark it survives exactly in the nodes that fetched it and
+their memory of having done so - a fleet of friendly nodes rebooting must not orphan chains they still hold.
+Durable knowledge, member-scoped serving: the two were never the same dial.
 
 What replaces the author-side opt-in is an **opt-out courtesy**: a signed "do not gateway me" statement, honored
 the way robots.txt is - a politeness between nodes, never a wall (the content is public; the statement is a

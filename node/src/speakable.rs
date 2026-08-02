@@ -72,16 +72,41 @@ pub enum Parsed {
     Mismatch { root: [u8; 32], expected: String },
 }
 
+/// Lowercase-hex-64 to 32 bytes, or None.
+fn decode_hex32(s: &str) -> Option<[u8; 32]> {
+    if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(out)
+}
+
+/// A node endpoint key dressed for a URL: base58 (44 chars against hex's 64). Node keys get
+/// the denser coat but no words - their audience is nodes, and URL length is the only human
+/// cost (the `?via=` list widened to ten keys for exactly this reason, 2026-08-02).
+pub fn node_key_b58(hex: &str) -> Option<String> {
+    decode_hex32(hex).map(|b| to_base58(&b))
+}
+
+/// A `?via=` element back to the hex form iroh parses - base58, or the hex escape hatch
+/// (older minted URLs and hand-typed keys keep working forever).
+pub fn node_key_from_via(s: &str) -> Option<String> {
+    let s = s.trim();
+    if decode_hex32(s).is_some() {
+        return Some(s.to_string());
+    }
+    from_base58(s).map(hex::encode)
+}
+
 /// Parse an `/id/` path segment: worded form (checksum VERIFIED - a mismatch refuses rather
 /// than shrugging, or the words train everyone to ignore them), bare base58, or the hex
 /// escape hatch. None: not an address in any spelling.
 pub fn parse(segment: &str) -> Option<Parsed> {
     let s = segment.trim();
-    if s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
-        let mut root = [0u8; 32];
-        for (i, byte) in root.iter_mut().enumerate() {
-            *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
-        }
+    if let Some(root) = decode_hex32(s) {
         return Some(Parsed::Ok(root));
     }
     let parts: Vec<&str> = s.split('-').collect();

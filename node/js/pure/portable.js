@@ -14,18 +14,12 @@ export function stripSelfOrigin(text, origin) {
     return text.split(origin + '/').join('/');
 }
 
-/// The mirror image of the stripper: MINT the persona's shareable identity address
-/// (PROJECT_PLAN, Addressing - "The prefix gets its name: /id/"). The origin comes from the
-/// operator's declared public URL and nowhere else - never window.location, whose origin
-/// (localhost, a LAN name, a tailnet alias) proves nothing about what the world can dial. No
-/// declared URL means the origin-free path form: minimal, always correct, and the honest
-/// shape for a node the web cannot reach. `via` keys are reachability hints (node keys,
-/// never addresses); an empty set leaves the query off entirely.
 /// The `?via=` set for a minted address: this node first (the one provably alive - it is
-/// serving the page), then the liveliest known peers, deduped, CAPPED at three total (the
-/// plan's Costs ruling: keys are ~50 chars, and a URL that is mostly hints stops being a
-/// thing you'd paste in a bio; more entry points buy little past the directory backstop).
-export function viaHints(self, peers = [], cap = 3) {
+/// serving the page), then the liveliest known peers, deduped, capped at TEN (widened from
+/// three, 2026-08-02: with no root-directory backstop yet, the hints ARE the ladder, and a
+/// fast-moving identity survives exactly as long as some listed node answers - so the URL
+/// spends length on liveness; base58 dressing claws half of it back).
+export function viaHints(self, peers = [], cap = 10) {
     const out = [];
     for (const key of [self, ...peers]) {
         if (key && !out.includes(key)) out.push(key);
@@ -34,6 +28,13 @@ export function viaHints(self, peers = [], cap = 3) {
     return out;
 }
 
+/// The mirror image of the stripper: MINT the persona's shareable identity address
+/// (PROJECT_PLAN, Addressing - "The prefix gets its name: /id/"). The origin comes from the
+/// operator's declared public URL and nowhere else - never window.location, whose origin
+/// (localhost, a LAN name, a tailnet alias) proves nothing about what the world can dial. No
+/// declared URL means the origin-free path form: minimal, always correct, and the honest
+/// shape for a node the web cannot reach. `via` keys are reachability hints (node keys,
+/// never addresses); an empty set leaves the query off entirely.
 export function identityAddress({ publicUrl, root, via = [] }) {
     const base = (publicUrl || '').trim().replace(/\/+$/, '');
     const keys = (via || []).filter(Boolean);

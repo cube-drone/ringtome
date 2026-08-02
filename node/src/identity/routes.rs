@@ -606,7 +606,7 @@ async fn peers_handler(
     Path(root): Path<String>,
 ) -> Result<Json<PeersResponse>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
-    let peers = crate::net::sync::liveliest_peers(&state.node_db, &root, 8).await?;
+    let peers = crate::net::sync::liveliest_peers(&state.node_db, &root, 16).await?;
     Ok(Json(PeersResponse { peers }))
 }
 

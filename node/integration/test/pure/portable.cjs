@@ -80,8 +80,9 @@ describe('viaHints (the cap and the order)', () => {
         assert.deepEqual(viaHints('me', ['a', 'b']), ['me', 'a', 'b']);
     });
 
-    it('caps at three total, however lively the peer list', () => {
-        assert.deepEqual(viaHints('me', ['a', 'b', 'c', 'd', 'e']), ['me', 'a', 'b']);
+    it('caps at ten total, however lively the peer list', () => {
+        const peers = 'abcdefghijkl'.split('');
+        assert.deepEqual(viaHints('me', peers), ['me', ...peers.slice(0, 9)]);
     });
 
     it('dedupes - a peer row for ourselves never doubles the hint', () => {

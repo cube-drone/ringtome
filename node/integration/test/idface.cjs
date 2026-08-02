@@ -99,3 +99,66 @@ describe("the /id face", () => {
         assert.equal(missing.status, 404);
     });
 });
+
+/*
+    Fetch-and-serve: a member of node B asks about a persona hosted only on node A, passing
+    the address's ?via= hints - B dials A, syncs the public lane, and serves the profile.
+    Ephemerality: the fetch never touches B's identities table, so B's anonymous face still
+    tombstones the root (the shelf grows only through durable demand).
+*/
+const { HOST_B } = require("./fetch.cjs");
+
+(HOST_B ? describe : describe.skip)("fetch-and-serve (A's persona through B)", function () {
+    this.timeout(30000);
+
+    let aOwner, bMember, aRoot, aEndpoint;
+
+    before(async () => {
+        aOwner = await makeUserFetch({ prefix: "ff_a" });
+        const made = await (await aOwner("api/identity", { method: "POST" })).json();
+        aRoot = made.root_pubkey;
+        await aOwner(`api/identity/${aRoot}/profile`, {
+            method: "POST",
+            body: JSON.stringify({ field: "name", value: "Faraway Fran" }),
+        });
+        aEndpoint = (await (await aOwner("api/node")).json()).endpoint_id;
+        bMember = await makeUserFetch({ prefix: "ff_b", host: HOST_B });
+    });
+
+    it("a member of B reaches A's persona through the via hint - base58-dressed", async () => {
+        // Minted URLs carry node keys in base58 now; the hex escape hatch stays valid too.
+        const { toBase58 } = await import("../../js/speakable.js");
+        const resp = await bMember(`api/id/${aRoot}/profile?via=${toBase58(aEndpoint)}`);
+        assert.equal(resp.status, 200);
+        const prof = await resp.json();
+        assert.equal(prof.foreign, true, "marked as reached-across, not hosted");
+        assert.ok(
+            prof.fields.some((f) => f.field === "name" && f.value === "Faraway Fran"),
+            "the profile crossed the network"
+        );
+    });
+
+    it("the fetch is member-scoped: anonymous B still tombstones the root", async () => {
+        const anonB = makeFetch(HOST_B);
+        const json = await anonB(`api/id/${aRoot}/profile`);
+        assert.equal(json.status, 404, "the JSON face refuses strangers the fetch served");
+        const face = await anonB(`id/${aRoot}`);
+        assert.equal(face.status, 404, "the HTML face still tombstones - no durable shelf growth");
+        assert.ok((await face.text()).includes("quiet side"));
+    });
+
+    it("a hintless ask about an unknown root fails honestly", async () => {
+        const resp = await bMember(`api/id/${"dd".repeat(32)}/profile`);
+        assert.equal(resp.status, 404);
+    });
+
+    it("the fetch is REMEMBERED: a bare hintless ask now serves from the durable registry", async () => {
+        // No ?via= at all - the on-disk foreign_fetches row (freshness + last_via) is the
+        // only thing that can answer this. This is the row that survives a reboot.
+        const resp = await bMember(`api/id/${aRoot}/profile`);
+        assert.equal(resp.status, 200);
+        const prof = await resp.json();
+        assert.equal(prof.foreign, true);
+        assert.ok(prof.fields.some((f) => f.value === "Faraway Fran"));
+    });
+});

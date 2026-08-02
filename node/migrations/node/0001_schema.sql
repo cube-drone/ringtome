@@ -113,3 +113,17 @@ CREATE TABLE ingest_job (
 );
 CREATE INDEX ingest_job_status_idx  ON ingest_job (status, seq);
 CREATE INDEX ingest_job_account_idx ON ingest_job (account, seq);
+
+-- Foreign-identity fetch memory: roots reached across the network on a member's request
+-- (idface.rs fetch-and-serve). ON DISK deliberately (amended 2026-08-02 from an in-memory
+-- map): once an identity's own nodes go permanently dark, it survives exactly in the nodes
+-- that fetched it and their memory of having done so - a reboot forgetting the registry
+-- would orphan chains this node still holds. Durable KNOWLEDGE, still member-scoped
+-- SERVING: this table never feeds the identities table or the anonymous shelf, and it
+-- deliberately stays out of identity_peers (the background sync worklist) - a fetch is
+-- remembered, never promoted to fronting.
+CREATE TABLE foreign_fetches (
+    root_pubkey   TEXT    PRIMARY KEY,
+    fetched_at_ms INTEGER NOT NULL,  -- last successful fetch; freshness TTL reads this
+    last_via      TEXT               -- the endpoint key that answered; first refresh candidate
+);

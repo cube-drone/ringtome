@@ -79,13 +79,19 @@ in HISTORY): route recognition in both spellings, the audience split (session â†
 lens page; anonymity â†’ a server-rendered static face under the hardened headers), and three
 of the anonymous shapes - the shelf (hosted personas' public profiles, escaped and
 CSP-fenced), the warm tombstone, and the checksum refusal with "did you mean". Speakable
-addresses mint everywhere humans see a root. **Still owed from the unit's scope:** the
-**signpost rung** (needs serving records to grow the public-web-URL field, plus resolution at
-request time under the unfurl envelope's discipline), **fetch-and-serve for members**
-(needs the resolution ladder consuming M3.5's directory), the **shelf disclaimer** (moot
-until member follows put not-hosted-here content on the shelf), and the **`/home/people`
-rolodex**. The graph rungs (steps 1-3) ride alongside - the follow edge is what converts a
-lens visit into shelf.
+addresses mint everywhere humans see a root. **Fetch-and-serve shipped 2026-08-02**: a
+member asking about an off-shelf root triggers a request-time sync of its public lane
+through the address's own `?via=` hints (the ordinary exchange, from empty, gate-validated;
+the fetch registry is ON DISK - durable knowledge, member-scoped serving, amended 2026-08-02:
+the identities table never learns, so the anonymous face still tombstones, but a reboot
+never orphans chains the node still holds). **Still owed:** the **signpost rung** (serving records grow the
+public-web-URL field), the **root-directory backstop** (a real design problem, found
+2026-08-02: serving records publish under LEAF keys because pkarr requires the publisher's
+signing key and the root's is offline by design - so "resolve a bare root" needs a
+store-at-derived-key design, not just a call; until then the ladder is origin + via, which
+every minted address carries), the **shelf disclaimer** (moot until member follows exist),
+and the **`/home/people` rolodex**. The graph rungs (steps 1-3) ride alongside - the follow
+edge is what converts a lens visit into shelf.
 
 Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
 prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the

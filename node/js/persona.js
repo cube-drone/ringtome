@@ -14,7 +14,7 @@ import { api } from './net.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { identityAddress, viaHints } from './pure/portable.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
-import { speakable } from './speakable.js';
+import { speakable, toBase58 } from './speakable.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
@@ -517,7 +517,9 @@ function useIdentityAddress(root) {
                     identityAddress({
                         publicUrl: config.public_url,
                         root: speakable(root),
-                        via: viaHints(node.endpoint_id, peers),
+                        // Node keys wear base58 in the URL (44 chars against hex's 64) -
+                        // ten hints fit where five used to.
+                        via: viaHints(node.endpoint_id, peers).map((k) => toBase58(k)),
                     })
                 );
             })
