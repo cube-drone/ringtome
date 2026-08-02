@@ -61,11 +61,53 @@ pub fn speakable(root: &[u8; 32]) -> String {
     format!("{a}-{b}-{}", to_base58(root))
 }
 
+/// What a candidate `/id/` segment turned out to be.
+#[derive(Debug, PartialEq)]
+pub enum Parsed {
+    /// A root, by any accepted spelling (worded-and-verified, bare base58, or hex).
+    Ok([u8; 32]),
+    /// The key decoded but the words LIED: refused, with the true words in hand so the
+    /// refusal can say "did you mean". The root is what the key claims - never to be used
+    /// without the loud warning.
+    Mismatch { root: [u8; 32], expected: String },
+}
+
+/// Parse an `/id/` path segment: worded form (checksum VERIFIED - a mismatch refuses rather
+/// than shrugging, or the words train everyone to ignore them), bare base58, or the hex
+/// escape hatch. None: not an address in any spelling.
+pub fn parse(segment: &str) -> Option<Parsed> {
+    let s = segment.trim();
+    if s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+        let mut root = [0u8; 32];
+        for (i, byte) in root.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+        }
+        return Some(Parsed::Ok(root));
+    }
+    let parts: Vec<&str> = s.split('-').collect();
+    match parts.as_slice() {
+        [bare] => from_base58(bare).map(Parsed::Ok),
+        [a, b, key] => {
+            let root = from_base58(key)?;
+            let (ea, eb) = words_for(&root);
+            if *a == ea && *b == eb {
+                Some(Parsed::Ok(root))
+            } else {
+                Some(Parsed::Mismatch {
+                    root,
+                    expected: format!("{ea}-{eb}"),
+                })
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Base58 back to 32 bytes, or None if the string isn't clean base58 for exactly that size.
-/// (Gated to tests until the `/id` endpoint - the server-side parser's real consumer - lands;
-/// the goldens keep it honest meanwhile.)
-#[cfg(test)]
 fn from_base58(s: &str) -> Option<[u8; 32]> {
+    if s.is_empty() || s.len() > 45 {
+        return None;
+    }
     let mut bytes: Vec<u8> = Vec::new(); // little-endian value bytes
     for c in s.bytes() {
         let v = B58.iter().position(|&b| b == c)? as u32;
@@ -134,6 +176,24 @@ mod tests {
         }
         assert_eq!(from_base58("0OIl"), None, "confusables are not in the alphabet");
         assert_eq!(from_base58(&"z".repeat(60)), None, "overlong refuses");
+    }
+
+    #[test]
+    fn parses_every_spelling_and_refuses_the_lie() {
+        let (hex, addr) = GOLDENS[0];
+        let r = root(hex);
+        assert_eq!(parse(addr), Some(Parsed::Ok(r)), "worded");
+        assert_eq!(parse(addr.rsplit('-').next().unwrap()), Some(Parsed::Ok(r)), "bare base58");
+        assert_eq!(parse(hex), Some(Parsed::Ok(r)), "the hex escape hatch");
+        let key = addr.rsplit('-').next().unwrap();
+        assert_eq!(
+            parse(&format!("pagoda-dimension-{key}")),
+            Some(Parsed::Mismatch { root: r, expected: "sway-broke".into() }),
+            "wrong words refuse, with the truth in hand"
+        );
+        assert_eq!(parse("pagoda-dimension"), None, "words with no key");
+        assert_eq!(parse("a-b-c-d"), None, "too many parts");
+        assert_eq!(parse(""), None);
     }
 
     #[test]

@@ -22,7 +22,7 @@ const html = htm.bind(h);
 // A deterministic little color chip from the root pubkey - the identicon's humble seed
 // (the real root-derived identicon is its own future feature; a persona should never render
 // as bare hex in the meantime).
-function personaHue(rootHex) {
+export function personaHue(rootHex) {
     const n = parseInt(rootHex.slice(0, 6), 16);
     return n % 360;
 }
@@ -531,9 +531,9 @@ function useIdentityAddress(root) {
     return address;
 }
 
-// The address row: where this persona lives, ready to hand to someone. Copy is the whole
-// interaction - the /id surface itself is the next unit, so the link is a thing you give
-// away, not yet a place you go.
+// The address row: where this persona lives, ready to hand to someone - and, since the /id
+// surface opened, a door: the address links to this persona's own id page (the local path
+// form, so the visit stays at this lens whatever origin the shareable text carries).
 const AddressRow = ({ root }) => {
     const address = useIdentityAddress(root);
     const [copied, setCopied] = useState(false);
@@ -556,7 +556,9 @@ const AddressRow = ({ root }) => {
                     ? 'this computer has no public web address - other ringtome folk can still open it from their own node'
                     : 'where this persona lives on the web'}</small>
             </span>
-            <code class="persona-address-value" title=${address}>${address}</code>
+            <a class="persona-address-value" href="/id/${speakable(root)}" title="see this persona's page">
+                <code>${address}</code>
+            </a>
             <button class="persona-address-copy" onClick=${copy}>
                 ${copied ? 'copied!' : 'copy'}
             </button>

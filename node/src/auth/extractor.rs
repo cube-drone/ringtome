@@ -66,6 +66,25 @@ impl FromRequestParts<AppState> for Session {
     }
 }
 
+/// `Option<Session>` for the surfaces with two audiences (the `/id/` face): an anonymous
+/// caller is a real caller there, not a rejection. Missing or invalid credentials become
+/// `None`; anything else (state trouble, db errors) still fails the request - "not logged
+/// in" and "the node is broken" must never look alike.
+impl axum::extract::OptionalFromRequestParts<AppState> for Session {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Option<Self>, Self::Rejection> {
+        match <Session as FromRequestParts<AppState>>::from_request_parts(parts, state).await {
+            Ok(session) => Ok(Some(session)),
+            Err(AppError::Unauthorized(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 /// A session belonging to a `node_admin`. Handlers taking this only run for the node's full
 /// administrator(s); everyone else gets 403.
 #[derive(Debug, Clone)]

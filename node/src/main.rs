@@ -30,6 +30,7 @@ mod record;
 mod request_context;
 mod seal;
 mod semver;
+mod idface;
 mod speakable;
 mod test_endpoints;
 mod ui;
@@ -293,6 +294,11 @@ async fn main() -> anyhow::Result<()> {
             get(|| async { axum::response::Redirect::temporary("/home") }),
         )
         .route("/home", get(ui::homepage))
+        // The /id surface: one URL, two audiences (idface.rs). The wildcard form covers
+        // deeper resource paths; the segment parser only reads the first segment for now.
+        .route("/id/{seg}", get(idface::idface))
+        .route("/id/{seg}/{*rest}", get(idface::idface))
+        .route("/api/id/{seg}/profile", get(idface::id_profile))
         .route("/home/{*wildcard}", get(ui::homepage))
         // Versioned static assets (CDN cache-safe)
         .route("/static/{version}/app.js", get(ui::app_js))

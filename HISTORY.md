@@ -1413,3 +1413,38 @@ failed fetch never costs the row its self-hint. Field-verified over a real adopt
 mints `https://alpha.example/id/water-mull-…?via=<alpha>,<bravo>`, bravo mints the path form
 with the same hints reversed - one persona, two lenses, each address warm-starting at either
 computer.
+
+## The /id endpoint opens its doors (2026-08-01)
+
+The front door of 4S, v1. The two-audience question ("is our browser set up for anonymous
+access?") answered by NOT making the SPA bimodal: **a session gets the SPA, anonymity gets a
+server-rendered face** (src/idface.rs) - static HTML, no scripts, hardened headers from the
+first byte (nosniff, default-src 'none' CSP, no-referrer), because the stranger-facing
+surface should have as little machinery behind it as possible. The session branch rides a new
+`Option<Session>` extractor (OptionalFromRequestParts: missing credentials are an audience,
+node breakage is still an error). The anonymous shapes shipped: the SHELF (a hosted persona's
+public profile - name and bio read straight off the identity db's public lane, escaped, with
+the speakable address and hue chip), the WARM TOMBSTONE ("lives on the quiet side of
+ringtome", re-homeable address in hand, 404), and the CHECKSUM REFUSAL (lying words → 400
+with "did you mean <true-words>", served to every audience - the refusal is
+audience-independent). The SPA grew its lens page (js/idpage.js at /id/:seg): the same
+shapes dressed for the console, plus the one thing only a member can be told - "this is
+you". An anonymous JSON face (/api/id/{root}/profile) follows the same shelf rule and feeds
+the lens. Rust's speakable parser un-gated for its real consumer, with the mismatch-refusal
+grammar tested in both languages. Seven integration tests pin the contract (390 passing);
+the lens shapes field-verified through the harness - which needed its own fix, worth
+recording: boot.mjs now sends the session jar on the initial page GET, exactly as a browser
+would, because /id is the first surface that branches on it. Still owed from the unit's
+scope, ledgered in NEXT_STEPS: the signpost rung, member fetch-and-serve, and the rolodex.
+
+## The id page gets a door and a name (2026-08-01)
+
+Two finishing touches on the /id lens: the persona page's address row is now a LINK (the
+local /id path form, so the visit stays at this lens whatever origin the shareable text
+carries - copy still hands out the full address), and the lens page wears the shell's header
+band with the viewed persona's name as its title - the words immediately (always derivable
+from the address), the display name the moment the shelf answers, cleared on unmount so the
+band's next tenant never inherits a stale name. Structural note, recorded as open: /id is
+deliberately NOT an app off the registry yet - a "persona browser" tile is the natural shape
+if it grows one, and the header wiring (an idHeader beside the appHeader, title reported
+upward by the page) is the smallest thing that makes the frame look right meanwhile.

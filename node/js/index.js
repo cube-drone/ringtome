@@ -29,6 +29,7 @@ import { DocsApp } from './apps/notes.js';
 import { JournalApp } from './apps/journal.js';
 import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
+import { IdPage } from './idpage.js';
 import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
 import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
@@ -181,6 +182,11 @@ const Inside = ({ session }) => {
     const loc = useLocation();
     const open = persona.state === 'open';
     const inApp = loc.path !== '/home';
+    // The /id lens page: not an app off the registry (yet - a "persona browser" tile is an
+    // open structural question), but the frame looks wrong headless, so it gets the band
+    // with the viewed persona's name - reported upward by the page once it knows it.
+    const inId = loc.path.startsWith('/id/');
+    const [idTitle, setIdTitle] = useState(null);
 
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
     // inside it - the two facts the unified app header needs. Null for persona/not-found routes,
@@ -263,8 +269,23 @@ const Inside = ({ session }) => {
     // the left, back/close on the right - so no app draws its own top bar. Back appears only
     // inside a document (return to the app's list); close leaves the app for the launcher. Absent
     // for persona/not-found (appHere null), which carry their own heads.
+    const idHeader =
+        inId &&
+        html`<header class="app-header">
+            <span class="app-header-lead">
+                <span class="app-header-title">${idTitle || ''}</span>
+            </span>
+            <span class="app-header-actions">
+                <button
+                    class="app-header-btn app-header-btn-square"
+                    title="close"
+                    onClick=${() => loc.route('/home')}
+                ><${Icons.close} /></button>
+            </span>
+        </header>`;
+
     const appHeader =
-        appHere &&
+        (appHere &&
         html`<header class="app-header">
             <span class="app-header-lead">
                 <span class="app-header-title">${appLabel(appHere, personaName)}</span>
@@ -304,7 +325,8 @@ const Inside = ({ session }) => {
                     onClick=${() => loc.route('/home')}
                 ><${Icons.close} /></button>
             </span>
-        </header>`;
+        </header>`) ||
+        idHeader;
 
     // Two wrappers over the same footer. `shell` is the bordered app frame (an app is open): the
     // ink header band, then the surface content. `stage` is the bare desktop - the app selector
@@ -350,6 +372,8 @@ const Inside = ({ session }) => {
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
+            <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />
+            <${IdPage} path="/id/:seg/*" current=${persona.current} onTitle=${setIdTitle} />
             <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
         </${Router}>
     `;

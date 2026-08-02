@@ -74,15 +74,18 @@ The rungs, each independently shippable:
    the per-service lane declaration, and the blob gate (all three promissory notes below).
    Groups trail into the same roster-check interface when they land.
 
-**Next unit (declared 2026-08-01): the `/id` endpoint** - step 4's surface pulled forward as
-the front door (design settled same day: PROJECT_PLAN, Addressing "The prefix gets its name" +
-Moderation "The Web Gateway"). Scope: `/id/<root>/<path>` route recognition + the SPA served
-there; the serving matrix (anonymous: shelf-with-disclaimer / signpost from `via` hints and
-serving records / warm tombstone; authenticated: lens dressing, and temporary fetch-and-serve
-for off-shelf roots); serving records grow the **public web URL** field so signposting has
-something to say; reserved query namespace (`via`, future view modifier). The `/home/people`
-rolodex and the graph rungs (steps 1-3) ride alongside - small, independent, and the follow
-edge is what converts a lens visit into shelf.
+**The `/id` endpoint - v1 SHIPPED 2026-08-01** (same-day design and first delivery; reports
+in HISTORY): route recognition in both spellings, the audience split (session → the SPA's
+lens page; anonymity → a server-rendered static face under the hardened headers), and three
+of the anonymous shapes - the shelf (hosted personas' public profiles, escaped and
+CSP-fenced), the warm tombstone, and the checksum refusal with "did you mean". Speakable
+addresses mint everywhere humans see a root. **Still owed from the unit's scope:** the
+**signpost rung** (needs serving records to grow the public-web-URL field, plus resolution at
+request time under the unfurl envelope's discipline), **fetch-and-serve for members**
+(needs the resolution ladder consuming M3.5's directory), the **shelf disclaimer** (moot
+until member follows put not-hosted-here content on the shelf), and the **`/home/people`
+rolodex**. The graph rungs (steps 1-3) ride alongside - the follow edge is what converts a
+lens visit into shelf.
 
 Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
 prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the

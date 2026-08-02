@@ -63,7 +63,10 @@ export function session(base) {
     }
 
     const boot = async (path = '/home') => {
-        const html = await (await fetch(base + path)).text();
+        // The initial page GET rides the session jar exactly as a browser's would - the /id
+        // surface branches on that cookie (session -> SPA, anonymous -> the static face), so
+        // a bare fetch here would boot the wrong audience's page.
+        const html = await (await bridgedFetch(path)).text();
         return new JSDOM(html, {
             url: base + path,
             runScripts: 'dangerously',
