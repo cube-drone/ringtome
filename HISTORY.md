@@ -1466,3 +1466,27 @@ Field review trimmed the address row to its essentials: the whole identity strin
 address…" / "where this persona lives on the web") are gone. The address is its own
 document; a label that explains it is a label that doubts it. One row, both pages
 (/home/persona and the id lens), no per-audience label bending.
+
+## The profile learns to count, and to wait (2026-08-02)
+
+Two field findings on the profile editor, one fix. The invisible 400: a too-large bio hit
+the wire cap (proto's ProfileSet::MAX_VALUE_LEN, 4096 bytes) and the autosave's failure went
+nowhere the user could see - a save that silently didn't happen. And the deeper mismatch:
+every profile save mints a permanent chain record, which autosave-on-debounce spends on
+every typing pause. The editor now drafts and COMMITS: byte counters on both fields
+("15/4096" - bytes, not characters, because that's what the wire counts; an emoji spends
+four), red plus a refused Save once over the cap, and an explicit Save button in place of
+the debounce - the write happens when you've committed to the words, not when you pause
+typing. The draft keeps the shadow contract's good half (a rename echoing from another
+computer is adopted only while your draft is clean) minus the autosave, with a written-value
+stand-in so the moment after a save never flashes "unsaved". Limits mirrored in
+pure/profile.js with boundary vectors (4096 saves, 4097 refuses, the emoji tips it).
+
+## Cozy caps (2026-08-02)
+
+The profile counters moved from the wire's bound to product bounds: 64 characters for a
+name, 512 for a bio (pure/profile.js PROFILE_LIMITS), counted in CODE POINTS now - one emoji
+is one character to the person counting - because the cozy caps sit so far under the wire's
+4096-byte cap that byte-honesty stopped mattering. A vector pins the safety inequality
+(cap x 4 worst-case bytes <= wire cap) so no future cap bump can silently reopen the
+invisible-400 hole; uncapped fields defer to the wire.

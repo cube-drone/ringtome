@@ -164,9 +164,7 @@
 .persona-address-value {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    word-break: break-all;
     font-size: 0.78rem;
     color: var(--ink-soft);
     text-decoration: none;
@@ -450,4 +448,56 @@
 .id-page .id-quiet {
     color: var(--muted);
     font-size: 0.85rem;
+}
+
+/* The profile editor's deliberate save: counters that count what the wire counts, a button
+   that refuses what the wire would refuse. */
+.profile-field-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.profile-count {
+    color: var(--faint);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.profile-count-over {
+    color: var(--coral);
+    font-weight: 600;
+}
+
+.profile-save-row {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin: 0.4rem 0 0.8rem;
+}
+
+.profile-save {
+    background: var(--teal);
+    border: 1px solid var(--teal);
+    border-radius: 6px;
+    color: var(--surface);
+    font: inherit;
+    padding: 0.4rem 1.4rem;
+    cursor: pointer;
+}
+
+.profile-save:disabled {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--faint);
+    cursor: default;
+}
+
+.profile-flash {
+    color: var(--teal);
+    font-size: 0.85rem;
+}
+
+.profile-flash-err {
+    color: var(--coral);
 }

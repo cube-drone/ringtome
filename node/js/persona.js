@@ -11,9 +11,9 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
-import { useShadowValue } from './shadow.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { identityAddress, viaHints } from './pure/portable.js';
+import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
 import { speakable } from './speakable.js';
 import { Icons } from './icons.js';
 
@@ -532,8 +532,9 @@ function useIdentityAddress(root) {
 }
 
 // The address row: where this persona lives, ready to hand to someone - and, since the /id
-// surface opened, a door: the address links to this persona's own id page (the local path
-// form, so the visit stays at this lens whatever origin the shareable text carries).
+// surface opened, a door. The link IS the displayed address, whole - origin, ?via= hints and
+// all (what you see is what you click is what you copy); the /id surface simply ignores the
+// query it doesn't need.
 // Exported: the id lens page (idpage.js) shows the same row for any hosted persona. The row
 // explains nothing - the whole string, a quiet "address" tag, a copy button. The address is
 // its own document; the label lost its subtitle on field review (2026-08-01).
@@ -553,7 +554,7 @@ export const AddressRow = ({ root }) => {
     return html`
         <div class="persona-address">
             <span class="persona-address-label">address</span>
-            <a class="persona-address-value" href="/id/${speakable(root)}" title="see this persona's page">
+            <a class="persona-address-value" href=${address} title="see this persona's page">
                 <code>${address}</code>
             </a>
             <button class="persona-address-copy" onClick=${copy}>
@@ -614,56 +615,117 @@ export const PersonaHome = ({ persona, session }) => {
     `;
 };
 
-// One editable profile field: a shadow buffer (shadow.js) over the mirror's value, saved on a
-// debounce and on blur. Writes land on the profile chain and echo to every computer within seconds.
-function useProfileField(root, field, { debounceMs = 800 } = {}) {
+// One profile field as an explicit DRAFT - not a shadow buffer, deliberately: every profile
+// save mints a permanent chain record, so nothing here saves on its own. The draft holds
+// your typing; `commit` writes it; a mirror echo (a rename on another computer) is adopted
+// only while your draft is clean, exactly the shadow contract minus the autosave.
+function useProfileDraft(root, field) {
     const live = useLive(() => openMirror(root).profile.get(field), [root, field]);
-    return useShadowValue((live && live.value) || '', {
-        debounceMs,
-        key: `${root}:${field}`,
-        save: (value) =>
-            api(`/api/identity/${root}/profile`, {
+    const mirror = (live && live.value) || '';
+    const [draft, setDraft] = useState(mirror);
+    // The value we successfully wrote, standing in for the mirror until its echo lands -
+    // without it, the moment after a save reads as "unsaved changes" again.
+    const [written, setWritten] = useState(null);
+    const adopted = useRef(mirror);
+    useEffect(() => {
+        if (mirror === adopted.current) return;
+        if (draft === adopted.current) setDraft(mirror);
+        adopted.current = mirror;
+        if (written !== null && mirror === written) setWritten(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mirror]);
+
+    const baseline = written !== null ? written : mirror;
+    return {
+        draft,
+        setDraft,
+        dirty: draft !== baseline,
+        chars: profileChars(draft),
+        cap: PROFILE_LIMITS[field],
+        over: overProfileLimit(field, draft),
+        commit: async () => {
+            await api(`/api/identity/${root}/profile`, {
                 method: 'POST',
-                body: JSON.stringify({ field, value }),
-            }),
-    });
+                body: JSON.stringify({ field, value: draft }),
+            });
+            setWritten(draft);
+            adopted.current = draft;
+        },
+    };
 }
 
-// The profile editor: your public self-claims (name, bio). Writes land on the profile chain
-// and echo to every computer within seconds. (History-over-time is a future addition.)
+// A field's label row: the name on the left, the count on the right - characters spent
+// against the field's cozy cap (pure/profile.js; the wire's byte cap sits safely beyond it),
+// red once it can no longer save.
+const FieldLabel = ({ label, field }) => html`
+    <span class="profile-field-label">
+        ${label}
+        <span class=${field.over ? 'profile-count profile-count-over' : 'profile-count'}>
+            ${field.chars}/${field.cap}
+        </span>
+    </span>
+`;
+
+// The profile editor: your public self-claims (name, bio). Saving is a BUTTON, not a
+// debounce - every change mints a whole permanent record on the profile chain, so the write
+// happens when you've committed to the words, not when you pause typing.
 export const Profile = ({ current }) => {
     const root = current.root;
-    const name = useProfileField(root, 'name');
-    const bio = useProfileField(root, 'bio');
+    const name = useProfileDraft(root, 'name');
+    const bio = useProfileDraft(root, 'bio');
+    const [busy, setBusy] = useState(false);
+    const [flash, setFlash] = useState(null); // 'saved' | an error message
+    const dirty = name.dirty || bio.dirty;
+    const over = name.over || bio.over;
+
+    const save = async () => {
+        setBusy(true);
+        setFlash(null);
+        try {
+            if (name.dirty) await name.commit();
+            if (bio.dirty) await bio.commit();
+            setFlash('saved');
+            setTimeout(() => setFlash((f) => (f === 'saved' ? null : f)), 1800);
+        } catch (e) {
+            setFlash(e.message || 'that save did not take - try again');
+        }
+        setBusy(false);
+    };
+
     return html`
         <div class="persona-page">
             <div class="persona-page-head">
                 <h1 class="persona-page-title">profile</h1>
             </div>
             <label class="profile-field">
-                <span class="profile-field-label">name</span>
+                <${FieldLabel} label="name" field=${name} />
                 <input
                     class="name-input"
-                    value=${name.value}
-                    onInput=${name.onInput}
-                    onBlur=${name.flush}
+                    value=${name.draft}
+                    onInput=${(e) => name.setDraft(e.currentTarget.value)}
                     placeholder="what people call you here"
                 />
             </label>
             <label class="profile-field">
-                <span class="profile-field-label">bio</span>
+                <${FieldLabel} label="bio" field=${bio} />
                 <textarea
                     class="profile-bio"
-                    value=${bio.value}
-                    onInput=${bio.onInput}
-                    onBlur=${bio.flush}
-                    rows="3"
+                    value=${bio.draft}
+                    onInput=${(e) => bio.setDraft(e.currentTarget.value)}
+                    rows="12"
                     placeholder="a line or two about you (optional)"
                 ></textarea>
             </label>
-            <p class="null-sub">
-                changes save on their own and appear on all your computers within seconds.
-            </p>
+            <div class="profile-save-row">
+                <button
+                    class="profile-save"
+                    disabled=${!dirty || over || busy}
+                    onClick=${save}
+                >Save</button>
+                <span class=${flash === 'saved' ? 'profile-flash' : 'profile-flash profile-flash-err'}>
+                    ${flash === 'saved' ? 'saved - on all your computers in a moment' : flash}
+                </span>
+            </div>
         </div>
     `;
 };
