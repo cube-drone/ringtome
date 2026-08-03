@@ -102,17 +102,10 @@ fn chip(root: &[u8; 32]) -> String {
 }
 
 /// Is this root hosted by any account on this node? (The shelf, v1: hosting is the only
-/// demand edge that exists - member follows join it when follows do.)
+/// demand edge that exists - member follows join it when follows do.) The identities table
+/// belongs to identity.rs; this is its question, asked through its door.
 async fn hosted_here(state: &AppState, root_hex: &str) -> Result<bool, AppError> {
-    let row: Option<(i64,)> = state
-        .node_db
-        .fetch_optional(
-            "SELECT 1 FROM identities WHERE root_pubkey = ?1",
-            (root_hex,),
-        )
-        .await
-        .map_err(AppError::Internal)?;
-    Ok(row.is_some())
+    crate::identity::is_hosted(&state.node_db, root_hex).await
 }
 
 /// The public profile straight off the identity's own db - the public lane, no account in

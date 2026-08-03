@@ -1645,3 +1645,14 @@ interest's stops land exactly, trust's 0 and 5 share "none" honestly); every ico
 words in the tooltip, so the compression never loses the vocabulary. Two conventions-check
 catches during the build: the orphaned .person-facts rule, and sig classes hidden inside a
 template interpolation - enumerated as literals so the dead-CSS check can see them.
+
+## The identities table gets its door back (2026-08-02)
+
+CI red since the /id endpoint shipped: the Rust conventions test (SQL stays in its owning
+module) caught idface.rs querying `FROM identities` directly - identity.rs's table, asked
+around its back. The query moved behind the door as `identity::is_hosted` (the
+audience-independent sibling of `require_owned`), idface delegates, and the new
+`foreign_fetches` table registered its owner (idface.rs) in the conventions map rather than
+squatting unlisted. Process note, on the record: the /id sessions ran ui-check, clippy, and
+integration but skipped `just test-unit`, which is where the conventions suite lives - the
+full `just ci` chain exists precisely because partial gates feel complete.

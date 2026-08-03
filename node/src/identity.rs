@@ -498,6 +498,20 @@ pub(crate) async fn record_served(node_db: &Db, root_pubkey: &str) -> Result<(),
 
 /// Verify that `account_id` owns the identity `root_pubkey`, uniformly 404ing otherwise (an
 /// existing-but-not-yours identity is indistinguishable from a nonexistent one).
+/// Is this root hosted by ANY account on this node? The /id surface's shelf question -
+/// audience-independent, unlike `require_owned` below, which asks about one account.
+pub async fn is_hosted(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM identities WHERE root_pubkey = ?1",
+            (root_pubkey,),
+        )
+        .await
+        .context("checking identity hosting")
+        .map_err(AppError::Internal)?;
+    Ok(row.is_some())
+}
+
 pub async fn require_owned(
     node_db: &Db,
     account_id: &Uuid,
