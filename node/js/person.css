@@ -1,0 +1,190 @@
+/* The Person widget family (js/person.js): one persona at four sizes. The hexagon is the
+   through-line - the same six-sided face in a list, a header, or a card, ringed in the
+   colour their root derives. */
+
+.person-hex {
+    display: inline-flex;
+    flex-shrink: 0;
+    padding: 2px; /* the ring: the parent's background showing past the inner clip */
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+.person-hex-img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    background: inherit; /* a picture-less persona is a solid hexagon of their colour */
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+.person-hex-blank {
+    /* nothing more: `background: inherit` above already paints it their colour */
+    min-width: 100%;
+}
+
+.person-hex-mini {
+    width: 1.4rem;
+    height: 1.6rem;
+}
+
+.person-hex-small {
+    width: 2rem;
+    height: 2.3rem;
+}
+
+.person-hex-card {
+    width: 4.5rem;
+    height: 5.1rem;
+}
+
+/* The chip: a hexagon that says who it is when you point at it. */
+.person-chip {
+    position: relative;
+    display: inline-flex;
+    vertical-align: middle;
+    text-decoration: none;
+}
+
+.person-chip[data-blocked='yes'] .person-hex {
+    opacity: 0.45;
+}
+
+.person-chip-label {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.35rem);
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.05rem;
+    padding: 0.3rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--ink);
+    font-size: 0.78rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    z-index: 20;
+}
+
+.person-chip-label small {
+    color: var(--muted);
+    font-size: 0.7rem;
+}
+
+.person-chip:hover .person-chip-label,
+.person-chip:focus-visible .person-chip-label {
+    opacity: 1;
+}
+
+/* The banner: the inline header, filling the row it's given. */
+.person-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+}
+
+.person-banner-face {
+    display: inline-flex;
+    text-decoration: none;
+}
+
+.person-banner-names {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 0.1rem;
+}
+
+.person-banner-primary {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.person-banner-others {
+    color: var(--muted);
+    font-size: 0.78rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.person-banner-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* The card: everything about them, and everything between you. */
+.person-card-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0.7rem 0 0.1rem;
+}
+
+.person-card-others {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0 0 1rem;
+}
+
+.person-card-bio {
+    white-space: pre-wrap;
+    color: var(--ink-soft);
+    margin-top: 1rem;
+}
+
+/* The gallery at /id/<persona>/ui-demo (js/persondemo.js): a workbench, dressed plainly. */
+.person-demo {
+    max-width: 640px;
+}
+
+.demo-lede {
+    color: var(--ink-soft);
+    margin-bottom: 1.6rem;
+}
+
+.demo-sample {
+    border-top: 1px dashed var(--border);
+    padding-top: 1rem;
+    margin-bottom: 1.8rem;
+}
+
+.demo-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--teal);
+    margin: 0 0 0.2rem;
+}
+
+.demo-note {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin: 0 0 0.9rem;
+}
+
+.demo-stage {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.demo-prose {
+    line-height: 2;
+    color: var(--ink-soft);
+    margin: 0;
+}

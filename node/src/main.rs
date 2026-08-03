@@ -301,7 +301,7 @@ async fn main() -> anyhow::Result<()> {
         // resolve first (matchit's specificity, relied on deliberately).
         .route("/id/{seg}/docs/{doc}/body", get(idface::public_body_route))
         .route("/id/{seg}/docs/{doc}/thumb", get(idface::public_thumb_route))
-        .route("/id/{seg}/{*rest}", get(idface::idface))
+        .route("/id/{seg}/{*rest}", get(idface::idface_deep))
         .route("/api/id/{seg}/profile", get(idface::id_profile))
         .route("/home/{*wildcard}", get(ui::homepage))
         // Versioned static assets (CDN cache-safe)

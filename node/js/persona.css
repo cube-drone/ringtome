@@ -807,20 +807,3 @@
     display: none;
 }
 
-.id-avatar {
-    width: 4.5rem;
-    height: 4.5rem;
-    border-radius: 12px;
-    object-fit: cover;
-    border: 1px solid var(--border);
-    margin-bottom: 0.6rem;
-    display: block;
-}
-
-.person-avatar {
-    width: 1.6rem;
-    height: 1.6rem;
-    border-radius: 6px;
-    object-fit: cover;
-    flex-shrink: 0;
-}

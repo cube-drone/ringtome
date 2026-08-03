@@ -20,6 +20,17 @@ export const APPS = [
     // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
     // is excluded from the document-app routes. Its dock tile wears the persona's own name.
     { id: 'persona', name: 'Persona', icon: 'persona', live: true, system: true },
+    {
+        id: 'people',
+        name: 'People',
+        icon: 'people',
+        live: true,
+        // The rolodex (PROJECT_PLAN, Addressing: the console's people surface): look up an
+        // address, and browse everyone your ledger holds a relationship with - identity-free
+        // at the list level, navigating OUT to /id/<root> pages. Not a documents app: no
+        // style, no buckets, no tree - its rows are the mirror's `contacts` kind.
+        itemNoun: 'person',
+    },
     // The app's two nouns, both in the user's words rather than ours. `bucketNoun` is what ONE
     // bucket is called, Capitalised because it lands in titles and prompts ("New Recipe Book",
     // "Delete this Journal…"); `itemNoun` is what one THING INSIDE a bucket is called, lowercase
@@ -103,17 +114,6 @@ export const APPS = [
         everything: true,
         bucketNoun: 'Archive',
         itemNoun: 'file',
-    },
-    {
-        id: 'people',
-        name: 'People',
-        icon: 'people',
-        live: true,
-        // The rolodex (PROJECT_PLAN, Addressing: the console's people surface): look up an
-        // address, and browse everyone your ledger holds a relationship with - identity-free
-        // at the list level, navigating OUT to /id/<root> pages. Not a documents app: no
-        // style, no buckets, no tree - its rows are the mirror's `contacts` kind.
-        itemNoun: 'person',
     },
     { blank: true },
 ];

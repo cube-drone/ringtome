@@ -9,10 +9,10 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
-import { speakable, parseIdReference } from '../speakable.js';
-import { personaHue } from '../persona.js';
+import { parseIdReference } from '../speakable.js';
+import { usePerson, PersonHex } from '../person.js';
 import { Icons } from '../icons.js';
-import { PEOPLE_SORTS, sortContacts, displayNames, signalLevel } from '../pure/people.js';
+import { PEOPLE_SORTS, sortContacts, signalLevel } from '../pure/people.js';
 import { TRUST_STOPS, INTEREST_STOPS, nearestStop } from '../pure/contact.js';
 
 const html = htm.bind(h);
@@ -32,21 +32,26 @@ const SignalCell = ({ stops, value, what }) => {
     </span>`;
 };
 
-const PersonRow = ({ row, onOpen }) => {
-    const words = speakable(row.root).split('-').slice(0, 2).join('-');
+// One shelf row: the Person widget's small hexagon and names (js/person.js - the row reads
+// the same hook every other size does, so a nickname set anywhere renames them here), then
+// the relationship columns as icons.
+const PersonRow = ({ row, current }) => {
+    // The row already carries this contact's name and avatar off the contacts stream, so
+    // the hook answers from the mirror: a fifty-person shelf costs zero fetches.
+    const person = usePerson(row.root, { current });
     const facts = row.facts || {};
-    const blocked = facts.blocked === 'yes';
     const trustPublic = facts.trust_public === 'yes';
-    const [primary, ...others] = displayNames({ nickname: facts.nickname, name: row.name, words });
     return html`
-        <button class=${blocked ? 'person-row person-blocked' : 'person-row'} onClick=${onOpen}>
+        <a
+            class=${person.blocked ? 'person-row person-blocked' : 'person-row'}
+            href=${person.href}
+        >
             <span class="person-name-cell">
-                ${row.avatar
-                    ? html`<img class="person-avatar" src="/id/${row.root}/docs/${row.avatar}/thumb" alt="" />`
-                    : html`<span class="persona-chip" style="background: hsl(${personaHue(row.root)}, 60%, 55%)"></span>`}
-                <span class="person-words">${primary}</span>
-                ${others.length > 0 && html`<span class="person-others">${others.join(' · ')}</span>`}
-                ${blocked &&
+                <${PersonHex} person=${person} size="small" />
+                <span class="person-words">${person.primary}</span>
+                ${person.others.length > 0 &&
+                html`<span class="person-others">${person.others.join(' · ')}</span>`}
+                ${person.blocked &&
                 html`<span class="person-cell person-blocked-mark" title="blocked">
                     <${Icons.blockedSpeaker} weight="bold" />
                 </span>`}
@@ -59,7 +64,7 @@ const PersonRow = ({ row, onOpen }) => {
             <${SignalCell} stops=${TRUST_STOPS} value=${facts.trust} what="trust" />
             <${SignalCell} stops=${INTEREST_STOPS} value=${facts.interest} what="interest" />
             <${SignalCell} stops=${INTEREST_STOPS} value=${facts.interest_rebroadcasts} what="rebroadcasts" />
-        </button>
+        </a>
     `;
 };
 
@@ -134,11 +139,7 @@ export const PeopleApp = ({ current }) => {
             ${sorted.length > 0 && html`<${PeopleHead} />`}
             <div class="people-list">
                 ${sorted.map(
-                    (row) => html`<${PersonRow}
-                        key=${row.root}
-                        row=${row}
-                        onOpen=${() => loc.route(`/id/${row.root}`)}
-                    />`
+                    (row) => html`<${PersonRow} key=${row.root} row=${row} current=${current} />`
                 )}
             </div>
         </div>

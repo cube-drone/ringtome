@@ -1708,3 +1708,54 @@ private lane's enumeration behind the same agent gate as before. A foreign perso
 now crosses in the SAME exchange as their profile - one via-hinted fetch and the viewing
 node serves the thumbnail itself. Integration pins it two-node: B serves A's avatar bytes
 with no second trip to A.
+
+## The Person widget family (2026-08-03)
+
+A persona now renders through one family instead of four hand-rolled copies (js/person.js).
+The architecture question was asked directly - one flexible component with a `mode` prop, or
+several? - and settled SEVERAL, over ONE hook: everything upstream of rendering is identical
+at every size (the three names, the avatar, the hue, your relationship facts, is-this-you,
+where clicking goes), so it lives once in `usePerson`; the DOM shapes are genuinely unlike
+each other, and a mode-switching component would be four disjoint branches over a props
+union where half the props are inert per mode. The one place a prop IS right: mini and small
+are the same shape at different sizes, so the chip takes `size` (shape differs -> component;
+size differs -> prop). The shapes: PersonChip (a hexagon of their picture, ringed in their
+colour, name on hover, links to their page), PersonBanner (the inline header), PersonCard
+(everything - face, names, address, bio, relationship). The hook's one option is data DEPTH,
+not display mode: it never fetches for someone your ledger knows (name and avatar ride the
+contacts stream), never for yourself (your mirror holds it), never when the caller passes the
+profile down - so a fifty-row People shelf costs zero fetches. Adopted by /home/persona
+(banner), /id/<root> (card, profile passed down so the page doesn't fetch twice), and the
+People rows (hex + names, now real links). Moved with it: personaHue and displayNames into
+pure/person.js (vectored), AddressRow and the relationship ledger into person.js - which
+untangled a persona.js <-> idpage.js knot into one-way imports. The gallery lives at
+/id/<persona>/ui-demo: every shape, one after another, against a real persona - a workbench
+for tuning them side by side.
+
+Two bugs the gallery flushed out on its first load, both latent since their code shipped:
+the server's `/id/{seg}/{*rest}` route destructured its TWO path params as one
+(`Path<String>`), so every deep /id path 500'd - axum extracts positionally, and only
+single-segment addresses had ever been tried; and a comment-expression I put inside
+`<Router>` rendered as a string child, which the router dereferences for `props.path` -
+every child of a Router must BE a route. Integration now pins the deep path for both
+audiences.
+
+## An address that points where it says (2026-08-03)
+
+"The address in the card should include the ?via hints, right?" - it did, but the question
+uncovered worse: the hints were always THIS node's, whoever the persona was. Three cases,
+one of them a lie. For your own persona and for one this node hosts, hinting itself is
+honest. For a FOREIGN persona - reached across the network for a member - it is not: the
+anonymous face still tombstones them here (fetch-and-serve is member-scoped, by the durable-
+demand doctrine), so an address minted with this node's origin and this node's key hands a
+stranger a dead end at both ends. Now the node answers the question itself: `/api/id/<root>/
+profile` returns `hosted` and `via` - hosting hints itself plus the persona's liveliest
+peers; not-hosting hints whatever actually reached them (the caller's own URL hints, merged
+with the endpoint that last answered) and never itself. The client mints the origin only
+when `hosted`, so a foreign persona's address is the origin-free path form, which re-homes
+wherever it lands. Also relaxed while here: the peers endpoint answered only for your OWN
+personas, so a housemate's address could never carry their other computers; it now answers
+for any persona the node hosts (transport keys that serving records publish anyway).
+Verified across two nodes - alpha mints origin+self for its own and its neighbour's persona,
+bravo mints the path form with ALPHA's key for the same persona seen from afar - and pinned
+by integration on both sides of the contract.

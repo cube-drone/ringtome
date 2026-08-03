@@ -23,13 +23,7 @@ export function sortContacts(rows, by) {
     );
 }
 
-/// The three names a person wears, in the order your eye wants them: YOUR nickname first
-/// (the word you chose - fully private, nobody else ever sees it), their self-configured
-/// name second (their claim), the speakable words always last (the anchor that cannot lie).
-/// Absent ones drop out; the first survivor is the primary.
-export function displayNames({ nickname, name, words }) {
-    return [nickname, name, words].filter(Boolean);
-}
+// (The three names moved to pure/person.js with the rest of a person's look.)
 
 /// A 0-100 dial squeezed onto the five signal bars (none/low/medium/high/full): quarters,
 /// rounded - so interest's stops land exactly (0/25/50/75/100 -> 0..4) and trust's six

@@ -84,9 +84,27 @@ describe("the /id face", () => {
         assert.ok(body.includes("app.js"), "the SPA boots at /id for members");
     });
 
+    it("serves DEEP paths under a persona - the SPA's routes resolve in the client", async () => {
+        // Two path params, one handler: axum extracts positionally, so the deep route needs
+        // its own destructuring (a 500 here was the widget gallery's first finding).
+        const resp = await owner(`id/${root}/ui-demo`);
+        assert.equal(resp.status, 200);
+        assert.ok((await resp.text()).includes("app.js"), "a member gets the SPA to route it");
+        const anonDeep = await anon(`id/${root}/ui-demo`);
+        assert.equal(anonDeep.status, 200, "a stranger gets the persona's face, not a crash");
+    });
+
     it("404s garbage that is not an address in any spelling", async () => {
         const resp = await anon("id/not-an-address-at-all-really");
         assert.equal(resp.status, 404);
+    });
+
+    it("tells the caller how to REACH this persona - itself, for one it hosts", async () => {
+        const prof = await (await anon(`api/id/${root}/profile`)).json();
+        assert.equal(prof.hosted, true, "this node serves them");
+        assert.ok(prof.via.length >= 1, "and hints itself as an entry point");
+        // Hints are base58 node keys - never hex, never addresses.
+        assert.ok(prof.via.every((k) => /^[1-9A-HJ-NP-Za-km-z]+$/.test(k)));
     });
 
     it("the JSON face follows the same shelf rule, anonymously", async () => {
@@ -150,6 +168,22 @@ const { HOST_B } = require("./fetch.cjs");
     it("a hintless ask about an unknown root fails honestly", async () => {
         const resp = await bMember(`api/id/${"dd".repeat(32)}/profile`);
         assert.equal(resp.status, 404);
+    });
+
+    it("NEVER hints itself for a persona it would tombstone", async () => {
+        // B reached A's persona for its member, but B serves them to nobody - so B's answer
+        // must carry A's entry point and refuse its own origin, or a shared link dead-ends.
+        const { toBase58 } = await import("../../js/speakable.js");
+        const prof = await (
+            await bMember(`api/id/${aRoot}/profile?via=${toBase58(aEndpoint)}`)
+        ).json();
+        assert.equal(prof.hosted, false, "B does not host them - no origin may be minted");
+        assert.ok(prof.via.includes(toBase58(aEndpoint)), "A's endpoint is the honest hint");
+        const bEndpoint = (await (await bMember("api/node")).json()).endpoint_id;
+        assert.ok(
+            !prof.via.includes(toBase58(bEndpoint)),
+            "B must not advertise itself as a way to reach them"
+        );
     });
 
     it("the fetch is REMEMBERED: a bare hintless ask now serves from the durable registry", async () => {

@@ -6,169 +6,17 @@
 // through the address's own ?via= hints (idface.rs does the reaching; the page just passes
 // the hints through). Only when nothing answers does the warm tombstone show.
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { parseSpeakable, speakable } from './speakable.js';
-import { personaHue, AddressRow } from './persona.js';
-import {
-    TRUST_STOPS,
-    INTEREST_STOPS,
-    contactCollection,
-    nearestStop,
-} from './pure/contact.js';
+import { personaHue } from './pure/person.js';
+import { PersonCard } from './person.js';
 
 const html = htm.bind(h);
-
-// One dial of the ledger: a labeled select over the stops, saving on change (a dropdown
-// pick is a committed act - one private record per deliberate click, unlike keystrokes).
-const Dial = ({ label, hint, stops, value, onPick }) => html`
-    <label class="ledger-dial">
-        <span class="ledger-label">${label}${hint && html`<small>${hint}</small>`}</span>
-        <select
-            class="ledger-select"
-            value=${String(nearestStop(stops, value))}
-            onChange=${(e) => onPick(e.currentTarget.value)}
-        >
-            ${stops.map((s) => html`<option key=${s.value} value=${String(s.value)}>${s.label}</option>`)}
-        </select>
-    </label>
-`;
-
-// The contact ledger: what YOU privately record about another persona - trust (edge inputs
-// to the trust layer, never the flow math itself), interest, rebroadcast interest, a block.
-// Every fact is a private-chain LWW register on YOUR identity (`contact:<their-root>`),
-// synced to your own computers and nobody else's; the trust-visibility dial marks consent to
-// share the trust edge when the graph's publication machinery exists (today it changes only
-// the stored flag - honest small print, not a live broadcast). The block is likewise the
-// RECORD of the decision; the Inbound Gate learns to read it when inbound acts arrive.
-const ContactLedger = ({ myRoot, theirRoot }) => {
-    // The mirror is the truth (The Browser Is a View - contact facts stream like docs do,
-    // so a dial turned on another computer lands here live); a pending overlay covers the
-    // echo gap, clearing per-key the moment the mirror agrees (the tags pattern).
-    const row = useLive(() => openMirror(myRoot).contacts.get(theirRoot), [myRoot, theirRoot]);
-    const mirrorFacts = (row && row.facts) || {};
-    const [pending, setPending] = useState({});
-    const collection = contactCollection(theirRoot);
-    // Writes still queue behind one another: the facts share a single-writer private chain,
-    // and two dials picked in quick succession would otherwise race the append and silently
-    // lose one (field-found by the harness, 2026-08-02).
-    const writeQueue = useRef(Promise.resolve());
-
-    const mirrorKey = JSON.stringify(mirrorFacts);
-    useEffect(() => {
-        setPending((p) => {
-            const next = Object.fromEntries(
-                Object.entries(p).filter(([k, v]) => mirrorFacts[k] !== v)
-            );
-            return Object.keys(next).length === Object.keys(p).length ? p : next;
-        });
-        // Keyed on the joined value: the mirror hands back fresh object identities per poll.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mirrorKey]);
-
-    const facts = { ...mirrorFacts, ...pending };
-
-    // The nickname types like a text field, so it commits like one: draft while focused,
-    // written on blur/Enter - one private record per chosen name, never per keystroke.
-    const [nickDraft, setNickDraft] = useState(null);
-    const commitNick = () => {
-        if (nickDraft !== null && nickDraft.trim() !== (facts.nickname || '')) {
-            put('nickname', nickDraft.trim());
-        }
-        setNickDraft(null);
-    };
-
-    const put = (key, value) => {
-        setPending((p) => ({ ...p, [key]: value }));
-        writeQueue.current = writeQueue.current.then(() =>
-            api(`/api/identity/${myRoot}/private/kv/${encodeURIComponent(collection)}/${key}`, {
-                method: 'PUT',
-                body: JSON.stringify({ value }),
-            }).catch(() =>
-                // The write didn't take: drop the hope and let the mirror show the truth.
-                setPending((p) => {
-                    const { [key]: _, ...rest } = p;
-                    return rest;
-                })
-            )
-        );
-    };
-
-    const blocked = facts.blocked === 'yes';
-    const trustPublic = facts.trust_public === 'yes';
-
-    return html`
-        <div class="contact-ledger">
-            <div class="ledger-head">
-                <span class="ledger-title">your relationship</span>
-                <button
-                    class=${blocked ? 'ledger-block ledger-blocked' : 'ledger-block'}
-                    onClick=${() => put('blocked', blocked ? 'no' : 'yes')}
-                >${blocked ? 'unblock this persona' : 'block this persona'}</button>
-            </div>
-            ${blocked &&
-            html`<p class="ledger-note">
-                blocked - nothing of theirs will be shown to you, and nothing of theirs gets
-                through to you.
-            </p>`}
-            <label class="ledger-dial">
-                <span class="ledger-label">
-                    your nickname for them
-                    <small>only you ever see this - it's how they'll appear in your People</small>
-                </span>
-                <input
-                    class="ledger-nick"
-                    type="text"
-                    placeholder="a name of your choosing"
-                    value=${nickDraft !== null ? nickDraft : facts.nickname || ''}
-                    onInput=${(e) => setNickDraft(e.currentTarget.value)}
-                    onBlur=${commitNick}
-                    onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                />
-            </label>
-            <${Dial}
-                label="trust"
-                hint="not how much you like them - whether you believe they're real"
-                stops=${TRUST_STOPS}
-                value=${facts.trust}
-                onPick=${(v) => put('trust', v)}
-            />
-            <label class="ledger-dial">
-                <span class="ledger-label">
-                    who can see my trust
-                    <small>sharing your trust information helps the network grow, but gives
-                    up some of your privacy!</small>
-                </span>
-                <select
-                    class="ledger-select"
-                    value=${trustPublic ? 'yes' : 'no'}
-                    onChange=${(e) => put('trust_public', e.currentTarget.value)}
-                >
-                    <option value="no">private - just my computers</option>
-                    <option value="yes">public - shared with the network</option>
-                </select>
-            </label>
-            <${Dial}
-                label="interest"
-                hint="how much of theirs you want to see"
-                stops=${INTEREST_STOPS}
-                value=${facts.interest}
-                onPick=${(v) => put('interest', v)}
-            />
-            <${Dial}
-                label="their rebroadcasts"
-                hint="things they pass along from others"
-                stops=${INTEREST_STOPS}
-                value=${facts.interest_rebroadcasts}
-                onPick=${(v) => put('interest_rebroadcasts', v)}
-            />
-        </div>
-    `;
-};
 
 // The card every shape renders into - the persona-page look, reused.
 const Card = ({ children }) => html`<div class="persona-page id-page">${children}</div>`;
@@ -242,7 +90,6 @@ export const IdPage = ({ seg, current, onTitle }) => {
 
     const speak = speakable(root);
     const words = speak.split('-').slice(0, 2).join('-');
-    const isYou = !!(current && current.root === root);
 
     if (profile === undefined) {
         return html`<${Card}><p class="id-quiet">looking around…</p><//>`;
@@ -262,32 +109,13 @@ export const IdPage = ({ seg, current, onTitle }) => {
         <//>`;
     }
 
-    const field = (name) => {
-        const f = (profile.fields || []).find((f) => f.field === name);
-        return f ? f.value : '';
-    };
-    const names = [nickname, field('name'), words].filter(Boolean);
-    const name = names[0];
-    const otherNames = names.slice(1);
-
-    // No separate fingerprint line: the words are already the address's own prefix, one row
-    // down. The address row is the SAME shareable/copyable form the persona home mints -
-    // origin, hints and all - because a hosted persona's page is exactly where you'd reach
-    // for its link.
-    const avatarDoc = field('avatar');
+    // The whole person, in the widget family's largest shape - this page's entire job once
+    // the address resolves. The profile rides down as a prop: this page had to fetch it to
+    // tell reachable from unreachable, and the card must not fetch it twice.
     return html`<${Card}>
-        ${avatarDoc &&
-        html`<img class="id-avatar" src="/id/${root}/docs/${avatarDoc}/thumb" alt="" />`}
-        <h1 class="persona-page-title">
-            <span class="persona-chip" style="background: hsl(${personaHue(root)}, 60%, 55%)"></span>
-            ${name}
-        </h1>
-        ${otherNames.length > 0 && html`<p class="id-words">${otherNames.join(' · ')}</p>`}
-        ${isYou && html`<p class="id-words"><a href="/home/persona">this is you</a></p>`}
-        ${profile.foreign &&
-        html`<p class="id-words">reached across the network - not carried on this node</p>`}
-        ${profile.foreign ? html`<p class="id-address"><code>/id/${speak}</code></p>` : html`<${AddressRow} root=${root} />`}
-        ${field('bio') && html`<p class="id-bio">${field('bio')}</p>`}
-        ${!isYou && current && html`<${ContactLedger} myRoot=${current.root} theirRoot=${root} />`}
+        <${PersonCard} root=${root} current=${current} profile=${profile}>
+            ${profile.foreign &&
+            html`<p class="id-words">reached across the network - not carried on this node</p>`}
+        <//>
     <//>`;
 };

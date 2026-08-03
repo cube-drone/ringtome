@@ -12,21 +12,13 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
-import { identityAddress, viaHints } from './pure/portable.js';
 import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
-import { speakable, toBase58 } from './speakable.js';
+import { personaHue } from './pure/person.js';
+import { AddressRow, PersonBanner } from './person.js';
 import { Icons } from './icons.js';
 
 const html = htm.bind(h);
-
-// A deterministic little color chip from the root pubkey - the identicon's humble seed
-// (the real root-derived identicon is its own future feature; a persona should never render
-// as bare hex in the meantime).
-export function personaHue(rootHex) {
-    const n = parseInt(rootHex.slice(0, 6), 16);
-    return n % 360;
-}
 
 export const shortcode = (rootHex) => rootHex.slice(0, 4);
 
@@ -511,80 +503,6 @@ export function usePersonaName(current) {
     return (liveName && liveName.value) || (current && current.name) || '';
 }
 
-// The persona's shareable identity address (PROJECT_PLAN, Addressing): minted from the
-// operator's declared public URL (`/api/config`) - or the origin-free path form when there
-// isn't one - with `?via=` hints: this node's endpoint key first (`/api/node` - provably
-// alive, it served this page), then the persona's liveliest known peers (`/peers`), capped
-// by `viaHints`. All fetched once per mount; none change underneath a session.
-function useIdentityAddress(root) {
-    const [address, setAddress] = useState(null);
-    useEffect(() => {
-        let live = true;
-        Promise.all([
-            api('/api/config'),
-            api('/api/node'),
-            // Peers are gravy: a persona on one computer has none, and a failed fetch
-            // must not cost the address row its self-hint.
-            api(`/api/identity/${root}/peers`).catch(() => ({ peers: [] })),
-        ])
-            .then(([config, node, { peers }]) => {
-                if (!live) return;
-                // The root travels in its speakable form (pure/speakable.js): the checksum
-                // words are the human anchor, the base58 tail is the key, and hex stays a
-                // valid spelling everywhere addresses are parsed.
-                setAddress(
-                    identityAddress({
-                        publicUrl: config.public_url,
-                        root: speakable(root),
-                        // Node keys wear base58 in the URL (44 chars against hex's 64) -
-                        // ten hints fit where five used to.
-                        via: viaHints(node.endpoint_id, peers).map((k) => toBase58(k)),
-                    })
-                );
-            })
-            .catch(() => {
-                // No address row is better than a wrong one; the menu stands on its own.
-            });
-        return () => {
-            live = false;
-        };
-    }, [root]);
-    return address;
-}
-
-// The address row: where this persona lives, ready to hand to someone - and, since the /id
-// surface opened, a door. The link IS the displayed address, whole - origin, ?via= hints and
-// all (what you see is what you click is what you copy); the /id surface simply ignores the
-// query it doesn't need.
-// Exported: the id lens page (idpage.js) shows the same row for any hosted persona. The row
-// explains nothing - the whole string, a quiet "address" tag, a copy button. The address is
-// its own document; the label lost its subtitle on field review (2026-08-01).
-export const AddressRow = ({ root }) => {
-    const address = useIdentityAddress(root);
-    const [copied, setCopied] = useState(false);
-    if (!address) return null;
-    const copy = async () => {
-        try {
-            await navigator.clipboard.writeText(address);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        } catch {
-            /* clipboard refused (permissions): the text stays selectable by hand */
-        }
-    };
-    return html`
-        <div class="persona-address">
-            <span class="persona-address-label">address</span>
-            <a class="persona-address-value" href=${address} title="see this persona's page">
-                <code>${address}</code>
-            </a>
-            <button class="persona-address-copy" onClick=${copy}>
-                ${copied ? 'copied!' : 'copy'}
-            </button>
-        </div>
-    `;
-};
-
 // The persona home: the root of identity management (reached by the dock's persona tile). A small
 // menu - profile, your computers, log out - each its own place under /home/persona.
 export const PersonaHome = ({ persona, session }) => {
@@ -601,13 +519,11 @@ export const PersonaHome = ({ persona, session }) => {
     };
     return html`
         <div class="persona-page">
-            <h1 class="persona-page-title">
-                <span
-                    class="persona-chip"
-                    style="background: hsl(${personaHue(current.root)}, 60%, 55%)"
-                ></span>
-                ${name || `persona ${shortcode(current.root)}`}
-            </h1>
+            ${/* The Person widget, at banner size - your own face, same component that shows
+                anyone else's (js/person.js). The live name below still feeds the shell's
+                badge; the banner reads the same mirror. */ ''}
+            <${PersonBanner} root=${current.root} current=${current} />
+            ${!name && html`<p class="id-quiet">persona ${shortcode(current.root)}</p>`}
             <${AddressRow} root=${current.root} />
             <nav class="persona-menu">
                 <a class="persona-menu-item" href="/home/persona/profile">

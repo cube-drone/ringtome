@@ -605,11 +605,17 @@ struct PeersResponse {
 /// addresses, biased toward nodes recently seen alive). Session-gated like `/api/node`: only
 /// this node's own users compose addresses here.
 async fn peers_handler(
-    session: Session,
+    _session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<PeersResponse>, AppError> {
-    super::require_owned(&state.node_db, &session.account.id, &root).await?;
+    // Any persona this node HOSTS, not just this account's: a member minting an address for
+    // someone their node serves needs that persona's entry points too, and these are
+    // transport keys that serving records publish anyway. A root we don't host has no
+    // honest answer here.
+    if !super::is_hosted(&state.node_db, &root).await? {
+        return Err(AppError::NotFound("this node doesn't host that persona".into()));
+    }
     let peers = crate::net::sync::liveliest_peers(&state.node_db, &root, 16).await?;
     Ok(Json(PeersResponse { peers }))
 }

@@ -124,15 +124,26 @@ fn profile_value<'a>(fields: &'a [imaol::ProfileField], name: &str) -> Option<&'
         .map(|f| f.value.as_str())
 }
 
-/// GET `/id/{seg}` (and any deeper path, for now): the one URL, both audiences.
+/// GET `/id/{seg}/{*rest}` - any deeper path under a persona. Its own handler because axum
+/// extracts path params POSITIONALLY: a two-parameter route destructured as one `Path<String>`
+/// is a 500, not a fallback (found 2026-08-03 by the first deep /id link the app ever
+/// followed - the widget gallery). The deeper path is the SPA's business: routes under a
+/// persona (their pages, the gallery) resolve in the client, so this hands back the same
+/// answer the bare address does.
+pub async fn idface_deep(
+    session: Option<Session>,
+    state: State<AppState>,
+    Path((seg, _rest)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    idface(session, state, Path(seg)).await
+}
+
+/// GET `/id/{seg}`: the one URL, both audiences.
 pub async fn idface(
     session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
 ) -> Result<Response, AppError> {
-    // The segment may arrive with a deeper path attached (`{*rest}` routes land here too);
-    // only the first segment names the root.
-    let seg = seg.split('/').next().unwrap_or("").to_string();
 
     let Some(parsed) = speakable::parse(&seg) else {
         return Ok(face(
@@ -488,10 +499,54 @@ pub async fn id_profile(
     }
 
     let fields = public_profile(&state, &root_hex).await.unwrap_or_default();
+    // How to REACH this persona, as this node honestly knows it - the `?via=` hints any
+    // address minted here should carry (Addressing: hints are keys, never addresses).
+    //
+    // Hosted: this node serves them to anyone, so it hints ITSELF first, then their
+    // liveliest known peers. NOT hosted: this node serves them to nobody (fetch-and-serve
+    // is member-scoped and the anonymous face still tombstones them), so hinting itself
+    // would hand strangers a dead end - the honest hints are the ones that reached them,
+    // whatever the caller's URL carried plus the endpoint that last answered for them.
+    let mut via: Vec<String> = Vec::new();
+    if hosted {
+        via.push(state.endpoint.id().to_string());
+        via.extend(
+            crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 16)
+                .await
+                .unwrap_or_default(),
+        );
+    } else {
+        via.extend(
+            query
+                .via
+                .as_deref()
+                .unwrap_or("")
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .filter_map(speakable::node_key_from_via),
+        );
+        if let Some((_, Some(last))) = foreign_fetch_row(&state, &root_hex).await? {
+            via.push(last);
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let via: Vec<String> = via
+        .into_iter()
+        .filter(|k| seen.insert(k.clone()))
+        .take(10)
+        .filter_map(|k| speakable::node_key_b58(&k))
+        .collect();
+
     Ok(axum::Json(serde_json::json!({
         "root": root_hex,
         "speakable": speakable::speakable(&root),
         "foreign": !hosted,
+        // Whether an address minted here may wear this node's ORIGIN: only for personas it
+        // actually serves. A foreign persona's address mints origin-free, which re-homes at
+        // whatever node the reader has.
+        "hosted": hosted,
+        "via": via,
         "fields": fields.iter().map(|f| serde_json::json!({
             "field": f.field, "value": f.value,
         })).collect::<Vec<_>>(),

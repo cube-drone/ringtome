@@ -1,9 +1,9 @@
 // The rolodex's ordering rules.
 const assert = require('node:assert');
 
-let PEOPLE_SORTS, sortContacts, displayNames;
+let PEOPLE_SORTS, sortContacts;
 before(async () => {
-    ({ PEOPLE_SORTS, sortContacts, displayNames } = await import('../../../js/pure/people.js'));
+    ({ PEOPLE_SORTS, sortContacts } = await import('../../../js/pure/people.js'));
 });
 
 const row = (root, facts) => ({ root, facts });
@@ -37,21 +37,6 @@ describe('the People shelf', () => {
         const rows = [row('bb', { trust: '1' }), row('aa', { trust: '2' })];
         sortContacts(rows, 'trust');
         assert.deepEqual(rows.map((r) => r.root), ['bb', 'aa']);
-    });
-});
-
-describe('the three names', () => {
-    it('orders nickname, self-name, words - your word for them wins', () => {
-        assert.deepEqual(
-            displayNames({ nickname: 'Jerry', name: 'PhazerBean', words: 'point-cheer' }),
-            ['Jerry', 'PhazerBean', 'point-cheer']
-        );
-    });
-
-    it('absent names drop out; the words are always the floor', () => {
-        assert.deepEqual(displayNames({ name: 'PhazerBean', words: 'point-cheer' }), ['PhazerBean', 'point-cheer']);
-        assert.deepEqual(displayNames({ nickname: 'Jerry', words: 'point-cheer' }), ['Jerry', 'point-cheer']);
-        assert.deepEqual(displayNames({ words: 'point-cheer' }), ['point-cheer']);
     });
 });
 

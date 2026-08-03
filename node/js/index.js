@@ -30,6 +30,7 @@ import { JournalApp } from './apps/journal.js';
 import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
+import { PersonDemo } from './persondemo.js';
 import { PeopleApp } from './apps/people.js';
 import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
 import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
@@ -368,6 +369,9 @@ const Inside = ({ session }) => {
         return stage(html`<${NullState} persona=${persona} />`);
     }
 
+    // Every child of <Router> must BE a route (it reads `props.path` off each one) - a
+    // stray comment-expression renders as a string child and crashes the render, which is
+    // why the notes about ordering live out here (field-found 2026-08-03).
     // Once open, the URL is honored (a deep link survives the flow). The console lives at `/home`
     // on the bare stage; an open app (any deeper route) gets the shell. `inApp` is that line.
     const routed = html`
@@ -381,6 +385,7 @@ const Inside = ({ session }) => {
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
             <${PeopleApp} path="/home/people" current=${persona.current} />
+            <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg/*" current=${persona.current} onTitle=${setIdTitle} />
             <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />

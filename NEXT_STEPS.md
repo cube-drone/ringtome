@@ -114,6 +114,11 @@ enumerate without epoch keys and cross in the same exchange as the headers - nam
 faces). Deferred with the posts era, deliberately: the draft→post publication mint, public
 divergence semantics, and public taxonomies (and tags-as-published-taxonomy).
 
+**The Person widget family** (shipped 2026-08-03, js/person.js): one hook, three shapes
+(chip at two sizes / banner / card), worn by the persona home, the id page, and the People
+shelf; gallery at `/id/<persona>/ui-demo`. The next surfaces that show humans - posts,
+comments, group rosters, the feed - take a widget rather than rolling their own.
+
 Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
 prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the
 **fork-aftermath dragon** is due before any fork-facing UI; **accessibility** is a standing
