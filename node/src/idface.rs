@@ -46,7 +46,7 @@ fn face(status: StatusCode, body: String) -> Response {
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (
                 header::CONTENT_SECURITY_POLICY,
-                "default-src 'none'; style-src 'unsafe-inline'",
+                "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'",
             ),
             (header::REFERRER_POLICY, "no-referrer"),
         ],
@@ -72,6 +72,8 @@ fn page(title: &str, card: String) -> String {
           border: 1px solid #e0d8c8; border-radius: 14px; }}
   .chip {{ display: inline-block; width: 0.9em; height: 0.9em; border-radius: 50%;
           margin-right: 0.45rem; vertical-align: baseline; }}
+  .avatar {{ width: 4.5rem; height: 4.5rem; border-radius: 12px; object-fit: cover;
+            display: block; margin-bottom: 0.8rem; border: 1px solid #e0d8c8; }}
   h1 {{ font-size: 1.35rem; margin: 0 0 0.2rem; }}
   .words {{ color: #8a7f6e; font-size: 0.9rem; margin: 0 0 1rem; }}
   .bio {{ white-space: pre-wrap; }}
@@ -206,12 +208,15 @@ pub async fn idface(
             .collect();
         let base = state.config.public_url.clone().unwrap_or_default();
         let addr = format!("{base}/id/{speak}?via={}", via.join(","));
+        let avatar = profile_value(&fields, "avatar")
+            .map(|doc| format!("<img class=\"avatar\" src=\"/id/{speak}/docs/{}/thumb\" alt=\"\">", esc(doc)))
+            .unwrap_or_default();
         return Ok(face(
             StatusCode::OK,
             page(
                 &name,
                 format!(
-                    "<h1>{chip}{name}</h1>\
+                    "{avatar}<h1>{chip}{name}</h1>\
                      <p class=\"addr\"><a href=\"{addr}\">{addr}</a></p>\
                      {bio}\
                      <p class=\"foot\">a persona on ringtome, served from this node</p>",
@@ -349,6 +354,80 @@ async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool
         }
     }
     false
+}
+
+/// GET `/id/{seg}/docs/{doc}/body` and `/thumb` - a public document's bytes, anonymously.
+/// The lane check is the whole gate: `public_head` answers only for POSTS-lane documents, so
+/// a private doc_id asked through this door is a 404, never a leak. Bytes are served with
+/// the stored format's own Content-Type, nosniff, and immutable caching (content-addressed:
+/// a different avatar is a different document).
+async fn public_doc_bytes(
+    state: &AppState,
+    seg: &str,
+    doc_hex: &str,
+    thumb: bool,
+) -> Result<Response, AppError> {
+    let Some(Parsed::Ok(root)) = speakable::parse(seg) else {
+        return Err(AppError::NotFound("no such persona here".into()));
+    };
+    let root_hex = hex::encode(root);
+    // exists, not get: an anonymous probe for a stranger's bytes must not mint a database.
+    if !state.user_dbs.exists(&root_hex) {
+        return Err(AppError::NotFound("nothing of theirs is held here".into()));
+    }
+    let doc_id: [u8; 16] = hex::decode(doc_hex)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| AppError::NotFound("no such document".into()))?;
+    let db = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)?;
+    let Some(head) = crate::record::documents::public_head(&db, &doc_id).await? else {
+        return Err(AppError::NotFound("no such public document here".into()));
+    };
+    let (hash, mime) = if thumb {
+        let Some(t) = head.thumb_hash else {
+            return Err(AppError::NotFound("this document has no thumbnail".into()));
+        };
+        (t, "image/avif")
+    } else {
+        (
+            head.file_hash,
+            crate::record::documents::Format::from_wire(head.format).mime(),
+        )
+    };
+    let Some(bytes) = state
+        .files
+        .get_public(iroh_blobs::Hash::from_bytes(hash))
+        .await
+        .map_err(AppError::Internal)?
+    else {
+        return Err(AppError::NotFound(
+            "the bytes haven't arrived here yet - headers travel ahead of bodies".into(),
+        ));
+    };
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, mime),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+pub async fn public_body_route(
+    State(state): State<AppState>,
+    Path((seg, doc_hex)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    public_doc_bytes(&state, &seg, &doc_hex, false).await
+}
+
+pub async fn public_thumb_route(
+    State(state): State<AppState>,
+    Path((seg, doc_hex)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    public_doc_bytes(&state, &seg, &doc_hex, true).await
 }
 
 /// GET `/api/id/{root}/profile` - the JSON face. Anonymous callers get the shelf rule (hosted

@@ -100,6 +100,20 @@ flags in it are RECORDS awaiting their consumers - `trust_public` feeds the grap
 publication machinery (Tier 5's vouch lane), `blocked` feeds the Inbound Gate (route step 3)
 - and the trust dial's stored numbers are edge INPUTS for the flow engine, never the flow.
 
+**Public documents opened 2026-08-02, avatar as tenant zero** (the parallel-universe
+question settled: parallel DATA - copy-don't-flip demands it - never parallel CODE): the
+document fold is lane-parameterized (service POSTS carries plaintext DocHeaderPlain headers;
+`lane` on doc_versions/doc_heads, user schema gen 5), public bodies are plaintext
+content-addressed blobs (dedup fine - the no-dedup rule was ciphertext armor), served
+anonymously at the identity-rooted path (`/id/<root>/docs/<id>/body|/thumb`, immutable
+caching, lane-checked so a private doc_id through the public door is a 404 never a leak),
+and the avatar is a born-public media doc pointed at by the profile's `avatar` register -
+rendered on the static face, the lens, People, and the profile page's uploader. Deferred
+with the posts era, deliberately: the draft→post publication mint, public divergence
+semantics, public taxonomies (and tags-as-published-taxonomy), and foreign public-BODY
+backfill (headers cross on fetch-and-serve; `fetch_missing_bodies` still bails for
+identities we don't agent, so a foreign avatar renders once bodies learn to backfill).
+
 Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
 prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the
 **fork-aftermath dragon** is due before any fork-facing UI; **accessibility** is a standing

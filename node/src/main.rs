@@ -297,6 +297,10 @@ async fn main() -> anyhow::Result<()> {
         // The /id surface: one URL, two audiences (idface.rs). The wildcard form covers
         // deeper resource paths; the segment parser only reads the first segment for now.
         .route("/id/{seg}", get(idface::idface))
+        // Public document bytes: static segments beat the page wildcard below, so these
+        // resolve first (matchit's specificity, relied on deliberately).
+        .route("/id/{seg}/docs/{doc}/body", get(idface::public_body_route))
+        .route("/id/{seg}/docs/{doc}/thumb", get(idface::public_thumb_route))
         .route("/id/{seg}/{*rest}", get(idface::idface))
         .route("/api/id/{seg}/profile", get(idface::id_profile))
         .route("/home/{*wildcard}", get(ui::homepage))

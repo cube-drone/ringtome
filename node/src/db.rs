@@ -41,7 +41,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
 const NODE_SCHEMA_GENERATION: i64 = 2; // 2: foreign_fetches (2026-08-02)
-const USER_SCHEMA_GENERATION: i64 = 4;
+const USER_SCHEMA_GENERATION: i64 = 5; // 5: lane on doc_versions/doc_heads (2026-08-02)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -586,19 +586,41 @@ impl UserDbManager {
         // backfilled as frames, or rebuild-by-replay would silently lose the prefix.
         let journal = Journal::open(&self.journal_path_for(root_pubkey))
             .with_context(|| format!("opening journal for {root_pubkey}"))?;
-        if journal
+        let journal_empty = journal
             .is_empty()
-            .with_context(|| format!("checking journal for {root_pubkey}"))?
-        {
-            let existing = crate::record::imaol::all_entry_bytes(&db)
-                .await
-                .with_context(|| {
-                    format!("reading entries for journal backfill of {root_pubkey}")
-                })?;
+            .with_context(|| format!("checking journal for {root_pubkey}"))?;
+        let existing = crate::record::imaol::all_entry_bytes(&db)
+            .await
+            .with_context(|| format!("reading entries for journal init of {root_pubkey}"))?;
+        if journal_empty {
             if !existing.is_empty() {
                 journal
                     .append_all(&existing)
                     .with_context(|| format!("backfilling journal for {root_pubkey}"))?;
+            }
+        } else if existing.is_empty() {
+            // The invariant's OTHER direction - the pre-launch migration promise ("per-user
+            // data replays from its journal") actually kept: an EMPTY database under a
+            // non-empty journal is a rebuilt file (the schema-generation bail told the
+            // operator to delete it), and the journal is its insurance. Replay every frame
+            // through the ordinary validated ingest - the gate re-checks every signature and
+            // hash-link, so a tampered journal can inject nothing (field-found 2026-08-02:
+            // the un-replayed rebuild left empty key trees, which the persona screen then
+            // misread as a departed computer).
+            if let Some(root) = crate::pubkey::decode(root_pubkey) {
+                let (accepted, rejected) = crate::record::journal::rebuild_from_journal(
+                    &db,
+                    root,
+                    &self.journal_path_for(root_pubkey),
+                )
+                .await
+                .with_context(|| format!("replaying journal for {root_pubkey}"))?;
+                tracing::info!(
+                    root = %root_pubkey,
+                    accepted,
+                    rejected,
+                    "rebuilt empty database from its journal"
+                );
             }
         }
         let db = db
@@ -653,6 +675,43 @@ mod tests {
         // Ensure we don't pick up an ambient RINGTOME_ENVELOPE_KEY from the environment.
         std::env::remove_var("RINGTOME_ENVELOPE_KEY");
         Keystore::load(dir).unwrap()
+    }
+
+    /// The migration promise, held: an EMPTY user database under a non-empty journal
+    /// replays every frame on open (the journal invariant's second direction, wired
+    /// 2026-08-02 after the schema-bump rebuild left empty key trees that the persona
+    /// screen misread as departed computers). Write through the real append path, delete
+    /// the database file out from under a fresh manager, and the reopened database must
+    /// hold the same facts - by validated replay, not by luck.
+    #[tokio::test]
+    async fn empty_db_under_a_nonempty_journal_replays_on_open() {
+        let dir = temp_dir().await;
+        let key = ringtome_proto::SigningKey::generate(&mut rand::rngs::OsRng);
+        let root_hex = hex::encode(key.verifying_key().to_bytes());
+
+        {
+            let ks = temp_keystore(&dir);
+            let mgr = UserDbManager::new(&dir, ks, 4);
+            let db = mgr.get(&root_hex).await.unwrap();
+            crate::record::imaol::set_profile_field(&db, &key, "name", "Survivor Sue")
+                .await
+                .unwrap();
+        } // handles drop; the journal holds the frame
+
+        // The operator follows the bail guidance: the database dies, the journal survives.
+        for suffix in [".db", ".db-wal", ".db-shm"] {
+            let _ = std::fs::remove_file(dir.join("users").join(format!("{root_hex}{suffix}")));
+        }
+
+        let ks = temp_keystore(&dir); // same envelope key on disk: same keystore
+        let mgr = UserDbManager::new(&dir, ks, 4);
+        let db = mgr.get(&root_hex).await.unwrap();
+        let profile = crate::record::imaol::get_profile(&db).await.unwrap();
+        assert_eq!(
+            profile.iter().find(|f| f.field == "name").map(|f| f.value.as_str()),
+            Some("Survivor Sue"),
+            "the journal replayed the profile through the validated ingest"
+        );
     }
 
     #[tokio::test]

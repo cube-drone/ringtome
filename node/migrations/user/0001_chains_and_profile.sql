@@ -61,7 +61,10 @@ CREATE TABLE doc_versions (
     preview_hash  BLOB,
     timestamp_ms  INTEGER NOT NULL,     -- the entry's claimed stamp (display/LWW only)
     seq           INTEGER NOT NULL,     -- position on the author's chain
-    author_pubkey TEXT    NOT NULL      -- hex leaf key that signed the version (device attribution)
+    author_pubkey TEXT    NOT NULL,     -- hex leaf key that signed the version (device attribution)
+    lane          TEXT    NOT NULL DEFAULT 'private' -- which world: 'private' (DOCUMENTS_PRIVATE,
+                                        -- encrypted headers/bodies) or 'public' (POSTS, plaintext).
+                                        -- A document lives wholly in one lane; crossing is a copy.
 );
 CREATE INDEX doc_versions_by_doc ON doc_versions (doc_id);
 
@@ -73,6 +76,7 @@ CREATE INDEX doc_versions_by_doc ON doc_versions (doc_id);
 -- it and the next keyed read re-derives it from doc_versions.
 CREATE TABLE doc_heads (
     doc_id        BLOB    PRIMARY KEY,  -- 16-byte stable document id
+    lane          TEXT    NOT NULL DEFAULT 'private', -- mirrors doc_versions.lane (one per doc)
     entry_hash    BLOB    NOT NULL,     -- the display head's version hash (Rust's display_head)
     title         TEXT    NOT NULL,     -- display head's title
     format        INTEGER,              -- doc_format id; NULL = plaintext (wire absence)

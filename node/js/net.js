@@ -16,7 +16,12 @@
 export async function api(path, options = {}) {
     const res = await fetch(path, {
         credentials: 'same-origin',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
+        // A FormData body picks its own multipart Content-Type (boundary included) - naming
+        // one here would break the upload; everything else that carries a body is JSON.
+        headers:
+            options.body && !(options.body instanceof FormData)
+                ? { 'Content-Type': 'application/json' }
+                : undefined,
         ...options,
     });
     const body = await res.json().catch(() => ({}));

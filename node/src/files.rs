@@ -117,6 +117,38 @@ impl FileStore {
         Ok(tag.hash)
     }
 
+    /// Store a PUBLIC body: plaintext into the same content-addressed store, no key in the
+    /// question - the public lane's bodies (avatar first, posts to follow). The privacy rule
+    /// that forbids dedup for private bodies inverts here: plaintext is content-addressed
+    /// plainly, and identical public bytes sharing a hash is fine and free.
+    pub async fn put_public(&self, plaintext: &[u8]) -> Result<Hash> {
+        if plaintext.len() as u64 > self.max_blob_bytes {
+            bail!(
+                "blob is {} bytes, over the {}-byte cap",
+                plaintext.len(),
+                self.max_blob_bytes
+            );
+        }
+        let tag = self
+            .store()
+            .add_bytes(plaintext.to_vec())
+            .await
+            .context("storing public blob")?;
+        Ok(tag.hash)
+    }
+
+    /// Read a PUBLIC body: the bytes as stored, no decryption. `Ok(None)` = not held locally
+    /// (headers sync ahead of bodies, same as ever).
+    pub async fn get_public(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
+        match self.store().get_bytes(hash).await {
+            Ok(b) => Ok(Some(b.to_vec())),
+            Err(e) => {
+                tracing::debug!(%hash, "public blob not readable locally: {e}");
+                Ok(None)
+            }
+        }
+    }
+
     /// Read a locally-held blob and decrypt it. `Ok(None)` means we hold no working key for its
     /// epoch (a revoked-then-rotated member, or a newcomer not yet re-sealed into that era).
     pub async fn get_decrypted(&self, hash: Hash, keys: &EpochKeys) -> Result<Option<Vec<u8>>> {

@@ -17,3 +17,12 @@ export function blastRadius(keys, rankPath) {
             rankPath.every((r, i) => k.rank_path[i] === r)
     );
 }
+
+/// Standings that mean this computer was genuinely removed from the persona - the ONLY
+/// standings the farewell screen may fire on. "unknown" means the answer can't be computed
+/// (an unopenable database, an empty just-rebuilt key tree still waiting on its journal or
+/// a peer) - and can't-tell is not goodbye: a farewell on absence-of-good-news told a
+/// healthy computer it had left (field-found 2026-08-02, after a schema rebuild).
+export const DEPARTED_STANDINGS = ['retired', 'repudiated', 'invalid'];
+
+export const isDeparted = (standing) => DEPARTED_STANDINGS.includes(standing);

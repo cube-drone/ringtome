@@ -13,6 +13,7 @@ import htm from 'htm';
 import { api } from './net.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { identityAddress, viaHints } from './pure/portable.js';
+import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
 import { speakable, toBase58 } from './speakable.js';
 import { Icons } from './icons.js';
@@ -86,6 +87,13 @@ export function usePersona(account) {
                 // than wandering a read-only ghost town (PROJECT_PLAN, Revocation).
                 const active = personas.find((p) => p.standing === 'active');
                 if (active) return open(active.root_pubkey);
+                // The farewell fires only on AFFIRMATIVE removal (isDeparted). "unknown" -
+                // an unopenable db, an empty just-rebuilt tree awaiting its journal or a
+                // peer - opens anyway: sync heals what it can, and can't-tell is not
+                // goodbye (a farewell on absence-of-good-news once told a healthy computer
+                // it had left, field-found 2026-08-02).
+                const limbo = personas.find((p) => !isDeparted(p.standing));
+                if (limbo) return open(limbo.root_pubkey);
                 if (personas.length > 0) {
                     setFarewell({
                         root: personas[0].root_pubkey,
@@ -111,7 +119,7 @@ export function usePersona(account) {
             try {
                 const personas = await api('/api/identity');
                 const mine = current && personas.find((p) => p.root_pubkey === current.root);
-                if (mine && mine.standing !== 'active') {
+                if (mine && isDeparted(mine.standing)) {
                     if (live.current) {
                         live.current.stop();
                         live.current = null;
@@ -705,11 +713,51 @@ export const Profile = ({ current }) => {
         setBusy(false);
     };
 
+    // The avatar: a register holds the pointer, a born-public media document holds the
+    // file (PROJECT_PLAN - everything file-shaped is a document). Upload crushes inline
+    // and echoes back through the profile stream within a beat.
+    const avatarLive = useLive(() => openMirror(root).profile.get('avatar'), [root]);
+    const avatarDoc = avatarLive && avatarLive.value;
+    const [avatarBusy, setAvatarBusy] = useState(false);
+    const [avatarErr, setAvatarErr] = useState(null);
+    const pickAvatar = async (e) => {
+        const file = e.currentTarget.files[0];
+        e.currentTarget.value = '';
+        if (!file) return;
+        setAvatarBusy(true);
+        setAvatarErr(null);
+        try {
+            const form = new FormData();
+            form.append('image', file);
+            await api(`/api/identity/${root}/avatar`, { method: 'POST', body: form });
+        } catch (err) {
+            setAvatarErr(err.message);
+        }
+        setAvatarBusy(false);
+    };
+
     return html`
         <div class="persona-page">
             <div class="persona-page-head">
                 <h1 class="persona-page-title">profile</h1>
             </div>
+            <div class="profile-avatar-row">
+                ${avatarDoc
+                    ? html`<img
+                          class="profile-avatar"
+                          src="/id/${root}/docs/${avatarDoc}/thumb"
+                          alt="your avatar"
+                      />`
+                    : html`<span
+                          class="profile-avatar profile-avatar-empty"
+                          style="background: hsl(${personaHue(root)}, 60%, 55%)"
+                      ></span>`}
+                <label class="profile-avatar-pick">
+                    ${avatarBusy ? 'working on it…' : avatarDoc ? 'change your picture' : 'add a picture'}
+                    <input type="file" accept="image/*" onChange=${pickAvatar} disabled=${avatarBusy} />
+                </label>
+            </div>
+            ${avatarErr && html`<p class="form-error">${avatarErr}</p>`}
             <label class="profile-field">
                 <${FieldLabel} label="name" field=${name} />
                 <input

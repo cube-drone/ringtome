@@ -59,7 +59,7 @@ use crate::record::{imaol, private};
 use crate::AppState;
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
-pub const PROFILE_FIELDS: &[&str] = &["name", "bio"];
+pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar"];
 
 /// Write credentials for one identity on this node: the leaf signing key and the private-chain
 /// epoch keys it can open.

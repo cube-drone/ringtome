@@ -1656,3 +1656,41 @@ audience-independent sibling of `require_owned`), idface delegates, and the new
 squatting unlisted. Process note, on the record: the /id sessions ran ui-check, clippy, and
 integration but skipped `just test-unit`, which is where the conventions suite lives - the
 full `just ci` chain exists precisely because partial gates feel complete.
+
+## The public lane opens, wearing a face (2026-08-02)
+
+Public documents began - and the design conversation that preceded them settled the shape:
+parallel DATA universes (copy-don't-flip demands a published thing be a new artifact on a
+different chain), never parallel CODE. The document fold is now lane-parameterized: service
+POSTS (reserved for exactly this since M1, per its own comment) carries plaintext
+DocHeaderPlain headers, folded by the same code that folds the private lane, into the same
+doc_versions/doc_heads tables under a new `lane` column (user schema gen 5). The public
+sweep is deliberately KEYLESS (catch_up_public_lane - anonymous serving runs it with no
+epochs in hand); public bodies are plaintext content-addressed blobs (put_public/get_public;
+the no-dedup rule was ciphertext armor and inverts cleanly), served at the identity-rooted
+path - /id/<root>/docs/<id>/body and /thumb, immutable caching, nosniff, and the lane check
+as the whole gate: a private doc_id asked through the public door is a 404, never a leak.
+The private workspace never sees public docs (list_heads filters); the apps' shelves are
+unchanged. Tenant zero: THE AVATAR - "everything file-shaped is a document" held (a
+profile-field-holding-a-blob-hash shortcut was argued down: it would have minted a GC-orphan
+class and a document-less file precedent) - one crushed born-public media doc, the profile's
+`avatar` register holding the pointer (field allowlist grew its third member), the upload
+crushed inline through the same laundering every byte gets. Rendered everywhere a person
+shows: the static face (CSP grew img-src 'self'), the lens card, People rows (displacing the
+hue chip), and the profile page's uploader. Six integration tests pin the arc; the
+conventions suite caught the raw fetch in the uploader (net.js learned FormData instead).
+Deferred with the posts era, ledgered: the publication mint, public divergence, public
+taxonomies, foreign body backfill.
+
+## The proofs get homes (2026-08-03)
+
+Asked where yesterday's four wipe-recovery proofs live, the honest answer was "one and a
+half of four" - the isDeparted predicate was vectored, but the scenarios themselves were
+deleted probes. Now: shape 1 (journal replay) is a Rust regression test
+(db.rs, `empty_db_under_a_nonempty_journal_replays_on_open` - write through the real append
+path, delete the database file, reopen, and the profile must come back by validated replay);
+shapes 2 and 3 (peer-heal and peer-down) need node lifecycle control no test suite should
+own, so they live as a KEPT instrument per the harness doctrine - harness/standing.mjs, the
+diagnostic half (login, report standings, console-or-farewell), with the three wipe recipes
+documented in its header as operator work. The split is the doctrine working: unit facts get
+unit tests, composed lifecycle scenarios get instruments with instructions.

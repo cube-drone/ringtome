@@ -43,6 +43,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/entries", get(entries_handler))
         .route("/api/identity/{root}/keys", get(keys_handler))
         .route("/api/identity/{root}/peers", get(peers_handler))
+        .route(
+            "/api/identity/{root}/avatar",
+            post(set_avatar_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
+        )
         // M3: multi-node.
         .route("/api/identity/adopt/begin", post(adopt_begin_handler))
         .route("/api/identity/adopt/complete", post(adopt_complete_handler))
@@ -1056,6 +1060,66 @@ async fn docs_create_video_handler(
             status: "pending",
         }),
     ))
+}
+
+#[derive(Serialize)]
+struct AvatarResponse {
+    doc_id: String,
+}
+
+/// Set the persona's avatar: multipart part `image`, crushed inline (the image lane is
+/// quick - no queue ceremony for a thumbnail-sized public act), stored as a BORN-PUBLIC
+/// media document on the POSTS lane, and pointed at by the profile's `avatar` field (a
+/// register holds the pointer; the document holds the file - each doing its own job). The
+/// upload IS the deliberate public act; there is no draft to cross a membrane from.
+async fn set_avatar_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    mut parts: axum::extract::Multipart,
+) -> Result<Json<AvatarResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let mut image: Option<Bytes> = None;
+    while let Some(field) = parts
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("bad multipart body: {e}")))?
+    {
+        if field.name().unwrap_or("") == "image" {
+            image = Some(field.bytes().await.map_err(|e| {
+                AppError::BadRequest(format!("bad multipart part `image`: {e}"))
+            })?);
+        }
+    }
+    let image = image.ok_or_else(|| AppError::BadRequest("missing `image` part".into()))?;
+
+    // The same laundering every upload gets - decode, re-encode, never trust the bytes.
+    let bytes = image.to_vec();
+    let ingested = tokio::task::spawn_blocking(move || {
+        crate::media::crush_with_progress(&bytes, &|_| {})
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("avatar crush task: {e}")))?
+    .map_err(|e| AppError::BadRequest(format!("that doesn't work as an avatar: {e}")))?;
+    if !matches!(
+        ingested.format,
+        crate::record::documents::Format::Avif | crate::record::documents::Format::Apng
+    ) {
+        return Err(AppError::BadRequest(
+            "an avatar should be a picture - a still image or a small animation".into(),
+        ));
+    }
+
+    let db = state.user_dbs.get(&root).await.map_err(AppError::Internal)?;
+    let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
+        .await?;
+    let doc_id =
+        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested)
+            .await?;
+    data.profile().set("avatar", &hex::encode(doc_id)).await?;
+    Ok(Json(AvatarResponse {
+        doc_id: hex::encode(doc_id),
+    }))
 }
 
 /// Upload a new binary version of an existing document. Same async path; the existing doc_id and
@@ -2315,24 +2379,35 @@ struct ContactRow {
     /// words); the nickname rides `facts` like every other private judgment.
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    /// Their avatar's public doc_id, same join, same honesty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    avatar: Option<String>,
     /// The ledger's facts for them, as written (trust, trust_public, interest,
     /// interest_rebroadcasts, blocked, nickname - and whatever future dials add).
     facts: std::collections::BTreeMap<String, String>,
 }
 
-/// The self-name join for one contact: their profile's `name`, if we hold their chains.
-/// `exists` first, so a contact list full of strangers never mints empty databases.
-async fn contact_self_name(state: &AppState, root_hex: &str) -> Option<String> {
+/// The self-claims join for one contact: their profile's `name` and `avatar`, if we hold
+/// their chains. `exists` first, so a contact list full of strangers never mints empty
+/// databases.
+async fn contact_self_claims(state: &AppState, root_hex: &str) -> (Option<String>, Option<String>) {
     if !state.user_dbs.exists(root_hex) {
-        return None;
+        return (None, None);
     }
-    let db = state.user_dbs.get(root_hex).await.ok()?;
-    let fields = crate::record::imaol::get_profile(&db).await.ok()?;
-    fields
-        .into_iter()
-        .find(|f| f.field == "name")
-        .map(|f| f.value)
-        .filter(|v| !v.is_empty())
+    let Ok(db) = state.user_dbs.get(root_hex).await else {
+        return (None, None);
+    };
+    let Ok(fields) = crate::record::imaol::get_profile(&db).await else {
+        return (None, None);
+    };
+    let grab = |key: &str| {
+        fields
+            .iter()
+            .find(|f| f.field == key)
+            .map(|f| f.value.clone())
+            .filter(|v| !v.is_empty())
+    };
+    (grab("name"), grab("avatar"))
 }
 
 async fn gather(
@@ -2361,8 +2436,8 @@ async fn gather(
     let search = data.documents().search_rows().await?;
     let mut contacts = Vec::new();
     for (root, facts) in data.contacts().await? {
-        let name = contact_self_name(state, &root).await;
-        contacts.push(ContactRow { root, name, facts });
+        let (name, avatar) = contact_self_claims(state, &root).await;
+        contacts.push(ContactRow { root, name, avatar, facts });
     }
     let buckets = data
         .buckets()

@@ -124,6 +124,9 @@ pub struct Version {
 /// One document: every decryptable version, threaded into a DAG.
 #[derive(Debug, Default, Clone)]
 pub struct Doc {
+    /// Which world this document lives in: 'private' (encrypted, member-only) or 'public'
+    /// (the POSTS lane, plaintext). One lane per document, whole; crossing is a copy.
+    pub lane: String,
     pub versions: BTreeMap<[u8; 32], Version>,
     /// The DAG's true heads: versions no other version names as a parent. These are the
     /// `parents` a client's next save must list - folded heads included - so the fork heals
@@ -489,6 +492,104 @@ pub async fn retitle(
     Ok(*signed.hash())
 }
 
+/// Save a BORN-PUBLIC media document: crushed bytes to the public blob store, plaintext
+/// header onto the POSTS lane. Tenant zero is the avatar; posts' prose follows the full
+/// publication mint later (drafts are notes; this path is for things whose upload IS the
+/// deliberate public act). No epoch, no encryption, no parents (v1: replace-by-new-doc; the
+/// version DAG is there when public edits earn it).
+pub async fn save_public_media(
+    db: &Db,
+    signer: &SigningKey,
+    files: &crate::files::FileStore,
+    title: &str,
+    ingested: crate::media::Ingested,
+) -> Result<[u8; 16], AppError> {
+    let doc_id = new_doc_id();
+    let body_hash = files
+        .put_public(&ingested.body)
+        .await
+        .map_err(AppError::Internal)?;
+    let mut thumb_hash = None;
+    if let Some(thumb) = &ingested.thumb_avif {
+        thumb_hash = Some(
+            *files
+                .put_public(thumb)
+                .await
+                .map_err(AppError::Internal)?
+                .as_bytes(),
+        );
+    }
+    let header = DocHeaderPlain {
+        doc_id,
+        parents: vec![],
+        file_hash: *body_hash.as_bytes(),
+        // Public bodies are plaintext and content-addressed: the file hash IS the body's
+        // honest fingerprint (the private lane's keyed member-secret hash has no public
+        // meaning to protect here).
+        body_hash: *body_hash.as_bytes(),
+        title: title.to_string(),
+        format: ingested.format.to_wire(),
+        width: ingested.width,
+        height: ingested.height,
+        duration_ms: ingested.duration_ms,
+        thumb_hash,
+        preview_hash: None,
+    };
+    let payload = header
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding public doc header: {e}")))?;
+    crate::record::imaol::append(
+        db,
+        signer,
+        service::POSTS,
+        entry_type::DOC_HEADER,
+        Payload::Inline(payload),
+    )
+    .await?;
+    Ok(doc_id)
+}
+
+/// A public document's display facts, for the anonymous serving routes: format and blob
+/// hashes, lane-checked - a private doc_id asked for through the public door is a 404, never
+/// a leak. Runs the fold first, keys only for the private half it may catch up alongside.
+/// What `public_head` answers with: the display head's format and blob hashes.
+pub struct PublicHead {
+    pub format: Option<u64>,
+    pub file_hash: [u8; 32],
+    pub thumb_hash: Option<[u8; 32]>,
+}
+
+type PublicHeadRow = (Option<i64>, Vec<u8>, Option<Vec<u8>>);
+
+pub async fn public_head(
+    db: &Db,
+    doc_id: &[u8; 16],
+) -> Result<Option<PublicHead>, AppError> {
+    catch_up_public_lane(db).await?;
+    let row: Option<PublicHeadRow> = db
+        .fetch_optional(
+            "SELECT format, file_hash, thumb_hash FROM doc_heads
+             WHERE doc_id = ?1 AND lane = 'public'",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading public doc head")
+        .map_err(AppError::Internal)?;
+    let Some((format, file_hash, thumb_hash)) = row else {
+        return Ok(None);
+    };
+    let file = hash32(&file_hash)?;
+    let thumb = match thumb_hash {
+        Some(t) => Some(hash32(&t)?),
+        None => None,
+    };
+    Ok(Some(PublicHead {
+        format: format.map(|f| f as u64),
+        file_hash: file,
+        thumb_hash: thumb,
+    }))
+}
+
 /// Mint a fresh document id. 16 random bytes; identity is the id, collision is negligible.
 pub fn new_doc_id() -> [u8; 16] {
     use rand::RngCore;
@@ -544,14 +645,15 @@ async fn fold_header(
     db: &Db,
     signed: &SignedEntry,
     header: &DocHeaderPlain,
+    lane: &str,
 ) -> Result<(), AppError> {
     db.execute(
         "INSERT OR IGNORE INTO doc_versions
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
-            duration_ms, thumb_hash, preview_hash, timestamp_ms, seq, author_pubkey)
+            duration_ms, thumb_hash, preview_hash, timestamp_ms, seq, author_pubkey, lane)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
                  :width, :height, :duration_ms, :thumb_hash, :preview_hash, :timestamp_ms,
-                 :seq, :author_pubkey)",
+                 :seq, :author_pubkey, :lane)",
         turso::named_params! {
             ":entry_hash": signed.hash().as_slice(),
             ":doc_id": header.doc_id.as_slice(),
@@ -568,6 +670,7 @@ async fn fold_header(
             ":timestamp_ms": signed.entry().timestamp_ms,
             ":seq": signed.entry().seq as i64,
             ":author_pubkey": hex::encode(signed.entry().chain.author),
+            ":lane": lane,
         },
     )
     .await
@@ -623,7 +726,7 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
             match opened {
                 Opened::Plain(header) => {
                     changed.insert(header.doc_id);
-                    fold_header(db, &signed, &header).await?;
+                    fold_header(db, &signed, &header, "private").await?;
                     if !stalled {
                         advance_to = Some(seq);
                     }
@@ -652,6 +755,11 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
         }
     }
 
+    // The PUBLIC lane's sweep rides along (its own fn: the anonymous serving routes run it
+    // without any epoch keys in hand).
+    let public_changed = catch_up_public_lane(db).await?;
+    changed.extend(public_changed);
+
     // Re-memoize doc_heads for exactly the documents whose inputs changed this pass, BEFORE the
     // watermarks advance: a crash between the two re-runs the fold (idempotent) and re-derives
     // the memo, so doc_heads can lag the log only transiently, never permanently.
@@ -666,6 +774,52 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
         .await?;
     }
     Ok(undecryptable)
+}
+
+/// The public lane's half of the fold: service POSTS, headers plain on the wire (no epoch,
+/// no stall state - an undecodable public header is garbage, never NoKey). One document
+/// model, two lanes; crossing between them is a copy, never a flip. Keyless on purpose:
+/// the anonymous /id serving routes catch up through this without touching the private
+/// half, and it advances its own watermarks + memoizes its own changed heads.
+pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, AppError> {
+    let public_entries = crate::record::imaol::entries_past_watermarks(
+        db,
+        service::POSTS,
+        entry_type::DOC_HEADER,
+    )
+    .await?;
+    let mut by_author: BTreeMap<String, Vec<SignedEntry>> = BTreeMap::new();
+    for signed in public_entries {
+        by_author
+            .entry(hex::encode(signed.entry().chain.author))
+            .or_default()
+            .push(signed);
+    }
+    let mut changed: BTreeSet<[u8; 16]> = BTreeSet::new();
+    let mut advances: Vec<(String, u64)> = Vec::new();
+    for (author_hex, chain) in by_author {
+        let mut advance_to: Option<u64> = None;
+        for signed in chain {
+            if let Payload::Inline(payload) = &signed.entry().payload {
+                if let Ok(header) = ringtome_proto::DocHeaderPlain::decode(payload) {
+                    changed.insert(header.doc_id);
+                    fold_header(db, &signed, &header, "public").await?;
+                } else {
+                    tracing::warn!(seq = signed.entry().seq, "skipping undecodable public doc header");
+                }
+            }
+            advance_to = Some(signed.entry().seq);
+        }
+        if let Some(folded_seq) = advance_to {
+            advances.push((author_hex, folded_seq));
+        }
+    }
+    refresh_doc_heads(db, &changed).await?;
+    for (author_hex, folded_seq) in advances {
+        crate::record::imaol::advance_watermark(db, &author_hex, service::POSTS, folded_seq)
+            .await?;
+    }
+    Ok(changed)
 }
 
 /// Re-resolve and upsert one `doc_heads` row per changed document. NOT judgment-in-SQL: every
@@ -712,13 +866,14 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
         let head_bodies: Vec<u8> = head_bodies.into_iter().flatten().collect();
         db.execute(
             "INSERT INTO doc_heads
-               (doc_id, entry_hash, title, format, file_hash, width, height, duration_ms,
+               (doc_id, lane, entry_hash, title, format, file_hash, width, height, duration_ms,
                 thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms,
                 heads_fp, head_bodies)
-             VALUES (:doc_id, :entry_hash, :title, :format, :file_hash, :width, :height,
+             VALUES (:doc_id, :lane, :entry_hash, :title, :format, :file_hash, :width, :height,
                      :duration_ms, :thumb_hash, :preview_hash, :logical_heads, :diverged,
                      :genesis_ms, :head_ms, :heads_fp, :head_bodies)
              ON CONFLICT(doc_id) DO UPDATE SET
+               lane = excluded.lane,
                entry_hash = excluded.entry_hash,
                title = excluded.title,
                format = excluded.format,
@@ -738,6 +893,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                 ":heads_fp": heads_hasher.finalize().as_bytes().to_vec(),
                 ":head_bodies": head_bodies,
                 ":doc_id": doc_id.as_slice(),
+                ":lane": doc.lane.as_str(),
                 ":entry_hash": head.hash.as_slice(),
                 ":title": head.header.title.as_str(),
                 ":format": head.header.format.map(|f| f as i64),
@@ -870,6 +1026,17 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
         doc.versions.insert(version.hash, version);
     }
     doc.thread();
+    if let Some((lane,)) = db
+        .fetch_optional::<(String,)>(
+            "SELECT lane FROM doc_versions WHERE doc_id = ?1 LIMIT 1",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading one document's lane")
+        .map_err(AppError::Internal)?
+    {
+        doc.lane = lane;
+    }
     Ok(doc)
 }
 
@@ -907,6 +1074,21 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
     // Thread each doc's DAG: true heads, then the mop-up (which heads carry distinct words).
     for doc in view.docs.values_mut() {
         doc.thread();
+    }
+
+    // Lanes ride beside the versions (one per doc, whole): a separate cheap map keeps
+    // VersionRow untouched.
+    let lanes: Vec<(Vec<u8>, String)> = db
+        .fetch_all("SELECT DISTINCT doc_id, lane FROM doc_versions", ())
+        .await
+        .context("reading doc lanes")
+        .map_err(AppError::Internal)?;
+    for (doc_id, lane) in lanes {
+        if let Ok(id) = <[u8; 16]>::try_from(doc_id.as_slice()) {
+            if let Some(doc) = view.docs.get_mut(&id) {
+                doc.lane = lane;
+            }
+        }
     }
     Ok(view)
 }
@@ -1012,7 +1194,11 @@ pub async fn list_heads(db: &Db, keys: &EpochKeys) -> Result<(Vec<DocHeadRow>, u
     let undecryptable = catch_up(db, keys).await?;
     let rows: Vec<HeadTuple> = db
         .fetch_all(
-            &format!("SELECT {HEAD_COLUMNS} FROM doc_heads ORDER BY head_ms DESC, doc_id"),
+            // The list surface is the PRIVATE workspace (notes, buckets, All): public-lane
+            // documents have their own doors (the /id serving routes) and never appear here.
+            &format!(
+                "SELECT {HEAD_COLUMNS} FROM doc_heads WHERE lane = 'private'                  ORDER BY head_ms DESC, doc_id"
+            ),
             (),
         )
         .await

@@ -274,7 +274,10 @@ export const IdPage = ({ seg, current, onTitle }) => {
     // down. The address row is the SAME shareable/copyable form the persona home mints -
     // origin, hints and all - because a hosted persona's page is exactly where you'd reach
     // for its link.
+    const avatarDoc = field('avatar');
     return html`<${Card}>
+        ${avatarDoc &&
+        html`<img class="id-avatar" src="/id/${root}/docs/${avatarDoc}/thumb" alt="" />`}
         <h1 class="persona-page-title">
             <span class="persona-chip" style="background: hsl(${personaHue(root)}, 60%, 55%)"></span>
             ${name}

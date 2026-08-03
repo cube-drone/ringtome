@@ -774,3 +774,53 @@
 .sig-2 { color: var(--ink-soft); }
 .sig-3 { color: var(--teal); }
 .sig-4 { color: var(--sea); }
+
+/* Avatars: the persona's public picture, everywhere a person shows. */
+.profile-avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+}
+
+.profile-avatar {
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 12px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    display: block;
+}
+
+.profile-avatar-empty {
+    opacity: 0.6;
+}
+
+.profile-avatar-pick {
+    color: var(--teal);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.profile-avatar-pick input {
+    display: none;
+}
+
+.id-avatar {
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 12px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    margin-bottom: 0.6rem;
+    display: block;
+}
+
+.person-avatar {
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+}

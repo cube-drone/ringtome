@@ -162,3 +162,73 @@ const { HOST_B } = require("./fetch.cjs");
         assert.ok(prof.fields.some((f) => f.value === "Faraway Fran"));
     });
 });
+
+/*
+    The avatar: tenant zero of the public documents lane. Upload crushes to a born-public
+    media doc on POSTS; the profile's `avatar` register points at it; the bytes serve
+    anonymously under the identity-rooted path with immutable caching.
+*/
+describe("the avatar (public documents, tenant zero)", function () {
+    this.timeout(30000);
+    let owner2, root2, avatarDoc;
+
+    before(async () => {
+        owner2 = await makeUserFetch({ prefix: "avatar" });
+        const made = await (await owner2("api/identity", { method: "POST" })).json();
+        root2 = made.root_pubkey;
+        const fs = require("node:fs");
+        const img = fs.readFileSync(`${__dirname}/../../../sample_media/polaroid.jpg`);
+        const form = new FormData();
+        form.append("image", new Blob([img], { type: "image/jpeg" }), "polaroid.jpg");
+        const resp = await owner2(`api/identity/${root2}/avatar`, {
+            method: "POST",
+            body: form,
+            file: true,
+        });
+        const text = await resp.text();
+        assert.equal(resp.status, 200, text);
+        avatarDoc = JSON.parse(text).doc_id;
+    });
+
+    it("mints a public media document and points the profile at it", async () => {
+        const prof = await (await anon(`api/id/${root2}/profile`)).json();
+        assert.ok(
+            prof.fields.some((f) => f.field === "avatar" && f.value === avatarDoc),
+            "the register holds the pointer"
+        );
+    });
+
+    it("serves the bytes anonymously under the identity-rooted path", async () => {
+        const thumb = await anon(`id/${root2}/docs/${avatarDoc}/thumb`);
+        assert.equal(thumb.status, 200);
+        assert.equal(thumb.headers.get("content-type"), "image/avif");
+        assert.match(thumb.headers.get("cache-control"), /immutable/);
+        const body = await anon(`id/${root2}/docs/${avatarDoc}/body`);
+        assert.equal(body.status, 200);
+        assert.equal(body.headers.get("content-type"), "image/avif");
+        assert.ok((await body.arrayBuffer()).byteLength > 0, "real bytes");
+    });
+
+    it("the face wears it", async () => {
+        const face = await anon(`id/${root2}`);
+        assert.ok((await face.text()).includes(`/docs/${avatarDoc}/thumb`));
+    });
+
+    it("a PRIVATE doc asked through the public door is a 404, never a leak", async () => {
+        const doc = await (await owner2(`api/identity/${root2}/docs`, {
+            method: "POST",
+            body: JSON.stringify({ title: "secret", body: "private words", format: "plaintext" }),
+        })).json();
+        const resp = await anon(`id/${root2}/docs/${doc.doc_id}/body`);
+        assert.equal(resp.status, 404);
+    });
+
+    it("the avatar never appears in the private workspace list", async () => {
+        const list = await (await owner2(`api/identity/${root2}/docs`)).json();
+        const docs = Array.isArray(list) ? list : list.docs || [];
+        assert.ok(
+            !docs.some((d) => d.doc_id === avatarDoc),
+            "public docs have their own doors; the apps never see them"
+        );
+    });
+});

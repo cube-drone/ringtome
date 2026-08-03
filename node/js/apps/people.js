@@ -41,7 +41,9 @@ const PersonRow = ({ row, onOpen }) => {
     return html`
         <button class=${blocked ? 'person-row person-blocked' : 'person-row'} onClick=${onOpen}>
             <span class="person-name-cell">
-                <span class="persona-chip" style="background: hsl(${personaHue(row.root)}, 60%, 55%)"></span>
+                ${row.avatar
+                    ? html`<img class="person-avatar" src="/id/${row.root}/docs/${row.avatar}/thumb" alt="" />`
+                    : html`<span class="persona-chip" style="background: hsl(${personaHue(row.root)}, 60%, 55%)"></span>`}
                 <span class="person-words">${primary}</span>
                 ${others.length > 0 && html`<span class="person-others">${others.join(' · ')}</span>`}
                 ${blocked &&

@@ -3,9 +3,9 @@
 // share a prefix-of-the-parent but not of each other, and the already-revoked don't re-die.
 const assert = require('node:assert');
 
-let blastRadius;
+let blastRadius, isDeparted;
 before(async () => {
-    ({ blastRadius } = await import('../../../js/pure/removal.js'));
+    ({ blastRadius, isDeparted } = await import('../../../js/pure/removal.js'));
 });
 
 const key = (pubkey, rank_path, status = 'active') => ({ pubkey, rank_path, status });
@@ -51,5 +51,16 @@ describe('removal blast radius', () => {
             blastRadius(keys, []).map((k) => k.pubkey),
             ['spare', 'laptop', 'phone', 'watch', 'desktop']
         );
+    });
+});
+
+describe('the farewell gate', () => {
+    it('fires only on affirmative removal - never on can\'t-tell', () => {
+        assert.equal(isDeparted('retired'), true);
+        assert.equal(isDeparted('repudiated'), true);
+        assert.equal(isDeparted('invalid'), true);
+        assert.equal(isDeparted('unknown'), false, 'an empty tree asserts nothing');
+        assert.equal(isDeparted('active'), false);
+        assert.equal(isDeparted(undefined), false);
     });
 });
