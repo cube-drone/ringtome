@@ -8,7 +8,7 @@ import htm from 'htm';
 
 import { parseSpeakable } from './speakable.js';
 import { PERSON_SIZES } from './pure/person.js';
-import { usePerson, PersonChip, PersonBanner, PersonCard } from './person.js';
+import { usePerson, PersonChip, PersonBanner, PersonRow, PersonCard } from './person.js';
 
 const html = htm.bind(h);
 
@@ -63,6 +63,16 @@ export const PersonDemo = ({ seg, current }) => {
                 note="the inline header: face, names, and room for actions - what a page about this person wears at the top."
             >
                 <${PersonBanner} root=${root} current=${current} />
+            <//>
+
+            <${Sample}
+                title="row"
+                note="the banner's roster form: the whole row links, and your relationship rides on the right. What People is made of."
+            >
+                <div class="demo-rows">
+                    <${PersonRow} root=${root} current=${current} />
+                    <${PersonRow} root=${root} current=${current} />
+                </div>
             <//>
 
             <${Sample}

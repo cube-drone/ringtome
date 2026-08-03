@@ -92,15 +92,15 @@
     text-decoration: none;
 }
 
-.person-banner-names {
+/* Their names, stacked - shared by the banner and the roster row. */
+.person-names {
     display: flex;
     flex-direction: column;
     min-width: 0;
     gap: 0.1rem;
 }
 
-.person-banner-primary {
-    font-size: 1.3rem;
+.person-name-primary {
     font-weight: 600;
     color: var(--ink);
     overflow: hidden;
@@ -108,7 +108,11 @@
     white-space: nowrap;
 }
 
-.person-banner-others {
+.person-banner .person-name-primary {
+    font-size: 1.3rem;
+}
+
+.person-name-others {
     color: var(--muted);
     font-size: 0.78rem;
     overflow: hidden;
@@ -184,4 +188,41 @@
     line-height: 2;
     color: var(--ink-soft);
     margin: 0;
+}
+
+/* The roster row: a banner you click, with the relationship on its right. What People is
+   made of - the whole row is the link, because a list is a place you click, not a place
+   you aim. */
+.person-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.6rem 0.9rem;
+    color: var(--ink);
+    text-decoration: none;
+    transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.person-row:hover {
+    border-color: var(--teal);
+    transform: translateY(-1px);
+}
+
+.person-row .ledger-glance {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.person-row-blocked {
+    opacity: 0.6;
+}
+
+.demo-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
 }

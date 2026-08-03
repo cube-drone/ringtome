@@ -1809,3 +1809,19 @@ last part is deliberate rather than incidental: an identicon derives from the ke
 chosen by nobody, so a blocked row stays recognizable enough to unblock without showing you
 what they wanted you to see. Verified live on a single open card - dials set, then blocked,
 and the same page redrew from three pairs and a photo to one lock and an identicon.
+
+## The table becomes a list of people (2026-08-03)
+
+People's five-column table retired in favour of a fourth widget shape: PersonRow - the
+banner's roster form, hexagon and names as ever, your relationship glance riding the right,
+and the WHOLE row as the link (a list is a place you click, not a place you aim). The
+column heads went with it: the glance's pairs now carry their own kind-icons, so the header
+row had nothing left to explain. What the change is really made of is deduplication - the
+People app no longer owns a row component, a signal-cell component, a stop-label helper or
+a header; it maps roots to `<PersonRow>` and sorts them. The names block came out as
+PersonNames, shared by banner and row, so a persona reads identically in a page header and
+in a list because it is one component. Gallery gained the shape (a stack of two rows) so
+every size still sits side by side at /id/<persona>/ui-demo. Field-proven with three shapes
+of person on one shelf: a photographed contact with three full pairs, a nicknamed one
+showing "Pammy (Plain Pam - pouch-staff)" over her identicon, and a blocked one dimmed to a
+lock and an identicon.

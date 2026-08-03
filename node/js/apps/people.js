@@ -10,59 +10,10 @@ import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
 import { parseIdReference } from '../speakable.js';
-import { usePerson, PersonHex, SignalCell } from '../person.js';
-import { Icons } from '../icons.js';
+import { PersonRow } from '../person.js';
 import { PEOPLE_SORTS, sortContacts } from '../pure/people.js';
-import { TRUST_STOPS, INTEREST_STOPS } from '../pure/contact.js';
 
 const html = htm.bind(h);
-
-// One shelf row: the Person widget's small hexagon and names (js/person.js - the row reads
-// the same hook every other size does, so a nickname set anywhere renames them here), then
-// the relationship columns as icons.
-const PersonRow = ({ row, current }) => {
-    // The row already carries this contact's name and avatar off the contacts stream, so
-    // the hook answers from the mirror: a fifty-person shelf costs zero fetches.
-    const person = usePerson(row.root, { current });
-    const facts = row.facts || {};
-    const trustPublic = facts.trust_public === 'yes';
-    return html`
-        <a
-            class=${person.blocked ? 'person-row person-blocked' : 'person-row'}
-            href=${person.href}
-        >
-            <span class="person-name-cell">
-                <${PersonHex} person=${person} size="small" />
-                <span class="person-words">${person.primary}</span>
-                ${person.others.length > 0 &&
-                html`<span class="person-others">${person.others.join(' · ')}</span>`}
-                ${person.blocked &&
-                html`<span class="person-cell person-blocked-mark" title="blocked">
-                    <${Icons.blockedSpeaker} weight="bold" />
-                </span>`}
-            </span>
-            <span class="person-cell person-privacy" title=${trustPublic
-                ? 'their trust from you is public - shared with the network'
-                : 'their trust from you is private - just your computers'}>
-                <${trustPublic ? Icons.trustPublic : Icons.trustPrivate} />
-            </span>
-            <${SignalCell} stops=${TRUST_STOPS} value=${facts.trust} what="trust" />
-            <${SignalCell} stops=${INTEREST_STOPS} value=${facts.interest} what="interest" />
-            <${SignalCell} stops=${INTEREST_STOPS} value=${facts.interest_rebroadcasts} what="rebroadcasts" />
-        </a>
-    `;
-};
-
-// The column headers: one icon each, meanings in the tooltips.
-const PeopleHead = () => html`
-    <div class="person-row person-head" aria-hidden="true">
-        <span class="person-name-cell"></span>
-        <span class="person-cell" title="whether your trust is shared"></span>
-        <span class="person-cell" title="trust - do you believe they're real"><${Icons.colTrust} /></span>
-        <span class="person-cell" title="interest - how much of theirs you see"><${Icons.colInterest} /></span>
-        <span class="person-cell" title="rebroadcasts - what they pass along"><${Icons.colRebroadcast} /></span>
-    </div>
-`;
 
 export const PeopleApp = ({ current }) => {
     const loc = useLocation();
@@ -121,10 +72,9 @@ export const PeopleApp = ({ current }) => {
                 nobody yet - open someone's page and set your relationship, and they'll
                 appear here.
             </p>`}
-            ${sorted.length > 0 && html`<${PeopleHead} />`}
             <div class="people-list">
                 ${sorted.map(
-                    (row) => html`<${PersonRow} key=${row.root} row=${row} current=${current} />`
+                    (row) => html`<${PersonRow} key=${row.root} root=${row.root} current=${current} />`
                 )}
             </div>
         </div>

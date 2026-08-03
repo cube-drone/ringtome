@@ -177,8 +177,19 @@ export const PersonChip = ({ root, current, size = 'small', profile }) => {
     `;
 };
 
-/// The inline header: the hexagon plus their names and address, filling the width it's given.
-/// What a page wears at the top when the page is *about* this person.
+// Their names, stacked: the one you call them by, then the others they also answer to.
+// Shared by every shape wider than a hexagon, so a persona reads the same in a header and
+// in a list.
+const PersonNames = ({ person }) => html`
+    <span class="person-names">
+        <span class="person-name-primary">${person.primary}</span>
+        ${person.others.length > 0 &&
+        html`<span class="person-name-others">${person.others.join(' · ')}</span>`}
+    </span>
+`;
+
+/// The inline header: the hexagon plus their names, filling the width it's given. What a
+/// page wears at the top when the page is *about* this person.
 export const PersonBanner = ({ root, current, profile, actions }) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
@@ -187,13 +198,27 @@ export const PersonBanner = ({ root, current, profile, actions }) => {
             <a class="person-banner-face" href=${person.href} aria-label=${person.primary}>
                 <${PersonHex} person=${person} size="small" />
             </a>
-            <span class="person-banner-names">
-                <span class="person-banner-primary">${person.primary}</span>
-                ${person.others.length > 0 &&
-                html`<span class="person-banner-others">${person.others.join(' · ')}</span>`}
-            </span>
+            <${PersonNames} person=${person} />
             ${actions && html`<span class="person-banner-actions">${actions}</span>`}
         </div>
+    `;
+};
+
+/// The banner's roster form: the same face and names, plus your relationship at a glance,
+/// and the WHOLE row is the link (a list is a place you click, not a place you aim). What
+/// People is made of - one component instead of a table's worth of columns.
+export const PersonRow = ({ root, current, profile }) => {
+    const person = usePerson(root, { current, profile });
+    if (!root) return null;
+    return html`
+        <a
+            class=${person.blocked ? 'person-row person-row-blocked' : 'person-row'}
+            href=${person.href}
+        >
+            <${PersonHex} person=${person} size="small" />
+            <${PersonNames} person=${person} />
+            <${RelationshipGlance} facts=${person.facts} />
+        </a>
     `;
 };
 
