@@ -51,6 +51,17 @@ describe("the /id face", () => {
         );
     });
 
+    it("draws the identicon for a persona with no picture - inline, no CSP loosening", async () => {
+        const body = await (await anon(`id/${root}`)).text();
+        assert.ok(body.includes("<svg"), "the identicon is inlined into the face");
+        assert.ok(body.includes('viewBox="0 0 5 5"'), "the twinned identicon, not some other art");
+        // The console draws this exact string from the same bytes (pure/identicon.js and
+        // src/identicon.rs share goldens) - one persona, one face, everywhere.
+        const { identiconSvg } = await import("../../js/pure/identicon.js");
+        assert.ok(body.includes(identiconSvg(root)), "byte-identical to the console's");
+        assert.ok(!body.includes("data:image"), "inlined, so img-src stays 'self'");
+    });
+
     it("serves the same face at the speakable spelling, words verified", async () => {
         const resp = await anon(`id/${speakableAddr}`);
         assert.equal(resp.status, 200);

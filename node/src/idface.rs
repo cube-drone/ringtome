@@ -73,7 +73,9 @@ fn page(title: &str, card: String) -> String {
   .chip {{ display: inline-block; width: 0.9em; height: 0.9em; border-radius: 50%;
           margin-right: 0.45rem; vertical-align: baseline; }}
   .avatar {{ width: 4.5rem; height: 4.5rem; border-radius: 12px; object-fit: cover;
-            display: block; margin-bottom: 0.8rem; border: 1px solid #e0d8c8; }}
+            display: block; margin-bottom: 0.8rem; border: 1px solid #e0d8c8;
+            overflow: hidden; }}
+  .avatar svg {{ width: 100%; height: 100%; display: block; }}
   h1 {{ font-size: 1.35rem; margin: 0 0 0.2rem; }}
   .words {{ color: #8a7f6e; font-size: 0.9rem; margin: 0 0 1rem; }}
   .bio {{ white-space: pre-wrap; }}
@@ -90,16 +92,12 @@ fn page(title: &str, card: String) -> String {
     )
 }
 
-/// The deterministic hue chip - the same humble seed the SPA uses, so the face and the
-/// console agree on a persona's color.
-fn hue(root: &[u8; 32]) -> u32 {
-    u32::from(root[0]) * 65536 + u32::from(root[1]) * 256 + u32::from(root[2])
-}
-
+/// The persona's colour dot beside their name - the same hue their identicon and the
+/// console's hexagon ring wear (crate::identicon::hue is the one source).
 fn chip(root: &[u8; 32]) -> String {
     format!(
         r#"<span class="chip" style="background: hsl({}, 60%, 55%)"></span>"#,
-        hue(root) % 360
+        crate::identicon::hue(root)
     )
 }
 
@@ -219,9 +217,19 @@ pub async fn idface(
             .collect();
         let base = state.config.public_url.clone().unwrap_or_default();
         let addr = format!("{base}/id/{speak}?via={}", via.join(","));
-        let avatar = profile_value(&fields, "avatar")
-            .map(|doc| format!("<img class=\"avatar\" src=\"/id/{speak}/docs/{}/thumb\" alt=\"\">", esc(doc)))
-            .unwrap_or_default();
+        // Their picture if they chose one, else their identicon - the same glyph the
+        // console draws (crate::identicon and its JS twin). Inlined, not linked: the face's
+        // CSP allows no data: images, and an inline <svg> needs no permission at all.
+        let avatar = match profile_value(&fields, "avatar") {
+            Some(doc) => format!(
+                "<img class=\"avatar\" src=\"/id/{speak}/docs/{}/thumb\" alt=\"\">",
+                esc(doc)
+            ),
+            None => format!(
+                "<span class=\"avatar\">{}</span>",
+                crate::identicon::identicon_svg(&root)
+            ),
+        };
         return Ok(face(
             StatusCode::OK,
             page(

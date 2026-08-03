@@ -14,13 +14,8 @@
     height: 100%;
     display: block;
     object-fit: cover;
-    background: inherit; /* a picture-less persona is a solid hexagon of their colour */
+    background: inherit; /* the ring's colour, until the picture paints over it */
     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-}
-
-.person-hex-blank {
-    /* nothing more: `background: inherit` above already paints it their colour */
-    min-width: 100%;
 }
 
 .person-hex-mini {
@@ -38,11 +33,13 @@
     height: 5.1rem;
 }
 
-/* The chip: a hexagon that says who it is when you point at it. */
+/* The chip: a hexagon that says who it is when you point at it. Inline in prose, it needs
+   air on both sides or it crowds the words it sits between. */
 .person-chip {
     position: relative;
     display: inline-flex;
     vertical-align: middle;
+    margin: 0 0.2em;
     text-decoration: none;
 }
 

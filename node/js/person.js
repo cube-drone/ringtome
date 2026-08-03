@@ -26,6 +26,7 @@ import { openMirror, useLive } from './mirror.js';
 import { speakable, toBase58 } from './speakable.js';
 import { identityAddress, viaHints } from './pure/portable.js';
 import { personaHue, displayNames } from './pure/person.js';
+import { identiconUri } from './pure/identicon.js';
 import {
     TRUST_STOPS,
     INTEREST_STOPS,
@@ -131,7 +132,9 @@ export function usePerson(root, { current, profile: given } = {}) {
 
 // The hexagon itself: their picture clipped to six sides, ringed in their colour (a
 // clip-path can't take a border, so the ring is the parent's background showing through its
-// padding). Picture-less personas get a solid hexagon of the same colour - never bare hex.
+// padding). A persona who hasn't chosen a picture wears their IDENTICON - derived from the
+// root, drawn identically by the anonymous face (pure/identicon.js and its Rust twin), so
+// the same key is the same face wherever you meet it.
 const HEX_SIZES = {
     mini: 'person-hex-mini',
     small: 'person-hex-small',
@@ -143,9 +146,7 @@ export const PersonHex = ({ person, size = 'small' }) => html`
         class="person-hex ${HEX_SIZES[size] || HEX_SIZES.small}"
         style="background: hsl(${person.hue}, 60%, 55%)"
     >
-        ${person.avatarUrl
-            ? html`<img class="person-hex-img" src=${person.avatarUrl} alt="" />`
-            : html`<span class="person-hex-img person-hex-blank"></span>`}
+        <img class="person-hex-img" src=${person.avatarUrl || identiconUri(person.root)} alt="" />
     </span>
 `;
 

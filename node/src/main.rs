@@ -31,6 +31,7 @@ mod request_context;
 mod seal;
 mod semver;
 mod idface;
+mod identicon;
 mod speakable;
 mod test_endpoints;
 mod ui;

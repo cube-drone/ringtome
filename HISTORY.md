@@ -1759,3 +1759,23 @@ for any persona the node hosts (transport keys that serving records publish anyw
 Verified across two nodes - alpha mints origin+self for its own and its neighbour's persona,
 bravo mints the path form with ALPHA's key for the same persona seen from afar - and pinned
 by integration on both sides of the contract.
+
+## Identicons, twinned rather than imported (2026-08-03)
+
+A persona with no picture now wears one derived from their root - the affordance canon
+already assigned a job ("the name may collide; the image will not", Naming). Deliberately
+NOT a Rust identicon crate: the picture has to be identical in the console and on the
+anonymous face, and no image crate's PNG can be reproduced bit-for-bit by a browser - two
+faces that disagree defeat the confusable-name defence the identicon exists for. So it is a
+twinned pure function on the speakable.js/speakable.rs pattern (pure/identicon.js +
+src/identicon.rs, one set of goldens), and it takes no hash at all: a root pubkey is already
+32 uniformly-random bytes, so the picture reads the key's own bytes and the pure zone's
+no-imports rule is honoured for free. The shape: a 5x5 grid mirrored left-to-right (symmetry
+is what makes a 22px glyph memorable, and the hexagon's clipped corners then take the same
+thing from both sides), three tones from the persona's own hue so the identicon and the
+hexagon's ring read as one object. One design catch during the build: the first cut read the
+same low bit of every byte, which drew a BLANK identicon for a patterned key (0xaa
+repeating) - a different bit per cell fixed it, with a vector standing over the case. The
+face inlines the SVG rather than linking a data: URI, so `img-src 'self'` stays untouched;
+integration asserts the face's bytes equal the console's, and the goldens hold both
+languages to one picture.
