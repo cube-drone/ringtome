@@ -1616,3 +1616,32 @@ The 2026-08-01 structural question (is /id an app?) settled by construction: Peo
 app; id pages are the shareable places it navigates out to. Still fetch-on-mount, ledgered
 as tolerable: the keys screen (chain data, drift), and config/node/peers/foreign-id (not
 chain data, or not YOUR chains - correct as fetches).
+
+## Three names, one person (2026-08-02)
+
+Jerry is (nickname) Jerry, (self-configured) PhazerBean, (speakable) stood-dizzy - and the
+UI now says so in that order, everywhere. The NICKNAME is Tier 5's contact-names bullet
+delivered as one more fact in the contact ledger (`nickname` in `contact:<root>` - fully
+private, your word for them, set on their Person page with a draft-then-blur commit so a
+chosen name costs one chain record, never one per keystroke). The SELF-NAME joins the
+contacts stream kind server-side: each contact row carries their profile's `name` when this
+node holds their chains (hosted or foreign-fetched; `UserDbManager::exists` first, so a
+contact list full of strangers never mints empty databases - absent otherwise, honestly).
+The display rule is pure and vectored (`displayNames`: nickname first - the word you chose -
+self-name second - their claim - speakable words always last, the anchor that cannot lie),
+applied to the People rows, the Person card, and the header band alike. Field-proven end to
+end; one instrument note - the probe's raw Event('blur') never reached the commit, real
+focus()/blur() semantics did, so the harness speaks focus properly now.
+
+## People learns to draw (2026-08-02)
+
+The People list's text facts became an icon table: three columns headed by
+IdentificationBadge (trust), Broadcast (interest), and CellTower (rebroadcasts), each row's
+dials rendered as CellSignal bars (none/low/medium/high/full) climbing a color ramp
+(faint -> teal -> sea), the trust cell escorted by a privacy glyph (LockSimple private /
+Globe public), and blocked personas wearing SpeakerSimpleX in coral beside their name. The
+100-point-to-five-bars squeeze is pure and vectored (`signalLevel`: quarters, rounded -
+interest's stops land exactly, trust's 0 and 5 share "none" honestly); every icon keeps its
+words in the tooltip, so the compression never loses the vocabulary. Two conventions-check
+catches during the build: the orphaned .person-facts rule, and sig classes hidden inside a
+template interpolation - enumerated as literals so the dead-CSS check can see them.

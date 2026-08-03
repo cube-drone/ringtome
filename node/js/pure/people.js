@@ -22,3 +22,21 @@ export function sortContacts(rows, by) {
         (a, b) => blocked(a) - blocked(b) || score(b) - score(a) || (a.root < b.root ? -1 : 1)
     );
 }
+
+/// The three names a person wears, in the order your eye wants them: YOUR nickname first
+/// (the word you chose - fully private, nobody else ever sees it), their self-configured
+/// name second (their claim), the speakable words always last (the anchor that cannot lie).
+/// Absent ones drop out; the first survivor is the primary.
+export function displayNames({ nickname, name, words }) {
+    return [nickname, name, words].filter(Boolean);
+}
+
+/// A 0-100 dial squeezed onto the five signal bars (none/low/medium/high/full): quarters,
+/// rounded - so interest's stops land exactly (0/25/50/75/100 -> 0..4) and trust's six
+/// stops share honestly (0 and 5 both read "none"; 5 is barely-not-zero, and the tooltip
+/// still says the words). Garbage reads as none.
+export function signalLevel(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(4, Math.round(n / 25)));
+}

@@ -2309,12 +2309,34 @@ async fn stream_cursor(
 struct ContactRow {
     /// The other persona's root, hex - the row key, and what /id/<root> opens.
     root: String,
+    /// The persona's SELF-CONFIGURED display name, joined from their own profile when this
+    /// node happens to hold it (hosted, or foreign-fetched) - absent otherwise, honestly.
+    /// One of the three names a person wears (self-name / your nickname / the speakable
+    /// words); the nickname rides `facts` like every other private judgment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
     /// The ledger's facts for them, as written (trust, trust_public, interest,
-    /// interest_rebroadcasts, blocked - and whatever future dials add).
+    /// interest_rebroadcasts, blocked, nickname - and whatever future dials add).
     facts: std::collections::BTreeMap<String, String>,
 }
 
+/// The self-name join for one contact: their profile's `name`, if we hold their chains.
+/// `exists` first, so a contact list full of strangers never mints empty databases.
+async fn contact_self_name(state: &AppState, root_hex: &str) -> Option<String> {
+    if !state.user_dbs.exists(root_hex) {
+        return None;
+    }
+    let db = state.user_dbs.get(root_hex).await.ok()?;
+    let fields = crate::record::imaol::get_profile(&db).await.ok()?;
+    fields
+        .into_iter()
+        .find(|f| f.field == "name")
+        .map(|f| f.value)
+        .filter(|v| !v.is_empty())
+}
+
 async fn gather(
+    state: &AppState,
     data: &store::Store,
     kind: &'static str,
     cursor: String,
@@ -2337,12 +2359,11 @@ async fn gather(
         })
         .collect();
     let search = data.documents().search_rows().await?;
-    let contacts = data
-        .contacts()
-        .await?
-        .into_iter()
-        .map(|(root, facts)| ContactRow { root, facts })
-        .collect();
+    let mut contacts = Vec::new();
+    for (root, facts) in data.contacts().await? {
+        let name = contact_self_name(state, &root).await;
+        contacts.push(ContactRow { root, name, facts });
+    }
     let buckets = data
         .buckets()
         .roster()
@@ -2420,7 +2441,7 @@ async fn serve_stream(
             contacts: None,
         }
     } else {
-        gather(&data, "snapshot", cursor.clone())
+        gather(&state, &data, "snapshot", cursor.clone())
             .await
             .map_err(anyhow::Error::new)?
     };
@@ -2455,7 +2476,7 @@ async fn serve_stream(
             .map_err(anyhow::Error::new)?;
         if now != cursor {
             cursor = now;
-            let update = gather(&data, "update", cursor.clone())
+            let update = gather(&state, &data, "update", cursor.clone())
                 .await
                 .map_err(anyhow::Error::new)?;
             socket

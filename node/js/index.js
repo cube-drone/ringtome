@@ -280,6 +280,11 @@ const Inside = ({ session }) => {
             </span>
             <span class="app-header-actions">
                 <button
+                    class="app-header-btn"
+                    title="back to People"
+                    onClick=${() => loc.route('/home/people')}
+                ><${Icons.back} /></button>
+                <button
                     class="app-header-btn app-header-btn-square"
                     title="close"
                     onClick=${() => loc.route('/home')}

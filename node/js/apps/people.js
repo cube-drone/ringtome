@@ -11,7 +11,8 @@ import { useLocation } from 'preact-iso';
 import { openMirror, useLive } from '../mirror.js';
 import { speakable, parseIdReference } from '../speakable.js';
 import { personaHue } from '../persona.js';
-import { PEOPLE_SORTS, sortContacts } from '../pure/people.js';
+import { Icons } from '../icons.js';
+import { PEOPLE_SORTS, sortContacts, displayNames, signalLevel } from '../pure/people.js';
 import { TRUST_STOPS, INTEREST_STOPS, nearestStop } from '../pure/contact.js';
 
 const html = htm.bind(h);
@@ -19,22 +20,57 @@ const html = htm.bind(h);
 const stopLabel = (stops, value) =>
     stops.find((s) => s.value === nearestStop(stops, value)).label;
 
+// One graded dial as its signal bars, colored by level, the words in the tooltip. The
+// level tables are spelled out (not interpolated) so the dead-CSS check can see them.
+const SIG_ICONS = [Icons.signal0, Icons.signal1, Icons.signal2, Icons.signal3, Icons.signal4];
+const SIG_CLASSES = ['sig-0', 'sig-1', 'sig-2', 'sig-3', 'sig-4'];
+const SignalCell = ({ stops, value, what }) => {
+    const level = signalLevel(value);
+    const Icon = SIG_ICONS[level];
+    return html`<span class="person-cell ${SIG_CLASSES[level]}" title="${what}: ${stopLabel(stops, value)}">
+        <${Icon} weight="bold" />
+    </span>`;
+};
+
 const PersonRow = ({ row, onOpen }) => {
     const words = speakable(row.root).split('-').slice(0, 2).join('-');
     const facts = row.facts || {};
     const blocked = facts.blocked === 'yes';
+    const trustPublic = facts.trust_public === 'yes';
+    const [primary, ...others] = displayNames({ nickname: facts.nickname, name: row.name, words });
     return html`
         <button class=${blocked ? 'person-row person-blocked' : 'person-row'} onClick=${onOpen}>
-            <span class="persona-chip" style="background: hsl(${personaHue(row.root)}, 60%, 55%)"></span>
-            <span class="person-words">${words}</span>
-            <span class="person-facts">
-                ${blocked
-                    ? 'blocked'
-                    : `${stopLabel(TRUST_STOPS, facts.trust)} · ${stopLabel(INTEREST_STOPS, facts.interest)}`}
+            <span class="person-name-cell">
+                <span class="persona-chip" style="background: hsl(${personaHue(row.root)}, 60%, 55%)"></span>
+                <span class="person-words">${primary}</span>
+                ${others.length > 0 && html`<span class="person-others">${others.join(' · ')}</span>`}
+                ${blocked &&
+                html`<span class="person-cell person-blocked-mark" title="blocked">
+                    <${Icons.blockedSpeaker} weight="bold" />
+                </span>`}
             </span>
+            <span class="person-cell person-privacy" title=${trustPublic
+                ? 'their trust from you is public - shared with the network'
+                : 'their trust from you is private - just your computers'}>
+                <${trustPublic ? Icons.trustPublic : Icons.trustPrivate} />
+            </span>
+            <${SignalCell} stops=${TRUST_STOPS} value=${facts.trust} what="trust" />
+            <${SignalCell} stops=${INTEREST_STOPS} value=${facts.interest} what="interest" />
+            <${SignalCell} stops=${INTEREST_STOPS} value=${facts.interest_rebroadcasts} what="rebroadcasts" />
         </button>
     `;
 };
+
+// The column headers: one icon each, meanings in the tooltips.
+const PeopleHead = () => html`
+    <div class="person-row person-head" aria-hidden="true">
+        <span class="person-name-cell"></span>
+        <span class="person-cell" title="whether your trust is shared"></span>
+        <span class="person-cell" title="trust - do you believe they're real"><${Icons.colTrust} /></span>
+        <span class="person-cell" title="interest - how much of theirs you see"><${Icons.colInterest} /></span>
+        <span class="person-cell" title="rebroadcasts - what they pass along"><${Icons.colRebroadcast} /></span>
+    </div>
+`;
 
 export const PeopleApp = ({ current }) => {
     const loc = useLocation();
@@ -93,6 +129,7 @@ export const PeopleApp = ({ current }) => {
                 nobody yet - open someone's page and set your relationship, and they'll
                 appear here.
             </p>`}
+            ${sorted.length > 0 && html`<${PeopleHead} />`}
             <div class="people-list">
                 ${sorted.map(
                     (row) => html`<${PersonRow}

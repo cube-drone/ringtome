@@ -53,6 +53,17 @@ import {
     FileAudio,
     FileVideo,
     UsersThree,
+    CellSignalNone,
+    CellSignalLow,
+    CellSignalMedium,
+    CellSignalHigh,
+    CellSignalFull,
+    SpeakerSimpleX,
+    IdentificationBadge,
+    Broadcast,
+    CellTower,
+    Globe,
+    LockSimple,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -121,6 +132,18 @@ export const Icons = {
     // the everything-view (All Documents): the app tile, and follow-me-home on each row
     all: Folders,
     people: UsersThree,
+    // the People table's vocabulary: signal bars for the graded dials, and the rest
+    signal0: CellSignalNone,
+    signal1: CellSignalLow,
+    signal2: CellSignalMedium,
+    signal3: CellSignalHigh,
+    signal4: CellSignalFull,
+    blockedSpeaker: SpeakerSimpleX,
+    colTrust: IdentificationBadge,
+    colInterest: Broadcast,
+    colRebroadcast: CellTower,
+    trustPublic: Globe,
+    trustPrivate: LockSimple,
     path: Path,
 };
 

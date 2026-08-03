@@ -72,6 +72,16 @@ const ContactLedger = ({ myRoot, theirRoot }) => {
 
     const facts = { ...mirrorFacts, ...pending };
 
+    // The nickname types like a text field, so it commits like one: draft while focused,
+    // written on blur/Enter - one private record per chosen name, never per keystroke.
+    const [nickDraft, setNickDraft] = useState(null);
+    const commitNick = () => {
+        if (nickDraft !== null && nickDraft.trim() !== (facts.nickname || '')) {
+            put('nickname', nickDraft.trim());
+        }
+        setNickDraft(null);
+    };
+
     const put = (key, value) => {
         setPending((p) => ({ ...p, [key]: value }));
         writeQueue.current = writeQueue.current.then(() =>
@@ -105,6 +115,21 @@ const ContactLedger = ({ myRoot, theirRoot }) => {
                 blocked - nothing of theirs will be shown to you, and nothing of theirs gets
                 through to you.
             </p>`}
+            <label class="ledger-dial">
+                <span class="ledger-label">
+                    your nickname for them
+                    <small>only you ever see this - it's how they'll appear in your People</small>
+                </span>
+                <input
+                    class="ledger-nick"
+                    type="text"
+                    placeholder="a name of your choosing"
+                    value=${nickDraft !== null ? nickDraft : facts.nickname || ''}
+                    onInput=${(e) => setNickDraft(e.currentTarget.value)}
+                    onBlur=${commitNick}
+                    onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                />
+            </label>
             <${Dial}
                 label="trust"
                 hint="not how much you like them - whether you believe they're real"
@@ -170,9 +195,17 @@ export const IdPage = ({ seg, current, onTitle }) => {
         };
     }, [root, via]);
 
+    // Your nickname for them, live off the contacts mirror - first of the three names a
+    // person wears (nickname / self-name / speakable words).
+    const ledgerRow = useLive(
+        () => (current && root ? openMirror(current.root).contacts.get(root) : null),
+        [current && current.root, root]
+    );
+    const nickname = (ledgerRow && ledgerRow.facts && ledgerRow.facts.nickname) || '';
+
     // The shell's header band shows whose page this is: the words immediately (always
-    // derivable), the display name the moment the shelf answers. Cleared on the way out so
-    // the next tenant of the band never inherits a stale name.
+    // derivable), the better names the moment the mirror and shelf answer. Cleared on the
+    // way out so the next tenant of the band never inherits a stale name.
     useEffect(() => {
         if (!onTitle) return;
         if (!root) {
@@ -182,10 +215,10 @@ export const IdPage = ({ seg, current, onTitle }) => {
         const words = speakable(root).split('-').slice(0, 2).join('-');
         const name =
             profile && (profile.fields || []).find((f) => f.field === 'name');
-        onTitle((name && name.value) || words);
+        onTitle(nickname || (name && name.value) || words);
         return () => onTitle(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root, profile]);
+    }, [root, profile, nickname]);
 
     if (!parsed) {
         return html`<${Card}>
@@ -233,7 +266,9 @@ export const IdPage = ({ seg, current, onTitle }) => {
         const f = (profile.fields || []).find((f) => f.field === name);
         return f ? f.value : '';
     };
-    const name = field('name') || words;
+    const names = [nickname, field('name'), words].filter(Boolean);
+    const name = names[0];
+    const otherNames = names.slice(1);
 
     // No separate fingerprint line: the words are already the address's own prefix, one row
     // down. The address row is the SAME shareable/copyable form the persona home mints -
@@ -244,6 +279,7 @@ export const IdPage = ({ seg, current, onTitle }) => {
             <span class="persona-chip" style="background: hsl(${personaHue(root)}, 60%, 55%)"></span>
             ${name}
         </h1>
+        ${otherNames.length > 0 && html`<p class="id-words">${otherNames.join(' · ')}</p>`}
         ${isYou && html`<p class="id-words"><a href="/home/persona">this is you</a></p>`}
         ${profile.foreign &&
         html`<p class="id-words">reached across the network - not carried on this node</p>`}

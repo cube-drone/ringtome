@@ -246,8 +246,11 @@ math, buildable any time; and the graph starts growing with route step 1 (PROJEC
   tripwire, never a launch gate**. Sanity-checks the joint-flow property before wiring, tunes
   the knobs, then runs forever hoping to break things.
 - **Private chains** (COMPLETE 2026-07-08): the substrate, delivered.
-- **Contact names** (deps: none remaining): the private-register annotation and its UI; the
-  vouch shares the screen, forked in the UI, never coupled in the data.
+- **Contact names - SHIPPED 2026-08-02** as the nickname (the second of a person's three
+  names: your-nickname / their-self-name / the speakable words): a `nickname` fact in the
+  contact ledger, set on the Person page, fully private, winning the display order
+  everywhere. The vouch shares the screen exactly as planned - the trust dial's top stop,
+  forked in the UI, never coupled in the data.
 - **Wiring trust into the product** (deps: 4S + the above): lands *with* the social launch -
   the coarse floor on the first low-stakes surfaces (feed ordering, a bot floor).
 - **Deferred with honest labels**: credibility (needs track records that don't exist yet),

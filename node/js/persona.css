@@ -702,8 +702,75 @@
     font-weight: 600;
 }
 
-.person-facts {
-    margin-left: auto;
-    color: var(--muted);
-    font-size: 0.78rem;
+
+.ledger-nick {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.6rem;
+    max-width: 16rem;
 }
+
+.ledger-nick:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.person-others {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+/* The People table's icon vocabulary: name stretches, the four cells align under their
+   header icons; signal bars climb a color ramp, blocked wears coral. */
+.person-row {
+    display: grid;
+    grid-template-columns: 1fr 1.6rem 2rem 2rem 2rem;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.person-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.person-head {
+    background: none;
+    border: none;
+    padding: 0 0.9rem;
+    cursor: default;
+    color: var(--muted);
+    font-size: 1rem;
+}
+
+.person-cell {
+    display: inline-flex;
+    justify-content: center;
+    font-size: 1.05rem;
+}
+
+.person-privacy {
+    font-size: 0.85rem;
+    color: var(--faint);
+}
+
+.person-privacy :first-child {
+    color: inherit;
+}
+
+.person-blocked-mark {
+    color: var(--coral);
+    font-size: 0.95rem;
+}
+
+.sig-0 { color: var(--faint); }
+.sig-1 { color: var(--muted); }
+.sig-2 { color: var(--ink-soft); }
+.sig-3 { color: var(--teal); }
+.sig-4 { color: var(--sea); }

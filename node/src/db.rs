@@ -563,6 +563,13 @@ impl UserDbManager {
 
     /// Get (opening and migrating if necessary) the database for one identity, its raw-entry
     /// journal attached.
+    /// Does a database for this root already exist on disk? For joins that want to READ a
+    /// root's data if this node happens to hold it, without `get`'s create-on-open minting
+    /// empty databases for every stranger a contact list mentions.
+    pub fn exists(&self, root_pubkey: &str) -> bool {
+        self.path_for(root_pubkey).exists()
+    }
+
     pub async fn get(&self, root_pubkey: &str) -> Result<Db> {
         if let Some(db) = self.handles.get(root_pubkey).await {
             return Ok(db);
