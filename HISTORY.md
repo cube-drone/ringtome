@@ -1694,3 +1694,17 @@ own, so they live as a KEPT instrument per the harness doctrine - harness/standi
 diagnostic half (login, report standings, console-or-farewell), with the three wipe recipes
 documented in its header as operator work. The split is the doctrine working: unit facts get
 unit tests, composed lifecycle scenarios get instruments with instructions.
+
+## Names and faces (2026-08-03)
+
+Field report: a persona's name crossed nodes but their avatar didn't, both directions. The
+ledgered limitation from the avatar's ship, now closed: `fetch_missing_bodies` opened with a
+key-gated bail ("not an identity we agent: nothing to decrypt, nothing to fetch") that sat
+ABOVE the public lane's walk - but public bodies need no keys at all: the headers are
+plaintext, the blobs are public, the hash is the capability. The function now walks in two
+halves: the public lane first, keyless (catch up the POSTS fold, enumerate
+file/thumb/preview refs from public-lane versions, fetch whatever's absent), then the
+private lane's enumeration behind the same agent gate as before. A foreign persona's avatar
+now crosses in the SAME exchange as their profile - one via-hinted fetch and the viewing
+node serves the thumbnail itself. Integration pins it two-node: B serves A's avatar bytes
+with no second trip to A.

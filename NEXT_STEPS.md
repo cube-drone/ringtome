@@ -108,11 +108,11 @@ content-addressed blobs (dedup fine - the no-dedup rule was ciphertext armor), s
 anonymously at the identity-rooted path (`/id/<root>/docs/<id>/body|/thumb`, immutable
 caching, lane-checked so a private doc_id through the public door is a 404 never a leak),
 and the avatar is a born-public media doc pointed at by the profile's `avatar` register -
-rendered on the static face, the lens, People, and the profile page's uploader. Deferred
-with the posts era, deliberately: the draft→post publication mint, public divergence
-semantics, public taxonomies (and tags-as-published-taxonomy), and foreign public-BODY
-backfill (headers cross on fetch-and-serve; `fetch_missing_bodies` still bails for
-identities we don't agent, so a foreign avatar renders once bodies learn to backfill).
+rendered on the static face, the lens, People, and the profile page's uploader. Foreign public-body
+backfill shipped 2026-08-03 (the keyless half of `fetch_missing_bodies`: public blobs
+enumerate without epoch keys and cross in the same exchange as the headers - names AND
+faces). Deferred with the posts era, deliberately: the draft→post publication mint, public
+divergence semantics, and public taxonomies (and tags-as-published-taxonomy).
 
 Rough-edge triage, recorded so it doesn't get relitigated: **blob GC + capacity** are
 prerequisites for help-host/rehosting (other people's load), not for follows or tokens; the

@@ -1370,30 +1370,57 @@ pub async fn fetch_missing_bodies(
     addr: iroh::EndpointAddr,
 ) -> u64 {
     let result: anyhow::Result<u64> = async {
-        // The node's own leaf for this identity - the session-free path sync itself uses.
-        let Some(leaf) =
-            crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex).await?
-        else {
-            return Ok(0); // not an identity we agent: nothing to decrypt, nothing to fetch
-        };
-        let leaf_pub = leaf.verifying_key().to_bytes();
-        let enc =
-            crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
         let db = state.user_dbs.get(root_hex).await?;
-        let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
-
-        let view = materialize(&db, &keys).await?;
         let mut missing: Vec<iroh_blobs::Hash> = Vec::new();
-        for doc in view.docs.values() {
-            for version in doc.versions.values() {
-                // A version references its body, and (for media) sibling thumbnail and preview
-                // blobs. All ride iroh-blobs and any may be absent; fetch whichever we lack.
-                let mut refs = vec![version.header.file_hash];
-                refs.extend(version.header.thumb_hash);
-                refs.extend(version.header.preview_hash);
-                for hash in refs.into_iter().map(iroh_blobs::Hash::from_bytes) {
+
+        // The PUBLIC lane first, KEYLESS: any node holding public headers may fetch the
+        // bytes they name - the blobs are plaintext-public and the hash is the capability.
+        // This is what carries a foreign persona's avatar across on fetch-and-serve; the
+        // old key-gated bail sat above this walk and starved it (field-found 2026-08-03:
+        // names crossed, faces didn't).
+        catch_up_public_lane(&db).await?;
+        type BodyRefs = (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
+        let public_rows: Vec<BodyRefs> = db
+            .fetch_all(
+                "SELECT file_hash, thumb_hash, preview_hash FROM doc_versions
+                 WHERE lane = 'public'",
+                (),
+            )
+            .await
+            .context("reading public body refs")?;
+        for (file, thumb, preview) in public_rows {
+            for bytes in [Some(file), thumb, preview].into_iter().flatten() {
+                if let Ok(h) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                    let hash = iroh_blobs::Hash::from_bytes(h);
                     if !missing.contains(&hash) && !state.files.has(hash).await {
                         missing.push(hash);
+                    }
+                }
+            }
+        }
+
+        // The PRIVATE lane needs this node's own keys to even read which bodies exist -
+        // agented identities only.
+        if let Some(leaf) =
+            crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex).await?
+        {
+            let leaf_pub = leaf.verifying_key().to_bytes();
+            let enc =
+                crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
+            let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
+            let view = materialize(&db, &keys).await?;
+            for doc in view.docs.values() {
+                for version in doc.versions.values() {
+                    // A version references its body, and (for media) sibling thumbnail and
+                    // preview blobs. All ride iroh-blobs and any may be absent; fetch
+                    // whichever we lack.
+                    let mut refs = vec![version.header.file_hash];
+                    refs.extend(version.header.thumb_hash);
+                    refs.extend(version.header.preview_hash);
+                    for hash in refs.into_iter().map(iroh_blobs::Hash::from_bytes) {
+                        if !missing.contains(&hash) && !state.files.has(hash).await {
+                            missing.push(hash);
+                        }
                     }
                 }
             }

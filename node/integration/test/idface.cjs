@@ -168,9 +168,10 @@ const { HOST_B } = require("./fetch.cjs");
     media doc on POSTS; the profile's `avatar` register points at it; the bytes serve
     anonymously under the identity-rooted path with immutable caching.
 */
+let owner2, root2, avatarDoc;
+
 describe("the avatar (public documents, tenant zero)", function () {
     this.timeout(30000);
-    let owner2, root2, avatarDoc;
 
     before(async () => {
         owner2 = await makeUserFetch({ prefix: "avatar" });
@@ -230,5 +231,28 @@ describe("the avatar (public documents, tenant zero)", function () {
             !docs.some((d) => d.doc_id === avatarDoc),
             "public docs have their own doors; the apps never see them"
         );
+    });
+});
+
+(HOST_B ? describe : describe.skip)("foreign bodies cross with the fetch", function () {
+    this.timeout(30000);
+
+    it("names AND faces: B serves A's avatar bytes after one via-hinted fetch", async () => {
+        // root2's avatar was minted in the section above on A; a member of B reaches across.
+        const aEndpoint = (await (await owner2("api/node")).json()).endpoint_id;
+        const bMember = await makeUserFetch({ prefix: "face_b", host: HOST_B });
+        const prof = await (
+            await bMember(`api/id/${root2}/profile?via=${aEndpoint}`)
+        ).json();
+        assert.ok(
+            prof.fields.some((f) => f.field === "avatar" && f.value === avatarDoc),
+            "the avatar pointer crossed with the profile"
+        );
+        // The bytes crossed in the same exchange (keyless public backfill): B can serve the
+        // thumbnail itself, no second trip to A.
+        const thumb = await bMember(`id/${root2}/docs/${avatarDoc}/thumb`);
+        assert.equal(thumb.status, 200, "the face crossed, not just the name");
+        assert.equal(thumb.headers.get("content-type"), "image/avif");
+        assert.ok((await thumb.arrayBuffer()).byteLength > 0);
     });
 });
