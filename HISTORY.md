@@ -1575,3 +1575,22 @@ trust-visibility checkbox was a floating signifier (label text that changed when
 an unchecked box saying "private" reads as its opposite), replaced by a select whose two
 options say the whole truth standing still: "private - just my computers" / "public -
 shared with the network".
+
+## The vouch, dissolved (2026-08-02)
+
+Doctrine amendment, prompted by a one-line question ("your vouches are just the set of all
+your positive trust edges, aren't they?") that the day-old contact ledger made answerable:
+yes. The vouch was three things wearing one word, and only one was ever a real object. As a
+JUDGMENT it dissolves - the trust dial's met-in-person stop IS "I met this human", and a
+separate record would be a driftable second copy of one opinion. As a WIRE OBJECT it
+survives, redefined: a vouch is a positive trust edge its author chose to publish, and Tier
+5's payload becomes the MINT - a signed public trust statement built from a consented edge
+(copy-don't-flip: the trust_public dial is consent, the statement is a new artifact;
+retractable; discloses a rounded tier, never the raw integer). As a WORD it survives as the
+ceremony's name - "vouch for them" sets the stop and offers the public flip in one gesture,
+and the friend token's flag becomes the same write at redemption, with the seed crystal
+defaulting to shared-with-consent or the graph never grows. Sybil math untouched (budget
+was always the flow computation's job); the Interest/Trust firewall untouched. New section
+in PROJECT_PLAN (Trust, "The Vouch, Dissolved into the Ledger"); the Follow Ceremony
+section, Tier 5's bullet, and pure/contact.js's comment all retuned to match. The same move
+as roster-is-the-ACL, one layer up.

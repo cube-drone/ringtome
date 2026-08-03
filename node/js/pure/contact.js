@@ -6,9 +6,10 @@
 //
 // The stops are labeled points on a 0-100 scale, not an enum: the stored value is the
 // NUMBER, so the scale can grow stops (or the flow engine can read finer values) without a
-// migration. The 95 stop is vouch-shaped ("met in person") - when Tier 5's vouch payload
-// arrives it will ride that stop as its own separate statement, fork-in-the-UI, never a
-// coupling in the data.
+// migration. The 95 stop IS the vouch (settled 2026-08-02 - PROJECT_PLAN, The Vouch
+// Dissolved into the Ledger): a vouch is a positive trust edge its author chose to publish,
+// so the publication machinery mints its public statement from this stop plus the
+// trust_public consent - no separate vouch record exists, here or anywhere.
 
 export const TRUST_STOPS = [
     { value: 0, label: 'Never heard of them' },

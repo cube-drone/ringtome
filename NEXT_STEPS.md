@@ -228,9 +228,14 @@ a different, worse product. Only the final *wiring* step depends on 4S; the pure
 math, buildable any time; and the graph starts growing with route step 1 (PROJECT_PLAN, Trust:
 "The Graph Grows Before the Features Arrive").
 
-- **Vouch statements** (deps: none; ships with the invite tokens - route step 1): the signed
-  "I met this human" payload, public v1, retractable. Graph-privacy refinements stay later;
-  they are subtle, the payload is not.
+- **Published trust edges - né "vouch statements"** (deps: the contact ledger, shipped
+  2026-08-02; ships with the invite tokens - route step 1): the vouch dissolved into the
+  ledger (PROJECT_PLAN, The Vouch Dissolved - a vouch IS a positive trust edge its author
+  chose to publish). What ships here is the MINT: the signed public trust statement built
+  from a consented edge (copy-don't-flip; retractable; discloses a rounded tier, never the
+  raw integer). Token redemption writes the met-in-person edge with sharing consent asked at
+  the handoff - every IRL invite quietly writes a shared edge, the seed crystal. Deeper
+  graph-privacy refinements stay later.
 - **Flow computation engine** (deps: none): the Advogato-style **joint-flow** calculation
   (never per-person; that detail is the whole Sybil defense), bounded horizon, pure crate
   code, property-tested. Known, decades-old math - not research.

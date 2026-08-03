@@ -890,9 +890,10 @@ a statement cross-signed by both, bilateral consent, separate act.
 
 Following someone is exactly the right time to ask "do you actually know this human?" - so the UI offers the
 vouch (and the contact name - see Display Names) on the same screen. The discipline: this is a **fork in the UI,
-never a coupling in the data**. The follow writes an Interest edge; the vouch, if taken, is its own statement.
-Nothing about taking one implies the other, mechanically - or the follow-mints-Trust attack returns wearing a
-nicer sweater.
+never a coupling in the data**. The follow writes an Interest edge; the vouch, if taken, sets the trust dial's
+met-in-person stop and offers the public flip - a gesture over the ledger (Trust, The Vouch Dissolved), not a
+third kind of record. Nothing about taking one implies the other, mechanically - or the follow-mints-Trust attack
+returns wearing a nicer sweater.
 
 ### Friend Tokens and the Bootstrap Problem
 
@@ -1056,6 +1057,33 @@ Instead we use a **network-flow model** (the Advogato approach):
 
 Trust is a continuous number, but we also expose a simple **floor** for coarse gates ("below this, you cannot DM me or
 appear in my feed") so features do not each have to reason about flow.
+
+### The Vouch, Dissolved into the Ledger (settled 2026-08-02)
+
+The contact ledger (the id page's "your relationship" panel) holds one directed judgment per contact: the **trust
+edge** - a number on the worded scale whose top stop is "I've met them in person - they aren't being impersonated."
+That stop IS the statement the vouch was invented to carry, so a separate vouch object would be a second copy of
+the same opinion, free to drift from the first ("dial says 0, vouch says met-them" is a state with no meaning).
+The concept dissolves, the same move as the roster-is-the-ACL: examined, and found to be machinery that already
+exists. What "vouch" decomposes into:
+
+- **A vouch is a positive trust edge its author chose to publish.** Trust edges are private (your ledger, your
+  chain, your lens); the network-wide graph other people's flow computations walk needs edges that were SHARED,
+  and that is the ledger's `trust_public` consent dial. Copy, Don't Flip applies as everywhere: the flag is
+  consent, never publication - the publication machinery mints a **signed public trust statement** (a new
+  artifact on a public chain, retractable) from the consented edge. Tier 5's "vouch payload" survives as exactly
+  this minted form, carrying nothing the ledger doesn't already hold.
+- **The mint rounds.** The published form discloses a tier ("met in person", "confident"), never the raw integer -
+  Privacy of the Graph's rounded-scores worry, honored at the mint rather than retrofitted.
+- **The Sybil math is untouched.** The flow engine splits each participant's fixed budget across their published
+  edges; your own private edges are your lens's axioms and need no defense against yourself. Budget was always
+  enforced by the computation, not by vouches being a countable separate species.
+- **The word survives as a gesture.** "Vouch for them" is the ceremony that sets the met-in-person stop and
+  offers the public flip in one motion (The Follow Ceremony Is the Vouch Moment); the friend token's vouch flag
+  is the same write at redemption, with sharing consent asked at the IRL handoff. The seed crystal defaults to
+  SHARED - a consented-at-handoff public edge - or the graph the features will someday read never grows.
+- **The Interest/Trust firewall stands unchanged.** A follow still ships zero Trust; the trust dial is its own
+  deliberate act on its own screen. Nothing about the dissolution couples them.
 
 ### The Inbound Gate: One Floor, Three Surfaces (settled 2026-07-30)
 
