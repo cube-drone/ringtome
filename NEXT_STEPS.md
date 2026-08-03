@@ -89,9 +89,12 @@ public-web-URL field), the **root-directory backstop** (a real design problem, f
 2026-08-02: serving records publish under LEAF keys because pkarr requires the publisher's
 signing key and the root's is offline by design - so "resolve a bare root" needs a
 store-at-derived-key design, not just a call; until then the ladder is origin + via, which
-every minted address carries), the **shelf disclaimer** (moot until member follows exist),
-and the **`/home/people` rolodex**. The graph rungs (steps 1-3) ride alongside - the follow
-edge is what converts a lens visit into shelf. **The contact ledger shipped 2026-08-02** (the
+every minted address carries) and the **shelf disclaimer** (moot until member follows
+exist). The **People app shipped 2026-08-02** - the rolodex is real: lookup box (any pasted
+dress of an address routes to the lens), the relationship shelf off the mirror's new
+`contacts` stream kind, sorted by trust or interest, blocked personas sinking visible-last.
+The graph rungs (steps 1-3) ride alongside - the follow edge is what converts a lens visit
+into shelf. **The contact ledger shipped 2026-08-02** (the
 lens page's trust/interest/block dials, private-chain LWW facts per contact): two consent
 flags in it are RECORDS awaiting their consumers - `trust_public` feeds the graph's
 publication machinery (Tier 5's vouch lane), `blocked` feeds the Inbound Gate (route step 3)

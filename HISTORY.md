@@ -1594,3 +1594,25 @@ was always the flow computation's job); the Interest/Trust firewall untouched. N
 in PROJECT_PLAN (Trust, "The Vouch, Dissolved into the Ledger"); the Follow Ceremony
 section, Tier 5's bullet, and pure/contact.js's comment all retuned to match. The same move
 as roster-is-the-ACL, one layer up.
+
+## People, and the stream keeps its promise (2026-08-02)
+
+Two units that are really one lesson. First, an architecture audit prompted by a one-word
+smell ("query"): The Browser Is a View held completely inside the persona's document world
+(six stream-fed mirror tables, every read reactive, fetch caches fingerprint-vouched) but
+was drifting at the edges - the day-old contact ledger read its own chain data by ad-hoc
+GET, the keys screen has fetched-on-mount since July, and the People app was about to
+compound the pattern. Second, the correction: contact facts became the mirror's seventh
+stream kind (`contacts` - the store folds `contact:*` collections to rows; the stream
+cursor already covered private frontiers, so dials tick it with zero new plumbing), the
+ledger converted to mirror-plus-pending-overlay (the tags pattern; the hand-rolled
+reload-on-failure died, the write queue stays - append races are real), and THEN the People
+app was built the doctrinal way: a lookup box that dissects any pasted dress of an address
+(full URL, /id/ path, bare - parseIdReference) and routes to the lens, over a relationship
+shelf that is nothing but a reactive sort of mirror rows (pure/people.js: by trust or
+interest, descending, blocked personas sinking visible-last - findable to unblock, never
+outranking the living). A dial turned on any computer re-sorts every browser's shelf live.
+The 2026-08-01 structural question (is /id an app?) settled by construction: People is the
+app; id pages are the shareable places it navigates out to. Still fetch-on-mount, ledgered
+as tolerable: the keys screen (chain data, drift), and config/node/peers/foreign-id (not
+chain data, or not YOUR chains - correct as fetches).

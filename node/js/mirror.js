@@ -33,6 +33,7 @@ export function openMirror(root) {
             taxonomies: 'taxonomy_id',
             search: 'doc_id', // token bags, stream-fed like docs (search runs local)
             buckets: 'name', // the bucket roster: name -> app-type + member count
+            contacts: 'root', // the relationship ledger: root -> facts (trust, interest, ...)
             prefs: 'key', // local-only, never stream-fed (module doc)
             // Fingerprinted FETCH caches (mirror/doccache.js): GET responses kept beside the streamed
             // rows that vouch for their freshness - docdetails against the doc row's head
@@ -67,6 +68,7 @@ async function apply(db, msg) {
         db.taxonomies,
         db.search,
         db.buckets,
+        db.contacts,
         async () => {
             if (msg.profile) {
                 await db.profile.clear();
@@ -87,6 +89,10 @@ async function apply(db, msg) {
             if (msg.buckets) {
                 await db.buckets.clear();
                 await db.buckets.bulkPut(msg.buckets);
+            }
+            if (msg.contacts) {
+                await db.contacts.clear();
+                await db.contacts.bulkPut(msg.contacts);
             }
             await db.kv.put({ key: 'cursor', value: msg.cursor });
         }

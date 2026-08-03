@@ -104,6 +104,17 @@ export const APPS = [
         bucketNoun: 'Archive',
         itemNoun: 'file',
     },
+    {
+        id: 'people',
+        name: 'People',
+        icon: 'people',
+        live: true,
+        // The rolodex (PROJECT_PLAN, Addressing: the console's people surface): look up an
+        // address, and browse everyone your ledger holds a relationship with - identity-free
+        // at the list level, navigating OUT to /id/<root> pages. Not a documents app: no
+        // style, no buckets, no tree - its rows are the mirror's `contacts` kind.
+        itemNoun: 'person',
+    },
     { blank: true },
 ];
 

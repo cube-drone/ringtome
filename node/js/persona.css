@@ -584,3 +584,126 @@
     padding: 0.3rem 0.5rem;
     max-width: 16rem;
 }
+
+/* People: the rolodex (apps/people.js). */
+.people-inner {
+    max-width: 560px;
+    margin: 3vh auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.people-lookup {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.people-lookup-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.5rem 0.7rem;
+}
+
+.people-lookup-input:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.people-lookup-go {
+    background: var(--teal);
+    border: 1px solid var(--teal);
+    border-radius: 6px;
+    color: var(--surface);
+    font: inherit;
+    padding: 0 1rem;
+    cursor: pointer;
+}
+
+.people-err {
+    margin: 0;
+    color: var(--coral);
+    font-size: 0.85rem;
+}
+
+.people-shelf-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 0.6rem;
+}
+
+.people-shelf-title {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.people-sorts {
+    display: flex;
+    gap: 0.3rem;
+}
+
+.people-sort {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.7rem;
+    cursor: pointer;
+}
+
+.people-sort-on {
+    border-color: var(--teal);
+    color: var(--teal);
+}
+
+.people-empty {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.people-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.person-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font: inherit;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+}
+
+.person-row:hover {
+    border-color: var(--teal);
+}
+
+.person-blocked {
+    opacity: 0.55;
+}
+
+.person-words {
+    font-weight: 600;
+}
+
+.person-facts {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.78rem;
+}

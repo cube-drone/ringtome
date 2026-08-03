@@ -52,6 +52,7 @@ import {
     FileImage,
     FileAudio,
     FileVideo,
+    UsersThree,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -119,6 +120,7 @@ export const Icons = {
     filter: Funnel,
     // the everything-view (All Documents): the app tile, and follow-me-home on each row
     all: Folders,
+    people: UsersThree,
     path: Path,
 };
 

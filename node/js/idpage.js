@@ -11,6 +11,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
+import { openMirror, useLive } from './mirror.js';
 import { parseSpeakable, speakable } from './speakable.js';
 import { personaHue, AddressRow } from './persona.js';
 import {
@@ -45,41 +46,44 @@ const Dial = ({ label, hint, stops, value, onPick }) => html`
 // the stored flag - honest small print, not a live broadcast). The block is likewise the
 // RECORD of the decision; the Inbound Gate learns to read it when inbound acts arrive.
 const ContactLedger = ({ myRoot, theirRoot }) => {
-    const [facts, setFacts] = useState(null); // key -> value, from the private KV
+    // The mirror is the truth (The Browser Is a View - contact facts stream like docs do,
+    // so a dial turned on another computer lands here live); a pending overlay covers the
+    // echo gap, clearing per-key the moment the mirror agrees (the tags pattern).
+    const row = useLive(() => openMirror(myRoot).contacts.get(theirRoot), [myRoot, theirRoot]);
+    const mirrorFacts = (row && row.facts) || {};
+    const [pending, setPending] = useState({});
     const collection = contactCollection(theirRoot);
-    // Writes queue behind one another: the ledger's facts share a single-writer private
-    // chain, and two dials picked in quick succession would otherwise race the append and
-    // silently lose one (field-found by the harness, 2026-08-02).
+    // Writes still queue behind one another: the facts share a single-writer private chain,
+    // and two dials picked in quick succession would otherwise race the append and silently
+    // lose one (field-found by the harness, 2026-08-02).
     const writeQueue = useRef(Promise.resolve());
 
+    const mirrorKey = JSON.stringify(mirrorFacts);
     useEffect(() => {
-        let live = true;
-        api(`/api/identity/${myRoot}/private/kv/${encodeURIComponent(collection)}`)
-            .then(({ values }) => {
-                if (!live) return;
-                setFacts(Object.fromEntries(values.map((v) => [v.key, v.value])));
-            })
-            .catch(() => live && setFacts({}));
-        return () => {
-            live = false;
-        };
-    }, [myRoot, collection]);
+        setPending((p) => {
+            const next = Object.fromEntries(
+                Object.entries(p).filter(([k, v]) => mirrorFacts[k] !== v)
+            );
+            return Object.keys(next).length === Object.keys(p).length ? p : next;
+        });
+        // Keyed on the joined value: the mirror hands back fresh object identities per poll.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mirrorKey]);
 
-    if (facts === null) return null;
+    const facts = { ...mirrorFacts, ...pending };
 
     const put = (key, value) => {
-        setFacts((f) => ({ ...f, [key]: value })); // optimistic; a failure reloads the truth
+        setPending((p) => ({ ...p, [key]: value }));
         writeQueue.current = writeQueue.current.then(() =>
             api(`/api/identity/${myRoot}/private/kv/${encodeURIComponent(collection)}/${key}`, {
                 method: 'PUT',
                 body: JSON.stringify({ value }),
             }).catch(() =>
-                // The write didn't take: re-read the chain so the dials show what's stored
-                // rather than what we hoped.
-                api(`/api/identity/${myRoot}/private/kv/${encodeURIComponent(collection)}`)
-                    .then(({ values }) =>
-                        setFacts(Object.fromEntries(values.map((v) => [v.key, v.value]))))
-                    .catch(() => {})
+                // The write didn't take: drop the hope and let the mirror show the truth.
+                setPending((p) => {
+                    const { [key]: _, ...rest } = p;
+                    return rest;
+                })
             )
         );
     };
@@ -164,7 +168,6 @@ export const IdPage = ({ seg, current, onTitle }) => {
         return () => {
             live = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, via]);
 
     // The shell's header band shows whose page this is: the words immediately (always

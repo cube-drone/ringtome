@@ -137,6 +137,28 @@ impl Store {
         }
     }
 
+    /// Every contact the ledger knows: one row per `contact:<root>` collection, its
+    /// registers folded to a key -> value map. Feeds the stream's `contacts` kind (the
+    /// People app and the id page's relationship panel read the MIRROR, per The Browser Is
+    /// a View); Tier 5's flow engine will read the same rows.
+    pub async fn contacts(
+        &self,
+    ) -> Result<Vec<(String, std::collections::BTreeMap<String, String>)>, AppError> {
+        let view = self.private_view().await?;
+        let mut out = Vec::new();
+        for collection in view.collections() {
+            if let Some(root) = collection.strip_prefix("contact:") {
+                let facts = view
+                    .registers_in(collection)
+                    .into_iter()
+                    .map(|r| (r.key, r.value))
+                    .collect();
+                out.push((root.to_string(), facts));
+            }
+        }
+        Ok(out)
+    }
+
     /// A named private LWW-element-set collection ("follows", ...).
     pub fn private_set<'s>(&'s self, collection: &'s str) -> PrivateSet<'s> {
         PrivateSet {

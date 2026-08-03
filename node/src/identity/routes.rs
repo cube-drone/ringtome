@@ -2277,6 +2277,8 @@ struct StreamMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     search: Option<Vec<crate::record::documents::SearchRow>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    contacts: Option<Vec<ContactRow>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     buckets: Option<Vec<BucketRow>>,
 }
 
@@ -2303,6 +2305,15 @@ async fn stream_cursor(
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+#[derive(Serialize)]
+struct ContactRow {
+    /// The other persona's root, hex - the row key, and what /id/<root> opens.
+    root: String,
+    /// The ledger's facts for them, as written (trust, trust_public, interest,
+    /// interest_rebroadcasts, blocked - and whatever future dials add).
+    facts: std::collections::BTreeMap<String, String>,
+}
+
 async fn gather(
     data: &store::Store,
     kind: &'static str,
@@ -2326,6 +2337,12 @@ async fn gather(
         })
         .collect();
     let search = data.documents().search_rows().await?;
+    let contacts = data
+        .contacts()
+        .await?
+        .into_iter()
+        .map(|(root, facts)| ContactRow { root, facts })
+        .collect();
     let buckets = data
         .buckets()
         .roster()
@@ -2345,6 +2362,7 @@ async fn gather(
         taxonomies: Some(taxonomies),
         search: Some(search),
         buckets: Some(buckets),
+        contacts: Some(contacts),
     })
 }
 
@@ -2399,6 +2417,7 @@ async fn serve_stream(
             taxonomies: None,
             search: None,
             buckets: None,
+            contacts: None,
         }
     } else {
         gather(&data, "snapshot", cursor.clone())
