@@ -25,8 +25,9 @@ import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { speakable, toBase58 } from './speakable.js';
 import { identityAddress, viaHints } from './pure/portable.js';
-import { personaHue, displayNames } from './pure/person.js';
+import { personaHue, displayNames, signalLevel } from './pure/person.js';
 import { identiconUri } from './pure/identicon.js';
+import { Icons } from './icons.js';
 import {
     TRUST_STOPS,
     INTEREST_STOPS,
@@ -104,6 +105,7 @@ export function usePerson(root, { current, profile: given } = {}) {
     // them, never this node). `hosted` also decides whether a minted address may wear this
     // node's origin - promising a stranger a node that would tombstone them is worse than
     // handing over the origin-free path.
+    const blocked = facts.blocked === 'yes';
     const hosted = source ? !!source.hosted : isYou;
     const via = (source && source.via) || null;
 
@@ -114,11 +116,15 @@ export function usePerson(root, { current, profile: given } = {}) {
         hosted,
         via,
         facts,
-        blocked: facts.blocked === 'yes',
+        blocked,
         knownToYou: !!contactRow,
         // The persona's picture, or '' - a doc_id on their public lane.
         avatar,
-        avatarUrl: avatar ? `/id/${root}/docs/${avatar}/thumb` : '',
+        // BLOCKED hides their picture everywhere at once (this is the only place any widget
+        // asks): you stop seeing what they chose to show you, and their identicon - derived
+        // from the key, chosen by nobody - stands in, so the row stays recognizable enough
+        // to unblock.
+        avatarUrl: avatar && !blocked ? `/id/${root}/docs/${avatar}/thumb` : '',
         bio,
         hue: personaHue(root),
         words,
@@ -296,6 +302,66 @@ export const AddressRow = ({ root, via, hosted }) => {
 // ---------------------------------------------------------------------------------------------
 // The relationship panel - what YOU privately record about another persona.
 
+/// A stop's words, for the tooltips: what the icon would say if it could talk.
+export const stopLabel = (stops, value) =>
+    stops.find((s) => s.value === nearestStop(stops, value)).label;
+
+// The dial vocabulary, shared by every surface that shows a relationship (the People shelf's
+// columns and the card's closed summary): signal bars climbing a colour ramp, the words in
+// the tooltip. Spelled out as literal tables, not interpolated, so the dead-CSS check can
+// see the classes.
+const SIG_ICONS = [Icons.signal0, Icons.signal1, Icons.signal2, Icons.signal3, Icons.signal4];
+const SIG_CLASSES = ['sig-0', 'sig-1', 'sig-2', 'sig-3', 'sig-4'];
+
+export const SignalCell = ({ stops, value, what }) => {
+    const level = signalLevel(value);
+    const Icon = SIG_ICONS[level];
+    return html`<span class="person-cell ${SIG_CLASSES[level]}" title="${what}: ${stopLabel(stops, value)}">
+        <${Icon} weight="bold" />
+    </span>`;
+};
+
+/// One dial as a PAIR: the column's own icon saying which dial this is, then its level in
+/// signal bars. The kind stays neutral (it's a label); the bars carry the colour, so a
+/// glance reads "what, and how much" without a legend.
+const GlancePair = ({ kind, stops, value, what }) => {
+    const level = signalLevel(value);
+    const Bars = SIG_ICONS[level];
+    return html`<span class="glance-pair" title="${what}: ${stopLabel(stops, value)}">
+        <${kind} />
+        <span class="glance-bars ${SIG_CLASSES[level]}"><${Bars} weight="bold" /></span>
+    </span>`;
+};
+
+/// The relationship at a glance: three pairs - trust, interest, their rebroadcasts. A
+/// BLOCKED persona gets none of it: just a red lock, because the only fact about a blocked
+/// relationship that matters is that it's shut.
+export const RelationshipGlance = ({ facts }) => {
+    if (facts.blocked === 'yes') {
+        return html`<span class="ledger-glance ledger-glance-blocked" title="blocked">
+            <${Icons.trustPrivate} weight="fill" />
+        </span>`;
+    }
+    if (!facts.trust && !facts.interest && !facts.interest_rebroadcasts) {
+        return html`<span class="ledger-glance ledger-glance-empty">nothing recorded yet</span>`;
+    }
+    return html`<span class="ledger-glance">
+        <${GlancePair} kind=${Icons.colTrust} stops=${TRUST_STOPS} value=${facts.trust} what="trust" />
+        <${GlancePair}
+            kind=${Icons.colInterest}
+            stops=${INTEREST_STOPS}
+            value=${facts.interest}
+            what="interest"
+        />
+        <${GlancePair}
+            kind=${Icons.colRebroadcast}
+            stops=${INTEREST_STOPS}
+            value=${facts.interest_rebroadcasts}
+            what="rebroadcasts"
+        />
+    </span>`;
+};
+
 // One dial of the ledger: a labeled select over the stops, saving on change (a dropdown
 // pick is a committed act - one private record per deliberate click, unlike keystrokes).
 const Dial = ({ label, hint, stops, value, onPick }) => html`
@@ -374,15 +440,15 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
     const blocked = facts.blocked === 'yes';
     const trustPublic = facts.trust_public === 'yes';
 
+    // A disclosure, not a permanent wall of controls: closed, it SAYS the relationship in the
+    // shelf's own icons; open, it lets you change it. `<details>` rather than hand-rolled
+    // state - the platform's own widget comes with the keyboard and the semantics.
     return html`
-        <div class="contact-ledger">
-            <div class="ledger-head">
+        <details class="contact-ledger">
+            <summary class="ledger-head">
                 <span class="ledger-title">your relationship</span>
-                <button
-                    class=${blocked ? 'ledger-block ledger-blocked' : 'ledger-block'}
-                    onClick=${() => put('blocked', blocked ? 'no' : 'yes')}
-                >${blocked ? 'unblock this persona' : 'block this persona'}</button>
-            </div>
+                <${RelationshipGlance} facts=${facts} />
+            </summary>
             ${blocked &&
             html`<p class="ledger-note">
                 blocked - nothing of theirs will be shown to you, and nothing of theirs gets
@@ -439,6 +505,12 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 value=${facts.interest_rebroadcasts}
                 onPick=${(v) => put('interest_rebroadcasts', v)}
             />
-        </div>
+            ${/* The block lives INSIDE: a button in the summary would toggle the disclosure
+                instead of blocking anyone, and blocking is an edit like the rest. */ ''}
+            <button
+                class=${blocked ? 'ledger-block ledger-blocked' : 'ledger-block'}
+                onClick=${() => put('blocked', blocked ? 'no' : 'yes')}
+            >${blocked ? 'unblock this persona' : 'block this persona'}</button>
+        </details>
     `;
 };

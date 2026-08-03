@@ -514,10 +514,74 @@
     gap: 0.9rem;
 }
 
+/* The disclosure's closed face: the label, the relationship in icons, and a caret that
+   turns. `list-style: none` (plus the webkit marker) hides the platform's own triangle so
+   the caret can sit where the eye expects it. */
 .ledger-head {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.ledger-head::-webkit-details-marker {
+    display: none;
+}
+
+.ledger-head::after {
+    content: '▸';
+    margin-left: auto;
+    color: var(--faint);
+    transition: transform 0.12s ease;
+}
+
+.contact-ledger[open] > .ledger-head::after {
+    transform: rotate(90deg);
+}
+
+/* The glance sits in its own bubble: the relationship reads as one object at a glance,
+   distinct from the label beside it. */
+.ledger-glance {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+}
+
+.ledger-glance-empty {
+    color: var(--faint);
+    font-size: 0.78rem;
+    padding: 0.25rem 0.7rem;
+}
+
+/* Blocked: the pill says one thing, in the colour that means stop. */
+.ledger-glance-blocked {
+    color: var(--coral);
+    border-color: var(--coral);
+    font-size: 1.05rem;
+}
+
+/* One dial: what it is, then how much of it. The kind stays quiet so the bars read. */
+.glance-pair {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+    color: var(--faint);
+    font-size: 0.95rem;
+}
+
+.glance-pair + .glance-pair {
+    border-left: 1px solid var(--border);
+    padding-left: 0.4rem;
+}
+
+.glance-bars {
+    display: inline-flex;
+    font-size: 1rem;
 }
 
 .ledger-title {
@@ -527,6 +591,7 @@
 }
 
 .ledger-block {
+    align-self: flex-start;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;

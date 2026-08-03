@@ -1779,3 +1779,33 @@ repeating) - a different bit per cell fixed it, with a vector standing over the 
 face inlines the SVG rather than linking a data: URI, so `img-src 'self'` stays untouched;
 integration asserts the face's bytes equal the console's, and the goldens hold both
 languages to one picture.
+
+## The relationship folds away (2026-08-03)
+
+"your relationship" became a disclosure: closed, it SAYS the relationship in the People
+shelf's own icons (trust, interest, rebroadcasts, the privacy glyph, a block mark if there
+is one - or "nothing recorded yet"); open, it is the dials as before. A native `<details>`
+rather than hand-rolled state, because the platform's own disclosure widget arrives with the
+keyboard and the semantics already fitted; the caret is CSS on `::after`, the marker hidden.
+One consequence worth naming: the block button MOVED into the open body - a button in a
+`<summary>` toggles the disclosure instead of doing its job, and blocking is an edit like
+every other one down there. The summary and the shelf now share one vocabulary rather than
+two copies: SignalCell, the stop labels, and the new RelationshipGlance live in person.js
+with the rest of the widget family, and signalLevel moved to pure/person.js (with its
+vectors) since it is dial-display, not list logic - the People row imports what it used to
+own. A relationship reads the same in the list and on the card because it is the same code.
+
+## The glance says what, and how much (2026-08-03)
+
+The relationship pill grew pairs: each dial now shows its OWN icon (identification badge /
+broadcast / cell tower - the People table's column heads) beside its level in signal bars,
+divided by hairlines, so the summary reads "what, and how much" with no legend to learn. The
+kind stays quiet and the bars carry the colour, which is what makes the pair scan. And
+BLOCKED collapses the whole thing: the pill becomes one red lock and nothing else, because
+the only fact about a blocked relationship worth summarizing is that it's shut - with the
+blocked persona's chosen PICTURE hidden everywhere at once (usePerson drops avatarUrl, so
+chip, banner, card and shelf all comply from one rule), their identicon standing in. That
+last part is deliberate rather than incidental: an identicon derives from the key and was
+chosen by nobody, so a blocked row stays recognizable enough to unblock without showing you
+what they wanted you to see. Verified live on a single open card - dials set, then blocked,
+and the same page redrew from three pairs and a photo to one lock and an identicon.

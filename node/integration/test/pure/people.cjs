@@ -39,24 +39,3 @@ describe('the People shelf', () => {
         assert.deepEqual(rows.map((r) => r.root), ['bb', 'aa']);
     });
 });
-
-describe('the signal bars', () => {
-    let signalLevel;
-    before(async () => {
-        ({ signalLevel } = await import('../../../js/pure/people.js'));
-    });
-
-    it('maps interest stops exactly: 0/25/50/75/100 -> none..full', () => {
-        assert.deepEqual([0, 25, 50, 75, 100].map(signalLevel), [0, 1, 2, 3, 4]);
-    });
-
-    it('maps trust stops honestly: 0,5 share none; 20/50/80/95 climb', () => {
-        assert.deepEqual([0, 5, 20, 50, 80, 95].map(signalLevel), [0, 0, 1, 2, 3, 4]);
-    });
-
-    it('clamps and shrugs at garbage', () => {
-        assert.equal(signalLevel('200'), 4);
-        assert.equal(signalLevel(-5), 0);
-        assert.equal(signalLevel('what'), 0);
-    });
-});

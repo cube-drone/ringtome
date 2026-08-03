@@ -24,3 +24,13 @@ export function displayNames({ nickname, name, words }) {
 /// components (js/person.js). Named here so the demo page can enumerate them without
 /// importing the DOM.
 export const PERSON_SIZES = ['mini', 'small'];
+
+/// A 0-100 dial squeezed onto the five signal bars (none/low/medium/high/full): quarters,
+/// rounded - so interest's stops land exactly (0/25/50/75/100 -> 0..4) and trust's six
+/// stops share honestly (0 and 5 both read "none"; 5 is barely-not-zero, and the tooltip
+/// still says the words). Garbage reads as none.
+export function signalLevel(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(4, Math.round(n / 25)));
+}

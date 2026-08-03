@@ -10,27 +10,12 @@ import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
 import { parseIdReference } from '../speakable.js';
-import { usePerson, PersonHex } from '../person.js';
+import { usePerson, PersonHex, SignalCell } from '../person.js';
 import { Icons } from '../icons.js';
-import { PEOPLE_SORTS, sortContacts, signalLevel } from '../pure/people.js';
-import { TRUST_STOPS, INTEREST_STOPS, nearestStop } from '../pure/contact.js';
+import { PEOPLE_SORTS, sortContacts } from '../pure/people.js';
+import { TRUST_STOPS, INTEREST_STOPS } from '../pure/contact.js';
 
 const html = htm.bind(h);
-
-const stopLabel = (stops, value) =>
-    stops.find((s) => s.value === nearestStop(stops, value)).label;
-
-// One graded dial as its signal bars, colored by level, the words in the tooltip. The
-// level tables are spelled out (not interpolated) so the dead-CSS check can see them.
-const SIG_ICONS = [Icons.signal0, Icons.signal1, Icons.signal2, Icons.signal3, Icons.signal4];
-const SIG_CLASSES = ['sig-0', 'sig-1', 'sig-2', 'sig-3', 'sig-4'];
-const SignalCell = ({ stops, value, what }) => {
-    const level = signalLevel(value);
-    const Icon = SIG_ICONS[level];
-    return html`<span class="person-cell ${SIG_CLASSES[level]}" title="${what}: ${stopLabel(stops, value)}">
-        <${Icon} weight="bold" />
-    </span>`;
-};
 
 // One shelf row: the Person widget's small hexagon and names (js/person.js - the row reads
 // the same hook every other size does, so a nickname set anywhere renames them here), then
