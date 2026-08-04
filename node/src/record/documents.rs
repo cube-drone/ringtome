@@ -617,6 +617,11 @@ pub struct PublicDoc {
     pub doc_id: [u8; 16],
     pub title: String,
     pub format: Option<u64>,
+    /// When it was FIRST said: the earliest version's claimed stamp. The shelf's order, and
+    /// the post's date - a re-publication is the same post with better words, not a new one,
+    /// and it does not move.
+    pub genesis_ms: i64,
+    /// When it last changed. Reported, never sorted by.
     pub head_ms: i64,
     pub thumb_hash: Option<[u8; 32]>,
 }
@@ -625,33 +630,36 @@ pub struct PublicDoc {
 /// stranger's JSON both read it without an epoch key in sight.
 /// One page of the public shelf, newest first.
 ///
-/// KEYSET, not offset: the cursor is the last row you were shown, `(head_ms, doc_id)`, and the
-/// page starts strictly after it in the same order the query sorts by. A shelf that grows at
-/// the head while someone reads down it is the ordinary case here - posting is the whole point
-/// of the lane - and an offset would quietly skip a row for every arrival. Re-publishing DOES
-/// move a document (its head_ms is its newest publication), so a page turn can still show one
-/// twice; the reader dedupes by doc_id, which is the honest place for it - the shelf really did
-/// change under the reader, and no cursor can undo that.
+/// KEYSET, not offset: the cursor is the last row you were shown, `(genesis_ms, doc_id)`, and
+/// the page starts strictly after it in the same order the query sorts by. A shelf that grows
+/// at the head while someone reads down it is the ordinary case here - posting is the whole
+/// point of the lane - and an offset would quietly skip a row for every arrival.
+///
+/// Ordered by GENESIS, not by head: a post is dated when it was first said, and editing it is
+/// not saying it again. That is the display rule, and it pays a second time here - the sort key
+/// is now immutable, so a re-publication mid-read can no longer shuffle a row across a page
+/// boundary. The reader still dedupes, which costs nothing and covers the remaining honest
+/// case: a post published while the reader was between pages.
 pub async fn public_docs(
     db: &Db,
     after: Option<(i64, [u8; 16])>,
     limit: i64,
 ) -> Result<Vec<PublicDoc>, AppError> {
     catch_up_public_lane(db).await?;
-    type Row = (Vec<u8>, String, Option<i64>, i64, Option<Vec<u8>>);
+    type Row = (Vec<u8>, String, Option<i64>, i64, i64, Option<Vec<u8>>);
     let rows: Vec<Row> = match after {
         None => db
             .fetch_all(
-                "SELECT doc_id, title, format, head_ms, thumb_hash FROM doc_heads
-                 WHERE lane = 'public' ORDER BY head_ms DESC, doc_id LIMIT ?",
+                "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
+                 WHERE lane = 'public' ORDER BY genesis_ms DESC, doc_id LIMIT ?",
                 (limit,),
             )
             .await,
         Some((ms, doc)) => db
             .fetch_all(
-                "SELECT doc_id, title, format, head_ms, thumb_hash FROM doc_heads
-                 WHERE lane = 'public' AND (head_ms < ? OR (head_ms = ? AND doc_id > ?))
-                 ORDER BY head_ms DESC, doc_id LIMIT ?",
+                "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
+                 WHERE lane = 'public' AND (genesis_ms < ? OR (genesis_ms = ? AND doc_id > ?))
+                 ORDER BY genesis_ms DESC, doc_id LIMIT ?",
                 (ms, ms, doc.to_vec(), limit),
             )
             .await,
@@ -659,13 +667,14 @@ pub async fn public_docs(
     .context("listing public documents")
     .map_err(AppError::Internal)?;
     let mut out = Vec::with_capacity(rows.len());
-    for (doc_id, title, format, head_ms, thumb_hash) in rows {
+    for (doc_id, title, format, genesis_ms, head_ms, thumb_hash) in rows {
         out.push(PublicDoc {
             doc_id: doc_id
                 .try_into()
                 .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?,
             title,
             format: format.map(|f| f as u64),
+            genesis_ms,
             head_ms,
             thumb_hash: match thumb_hash {
                 Some(t) => Some(hash32(&t)?),

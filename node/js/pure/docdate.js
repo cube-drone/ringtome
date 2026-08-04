@@ -22,6 +22,22 @@ export function claimedMs(doc) {
     return (doc && doc.updated_ms) || 0;
 }
 
+/** The ms a document sorts by when the question is when it BEGAN rather than when it was last
+ *  touched - Feed's ordering, and anything else that shows a stream of things said. Editing
+ *  something is not saying it again, and a stream that reshuffles when you fix a typo has
+ *  stopped being a record of when things happened. Claimed date still wins where one is set
+ *  (Displayed Time vs. Claimed Time applies to both questions); `created_ms` is the mirror
+ *  row's genesis stamp - the earliest version's claim - and the last-updated stamp is only the
+ *  fallback for a row too old or too partial to carry one. */
+export function createdMs(doc) {
+    const iso = doc && doc.fields && doc.fields[DISPLAY_DATE_FIELD];
+    if (iso) {
+        const ms = parseClaimed(iso);
+        if (ms !== null) return ms;
+    }
+    return (doc && (doc.created_ms || doc.updated_ms)) || 0;
+}
+
 /** Does this doc carry a user-claimed date? */
 export function hasClaimedDate(doc) {
     return !!(doc && doc.fields && doc.fields[DISPLAY_DATE_FIELD] && parseClaimed(doc.fields[DISPLAY_DATE_FIELD]) !== null);

@@ -101,6 +101,55 @@ describe("publication", () => {
         assert.equal(count(after), count(before), "a re-post of identical words writes nothing");
     });
 
+    it("dates a post by when it was FIRST said, and re-saying it doesn't move it", async () => {
+        const owner3 = await makeUserFetch({ prefix: "dated" });
+        const id = await (await owner3("api/identity", { method: "POST" })).json();
+        const who = id.root_pubkey;
+        const ids = [];
+        for (const t of ["oldest", "middle", "newest"]) {
+            const d = await (
+                await owner3(`api/identity/${who}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({ title: t, body: t, format: "plaintext" }),
+                })
+            ).json();
+            await owner3(`api/identity/${who}/docs/${d.doc_id}/publish`, { method: "POST" });
+            ids.push(d.doc_id);
+            await new Promise((r) => setTimeout(r, 1100)); // distinct claimed stamps
+        }
+        const before = await (await owner3(`api/id/${who}/profile`)).json();
+        assert.deepEqual(
+            before.posts.map((p) => p.title),
+            ["newest", "middle", "oldest"],
+            "newest first, by when each was said"
+        );
+        const oldestDate = before.posts[2].published_ms;
+
+        // Now EDIT and re-publish the oldest one. It has new words; it is not a new post.
+        const cur = await (await owner3(`api/identity/${who}/docs/${ids[0]}`)).json();
+        await owner3(`api/identity/${who}/docs/${ids[0]}`, {
+            method: "PUT",
+            body: JSON.stringify({
+                title: "oldest",
+                body: "oldest, revised",
+                format: "plaintext",
+                parents: cur.save_parents,
+            }),
+        });
+        const again = await owner3(`api/identity/${who}/docs/${ids[0]}/publish`, { method: "POST" });
+        assert.equal(again.status, 200, await again.text());
+
+        const after = await (await owner3(`api/id/${who}/profile`)).json();
+        assert.deepEqual(
+            after.posts.map((p) => p.title),
+            ["newest", "middle", "oldest"],
+            "editing did not jump it to the top"
+        );
+        const revised = after.posts.find((p) => p.title === "oldest");
+        assert.equal(revised.published_ms, oldestDate, "and its date is still the day it was said");
+        assert.ok(revised.updated_ms > revised.published_ms, "while its update stamp moved");
+    });
+
     it("pages down the shelf with a keyset cursor, never repeating or skipping", async () => {
         // A shelf longer than one page: 23 posts, so page one is 20 and page two is the rest.
         const owner2 = await makeUserFetch({ prefix: "shelf" });

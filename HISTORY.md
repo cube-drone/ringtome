@@ -2216,3 +2216,29 @@ handler hangs off `animationend`. Firing that event by hand drives the real path
 all - rather than standing in for it. The first attempt DID stand in for it, by writing the seal
 pref through an HTTP endpoint that does not exist (prefs are local, never synced), and reported a
 failure that belonged entirely to the instrument.
+
+## Dated by when it was said (2026-08-04)
+
+Both post displays sorted by last-update, so fixing a typo republished your week: the edited post
+climbed to the top of your own stack and of your page as a stranger reads it. They sort by
+GENESIS now - the earliest version's claimed stamp - and that is the post's displayed date too.
+Editing something is not saying it again, and a stream that reshuffles when you correct a word
+has stopped being a record of when things happened.
+
+Nothing had to be stored: `doc_heads.genesis_ms` has carried "the claimed stamp of the
+parentless/earliest version" since the table was written, and the docs mirror row has been
+handing the browser `created_ms` all along - the Journal already stacks by it. What was missing
+was a `createdMs` beside `claimedMs` in pure/docdate.js, asking the other question a stream can
+ask about a document: not when it last changed, but when it began. A claimed `display_date` still
+outranks both clocks, because Displayed Time vs. Claimed Time applies to whichever question is
+being asked.
+
+The public shelf pays twice for this. Its sort key is now IMMUTABLE, so the keyset cursor can no
+longer be shuffled across a page boundary by a re-publication mid-read - the case the reader's
+dedupe existed to catch. The dedupe stays, cheaply, for the honest remainder: a post published
+while the reader is between pages. `published_ms` now means what its name says (first said), with
+`updated_ms` reported alongside for anything that wants it.
+
+A vector of mine failed for its own reasons and briefly looked like the code's: I wrote 1e12 ms
+as "recent" to prove a 2015 claim would backdate it, and 1e12 is 2001. Asserting the parsed
+claim directly says what was meant and can't be wrong about the calendar.

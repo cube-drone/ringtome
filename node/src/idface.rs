@@ -533,7 +533,10 @@ fn post_json(p: &crate::record::documents::PublicDoc) -> serde_json::Value {
         "doc_id": hex::encode(p.doc_id),
         "title": p.title,
         "format": crate::record::documents::Format::from_wire(p.format).as_str(),
-        "published_ms": p.head_ms,
+        // When it was first said - what it is dated by and sorted by. A re-publication
+        // improves a post; it does not make a new one, and does not move it.
+        "published_ms": p.genesis_ms,
+        "updated_ms": p.head_ms,
         "thumb": p.thumb_hash.map(hex::encode),
     })
 }

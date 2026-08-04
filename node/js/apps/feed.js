@@ -37,7 +37,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from '../mirror/prefs.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
-import { claimedMs } from '../pure/docdate.js';
+import { createdMs } from '../pure/docdate.js';
 import { FEED_STYLE, publishedState, openDraftOf, overlayPosted } from '../pure/feed.js';
 import { useDocSession } from '../doc/session.js';
 import { useDocDetail } from '../doc/detail.js';
@@ -173,7 +173,7 @@ const PostBody = ({ root, docId }) => {
 const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
     const [open, setOpen] = useState(false);
     const state = publishedState(row, seal);
-    const when = new Date(claimedMs(row)).toLocaleString(undefined, {
+    const when = new Date(createdMs(row)).toLocaleString(undefined, {
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
@@ -247,7 +247,10 @@ export const FeedApp = ({ current }) => {
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     const mine = (rows || [])
         .filter((d) => (d.buckets || []).includes(FEED_STYLE))
-        .sort((a, b) => claimedMs(b) - claimedMs(a));
+        // By when it was WRITTEN, not when it was last touched: editing a post is not saying
+        // it again, and a stream that reshuffles because you fixed a typo has stopped being a
+        // record of when things happened.
+        .sort((a, b) => createdMs(b) - createdMs(a));
     const draft = openDraftOf(mine);
     // The overlay leads: a just-minted draft is the open one even before its row lands.
     const draftId = minted || (draft && draft.doc_id) || null;
