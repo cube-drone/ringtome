@@ -307,6 +307,18 @@ pub async fn forget_foreign_fetch(node_db: &crate::db::Db, root_hex: &str) -> Re
 }
 
 /// The fetch memory for a root: (fetched_at_ms, the endpoint key that last answered).
+/// Every foreign root this node has fetched and still carries. The other half of "personas we
+/// hold" - deliberately NOT in the identities table (that is what keeps the anonymous face
+/// tombstoning them), so the frontier sweep has to ask both.
+pub async fn fetched_roots(node_db: &crate::db::Db) -> anyhow::Result<Vec<String>> {
+    use anyhow::Context;
+    let rows: Vec<(String,)> = node_db
+        .fetch_all("SELECT root_pubkey FROM foreign_fetches", ())
+        .await
+        .context("listing fetched identities")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 async fn foreign_fetch_row(
     state: &AppState,
     root_hex: &str,

@@ -2562,7 +2562,13 @@ async fn serve_stream(
     loop {
         tokio::select! {
             _ = tick.tick() => {}
-            _ = crate::db::await_write_nudge(&mut nudge) => {}
+            // Only OUR identity's writes. The nudge names who wrote, so a node carrying many
+            // personas no longer wakes every open stream whenever anyone anywhere saves; a
+            // lagged nudge (None) still wakes us, because a receiver that missed pings cannot
+            // rule itself out.
+            who = crate::db::await_write_nudge(&mut nudge) => {
+                if who.is_some_and(|w| w != root) { continue; }
+            }
             incoming = socket.recv() => {
                 match incoming {
                     None | Some(Err(_)) => return Ok(()), // gone

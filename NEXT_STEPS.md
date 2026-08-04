@@ -50,6 +50,18 @@ not a substrate, and nothing above waits on them.
 
 Owed inside those directions, and easy to lose because the surfaces around them are standing:
 
+- **What the frontier map is FOR** (opened 2026-08-04, with the map itself): the table and the
+  peer claims exist and are recorded; nothing reads them yet. Owed: (1) the **sweep that acts** -
+  chase a claim that has changed since we last chased it (not merely one that differs from what
+  we hold, or a broken node is chased forever), backing off sources whose verdict is
+  `unresolvable`; (2) the **subscription table** and fan-out, hanging off the edge that
+  `frontier::refresh` already returns - its only consumer today is a log line. Note the limit on
+  per-source backoff: `endpoint_id` is transport identity and can be minted freely, so it is cost
+  control, not a security boundary - the boundary stays the ingest gate.
+- **Public divergence semantics** (surfaced 2026-08-04): `send_missing` diffs on seq, so two
+  nodes forked at the same seq on a public chain exchange nothing. The anchor that detects it now
+  crosses the wire (`Frontier.head_hash`); what an exchange should DO about a public fork is the
+  open design.
 - **The signpost rung** - serving records grow the public-web-URL field.
 - **The root-directory backstop** - a real design problem, found 2026-08-02: serving records
   publish under LEAF keys because pkarr requires the publisher's signing key and the root's is

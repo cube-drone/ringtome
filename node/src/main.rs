@@ -278,6 +278,18 @@ async fn main() -> anyhow::Result<()> {
         state.clone(),
         net::resync::eager_pass,
     );
+    // The public-frontier map (net::frontier): what this node holds of each persona's public
+    // lane, one fingerprint per (persona, service). Nudged, because a local write is exactly
+    // when it goes stale, and ticked as the backstop for writes that arrive by sync. Off the
+    // hot path deliberately - recomputing inside the append would charge every entry for a
+    // fact only sweeps read, and Feed writes several entries per post.
+    loops::periodic_nudged(
+        "frontier-map",
+        std::time::Duration::from_secs(30),
+        state.user_dbs.write_nudge(),
+        state.clone(),
+        net::frontier::sweep,
+    );
     loops::periodic(
         "sync-anti-entropy",
         std::time::Duration::from_secs(state.config.resync_interval_secs),

@@ -476,6 +476,18 @@ pub async fn is_agented(node_db: &Db, root_pubkey: &str) -> Result<bool, AppErro
 }
 
 /// Roots of every identity marked served - the republish loop's worklist.
+/// Every root this node hosts, served or not. `served_roots` asks who we PUBLISH; this asks
+/// who we carry, which is the question the frontier sweep has (an unpublished persona still
+/// writes chains, and this node still holds them).
+pub async fn hosted_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all("SELECT root_pubkey FROM identities", ())
+        .await
+        .context("listing hosted identities")
+        .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 pub async fn served_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(

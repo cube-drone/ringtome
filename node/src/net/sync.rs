@@ -46,7 +46,7 @@ pub struct ExchangeStats {
 /// (member-proven) nodes. Everything about them is withheld from strangers - the entries, the
 /// frontiers, even the count of chains (the *timing and volume* of private activity is itself
 /// private metadata; PROJECT_PLAN, Chains).
-fn is_private_service(svc: u32) -> bool {
+pub fn is_private_service(svc: u32) -> bool {
     svc == service::IDENTITY_PRIVATE
         || svc == service::GENERAL_PRIVATE
         || svc == service::DOCUMENTS_PRIVATE
@@ -56,28 +56,75 @@ fn is_private_service(svc: u32) -> bool {
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer
 /// has proven membership.
 pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Frontier>> {
-    let rows: Vec<(String, i64, i64, i64)> = db
+    // The head's HASH rides along with its seq: a range says how far a chain goes, the anchor
+    // says which chain it is. The correlated subquery rather than a bare column beside MAX() -
+    // that shortcut is a SQLite dialect nicety, and this is protocol input.
+    let rows: Vec<(String, i64, i64, i64, Vec<u8>)> = db
         .fetch_all(
-            "SELECT author_pubkey, service, MIN(seq), MAX(seq) FROM entries
-         GROUP BY author_pubkey, service",
+            "SELECT e.author_pubkey, e.service, MIN(e.seq), MAX(e.seq),
+                    (SELECT entry_hash FROM entries
+                      WHERE author_pubkey = e.author_pubkey AND service = e.service
+                      ORDER BY seq DESC LIMIT 1)
+             FROM entries e
+             GROUP BY e.author_pubkey, e.service",
             (),
         )
         .await
         .context("reading local frontiers")?;
 
     rows.into_iter()
-        .filter(|(_, svc, _, _)| include_private || !is_private_service(*svc as u32))
-        .map(|(author_hex, svc, floor, head)| {
+        .filter(|(_, svc, _, _, _)| include_private || !is_private_service(*svc as u32))
+        .map(|(author_hex, svc, floor, head, head_hash)| {
             let author = pubkey::decode(&author_hex)
                 .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
+            let head_hash: [u8; 32] = head_hash
+                .try_into()
+                .map_err(|_| anyhow!("corrupt entry_hash at chain head"))?;
             Ok(Frontier {
                 author,
                 service: svc as u32,
                 floor: floor as u64,
                 head: head as u64,
+                head_hash,
             })
         })
         .collect()
+}
+
+/// The head ANCHOR of every public chain this identity has: `(author, service, head_hash)`.
+///
+/// The hash, not the seq, is what makes this a fingerprint ingredient. `local_frontiers` above
+/// reports ranges, which is what the exchange needs to decide who lacks what; two chains that
+/// forked carry the SAME max seq and different entries, so a seq-derived fingerprint compares
+/// equal across a divergence and reports "nothing to do". Canon names the right tuple already:
+/// `(chain, seq, head_hash)` anchors.
+///
+/// Public only, and by the same predicate the gate uses - this feeds `net::frontier`, whose
+/// output is told to other people.
+pub async fn public_anchors(db: &Db) -> Result<Vec<([u8; 32], u32, [u8; 32])>> {
+    let rows: Vec<(String, i64, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT e.author_pubkey, e.service, e.entry_hash FROM entries e
+             WHERE e.seq = (SELECT MAX(seq) FROM entries
+                            WHERE author_pubkey = e.author_pubkey AND service = e.service)
+             ORDER BY e.author_pubkey, e.service",
+            (),
+        )
+        .await
+        .context("reading public chain anchors")?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (author_hex, svc, head) in rows {
+        if is_private_service(svc as u32) {
+            continue;
+        }
+        let author = pubkey::decode(&author_hex)
+            .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
+        let head: [u8; 32] = head
+            .try_into()
+            .map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
+        out.push((author, svc as u32, head));
+    }
+    Ok(out)
 }
 
 /// Stream every stored entry the peer's frontiers say it lacks, identity chains first (service
@@ -779,6 +826,17 @@ pub async fn sync_with_peer(
             Some(other) => bail!("unexpected frame mid-stream: {other:?}"),
         }
     }
+    // What they claim, before we act on it: the same digest we compute over our own holdings,
+    // so the two are comparable (net::frontier). Best-effort - a bookkeeping failure must not
+    // fail an exchange that is otherwise working.
+    let claimed = crate::net::frontier::claimed_fingerprint(&peer_frontiers);
+    let peer_hex = hex::encode(peer_id);
+    if let Err(e) =
+        crate::net::frontier::record_claim(&state.node_db, root_hex, &peer_hex, claimed).await
+    {
+        tracing::debug!(error = ?e, "recording a peer frontier claim failed");
+    }
+
     let (received, rejected) = ingest_batch(&db, root, incoming, peer_proven).await?;
 
     // Now send what the peer lacks - private chains only to a proven member.
@@ -786,6 +844,34 @@ pub async fn sync_with_peer(
     write_frame(&mut send, &SyncMessage::Done).await?;
     send.finish().ok();
     conn.closed().await; // responder closes once it has ingested our stream
+
+    // And what came of the claim. The order matters: our own frontier is recomputed AFTER the
+    // ingest, so "do we still disagree" is asked of what we now hold, not what we held when
+    // they spoke. A claim that delivered nothing and still differs is the only fault - and it
+    // is the one that must not be chased again until it moves.
+    if let Err(e) = crate::net::frontier::refresh(state, root_hex).await {
+        tracing::debug!(error = ?e, "post-exchange frontier refresh failed");
+    }
+    let verdict = if received > 0 {
+        crate::net::frontier::Verdict::Ahead
+    } else {
+        let ours = crate::net::frontier::persona_fingerprint(
+            &crate::net::frontier::held(&state.node_db, root_hex)
+                .await
+                .unwrap_or_default(),
+        );
+        if ours == claimed {
+            crate::net::frontier::Verdict::Behind
+        } else {
+            crate::net::frontier::Verdict::Unresolvable
+        }
+    };
+    if let Err(e) =
+        crate::net::frontier::record_verdict(&state.node_db, root_hex, &peer_hex, claimed, verdict)
+            .await
+    {
+        tracing::debug!(error = ?e, "recording a chase verdict failed");
+    }
 
     // Entries landed; now the bodies they reference. Best-effort, never fails the exchange.
     let bodies_fetched =

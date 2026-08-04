@@ -75,7 +75,43 @@ CREATE TABLE identity_peers (
     endpoint_id    TEXT    NOT NULL,  -- iroh endpoint id; transport identity, never an identity key
     added_at_ms    INTEGER NOT NULL,
     last_synced_ms INTEGER,
+    -- What this node last CLAIMED about the persona's public frontier, and what we did about
+    -- it. A claim, never a fact (PROJECT_PLAN: "a frontier another node reports is a hint,
+    -- never a fact - fetch and validate, never believe"), which is why the verdict is stored
+    -- separately from the claim: without it, a node advertising a fingerprint it cannot back
+    -- up gets chased on every sweep forever, which is free for it and expensive for us.
+    seen_fp        BLOB,
+    seen_at_ms     INTEGER,
+    chased_fp      BLOB,               -- the claim we last acted on; re-chase only when it moves
+    chased_at_ms   INTEGER,
+    verdict        TEXT,               -- 'behind' | 'ahead' | 'unresolvable'; NULL = never chased
     PRIMARY KEY (root_pubkey, endpoint_id)
+);
+
+-- ---------------------------------------------------------------------------------------------
+-- What THIS node holds of each persona's PUBLIC lane, one row per (persona, public service).
+--
+-- Why it exists: per-user databases are separate files, so "which personas changed?" otherwise
+-- means opening every one of them. This answers it in one scan, and is the hook fan-out hangs
+-- from - a subscriber wakes when the service it subscribed to moves.
+--
+-- Why per SERVICE and not per persona: a single fingerprint over every public chain is maximally
+-- sensitive, so adding a computer (an authorize entry on IDENTITY_PUBLIC) would wake every
+-- follower to discover the person said nothing. Keyed this way, "did they post" (POSTS) is a
+-- different question from "did they rename themselves" (PROFILE_PUBLIC). The persona-level
+-- fingerprint is derived by hashing these rows in service order, so nothing is lost.
+--
+-- PUBLIC ONLY, structurally: the count and cadence of private activity is itself private
+-- (PROJECT_PLAN, Chains), and this table is the input to things that get told to other people.
+-- The filter is `net::sync::is_private_service` - one definition of private, the same one the
+-- sync gate enforces.
+CREATE TABLE persona_frontiers (
+    root_pubkey TEXT    NOT NULL,
+    service     INTEGER NOT NULL,
+    held_fp     BLOB    NOT NULL,   -- blake3 over (author ‖ service ‖ head_hash), author-sorted
+    held_at_ms  INTEGER NOT NULL,   -- when we last computed it, not when they wrote
+    chains      INTEGER NOT NULL,   -- how many of their computers have written this service
+    PRIMARY KEY (root_pubkey, service)
 );
 
 -- Adoption handshakes awaiting their grant code: the leaf keypair is minted (and sealed in the

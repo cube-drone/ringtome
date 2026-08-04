@@ -22,10 +22,13 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("account_tags", vec!["auth.rs"]),
         ("identities", vec!["identity.rs"]),
         ("pending_adoptions", vec!["identity/adoption.rs"]),
-        ("identity_peers", vec!["net/sync.rs"]),
+        // The frontier columns on identity_peers are frontier concepts; the peer bookkeeping
+        // around them stays sync's.
+        ("identity_peers", vec!["net/sync.rs", "net/frontier.rs"]),
         ("boot_timestamps", vec!["db.rs"]),
         ("ingest_job", vec!["ingest.rs"]),
         ("foreign_fetches", vec!["idface.rs"]),
+        ("persona_frontiers", vec!["net/frontier.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.
         ("entries", vec!["record/imaol.rs", "net/sync.rs"]),

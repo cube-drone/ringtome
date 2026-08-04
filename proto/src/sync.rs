@@ -50,6 +50,14 @@ pub struct Frontier {
     pub service: u32,
     pub floor: u64,
     pub head: u64,
+    /// The entry hash AT `head`. Seq says how far a chain goes; this says which chain it is.
+    ///
+    /// Two chains that forked carry the same `head` and different entries, so a peer comparing
+    /// ranges alone sees agreement where there is a divergence. Carrying the anchor makes the
+    /// advertised frontier a thing the receiver can fingerprint and compare against its own
+    /// (`net::frontier`), rather than a number it can only subtract. Canon's own name for the
+    /// tuple is `(chain, seq, head_hash)`.
+    pub head_hash: [u8; 32],
 }
 
 /// Domain tag for member proofs.
@@ -145,11 +153,12 @@ impl SyncMessage {
                     if f.floor > f.head {
                         return Err(ProtoError::BadEntry("frontier floor above head"));
                     }
-                    w.array(4);
+                    w.array(5);
                     w.bytes(&f.author);
                     w.uint(u64::from(f.service));
                     w.uint(f.floor);
                     w.uint(f.head);
+                    w.bytes(&f.head_hash);
                 }
                 // Proof slot: empty array = anonymous, [leaf, sig] = member claim.
                 match proof {
@@ -192,9 +201,9 @@ impl SyncMessage {
                 }
                 let mut frontiers = Vec::with_capacity(n as usize);
                 for _ in 0..n {
-                    if r.array()? != 4 {
+                    if r.array()? != 5 {
                         return Err(ProtoError::BadEntry(
-                            "frontier must be [author, service, floor, head]",
+                            "frontier must be [author, service, floor, head, head_hash]",
                         ));
                     }
                     let author = r.bytes_fixed::<32>()?;
@@ -205,11 +214,13 @@ impl SyncMessage {
                     if floor > head {
                         return Err(ProtoError::BadEntry("frontier floor above head"));
                     }
+                    let head_hash = r.bytes_fixed::<32>()?;
                     frontiers.push(Frontier {
                         author,
                         service,
                         floor,
                         head,
+                        head_hash,
                     });
                 }
                 let proof = match r.array()? {
@@ -255,12 +266,14 @@ mod tests {
                     service: 0,
                     floor: 0,
                     head: 4,
+                    head_hash: [70u8; 32],
                 },
                 Frontier {
                     author: [8u8; 32],
                     service: 2,
                     floor: 3,
                     head: 17,
+                    head_hash: [80u8; 32],
                 },
             ],
             proof: None,
@@ -310,6 +323,7 @@ mod tests {
                 service: 0,
                 floor: 5,
                 head: 2,
+                head_hash: [0u8; 32],
             }],
             proof: None,
         };
@@ -321,11 +335,12 @@ mod tests {
         w.uint(TAG_HELLO);
         w.bytes(&[1u8; 32]);
         w.array(1);
-        w.array(4);
+        w.array(5);
         w.bytes(&[1u8; 32]);
         w.uint(0);
         w.uint(5);
         w.uint(2);
+        w.bytes(&[0u8; 32]);
         w.array(0); // empty proof slot
         assert_eq!(
             SyncMessage::decode(&w.into_bytes()),

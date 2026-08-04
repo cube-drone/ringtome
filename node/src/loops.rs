@@ -19,13 +19,21 @@ where
     F: Fn(S) -> Fut + Send + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
 {
-    periodic_inner(name, every, None, state, job)
+    // A tick never names anyone, so an un-nudged loop's pass is spared a parameter it could
+    // only ignore.
+    periodic_inner(name, every, None, state, move |s, _| job(s))
 }
 
 /// [`periodic`], plus a doorbell: the loop also runs a pass immediately whenever a write nudge
-/// fires, without waiting for the tick. The bus buffers a ping that arrives mid-pass, and
-/// [`crate::db::await_write_nudge`] folds a lag into one wake, so a write racing the pass is
-/// never lost. The tick keeps its own schedule regardless; a nudged pass never delays it.
+/// fires, without waiting for the tick. The bus buffers a ping that arrives mid-pass, so a write
+/// racing the pass is never lost. The tick keeps its own schedule regardless; a nudged pass
+/// never delays it.
+///
+/// The pass is told WHO wrote, when the nudge knew: `Some(root)` from a nudge naming an
+/// identity, `None` from a tick or from a lagged receiver that can no longer say. A pass given
+/// a name may do only that persona's work; a pass given `None` must do everyone's. Getting that
+/// backwards - treating a lag as "nothing happened" - would silently drop exactly the writes
+/// that arrived in a burst.
 pub fn periodic_nudged<S, F, Fut>(
     name: &'static str,
     every: Duration,
@@ -34,7 +42,7 @@ pub fn periodic_nudged<S, F, Fut>(
     job: F,
 ) where
     S: Clone + Send + 'static,
-    F: Fn(S) -> Fut + Send + 'static,
+    F: Fn(S, Option<String>) -> Fut + Send + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
 {
     periodic_inner(name, every, Some(nudge.subscribe()), state, job)
@@ -43,12 +51,12 @@ pub fn periodic_nudged<S, F, Fut>(
 fn periodic_inner<S, F, Fut>(
     name: &'static str,
     every: Duration,
-    mut nudge: Option<tokio::sync::broadcast::Receiver<()>>,
+    mut nudge: Option<tokio::sync::broadcast::Receiver<String>>,
     state: S,
     job: F,
 ) where
     S: Clone + Send + 'static,
-    F: Fn(S) -> Fut + Send + 'static,
+    F: Fn(S, Option<String>) -> Fut + Send + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
 {
     tokio::spawn(async move {
@@ -56,13 +64,13 @@ fn periodic_inner<S, F, Fut>(
         loop {
             // Either the tick fires or a write nudge arrives (a no-nudge loop's receiver is
             // None, so `await_write_nudge` parks forever and only the tick drives it).
-            tokio::select! {
-                _ = tick.tick() => {}
-                _ = crate::db::await_write_nudge(&mut nudge) => {}
-            }
+            let who = tokio::select! {
+                _ = tick.tick() => None, // the backstop sweeps everything
+                nudged = crate::db::await_write_nudge(&mut nudge) => nudged,
+            };
             // Each pass runs in its own task so a panic is contained (and logged as a join
             // error) instead of killing the loop.
-            match tokio::spawn(job(state.clone())).await {
+            match tokio::spawn(job(state.clone(), who)).await {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => tracing::warn!(loop_name = name, "background pass failed: {e:#}"),
                 Err(join_error) => {
@@ -77,7 +85,7 @@ fn periodic_inner<S, F, Fut>(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     #[tokio::test(start_paused = true)]
     async fn a_loop_outlives_failures_and_panics() {
@@ -105,31 +113,37 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_nudge_runs_a_pass_without_waiting_for_the_tick() {
-        let passes = Arc::new(AtomicU32::new(0));
-        let bus = tokio::sync::broadcast::channel::<()>(16).0;
+        // Each pass records WHO it was told about, so the test can assert the name arrives -
+        // that is the difference between a pass doing one persona's work and every persona's.
+        let seen: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let bus = tokio::sync::broadcast::channel::<String>(16).0;
         periodic_nudged(
             "test-nudged-loop",
             Duration::from_secs(3600),
             bus.clone(),
-            passes.clone(),
-            |counter| async move {
-                counter.fetch_add(1, Ordering::SeqCst);
+            seen.clone(),
+            |log: Arc<Mutex<Vec<Option<String>>>>, who| async move {
+                log.lock().unwrap().push(who);
                 Ok(())
             },
         );
 
-        // The interval's first tick is immediate: one boot pass.
+        // The interval's first tick is immediate: one boot pass, and a tick names nobody.
         tokio::time::sleep(Duration::from_millis(10)).await;
-        assert_eq!(passes.load(Ordering::SeqCst), 1, "the boot pass ran");
+        assert_eq!(seen.lock().unwrap().as_slice(), &[None], "the boot pass ran, unnamed");
 
         // A ping mid-interval wakes the loop right away - virtual time is nowhere near the
-        // hour tick.
-        let _ = bus.send(());
+        // hour tick - and carries the identity that wrote.
+        let _ = bus.send("abcd".to_string());
         tokio::time::sleep(Duration::from_millis(10)).await;
-        assert_eq!(passes.load(Ordering::SeqCst), 2, "the nudge ran a pass");
+        assert_eq!(
+            seen.lock().unwrap().as_slice(),
+            &[None, Some("abcd".to_string())],
+            "the nudge ran a pass, and said who"
+        );
 
         // Quiet bus, quiet loop: no extra passes sneak in between ticks.
         tokio::time::sleep(Duration::from_secs(60)).await;
-        assert_eq!(passes.load(Ordering::SeqCst), 2, "no phantom passes");
+        assert_eq!(seen.lock().unwrap().len(), 2, "no phantom passes");
     }
 }

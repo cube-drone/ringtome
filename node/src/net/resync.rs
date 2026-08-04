@@ -8,7 +8,8 @@
 //!     peer - the "seconds-while-connected" freshness mitigation (PROJECT_PLAN, Loss and
 //!     the Replication Window). Locally-*signed* writes additionally ring the write nudge
 //!     (`Db::nudge_sync`, wired through `loops::periodic_nudged`), so the pass that starts
-//!     the debounce clock runs at the write itself instead of up to a tick later. Entries
+//!     the debounce clock runs at the write itself instead of up to a tick later - and names
+//!     the identity, so that pass does one root's work rather than every root's. Entries
 //!     that *arrive* by sync move the frontier too, so a push received from one peer
 //!     re-dirties the root here and relays onward next tick - epidemic spread over the peer
 //!     graph, converging because an up-to-date exchange transfers nothing. Relayed entries
@@ -28,10 +29,11 @@
 //! should sync, unprompted - refusal is a future per-identity operator policy, not the
 //! default).
 //!
-//! Change detection is a per-root frontier snapshot compared across ticks: one GROUP BY over
-//! `entries` per root every tick, nothing at the design center of a handful of identities. A
-//! node fronting hundreds would want a cheaper dirty signal (journal length); don't build it
-//! before that node exists.
+//! Change detection is a per-root frontier snapshot compared against the last push: one GROUP
+//! BY over `entries` per root examined. A NAMED pass examines exactly one - the nudge carries
+//! the root that wrote (2026-08-04), so one person posting no longer makes a node scan every
+//! persona it holds to discover that nobody else did. The tick still sweeps everyone, which is
+//! what it is for: entries arriving by sync never ring the bell, so only the sweep finds them.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -192,8 +194,16 @@ impl ResyncTracker {
 /// One eager-push pass: fingerprint every agented identity that has peers; push a debounced,
 /// quiescent change to all of them. Latency mechanism only - a fully-unreachable peer set gets
 /// one warn and a lazy retry, never a dial every tick.
-pub async fn eager_pass(state: AppState) -> anyhow::Result<()> {
-    for root in sync::roots_with_peers(&state.node_db).await? {
+/// One pass. `who` is the identity a write nudge named, when it could: a named pass pushes only
+/// that persona, because the other nine hundred and ninety-nine on this node did not write and
+/// scanning them all to discover that is the cost this parameter exists to delete. `None` - a
+/// tick, or a lagged receiver that can no longer say what it missed - sweeps everyone.
+pub async fn eager_pass(state: AppState, who: Option<String>) -> anyhow::Result<()> {
+    let roots = match who {
+        Some(root) => vec![root],
+        None => sync::roots_with_peers(&state.node_db).await?,
+    };
+    for root in roots {
         if let Err(e) = eager_root(&state, &root).await {
             tracing::warn!(root = %root, "eager push pass failed: {e:#}");
         }

@@ -2242,3 +2242,110 @@ while the reader is between pages. `published_ms` now means what its name says (
 A vector of mine failed for its own reasons and briefly looked like the code's: I wrote 1e12 ms
 as "recent" to prove a 2015 claim would backdate it, and 1e12 is 2001. Asserting the parsed
 claim directly says what was meant and can't be wrong about the calendar.
+
+## The node learns who moved (2026-08-04)
+
+The first piece of the fan-out substrate: a node-level map of what this node holds of each
+persona's PUBLIC lane, one blake3 fingerprint per (persona, service). Per-user databases are
+separate files, so "which personas changed?" used to mean opening every one of them; it is one
+scan now, and it is the hook a subscription will hang from.
+
+The construction, settled in conversation and worth restating because two nodes must agree on it
+exactly: for each `(author, service)` chain, hash `author ‖ service ‖ head_entry_hash`, sorted by
+author. The head HASH, not the head seq - `local_frontiers` reports ranges, and two chains that
+forked carry the same max seq with different entries, so a seq-derived fingerprint compares equal
+across a divergence and reports nothing to do. Canon already named the right tuple: `(chain, seq,
+head_hash)` anchors.
+
+Keyed per SERVICE, not per persona, which was Curtis's question about 49 chains doing its work: a
+persona's public chains are devices x services (sparsely - a computer that never posts has no
+POSTS chain), and one fingerprint over all of them is maximally sensitive. Adding a computer
+writes an authorize entry on IDENTITY_PUBLIC, and under a single fingerprint that would wake
+every follower to discover the person said nothing. Keyed this way, "did they post" and "did they
+add a computer" are different questions. The persona-level digest is derived from the rows rather
+than stored, so it cannot disagree with them.
+
+Public only, structurally, using `is_private_service` - the sync gate's own predicate rather than
+a second list of what counts as private. The count and cadence of private activity is itself
+private metadata, and this value exists to be compared with other nodes.
+
+Two things the module says about itself in its own doc comment, because both are easy to forget
+later: it is NOT ORDERABLE (a hash detects difference, never progress - it can say "go look" and
+can never say "we are behind"; deciding who holds more is the exchange's job, where entries are
+validated rather than believed), and the refresh is EDGE-triggered, returning whether the
+fingerprint moved. Level-triggering would be true forever once true, and a fan-out reading it
+would tell every subscriber on every pass. Today the edge's only consumer is a log line; that is
+where the notify goes.
+
+Off the hot path: the sweep is a nudged loop (`periodic_nudged` already existed, doorbell and
+all), because recomputing inside `imaol::append` would charge every entry for a fact only sweeps
+read - and Feed writes several entries per post.
+
+Node schema generation 2 -> 3, which by the pre-launch policy means delete node.db and rebuild.
+The peer-claim columns on `identity_peers` (`seen_fp`, `chased_fp`, `verdict`) land in the same
+bump though nothing writes them yet, deliberately: their design is settled, and adding them later
+would cost a second wipe of everyone's accounts to save nothing.
+
+The peer half landed in the same sitting, after a detour worth recording. I had told Curtis this
+feature added no wire surface, describing the protocol from the sync function's shape rather than
+reading the struct: `Frontier` carried `{author, service, floor, head}` - seq numbers, no head
+hash - so a peer's Hello could not be folded into a fingerprint comparable with ours. Then I
+stopped and asked which way to go, having in the same breath recommended one option and dismissed
+the other. Curtis's reply was the correct one: what decision, exactly? Presenting a settled call
+as a question is not caution, it is handing back work.
+
+So `Frontier` grew `head_hash` (pre-launch, no compatibility burden), `local_frontiers` fills it,
+and an exchange now records what the peer CLAIMED - `claimed_fingerprint` over the same
+construction, so the two are comparable by identity rather than by conversion - and then what
+came of chasing it. The verdict is stored beside the claim rather than the claim alone, which is
+the whole point: without it, a node advertising a fingerprint it cannot back up is chased on
+every sweep forever, free for it and expensive for us. Three verdicts, only one a fault - `ahead`
+(they had entries, and the entries validated), `behind` (their frontier is ours; the signal to
+push), `unresolvable` (nothing arrived and we still disagree). The order matters and is commented
+where it matters: our own frontier is recomputed AFTER the ingest, so "do we still disagree" is
+asked of what we now hold rather than what we held when they spoke.
+
+Left undone deliberately: `send_missing` still diffs on seq, so two nodes forked at the same seq
+exchange nothing. The anchor to detect it now crosses the wire, but what an exchange should DO
+about a public fork is public divergence semantics, which is deferred with the posts era and
+deserves its own design rather than an improvisation inside a bookkeeping change.
+
+## The nudge learns to say who (2026-08-04)
+
+Curtis, reading the frontier write-up: is there one sync loop for the whole node, and if so does
+a single person posting fire it for everyone? Yes, and yes - and the answer got worse the closer
+it was looked at.
+
+`eager_pass` walked every root with peers on every firing, running a `GROUP BY` over each
+persona's entries to discover whether it had moved. The in-memory debounce stopped the DIALING,
+never the SCANNING, so a node holding a thousand personas ran a thousand frontier scans every
+time anybody wrote, to learn that nine hundred and ninety-nine of them were exactly as before.
+The cost scales with personas on the node, not with entries in a chain.
+
+The frontier sweep, written an hour earlier in the same shape and without examining it, was
+worse twice over: its worklist included fetched foreign personas as well as hosted ones, and it
+had no equivalent of the debounce at all - it upserted every service row on every pass whether
+anything had moved or not. A thousand personas meant four thousand node.db writes every thirty
+seconds to record that nothing happened, and it made `held_at_ms` mean "when we last looked",
+which is a fact nobody wants. It now writes only what changed, so the column means "when this
+changed" - which is what fan-out will read.
+
+The shared fix is one word on the wire between a write and the loops that care: the nudge now
+NAMES the identity that wrote. It was a dataless ping, deliberately, and dataless means every
+consumer must re-examine everything to find the one thing. `imaol::append` knows the root at the
+moment it rings the bell. A named pass does one persona's work; `None` - a tick, or a lagged
+receiver that can no longer say what it missed - sweeps everyone. Getting that backwards, reading
+a lag as "nothing happened", would silently drop exactly the writes that arrived in a burst,
+which is why the lag case is spelled out where it is decided rather than left to the reader.
+
+The tick keeps its job, and it is a real one: entries arriving BY SYNC never ring the bell (the
+relay damping that keeps a peer triangle from ping-ponging), so a followed identity's movement is
+found by the sweep rather than announced by it.
+
+A third consumer fell out for free. The live-cache WebSocket woke every open stream on every
+write by anyone on the node; it now ignores nudges naming a different identity - and still wakes
+on a lagged one, because a receiver that missed pings cannot rule itself out.
+
+Pinned by planting both violations: removing the write-skip fails the "does not move when nothing
+public happened" test, which for that reason selects `held_at_ms` rather than just the
+fingerprint - a rewrite is invisible if you only compare the value that didn't change.

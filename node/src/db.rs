@@ -40,7 +40,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 2; // 2: foreign_fetches (2026-08-02)
+const NODE_SCHEMA_GENERATION: i64 = 3; // 3: persona_frontiers + peer frontier claims (2026-08-04)
 const USER_SCHEMA_GENERATION: i64 = 5; // 5: lane on doc_versions/doc_heads (2026-08-02)
 
 /// How long a write waits on a busy connection before failing.
@@ -170,19 +170,34 @@ pub struct Db {
 /// (`loops::periodic_nudged`, the live-cache stream) subscribe and re-check their own state on
 /// each ping. Capacity is tiny - a ping carries no data, and [`await_write_nudge`] folds a
 /// lagged receiver into a single "something changed, re-check", so overflow is harmless.
-pub type WriteNudge = tokio::sync::broadcast::Sender<()>;
+/// The nudge names WHO changed - the identity's root, hex.
+///
+/// It used to carry nothing, and a dataless ping means every consumer must re-examine every
+/// persona to find the one that moved: one person posting made a node with a thousand personas
+/// run a thousand frontier scans to discover that nine hundred and ninety-nine of them were
+/// exactly as before. The name is the whole fix; `imaol::append` knows it at the moment it
+/// rings the bell.
+pub type WriteNudge = tokio::sync::broadcast::Sender<String>;
 
-/// Await the next write nudge on a subscription, treating a lag (missed pings) as one wake and
-/// never busy-looping once the sender is gone (the receiver is disabled and the future parks).
-pub async fn await_write_nudge(rx: &mut Option<tokio::sync::broadcast::Receiver<()>>) {
+/// Await the next write nudge, answering WHICH identity wrote - or `None` for "something did,
+/// and I no longer know what".
+///
+/// `None` is the lag case, and it is not a failure: a consumer that missed pings cannot know
+/// what it missed, so the honest answer is to fall back to examining everything. Targeted when
+/// we know, complete when we don't. Never busy-loops once the sender is gone (the receiver is
+/// disabled and the future parks).
+pub async fn await_write_nudge(
+    rx: &mut Option<tokio::sync::broadcast::Receiver<String>>,
+) -> Option<String> {
     use tokio::sync::broadcast::error::RecvError;
     if let Some(r) = rx.as_mut() {
         match r.recv().await {
-            Ok(()) | Err(RecvError::Lagged(_)) => return,
+            Ok(root) => return Some(root),
+            Err(RecvError::Lagged(_)) => return None,
             Err(RecvError::Closed) => *rx = None,
         }
     }
-    std::future::pending::<()>().await
+    std::future::pending::<Option<String>>().await
 }
 
 impl Db {
@@ -295,8 +310,8 @@ impl Db {
     /// NEVER called from the sync-ingest path: entries arriving *by sync* relay onward on the
     /// lazy tick, the damping that keeps a peer triangle from ping-ponging (net::resync).
     pub fn nudge_sync(&self) {
-        if let Some(bus) = &self.write_nudge {
-            let _ = bus.send(());
+        if let (Some(bus), Some(root)) = (&self.write_nudge, self.root()) {
+            let _ = bus.send(root.to_string());
         }
     }
 
@@ -564,7 +579,7 @@ impl UserDbManager {
 
     /// Subscribe to the write-nudge bus - a ping on every locally-signed write. Each consumer
     /// (the eager loop, a live-cache stream) gets its own receiver.
-    pub fn subscribe_writes(&self) -> tokio::sync::broadcast::Receiver<()> {
+    pub fn subscribe_writes(&self) -> tokio::sync::broadcast::Receiver<String> {
         self.write_nudge.subscribe()
     }
 
