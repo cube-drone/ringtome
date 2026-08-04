@@ -69,10 +69,21 @@ struct ErrorBody {
     code: Option<&'static str>,
 }
 
+/// What a reader is told when this node breaks. Deliberately not the failure's own words: an
+/// `Internal` is by definition something no reader can act on, and its outermost anyhow context
+/// is a note the code left for the person debugging it. "storing entry" reached a user in the
+/// middle of posting (2026-08-04) and told them nothing except that something called an entry
+/// had failed to store. The full chain still goes to the log at error level, which is where the
+/// person who can act on it is looking.
+const INTERNAL_MESSAGE: &str = "something went wrong inside this node - it's been logged";
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status();
-        let message = self.to_string();
+        let message = match &self {
+            AppError::Internal(_) => INTERNAL_MESSAGE.to_string(),
+            _ => self.to_string(),
+        };
         let code = match self {
             AppError::RevokedSigner(_) => Some("revoked-signer"),
             _ => None,

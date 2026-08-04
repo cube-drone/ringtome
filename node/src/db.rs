@@ -143,6 +143,11 @@ pub struct Db {
     /// One sync-gate ingest at a time (see [`Db::lock_ingest`]). Distinct from `stmt_lock`,
     /// which serializes single statements: this serializes a whole validate-and-store batch.
     ingest_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    /// One locally-authored append at a time (see [`Db::lock_append`]). The third lock, and
+    /// the same shape as the second for the same reason on the other side of the membrane:
+    /// deriving a seq from the chain head and inserting under it is a read-then-write, and two
+    /// of them overlapping means one loses on the `(author, service, seq)` primary key.
+    append_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
     /// The identity's raw-entry journal, attached when this is a per-user database opened
     /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
     /// mechanism - sealed dumps) and for in-memory test databases.
@@ -250,6 +255,20 @@ impl Db {
     /// own chains, which no ingest batch contests.
     pub async fn lock_ingest(&self) -> tokio::sync::OwnedMutexGuard<()> {
         self.ingest_lock.clone().lock_owned().await
+    }
+
+    /// Hold this identity's append gate for one locally-authored write (`imaol::append`).
+    ///
+    /// `lock_ingest`'s note used to end "local authorship is unaffected - it writes only this
+    /// node's own chains, which no ingest batch contests", and that is still true of ingest.
+    /// It was never true of local writes contesting EACH OTHER: one request can legitimately
+    /// author two entries at once (Feed posts by publishing and minting the next draft in
+    /// parallel), and two appends racing between the head read and the insert leaves the loser
+    /// dead on the primary key - a 500 in the middle of an ordinary action, which the reader
+    /// then repeats. Serialize them and the key goes back to being the backstop it was meant
+    /// to be rather than the thing users meet.
+    pub async fn lock_append(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.append_lock.clone().lock_owned().await
     }
 
     /// Frame `envelope` into this database's raw-entry journal, fsynced - the write-ahead half
@@ -397,6 +416,7 @@ fn connect(database: turso::Database) -> Result<Db> {
         conn,
         stmt_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         ingest_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        append_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         journal: None,
         root: None,
         write_nudge: None,

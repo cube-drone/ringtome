@@ -921,13 +921,20 @@
     margin: 0.3rem 0 0;
 }
 
-.feed-item-title a {
-    color: var(--ink);
-    text-decoration: none;
+.feed-edit {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+    cursor: pointer;
 }
 
-.feed-item-title a:hover {
-    color: var(--teal);
+.feed-edit:hover {
+    border-color: var(--teal);
+    color: var(--sea);
 }
 
 .feed-item-body {

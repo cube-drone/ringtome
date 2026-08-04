@@ -56,6 +56,12 @@ pub async fn append(
     let author = key.verifying_key().to_bytes();
     let author_hex = hex::encode(author);
 
+    // Everything from here to the insert is one read-then-write: the seq comes from the chain
+    // head, and nobody else may take that seq in between. Held for the signing too, which is
+    // cheap next to the two statements it sits between and keeps the guard's scope equal to
+    // the invariant's (db.rs, `lock_append`).
+    let _appending = db.lock_append().await;
+
     // A revoked key may read its era; it may not speak. The check is the local tree's own
     // verdict about the SIGNER, at the one place every locally-authored entry passes -
     // without it, a revoked node keeps writing entries the network refuses and its own next

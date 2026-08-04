@@ -2155,3 +2155,64 @@ ids are 16. Every real cursor failed - and failed as `404 no such persona here`,
 error borrowed the not-found path, which sent me hunting the access gate instead of the four
 characters that were actually wrong. A malformed cursor is now a 400 that says "cursor", with a
 test that pins it. Cheap error-shape laziness bought an expensive detour.
+
+## Two writes at once (2026-08-04)
+
+Posting threw a 500 reading "storing entry", left the post sitting as a draft, and then stopped
+happening on its own - the signature of a race, and this one was bought three commits back, this
+morning, buying speed in this same app (*Posting stops queueing*, above). Making Post fast meant
+minting the next draft ALONGSIDE the publish, and both of those author entries on the same
+chain. Every entry derives its seq from the chain head, so two appends overlapping between that
+read and the insert leaves the loser dead on the
+`(author, service, seq)` primary key. It self-healed because it is a timing window, not a state.
+
+The key was doing its job: it exists so a lost race fails loudly instead of forking a chain. What
+was missing is that local writes were never serialized against EACH OTHER. `lock_ingest` had
+closed exactly this window on the sync side, and its own comment said "local authorship is
+unaffected - it writes only this node's own chains, which no ingest batch contests", which was
+true and not the whole truth. `lock_append` is the same lock on the other side of the membrane,
+held across the head read, the signing and the insert - so the primary key goes back to being a
+backstop rather than something users meet.
+
+Not a retry loop, deliberately: retrying re-signs under a new seq and leaves the dead frame in
+the journal, which is a mess to clean up in exchange for a window that a mutex simply closes.
+
+The test plants the violation and the violation shows: eight documents created at once fail
+without the lock and pass with it. Worth recording that the two-request version - publish and
+mint together, the exact shape the app performs - passed even WITHOUT the lock on that run,
+because the two requests do different amounts of work before reaching their appends. A test that
+reproduces the user's action was the less sensitive instrument; the one that reproduces the
+CONDITION found it every time.
+
+And what the reader was shown: "storing entry" is a note the code left for whoever debugs it,
+not a sentence anyone else can act on. Internal errors now say so plainly and keep the full
+anyhow chain in the log, where the person who can act on it is looking. Feed's error moved into
+the composer column too - it had been reporting a failed post from above the columns, a long way
+from the button that caused it.
+
+## The unlock had nothing behind it (2026-08-04)
+
+Fifteen seconds of ceremony, and then nothing. The unlock's only consequence was to turn the
+item's title into a link - so an UNTITLED post, which this app has deliberately made ordinary,
+had no consequence at all. Worse where there was a title: the link pointed at `/home/feed/<id>`,
+an address Feed doesn't answer, so it fell through to the documents-app rendering of a feed post
+- the "clicking on one carried me into essentially the notes app" from the day the app was built,
+still standing behind a door nobody had opened for fifteen seconds.
+
+Editing now happens where the words are. The unlock mounts the same interactive editor the
+composer runs, on the item itself, with the same save machinery and a "post the changes" button -
+which is what *edits are made using the interactive editor, in place* asked for in the first
+place, applied to the half of the app that hadn't got it yet. An item already unsealed offers a
+plain `edit` instead of the lock, and the editor mounts on demand rather than whenever an item is
+unlocked, so a stack of leftover drafts doesn't raise a live CodeMirror each on first paint. The
+title is no longer a link at all: there is nowhere else to go.
+
+Re-posting from the stack says the same document again and does NOT mint a next page - only the
+open draft moves the slot along. A blank composer as the reward for pressing a button on an old
+post is nonsense, and the code now says which case it is in rather than assuming.
+
+Probe note: jsdom runs no CSS animations, so the fifteen-second fill never ends there and the
+handler hangs off `animationend`. Firing that event by hand drives the real path - seal pref and
+all - rather than standing in for it. The first attempt DID stand in for it, by writing the seal
+pref through an HTTP endpoint that does not exist (prefs are local, never synced), and reported a
+failure that belonged entirely to the instrument.

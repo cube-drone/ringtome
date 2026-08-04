@@ -160,7 +160,18 @@ const PostBody = ({ root, docId }) => {
 };
 
 // One item in the stack below the composer: something posted, or an older draft.
-const StackItem = ({ root, row, seal, onSeal }) => {
+//
+// EDITING HAPPENS HERE, in place - the same interactive editor the composer runs, mounted
+// where the words already are. The first version made the title a link instead, which was
+// wrong twice over: an untitled post has no title to click, so the unlock ceremony completed
+// and nothing whatsoever happened; and the link led to `/home/feed/<id>`, an address this app
+// doesn't answer, so it fell through to the documents-app rendering of a feed post - the
+// "clicking one carried me into essentially the notes app" from the day this app was built.
+//
+// The editor mounts on demand rather than whenever an item is unlocked: a stack of leftover
+// drafts would otherwise raise a live CodeMirror each on first paint.
+const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
+    const [open, setOpen] = useState(false);
     const state = publishedState(row, seal);
     const when = new Date(claimedMs(row)).toLocaleString(undefined, {
         month: 'short',
@@ -172,21 +183,37 @@ const StackItem = ({ root, row, seal, onSeal }) => {
         <article class=${state.locked ? 'feed-item feed-item-posted' : 'feed-item'}>
             <header class="feed-item-head">
                 <span class="feed-item-when">${when}</span>
-                <span class="feed-item-state">${state.label}</span>
-                ${state.locked && html`<${LockButton} onUnlocked=${onSeal} />`}
+                <span class="feed-item-state">${open ? 'editing' : state.label}</span>
+                ${!open &&
+                (state.locked
+                    ? html`<${LockButton}
+                          onUnlocked=${() => {
+                              onSeal();
+                              setOpen(true);
+                          }}
+                      />`
+                    : html`<button
+                          class="feed-edit"
+                          title="open this for editing"
+                          onClick=${() => setOpen(true)}
+                      >edit</button>`)}
             </header>
-            ${/* A sealed post is not a link: the editor behind it would open without the
-                unlock, and a ceremony you can walk around isn't one. */ ''}
             ${/* No title, no heading. A post that was never given one is untitled in the
                 ordinary sense of the word - the app inventing the LABEL "untitled" and
                 setting it in heading type says the author called it that. */ ''}
-            ${!!row.title &&
-            html`<h2 class="feed-item-title">
-                ${state.locked
-                    ? html`<span>${row.title}</span>`
-                    : html`<a href=${`/home/feed/${row.doc_id}`}>${row.title}</a>`}
-            </h2>`}
-            <${PostBody} root=${root} docId=${row.doc_id} />
+            ${!open && !!row.title && html`<h2 class="feed-item-title">${row.title}</h2>`}
+            ${open
+                ? html`<${Composer}
+                      root=${root}
+                      docId=${row.doc_id}
+                      published=${state.published}
+                      onPost=${async () => {
+                          await onPost(row.doc_id);
+                          setOpen(false); // said again, and sealed again
+                      }}
+                      posting=${posting}
+                  />`
+                : html`<${PostBody} root=${root} docId=${row.doc_id} />`}
             ${state.published &&
             html`<p class="feed-item-link">
                 <a href=${`/id/${root}/docs/${state.postId}/body`}>the public copy</a>
@@ -265,13 +292,18 @@ export const FeedApp = ({ current }) => {
     // for all of them. Only the first two have to happen in that order. The next page is
     // minted ALONGSIDE the publish, and the composer hands over the moment that document
     // exists, so what you wrote joins the stream while the publish is still in flight.
-    const post = async () => {
-        if (!draftId) return;
-        const posted = draftId;
+    const post = async (docId) => {
+        const posted = docId || draftId;
+        if (!posted) return;
         setPosting(true);
         setError(null);
-        minting.current = false;
-        mintDraft(); // deliberately not awaited - it carries its own error path
+        // Only the open draft moves the slot along. Re-posting something already in the stack
+        // says the same document again - there is no next page to make, and minting one would
+        // hand you a blank composer for pressing a button on an old post.
+        if (posted === draftId) {
+            minting.current = false;
+            mintDraft(); // deliberately not awaited - it carries its own error path
+        }
         try {
             const made = await api(`/api/identity/${root}/docs/${posted}/publish`, {
                 method: 'POST',
@@ -292,7 +324,6 @@ export const FeedApp = ({ current }) => {
     const stack = mine.filter((d) => d.doc_id !== draftId);
     return html`
         <div class="feed-app">
-            ${error && html`<p class="form-error">${error}</p>`}
             <div class="feed-columns" style=${colStyle}>
                 ${tucked.has('compose')
                     ? html`<${Rail}
@@ -313,6 +344,10 @@ export const FeedApp = ({ current }) => {
                                         posting=${posting}
                                     />`
                                   : html`<p class="null-sub">opening a fresh page…</p>`}
+                              ${/* Beside the button that caused it. This used to sit above the
+                                  columns, where a failed post reported itself a long way from
+                                  the post. */ ''}
+                              ${error && html`<p class="form-error">${error}</p>`}
                           </aside>
                           ${resizer('compose')}`}
                 <main class="feed-stack">
@@ -327,6 +362,8 @@ export const FeedApp = ({ current }) => {
                             row=${overlayPosted(row, postedAs[row.doc_id])}
                             seal=${seals.get(sealKey(row.doc_id))}
                             onSeal=${() => setPref(root, sealKey(row.doc_id), 'open')}
+                            onPost=${post}
+                            posting=${posting}
                         />`
                     )}
                 </main>
