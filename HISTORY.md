@@ -2084,3 +2084,25 @@ answer it, and the control will look broken rather than absent - which is the sa
 
 Search over your own posts is a real feature and this doesn't rule it out; it removes a box that
 promised it early. Ledgered in NEXT_STEPS.
+
+## Posting stops queueing (2026-08-04)
+
+Three seconds between the click and the words joining the stream, and every one of them was a
+round trip we had put in a line: save the buffer, then publish it, then create the next page,
+then file that page in the bucket - four chain appends end to end, with the post sitting in the
+composer for the whole procession. Only the first two of those have any order between them.
+
+The next page is now minted ALONGSIDE the publish, and the composer hands over the moment that
+document exists rather than when the whole queue drains. The publication itself is stated
+locally the instant the server answers, instead of being waited for a second time through the
+stream (`overlayPosted`, pure and vectored - and it YIELDS to the mirror once the mirror carries
+the annotation, which is what makes it safe to leave in place rather than something to remember
+to clear; the vector for that is the one that fails when the yield is removed). Measured in the
+probe rather than asserted: 29ms from click to the post in the stream, reading "posted", against
+a stream that was empty when the click landed.
+
+What this trades: the handover no longer waits to hear that the publish succeeded, so a REFUSED
+publish (a diverged draft, the one case) leaves the words in the stream as what they still
+honestly are - a draft, unsealed, with the reason printed above them - rather than holding the
+composer hostage to the rare failure. Worth saying plainly because it is the third time in this
+app that the fix was the same shape: the wait was never the work, it was the queue.

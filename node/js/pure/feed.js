@@ -34,6 +34,20 @@ export function publishedState(row, seal) {
     };
 }
 
+/**
+ * A row wearing a publication we know about but the mirror hasn't carried home yet.
+ *
+ * Publishing is a chain append and the fact comes back through the stream, so between the
+ * click and the echo the app knows something true that its own view doesn't show. This states
+ * it locally - and yields the moment the mirror agrees, which is what makes the overlay safe
+ * to leave in place rather than something to remember to clear: once the row carries the
+ * annotation, this function is the identity.
+ */
+export function overlayPosted(row, postId) {
+    if (!postId || ((row && row.fields) || {})[PUBLISHED_AS]) return row;
+    return { ...row, fields: { ...((row && row.fields) || {}), [PUBLISHED_AS]: postId } };
+}
+
 /// THE open draft, out of this app's documents (newest claim first): the newest one that has
 /// not been posted. One at a time, deliberately - the composer is a place, not a list, and
 /// an app that can only ever have one open draft cannot be made to mint a pile of them.

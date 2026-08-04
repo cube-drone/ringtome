@@ -38,7 +38,7 @@ import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from '../mirror/prefs.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { claimedMs } from '../pure/docdate.js';
-import { FEED_STYLE, publishedState, openDraftOf } from '../pure/feed.js';
+import { FEED_STYLE, publishedState, openDraftOf, overlayPosted } from '../pure/feed.js';
 import { useDocSession } from '../doc/session.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
@@ -207,6 +207,10 @@ export const FeedApp = ({ current }) => {
     // mirror agrees (PROJECT_PLAN, The Browser Is a View - the view may run ahead of the
     // stream as long as it never disagrees with it).
     const [minted, setMinted] = useState(null);
+    // Publications this app performed, by doc id, ahead of the stream (pure/feed.js's
+    // `overlayPosted` yields once the mirror carries the annotation, so these go inert rather
+    // than needing to be cleared).
+    const [postedAs, setPostedAs] = useState({});
     const seals = usePrefMap(root, SEAL_PREFIX) || EMPTY;
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
@@ -256,21 +260,30 @@ export const FeedApp = ({ current }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, rows, draftId]);
 
+    // Posting used to be a queue of round trips: save, then publish, then create the next
+    // page, then file it - four chain appends end to end, and the words sat in the composer
+    // for all of them. Only the first two have to happen in that order. The next page is
+    // minted ALONGSIDE the publish, and the composer hands over the moment that document
+    // exists, so what you wrote joins the stream while the publish is still in flight.
     const post = async () => {
         if (!draftId) return;
+        const posted = draftId;
         setPosting(true);
         setError(null);
+        minting.current = false;
+        mintDraft(); // deliberately not awaited - it carries its own error path
         try {
-            await api(`/api/identity/${root}/docs/${draftId}/publish`, { method: 'POST' });
-            // The next page BEFORE the old one leaves the slot: mint first, seal second. The
-            // composer then hands over from one draft straight to the next, with no moment
-            // where there is no open draft - which would tear the live editor down and put a
-            // placeholder on screen mid-post. The overlay makes the handover immediate.
-            minting.current = false;
-            await mintDraft();
+            const made = await api(`/api/identity/${root}/docs/${posted}/publish`, {
+                method: 'POST',
+            });
+            // Say it here rather than waiting for the stream to say it back: the label and the
+            // public link are true the moment the server answers.
+            setPostedAs((p) => ({ ...p, [posted]: made.post_id }));
             // Said in public: seal it, so editing again costs the unlock.
-            setPref(root, sealKey(draftId), 'locked');
+            setPref(root, sealKey(posted), 'locked');
         } catch (e) {
+            // The handover already happened, so a refused publish leaves the words in the
+            // stream as what they still are - a draft - with the reason above them.
             setError(e.message);
         }
         setPosting(false);
@@ -311,7 +324,7 @@ export const FeedApp = ({ current }) => {
                         (row) => html`<${StackItem}
                             key=${row.doc_id}
                             root=${root}
-                            row=${row}
+                            row=${overlayPosted(row, postedAs[row.doc_id])}
                             seal=${seals.get(sealKey(row.doc_id))}
                             onSeal=${() => setPref(root, sealKey(row.doc_id), 'open')}
                         />`

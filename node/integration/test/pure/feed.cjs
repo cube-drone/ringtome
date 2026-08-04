@@ -1,9 +1,11 @@
 // Feed's publication state: a durable public fact, and a local editing gesture.
 const assert = require('node:assert');
 
-let FEED_STYLE, publishedState, openDraftOf;
+let FEED_STYLE, publishedState, openDraftOf, overlayPosted;
 before(async () => {
-    ({ FEED_STYLE, publishedState, openDraftOf } = await import('../../../js/pure/feed.js'));
+    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted } = await import(
+        '../../../js/pure/feed.js'
+    ));
 });
 
 const draft = { fields: {} };
@@ -61,5 +63,38 @@ describe('the one open draft', () => {
         assert.equal(openDraftOf([doc('a', 'p1')]), null);
         assert.equal(openDraftOf([]), null);
         assert.equal(openDraftOf(), null);
+    });
+});
+
+// The local overlay: what this app knows about a publication before the stream says it back.
+describe('overlayPosted', () => {
+    it('dresses a row in a publication the mirror has not carried yet', () => {
+        const row = overlayPosted({ doc_id: 'a', fields: {} }, 'post1');
+        assert.equal(publishedState(row).published, true);
+        assert.equal(publishedState(row).postId, 'post1');
+    });
+
+    it('keeps everything else about the row', () => {
+        const row = overlayPosted({ doc_id: 'a', title: 'On Boats', fields: { tag: 'x' } }, 'p');
+        assert.equal(row.title, 'On Boats');
+        assert.equal(row.fields.tag, 'x');
+    });
+
+    it('does not mutate the row it was handed - the mirror is not ours to edit', () => {
+        const original = { doc_id: 'a', fields: {} };
+        overlayPosted(original, 'p');
+        assert.deepEqual(original.fields, {});
+    });
+
+    it('YIELDS to the mirror once the mirror agrees - which is why it never needs clearing', () => {
+        const carried = { doc_id: 'a', fields: { published_as: 'real' } };
+        assert.equal(overlayPosted(carried, 'stale-guess'), carried, 'the row itself, untouched');
+        assert.equal(publishedState(overlayPosted(carried, 'stale-guess')).postId, 'real');
+    });
+
+    it('is the identity with nothing to say', () => {
+        const row = { doc_id: 'a', fields: {} };
+        assert.equal(overlayPosted(row, null), row);
+        assert.equal(overlayPosted(row, undefined), row);
     });
 });

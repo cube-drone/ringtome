@@ -60,7 +60,19 @@ const { window } = dom;
 const doc = window.document;
 for (let t = 0; t < 24 && !doc.querySelector('.feed-post'); t++) await sleep(500);
 console.log('RESULT composer holds the words:', doc.querySelector('.feed-title').value);
+console.log('RESULT stream before the click holds:',
+    doc.querySelectorAll('.feed-stack .feed-item').length, 'items');
+const clickAt = Date.now();
 doc.querySelector('.feed-post').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+// The wait Curtis timed: click to the words appearing in the stream. Read from the DOM, not
+// from the server - what matters is when it is on screen.
+let inStream = 0;
+for (let t = 0; t < 200 && !inStream; t++) {
+    if (doc.querySelector('.feed-stack .feed-item')) inStream = Date.now() - clickAt;
+    await sleep(5);
+}
+const state = (doc.querySelector('.feed-item-state') || {}).textContent;
+console.log(`RESULT click to the post joining the stream: ${inStream}ms, reading "${state}"`);
 let posted = null;
 for (let t = 0; t < 30 && !posted; t++) {
     await sleep(500);
