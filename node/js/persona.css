@@ -907,6 +907,13 @@
     color: var(--teal);
 }
 
+.feed-item-body {
+    margin-top: 0.4rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
 .feed-item-link {
     margin: 0.2rem 0 0;
     font-size: 0.75rem;

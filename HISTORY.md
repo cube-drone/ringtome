@@ -2026,3 +2026,27 @@ destroy in real app code. The actual cause was the probe closing its own jsdom w
 live queries kept running and then drew into a document that no longer existed. Harness
 doctrine, the hard way: an instrument's failure was one commit away from becoming a permanent
 apology in the app.
+
+## A post shows its words (2026-08-03)
+
+Two display faults, both of them the app talking about a document instead of showing one.
+
+"untitled" was the app's word, not the author's, set in heading type where a title goes - a
+post that was never given a name now simply has no heading, and the words start where the
+heading would have been. The stack rendered no body at all, only a link out; it now renders
+the document the way Journal renders a sealed entry (doc/detail.js, cache-first and patient
+about a body still in flight; the BARE fallback for an unparsable document rather than the
+apology, because a paragraph of explanation per card is noise in a stream). What it renders is
+YOUR copy, not the public artifact minted from it: they hold the same words until you edit
+again, and after that the honest thing to show in your own app is the draft you are working
+on. The link below it, relabelled "the public copy", says where the other one lives.
+
+Which leaves the question Curtis actually asked - why that link lands on raw marquee source -
+standing, and it is not a bug in the link. There is no public RENDERED page for a post
+anywhere: `/id/<root>/docs/<id>/body` serves the artifact's bytes under its format's mime
+type, and it is the only public way in, because the anonymous face is Rust-rendered HTML while
+the marquee renderer is JavaScript. The static face does not even list posts yet - they exist
+only in the JSON profile. So the world can currently fetch our posts but not read them as
+written. The cheapest fix is not the SPA and not a Rust renderer: a small public reader page
+that fetches `/body` and renders it with the marquee bundle, no session and no app. Ledgered,
+not built - the ask here was the feed's own display.

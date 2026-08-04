@@ -33,6 +33,8 @@ import { Icons } from '../icons.js';
 import { claimedMs } from '../pure/docdate.js';
 import { FEED_STYLE, publishedState, openDraftOf } from '../pure/feed.js';
 import { useDocSession } from '../doc/session.js';
+import { useDocDetail } from '../doc/detail.js';
+import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from '../doc/completions.js';
@@ -125,6 +127,31 @@ const Composer = ({ root, docId, published, onPost, posting }) => {
     `;
 };
 
+// A stack item's words, rendered. Journal's reader exactly (doc/detail.js, cache-first and
+// patient about a body still in flight), and the BARE fallback for an unparsable document
+// rather than the apology - a paragraph of explanation per card is noise in a stream.
+//
+// This renders YOUR copy of the document, not the public artifact it was minted into: they
+// hold the same words until you edit again, and after that the honest thing to show in your
+// own app is the draft you are actually working on. The link below says where the public one
+// lives.
+const PostBody = ({ root, docId }) => {
+    const { doc } = useDocDetail(root, docId);
+    const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
+    if (!doc) return html`<p class="null-sub">…</p>`;
+    if (doc.body == null) {
+        return html`<p class="null-sub">
+            <span class="waiting-dot"></span> still arriving from another computer.
+        </p>`;
+    }
+    if (!doc.body.trim()) return null;
+    return html`<div class="feed-item-body">
+        ${doc.format === 'marquee'
+            ? html`<${MarqueeBody} source=${doc.body} profile=${tlProfile} onUnparsable=${bareSource} />`
+            : html`<pre class="reader-plain">${doc.body}</pre>`}
+    </div>`;
+};
+
 // One item in the stack below the composer: something posted, or an older draft.
 const StackItem = ({ root, row, seal, onSeal }) => {
     const state = publishedState(row, seal);
@@ -143,14 +170,19 @@ const StackItem = ({ root, row, seal, onSeal }) => {
             </header>
             ${/* A sealed post is not a link: the editor behind it would open without the
                 unlock, and a ceremony you can walk around isn't one. */ ''}
-            <h2 class="feed-item-title">
+            ${/* No title, no heading. A post that was never given one is untitled in the
+                ordinary sense of the word - the app inventing the LABEL "untitled" and
+                setting it in heading type says the author called it that. */ ''}
+            ${!!row.title &&
+            html`<h2 class="feed-item-title">
                 ${state.locked
-                    ? html`<span>${row.title || 'untitled'}</span>`
-                    : html`<a href=${`/home/feed/${row.doc_id}`}>${row.title || 'untitled'}</a>`}
-            </h2>
+                    ? html`<span>${row.title}</span>`
+                    : html`<a href=${`/home/feed/${row.doc_id}`}>${row.title}</a>`}
+            </h2>`}
+            <${PostBody} root=${root} docId=${row.doc_id} />
             ${state.published &&
             html`<p class="feed-item-link">
-                <a href=${`/id/${root}/docs/${state.postId}/body`}>read it as the world does</a>
+                <a href=${`/id/${root}/docs/${state.postId}/body`}>the public copy</a>
             </p>`}
         </article>
     `;
