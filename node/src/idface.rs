@@ -296,6 +296,16 @@ async fn record_foreign_fetch(state: &AppState, root_hex: &str, via: &str) -> Re
     Ok(())
 }
 
+/// Drop a root's fetch memory - called when this node starts HOSTING it (identity.rs), the
+/// one transition that makes the record wrong rather than merely old.
+pub async fn forget_foreign_fetch(node_db: &crate::db::Db, root_hex: &str) -> Result<(), AppError> {
+    node_db
+        .execute("DELETE FROM foreign_fetches WHERE root_pubkey = ?1", (root_hex,))
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
 /// The fetch memory for a root: (fetched_at_ms, the endpoint key that last answered).
 async fn foreign_fetch_row(
     state: &AppState,

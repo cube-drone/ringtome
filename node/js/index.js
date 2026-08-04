@@ -31,7 +31,7 @@ import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
 import { PersonDemo } from './persondemo.js';
-import { PeopleApp } from './apps/people.js';
+import { PeopleApp, PeopleLookup } from './apps/people.js';
 import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
 import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
@@ -307,6 +307,7 @@ const Inside = ({ session }) => {
                     onSwitch=${switchBucket}
                 />`}
             </span>
+            ${appHere.lookup && html`<${PeopleLookup} />`}
             ${showSearch &&
             html`<span class="app-header-search-box">
                 <input

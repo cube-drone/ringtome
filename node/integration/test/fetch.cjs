@@ -40,8 +40,8 @@ function makeFetch(host = HOST) {
 
 // Convenience for the LOCAL_TEST-only raw SQL passthrough. Returns the parsed { rows, ... } body,
 // throwing on a non-200 so tests fail loudly if the node wasn't armed with RINGTOME_LOCAL_TEST.
-async function sql(query) {
-    const fetch = makeFetch();
+async function sql(query, host = HOST) {
+    const fetch = makeFetch(host);
     const resp = await fetch("test/sql", {
         method: "POST",
         body: JSON.stringify({ sql: query }),

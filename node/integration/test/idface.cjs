@@ -7,7 +7,7 @@
     The /api/id JSON face follows the same shelf rule, anonymously.
 */
 const assert = require("node:assert");
-const { makeFetch } = require("./fetch.cjs");
+const { makeFetch, sql } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
 // The anonymous fetch: no cookie jar entries, just a stranger with a URL.
@@ -194,6 +194,56 @@ const { HOST_B } = require("./fetch.cjs");
         assert.ok(
             !prof.via.includes(toBase58(bEndpoint)),
             "B must not advertise itself as a way to reach them"
+        );
+    });
+
+    it("adopting a fetched persona works, and clears its stranger record", async () => {
+        // A SECOND persona of A's, fetched by B and then brought over - its own subject, so
+        // adopting it can't rewrite the foreign world the tests above depend on. The
+        // existing public-only copy is a prefix, not an obstacle (content-addressed
+        // entries, duplicate-skip, incremental fold), so nothing is deleted and the private
+        // half folds on top. First run of this path, 2026-08-03.
+        const { inflateRawSync } = require("node:zlib");
+        const decode = (c) =>
+            JSON.parse(inflateRawSync(Buffer.from(c.trim().slice(4), "base64url")).toString("utf8"));
+        const { toBase58 } = await import("../../js/speakable.js");
+
+        const moved = await (await aOwner("api/identity", { method: "POST" })).json();
+        await aOwner(`api/identity/${moved.root_pubkey}/profile`, {
+            method: "POST",
+            body: JSON.stringify({ field: "name", value: "Moving Mo" }),
+        });
+        // B fetches them first - the public-only copy this test is about.
+        const before = await (
+            await bMember(`api/id/${moved.root_pubkey}/profile?via=${toBase58(aEndpoint)}`)
+        ).json();
+        assert.equal(before.foreign, true, "a stranger, held publicly");
+
+        const owner = await makeUserFetch({ prefix: "adopt_b", host: HOST_B });
+        const req = await (await owner("api/identity/adopt/begin", { method: "POST" })).json();
+        assert.ok(decode(req.code).leaf_pubkey, "the request code carries a leaf");
+        const grant = await (
+            await aOwner(`api/identity/${moved.root_pubkey}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: req.code }),
+            })
+        ).json();
+        const done = await owner("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+        assert.equal(done.status, 200, await done.text());
+
+        const mine = await (await owner("api/identity")).json();
+        assert.ok(mine.some((p) => p.root_pubkey === moved.root_pubkey), "B hosts them now");
+        const after = await (await owner(`api/id/${moved.root_pubkey}/profile`)).json();
+        assert.equal(after.hosted, true, "hosted, not foreign");
+        assert.equal(after.foreign, false);
+        // And B stops calling them a stranger it once fetched.
+        const rows = await sql("SELECT root_pubkey FROM foreign_fetches", HOST_B);
+        assert.ok(
+            !JSON.stringify(rows).includes(moved.root_pubkey),
+            "the fetch record is cleared when hosting begins"
         );
     });
 

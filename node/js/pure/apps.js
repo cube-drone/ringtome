@@ -30,6 +30,9 @@ export const APPS = [
         // at the list level, navigating OUT to /id/<root> pages. Not a documents app: no
         // style, no buckets, no tree - its rows are the mirror's `contacts` kind.
         itemNoun: 'person',
+        // People brings its own control to the header's search slot: a LOOKUP, not a filter
+        // (apps/people.js, PeopleLookup). The shell renders it in place of the search box.
+        lookup: true,
     },
     // The app's two nouns, both in the user's words rather than ours. `bucketNoun` is what ONE
     // bucket is called, Capitalised because it lands in titles and prompts ("New Recipe Book",

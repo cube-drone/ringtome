@@ -208,6 +208,12 @@ pub async fn record_identity(
         .await
         .context("recording identity")
         .map_err(AppError::Internal)?;
+    // Hosting supersedes having FETCHED them: a persona that lives here is no longer a
+    // stranger this node once reached across the network for, and leaving the row behind
+    // would tell the retention accounting a stranger's story about a tenant (found
+    // 2026-08-03, adopting onto a node that had already fetched the persona - which works,
+    // and this was its only untidy edge).
+    crate::idface::forget_foreign_fetch(node_db, root_pubkey).await?;
     Ok(())
 }
 

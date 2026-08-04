@@ -1825,3 +1825,34 @@ every size still sits side by side at /id/<persona>/ui-demo. Field-proven with t
 of person on one shelf: a photographed contact with three full pairs, a nicknamed one
 showing "Pammy (Plain Pam - pouch-staff)" over her identicon, and a blocked one dimmed to a
 lock and an identicon.
+
+## People's lookup moves into the band (2026-08-03)
+
+The lookup box left the page body for the app header's search slot, where every other app
+keeps its search - one place for "the thing you type into", whatever the app does with it.
+The registry says who brings their own: People carries `lookup: true` and the shell renders
+its component (apps/people.js exports PeopleLookup) in place of the search box, so the
+placement stays the shell's business and the grammar stays the app's. It keeps its BUTTON,
+and the comment says why: every other app's search filters what is already on screen, while
+this one navigates somewhere else - an act that completes elsewhere deserves a moment of
+commitment rather than firing per keystroke. The error line went with the move: a band has
+no room for a paragraph, so a bad paste outlines the input in coral and explains itself in
+the tooltip. The button borrows the shell's own --search-h token, so it stands exactly as
+tall as the search bar it sits beside - the same trick the search-options funnel uses.
+
+## Adopting over a fetched copy (2026-08-03)
+
+A question with a testable answer: if a node already holds a persona's PUBLIC-only copy
+(someone here follows them) and that persona later moves in, does anything need deleting?
+No - and the path had never been run, so it was run rather than reasoned about. Adoption
+onto an existing greg.db works whole: the public copy is a prefix, not an obstacle
+(content-addressed entries, duplicate-skip on ingest, an incremental fold with per-chain
+watermarks), the member proof starts flowing on the next exchange, and the private half
+folds on top - proven by a private note written on the home node arriving and DECRYPTING on
+the newly-adopted one. One untidy edge found and fixed: the `foreign_fetches` row survived,
+so the node's own records kept telling a stranger's story about a tenant. Hosting now
+supersedes fetching - record_identity forgets the fetch, covering adoption and creation
+alike, since that is the transition that makes the record wrong rather than merely old.
+Pinned by integration (with its own persona, after the first version of the test rewrote the
+world the foreign-state tests around it were asserting - test pollution caught by the suite
+itself); `sql()` learned to ask the second node, which two-node tests had never needed.

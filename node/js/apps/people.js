@@ -15,46 +15,57 @@ import { PEOPLE_SORTS, sortContacts } from '../pure/people.js';
 
 const html = htm.bind(h);
 
-export const PeopleApp = ({ current }) => {
+/// People's answer to the search bar, and it rides the same slot in the app header (the
+/// shell renders it for the app whose registry entry asks). Not a filter over what's on
+/// screen like every other app's search - a LOOKUP: paste an address in any dress (a shared
+/// URL, an /id/ path, a bare address) and go there. Hence the button: the act completes
+/// somewhere else, so it needs a moment of commitment rather than filtering as you type.
+export const PeopleLookup = () => {
     const loc = useLocation();
-    const root = current && current.root;
     const [lookup, setLookup] = useState('');
-    const [lookupErr, setLookupErr] = useState(false);
-    const [sortBy, setSortBy] = useState('trust');
-    const rows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
-    const sorted = sortContacts(rows || [], sortBy);
+    const [bad, setBad] = useState(false);
 
     const go = (e) => {
         e.preventDefault();
         const ref = parseIdReference(lookup);
         if (!ref) {
-            setLookupErr(true);
+            setBad(true); // the input says so itself; the header band has no room for a line
             return;
         }
-        setLookupErr(false);
+        setBad(false);
         loc.route(`/id/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`);
     };
 
     return html`
+        <form class="app-header-search-box" onSubmit=${go}>
+            <input
+                class=${bad ? 'app-header-search people-lookup-bad' : 'app-header-search'}
+                type="text"
+                placeholder="paste an address…"
+                title=${bad
+                    ? "that doesn't look like a persona's address - it should have two words and a key, like sway-broke-AwTy…"
+                    : 'find a persona by their address'}
+                value=${lookup}
+                onInput=${(e) => {
+                    setLookup(e.currentTarget.value);
+                    setBad(false);
+                }}
+            />
+            <button class="people-lookup-go" type="submit" title="go to this persona">
+                look up
+            </button>
+        </form>
+    `;
+};
+
+export const PeopleApp = ({ current }) => {
+    const root = current && current.root;
+    const [sortBy, setSortBy] = useState('trust');
+    const rows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
+    const sorted = sortContacts(rows || [], sortBy);
+
+    return html`
         <div class="people-inner">
-            <form class="people-lookup" onSubmit=${go}>
-                <input
-                    class="people-lookup-input"
-                    type="text"
-                    placeholder="find a persona - paste an address or a link"
-                    value=${lookup}
-                    onInput=${(e) => {
-                        setLookup(e.currentTarget.value);
-                        setLookupErr(false);
-                    }}
-                />
-                <button class="people-lookup-go" type="submit">look up</button>
-            </form>
-            ${lookupErr &&
-            html`<p class="people-err">
-                that doesn't look like a persona's address - it should have two words and a
-                key, like <code>sway-broke-AwTy…</code>
-            </p>`}
             <div class="people-shelf-head">
                 <span class="people-shelf-title">everyone you know</span>
                 <span class="people-sorts">
