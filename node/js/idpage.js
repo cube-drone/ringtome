@@ -15,6 +15,7 @@ import { openMirror, useLive } from './mirror.js';
 import { parseSpeakable, speakable } from './speakable.js';
 import { personaHue } from './pure/person.js';
 import { PersonCard } from './person.js';
+import { PublicPosts } from './posts.js';
 
 const html = htm.bind(h);
 
@@ -109,13 +110,14 @@ export const IdPage = ({ seg, current, onTitle }) => {
         <//>`;
     }
 
-    // The whole person, in the widget family's largest shape - this page's entire job once
-    // the address resolves. The profile rides down as a prop: this page had to fetch it to
-    // tell reachable from unreachable, and the card must not fetch it twice.
+    // The whole person, in the widget family's largest shape, and then what they have said in
+    // public. The profile rides down as a prop: this page had to fetch it to tell reachable
+    // from unreachable, and neither the card nor the posts must fetch it twice.
     return html`<${Card}>
         <${PersonCard} root=${root} current=${current} profile=${profile}>
             ${profile.foreign &&
             html`<p class="id-words">reached across the network - not carried on this node</p>`}
         <//>
+        <${PublicPosts} root=${root} posts=${profile.posts} />
     <//>`;
 };

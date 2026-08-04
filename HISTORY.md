@@ -2106,3 +2106,30 @@ publish (a diverged draft, the one case) leaves the words in the stream as what 
 honestly are - a draft, unsealed, with the reason printed above them - rather than holding the
 composer hostage to the rare failure. Worth saying plainly because it is the third time in this
 app that the fix was the same shape: the wait was never the work, it was the queue.
+
+## Reading someone else (2026-08-04)
+
+A persona's page now carries what they have said in public, newest first, rendered - the first
+surface in the console that shows another person's words rather than a name and a relationship.
+
+Nothing had to be added to the wire: `/api/id/<root>/profile` already answered with posts, and
+the page already fetched that profile to tell reachable from unreachable, so the posts ride the
+fetch that was happening anyway. Each body comes from the ANONYMOUS path, `/id/<root>/docs/
+<id>/body` - the same bytes by the same route a stranger would use, which is the property worth
+keeping: a member reading a foreign post and a stranger reading it differ only in the chrome
+around the words. It works for a persona this node has never carried, because the fetch-and-serve
+that named the posts brought their bodies with them.
+
+Deliberately no mirror table. Another person's public documents are not ours to keep in a local
+kind (*Other People Live in Their Own Database*), so this is one body fetch per post and a cap of
+twenty in pure/feed.js - a person's page is an introduction, not an archive.
+
+Order is established here rather than trusted: the server answers newest-first, but this list can
+arrive from a fetch across the network, and a page that leans on a remote node's ORDER is leaning
+on something it doesn't control. The vector that catches it is the undated post - a bare
+subtraction sorts NaN wherever the comparison happens to land, so it gets pinned last on purpose.
+
+`apiText` joined `api()` in net.js rather than a bare fetch appearing in a component: a public
+body is bytes under its own mime type, so the parse differs and nothing else does. Twelve private
+copies of the JSON client is how that module came to exist; a thirteenth for text would have been
+the same story with a different verb.

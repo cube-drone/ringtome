@@ -42,6 +42,23 @@ export async function api(path, options = {}) {
 }
 
 /**
+ * The same client, for a body that is not JSON: a public document's words, served as bytes
+ * under their own mime type (`/id/<root>/docs/<id>/body`). Same session, same thrown-Error
+ * contract with `err.status` - only the parse differs, which is exactly why this lives here
+ * beside `api()` rather than as a bare `fetch` in whichever module wanted text this week.
+ */
+export async function apiText(path, options = {}) {
+    const res = await fetch(path, { credentials: 'same-origin', ...options });
+    const text = await res.text().catch(() => '');
+    if (!res.ok) {
+        const err = new Error(`request failed (${res.status})`);
+        err.status = res.status;
+        throw err;
+    }
+    return text;
+}
+
+/**
  * The one job `fetch` cannot do: report upload progress. Same JSON-out, same thrown-Error contract
  * as `api()`, so a caller cannot tell which transport it got - only the progress callback differs.
  *

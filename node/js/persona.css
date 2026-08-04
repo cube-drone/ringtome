@@ -942,3 +942,58 @@
     font-size: 0.75rem;
     color: var(--muted);
 }
+
+/* Someone's public posts, on their page (js/posts.js) - the console's first surface for
+   another person's words. */
+.public-posts {
+    margin-top: 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.public-posts-head {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+}
+
+.public-post {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.7rem 1rem;
+}
+
+.public-post-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+}
+
+.public-post-when {
+    color: var(--faint);
+    font-size: 0.75rem;
+}
+
+.public-post-link {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.public-post-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0.3rem 0 0;
+}
+
+.public-post-body {
+    margin-top: 0.4rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}

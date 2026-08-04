@@ -56,3 +56,23 @@ export function overlayPosted(row, postId) {
 export function openDraftOf(docs) {
     return (docs || []).find((d) => !publishedState(d).published) || null;
 }
+
+/// How many of someone's posts a visit shows. A cap rather than the whole shelf because each
+/// one costs a body fetch, and a person's page is an introduction, not an archive.
+export const RECENT_POSTS = 20;
+
+/**
+ * Someone's public posts, newest first, capped.
+ *
+ * The server already answers in this order; sorting here anyway is the cheap kind of
+ * defensiveness - display order is a display concern, and a page that depends on a remote
+ * node's ORDER (this list can arrive from a fetch-and-serve across the network) is depending
+ * on something it doesn't control. Posts with no timestamp sort last rather than jumping to
+ * the top on a NaN comparison.
+ */
+export function recentPosts(posts, limit = RECENT_POSTS) {
+    return (posts || [])
+        .slice()
+        .sort((a, b) => (b.published_ms || 0) - (a.published_ms || 0))
+        .slice(0, limit);
+}

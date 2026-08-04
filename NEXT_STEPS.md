@@ -136,13 +136,15 @@ discipline on new surfaces rather than a pre-4S project; **localization** waits 
 Work that survived its milestone lives here until delivered (then it moves to HISTORY):
 
 - **A public reader page, and search over your own posts** (opened 2026-08-04, from Feed's
-  display pass): (1) the world can FETCH a post but not read it as written - `/id/<root>/docs/
-  <id>/body` serves the artifact's bytes, and the anonymous face is Rust-rendered HTML while the
-  marquee renderer is JavaScript, so the cheapest fix is a small public reader page that fetches
-  `/body` and renders it with the marquee bundle (no session, no SPA); the static face doesn't
-  list posts yet either. (2) Feed's header search box was removed rather than wired, because the
-  app receives no query; searching your own posts is worth having, and wants the search index the
-  documents apps already use. Trigger for (1): the first link to a post sent to someone outside.
+  display pass; half-delivered 2026-08-04): MEMBERS now read a persona's posts rendered, on
+  their `/id` page (js/posts.js) - so what remains is the ANONYMOUS half: a stranger handed a
+  link still gets `/id/<root>/docs/<id>/body`, the artifact's bytes, because the anonymous face
+  is Rust-rendered HTML while the marquee renderer is JavaScript. The cheapest fix is a small
+  public reader page that fetches `/body` and renders it with the marquee bundle (no session, no
+  SPA); the static face doesn't list posts yet either. Trigger: the first link to a post sent to
+  someone outside. Separately: Feed's header search box was removed rather than wired, because
+  the app receives no query; searching your own posts is worth having, and wants the search index
+  the documents apps already use.
 - **Delete's other half + a visible undo** (opened 2026-07-26, with the delete button): deletion
   ships as a reversible tombstone. Owed: (1) **dropping the content blobs** - a GC pass over
   blobs no live `doc_heads` row references, gated on the deleted set; lands well with

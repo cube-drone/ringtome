@@ -1,11 +1,10 @@
 // Feed's publication state: a durable public fact, and a local editing gesture.
 const assert = require('node:assert');
 
-let FEED_STYLE, publishedState, openDraftOf, overlayPosted;
+let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, RECENT_POSTS;
 before(async () => {
-    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted } = await import(
-        '../../../js/pure/feed.js'
-    ));
+    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, RECENT_POSTS } =
+        await import('../../../js/pure/feed.js'));
 });
 
 const draft = { fields: {} };
@@ -96,5 +95,39 @@ describe('overlayPosted', () => {
         const row = { doc_id: 'a', fields: {} };
         assert.equal(overlayPosted(row, null), row);
         assert.equal(overlayPosted(row, undefined), row);
+    });
+});
+
+// Someone else's posts, ordered for reading. The list can arrive from a fetch across the
+// network, so the order is established here rather than trusted.
+describe('recentPosts', () => {
+    const p = (id, ms) => ({ doc_id: id, published_ms: ms });
+
+    it('reads newest first, whatever order it arrived in', () => {
+        const got = recentPosts([p('old', 100), p('new', 300), p('mid', 200)]);
+        assert.deepEqual(got.map((x) => x.doc_id), ['new', 'mid', 'old']);
+    });
+
+    it('does not reorder the caller\'s array - the profile is not ours to shuffle', () => {
+        const given = [p('old', 100), p('new', 300)];
+        recentPosts(given);
+        assert.deepEqual(given.map((x) => x.doc_id), ['old', 'new']);
+    });
+
+    it('sorts a post with no timestamp LAST, not to the top', () => {
+        const got = recentPosts([p('nostamp'), p('real', 5)]);
+        assert.deepEqual(got.map((x) => x.doc_id), ['real', 'nostamp']);
+    });
+
+    it('caps at the visit limit, keeping the newest', () => {
+        const many = Array.from({ length: RECENT_POSTS + 5 }, (_, i) => p(`d${i}`, i));
+        const got = recentPosts(many);
+        assert.equal(got.length, RECENT_POSTS);
+        assert.equal(got[0].doc_id, `d${RECENT_POSTS + 4}`, 'the newest survives the cap');
+    });
+
+    it('is empty for a persona with nothing said in public', () => {
+        assert.deepEqual(recentPosts([]), []);
+        assert.deepEqual(recentPosts(), []);
     });
 });
