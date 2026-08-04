@@ -137,6 +137,12 @@ impl FileStore {
         Ok(tag.hash)
     }
 
+    /// What hash a public body WILL have, without storing it - the same content address
+    /// `put_public` produces, for asking "would this be a change?" before making one.
+    pub fn public_hash(bytes: &[u8]) -> Hash {
+        Hash::new(bytes)
+    }
+
     /// Read a PUBLIC body: the bytes as stored, no decryption. `Ok(None)` = not held locally
     /// (headers sync ahead of bodies, same as ever).
     pub async fn get_public(&self, hash: Hash) -> Result<Option<Vec<u8>>> {

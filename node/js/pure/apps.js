@@ -102,6 +102,20 @@ export const APPS = [
         features: { tagColumn: true, tree: true },
     },
     {
+        id: 'feed',
+        name: 'Feed',
+        icon: 'feed',
+        live: true,
+        // The app that writes in PUBLIC (apps/feed.js). Its drafts are ordinary private
+        // notes in one eponymous bucket; posting mints their public form. No bucket
+        // switcher: public posting has no notebooks yet, because a bucket is a private
+        // annotation and a public post has nowhere to keep one.
+        style: 'feed',
+        bucketNoun: 'Feed',
+        itemNoun: 'post',
+        features: { tree: false, tagColumn: false, pin: false, date: false },
+    },
+    {
         id: 'all',
         name: 'All',
         icon: 'all',

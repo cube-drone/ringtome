@@ -877,7 +877,9 @@ Mechanically, a follow has **three disclosure tiers**, chosen per-follow:
   - unfollow is silent and receipts go stale. That matches the social norm every network's users quietly rely
   on, and endpoints who have already disclosed to each other can re-ask cheaply for freshness. Because delivery is
   a *write to the recipient's private chain*, an inbound receipt from a stranger passes The Inbound Gate like any
-  other inbound act; without that it is an unbounded write anyone can mint identities to spam.
+  other inbound act; without that it is an unbounded write anyone can mint identities to spam. Mechanically the
+  receipt is a notice their node hands to one of yours, which transcribes it (Data Layer, Arrival and Attention) -
+  the sender never writes your chains, because nobody but you ever can.
 - **Help host** - the serving-follow: necessarily public (fronting appears in pkarr records regardless), per the
   Rehosting Policy above. The UI must keep this tier visibly distinct or users will leak interest they meant to
   keep private.
@@ -1094,6 +1096,10 @@ have not muted them.** Three surfaces consume it, and they are one gate rather t
 - **A follow receipt** - the "tell them" disclosure tier writes to your private chain, so an ungated one is an
   unbounded inbound write from an arbitrary stranger (see Edge-Endpoint Visibility).
 - **A group invite** - an admission entry offered to a root that never asked for one (see Groups).
+
+All three land the same way and through the same door: as notices transcribed onto the inbox chain (Data Layer,
+Arrival and Attention), which is where this predicate is actually enforced - at **transcription, never at
+delivery**, so a stranger's ability to spend your chain space is always mediated by a node of your own.
 
 Four properties, each a decision rather than an accident:
 
@@ -2707,6 +2713,130 @@ snapshot - the disposable-mirror answer, unchanged. And the **search index** (`d
 a token-bag view streamed as a new kind) became the first real customer for the promised
 Stage-2 row deltas: at whole-kind refresh it re-ships the token corpus per save, tolerable at
 cozy scale and the concrete pressure that will earn per-row deltas when a library grows.)*
+
+### Other People Live in Their Own Database (settled 2026-08-03)
+
+The partition rule (Why Per-User Databases?, above) answers a question it was never asked: when you follow Greg,
+where does Greg go? **Into Greg's database** - `data/users/<greg-root>.db`, on your node, shared by every account
+on it - not into yours, and not once per follower. Four reasons, all the same reason: a materialized view of
+Greg's chains is a property of *Greg* (it is his history, folded, validated against his root, self-certifying
+whoever handed it over); deduplication is what a node is *for* (three housemates following Greg store one Greg);
+the serving face reads it directly; and un-fronting him is a file delete rather than surgery on your data. Blobs
+go one step further still - the node keeps **one** content-addressed store for every identity, so a picture two
+people both hold is one picture.
+
+The line that keeps this coherent: **content is theirs; opinions are yours.** Greg's posts, profile and avatar
+live in Greg's database. Your nickname for him, your trust and interest dials, your block, what you have seen -
+all of it lives on *your* private chain (`contact:<greg-root>`). Which is why dropping Greg's database loses
+nothing you authored, and why your nickname reaches your phone without ever touching his data.
+
+**What lands there is exactly what you can prove entitlement to**, and for an ordinary person that is the public
+lane alone - enforced three times over, not by anyone's good behaviour: his node withholds private entries *and
+their frontiers* from a peer with no member proof; your node's ingest gate refuses private-service entries from an
+unproven peer, so nothing hostile can stuff his database with opaque ciphertext; and they would be unreadable
+anyway, sealed to his members' keys. The same rule generalizes without amendment: a **group's** database on your
+node holds its public lane *plus* its member lane, because there you can prove entitlement (Groups: The Member
+Lane). Same file, same rule, one more lane admitted.
+
+Two consequences worth stating plainly. **A foreign database is entirely disposable** - every byte is a replica of
+public facts, re-fetchable, and nothing you authored is inside - so eviction is safe by construction, which is what
+makes retention tractable here and fraught in your own database. And **store, serve, and advertise are three
+different acts**: holding Greg's chains is local; serving them to anonymous visitors is the gateway's shelf rule
+(Moderation); publishing a serving record for him is what makes fronting *public* (Rehosting Policy). Only the
+third is inherently visible to the world, and "does following Greg tell anyone I follow Greg?" has a different
+answer for each.
+
+**Your own nodes may relay foreign content to each other**, and should. Entries are self-validating - a post of
+Greg's is signed by Greg and chains to Greg's root - so your laptop can accept it from your desktop exactly as
+safely as from Greg, and Greg's node need not serve your fleet N times. This is the epidemic relay the sync layer
+already performs for your own identities, extended to the identities you carry, and it wants the rule `?via=`
+already follows: **a frontier another node reports is a hint, never a fact** - fetch and validate, never believe.
+
+The consolation for everything below: the per-identity partition that makes fan-in reads awkward is exactly what
+makes the storage sane. A hundred users following the same three hundred identities store three hundred
+databases, not thirty thousand.
+
+*(Owed, and named here because doctrine currently runs ahead of code: nothing records **who demanded** a foreign
+identity. The Three Funnels asserts that "every remote identity a node fronts exists because a specific local
+account demanded it... remediation is severing the demand edge and talking to the user who created it" - but the
+node's fetch bookkeeping is keyed by root alone, with no demander and no reference count. The subscription table
+below is where that debt gets paid.)*
+
+### Arrival and Attention: The Inbox and the Feed (settled 2026-08-03)
+
+Two things must be materialized *for a reader across many writers*, and they are the same problem wearing
+different clothes: what **arrived** (the inbox) and what is **worth attention** (the feed). Both are fan-in over
+hundreds of identities; neither may be computed at render time.
+
+**Ringtome already has two delivery models, and the distinction is the design.** You **pull** from people you
+have chosen - a DM is two chains interleaved at read time, a follow syncs their chains to you. Things **arrive**
+only from people whose chains you have no reason to be syncing. So:
+
+**The inbox is a doorbell, not a mailbox.** It holds follow receipts, group invites, first-contact requests, and
+your own nodes' system events - and the moment you accept someone, the relationship converts to pull and the
+inbox's job is over. That scoping does most of the anti-flood work before any policy is written, because a notice
+need carry no content: if you never answer the door, you never fetch a byte of theirs.
+
+- **Strangers cannot write your chains.** Single-writer is foundational, so the flow is: they *deliver* to one of
+  your nodes; that node applies **The Inbound Gate**; and if it passes, **your node transcribes** - appending a
+  notice to your inbox chain, encrypted under your epoch key, signed by its own leaf. Every node of yours can
+  both accept and transcribe. The gate therefore runs at **transcription, not delivery**: a non-member relay may
+  hold a sealed envelope while you are offline, but nothing enters your chain until a node of yours judges it.
+- **Transcribe the sender's signed envelope verbatim** (inside the encryption), so your *other* nodes verify the
+  sender themselves rather than trusting whichever node answered the door. The notice's id is that envelope's
+  hash, which makes transcription idempotent: a sender who delivers to all three of your nodes to amplify
+  produces one row.
+- **A notice is self-describing** - sender root, kind, time, and a hard-capped greeting (big enough for "it's
+  Dave from the conference", too small to be a payload channel). Rendering an inbox of a thousand notices
+  therefore touches nothing but your own chain. And the sender's *name and picture* are not fetched at all,
+  because an unadmitted stranger renders as **derived identity only** - identicon and speakable words, computed
+  from the root: the anti-harassment rule and the fan-out rule turn out to be the same rule. Claimed identity
+  costs a sync; you pay it only for people you have answered.
+- **Seen and deleted are LWW facts on the same chain**, so read-on-the-phone is read-on-the-laptop, with no
+  conflict possible.
+- **The inbox gets its own service chain**, not a collection on `general-private`: it is the one store you will
+  want to prune, and welding junk to the things you keep forever is how retention becomes impossible.
+- **Not being overrun, in four layers**: the Inbound Gate (floor plus not-muted); **collapse by (sender, kind)**,
+  so a follow notice from one root is one row however many times they flap; a **two-tier quota** where strangers
+  share a small pool with ring-buffer eviction while trusted senders have their own - so a flood can only evict
+  *other strangers*, never your friends; and **refuse before signing**, because a chain append is permanent and
+  garbage must die at the network edge.
+- **Honest costs**: every admitted notice is permanent chain growth and a tombstone is another entry (hence the
+  separate, prunable chain); transcription needs a node of yours reachable, or a relay holding a sealed envelope
+  until one is; and the gate is anti-spam, never anti-harassment - an admitted stranger's capped note can still
+  be cruel, and mute plus report remain the answer.
+
+**The feed is fanned out, not fetched.** The naive read is not "three hundred queries" but **three hundred
+files** - the per-user database manager caps open handles, so a fan-in read thrashes the cache opening and
+closing encrypted files to build one screen. The answer is this codebase's own idiom one level up (`doc_heads`,
+`doc_search`): the fold writes a memo, and reads never fold.
+
+- **A cross-identity index**, in its own file, disposable like every materialized view: one row per public item
+  across every identity the node holds, written incrementally as any identity's fold produces one. A feed read
+  becomes one query against one file. Its invariant is structural rather than policed: **public-lane items only**,
+  because a private item is epoch-encrypted and identity-scoped, and indexing it across identities would mean
+  decrypting into a shared space.
+- **The node routes; the user ranks.** The node keeps a **subscription table** - `(foreign_root, local_root,
+  eagerness)` - which is all routing needs and also the demand record owed above. It deliberately does *not*
+  aggregate trust weights, nicknames, blocks or the graph's shape: ranking needs those, ranking happens in the
+  reader's own database where those facts already are, and *already-possible* and *already-assembled* are
+  different security postures - the assembled version is what leaks in one hasty backup, answers one subpoena,
+  escapes through one bug.
+- **Journal, then index.** Arrival appends to a per-reader journal (fast, append-only, honest about what came);
+  a later pass builds the sorted index (the opinion). This is what makes policy changes free: unfollowing,
+  blocking, or turning an interest dial is a **re-index, never a retraction**, and the index is disposable like
+  everything else derived.
+- **Two cursors, not one.** *Delivered* - how far fan-out has processed into a view - is node-local pipeline
+  bookkeeping, disposable, rebuildable. *Seen* - what the human actually looked at - is a user fact that must sync
+  across their devices, and belongs on their private chain with the inbox's. Conflating them means either read
+  state does not travel, or rebuilding a view marks everything unread.
+- **The interest dial is a sync-cadence dial.** The knob that already reads "don't show / low / medium / high /
+  top priority" is just as naturally *how eagerly this identity syncs* - a rate limiter with a humane interface
+  already attached, turning three hundred follows into a dozen eager and the rest drowsy. **Backfill is the burst
+  to bound**: following someone with years of history must not replay all of it at once.
+- **Nodes share frontiers, never views.** A materialized feed or inbox never crosses a wire; the frontiers behind
+  it do, so a persona's nodes keep each other current without anyone shipping an opinion. Evidence crosses wires;
+  opinions stay home. It is "The Browser Is a View" promoted one level: the node is a view too.
 
 ---
 

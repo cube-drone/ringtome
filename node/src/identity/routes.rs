@@ -43,6 +43,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/entries", get(entries_handler))
         .route("/api/identity/{root}/keys", get(keys_handler))
         .route("/api/identity/{root}/peers", get(peers_handler))
+        .route("/api/identity/{root}/docs/{doc_id}/publish", post(publish_handler))
         .route(
             "/api/identity/{root}/avatar",
             post(set_avatar_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
@@ -592,6 +593,27 @@ struct CrownResponse {
 
 /// The identity's resolved key tree: every known key with its status and rank path, plus a fork
 /// count (any nonzero value is evidence of key duplication or compromise).
+#[derive(serde::Serialize)]
+struct PublishResponse {
+    /// The post's doc_id - a NEW artifact, not the note's id (copy, don't flip).
+    post_id: String,
+}
+
+/// Publish a note: mint (or extend) its public post. The deliberate act the whole membrane
+/// rests on - there is no flag to set, only this call to make.
+async fn publish_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<PublishResponse>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let post_id = data.documents().publish(&doc_id).await?;
+    Ok(Json(PublishResponse {
+        post_id: hex::encode(post_id),
+    }))
+}
+
 #[derive(serde::Serialize)]
 struct PeersResponse {
     /// Known peer endpoint ids for this identity, liveliest first (most recently synced,

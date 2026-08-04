@@ -201,8 +201,12 @@ shape:
 - **Editing history stays private, structurally.** Revisions, abandoned paragraphs, and the
   draft's age never cross; the post is born at publication with a public history of one. Not a
   policy — a consequence of copy-don't-flip.
-- **Independent lifecycles, privately linked.** The note's header records
-  `published_as: <post hash>`. Draft edits never auto-propagate (re-publish is another explicit
+- **Independent lifecycles, privately linked.** The note records `published_as: <post's
+  doc_id>` - in the **annotation layer**, not the header (amended 2026-08-03, when the act was
+  built; the annotation layer postdates this paragraph). A header field would mint a new
+  *version* of the note just to record bookkeeping: it would read as an edit in the history,
+  and two computers publishing at once would fork the note over it. An annotation is exactly
+  what this is - a private fact about a document, editable without minting a version. Draft edits never auto-propagate (re-publish is another explicit
   act; post-*edit* semantics are 4M's tombstone/replace problem, not this spec's). Deleting
   either side leaves the other standing. A note never published is just a note — the correct
   degenerate case.

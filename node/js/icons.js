@@ -64,6 +64,7 @@ import {
     CellTower,
     Globe,
     LockSimple,
+    Megaphone,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -132,6 +133,7 @@ export const Icons = {
     // the everything-view (All Documents): the app tile, and follow-me-home on each row
     all: Folders,
     people: UsersThree,
+    feed: Megaphone,
     // the People table's vocabulary: signal bars for the graded dials, and the rest
     signal0: CellSignalNone,
     signal1: CellSignalLow,

@@ -66,11 +66,18 @@ The rungs, each independently shippable:
    since private chains shipped. Follow UI rides the contact surfaces.
 3. **"Tell them" receipts**: the first real inter-identity delivery, passing the Inbound Gate.
    Friendship needs no new object - it composes at the second disclosed follow.
-4. **Public serving + the publication act** (the heart of 4S): the `/id/<root>` surface,
+4. **Arrival and attention** (designed 2026-08-03 - PROJECT_PLAN, Data Layer: "Other People Live in Their Own
+   Database" and "Arrival and Attention"): the inbox chain (a doorbell, not a mailbox - self-describing notices
+   transcribed by your own node behind the Inbound Gate, four anti-flood layers, its own prunable service), the
+   subscription table (which also pays the demand-record debt the Three Funnels has been asserting), the
+   cross-identity index, and fan-out on write with journal-then-index. This is the substrate posts and feeds sit
+   on, and the first thing that makes following someone *do* anything - note that nothing continuously syncs a
+   followed identity today (`add_peer` is called only from adoption).
+5. **Public serving + the publication act** (the heart of 4S): the `/id/<root>` surface,
    foreign-identity resolution, monotonic memory for remote identities, the default-on gateway
    rungs, and publication as copy-don't-flip (NOTES_APP, Publication - the notes editor is
    already the post composer).
-5. **Friends-gated serving**: the gated lane's first consumer - the predicate over receipts,
+6. **Friends-gated serving**: the gated lane's first consumer - the predicate over receipts,
    the per-service lane declaration, and the blob gate (all three promissory notes below).
    Groups trail into the same roster-check interface when they land.
 

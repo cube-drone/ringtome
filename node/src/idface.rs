@@ -517,6 +517,13 @@ pub async fn id_profile(
     }
 
     let fields = public_profile(&state, &root_hex).await.unwrap_or_default();
+    // What they have PUBLISHED - the public lane's documents, newest first. Keyless and
+    // lane-checked like everything on this surface; a private note cannot appear here
+    // because the query cannot name one.
+    let posts = match state.user_dbs.get(&root_hex).await {
+        Ok(db) => crate::record::documents::public_docs(&db).await.unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
     // How to REACH this persona, as this node honestly knows it - the `?via=` hints any
     // address minted here should carry (Addressing: hints are keys, never addresses).
     //
@@ -565,6 +572,13 @@ pub async fn id_profile(
         // whatever node the reader has.
         "hosted": hosted,
         "via": via,
+        "posts": posts.iter().map(|p| serde_json::json!({
+            "doc_id": hex::encode(p.doc_id),
+            "title": p.title,
+            "format": crate::record::documents::Format::from_wire(p.format).as_str(),
+            "published_ms": p.head_ms,
+            "thumb": p.thumb_hash.map(hex::encode),
+        })).collect::<Vec<_>>(),
         "fields": fields.iter().map(|f| serde_json::json!({
             "field": f.field, "value": f.value,
         })).collect::<Vec<_>>(),

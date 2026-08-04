@@ -32,6 +32,7 @@ import { Console } from './console.js';
 import { IdPage } from './idpage.js';
 import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
+import { FeedApp } from './apps/feed.js';
 import { liveApps, appById, appLabel, appTypeOf, appForStyle } from './pure/apps.js';
 import { nextSearchKind, SEARCH_KIND_LABELS } from './pure/doclist.js';
 import { BucketSwitcher, useBucketChoice } from './buckets.js';
@@ -386,6 +387,7 @@ const Inside = ({ session }) => {
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
             <${PeopleApp} path="/home/people" current=${persona.current} />
+            <${FeedApp} path="/home/feed" current=${persona.current} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg/*" current=${persona.current} onTitle=${setIdTitle} />

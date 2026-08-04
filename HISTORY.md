@@ -1856,3 +1856,144 @@ alike, since that is the transition that makes the record wrong rather than mere
 Pinned by integration (with its own persona, after the first version of the test rewrote the
 world the foreign-state tests around it were asserting - test pollution caught by the suite
 itself); `sql()` learned to ask the second node, which two-node tests had never needed.
+
+## Arrival and attention, written down (2026-08-03)
+
+Two design conversations - "every user needs an inbox" and "a feed over 300 identities is a
+fan-in problem" - settled into canon as two Data Layer sections, because they turned out to
+be one question wearing two hats: how a reader materializes many writers.
+
+**Other People Live in Their Own Database** records what the code already decided and never
+stated: Greg's chains land in Greg's database, node-shared and deduplicated, because a fold
+of his chains is a property of *him*; the line that keeps it coherent is **content is
+theirs, opinions are yours** (his posts in his file, your nickname and dials on your private
+chain); what lands there is exactly what you can prove entitlement to, enforced three times
+(his node won't send, yours won't accept, you couldn't read) and generalizing without
+amendment to a group's member lane; a foreign database is entirely disposable, which is what
+makes retention tractable; store, serve and advertise are three different acts with three
+different visibilities; your own nodes may RELAY foreign content to each other because
+entries are self-validating, under the `?via=` rule that a reported frontier is a hint, never
+a fact. Ledgered inside it: nothing records WHO demanded a foreign identity, though the Three
+Funnels asserts exactly that - doctrine ahead of code, and the subscription table is where
+the debt gets paid.
+
+**Arrival and Attention** settles the inbox as a DOORBELL, not a mailbox - it holds only what
+arrives from people whose chains you don't sync, and accepting someone converts the
+relationship to pull. Strangers cannot write your chains (single-writer is foundational), so
+your node transcribes behind the Inbound Gate, at transcription rather than delivery, keeping
+the sender's signed envelope verbatim so your other nodes verify it themselves; the envelope
+hash is the notice id, which makes multi-node delivery idempotent. Notices are
+SELF-DESCRIBING, which is what keeps a thousand-notice inbox from touching a thousand
+identities - and the sender's name and face are not fetched at all, because an unadmitted
+stranger renders as derived identity only. That last convergence is the nicest thing in the
+section: the anti-harassment rule and the fan-out rule are the same rule. Anti-flood in four
+layers (gate, collapse by sender+kind, a two-tier quota where a flood can only evict other
+strangers, and refuse-before-signing), with the honest costs named. The feed half: the naive
+read is not 300 queries but 300 FILES (the handle cache thrashes), so fan-out on write into a
+cross-identity index that is public-lane-only by construction; **the node routes, the user
+ranks** (a subscription table, deliberately not the aggregated social graph - already-possible
+and already-assembled are different security postures); journal then index, which makes
+unfollow/block/interest a re-index rather than a retraction; two cursors, since "delivered" is
+disposable bookkeeping and "seen" is a user fact that must sync; the interest dial doubling as
+a sync-cadence dial; and nodes sharing frontiers, never views - evidence crosses wires,
+opinions stay home. "The Browser Is a View", promoted one level.
+
+Cross-referenced from the Inbound Gate and Edge-Endpoint Visibility, and promoted in
+NEXT_STEPS to route step 4 - the substrate posts and feeds sit on, and the first thing that
+would make following someone actually *do* anything.
+
+## Publication: a note becomes a post (2026-08-03)
+
+The membrane crossing, built. `POST /docs/{id}/publish` reads a note's synthesized text and
+MINTS a new artifact on the public lane - copy-don't-flip in code, so the post has its own
+doc_id, the note keeps its private history, and there is no bit anywhere that could have been
+toggled instead. Re-publishing is another explicit act and lands as a further VERSION of the
+same post, because the note remembers its post through a `published_as` annotation. A
+DIVERGED note is refused rather than shipped: its synthesized text would carry conflict
+scaffolding, and nobody means to publish that.
+
+The scope turned out smaller than "expand documents, taxonomies and annotations to the public
+space" suggests. Documents had already crossed with the avatar (lane-parameterized fold,
+plaintext public blobs, serving routes) - only a TEXT path was missing (`save_public_text`).
+Annotations need nothing at all: they are keyed `annot:<root>/<doc_id>`, lane-blind, and the
+collection form already carries a root, so annotating your own post - or someone else's -
+was anticipated in the naming. Taxonomies wait for books and tag-pages, where published
+curation is the point. Labels stay deferred: the header's decoder already skips unknown keys,
+so adding them later is additive rather than a break.
+
+Canon amended where the code disagreed with it: NOTES_APP said the note's HEADER records
+`published_as`, which predates the annotation layer. A header field would mint a new version
+of the note to record bookkeeping - reading as an edit, and forking the note if two computers
+published at once. It is an annotation now, with the reasoning recorded.
+
+Six integration tests pin the shape (post is not note; listed publicly; body served to a
+stranger; the note stays behind the membrane; re-publish extends rather than mints; diverged
+refused). Two bugs found by them, one mine in the test and one real: the `published_as` reader
+folded GENERAL_PRIVATE while annotations live on DOC_META_PRIVATE - the watermark table is
+keyed by service, so the wrong view is simply empty, and the first version silently
+re-published every post as a stranger. Clippy's turn improved the API on the way past: an
+eight-argument function became a `PublicText` value, and a `head` field nobody read left the
+public listing.
+
+## Feed: the app that writes in public (2026-08-03)
+
+Publication got its home, and deliberately not inside the private notebooks - those were
+built private-first, and growing a "make this public" button on them is exactly the
+membrane-by-accident that copy-don't-flip exists to prevent. Feed is the other way round: a
+draft here exists to be posted, and posting is the app's one verb.
+
+Its shape is Journal's, because it is the same shape - a single stream, newest first, each
+item either open for writing or SEALED behind the deliberate fifteen-second unlock. Journal
+seals by the calendar (yesterday is done); Feed seals by publication (this has been said in
+public), and here the ceremony is load-bearing rather than decorative. A sealed item is also
+not a LINK: the editor behind it would open without the unlock, and a ceremony you can walk
+around isn't one. State is pure and vectored (pure/feed.js `publishedState`), split along the
+line that matters: whether a document HAS a public form is a durable synced fact (the
+`published_as` annotation), while whether it is open for editing is a local per-device
+gesture (Journal's seal pref, never synced) - so "I'm working on this again" stays personal.
+
+The behaviour Curtis asked for - stacking private edits and baking them down to a single
+public change - needed no code: `publish` reads the RESOLVED text and appends one public
+version, so the public history is a history of publications rather than keystrokes, which is
+canon's "born with a public history of one" holding at every re-post. Proven end to end: two
+private edits then one post, and the world sees the newest words with still one post
+standing. Added while building it: the no-op bounce (re-posting identical words writes
+nothing at all - the same guard `retitle` uses one lane over), pinned by a test that counts
+chain entries before and after.
+
+No buckets for public posting, as decided: the drafts live in one eponymous bucket, and the
+posts have none - a bucket is a private annotation and a public post has nowhere to keep one
+until public annotations exist. Which is the next bite, and the one that makes tags mean
+something.
+
+## One draft at a time (2026-08-03)
+
+Feed shipped with a "+ write something" button, and the first user through it found the
+oldest UI failure there is: the click was a round trip, nothing on screen moved for the
+second it took the stream to come back, so it got clicked again, and again - and then six or
+seven untitled drafts arrived at once. The button returned 200 every time. It was working
+perfectly and it looked broken, which is worse than broken.
+
+The fix wasn't feedback on the button; it was deleting the button. Feed now holds ONE open
+draft, Journal's shape rather than a list's: the app opens straight into the current draft,
+or - if there isn't one - mints exactly one, silently, and you are simply looking at a page.
+Editing happens in place with the real interactive editor (doc/session.js, the same autosave,
+blur flush, and other-computer lookout every editing surface uses), and Post moves the slot
+along: mint the next page BEFORE sealing the last, so the composer hands over draft to draft
+with no moment where there is no draft to show. Which draft is THE draft is pure and vectored
+(`openDraftOf`: the newest unposted one); older drafts aren't hidden by the rule, they fall
+into the stack below, visible and editable.
+
+The thing worth keeping: a pile of drafts is now unrepresentable rather than guarded against.
+A second visit finds the first visit's draft and mints nothing, so the failure mode has no
+shape to take - the guard against double-minting is one ref inside one window, and the
+correctness doesn't depend on it. Curtis also asked whether the public chain syncs
+differently, and it doesn't: posts are filtered out of the mirror's docs kind entirely
+(`list_heads` takes the private lane), so Feed was only ever watching drafts on the ordinary
+stream. The pile was a button, not a lane.
+
+Ledgered from the probe rather than fixed: jsdom windows that are closed keep their live
+queries running and then draw into a document that is gone. That throw belongs to the
+instrument - harness doctrine again - and the probe now leaves its windows open instead of
+being read as an app fault. It very nearly bought a defensive try/catch around the editor's
+teardown, in the real code, for a hazard the real code doesn't have.

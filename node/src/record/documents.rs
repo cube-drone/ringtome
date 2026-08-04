@@ -549,17 +549,125 @@ pub async fn save_public_media(
     Ok(doc_id)
 }
 
-/// A public document's display facts, for the anonymous serving routes: format and blob
-/// hashes, lane-checked - a private doc_id asked for through the public door is a 404, never
-/// a leak. Runs the fold first, keys only for the private half it may catch up alongside.
-/// What `public_head` answers with: the display head's format and blob hashes.
-pub struct PublicHead {
+/// Publish TEXT to the public lane: the body as a plaintext public blob, a header on POSTS.
+/// The publication act's second half (the first is deciding to - see `publish`), and the
+/// copy-don't-flip crossing itself: this MINTS a new artifact rather than moving one, so
+/// nothing about a private note can become public by a flag going wrong.
+///
+/// `doc_id` and `parents` are the re-publish path: absent, the post is born (public history
+/// of one); present, this is a further version of a post already published, parented on its
+/// current head exactly like an ordinary save.
+pub struct PublicText<'a> {
+    /// Absent mints a new post (a public history of one); present re-publishes onto an
+    /// existing one, parented on its head.
+    pub onto: Option<([u8; 16], Vec<[u8; 32]>)>,
+    pub title: &'a str,
+    pub body: &'a str,
+    pub format: Format,
+}
+
+pub async fn save_public_text(
+    db: &Db,
+    signer: &SigningKey,
+    files: &crate::files::FileStore,
+    text: PublicText<'_>,
+) -> Result<[u8; 16], AppError> {
+    let PublicText { onto, title, body, format } = text;
+    let (doc_id, parents) = match onto {
+        Some((id, parents)) => (id, parents),
+        None => (new_doc_id(), vec![]),
+    };
+    let file_hash = files
+        .put_public(body.as_bytes())
+        .await
+        .map_err(AppError::Internal)?;
+    let header = DocHeaderPlain {
+        doc_id,
+        parents,
+        file_hash: *file_hash.as_bytes(),
+        // Public bodies are plaintext and content-addressed: the file hash IS the body's
+        // honest fingerprint (the private lane's keyed member-secret hash has no public
+        // meaning to protect here).
+        body_hash: *file_hash.as_bytes(),
+        title: title.to_string(),
+        format: format.to_wire(),
+        width: None,
+        height: None,
+        duration_ms: None,
+        thumb_hash: None,
+        preview_hash: None,
+    };
+    let payload = header
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding public doc header: {e}")))?;
+    crate::record::imaol::append(
+        db,
+        signer,
+        service::POSTS,
+        entry_type::DOC_HEADER,
+        Payload::Inline(payload),
+    )
+    .await?;
+    Ok(doc_id)
+}
+
+/// One public document, as the serving surfaces list it. Public-lane facts only - there is
+/// no such thing as a private fact here, by construction.
+pub struct PublicDoc {
+    pub doc_id: [u8; 16],
+    pub title: String,
     pub format: Option<u64>,
-    pub file_hash: [u8; 32],
+    pub head_ms: i64,
     pub thumb_hash: Option<[u8; 32]>,
 }
 
-type PublicHeadRow = (Option<i64>, Vec<u8>, Option<Vec<u8>>);
+/// Everything this identity has published, newest first. Keyless: the anonymous face and the
+/// stranger's JSON both read it without an epoch key in sight.
+pub async fn public_docs(db: &Db) -> Result<Vec<PublicDoc>, AppError> {
+    catch_up_public_lane(db).await?;
+    type Row = (Vec<u8>, String, Option<i64>, i64, Option<Vec<u8>>);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT doc_id, title, format, head_ms, thumb_hash FROM doc_heads
+             WHERE lane = 'public' ORDER BY head_ms DESC, doc_id",
+            (),
+        )
+        .await
+        .context("listing public documents")
+        .map_err(AppError::Internal)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (doc_id, title, format, head_ms, thumb_hash) in rows {
+        out.push(PublicDoc {
+            doc_id: doc_id
+                .try_into()
+                .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?,
+            title,
+            format: format.map(|f| f as u64),
+            head_ms,
+            thumb_hash: match thumb_hash {
+                Some(t) => Some(hash32(&t)?),
+                None => None,
+            },
+        });
+    }
+    Ok(out)
+}
+
+/// A public document's display facts, for the anonymous serving routes: format and blob
+/// hashes, lane-checked - a private doc_id asked for through the public door is a 404, never
+/// a leak. Runs the fold first, keys only for the private half it may catch up alongside.
+/// What `public_head` answers with: the display head's identity, format and blob hashes -
+/// enough to serve its bytes, to parent a re-publication onto it, and to notice that a
+/// re-publication would say nothing new.
+pub struct PublicHead {
+    pub head: [u8; 32],
+    pub format: Option<u64>,
+    pub file_hash: [u8; 32],
+    pub thumb_hash: Option<[u8; 32]>,
+    pub title: String,
+}
+
+type PublicHeadRow = (Vec<u8>, Option<i64>, Vec<u8>, Option<Vec<u8>>, String);
 
 pub async fn public_head(
     db: &Db,
@@ -568,14 +676,14 @@ pub async fn public_head(
     catch_up_public_lane(db).await?;
     let row: Option<PublicHeadRow> = db
         .fetch_optional(
-            "SELECT format, file_hash, thumb_hash FROM doc_heads
+            "SELECT entry_hash, format, file_hash, thumb_hash, title FROM doc_heads
              WHERE doc_id = ?1 AND lane = 'public'",
             (doc_id.to_vec(),),
         )
         .await
         .context("reading public doc head")
         .map_err(AppError::Internal)?;
-    let Some((format, file_hash, thumb_hash)) = row else {
+    let Some((head, format, file_hash, thumb_hash, title)) = row else {
         return Ok(None);
     };
     let file = hash32(&file_hash)?;
@@ -584,9 +692,11 @@ pub async fn public_head(
         None => None,
     };
     Ok(Some(PublicHead {
+        head: hash32(&head)?,
         format: format.map(|f| f as u64),
         file_hash: file,
         thumb_hash: thumb,
+        title,
     }))
 }
 

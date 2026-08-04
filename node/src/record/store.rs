@@ -58,6 +58,10 @@ use crate::record::private::EpochKeys;
 use crate::record::{imaol, private};
 use crate::AppState;
 
+/// The annotation field naming a note's published form (its post's doc_id, hex). Private,
+/// like every annotation: the world sees the post, only you see which note it came from.
+pub const PUBLISHED_AS: &str = "published_as";
+
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
 pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar"];
 
@@ -679,6 +683,103 @@ impl Documents<'_> {
             .map_err(AppError::Internal)
     }
 
+    /// **Publish** a private note to the public lane - the membrane crossing itself
+    /// (NOTES_APP, Publication: the moment a note becomes a post).
+    ///
+    /// Copy, don't flip: this reads the note's synthesized text and MINTS a new artifact on
+    /// the public lane. There is no bit that could be toggled, so accidental publication by
+    /// misconfiguration stays unrepresentable, and the note's editing history - revisions,
+    /// abandoned paragraphs, its age - never crosses, as a consequence rather than a policy.
+    /// The post is born with a public history of one.
+    ///
+    /// A DIVERGED note is refused rather than published: its synthesized text would carry
+    /// conflict scaffolding, and shipping that to the world is nobody's intent. Settle it
+    /// first - which is an ordinary save.
+    ///
+    /// Re-publishing is another explicit act (canon), and lands as a further VERSION of the
+    /// same post: the private note remembers which post is its own through the `published_as`
+    /// annotation, so a second publish parents onto that post's head rather than minting a
+    /// stranger. That link lives in the annotation layer rather than the note's header
+    /// (amending canon's original sketch, 2026-08-03): recording a publication must not mint
+    /// a new VERSION of the note - it would read as an edit in the history, and two computers
+    /// publishing at once would fork the note over bookkeeping.
+    pub async fn publish(&self, doc_id: &[u8; 16]) -> Result<[u8; 16], AppError> {
+        let view = self.all().await?;
+        let doc = view
+            .docs
+            .get(doc_id)
+            .ok_or_else(|| AppError::NotFound("no such document".into()))?;
+        if doc.diverged() {
+            return Err(AppError::BadRequest(
+                "this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict"
+                    .into(),
+            ));
+        }
+        let resolved = self.resolved(doc).await?;
+        let body = resolved.body.ok_or_else(|| {
+            AppError::BadRequest("this note's words haven't arrived on this computer yet".into())
+        })?;
+        let format = doc
+            .display_head()
+            .map(|h| crate::record::documents::Format::from_wire(h.header.format))
+            .unwrap_or(crate::record::documents::Format::Plaintext);
+        if !matches!(
+            format,
+            crate::record::documents::Format::Plaintext | crate::record::documents::Format::Marquee
+        ) {
+            return Err(AppError::BadRequest(
+                "media publishes by its own door, not this one".into(),
+            ));
+        }
+
+        // Already published? Then this is a new version of that post, not a new post.
+        let existing = self
+            .store
+            .annotations()
+            .field(doc_id, PUBLISHED_AS)
+            .await?
+            .and_then(|v| hex::decode(v).ok())
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok());
+        // Re-publishing the same words says nothing new, so it writes nothing: the
+        // no-op bounce `retitle` already uses, one lane over. Without it, tapping Post
+        // twice grows the public chain with a version identical to the one before it.
+        let head = match existing {
+            Some(post) => crate::record::documents::public_head(&self.store.db, &post).await?,
+            None => None,
+        };
+        if let Some(head) = &head {
+            let same_words =
+                head.file_hash == *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes();
+            if same_words && head.title == resolved.title {
+                return Ok(existing.expect("a head implies a post"));
+            }
+        }
+        let onto = existing.map(|post| {
+            (
+                post,
+                head.as_ref().map(|h| vec![h.head]).unwrap_or_default(),
+            )
+        });
+
+        let post = crate::record::documents::save_public_text(
+            &self.store.db,
+            &self.store.authorship.signer,
+            &self.store.files,
+            crate::record::documents::PublicText {
+                onto,
+                title: &resolved.title,
+                body: &body,
+                format,
+            },
+        )
+        .await?;
+        self.store
+            .annotations()
+            .set_field(doc_id, PUBLISHED_AS, &hex::encode(post))
+            .await?;
+        Ok(post)
+    }
+
     /// The document's synthesized current text: one head's body verbatim, a clean three-way
     /// merge, or the conflict presented inline (NOTES_APP, The sync model) - with conflict
     /// sides labeled by DEVICE NAME ("from macbook-curtis, 2026-07-25 03:12"), the promise
@@ -759,6 +860,23 @@ impl Annotations<'_> {
     /// root - a caller-built collection, when a handle for it is earned.
     fn collection(&self, doc_id: &[u8; 16]) -> String {
         annot_collection(&self.store.root, doc_id)
+    }
+
+    /// Read one annotation field, or None. Reads the DOC-META view, not the general-private
+    /// one - annotations have their own chain, and the watermark table is keyed by service, so
+    /// the two folds never see each other (a reader pointed at the wrong one finds an empty
+    /// collection and says "no such field", which is how the first version of this silently
+    /// re-published a post as a stranger).
+    pub async fn field(&self, doc_id: &[u8; 16], field: &str) -> Result<Option<String>, AppError> {
+        Ok(self
+            .store
+            .doc_meta_view()
+            .await?
+            .registers_in(&self.collection(doc_id))
+            .into_iter()
+            .find(|r| r.key == field)
+            .map(|r| r.value)
+            .filter(|v| !v.is_empty()))
     }
 
     /// Set one field of a document's annotations (`description`, `artist`, ... - a conventional

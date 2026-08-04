@@ -1,0 +1,134 @@
+/*
+    Publication: the moment a note becomes a post (NOTES_APP, Publication).
+
+    Copy, don't flip - publishing MINTS a new artifact on the public lane, so the post has a
+    new doc_id, the note keeps its private history, and no bit anywhere could have been
+    toggled instead. Re-publishing is another explicit act and lands as a further version of
+    the same post. A diverged note is refused rather than shipped with its conflict.
+*/
+const assert = require("node:assert");
+const { makeFetch } = require("./fetch.cjs");
+const { makeUserFetch } = require("./helpers.cjs");
+
+const anon = makeFetch();
+
+let owner, root, noteId, postId;
+
+before(async () => {
+    owner = await makeUserFetch({ prefix: "publish" });
+    const made = await (await owner("api/identity", { method: "POST" })).json();
+    root = made.root_pubkey;
+    const note = await (
+        await owner(`api/identity/${root}/docs`, {
+            method: "POST",
+            body: JSON.stringify({
+                title: "On Boats",
+                body: "boats are good, actually",
+                format: "marquee",
+            }),
+        })
+    ).json();
+    noteId = note.doc_id;
+});
+
+describe("publication", () => {
+    it("mints a NEW artifact - the post is not the note", async () => {
+        const resp = await owner(`api/identity/${root}/docs/${noteId}/publish`, { method: "POST" });
+        const text = await resp.text();
+        assert.equal(resp.status, 200, text);
+        postId = JSON.parse(text).post_id;
+        assert.notEqual(postId, noteId, "copy, don't flip: a post is its own document");
+    });
+
+    it("puts the post on the public face, for anyone", async () => {
+        const prof = await (await anon(`api/id/${root}/profile`)).json();
+        const post = prof.posts.find((p) => p.doc_id === postId);
+        assert.ok(post, "the post is listed publicly");
+        assert.equal(post.title, "On Boats");
+        assert.equal(post.format, "marquee");
+    });
+
+    it("serves the post's words to a stranger, at the identity-rooted path", async () => {
+        const body = await anon(`id/${root}/docs/${postId}/body`);
+        assert.equal(body.status, 200);
+        assert.equal(await body.text(), "boats are good, actually");
+    });
+
+    it("leaves the NOTE private - the membrane held", async () => {
+        // The note keeps its own id, stays in the workspace, and its body is not public.
+        const list = await (await owner(`api/identity/${root}/docs`)).json();
+        const docs = Array.isArray(list) ? list : list.docs || [];
+        assert.ok(docs.some((d) => d.doc_id === noteId), "the note is still yours to edit");
+        assert.ok(!docs.some((d) => d.doc_id === postId), "the post is not in the workspace");
+        const leak = await anon(`id/${root}/docs/${noteId}/body`);
+        assert.equal(leak.status, 404, "the note's own body stays behind the membrane");
+    });
+
+    it("re-publishing extends the same post rather than minting a stranger", async () => {
+        const before = await (await owner(`api/identity/${root}/docs/${noteId}`)).json();
+        await owner(`api/identity/${root}/docs/${noteId}`, {
+            method: "PUT",
+            body: JSON.stringify({
+                title: "On Boats",
+                body: "boats are good, actually - and canoes",
+                format: "marquee",
+                parents: before.save_parents,
+            }),
+        });
+        const again = await owner(`api/identity/${root}/docs/${noteId}/publish`, { method: "POST" });
+        const againText = await again.text();
+        assert.equal(again.status, 200, againText);
+        assert.equal(JSON.parse(againText).post_id, postId, "the same post, a further version");
+
+        const prof = await (await anon(`api/id/${root}/profile`)).json();
+        assert.equal(
+            prof.posts.filter((p) => p.doc_id === postId).length,
+            1,
+            "one post, not two"
+        );
+        const body = await anon(`id/${root}/docs/${postId}/body`);
+        assert.match(await body.text(), /canoes/, "the world sees the newer words");
+    });
+
+    it("says nothing new when nothing changed - the chain does not grow", async () => {
+        const before = await (await owner(`api/identity/${root}/entries`)).json();
+        const count = (e) => (Array.isArray(e) ? e.length : (e.entries || []).length);
+        const resp = await owner(`api/identity/${root}/docs/${noteId}/publish`, { method: "POST" });
+        const text = await resp.text();
+        assert.equal(resp.status, 200, text);
+        assert.equal(JSON.parse(text).post_id, postId, "still the same post");
+        const after = await (await owner(`api/identity/${root}/entries`)).json();
+        assert.equal(count(after), count(before), "a re-post of identical words writes nothing");
+    });
+
+    it("refuses to publish a diverged note - the conflict is nobody's intent", async () => {
+        const forked = await (
+            await owner(`api/identity/${root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "Split", body: "one", format: "plaintext" }),
+            })
+        ).json();
+        const first = await (await owner(`api/identity/${root}/docs/${forked.doc_id}`)).json();
+        // Two saves claiming the SAME parent: a deliberate fork, the shape a second computer
+        // makes by accident.
+        for (const words of ["left words", "right words"]) {
+            const r = await owner(`api/identity/${root}/docs/${forked.doc_id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    title: "Split",
+                    body: words,
+                    format: "plaintext",
+                    parents: first.save_parents,
+                }),
+            });
+            assert.equal(r.status, 200, "the fork's saves must land, or nothing is diverged");
+        }
+        const split = await (await owner(`api/identity/${root}/docs/${forked.doc_id}`)).json();
+        assert.equal(split.diverged, true, "two heads, as arranged");
+        const resp = await owner(`api/identity/${root}/docs/${forked.doc_id}/publish`, {
+            method: "POST",
+        });
+        assert.equal(resp.status, 400);
+        assert.match(await resp.text(), /diverged/, "and it says why");
+    });
+});
