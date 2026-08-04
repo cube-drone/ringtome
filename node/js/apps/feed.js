@@ -161,6 +161,13 @@ export const FeedApp = ({ current }) => {
     const [posting, setPosting] = useState(false);
     const [error, setError] = useState(null);
     const minting = useRef(false);
+    // The draft we just made, held locally until the stream brings its row back. Minting is a
+    // round trip and the echo is another, so without this the app sits on a placeholder for
+    // seconds while a document that already exists makes its way home. Same overlay the
+    // contact ledger and the tags use: local hint over the mirror, cleared the moment the
+    // mirror agrees (PROJECT_PLAN, The Browser Is a View - the view may run ahead of the
+    // stream as long as it never disagrees with it).
+    const [minted, setMinted] = useState(null);
     const seals = usePrefMap(root, SEAL_PREFIX) || EMPTY;
 
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
@@ -168,6 +175,13 @@ export const FeedApp = ({ current }) => {
         .filter((d) => (d.buckets || []).includes(FEED_STYLE))
         .sort((a, b) => claimedMs(b) - claimedMs(a));
     const draft = openDraftOf(mine);
+    // The overlay leads: a just-minted draft is the open one even before its row lands.
+    const draftId = minted || (draft && draft.doc_id) || null;
+    const onDraft = draft && draft.doc_id === draftId ? draft : null;
+
+    useEffect(() => {
+        if (minted && draft && draft.doc_id === minted) setMinted(null); // the stream caught up
+    }, [minted, draft]);
 
     // Mint the one draft. The guard is a ref rather than state because the mirror takes a
     // moment to show the new row, and a second render must not mint a second draft in that
@@ -182,6 +196,7 @@ export const FeedApp = ({ current }) => {
                 method: 'POST',
                 body: JSON.stringify({ title: '', body: '', format: 'marquee' }),
             });
+            setMinted(made.doc_id); // on screen now, not when the stream says so
             await api(
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(FEED_STYLE)}`,
                 { method: 'PUT' }
@@ -193,40 +208,41 @@ export const FeedApp = ({ current }) => {
     };
 
     useEffect(() => {
-        if (!root || !rows || draft) return;
+        if (!root || !rows || draftId) return;
         mintDraft();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root, rows, draft]);
+    }, [root, rows, draftId]);
 
     const post = async () => {
-        if (!draft) return;
+        if (!draftId) return;
         setPosting(true);
         setError(null);
         try {
-            await api(`/api/identity/${root}/docs/${draft.doc_id}/publish`, { method: 'POST' });
+            await api(`/api/identity/${root}/docs/${draftId}/publish`, { method: 'POST' });
             // The next page BEFORE the old one leaves the slot: mint first, seal second. The
             // composer then hands over from one draft straight to the next, with no moment
             // where there is no open draft - which would tear the live editor down and put a
-            // placeholder on screen mid-post.
+            // placeholder on screen mid-post. The overlay makes the handover immediate.
             minting.current = false;
             await mintDraft();
             // Said in public: seal it, so editing again costs the unlock.
-            setPref(root, sealKey(draft.doc_id), 'locked');
+            setPref(root, sealKey(draftId), 'locked');
         } catch (e) {
             setError(e.message);
         }
         setPosting(false);
     };
 
-    const stack = mine.filter((d) => !draft || d.doc_id !== draft.doc_id);
+    const stack = mine.filter((d) => d.doc_id !== draftId);
     return html`
         <div class="feed-app">
             ${error && html`<p class="form-error">${error}</p>`}
-            ${draft
+            ${draftId
                 ? html`<${Composer}
                       root=${root}
-                      docId=${draft.doc_id}
-                      published=${publishedState(draft, seals.get(sealKey(draft.doc_id))).published}
+                      docId=${draftId}
+                      published=${!!onDraft &&
+                      publishedState(onDraft, seals.get(sealKey(draftId))).published}
                       onPost=${post}
                       posting=${posting}
                   />`

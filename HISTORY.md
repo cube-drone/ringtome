@@ -1997,3 +1997,32 @@ queries running and then draw into a document that is gone. That throw belongs t
 instrument - harness doctrine again - and the probe now leaves its windows open instead of
 being read as an app fault. It very nearly bought a defensive try/catch around the editor's
 teardown, in the real code, for a hazard the real code doesn't have.
+
+## The composer opens before the stream agrees (2026-08-03)
+
+Curtis, on the reshaped Feed: "opening a fresh page…" sat there for a handful of seconds. The
+one-draft rule made the button's damage unrepresentable but left its LATENCY exactly where it
+was - the app still couldn't show a composer until the mirror handed back a row with the feed
+bucket on it, which is two chain appends (the document, then the annotation that files it)
+plus the stream echo plus a whole-kind refresh. Deleting the button moved the waiting from
+before the click to after it.
+
+So the draft goes on screen the moment the server names it: a local overlay holds the minted
+doc_id and leads the mirror, cleared the instant the mirror agrees. This is the overlay the
+contact ledger and the tags already use, and it is *The Browser Is a View* holding rather than
+bending - the view may run ahead of the stream so long as it never disagrees with it, which is
+guaranteed here because the thing it is ahead about is a document the server has already
+acknowledged. The editing session never needed the row anyway; it fetches by id.
+
+Honest about the measurement: the probe could NOT reproduce the multi-second wait - 216ms cold,
+231ms against a persona with 150 notes already mirrored - so what the overlay removes is stated
+as mechanism, not as a demonstrated number. The local node is empty, its chain is short, and
+its debounce is hand-tuned; a real one carries all three costs. Timing is now recorded on every
+visit in the probe, so a regression here reads as a number rather than a feeling.
+
+Nearly-shipped mistake worth keeping: the earlier commit's harness failure looked like the
+editor's teardown throwing, and very nearly bought a defensive try/catch around CodeMirror's
+destroy in real app code. The actual cause was the probe closing its own jsdom windows, whose
+live queries kept running and then drew into a document that no longer existed. Harness
+doctrine, the hard way: an instrument's failure was one commit away from becoming a permanent
+apology in the app.

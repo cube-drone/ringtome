@@ -18,9 +18,12 @@ const feedDocs = async () => {
 for (let visit = 1; visit <= 3; visit++) {
     const dom = await s.boot('/home/feed');
     const doc = dom.window.document;
-    for (let t = 0; t < 24 && !doc.querySelector('.feed-composer'); t++) await sleep(500);
+    // Time it: the first visit has no draft to find and must make one, and how long the
+    // placeholder sits there IS the complaint this shape was reworked to answer.
+    const t0 = Date.now();
+    for (let t = 0; t < 240 && !doc.querySelector('.feed-composer'); t++) await sleep(50);
     console.log(`RESULT visit ${visit}: composer=${!!doc.querySelector('.feed-composer')}`,
-        `| drafts on the node: ${(await feedDocs()).length}`);
+        `after ${Date.now() - t0}ms | drafts on the node: ${(await feedDocs()).length}`);
     // Deliberately NOT closed: a closed jsdom window keeps its live-query subscriptions, and
     // the next render draws into a document that is gone. That throw is the instrument's, not
     // the app's - leave the windows open and let the process exit take them.
