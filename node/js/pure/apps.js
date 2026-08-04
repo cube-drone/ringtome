@@ -107,10 +107,14 @@ export const APPS = [
         icon: 'feed',
         live: true,
         // The app that writes in PUBLIC (apps/feed.js). Its drafts are ordinary private
-        // notes in one eponymous bucket; posting mints their public form. No bucket
-        // switcher: public posting has no notebooks yet, because a bucket is a private
-        // annotation and a public post has nowhere to keep one.
+        // notes in one eponymous bucket; posting mints their public form.
         style: 'feed',
+        // Feed has a style so its drafts have somewhere to live, but it is not a notebook
+        // app, and the shell used to read `style` as "wears the documents chrome" - which
+        // put a bucket switcher over a single eponymous bucket and a search box over a
+        // component that never receives the query. Both are said outright now.
+        soleBucket: true,
+        searchable: false,
         bucketNoun: 'Feed',
         itemNoun: 'post',
         features: { tree: false, tagColumn: false, pin: false, date: false },

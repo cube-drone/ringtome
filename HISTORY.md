@@ -2067,3 +2067,20 @@ panes.js having been pulled out of two drifting copies rather than left in Notes
 key is the app's own (`feed`), so its width and its tuck are its own business. Checked in the
 probe rather than assumed: the resizer exists, the live editor really is inside the pane, and
 the composer tucks to a rail and comes back.
+
+## Chrome an app didn't ask for (2026-08-04)
+
+Feed wore a bucket switcher over its single eponymous notebook - a choice that isn't one - and
+the registry had said "No bucket switcher" in a comment since the day it was written. The shell
+never asked; it inferred the documents chrome from `style`, which Feed declares only so its
+drafts have somewhere to live. Looking for the switcher turned up its twin: a search box in the
+header of an app whose component is handed no query at all, so typing in it did nothing.
+
+Both are now said outright in the registry (`soleBucket`, `searchable: false`) rather than
+inferred from a field that means something else. The general shape worth remembering: a
+capability flag reused as a chrome flag will eventually hang a control off something that can't
+answer it, and the control will look broken rather than absent - which is the same failure the
+"+ write something" button made, one layer up.
+
+Search over your own posts is a real feature and this doesn't rule it out; it removes a box that
+promised it early. Ledgered in NEXT_STEPS.

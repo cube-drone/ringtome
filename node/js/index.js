@@ -217,8 +217,9 @@ const Inside = ({ session }) => {
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
     // column), the same place across every app that offers it. The query is lifted here so the
     // header owns the input and the app reads it; it clears when you switch apps. Only document
-    // apps (those with a `style`) offer search.
-    const showSearch = !!(appHere && (appHere.style || appHere.everything));
+    // apps (those with a `style`) offer search - and one of those opts out, because a box that
+    // reaches a component which never reads the query is a control that lies.
+    const showSearch = !!(appHere && (appHere.style || appHere.everything) && appHere.searchable !== false);
     const [query, setQuery] = useState('');
     // The kind dial rides the search state's lifecycle: chosen beside the box, cleared with
     // it on app switch - a filter you set in Recipes shouldn't silently empty TurboNotes.
@@ -299,7 +300,9 @@ const Inside = ({ session }) => {
         html`<header class="app-header">
             <span class="app-header-lead">
                 <span class="app-header-title">${appLabel(appHere, personaName)}</span>
+                ${/* A switcher over one notebook offers a choice that isn't one. */ ''}
                 ${!!appHere.style &&
+                !appHere.soleBucket &&
                 html`<${BucketSwitcher}
                     root=${root}
                     app=${appHere}
