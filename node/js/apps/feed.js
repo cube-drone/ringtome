@@ -13,9 +13,15 @@
 // construction - a second visit finds the first visit's draft and makes nothing - so the
 // failure mode isn't fixed, it's unrepresentable.
 //
-// Below the composer, the stack: what you have posted (sealed behind the deliberate unlock,
-// Journal's gesture, because editing something already said should take a breath) and any
-// older drafts, which stay visible rather than being hidden by the one-draft rule.
+// TWO COLUMNS, the documents apps' layout (panes.js): the composer is a column on the left,
+// draggable and tuckable like Notes' list or the wiki's tree, and the stream fills the main
+// area. Writing and reading are then both always on screen - which is the arrangement the
+// app's own name implies, and what the one-column version couldn't do once posts rendered
+// their words rather than a link.
+//
+// The stack: what you have posted (sealed behind the deliberate unlock, Journal's gesture,
+// because editing something already said should take a breath) and any older drafts, which
+// stay visible rather than being hidden by the one-draft rule.
 //
 // What posting does (server side, NOTES_APP: Publication): the draft is a private note like
 // any other, and Post MINTS a separate public artifact from its current text. Editing
@@ -30,6 +36,7 @@ import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from '../mirror/prefs.js';
 import { Icons } from '../icons.js';
+import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { claimedMs } from '../pure/docdate.js';
 import { FEED_STYLE, publishedState, openDraftOf } from '../pure/feed.js';
 import { useDocSession } from '../doc/session.js';
@@ -201,6 +208,10 @@ export const FeedApp = ({ current }) => {
     // stream as long as it never disagrees with it).
     const [minted, setMinted] = useState(null);
     const seals = usePrefMap(root, SEAL_PREFIX) || EMPTY;
+    // Column chrome, shared with the documents apps (panes.js): the composer is a column you
+    // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
+    const { tucked, toggleTuck } = useColTucks(root, 'feed');
+    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose']);
 
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     const mine = (rows || [])
@@ -269,26 +280,43 @@ export const FeedApp = ({ current }) => {
     return html`
         <div class="feed-app">
             ${error && html`<p class="form-error">${error}</p>`}
-            ${draftId
-                ? html`<${Composer}
-                      root=${root}
-                      docId=${draftId}
-                      published=${!!onDraft &&
-                      publishedState(onDraft, seals.get(sealKey(draftId))).published}
-                      onPost=${post}
-                      posting=${posting}
-                  />`
-                : html`<p class="null-sub">opening a fresh page…</p>`}
-            <div class="feed-stack">
-                ${stack.map(
-                    (row) => html`<${StackItem}
-                        key=${row.doc_id}
-                        root=${root}
-                        row=${row}
-                        seal=${seals.get(sealKey(row.doc_id))}
-                        onSeal=${() => setPref(root, sealKey(row.doc_id), 'open')}
-                    />`
-                )}
+            <div class="feed-columns" style=${colStyle}>
+                ${tucked.has('compose')
+                    ? html`<${Rail}
+                          icon=${Icons.notes}
+                          label="write"
+                          onClick=${() => toggleTuck('compose')}
+                      />`
+                    : html`<aside class="feed-compose">
+                              <${PaneHead} label="write" onTuck=${() => toggleTuck('compose')} />
+                              ${draftId
+                                  ? html`<${Composer}
+                                        root=${root}
+                                        docId=${draftId}
+                                        published=${!!onDraft &&
+                                        publishedState(onDraft, seals.get(sealKey(draftId)))
+                                            .published}
+                                        onPost=${post}
+                                        posting=${posting}
+                                    />`
+                                  : html`<p class="null-sub">opening a fresh page…</p>`}
+                          </aside>
+                          ${resizer('compose')}`}
+                <main class="feed-stack">
+                    ${stack.length === 0 &&
+                    html`<p class="null-sub">
+                        nothing posted yet - what you write on the left lands here.
+                    </p>`}
+                    ${stack.map(
+                        (row) => html`<${StackItem}
+                            key=${row.doc_id}
+                            root=${root}
+                            row=${row}
+                            seal=${seals.get(sealKey(row.doc_id))}
+                            onSeal=${() => setPref(root, sealKey(row.doc_id), 'open')}
+                        />`
+                    )}
+                </main>
             </div>
         </div>
     `;

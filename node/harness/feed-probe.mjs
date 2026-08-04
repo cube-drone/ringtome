@@ -24,6 +24,19 @@ for (let visit = 1; visit <= 3; visit++) {
     for (let t = 0; t < 240 && !doc.querySelector('.feed-composer'); t++) await sleep(50);
     console.log(`RESULT visit ${visit}: composer=${!!doc.querySelector('.feed-composer')}`,
         `after ${Date.now() - t0}ms | drafts on the node: ${(await feedDocs()).length}`);
+    if (visit === 1) {
+        // The columns are the documents apps' chrome, so check it is really THAT chrome:
+        // a resizable, tuckable pane with the live editor inside it.
+        const has = (sel) => !!doc.querySelector(sel);
+        console.log('RESULT columns:', has('.feed-columns'), '| resizer:', has('.col-resizer'),
+            '| editor in the column:', has('.feed-compose .cm-editor'), '| stream:', has('.feed-stack'));
+        doc.querySelector('.pane-min').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        for (let t = 0; t < 60 && !doc.querySelector('.pane-rail'); t++) await sleep(50);
+        const tucked = has('.pane-rail') && !has('.feed-composer');
+        doc.querySelector('.pane-rail').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        for (let t = 0; t < 60 && !doc.querySelector('.feed-composer'); t++) await sleep(50);
+        console.log('RESULT tucks to a rail:', tucked, '| and comes back:', has('.feed-composer'));
+    }
     // Deliberately NOT closed: a closed jsdom window keeps its live-query subscriptions, and
     // the next render draws into a document that is gone. That throw is the instrument's, not
     // the app's - leave the windows open and let the process exit take them.

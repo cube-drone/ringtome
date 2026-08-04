@@ -2050,3 +2050,20 @@ only in the JSON profile. So the world can currently fetch our posts but not rea
 written. The cheapest fix is not the SPA and not a Rust renderer: a small public reader page
 that fetches `/body` and renders it with the marquee bundle, no session and no app. Ledgered,
 not built - the ask here was the feed's own display.
+
+## Feed gets columns (2026-08-04)
+
+The composer moved into a column of its own - the documents apps' layout, unchanged: panes.js
+draws the head and the rail, drags the width at a resizer strip, and settles both into this
+browser's prefs, so Feed inherits every gesture Notes and the wiki already taught. Writing sits
+on the left, the stream fills the main area, and both are on screen at once.
+
+The one-column stack was fine while a post was a title and a link; it stopped being fine the
+moment posts rendered their words, because then the composer scrolled away exactly when you had
+something to react to. The name of the app had implied this arrangement all along.
+
+Nothing new was written to get it - the whole change is composition, which is the payoff for
+panes.js having been pulled out of two drifting copies rather than left in Notes. The column
+key is the app's own (`feed`), so its width and its tuck are its own business. Checked in the
+probe rather than assumed: the resizer exists, the live editor really is inside the pane, and
+the composer tucks to a rail and comes back.
