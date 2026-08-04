@@ -623,18 +623,41 @@ pub struct PublicDoc {
 
 /// Everything this identity has published, newest first. Keyless: the anonymous face and the
 /// stranger's JSON both read it without an epoch key in sight.
-pub async fn public_docs(db: &Db) -> Result<Vec<PublicDoc>, AppError> {
+/// One page of the public shelf, newest first.
+///
+/// KEYSET, not offset: the cursor is the last row you were shown, `(head_ms, doc_id)`, and the
+/// page starts strictly after it in the same order the query sorts by. A shelf that grows at
+/// the head while someone reads down it is the ordinary case here - posting is the whole point
+/// of the lane - and an offset would quietly skip a row for every arrival. Re-publishing DOES
+/// move a document (its head_ms is its newest publication), so a page turn can still show one
+/// twice; the reader dedupes by doc_id, which is the honest place for it - the shelf really did
+/// change under the reader, and no cursor can undo that.
+pub async fn public_docs(
+    db: &Db,
+    after: Option<(i64, [u8; 16])>,
+    limit: i64,
+) -> Result<Vec<PublicDoc>, AppError> {
     catch_up_public_lane(db).await?;
     type Row = (Vec<u8>, String, Option<i64>, i64, Option<Vec<u8>>);
-    let rows: Vec<Row> = db
-        .fetch_all(
-            "SELECT doc_id, title, format, head_ms, thumb_hash FROM doc_heads
-             WHERE lane = 'public' ORDER BY head_ms DESC, doc_id",
-            (),
-        )
-        .await
-        .context("listing public documents")
-        .map_err(AppError::Internal)?;
+    let rows: Vec<Row> = match after {
+        None => db
+            .fetch_all(
+                "SELECT doc_id, title, format, head_ms, thumb_hash FROM doc_heads
+                 WHERE lane = 'public' ORDER BY head_ms DESC, doc_id LIMIT ?",
+                (limit,),
+            )
+            .await,
+        Some((ms, doc)) => db
+            .fetch_all(
+                "SELECT doc_id, title, format, head_ms, thumb_hash FROM doc_heads
+                 WHERE lane = 'public' AND (head_ms < ? OR (head_ms = ? AND doc_id > ?))
+                 ORDER BY head_ms DESC, doc_id LIMIT ?",
+                (ms, ms, doc.to_vec(), limit),
+            )
+            .await,
+    }
+    .context("listing public documents")
+    .map_err(AppError::Internal)?;
     let mut out = Vec::with_capacity(rows.len());
     for (doc_id, title, format, head_ms, thumb_hash) in rows {
         out.push(PublicDoc {

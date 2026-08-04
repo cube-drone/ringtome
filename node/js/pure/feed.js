@@ -57,12 +57,8 @@ export function openDraftOf(docs) {
     return (docs || []).find((d) => !publishedState(d).published) || null;
 }
 
-/// How many of someone's posts a visit shows. A cap rather than the whole shelf because each
-/// one costs a body fetch, and a person's page is an introduction, not an archive.
-export const RECENT_POSTS = 20;
-
 /**
- * Someone's public posts, newest first, capped.
+ * Someone's public posts, newest first.
  *
  * The server already answers in this order; sorting here anyway is the cheap kind of
  * defensiveness - display order is a display concern, and a page that depends on a remote
@@ -70,9 +66,42 @@ export const RECENT_POSTS = 20;
  * on something it doesn't control. Posts with no timestamp sort last rather than jumping to
  * the top on a NaN comparison.
  */
-export function recentPosts(posts, limit = RECENT_POSTS) {
+export function recentPosts(posts) {
     return (posts || [])
         .slice()
-        .sort((a, b) => (b.published_ms || 0) - (a.published_ms || 0))
-        .slice(0, limit);
+        .sort((a, b) => (b.published_ms || 0) - (a.published_ms || 0));
+}
+
+/**
+ * A page of posts joined onto the ones already read.
+ *
+ * DEDUPED by doc_id, and not defensively: re-publishing moves a document to the head of the
+ * shelf, so a reader paging down a shelf someone is actively posting to can genuinely be
+ * handed the same document twice. The cursor can't prevent that - the shelf changed - so the
+ * reader is where it gets settled. First sighting wins, which keeps what is already on screen
+ * where the eye left it.
+ */
+export function mergePosts(seen, page) {
+    const out = (seen || []).slice();
+    const have = new Set(out.map((p) => p.doc_id));
+    for (const p of page || []) {
+        if (p && !have.has(p.doc_id)) {
+            have.add(p.doc_id);
+            out.push(p);
+        }
+    }
+    return recentPosts(out);
+}
+
+/**
+ * Where to ask for the next page: the last post shown, as `{ after_ms, after_doc }`.
+ *
+ * The cursor is the row itself rather than a count, so posts arriving at the head while
+ * someone reads down the shelf can't shift the window under them (the server's keyset query
+ * is the other half of this). Null when there is nothing to page from.
+ */
+export function postCursor(posts) {
+    const last = (posts || [])[(posts || []).length - 1];
+    if (!last) return null;
+    return { after_ms: last.published_ms || 0, after_doc: last.doc_id };
 }

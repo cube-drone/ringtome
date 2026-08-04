@@ -101,6 +101,57 @@ describe("publication", () => {
         assert.equal(count(after), count(before), "a re-post of identical words writes nothing");
     });
 
+    it("pages down the shelf with a keyset cursor, never repeating or skipping", async () => {
+        // A shelf longer than one page: 23 posts, so page one is 20 and page two is the rest.
+        const owner2 = await makeUserFetch({ prefix: "shelf" });
+        const id = await (await owner2("api/identity", { method: "POST" })).json();
+        const shelf = id.root_pubkey;
+        for (let i = 0; i < 23; i++) {
+            const d = await (
+                await owner2(`api/identity/${shelf}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({ title: `post ${i}`, body: `words ${i}`, format: "plaintext" }),
+                })
+            ).json();
+            const r = await owner2(`api/identity/${shelf}/docs/${d.doc_id}/publish`, { method: "POST" });
+            assert.equal(r.status, 200, await r.text());
+        }
+
+        const firstResp = await owner2(`api/id/${shelf}/profile`);
+        const firstText = await firstResp.text();
+        assert.equal(firstResp.status, 200, firstText);
+        const first = JSON.parse(firstText);
+        assert.equal(first.posts.length, 20, "the profile carries one page, not the whole shelf");
+        assert.equal(first.posts_more, true, "and says the shelf goes further back");
+
+        const last = first.posts[first.posts.length - 1];
+        const nextResp = await owner2(
+            `api/id/${shelf}/posts?after_ms=${last.published_ms}&after_doc=${last.doc_id}`
+        );
+        const nextText = await nextResp.text();
+        assert.equal(nextResp.status, 200, nextText);
+        const next = JSON.parse(nextText);
+        assert.equal(next.posts.length, 3, "the rest of the shelf");
+        assert.equal(next.more, false, "and nothing behind it");
+
+        // The two pages together are the whole shelf exactly once.
+        const ids = [...first.posts, ...next.posts].map((p) => p.doc_id);
+        assert.equal(new Set(ids).size, 23, "no post appears on both pages, and none is skipped");
+    });
+
+    it("calls a malformed cursor what it is, rather than blaming the persona", async () => {
+        // The width of a document id is not obvious (16 bytes, not 32), and the first version
+        // of this endpoint answered "no such persona here" to every real cursor it was handed.
+        const resp = await owner(`api/id/${root}/posts?after_ms=1&after_doc=beef`);
+        assert.equal(resp.status, 400, "a bad cursor is a bad request");
+        assert.match(await resp.text(), /cursor/, "and the message points at the cursor");
+    });
+
+    it("refuses to page a persona this node doesn't carry", async () => {
+        const nobody = "sway-broke-" + "11".repeat(32);
+        assert.equal((await anon(`api/id/${nobody}/posts`)).status, 404);
+    });
+
     it("refuses to publish a diverged note - the conflict is nobody's intent", async () => {
         const forked = await (
             await owner(`api/identity/${root}/docs`, {

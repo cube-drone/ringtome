@@ -1,10 +1,10 @@
 // Feed's publication state: a durable public fact, and a local editing gesture.
 const assert = require('node:assert');
 
-let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, RECENT_POSTS;
+let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor;
 before(async () => {
-    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, RECENT_POSTS } =
-        await import('../../../js/pure/feed.js'));
+    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts,
+        postCursor } = await import('../../../js/pure/feed.js'));
 });
 
 const draft = { fields: {} };
@@ -119,15 +119,51 @@ describe('recentPosts', () => {
         assert.deepEqual(got.map((x) => x.doc_id), ['real', 'nostamp']);
     });
 
-    it('caps at the visit limit, keeping the newest', () => {
-        const many = Array.from({ length: RECENT_POSTS + 5 }, (_, i) => p(`d${i}`, i));
-        const got = recentPosts(many);
-        assert.equal(got.length, RECENT_POSTS);
-        assert.equal(got[0].doc_id, `d${RECENT_POSTS + 4}`, 'the newest survives the cap');
-    });
-
     it('is empty for a persona with nothing said in public', () => {
         assert.deepEqual(recentPosts([]), []);
         assert.deepEqual(recentPosts(), []);
+    });
+});
+
+// Paging down someone's shelf: the cursor that asks for the next page, and joining it on.
+describe('paging a public shelf', () => {
+    const p = (id, ms) => ({ doc_id: id, published_ms: ms });
+
+    it('takes its cursor from the LAST post shown, not a count', () => {
+        assert.deepEqual(postCursor([p('new', 300), p('old', 100)]), {
+            after_ms: 100,
+            after_doc: 'old',
+        });
+    });
+
+    it('has no cursor for an empty shelf', () => {
+        assert.equal(postCursor([]), null);
+        assert.equal(postCursor(), null);
+    });
+
+    it('survives an undated last post rather than sending undefined over the wire', () => {
+        assert.deepEqual(postCursor([p('a')]), { after_ms: 0, after_doc: 'a' });
+    });
+
+    it('joins a page on, still newest first', () => {
+        const got = mergePosts([p('c', 300), p('b', 200)], [p('a', 100)]);
+        assert.deepEqual(got.map((x) => x.doc_id), ['c', 'b', 'a']);
+    });
+
+    it('DEDUPES - a re-published post can arrive on two pages', () => {
+        const got = mergePosts([p('c', 300), p('b', 200)], [p('b', 200), p('a', 100)]);
+        assert.deepEqual(got.map((x) => x.doc_id), ['c', 'b', 'a']);
+    });
+
+    it('keeps the first sighting, so what is on screen stays where the eye left it', () => {
+        const got = mergePosts([p('b', 200)], [{ doc_id: 'b', published_ms: 200, title: 'later' }]);
+        assert.equal(got.length, 1);
+        assert.equal(got[0].title, undefined, 'the row already shown, not the one that followed');
+    });
+
+    it('takes an empty or missing page without complaint', () => {
+        assert.deepEqual(mergePosts([p('a', 1)], []).map((x) => x.doc_id), ['a']);
+        assert.deepEqual(mergePosts([p('a', 1)]).map((x) => x.doc_id), ['a']);
+        assert.deepEqual(mergePosts(undefined, [p('a', 1)]).map((x) => x.doc_id), ['a']);
     });
 });

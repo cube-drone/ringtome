@@ -9,13 +9,14 @@
 //
 // One body fetch per post and no mirror involved, deliberately: another person's public
 // documents are not ours to keep in a local table (PROJECT_PLAN, Other People Live in Their
-// Own Database). The cap in pure/feed.js is what keeps that honest arithmetic small.
+// Own Database). Pages of twenty are what keep that arithmetic honest - a visit fetches the
+// twenty it shows, and reading further back is something the reader asks for.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
-import { apiText } from './net.js';
-import { recentPosts, RECENT_POSTS } from './pure/feed.js';
+import { api, apiText } from './net.js';
+import { recentPosts, mergePosts, postCursor } from './pure/feed.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
 import { useTurbolinks } from './doc/turbolinks.js';
 
@@ -75,18 +76,52 @@ const PublicPost = ({ root, post }) => {
     `;
 };
 
-/// The stream on a person's page: what they have said in public, newest first.
-export const PublicPosts = ({ root, posts }) => {
-    const list = recentPosts(posts);
+/// The stream on a person's page: what they have said in public, newest first, and as far
+/// back as the reader cares to go. The profile brought the first page; each further one is
+/// asked for by hand, because reading someone's whole history is a decision, not a default.
+export const PublicPosts = ({ root, posts, more }) => {
+    const [extra, setExtra] = useState([]);
+    const [hasMore, setHasMore] = useState(!!more);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // A different persona is a different shelf: drop what the last one's pages left behind.
+    useEffect(() => {
+        setExtra([]);
+        setHasMore(!!more);
+        setError(null);
+    }, [root, more]);
+
+    const list = mergePosts(recentPosts(posts), extra);
+
+    const loadMore = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const cursor = postCursor(list);
+            const page = await api(
+                `/api/id/${root}/posts?after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}`
+            );
+            setExtra((e) => mergePosts(e, page.posts));
+            // Trust the server's own answer about whether the shelf goes further, rather than
+            // inferring it from a short page - a page can be short for other reasons.
+            setHasMore(!!page.more);
+        } catch (e) {
+            setError(e.message);
+        }
+        setLoading(false);
+    };
+
     if (!list.length) return null; // nothing said in public yet - say nothing about it
     return html`
         <section class="public-posts">
             <h2 class="public-posts-head">recent posts</h2>
             ${list.map((p) => html`<${PublicPost} key=${p.doc_id} root=${root} post=${p} />`)}
-            ${(posts || []).length > list.length &&
-            html`<p class="null-sub">
-                the ${RECENT_POSTS} most recent of ${posts.length}.
-            </p>`}
+            ${error && html`<p class="form-error">${error}</p>`}
+            ${hasMore &&
+            html`<button class="public-posts-more" disabled=${loading} onClick=${loadMore}>
+                ${loading ? 'reading further back…' : 'load more'}
+            </button>`}
         </section>
     `;
 };

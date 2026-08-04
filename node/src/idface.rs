@@ -465,6 +465,79 @@ pub async fn public_thumb_route(
 /// miniature - funnel 2 with a named human - synced at request time, cached with a TTL,
 /// ephemeral by design (the anonymous shelf grows only through durable demand; a fetch here
 /// never touches the identities table, so the HTML face still tombstones this root).
+/// How many posts a page of the public shelf carries. The profile's first page and the
+/// "further back" pages are the same size, so the reader's scroll is even.
+pub const POSTS_PAGE: i64 = 20;
+
+#[derive(serde::Deserialize)]
+pub struct PostsQuery {
+    /// The cursor: the `published_ms` and `doc_id` of the last post already shown.
+    pub after_ms: Option<i64>,
+    pub after_doc: Option<String>,
+}
+
+/// GET `/api/id/{root}/posts` - further back down someone's public shelf.
+///
+/// The shelf rule, same as the profile's: anonymous callers get personas this node HOSTS, and
+/// nothing else. A member may page a foreign persona too, but only one this node has already
+/// reached - paging is a continuation of a visit, so it reads what an earlier fetch brought
+/// home rather than reaching across the network again per page turn.
+pub async fn id_posts(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path(seg): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<PostsQuery>,
+) -> Result<Response, AppError> {
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
+        return Err(AppError::NotFound("no such persona here".into()));
+    };
+    let root_hex = hex::encode(root);
+    let missing = || AppError::NotFound("no such persona here".into());
+    if !hosted_here(&state, &root_hex).await?
+        && (session.is_none() || foreign_fetch_row(&state, &root_hex).await?.is_none())
+    {
+        return Err(missing());
+    }
+    // A cursor that doesn't parse is a bad REQUEST, and says so: answering "no such persona"
+    // to a malformed doc_id sends the reader looking for the wrong problem entirely (it did:
+    // this was written against a 32-byte id, and document ids are 16).
+    let after = match (query.after_ms, query.after_doc.as_deref()) {
+        (Some(ms), Some(doc)) => {
+            let bad = || AppError::BadRequest("that cursor isn't a document id".into());
+            let raw = hex::decode(doc).map_err(|_| bad())?;
+            let id: [u8; 16] = raw.try_into().map_err(|_| bad())?;
+            Some((ms, id))
+        }
+        _ => None,
+    };
+    // One more than the page, to learn whether there IS a further page without counting the
+    // whole shelf - the extra row is the answer and never reaches the reader.
+    let mut posts = match state.user_dbs.get(&root_hex).await {
+        Ok(db) => crate::record::documents::public_docs(&db, after, POSTS_PAGE + 1)
+            .await
+            .unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    let more = posts.len() as i64 > POSTS_PAGE;
+    posts.truncate(POSTS_PAGE as usize);
+    Ok(axum::Json(serde_json::json!({
+        "posts": posts.iter().map(post_json).collect::<Vec<_>>(),
+        "more": more,
+    }))
+    .into_response())
+}
+
+/// One post, as every surface reports it.
+fn post_json(p: &crate::record::documents::PublicDoc) -> serde_json::Value {
+    serde_json::json!({
+        "doc_id": hex::encode(p.doc_id),
+        "title": p.title,
+        "format": crate::record::documents::Format::from_wire(p.format).as_str(),
+        "published_ms": p.head_ms,
+        "thumb": p.thumb_hash.map(hex::encode),
+    })
+}
+
 pub async fn id_profile(
     session: Option<Session>,
     State(state): State<AppState>,
@@ -520,10 +593,14 @@ pub async fn id_profile(
     // What they have PUBLISHED - the public lane's documents, newest first. Keyless and
     // lane-checked like everything on this surface; a private note cannot appear here
     // because the query cannot name one.
-    let posts = match state.user_dbs.get(&root_hex).await {
-        Ok(db) => crate::record::documents::public_docs(&db).await.unwrap_or_default(),
+    let mut posts = match state.user_dbs.get(&root_hex).await {
+        Ok(db) => crate::record::documents::public_docs(&db, None, POSTS_PAGE + 1)
+            .await
+            .unwrap_or_default(),
         Err(_) => Vec::new(),
     };
+    let posts_more = posts.len() as i64 > POSTS_PAGE;
+    posts.truncate(POSTS_PAGE as usize);
     // How to REACH this persona, as this node honestly knows it - the `?via=` hints any
     // address minted here should carry (Addressing: hints are keys, never addresses).
     //
@@ -572,13 +649,9 @@ pub async fn id_profile(
         // whatever node the reader has.
         "hosted": hosted,
         "via": via,
-        "posts": posts.iter().map(|p| serde_json::json!({
-            "doc_id": hex::encode(p.doc_id),
-            "title": p.title,
-            "format": crate::record::documents::Format::from_wire(p.format).as_str(),
-            "published_ms": p.head_ms,
-            "thumb": p.thumb_hash.map(hex::encode),
-        })).collect::<Vec<_>>(),
+        "posts": posts.iter().map(post_json).collect::<Vec<_>>(),
+        // Whether the shelf goes further back than this first page.
+        "posts_more": posts_more,
         "fields": fields.iter().map(|f| serde_json::json!({
             "field": f.field, "value": f.value,
         })).collect::<Vec<_>>(),

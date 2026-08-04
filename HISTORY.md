@@ -2133,3 +2133,25 @@ subtraction sorts NaN wherever the comparison happens to land, so it gets pinned
 body is bytes under its own mime type, so the parse differs and nothing else does. Twelve private
 copies of the JSON client is how that module came to exist; a thirteenth for text would have been
 the same story with a different verb.
+
+## Down the shelf, not just the top of it (2026-08-04)
+
+Twenty posts was the whole of what a visit could ever see - a cap invented on the client over a
+profile that was handing back the entire shelf anyway, which is the worst of both: a payload
+that grows without bound and a reader who can't reach past the first screen. Now the shelf pages,
+and the page size lives on the server where it belongs (`POSTS_PAGE`); the profile carries the
+first page and says whether there is more, and "load more" walks back to the beginning of time.
+
+KEYSET, not offset. The cursor is the last row shown, `(head_ms, doc_id)`, and the query starts
+strictly after it in the order it already sorts by. Posting to a shelf someone is reading down is
+the ordinary case here rather than the exotic one - it is the whole point of the lane - and an
+offset would silently skip a row for every arrival. Re-publishing still moves a document to the
+head, so a page turn can hand back one already shown; the reader dedupes by doc_id, which is the
+honest place for it, because the shelf really did change underfoot and no cursor can undo that.
+First sighting wins, so what's on screen stays where the eye left it.
+
+The bug worth recording: the cursor parse was written against a 32-byte document id, and document
+ids are 16. Every real cursor failed - and failed as `404 no such persona here`, because the parse
+error borrowed the not-found path, which sent me hunting the access gate instead of the four
+characters that were actually wrong. A malformed cursor is now a 400 that says "cursor", with a
+test that pins it. Cheap error-shape laziness bought an expensive detour.

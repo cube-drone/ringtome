@@ -997,3 +997,24 @@
     line-height: 1.5;
     overflow-wrap: anywhere;
 }
+
+.public-posts-more {
+    align-self: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--sea);
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.35rem 1.2rem;
+    cursor: pointer;
+}
+
+.public-posts-more:hover {
+    border-color: var(--teal);
+}
+
+.public-posts-more:disabled {
+    color: var(--faint);
+    cursor: default;
+}

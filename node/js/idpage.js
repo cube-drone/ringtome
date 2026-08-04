@@ -118,6 +118,6 @@ export const IdPage = ({ seg, current, onTitle }) => {
             ${profile.foreign &&
             html`<p class="id-words">reached across the network - not carried on this node</p>`}
         <//>
-        <${PublicPosts} root=${root} posts=${profile.posts} />
+        <${PublicPosts} root=${root} posts=${profile.posts} more=${profile.posts_more} />
     <//>`;
 };
