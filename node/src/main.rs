@@ -295,6 +295,16 @@ async fn main() -> anyhow::Result<()> {
         state.clone(),
         net::frontier::sweep,
     );
+    // The subscription memo (net::subscriptions): who each hosted persona follows, and whom
+    // they publicly trust. Nudged like the frontier map - turning a contact dial is a
+    // private-chain write, so it rings the bell with that persona's name on it.
+    loops::periodic_nudged(
+        "subscription-memo",
+        std::time::Duration::from_secs(60),
+        state.user_dbs.write_nudge(),
+        state.clone(),
+        net::subscriptions::sweep,
+    );
     loops::periodic(
         "sync-anti-entropy",
         std::time::Duration::from_secs(state.config.resync_interval_secs),

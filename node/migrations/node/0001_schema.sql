@@ -89,6 +89,41 @@ CREATE TABLE identity_peers (
 );
 
 -- ---------------------------------------------------------------------------------------------
+-- The edges each hosted persona has drawn to someone else, as the NODE needs them.
+--
+-- Derived, never authored: the truth is the contact ledger on each persona's own private chain
+-- (`contact:<root>` LWW registers), and this is a memo of it - the same idiom as doc_heads,
+-- disposable and rebuildable from the fold. It exists because routing is a node-level question
+-- asked across every persona at once, and per-user databases are separate encrypted files.
+--
+-- Two different things live here, for two different reasons:
+--
+--   * `eagerness` and `rebroadcast` are ROUTING (PROJECT_PLAN, Data Layer: "the node routes;
+--     the user ranks"). The interest dial is already a sync-cadence dial by design - "don't
+--     show / low / medium / high / top priority" is just as naturally how eagerly this identity
+--     syncs - so no new knob was invented for it.
+--
+--   * `trust` is UTILITY STANDING, and it is here ONLY where its author set `trust_public`.
+--     A private assessment must not have publicly measurable effects: giving a stranger better
+--     treatment because someone here quietly trusts them makes a private fact observable by
+--     measurement. A consented edge is one its author agreed may be known, so acting on it
+--     visibly discloses nothing they did not offer. The raw 0-100 is stored rather than a
+--     bucket: nothing consumes it yet, and a number can be bucketed later where a bucket can
+--     never be un-bucketed.
+--
+-- A row exists when ANY of the three is set, and dies when the last one clears.
+CREATE TABLE subscriptions (
+    local_root   TEXT    NOT NULL,   -- the persona on this node doing the trusting/following
+    foreign_root TEXT    NOT NULL,   -- whom
+    eagerness    INTEGER,            -- interest 0-100: how eagerly to sync them. NULL = unset
+    rebroadcast  INTEGER,            -- interest in their rebroadcasts, same scale
+    trust        INTEGER,            -- 0-100, ONLY when trust_public consent is set
+    updated_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (local_root, foreign_root)
+);
+CREATE INDEX subscriptions_by_foreign ON subscriptions (foreign_root);
+
+-- ---------------------------------------------------------------------------------------------
 -- What THIS node holds of each persona's PUBLIC lane, one row per (persona, public service).
 --
 -- Why it exists: per-user databases are separate files, so "which personas changed?" otherwise

@@ -2418,3 +2418,44 @@ frame of its own. How you stand with someone is the first thing you want when yo
 page; the bio is what you read once you have it. The frame does the other half - it makes the
 bio read as something they WROTE rather than as more of the page's chrome, which matters more the
 more of the card is ours rather than theirs.
+
+## The node's memo of who follows whom (2026-08-04)
+
+`subscriptions` at node level: one row per (persona, contact) carrying `eagerness`,
+`rebroadcast`, and - conditionally - `trust`, derived from each persona's own contact ledger and
+rebuilt off the named nudge, since turning a dial is a private-chain write like any other. Same
+memo idiom as `doc_heads` and `persona_frontiers`: the truth stays where it was authored, and
+this is the copy that makes a cross-persona question answerable without opening every encrypted
+file on the node.
+
+No new knob for the routing half. The interest dial has been a sync-cadence dial by design since
+the Data Layer was written - "don't show / low / medium / high / top priority" is already how
+eagerly to sync someone - so `interest` becomes `eagerness` and needed no UI at all.
+
+The trust half took a conversation to get right, and the record is worth keeping because I was
+wrong first. Canon says the node routes and the user ranks, and that it deliberately does NOT
+assemble trust weights, because *already-possible* and *already-assembled* are different security
+postures. I read Curtis's proposal as an amendment to that and pushed back; the resolution was
+better than either starting position. Only `trust_public`-consented edges are copied, which
+resolves the objection rather than overriding it: assembling statements their authors agreed may
+be known discloses nothing the published version wouldn't, and the rule keeps its force exactly
+where it was aimed - the quiet graph. It also gives that consent flag its first consumer since
+the ledger shipped.
+
+The second reason for the consent gate is one the doctrine didn't cover because the use is new:
+acting on a quiet edge makes it MEASURABLE. Give a peer a better rate limit because someone here
+trusts them, and the peer can detect that trust by measuring - third-party enumeration arriving
+by side channel rather than by query. The check therefore lives in exactly one function, so an
+unconsented value is never copied out at all rather than copied and filtered downstream.
+
+Curtis overruled me twice, both times correctly. Storing the raw 0-100 rather than a rounded
+tier: a number can be bucketed later, a bucket can never be un-bucketed, and nothing consumes it
+yet to have an opinion. And deferring the Sybil question - a count of trust edges is exactly the
+per-person sum the trust thesis forbids, but there is no consumer to game, and inventing a
+defense before the thing it defends is how you get a defense shaped like a guess. Both are
+recorded in the module doc for whoever writes the consumer.
+
+Nothing reads the table, and there is deliberately no reader function either - a query written
+before its consumer guesses at the shape the consumer wants. That was learned an hour earlier:
+the frontier module shipped `held`/`persona_fingerprint` with no caller, and clippy's dead-code
+error was the honest signal.
