@@ -326,6 +326,20 @@ pub async fn fetched_roots(node_db: &crate::db::Db) -> anyhow::Result<Vec<String
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
+/// Has this node ever fetched-and-carried this foreign root? The sync responder's question
+/// when a push arrives for a persona we don't host: a carried persona's updates are welcome.
+pub async fn has_fetched(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<bool> {
+    use anyhow::Context;
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM foreign_fetches WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("checking the fetch registry")?;
+    Ok(row.is_some())
+}
+
 async fn foreign_fetch_row(
     state: &AppState,
     root_hex: &str,

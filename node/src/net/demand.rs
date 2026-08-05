@@ -43,3 +43,16 @@ pub async fn record_ask(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Resu
         .context("recording a demand edge")?;
     Ok(())
 }
+
+/// Every node that has asked about this persona - the fan-out address list.
+pub async fn askers_of(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM identity_demand WHERE root_pubkey = ?1
+             ORDER BY last_asked_ms DESC",
+            (root_hex,),
+        )
+        .await
+        .context("reading demand")?;
+    Ok(rows.into_iter().map(|(e,)| e).collect())
+}

@@ -1,0 +1,158 @@
+//! Fan-out: what happens the moment a persona's public lane moves.
+//!
+//! Two acts, both hanging off the same edge - `net::frontier`'s "the fingerprint moved":
+//!
+//!   - **Journal locally.** Every reader on this node who follows the persona gets a row in
+//!     `feed_journal`. Fast, append-shaped, honest about what came, and nothing more: ordering
+//!     and ranking are decided when the reader opens their feed, in their own database where
+//!     the interest dials live.
+//!   - **Push to the nodes that asked.** For a persona this node AUTHORS, dial everyone in
+//!     `identity_demand` and run the ordinary exchange. There is no "new post" message and no
+//!     notification format anywhere in this: the push IS a sync, the receiver's own gate
+//!     validates what arrives, and the receiver's own journal write is the notification -
+//!     evidence crosses wires, opinions stay home.
+//!
+//! Why the edge is the FRONTIER MAP's and not the eager loop's: the eager tracker fingerprints
+//! every chain including the private ones - that is its job, it keeps a persona's own devices
+//! current - so a dial hung there would ring strangers' doorbells on every private save, and
+//! the TIMING of those dials would leak exactly what canon holds private (the count and cadence
+//! of private activity - PROJECT_PLAN, Chains). The frontier map is public-only by
+//! construction, so its edge is the one that may be heard off-membrane.
+use anyhow::{Context, Result};
+
+use crate::clock::now_ms;
+use crate::AppState;
+
+/// A persona's public frontier moved on this node. Journal it for local readers, and - if the
+/// persona is ours to speak for - push it to the nodes that have asked about them.
+///
+/// Best-effort throughout: this runs behind sweeps and exchanges, and a bookkeeping failure
+/// must not fail the machinery that detected the change.
+///
+/// Returns a BOXED future, and that is load-bearing, not style: the push this starts runs an
+/// exchange, and an exchange that ingests something ends by calling back into this function -
+/// so an ordinary `async fn` would have a type that contains itself, which Rust cannot name.
+/// The erasure is the knot-cut. The runtime cycle is already safe on its own: an up-to-date
+/// peer exchanges nothing, `received` stays 0, and the chain goes quiet.
+pub fn after_public_move<'a>(
+    state: &'a AppState,
+    root_hex: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(after_public_move_inner(state, root_hex))
+}
+
+async fn after_public_move_inner(state: &AppState, root_hex: &str) {
+    match journal_for(state, root_hex).await {
+        Ok(readers) if readers > 0 => {
+            tracing::info!(root = %root_hex, readers, "journaled a public move");
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed journal write failed"),
+    }
+    // Push onward only for personas this node authors. Relaying someone ELSE's lane onward is
+    // rebroadcast - a consent question, not a routing one - and waits for its own design.
+    match crate::identity::is_agented(&state.node_db, root_hex).await {
+        Ok(true) => push_to_askers(state, root_hex).await,
+        Ok(false) => {}
+        Err(e) => tracing::debug!(error = ?e, "agented check failed in fanout"),
+    }
+}
+
+/// One journal row per (reader who follows them) x (post on their newest page).
+///
+/// The newest page is the whole journal window, and that bound is doing deliberate work:
+/// following someone with years of history journals their latest twenty posts, not their life
+/// story ("backfill is the burst to bound" - PROJECT_PLAN, Data Layer). The older posts are not
+/// lost - they are on the persona's page, where reading further back is a choice.
+async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
+    let readers = crate::net::subscriptions::followers_of(&state.node_db, author_root).await?;
+    if readers.is_empty() {
+        return Ok(0); // nobody here follows them - the common case, and it costs one query
+    }
+    let db = state
+        .user_dbs
+        .get(author_root)
+        .await
+        .with_context(|| format!("opening {author_root} to read its shelf"))?;
+    let posts =
+        crate::record::documents::public_docs(&db, None, crate::idface::POSTS_PAGE).await?;
+    if posts.is_empty() {
+        return Ok(0); // the move was profile/keys, not posts - nothing feed-shaped arrived
+    }
+
+    let now = now_ms();
+    let mut journaled = 0;
+    for reader in &readers {
+        // Your own posts are not news to you - possible only via a self-follow, but a feed
+        // that echoes its author is wrong however it was asked for.
+        if reader == author_root {
+            continue;
+        }
+        for p in &posts {
+            // arrived_ms survives the upsert: it answers "when did this reach me", and a
+            // re-publication changes what the post says, not when it arrived.
+            state
+                .node_db
+                .execute(
+                    "INSERT INTO feed_journal
+                       (reader_root, author_root, doc_id, title, format,
+                        published_ms, updated_ms, arrived_ms)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                     ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
+                         title = excluded.title,
+                         format = excluded.format,
+                         updated_ms = excluded.updated_ms",
+                    (
+                        reader.as_str(),
+                        author_root,
+                        hex::encode(p.doc_id),
+                        p.title.as_str(),
+                        crate::record::documents::Format::from_wire(p.format).as_str(),
+                        p.genesis_ms,
+                        p.head_ms,
+                        now,
+                    ),
+                )
+                .await
+                .context("journaling an arrival")?;
+        }
+        journaled += 1;
+    }
+    Ok(journaled)
+}
+
+/// Dial the nodes that have asked about this persona, in the background - a dead asker's
+/// timeout must not stall the sweep that noticed the post.
+///
+/// The persona's own devices are excluded: the eager loop already keeps them current on its
+/// own debounce, and dialing them twice buys nothing but a no-op exchange.
+async fn push_to_askers(state: &AppState, root_hex: &str) {
+    let askers = match crate::net::demand::askers_of(&state.node_db, root_hex).await {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::debug!(error = ?e, "reading demand for fanout failed");
+            return;
+        }
+    };
+    let devices: std::collections::HashSet<String> =
+        match crate::net::sync::peers_for(&state.node_db, root_hex).await {
+            Ok(p) => p.into_iter().collect(),
+            Err(_) => Default::default(),
+        };
+    let targets: Vec<String> = askers.into_iter().filter(|a| !devices.contains(a)).collect();
+    if targets.is_empty() {
+        return;
+    }
+    let state = state.clone();
+    let root = root_hex.to_string();
+    tokio::spawn(async move {
+        match crate::net::sync::sync_peers(&state, &root, &targets).await {
+            Ok(results) => {
+                let reached = results.iter().filter(|r| r.ok).count();
+                tracing::info!(root = %root, reached, of = results.len(),
+                    "pushed a public move to the nodes that asked");
+            }
+            Err(e) => tracing::debug!(root = %root, error = ?e, "fanout push failed"),
+        }
+    });
+}

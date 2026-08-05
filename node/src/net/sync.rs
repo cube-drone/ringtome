@@ -849,8 +849,10 @@ pub async fn sync_with_peer(
     // ingest, so "do we still disagree" is asked of what we now hold, not what we held when
     // they spoke. A claim that delivered nothing and still differs is the only fault - and it
     // is the one that must not be chased again until it moves.
-    if let Err(e) = crate::net::frontier::refresh(state, root_hex).await {
-        tracing::debug!(error = ?e, "post-exchange frontier refresh failed");
+    match crate::net::frontier::refresh(state, root_hex).await {
+        Ok(true) => crate::fanout::after_public_move(state, root_hex).await,
+        Ok(false) => {}
+        Err(e) => tracing::debug!(error = ?e, "post-exchange frontier refresh failed"),
     }
     let verdict = if received > 0 {
         crate::net::frontier::Verdict::Ahead
@@ -901,12 +903,22 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     };
     let root_hex = hex::encode(root);
 
-    // Serve only identities this node actually agents; anything else gets a polite empty
-    // exchange (uniform behavior - we don't confirm what we do or don't hold).
+    // Serve identities this node agents - and ACCEPT exchanges for personas someone here
+    // WANTS: a followed or previously-fetched persona's updates are welcome, which is how a
+    // push from their node reaches ours without us asking first. Anything else still gets the
+    // polite empty exchange (uniform behavior - we don't confirm what we do or don't hold).
+    // Accepting for a wanted persona does disclose node-level interest, but only the interest
+    // our own fetch already disclosed the day it created the want; the exchange's member
+    // proofs keep everything private out of it regardless of why we accepted.
     let agented = crate::identity::is_agented(&state.node_db, &root_hex)
         .await
         .map_err(|e| anyhow!("checking identity: {e}"))?;
-    if !agented {
+    let wanted = agented
+        || !crate::net::subscriptions::followers_of(&state.node_db, &root_hex)
+            .await?
+            .is_empty()
+        || crate::idface::has_fetched(&state.node_db, &root_hex).await?;
+    if !wanted {
         write_frame(
             &mut send,
             &SyncMessage::Hello {
@@ -966,6 +978,16 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         sent, received, rejected,
         "served sync exchange"
     );
+    // A push just landed something. The frontier map's edge is what fan-out hangs off, and the
+    // 30s sweep would find this eventually - but "eventually" is the wrong latency for the one
+    // moment we KNOW something arrived, so ask directly.
+    if received > 0 {
+        match crate::net::frontier::refresh(&state, &root_hex).await {
+            Ok(true) => crate::fanout::after_public_move(&state, &root_hex).await,
+            Ok(false) => {}
+            Err(e) => tracing::debug!(error = ?e, "post-ingest frontier refresh failed"),
+        }
+    }
     conn.close(0u8.into(), b"done");
 
     // The responder's half of the body lane: entries just landed, and the peer that sent

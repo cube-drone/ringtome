@@ -147,6 +147,21 @@ pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) 
     Ok(())
 }
 
+/// Every reader on this node following `foreign_root` for FEED purposes: eagerness set and
+/// above zero, because the interest dial's bottom stop is labeled "don't show" and it means it.
+/// A rebroadcast-only or trust-only edge is not a follow.
+pub async fn followers_of(node_db: &crate::db::Db, foreign_root: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT local_root FROM subscriptions
+             WHERE foreign_root = ?1 AND eagerness IS NOT NULL AND eagerness > 0",
+            (foreign_root,),
+        )
+        .await
+        .context("reading a persona's local followers")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 /// One pass. `who` is the identity a write nudge named - a contact dial is a private-chain
 /// write like any other, so turning one wakes this with that persona's name on it. `None` (a
 /// tick, or a lag that can no longer say) rebuilds everyone's.

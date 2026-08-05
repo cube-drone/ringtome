@@ -157,6 +157,33 @@ CREATE TABLE identity_demand (
 CREATE INDEX identity_demand_by_root ON identity_demand (root_pubkey);
 
 -- ---------------------------------------------------------------------------------------------
+-- The arrival journal: what has LANDED for each reader on this node, from the personas they
+-- follow (PROJECT_PLAN, Data Layer: "Journal, then index").
+--
+-- A row means "this public post, by a persona this reader follows, is here on this node" -
+-- written the moment the author's public lane moves, however it moved (their own publish, a
+-- push from their node, a pull, anti-entropy). No ordering and no ranking live here: how the
+-- feed should READ is decided when the reader opens it, in their own database where the
+-- interest dials are - "the node routes; the user ranks".
+--
+-- DELIVERED, not SEEN. This table is node-local pipeline bookkeeping - disposable, rebuildable
+-- from subscriptions x the held public lanes. What the human has actually looked at is a user
+-- fact that must travel with them across their devices; it belongs on their private chain and
+-- deliberately does not exist yet ("Two cursors, not one").
+CREATE TABLE feed_journal (
+    reader_root  TEXT    NOT NULL,  -- the persona on this node whose feed this lands in
+    author_root  TEXT    NOT NULL,  -- who said it
+    doc_id       TEXT    NOT NULL,  -- the PUBLIC document (hex) - the minted post, never a note
+    title        TEXT    NOT NULL,
+    format       TEXT,
+    published_ms INTEGER NOT NULL,  -- when it was first said (genesis - the display date)
+    updated_ms   INTEGER NOT NULL,  -- when it last changed (a re-publication moves only this)
+    arrived_ms   INTEGER NOT NULL,  -- when it reached THIS node (set once, never rewritten)
+    PRIMARY KEY (reader_root, author_root, doc_id)
+);
+CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
+
+-- ---------------------------------------------------------------------------------------------
 -- What THIS node holds of each persona's PUBLIC lane, one row per (persona, public service).
 --
 -- Why it exists: per-user databases are separate files, so "which personas changed?" otherwise

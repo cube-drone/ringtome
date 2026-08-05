@@ -2496,3 +2496,52 @@ that lesson has come up today and the first time it was applied before clippy sa
 retention pass: Curtis's call, correct at this stage, but the table does assemble a readership
 graph for personas we host, which is the same already-possible/already-assembled line trust had
 to respect - so pruning to a window is owed before any node hosts strangers, and is ledgered.
+
+## The wire between a post and its readers (2026-08-05)
+
+Fan-out is real: a post published on one node lands in a follower's journal on another, with
+nobody on the follower's side asking - 445ms across two nodes in the test, and every table built
+this week is load-bearing in the path. The frontier map notices the public lane moved; the demand
+record says which nodes to tell; the exchange carries the entries; the subscription memo says
+which local readers follow the author; `feed_journal` writes the arrival.
+
+The design fact worth stating first: there is NO notification message. "Hey, you have a fresh
+post" never crosses the wire - the push is the ordinary sync exchange, the receiver's own gate
+validates what arrives, and the receiver's own journal write IS the notification. Evidence
+crosses wires; opinions stay home. Zero new protocol, again.
+
+The trap dodged, worth the paragraph because it nearly wasn't: the push hangs off the FRONTIER
+MAP's edge, not the eager loop's debounce. The eager tracker fingerprints every chain including
+private ones - that is its job, it keeps a persona's own devices current - so a dial hung there
+would ring strangers' doorbells on every private save, and the TIMING of those dials leaks
+exactly what canon holds private: the count and cadence of private activity. The frontier map is
+public-only by construction, so its edge is the one that may be heard off-membrane.
+
+The other half was acceptance. The responder served only identities it agents; a push for a
+persona we merely follow bounced off the guard as a polite empty exchange. Acceptance widens to
+"agented, or followed by someone here, or previously fetched" - and the disclosure cost is
+nothing new, because accepting for a wanted persona reveals only the node-level interest our own
+fetch already disclosed the day it created the want. The planted violation confirms the widening
+is load-bearing: narrowing it back kills exactly the cross-node push test while the device-mesh
+tests stay green.
+
+`feed_journal` is DELIVERED, not SEEN - node-local pipeline bookkeeping, disposable, rebuildable
+from subscriptions x held lanes. What the human actually looked at is a user fact that travels on
+their private chain, and deliberately does not exist yet (Two cursors, not one). No ordering, no
+ranking: the journal is honest about what came, and how a feed READS is decided when its reader
+opens it, in their own database where the interest dials live. "Don't show" (interest zero)
+journals nothing, and the test proves the silence is a decision rather than lag by settling on a
+real follower's journal growing first. Backfill is bounded by construction: the journal window is
+the shelf's newest page, so following someone with years of history journals twenty posts, not a
+life story.
+
+One Rust scar: the fan-out future contains an exchange whose ingest can call back into fan-out,
+so the type contained itself and could not be named. The knot is cut at the function boundary -
+`after_public_move` returns a boxed future, with a comment saying the erasure is load-bearing.
+The runtime cycle was never dangerous: an up-to-date peer exchanges nothing, received stays 0,
+and the chain goes quiet.
+
+Still owed, now with the substrate under it: the feed READ surface (the UI, ordering by the
+reader's own dials at open), seen-state on the private chain, demand retention, and
+rebroadcast - the push deliberately fires only for personas this node AUTHORS, because relaying
+someone else's lane onward is a consent question, not a routing one.

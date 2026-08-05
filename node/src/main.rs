@@ -16,6 +16,7 @@ mod clock;
 mod config;
 mod db;
 mod error;
+mod fanout;
 mod files;
 mod identity;
 mod ingest;
