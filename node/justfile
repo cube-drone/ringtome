@@ -259,7 +259,68 @@ test_data personas="100" actions="100" seed="":
     fi
     cd "{{justfile_directory()}}/harness" && node testdata.mjs {{personas}} {{actions}} {{seed}}
 
-# Kill any running ringtome (Windows or POSIX), ignoring "not found".
+# --- scratch nodes (agent/probe testing) ---------------------------------------------------
+# Throwaway nodes for harness probes and agent testing, kept STRUCTURALLY apart from the dev
+# network: they refuse the dev ports (5281-5283), live in /tmp, and are killed by PID file -
+# never by pattern - so no scratch cleanup can ever take down `just start*`. Born from the
+# 2026-08-05 incident where a broad pkill killed the running dev trio mid-test and a scratch
+# node then squatted 5281 impersonating it.
+
+# Boot a throwaway node on a scratch port (5297-5299), wait for health, background it.
+scratch port="5299":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    case "{{port}}" in
+        5281|5282|5283)
+            echo "port {{port}} belongs to the dev network (just start*) - scratch uses 5297-5299" >&2
+            exit 1;;
+    esac
+    cd "{{workspace}}"
+    dir="/tmp/ringtome-scratch-{{port}}"
+    pidfile="$dir.pid"
+    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+        echo "scratch node already up on :{{port}} (pid $(cat "$pidfile"))"
+        exit 0
+    fi
+    rm -rf "$dir"
+    RINGTOME_PORT={{port}} RINGTOME_DATA_DIRECTORY="$dir" RINGTOME_LOCAL_TEST=1         RINGTOME_DISCOVERY="local:/tmp/ringtome-scratch-dht" RINGTOME_SYNC_DEBOUNCE_MS=250         cargo run --bin ringtome > "$dir.log" 2>&1 &
+    echo $! > "$pidfile"
+    for i in $(seq 1 120); do
+        if curl -s -o /dev/null -m 1 "http://localhost:{{port}}/health"; then
+            echo "scratch node on :{{port}} (pid $(cat "$pidfile"), data $dir, log $dir.log)"
+            exit 0
+        fi
+        sleep 1
+    done
+    echo "scratch node on :{{port}} never became healthy - see $dir.log" >&2
+    exit 1
+
+# Kill every scratch node - by recorded PID only, so a running dev network cannot be touched.
+scratch-kill:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    found=0
+    for pidfile in /tmp/ringtome-scratch-*.pid; do
+        [ -e "$pidfile" ] || continue
+        found=1
+        pid=$(cat "$pidfile")
+        if kill "$pid" 2>/dev/null; then
+            for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+            echo "killed scratch pid $pid ($pidfile)"
+        else
+            echo "scratch pid $pid already gone ($pidfile)"
+        fi
+        rm -f "$pidfile"
+    done
+    rm -rf /tmp/ringtome-scratch-* 2>/dev/null || true
+    [ "$found" = 1 ] || echo "no scratch nodes recorded"
+
+# MACHINE-WIDE BY DESIGN: takes down scratch nodes AND a running dev network alike (`just
+# integration` depends on it, so an integration run does too). Probe cleanup wants
+# `scratch-kill` instead, which cannot reach the dev network.
+#
+# Kill EVERY running ringtome, dev network included (see above; scratch-kill is the scoped one).
 kill:
     -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || pkill -f 'target/debug/ringtome' 2>/dev/null || true
 
