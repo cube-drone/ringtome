@@ -465,7 +465,6 @@ froth
 frown
 froze
 fruit
-gag
 gains
 gala
 game
@@ -484,6 +483,7 @@ given
 giver
 glad
 glass
+glam
 glide
 gloss
 glove
@@ -568,11 +568,11 @@ ice
 icing
 icon
 icy
+icky
 igloo
 image
 ion
 iron
-islam
 issue
 item
 ivory
