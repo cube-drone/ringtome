@@ -209,3 +209,57 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
         assert.ok(converged, "no honest exchange ever reads as unresolvable");
     });
 });
+
+/*
+    Stale-while-revalidate on a foreign persona's page.
+
+    A visit is the demand signal the pull model runs on, so it always means "go and look" - but
+    the reader must not wait on a stranger's node to find out. What is asserted: the first sight
+    of a stranger blocks (there is nothing to serve stale), a later visit answers immediately and
+    says a refresh is running, and the change made on the other node arrives without anyone
+    dialing by hand.
+*/
+(HOST_B ? describe : describe.skip)("a foreign persona goes stale, then doesn't", function () {
+    this.timeout(90000);
+
+    it("serves what it holds and revalidates behind the answer", async function () {
+        // Their persona lives on node B and is served, so A can find it.
+        const them = await makeUserFetch({ prefix: "farwho", host: HOST_B });
+        const made = await (await them("api/identity", { method: "POST" })).json();
+        const far = made.root_pubkey;
+        const setName = (value) =>
+            them(`api/identity/${far}/profile`, {
+                method: "POST",
+                body: JSON.stringify({ field: "name", value }),
+            });
+        await setName("Before");
+        // The hint their address would carry: the node that hosts them.
+        const { toBase58 } = await import("../../js/speakable.js");
+        const endpoint = (await (await them("api/node")).json()).endpoint_id;
+        const via = `?via=${toBase58(endpoint)}`;
+
+        // A member on node A looks them up. The FIRST sight has nothing to serve stale, so it
+        // blocks - and comes back with their name.
+        const us = await makeUserFetch({ prefix: "nearwho" });
+        const first = await (await us(`api/id/${far}/profile${via}`)).json();
+        const nameOf = (p) => (p.fields || []).find((f) => f.field === "name")?.value;
+        assert.equal(nameOf(first), "Before", "the first visit fetched them");
+        assert.equal(first.refreshing, false, "nothing left running - that visit did the work");
+
+        // They change their name on their own node.
+        await setName("After");
+
+        // Past the anti-hammer floor, a visit answers from what we hold - possibly the OLD
+        // name - and starts a refresh behind it.
+        await new Promise((r) => setTimeout(r, 31000));
+        const stale = await (await us(`api/id/${far}/profile${via}`)).json();
+        assert.equal(stale.refreshing, true, "a revalidation is running behind this answer");
+
+        // And asking again shortly gets the new name, with nobody dialing by hand.
+        const fresh = await settle(async () => {
+            const p = await (await us(`api/id/${far}/profile${via}`)).json();
+            return nameOf(p) === "After" ? p : null;
+        }, 60);
+        assert.ok(fresh, "the change reached us because looking is what triggers looking");
+    });
+});

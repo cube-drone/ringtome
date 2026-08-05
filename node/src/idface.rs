@@ -273,8 +273,15 @@ pub async fn idface(
     ))
 }
 
-/// A fetched foreign profile stays fresh this long before a member's next visit re-syncs it.
-const FOREIGN_TTL_MS: i64 = 10 * 60 * 1000;
+/// How long a fetched foreign profile is served without even trying to revalidate.
+///
+/// This was ten minutes, back when a visit's fetch sat in the request path and a long window
+/// was the only thing keeping a dead peer from making a slow page. It is thirty seconds now,
+/// because the fetch no longer blocks anything: a visit serves what we hold and revalidates
+/// BEHIND the response. What remains is an anti-hammer floor - a reload loop must not become a
+/// dial loop - and the exchange it guards is cheap in the common case (an up-to-date frontier
+/// swap transfers nothing; only a persona that actually moved costs more than a kilobyte).
+const FOREIGN_REVALIDATE_MS: i64 = 30 * 1000;
 
 /// Record a successful foreign fetch - ON DISK (amended 2026-08-02 from an in-memory map):
 /// once an identity's own nodes go permanently dark, it survives exactly in the nodes that
@@ -395,6 +402,34 @@ async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool
         }
     }
     false
+}
+
+/// Start a background revalidation of a foreign persona, unless one is already running for it.
+///
+/// Returns whether a refresh is now in flight - true if this call started one OR found one
+/// already going, because either way the answer being served may be superseded shortly, and
+/// that is what the caller is asking.
+///
+/// The in-flight set is what keeps a reload loop from becoming a dial loop: ten page loads in a
+/// second dial the stranger's node once. It is released in every exit path (the guard is
+/// dropped by the task's own end, success or failure), because a root that leaked into the set
+/// would never be refreshed again for the life of the process.
+fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> bool {
+    {
+        let mut running = state.refreshing.lock().unwrap();
+        if !running.insert(root_hex.clone()) {
+            return true; // already being fetched; the caller's answer is superseded either way
+        }
+    }
+    let task_state = state.clone();
+    tokio::spawn(async move {
+        let ok = fetch_foreign(&task_state, &root_hex, &via).await;
+        if !ok {
+            tracing::debug!(root = %root_hex, "background revalidation reached nobody");
+        }
+        task_state.refreshing.lock().unwrap().remove(&root_hex);
+    });
+    true
 }
 
 /// GET `/id/{seg}/docs/{doc}/body` and `/thumb` - a public document's bytes, anonymously.
@@ -565,41 +600,48 @@ pub async fn id_profile(
     let root_hex = hex::encode(root);
     let hosted = hosted_here(&state, &root_hex).await?;
 
+    // Whether a refresh is running behind this response, so the caller knows to look again.
+    let mut refreshing = false;
     if !hosted {
         let Some(_member) = session else {
             return Err(AppError::NotFound("no such persona here".into()));
         };
         let now = crate::clock::now_ms();
         let row = foreign_fetch_row(&state, &root_hex).await?;
-        let fresh = row
-            .as_ref()
-            .is_some_and(|(at, _)| now - at < FOREIGN_TTL_MS);
-        if !fresh {
-            // Candidates: the address's own hints first, then the endpoint that answered
-            // last time (the durable half of the ladder - it works even when the URL was
-            // typed bare, and it is what keeps a quiet identity reachable after every
-            // friendly node has rebooted).
-            let mut via: Vec<String> = query
-                .via
-                .as_deref()
-                .unwrap_or("")
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect();
-            if let Some((_, Some(last))) = &row {
-                if !via.contains(last) {
-                    via.push(last.clone());
+        // Candidates: the address's own hints first, then the endpoint that answered last time
+        // (the durable half of the ladder - it works even when the URL was typed bare, and it
+        // is what keeps a quiet identity reachable after every friendly node has rebooted).
+        let mut via: Vec<String> = query
+            .via
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+        if let Some((_, Some(last))) = &row {
+            if !via.contains(last) {
+                via.push(last.clone());
+            }
+        }
+        match &row {
+            // Nothing held: there is nothing to serve stale, so this one waits. A first visit
+            // to a stranger is the only case that pays the network's latency.
+            None => {
+                if !fetch_foreign(&state, &root_hex, &via).await {
+                    return Err(AppError::NotFound(
+                        "not carried here, and none of the address's computers answered".into(),
+                    ));
                 }
             }
-            let fetched = fetch_foreign(&state, &root_hex, &via).await;
-            // A failed fetch still serves what an earlier one left behind (stale beats
-            // blank); a root we've never reached at all is honestly not-found.
-            if !fetched && row.is_none() {
-                return Err(AppError::NotFound(
-                    "not carried here, and none of the address's computers answered".into(),
-                ));
+            // Something held: answer NOW and revalidate behind it. A visit is the demand
+            // signal the pull model is built on, so it always means "go and look" - but the
+            // reader should not wait on a stranger's node to find that out.
+            Some((at, _)) => {
+                if now - at >= FOREIGN_REVALIDATE_MS {
+                    refreshing = spawn_revalidate(&state, root_hex.clone(), via);
+                }
             }
         }
     }
@@ -664,6 +706,9 @@ pub async fn id_profile(
         // whatever node the reader has.
         "hosted": hosted,
         "via": via,
+        // A refresh is running behind this answer: what you are reading may be a moment old,
+        // and asking again shortly will say so honestly either way.
+        "refreshing": refreshing,
         "posts": posts.iter().map(post_json).collect::<Vec<_>>(),
         // Whether the shelf goes further back than this first page.
         "posts_more": posts_more,

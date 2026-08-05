@@ -72,6 +72,10 @@ pub struct AppState {
     /// it, which just makes returning cursors doubt themselves into a full snapshot - the
     /// design's own answer.
     pub view_epochs: ViewEpochs,
+    /// Foreign personas being re-fetched right now, so a member reloading someone's page ten
+    /// times dials their node once rather than ten times (idface's stale-while-revalidate).
+    /// In-memory and per-process: a boot clears it, which at worst costs one extra exchange.
+    pub refreshing: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 /// See [`AppState::view_epochs`].
@@ -240,6 +244,7 @@ async fn main() -> anyhow::Result<()> {
         resync: net::resync::ResyncTracker::default(),
         unfurl,
         view_epochs: ViewEpochs::default(),
+        refreshing: Default::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
 

@@ -33,14 +33,32 @@ export const IdPage = ({ seg, current, onTitle }) => {
     // keys the fetch wants.
     const via = (loc.query && loc.query.via) || '';
 
+    // The profile, and then the profile again if the node is still fetching it.
+    //
+    // A foreign persona is served from what this node already holds, with a re-sync running
+    // BEHIND the answer (idface.rs's stale-while-revalidate): a visit is the demand signal the
+    // pull model runs on, but the reader shouldn't wait on a stranger's node to find out their
+    // name changed. So `refreshing` means "what you're reading may be a moment old" - ask
+    // again shortly and the answer is either newer or honestly the same.
     useEffect(() => {
         if (!root) return;
         let live = true;
-        api(`/api/id/${root}/profile${via ? `?via=${encodeURIComponent(via)}` : ''}`)
-            .then((p) => live && setProfile(p))
-            .catch(() => live && setProfile(null));
+        let timer = null;
+        const url = `/api/id/${root}/profile${via ? `?via=${encodeURIComponent(via)}` : ''}`;
+        // Bounded: a peer that never answers must not leave a page polling forever.
+        const look = (tries) => {
+            api(url)
+                .then((p) => {
+                    if (!live) return;
+                    setProfile(p);
+                    if (p.refreshing && tries > 0) timer = setTimeout(() => look(tries - 1), 1500);
+                })
+                .catch(() => live && setProfile(null));
+        };
+        look(4);
         return () => {
             live = false;
+            if (timer) clearTimeout(timer);
         };
     }, [root, via]);
 

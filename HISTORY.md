@@ -2349,3 +2349,37 @@ on a lagged one, because a receiver that missed pings cannot rule itself out.
 Pinned by planting both violations: removing the write-skip fails the "does not move when nothing
 public happened" test, which for that reason selects `held_at_ms` rather than just the
 fingerprint - a rewrite is invisible if you only compare the value that didn't change.
+
+## Looking is what triggers looking (2026-08-04)
+
+A foreign persona's page showed a name changed hours ago and posts from far in the past. It was
+re-syncing - just behind a ten-minute TTL, so any visit within ten minutes of the last one served
+the cached copy without dialing anybody. The whole public lane crosses in one exchange, so a
+stale name and stale posts are the same skipped fetch wearing two faces.
+
+That TTL was long for a reason that no longer holds: the fetch sat in the request path, and a
+long window was the only thing keeping a dead peer from becoming a slow page. So the fetch left
+the request path. A visit now serves what this node already holds and revalidates BEHIND the
+answer, the response saying `refreshing: true` so the reader knows to look again - which the /id
+page does, up to four times at a second and a half, bounded because a peer that never answers
+must not leave a page polling forever.
+
+With the wait gone, the TTL stops being a freshness window and becomes what it should have been:
+a thirty-second anti-hammer floor, so a reload loop cannot become a dial loop. The exchange it
+guards is cheap in the ordinary case - an up-to-date frontier swap transfers nothing, and only a
+persona that actually moved costs more than a kilobyte. The expensive case is exactly the case
+worth paying for.
+
+One case still blocks, deliberately: the FIRST sight of a stranger, where there is nothing to
+serve stale. That visit pays the network's latency because the alternative is showing a tombstone
+for someone we could have reached.
+
+The in-flight set is the other half of the anti-hammer: ten page loads in a second dial the
+stranger's node once, and a root already being fetched reports `refreshing: true` to everyone
+waiting on it rather than starting a second exchange. It is released in the task's own exit path,
+success or failure - a root that leaked into that set would never be refreshed again for the life
+of the process.
+
+The doctrine this lands on: a visit is the demand signal the pull model runs on. Someone opening
+your page is the system's only honest cue that your words are wanted somewhere, and it should
+always mean "go and look" - just never at the reader's expense.
