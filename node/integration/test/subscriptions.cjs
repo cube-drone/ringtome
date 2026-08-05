@@ -111,3 +111,66 @@ describe("the subscription memo", () => {
         assert.ok(gone, "a subscription nobody holds must not keep routing");
     });
 });
+
+/*
+    The demand record (net::demand): who asked this node about which persona.
+
+    The fan-out address list, and the answer was already crossing the wire unrecorded - a node
+    that dials us and names a persona has told us it wants that persona. Asking is telling, so
+    there is no consent flag in this story: they initiated the contact.
+*/
+const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
+
+(HOST_B ? describe : describe.skip)("the demand record", function () {
+    this.timeout(60000);
+
+    it("remembers a node that came asking, and does not confuse it for a device", async function () {
+        // A persona on node A, with something public to want.
+        const mine = await makeUserFetch({ prefix: "demanded" });
+        const made = await (await mine("api/identity", { method: "POST" })).json();
+        const root = made.root_pubkey;
+        const note = await (
+            await mine(`api/identity/${root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "Read me", body: "out loud", format: "plaintext" }),
+            })
+        ).json();
+        await mine(`api/identity/${root}/docs/${note.doc_id}/publish`, { method: "POST" });
+
+        const demand = async () => {
+            const { rows } = await sqlOn(
+                `SELECT endpoint_id, last_asked_ms FROM identity_demand
+                 WHERE root_pubkey = '${root}'`
+            );
+            return rows;
+        };
+        assert.deepEqual(await demand(), [], "nobody has asked yet");
+
+        // A member of node B looks them up, which dials A and names this persona.
+        const { toBase58 } = await import("../../js/speakable.js");
+        const endpointA = (await (await mine("api/node")).json()).endpoint_id;
+        const stranger = await makeUserFetch({ prefix: "asker", host: HOST_B });
+        const resp = await stranger(`api/id/${root}/profile?via=${toBase58(endpointA)}`);
+        assert.equal(resp.status, 200, await resp.text());
+
+        const asked = await settle(async () => {
+            const rows = await demand();
+            return rows.length ? rows : null;
+        });
+        assert.ok(asked, "A wrote down that somebody came asking about this persona");
+        assert.ok(asked[0].last_asked_ms > 0, "with when");
+        const endpointB = (await (await stranger("api/node")).json()).endpoint_id;
+        assert.equal(asked[0].endpoint_id, endpointB, "and which node it was");
+
+        // The distinction that matters: a reader is NOT a device. identity_peers means "nodes
+        // that are this identity" - member-proven, entitled to private chains - and a stranger
+        // asking about a public persona must never land there.
+        const { rows: peers } = await sqlOn(
+            `SELECT endpoint_id FROM identity_peers WHERE root_pubkey = '${root}'`
+        );
+        assert.ok(
+            !peers.some((p) => p.endpoint_id === endpointB),
+            "asking about someone does not make you one of their computers"
+        );
+    });
+});

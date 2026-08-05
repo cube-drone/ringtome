@@ -2459,3 +2459,40 @@ Nothing reads the table, and there is deliberately no reader function either - a
 before its consumer guesses at the shape the consumer wants. That was learned an hour earlier:
 the frontier module shipped `held`/`persona_fingerprint` with no caller, and clippy's dead-code
 error was the honest signal.
+
+## Asking is telling (2026-08-05)
+
+`identity_demand`: who has asked this node about which persona, one row per (persona, node),
+updated in place. It is the fan-out address list - "a public post for P just landed, which nodes
+should I tell?" - and it needed no new protocol, because the answer was already crossing the wire
+and being thrown away. A node that dials us and names P in its Hello has told us it wants P.
+
+Curtis proposed trust as the routing proxy and it doesn't hold, for a reason the doctrine states
+in its own words: trust is "do I believe they're real", never "do I like them" - Interest is the
+liking dial. So it is over-inclusive (I vouched my dentist is a real person; I don't want their
+posts) and, fatally, under-inclusive: following someone without making any claim about whether
+they're impersonated is the ordinary case, so a trust-keyed fan-out misses nearly everyone who
+actually asked to read you.
+
+It also pays a debt canon had booked and nothing wrote: the Three Funnels has been asserting a
+demand record for months. This is the honest kind - a record of what someone DID rather than an
+inference about what they might want - and it decays by nature: a node that stops asking stops
+being told, so losing interest needs no unsubscribe.
+
+Kept separate from `identity_peers` deliberately, though the key looks identical. That table
+means "nodes that ARE this identity" - member-proven, entitled to private chains, and
+`roots_with_peers` drives the eager push loop assuming exactly that. A reader is none of those,
+and the conflation is the kind that leaks the day someone writes a loop over `peers_for` without
+re-reading its comment. The test pins it from the other side too: a stranger asking about a
+public persona must not appear in `identity_peers`.
+
+Recorded AFTER the agented check, which matters more than it looks: a node we don't serve gets a
+uniform empty answer by design ("we don't confirm what we do or don't hold"), and writing a row
+for it would make that silence measurable from our own database.
+
+Two things left undone on purpose. No `fanout_targets` query - it has no consumer yet, and a
+query written before its reader guesses at the shape the reader wants; this is the third time
+that lesson has come up today and the first time it was applied before clippy said so. And no
+retention pass: Curtis's call, correct at this stage, but the table does assemble a readership
+graph for personas we host, which is the same already-possible/already-assembled line trust had
+to respect - so pruning to a window is owed before any node hosts strangers, and is ledgered.

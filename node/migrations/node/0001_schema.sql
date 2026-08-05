@@ -124,6 +124,39 @@ CREATE TABLE subscriptions (
 CREATE INDEX subscriptions_by_foreign ON subscriptions (foreign_root);
 
 -- ---------------------------------------------------------------------------------------------
+-- Who has ASKED us about a persona: the demand record the Three Funnels has been asserting and
+-- nothing wrote (PROJECT_PLAN, The Three Funnels).
+--
+-- The fan-out question is "a public post for P just landed - which nodes should I tell?", and
+-- the answer is already crossing the wire unrecorded: a node that dials us and names P in its
+-- Hello has told us it wants P. Asking is telling. No consent machinery is involved because
+-- they initiated the contact, and no follow disclosure is needed for it to work today.
+--
+-- SEPARATE from identity_peers on purpose, though the key looks the same. That table means
+-- "nodes that ARE this identity" - authority-bearing, member-proven, entitled to private
+-- chains, and `roots_with_peers` drives the eager push loop assuming exactly that. A reader is
+-- none of those things, and the day someone writes a loop over `peers_for` without re-reading
+-- its comment, the conflation is what leaks.
+--
+-- One row per pair, updated in place - a log of every request grows without bound and answers
+-- "who wants this?" strictly worse than one row saying "recently". Endpoint-level and never
+-- joined to which human asked: we learn that a NODE wants P, and the receiving node routes
+-- internally, which is "the node routes; the user ranks" falling out of the mechanism rather
+-- than being enforced on top of it.
+--
+-- Retention deliberately deferred (2026-08-05): this assembles a readership graph for personas
+-- we host, which is the same already-possible/already-assembled line trust had to respect. The
+-- mitigation is pruning to a window so it records CURRENT demand rather than a permanent
+-- readership log - owed before any node hosts strangers, not before then.
+CREATE TABLE identity_demand (
+    root_pubkey   TEXT    NOT NULL,  -- the persona they asked about
+    endpoint_id   TEXT    NOT NULL,  -- the node that asked; transport identity, never a person
+    last_asked_ms INTEGER NOT NULL,
+    PRIMARY KEY (root_pubkey, endpoint_id)
+);
+CREATE INDEX identity_demand_by_root ON identity_demand (root_pubkey);
+
+-- ---------------------------------------------------------------------------------------------
 -- What THIS node holds of each persona's PUBLIC lane, one row per (persona, public service).
 --
 -- Why it exists: per-user databases are separate files, so "which personas changed?" otherwise

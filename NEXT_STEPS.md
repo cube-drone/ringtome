@@ -62,6 +62,13 @@ Owed inside those directions, and easy to lose because the surfaces around them 
   nodes forked at the same seq on a public chain exchange nothing. The anchor that detects it now
   crosses the wire (`Frontier.head_hash`); what an exchange should DO about a public fork is the
   open design.
+- **Fan-out itself, and demand retention** (opened 2026-08-05 with `identity_demand`): the
+  address list exists and nothing reads it. Owed: (1) the push - when a hosted persona's public
+  frontier moves, tell the nodes that have asked about them (the eager loop already dials
+  `peers_for`; this is the same dial over a wider list, and the exchange's member proof already
+  keeps private chains out of it); (2) **retention** - the table records demand forever, which
+  assembles a readership graph for personas we host; pruning to a window makes it a record of
+  CURRENT demand instead. Trigger for (2): before any node hosts strangers.
 - **The signpost rung** - serving records grow the public-web-URL field.
 - **The root-directory backstop** - a real design problem, found 2026-08-02: serving records
   publish under LEAF keys because pkarr requires the publisher's signing key and the root's is

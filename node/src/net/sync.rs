@@ -922,6 +922,16 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         return Ok(());
     }
 
+    // They dialed us and named this persona: that is a demand edge, recorded before anything
+    // else happens because the asking is the fact, whatever the exchange goes on to transfer.
+    // Deliberately AFTER the agented check above - a node we don't serve gets a uniform empty
+    // answer, and writing a row for it would make our silence measurable.
+    if let Err(e) =
+        crate::net::demand::record_ask(&state.node_db, &root_hex, &hex::encode(peer_id)).await
+    {
+        tracing::debug!(error = ?e, "recording a demand edge failed");
+    }
+
     let db = state.user_dbs.get(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
 

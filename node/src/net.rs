@@ -2,6 +2,7 @@
 //!
 //!   - [`p2p`]: the iroh endpoint - transport identity, ALPNs, the accept loop.
 //!   - [`sync`]: chain exchange between nodes agenting the same identity.
+//!   - [`demand`]: who has asked this node about which persona - the fan-out address list.
 //!   - [`frontier`]: the node's map of what it holds of each persona's PUBLIC lane, as one
 //!     fingerprint per (persona, service) - the sweep behind fan-out.
 //!   - [`subscriptions`]: the node's memo of who follows and (publicly) trusts whom, derived
@@ -12,6 +13,7 @@
 //!     globally rate-limited, cached).
 
 pub mod adopt;
+pub mod demand;
 pub mod discovery;
 pub mod frontier;
 pub mod p2p;
