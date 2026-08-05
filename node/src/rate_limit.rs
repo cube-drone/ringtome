@@ -29,6 +29,26 @@ impl RateLimiter {
         }
     }
 
+    /// [`check`], for a request with a context: the operator's own machine, talking to the
+    /// node directly (loopback, unproxied), is never limited. The limiter exists to stop one
+    /// IP hammering account creation from the NETWORK; a loopback caller is the operator or
+    /// their tools - the test-data generator registering a hundred personas is the intended
+    /// customer, not an attacker. Same audience-aware posture as the password floor, and the
+    /// proxy hazard is handled where the question is answered (`is_direct_loopback`).
+    pub async fn check_ctx(
+        &self,
+        action: &str,
+        ctx: &crate::request_context::RequestContext,
+        limit: u32,
+        window_ms: i64,
+    ) -> Result<(), AppError> {
+        if ctx.is_direct_loopback() {
+            return Ok(());
+        }
+        self.check(action, &ctx.rate_limit_identifier(), limit, window_ms)
+            .await
+    }
+
     /// Allow at most `limit` `action`s per `identifier` per `window_ms`. Returns
     /// `TooManyRequests` once the limit is exceeded within the current window.
     pub async fn check(

@@ -80,12 +80,7 @@ async fn register_handler(
 ) -> Result<Json<AccountInfo>, AppError> {
     state
         .rate_limiter
-        .check(
-            "register",
-            &ctx.rate_limit_identifier(),
-            REGISTER_LIMIT,
-            HOUR_MS,
-        )
+        .check_ctx("register", &ctx, REGISTER_LIMIT, HOUR_MS)
         .await?;
 
     let account = register(
@@ -147,12 +142,7 @@ async fn recover_handler(
 ) -> Result<Response, AppError> {
     state
         .rate_limiter
-        .check(
-            "recover",
-            &ctx.rate_limit_identifier(),
-            RECOVER_LIMIT,
-            HOUR_MS,
-        )
+        .check_ctx("recover", &ctx, RECOVER_LIMIT, HOUR_MS)
         .await?;
 
     let outcome = crate::identity::recover_password(

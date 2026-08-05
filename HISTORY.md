@@ -2704,3 +2704,25 @@ And it found a product gap within minutes of existing: the first-born persona's 
 their own posts, because journaling hangs off the frontier EDGE and a follow moves no frontier -
 a fresh follow's feed stays empty until the followee next posts. Ledgered with its one-call fix.
 A data generator that surfaces design gaps on its first run has already paid for itself.
+
+## The operator is not an attacker (2026-08-05)
+
+`just test_data` against the real dev network died on its third registration: the rate limiter
+allows two registers per hour, and it was doing its job - against the wrong audience. The
+limiter exists to stop one IP hammering account creation from the NETWORK; a loopback caller is
+the operator or their tools, and the generator registering a hundred personas is the intended
+customer, not an attacker being merely tolerated.
+
+The fix is the password floor's posture applied per-request: `check_ctx` exempts a request that
+is loopback AND unproxied. The second condition is load-bearing, not decoration - behind a
+reverse proxy every request arrives from loopback, and exempting bare loopback would turn "no
+limits for the operator" into "no limits for the world". A proxied request announces itself via
+X-Forwarded-For, so its absence plus a loopback socket means the operator's own machine; a proxy
+that STRIPS the header would still fool this, which is one more thing the security pass gates
+public exposure on. Three unit tests pin the triangle: direct loopback exempt (v4 and v6),
+loopback-behind-proxy limited, the network limited.
+
+An editing scar worth its sentence: the first fix verified as broken, because the edit script
+asserted on a call site that didn't exist AFTER performing the register replacement in memory -
+the throw skipped the file write, so the change tested was half-landed. The live re-test caught
+it, which is why the live re-test exists.
