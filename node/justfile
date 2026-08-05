@@ -244,6 +244,33 @@ integration-install:
 kill:
     -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || pkill -f 'target/debug/ringtome' 2>/dev/null || true
 
+# DESTROY every development database on this machine, and the keys that open them.
+#
+# This is not "clean the build" - `cargo clean` is that. This deletes the data directories the
+# dev recipes write to, which means accounts, personas, their chains, their journals, their
+# blobs, and the keystore. Nothing survives it and nothing recovers it: the keystore is what
+# decrypts the databases, so removing them together is the only honest option - a database
+# without its key refuses to open, on purpose.
+#
+# What it is FOR: the node refuses to boot after a schema generation bump ("pre-launch there is
+# no in-place migration - delete the database and rebuild"). This is that delete.
+#
+# Covers `start` / `run` (./data, which also contains the integration rig's ./data/test*),
+# `start_two` (adds ./data-b, ./data-dht) and `start_three` (adds ./data-c). Kills any running
+# node first, so nothing is holding a file open while it disappears.
+#
+# DESTROYS every dev persona, key and chain - the wipe a schema generation bump asks for.
+clean: kill
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{workspace}}"
+    for d in data data-b data-c data-dht; do
+        if [ -e "$d" ]; then
+            rm -rf "$d" && echo "removed $d"
+        fi
+    done
+    echo "gone: every persona, key and chain the dev nodes held. The next boot starts empty."
+
 # Boot THREE throwaway nodes (sync tests need a peer; daisy-chain tests need a chain), wait for
 # health, run the JS integration suite, tear all down. Single-node-only tests are unaffected;
 # multi-node tests skip themselves if RINGTOME_TEST_HOST_B / _C are absent.
