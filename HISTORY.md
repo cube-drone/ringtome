@@ -2545,3 +2545,57 @@ Still owed, now with the substrate under it: the feed READ surface (the UI, orde
 reader's own dials at open), seen-state on the private chain, demand retention, and
 rebroadcast - the push deliberately fires only for personas this node AUTHORS, because relaying
 someone else's lane onward is a consent question, not a routing one.
+
+## One table for every face (2026-08-05)
+
+Curtis asked whether rendering "who wrote this" in a feed would open the author's database per
+byline - and it would have, because the contacts join was ALREADY doing exactly that, live, per
+stream snapshot: `contact_self_claims` opened every contact's encrypted file on every gather to
+re-learn names that almost never change. The fan-in warning in the Data Layer, running in
+production as the People roster.
+
+`persona_profiles` is his proposed fix, built as the memo idiom's fourth instance this week: the
+most recent public name and avatar of every persona the node holds, refreshed on the frontier
+map's edge - a rename IS the PROFILE_PUBLIC service moving, which is exactly what fires it, so
+the per-service split of the frontier table pays for the second time. Public facts only, by
+construction: name and avatar are the registers the anonymous /id face already serves to
+strangers, so the cache discloses nothing. Write-on-change (the frontiers lesson), so
+`updated_at_ms` means the CLAIM moved, not that somebody looked.
+
+The contacts join now reads the cache - one query for the whole roster instead of one database
+per face - which means the cache shipped with a real consumer on day one rather than as
+speculative substrate, and the future feed's bylines are already paid for: `bylines(roots)` is
+the query a feed list will make.
+
+The near-miss worth recording: the full suite passed after the repointing, and that meant
+nothing, because no test had ever pinned the name join. The green was vacuous. Three tests now
+pin it - the cache learns a rename unasked, the stamp moves with the claim, and the roster read
+through the live-cache stream (the way the browser actually reads it; there is no HTTP contacts
+endpoint) wears the cached name. The planted violation kills all three.
+
+## Thrash becomes a deliberate act (2026-08-05)
+
+Curtis, after the byline cache: it would be very easy to walk into database thrash again by
+accident. It would - it already happened once, silently. The contacts join shipped opening a
+database per face, ran in production, and was caught only because a design conversation about
+feed bylines walked past it. The suite was green the whole time, because thrash is slow, not
+wrong, and no test measures slow.
+
+A grep cannot see "inside a loop", so the defense pins the next best thing, in the house's own
+idiom: a conventions test that holds the exact set of `user_dbs.get` call sites, per file, per
+count. Adding one fails the build until the number is bumped in the test - and the bump is the
+designed moment of reflection, with the question printed in the assertion message: does the new
+call run once per request, or once per persona? The first is fine; the second wants a memo table,
+and the four precedents are named where the decision happens. The rule also now lives at the
+point of temptation (a doc comment on `UserDbManager::get` itself) and in STYLE.md as "one
+question, one database".
+
+The test's own first draft had the bug its comment now warns about: a line-based grep
+undercounted the call sites, missing exactly the newest ones - they're line-wrapped by rustfmt
+(`state\n.user_dbs\n.get`). The count is taken over whitespace-stripped source for that reason,
+and the near-miss is recorded in the comment so the next survey doesn't repeat it.
+
+What this deliberately is not: a runtime tripwire. An eviction-rate warning on the handle cache
+would catch the dynamic case (a pinned call site that grows a loop around it), and it may be
+worth having when a node first hosts real load - but a static pin that fires at build time
+beats a log line nobody reads, and the one incident we have would have been caught by this one.

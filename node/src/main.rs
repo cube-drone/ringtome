@@ -25,6 +25,7 @@ mod keystore;
 mod loops;
 mod media;
 mod net;
+mod profiles;
 mod pubkey;
 mod rate_limit;
 mod record;

@@ -174,3 +174,87 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
         );
     });
 });
+
+/*
+    The byline cache (src/profiles.rs): every persona's public name and avatar, memoized at
+    node level so a LIST answers "who is this?" from one table instead of opening one encrypted
+    database per face. The contacts join used to do exactly that per stream snapshot; it now
+    reads this cache, so these tests pin both halves - the cache tracks the claim, and the
+    roster actually serves what the cache holds.
+*/
+describe("the byline cache", () => {
+    let who, whoRoot, watcher, watcherRoot;
+
+    const cacheRow = async (root) => {
+        const { rows } = await sql(
+            `SELECT name, avatar, updated_at_ms FROM persona_profiles
+             WHERE root_pubkey = '${root}'`
+        );
+        return rows[0] || null;
+    };
+
+    before(async () => {
+        who = await makeUserFetch({ prefix: "byline" });
+        whoRoot = (await (await who("api/identity", { method: "POST" })).json()).root_pubkey;
+        watcher = await makeUserFetch({ prefix: "bylinewatch" });
+        watcherRoot = (await (await watcher("api/identity", { method: "POST" })).json())
+            .root_pubkey;
+    });
+
+    it("learns a persona's name from the same edge fan-out rides", async () => {
+        await who(`api/identity/${whoRoot}/profile`, {
+            method: "POST",
+            body: JSON.stringify({ field: "name", value: "Cache Me" }),
+        });
+        const row = await settle(async () => {
+            const r = await cacheRow(whoRoot);
+            return r && r.name === "Cache Me" ? r : null;
+        });
+        assert.ok(row, "the rename reached the cache unasked");
+    });
+
+    it("follows a rename, and updated_at_ms means the CLAIM moved", async () => {
+        const before = await cacheRow(whoRoot);
+        await who(`api/identity/${whoRoot}/profile`, {
+            method: "POST",
+            body: JSON.stringify({ field: "name", value: "Cache Me Again" }),
+        });
+        const after = await settle(async () => {
+            const r = await cacheRow(whoRoot);
+            return r && r.name === "Cache Me Again" ? r : null;
+        });
+        assert.ok(after, "the new name landed");
+        assert.ok(after.updated_at_ms >= before.updated_at_ms, "and the claim-stamp moved");
+    });
+
+    it("the contacts roster serves the cached byline - no database per face", async () => {
+        // The watcher records ANY fact about them, which puts them on the roster. The roster
+        // rides only the live-cache stream (there is no HTTP contacts endpoint - the mirror is
+        // the reader), so read one snapshot the way the browser does.
+        await watcher(`api/identity/${watcherRoot}/private/kv/contact:${whoRoot}/interest`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "50" }),
+        });
+        const WebSocket = require("ws");
+        const { HOST } = require("./fetch.cjs");
+        const cookie = watcher.jar
+            ? await watcher.jar.getCookieString(`http://${HOST}/`)
+            : null;
+        assert.ok(cookie, "the fetch jar exposes its session for the ws upgrade");
+        const snapshot = await new Promise((resolve, reject) => {
+            const ws = new WebSocket(`ws://${HOST}/api/identity/${watcherRoot}/stream`, {
+                headers: { Cookie: cookie },
+            });
+            const timer = setTimeout(() => reject(new Error("no snapshot in time")), 10000);
+            ws.on("message", (data) => {
+                clearTimeout(timer);
+                ws.close();
+                resolve(JSON.parse(data.toString()));
+            });
+            ws.on("error", reject);
+        });
+        const them = (snapshot.contacts || []).find((c) => c.root === whoRoot);
+        assert.ok(them, "the roster carries the contact");
+        assert.equal(them.name, "Cache Me Again", "wearing the name the cache holds");
+    });
+});

@@ -80,6 +80,13 @@ weeks; every rule here is a defense against that prison of context.
   milliseconds, everywhere).
 - Errors: typed `AppError` at the HTTP boundary, `anyhow` + `.context()` in leaf modules, every
   fallible call annotated. Internal detail is logged, never sent to the client.
+- **One question, one database** (added 2026-08-05, after the contacts join shipped the
+  violation and ran unnoticed): opening a user database is a per-file act - decryption,
+  migration check, journal validation. A loop over personas that calls `user_dbs.get` per item
+  is the fan-in thrash the Data Layer warns about, and it will pass every test, because thrash
+  is slow, not wrong. Cross-persona questions read a **node-level memo** written at fold time
+  (`persona_frontiers`, `subscriptions`, `persona_profiles`, `feed_journal`); the conventions
+  test pins every `get` call site so a new one is a deliberate act.
 
 ## Testing
 

@@ -157,6 +157,26 @@ CREATE TABLE identity_demand (
 CREATE INDEX identity_demand_by_root ON identity_demand (root_pubkey);
 
 -- ---------------------------------------------------------------------------------------------
+-- The byline cache: the most recent PUBLIC self-claims of every persona this node holds -
+-- their name and avatar, the two facts any list of humans needs per row.
+--
+-- The memo idiom again (doc_heads, persona_frontiers, subscriptions): the truth is the
+-- persona's own PROFILE_PUBLIC registers in their per-user database, and this is the copy that
+-- keeps a LIST from opening one encrypted file per face on it. The contacts join used to do
+-- exactly that - every stream snapshot re-opened every contact's database to re-learn a name
+-- that almost never changes; a feed would have done the same per byline.
+--
+-- Public facts only, structurally: name and avatar live on the public profile lane, already
+-- served to anonymous strangers by the /id face - nothing here is a disclosure. Refreshed on
+-- the frontier map's edge, which fires precisely when PROFILE_PUBLIC moves.
+CREATE TABLE persona_profiles (
+    root_pubkey   TEXT PRIMARY KEY,
+    name          TEXT,               -- their self-configured display name, NULL if unset
+    avatar        TEXT,               -- their avatar's public doc_id (hex), NULL if unset
+    updated_at_ms INTEGER NOT NULL    -- when the CLAIM last changed, not when we last looked
+);
+
+-- ---------------------------------------------------------------------------------------------
 -- The arrival journal: what has LANDED for each reader on this node, from the personas they
 -- follow (PROJECT_PLAN, Data Layer: "Journal, then index").
 --

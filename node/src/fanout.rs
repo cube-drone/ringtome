@@ -42,6 +42,12 @@ pub fn after_public_move<'a>(
 }
 
 async fn after_public_move_inner(state: &AppState, root_hex: &str) {
+    // The byline cache rides the same edge: a rename is PROFILE_PUBLIC moving, which is
+    // exactly what fired this. Refreshing here (not per-render) is what lets every list on
+    // the node answer "who is this?" without opening this persona's database.
+    if let Err(e) = crate::profiles::refresh(state, root_hex).await {
+        tracing::debug!(root = %root_hex, error = ?e, "byline refresh failed");
+    }
     match journal_for(state, root_hex).await {
         Ok(readers) if readers > 0 => {
             tracing::info!(root = %root_hex, readers, "journaled a public move");

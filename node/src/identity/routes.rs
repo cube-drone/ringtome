@@ -2415,28 +2415,11 @@ struct ContactRow {
     facts: std::collections::BTreeMap<String, String>,
 }
 
-/// The self-claims join for one contact: their profile's `name` and `avatar`, if we hold
-/// their chains. `exists` first, so a contact list full of strangers never mints empty
-/// databases.
-async fn contact_self_claims(state: &AppState, root_hex: &str) -> (Option<String>, Option<String>) {
-    if !state.user_dbs.exists(root_hex) {
-        return (None, None);
-    }
-    let Ok(db) = state.user_dbs.get(root_hex).await else {
-        return (None, None);
-    };
-    let Ok(fields) = crate::record::imaol::get_profile(&db).await else {
-        return (None, None);
-    };
-    let grab = |key: &str| {
-        fields
-            .iter()
-            .find(|f| f.field == key)
-            .map(|f| f.value.clone())
-            .filter(|v| !v.is_empty())
-    };
-    (grab("name"), grab("avatar"))
-}
+// The self-claims join used to live here as `contact_self_claims`, opening each contact's
+// database per gather - every stream snapshot re-opened every contact's encrypted file to
+// re-learn a name that almost never changes. The byline cache (src/profiles.rs) is that join
+// materialized at node level, refreshed on the frontier map's edge; the roster now reads one
+// table for the whole list.
 
 async fn gather(
     state: &AppState,
@@ -2462,10 +2445,20 @@ async fn gather(
         })
         .collect();
     let search = data.documents().search_rows().await?;
+    let ledger = data.contacts().await?;
+    let roots: Vec<String> = ledger.iter().map(|(root, _)| root.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &roots)
+        .await
+        .unwrap_or_default();
     let mut contacts = Vec::new();
-    for (root, facts) in data.contacts().await? {
-        let (name, avatar) = contact_self_claims(state, &root).await;
-        contacts.push(ContactRow { root, name, avatar, facts });
+    for (root, facts) in ledger {
+        let byline = bylines.get(&root).cloned().unwrap_or_default();
+        contacts.push(ContactRow {
+            root,
+            name: byline.name,
+            avatar: byline.avatar,
+            facts,
+        });
     }
     let buckets = data
         .buckets()

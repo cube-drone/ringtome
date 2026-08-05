@@ -605,6 +605,13 @@ impl UserDbManager {
         self.path_for(root_pubkey).exists()
     }
 
+    /// Open (or create) one persona's database. A PER-FILE act: decryption, migration check,
+    /// journal validation - cheap once, ruinous per-item. If the call you are writing sits
+    /// inside a loop over personas (a roster's names, a feed's bylines, "which of these
+    /// changed?"), stop: that is the fan-in thrash the Data Layer warns about, and the answer
+    /// is a node-level memo written at fold time (persona_frontiers, subscriptions,
+    /// persona_profiles, feed_journal - four precedents). The conventions test pins every
+    /// call site of this function for exactly this reason.
     pub async fn get(&self, root_pubkey: &str) -> Result<Db> {
         if let Some(db) = self.handles.get(root_pubkey).await {
             return Ok(db);
