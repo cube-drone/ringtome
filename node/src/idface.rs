@@ -446,6 +446,77 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
     true
 }
 
+#[derive(serde::Serialize)]
+pub struct DirectoryRow {
+    pub root: String,
+    pub speakable: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    /// Hosted here (a neighbor), or merely known here (someone a member once reached).
+    pub hosted: bool,
+}
+
+/// GET `/api/directory` - the personas this node KNOWS, for its members: a proto-discovery
+/// surface, and the first place anywhere that ENUMERATES identities, which is why its rules
+/// are consent lines rather than reach:
+///
+///   - Hosted personas appear only once SERVED. `served_at_ms` is the publication act
+///     ("identities are born dark"), and it gates local listing for the same reason it gates
+///     the DHT record - a housemate's dark pseudonym must not be volunteered to housemates.
+///   - Fetched personas appear because acquaintance is the surface's whole value - but the
+///     trail is node-level and anonymous WITHIN the node by construction: `foreign_fetches`
+///     has no account column, so a row says "someone here has met them", never who.
+///   - Members only. The anonymous face keeps tombstoning everything it already tombstones;
+///     a stranger enumerating who this node knows would be reading its members' interests.
+///   - Follows are never consulted. A quiet follow is quiet (Edge-Endpoint Visibility), and
+///     this list must not be a way to notice one.
+///
+/// Bylines come from the cache - one query, no database per face (the conventions test pins
+/// this surface to zero `user_dbs.get` calls simply by counting).
+pub async fn directory(
+    _session: Session,
+    State(state): State<AppState>,
+) -> Result<axum::Json<Vec<DirectoryRow>>, AppError> {
+    let served: std::collections::BTreeSet<String> =
+        crate::identity::served_roots(&state.node_db)
+            .await?
+            .into_iter()
+            .collect();
+    let fetched = fetched_roots(&state.node_db)
+        .await
+        .map_err(AppError::Internal)?;
+    let mut roots: Vec<String> = served.iter().cloned().collect();
+    roots.extend(fetched.into_iter().filter(|r| !served.contains(r)));
+
+    let bylines = crate::profiles::bylines(&state.node_db, &roots)
+        .await
+        .map_err(AppError::Internal)?;
+    let mut rows: Vec<DirectoryRow> = roots
+        .into_iter()
+        .filter_map(|root| {
+            let raw = crate::pubkey::decode(&root)?;
+            let byline = bylines.get(&root).cloned().unwrap_or_default();
+            Some(DirectoryRow {
+                speakable: speakable::speakable(&raw),
+                hosted: served.contains(&root),
+                name: byline.name,
+                avatar: byline.avatar,
+                root,
+            })
+        })
+        .collect();
+    // The named before the nameless, each alphabetically - a directory people can scan.
+    rows.sort_by(|a, b| match (&a.name, &b.name) {
+        (Some(x), Some(y)) => x.to_lowercase().cmp(&y.to_lowercase()),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.speakable.cmp(&b.speakable),
+    });
+    Ok(axum::Json(rows))
+}
+
 /// GET `/id/{seg}/docs/{doc}/body` and `/thumb` - a public document's bytes, anonymously.
 /// The lane check is the whole gate: `public_head` answers only for POSTS-lane documents, so
 /// a private doc_id asked through this door is a 404, never a leak. Bytes are served with

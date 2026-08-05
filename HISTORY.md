@@ -2599,3 +2599,71 @@ What this deliberately is not: a runtime tripwire. An eviction-rate warning on t
 would catch the dynamic case (a pinned call site that grows a loop around it), and it may be
 worth having when a node first hosts real load - but a static pin that fires at build time
 beats a log line nobody reads, and the one incident we have would have been caught by this one.
+
+## Known around here (2026-08-05)
+
+Curtis, looking at the byline cache: because it maps what the node KNOWS ABOUT rather than what
+it contains, can it be a proto-discovery surface - "here are some known identities"? It can, and
+it is now: GET /api/directory for members, and a "known around here" shelf on the People app
+below your own roster - the node introducing you to who it knows, which is the first concrete
+answer to the closed-room worry Curtis has been carrying since the inbox conversations.
+
+It is also the first surface ANYWHERE that enumerates identities - everything before it answered
+only about roots you already knew, and volunteering roots is a new act - so its rules are
+consent lines, each pinned by a test:
+
+- **Born-dark stays dark.** A hosted persona lists only once SERVED: `served_at_ms` is the
+  publication act, and it gates local listing for the same reason it gates the DHT record - a
+  housemate's dark pseudonym must not be volunteered to housemates. The planted violation
+  (listing hosted instead of served) fails exactly this test.
+- **Quiet follows never list.** The subscriptions table is not consulted; a discovery list must
+  not be a way to notice a quiet follow.
+- **The fetch trail is node-level and anonymous within the node BY CONSTRUCTION.** Fetched
+  personas appear - acquaintance is the surface's whole value - but `foreign_fetches` has no
+  account column, so a row says "someone here has met them", never who.
+- **Members only.** A stranger enumerating who a node knows would be reading its members'
+  interests; the anonymous face keeps tombstoning everything it already tombstoned.
+
+Bylines come off the cache, and the thrash rule held by counting: the endpoint makes zero
+`user_dbs.get` calls, and the UI hands each directory row down as PersonRow's `profile` prop -
+the designed no-refetch path - so a fifty-face shelf is one query and one HTTP fetch, total.
+
+Deliberately modest: this is browse-discovery among the already-adjacent, not search. Finding a
+SPECIFIC identity from a bare root is the resolution ladder (signpost rung, root-directory
+backstop, still owed), and graph-shaped discovery - friends-of-friends via published follows and
+vouches - is Tier 5's to build on edges people chose to publish. The directory is the humble
+floor under both: the node is allowed to say who it knows to the people it hosts.
+
+## The feed, first draft (2026-08-05)
+
+The read half of fan-out: /home/feed's main area is now THE feed - everyone you follow, and
+you, in strict reverse chronology, scrolling down into the past. Drafted under a design premise
+Curtis stated outright and the code repeats: "how do we generate a good feed" is a
+million-dollar question and an open research problem, so this draft does not rank. Chronology
+is the whole ordering, and the reader's interest dials shape RENDERING only - a low-interest
+source is smaller, a little transparent, and cut to its lead paragraph ("the whole thing" opens
+it); a high-interest source gets a touch more visual importance and is never cut. Order never
+moves. All pure and vectored (emphasisOf, leadOf, mergeFeed, feedCursor), with the never-cut-
+the-important rule pinned by a planted violation.
+
+The server half is one endpoint over the arrival journal: strict keyset pages, byline joined
+from the cache (zero databases opened per face - the conventions counter never moved), seen
+joined from the reader's own private chain, `mine` flagged. Your own posts appear in your own
+feed as if you had written them - which you did - by the journal simply including a hosted
+author among their own readers; they arrive pre-seen, because you were there.
+
+Seen-state went where the schema comment promised it would: the reader's `feed_seen` registers
+on their PRIVATE chain, written through the ordinary KV surface (nothing feed-specific writes),
+so a mark travels to their other computers - Delivered stayed node-local in the journal, Seen
+travels with the human (Two cursors, not one). Marks happen when an item actually enters the
+viewport, once ever per item; jsdom has no IntersectionObserver, so the instrument's honest
+degradation is that nothing auto-marks there and the probe marks by hand. The "only what's new
+to you" toggle filters client-side over loaded pages.
+
+Item links go to the author's page for now - which fresh-syncs them on arrival, most of what
+the eventual per-item page owes - titled items link from the title, untitled ones from a quiet
+foot line. The per-item page, with its own fresh-sync, is ledgered.
+
+The probe lied twice before the app was proven right: it read emphasis classes before the
+mirror's contacts had arrived, and held element references across re-renders that replaced the
+nodes. Re-query after every wait; a stale reference reads the page as it was.

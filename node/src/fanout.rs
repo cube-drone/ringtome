@@ -71,7 +71,16 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str) {
 /// story ("backfill is the burst to bound" - PROJECT_PLAN, Data Layer). The older posts are not
 /// lost - they are on the persona's page, where reading further back is a choice.
 async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
-    let readers = crate::net::subscriptions::followers_of(&state.node_db, author_root).await?;
+    let mut readers = crate::net::subscriptions::followers_of(&state.node_db, author_root).await?;
+    // Your own posts appear in your own feed, as if you had written them - which you did
+    // (Curtis, 2026-08-05). The author follows nobody to get this; being hosted is enough.
+    if crate::identity::is_agented(&state.node_db, author_root)
+        .await
+        .unwrap_or(false)
+        && !readers.iter().any(|r| r == author_root)
+    {
+        readers.push(author_root.to_string());
+    }
     if readers.is_empty() {
         return Ok(0); // nobody here follows them - the common case, and it costs one query
     }
@@ -89,11 +98,6 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let now = now_ms();
     let mut journaled = 0;
     for reader in &readers {
-        // Your own posts are not news to you - possible only via a self-follow, but a feed
-        // that echoes its author is wrong however it was asked for.
-        if reader == author_root {
-            continue;
-        }
         for p in &posts {
             // arrived_ms survives the upsert: it answers "when did this reach me", and a
             // re-publication changes what the post says, not when it arrived.
@@ -161,4 +165,67 @@ async fn push_to_askers(state: &AppState, root_hex: &str) {
             Err(e) => tracing::debug!(root = %root, error = ?e, "fanout push failed"),
         }
     });
+}
+
+/// One row of a reader's feed, as the journal holds it.
+#[derive(Debug, Clone)]
+pub struct FeedRow {
+    pub author_root: String,
+    pub doc_id: String,
+    pub title: String,
+    pub format: Option<String>,
+    pub published_ms: i64,
+    pub updated_ms: i64,
+    pub arrived_ms: i64,
+}
+
+/// One page of a reader's feed, strictly chronological (published DESC), keyset-cursored like
+/// the public shelf - and for the same reason: this stream grows at the head while somebody
+/// reads down it, and an offset would skip a row for every arrival.
+///
+/// Chronology is the WHOLE ordering, deliberately: how a good feed ranks is a million-dollar
+/// question this draft does not pretend to answer. The reader's interest dials affect only how
+/// items RENDER (size, opacity, truncation) - which is the client's business, off its own
+/// mirror, where those dials live.
+pub async fn feed_page(
+    node_db: &crate::db::Db,
+    reader_root: &str,
+    before: Option<(i64, String)>,
+    limit: i64,
+) -> Result<Vec<FeedRow>> {
+    type Row = (String, String, String, Option<String>, i64, i64, i64);
+    let rows: Vec<Row> = match before {
+        None => node_db
+            .fetch_all(
+                "SELECT author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
+                 FROM feed_journal WHERE reader_root = ?1
+                 ORDER BY published_ms DESC, doc_id LIMIT ?2",
+                (reader_root, limit),
+            )
+            .await,
+        Some((ms, doc)) => node_db
+            .fetch_all(
+                "SELECT author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
+                 FROM feed_journal WHERE reader_root = ?1
+                   AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
+                 ORDER BY published_ms DESC, doc_id LIMIT ?4",
+                (reader_root, ms, ms, doc.as_str(), limit),
+            )
+            .await,
+    }
+    .context("reading a feed page")?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)| FeedRow {
+                author_root,
+                doc_id,
+                title,
+                format,
+                published_ms,
+                updated_ms,
+                arrived_ms,
+            },
+        )
+        .collect())
 }

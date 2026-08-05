@@ -863,15 +863,6 @@
     font-size: 0.8rem;
 }
 
-.feed-stack {
-    flex: 1;
-    min-width: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-}
-
 .feed-item {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1042,4 +1033,149 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
+}
+
+/* The directory shelf on People: personas known around here, below your own roster. */
+.people-known {
+    margin-top: 1.6rem;
+}
+
+.people-known-note {
+    color: var(--faint);
+    font-size: 0.75rem;
+}
+
+/* The feed stream: strict chronology; interest shapes only size and presence. */
+.feed-stream {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding-bottom: 2rem;
+}
+
+.feed-stream-head {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+}
+
+.feed-stream-title {
+    font-weight: 600;
+}
+
+.feed-unseen-toggle {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.78rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+}
+
+.feed-entry {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.7rem 1rem;
+}
+
+/* Low interest: smaller and a little transparent - present, but quieter. */
+.feed-entry-low {
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+/* High interest: a touch more visual importance, never a different position. */
+.feed-entry-high {
+    border-color: var(--border-strong);
+    background: var(--surface-2);
+}
+
+.feed-entry-high .feed-entry-title {
+    font-size: 1.15rem;
+}
+
+.feed-entry-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.feed-entry-when {
+    color: var(--faint);
+    font-size: 0.75rem;
+}
+
+.feed-entry-new {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--teal);
+    margin-left: auto;
+}
+
+.feed-entry-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0.3rem 0 0;
+}
+
+.feed-entry-title a {
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.feed-entry-title a:hover {
+    color: var(--teal);
+}
+
+.feed-entry-body {
+    margin-top: 0.4rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.feed-entry-more {
+    background: none;
+    border: none;
+    color: var(--sea);
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.2rem 0;
+    cursor: pointer;
+}
+
+.feed-entry-foot {
+    margin: 0.3rem 0 0;
+    font-size: 0.75rem;
+}
+
+.feed-entry-foot a {
+    color: var(--muted);
+}
+
+.feed-more {
+    align-self: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--sea);
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.35rem 1.2rem;
+    cursor: pointer;
+}
+
+.feed-drafts {
+    margin-top: 1rem;
+}
+
+.feed-drafts-head {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin: 0 0 0.4rem;
 }

@@ -190,3 +190,87 @@ describe("fan-out: the arrival journal", () => {
         assert.equal(rows[0].title, "Across");
     });
 });
+
+/*
+    The feed READ half (GET /api/identity/{root}/feed): one page of the arrival journal, ready
+    to render - byline joined from the cache, seen-state joined from the reader's own private
+    chain, `mine` for the reader's own posts, strict chronology, keyset paging.
+*/
+describe("the feed endpoint", () => {
+    let me, myRoot, voice, voiceRoot;
+
+    before(async () => {
+        voice = await makeUserFetch({ prefix: "feedvoice" });
+        voiceRoot = (await (await voice("api/identity", { method: "POST" })).json()).root_pubkey;
+        await voice(`api/identity/${voiceRoot}/profile`, {
+            method: "POST",
+            body: JSON.stringify({ field: "name", value: "A Voice" }),
+        });
+        me = await makeUserFetch({ prefix: "feedme" });
+        myRoot = (await (await me("api/identity", { method: "POST" })).json()).root_pubkey;
+        await follow(me, myRoot, voiceRoot, 75);
+        await settle(async () => {
+            const { rows } = await sql(
+                `SELECT 1 FROM subscriptions WHERE local_root = '${myRoot}'`
+            );
+            return rows.length ? true : null;
+        });
+        const d = await (
+            await voice(`api/identity/${voiceRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "Heard", body: "a voice speaks", format: "plaintext" }),
+            })
+        ).json();
+        await voice(`api/identity/${voiceRoot}/docs/${d.doc_id}/publish`, { method: "POST" });
+    });
+
+    it("serves a page with the byline joined and seen honest", async () => {
+        const page = await settle(async () => {
+            const resp = await me(`api/identity/${myRoot}/feed`);
+            if (resp.status !== 200) return null;
+            const body = await resp.json();
+            return body.items.length ? body : null;
+        });
+        assert.ok(page, "the followed voice reached my feed");
+        const item = page.items.find((i) => i.author === voiceRoot);
+        assert.equal(item.title, "Heard");
+        assert.equal(item.author_name, "A Voice", "byline from the cache, no db per face");
+        assert.equal(item.seen, false, "not seen until I say so");
+        assert.equal(item.mine, false);
+    });
+
+    it("marks seen through the ordinary private KV - and it sticks", async () => {
+        const first = await (await me(`api/identity/${myRoot}/feed`)).json();
+        const item = first.items.find((i) => i.author === voiceRoot);
+        const put = await me(`api/identity/${myRoot}/private/kv/feed_seen/${item.doc_id}`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "1" }),
+        });
+        assert.equal(put.status, 200, await put.text());
+        const again = await (await me(`api/identity/${myRoot}/feed`)).json();
+        const seen = again.items.find((i) => i.doc_id === item.doc_id);
+        assert.equal(seen.seen, true, "a seen mark is a private-chain fact, and it travels");
+    });
+
+    it("my own posts appear, mine and pre-seen - I was there when I wrote them", async () => {
+        const d = await (
+            await me(`api/identity/${myRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "Also me", body: "self, published", format: "plaintext" }),
+            })
+        ).json();
+        await me(`api/identity/${myRoot}/docs/${d.doc_id}/publish`, { method: "POST" });
+        const item = await settle(async () => {
+            const page = await (await me(`api/identity/${myRoot}/feed`)).json();
+            return page.items.find((i) => i.author === myRoot) || null;
+        });
+        assert.ok(item, "my own post landed in my own feed");
+        assert.equal(item.mine, true);
+        assert.equal(item.seen, true);
+    });
+
+    it("refuses a feed that isn't yours", async () => {
+        const resp = await voice(`api/identity/${myRoot}/feed`);
+        assert.ok([403, 404].includes(resp.status), `got ${resp.status}`);
+    });
+});

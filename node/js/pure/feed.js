@@ -105,3 +105,65 @@ export function postCursor(posts) {
     if (!last) return null;
     return { after_ms: last.published_ms || 0, after_doc: last.doc_id };
 }
+
+/// How much visual weight a feed item carries, from the reader's interest dial for its author.
+/// RENDERING only, deliberately: chronology is the feed's whole ordering (ranking is a research
+/// problem this draft does not attempt), and the dial's stops map to nothing subtler than
+/// "smaller and a little transparent" / "a touch more importance".
+export function emphasisOf(interest) {
+    const n = Number(interest);
+    if (!Number.isFinite(n)) return 'normal'; // your own posts, or a dial never set
+    if (n <= 25) return 'low';
+    if (n >= 75) return 'high';
+    return 'normal';
+}
+
+/// Character budgets past which an item shows only its lead. Low-interest sources get cut
+/// aggressively; high-interest sources are never cut - that is their touch of importance.
+const CUT_BUDGET = { low: 280, normal: 900 };
+
+/**
+ * The lead of a body, per the item's emphasis: the first paragraph when there are several, a
+ * word-boundary slice when one paragraph overruns the budget. `cut` says whether anything was
+ * held back - the item's "show the rest" appears exactly when it is true.
+ */
+export function leadOf(body, emphasis) {
+    const text = body || '';
+    if (emphasis === 'high') return { lead: text, cut: false };
+    const budget = CUT_BUDGET[emphasis] ?? CUT_BUDGET.normal;
+    const paras = text.split(/\n[ \t]*\n/);
+    if (paras.length > 1 && (emphasis === 'low' || text.length > budget)) {
+        return { lead: paras[0], cut: true };
+    }
+    if (text.length > budget) {
+        const slice = text.slice(0, budget);
+        const atWord = slice.lastIndexOf(' ');
+        return { lead: slice.slice(0, atWord > budget / 2 ? atWord : budget) + '\u2026', cut: true };
+    }
+    return { lead: text, cut: false };
+}
+
+/// A feed item's identity: the same post can reach one reader through one author only, but two
+/// AUTHORS can in principle mint colliding doc ids, so the key is the pair.
+export const feedKey = (item) => `${item.author}:${item.doc_id}`;
+
+/// A page of feed items joined onto the ones already read - mergePosts' rule (first sighting
+/// wins, newest first) under the feed's composite key.
+export function mergeFeed(seen, page) {
+    const out = (seen || []).slice();
+    const have = new Set(out.map(feedKey));
+    for (const item of page || []) {
+        if (item && !have.has(feedKey(item))) {
+            have.add(feedKey(item));
+            out.push(item);
+        }
+    }
+    return out.sort((a, b) => (b.published_ms || 0) - (a.published_ms || 0));
+}
+
+/// Where to ask for the next page down: the last item shown.
+export function feedCursor(items) {
+    const last = (items || [])[(items || []).length - 1];
+    if (!last) return null;
+    return { before_ms: last.published_ms || 0, before_doc: last.doc_id };
+}

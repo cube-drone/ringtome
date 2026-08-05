@@ -4,13 +4,14 @@
 // everyone your ledger holds a relationship with, straight off the mirror's `contacts` kind
 // (The Browser Is a View: a dial turned on any of your computers re-sorts this list live).
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
 import { parseIdReference } from '../speakable.js';
 import { PersonRow } from '../person.js';
+import { api } from '../net.js';
 import { PEOPLE_SORTS, sortContacts } from '../pure/people.js';
 
 const html = htm.bind(h);
@@ -58,11 +59,34 @@ export const PeopleLookup = () => {
     `;
 };
 
+// The node's directory: everyone known around here, fetched once per visit. Not the mirror -
+// this is the NODE's acquaintance (served neighbors + personas members have reached), not the
+// persona's own ledger, so it doesn't stream; a visit's snapshot is the right freshness.
+const useDirectory = () => {
+    const [rows, setRows] = useState(null);
+    useEffect(() => {
+        let live = true;
+        api('/api/directory')
+            .then((r) => live && setRows(r))
+            .catch(() => live && setRows([]));
+        return () => {
+            live = false;
+        };
+    }, []);
+    return rows;
+};
+
 export const PeopleApp = ({ current }) => {
     const root = current && current.root;
     const [sortBy, setSortBy] = useState('trust');
     const rows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
     const sorted = sortContacts(rows || [], sortBy);
+
+    // Known around here, minus everyone already on your shelf above (and minus you): the
+    // discovery half of the page, for the day this network stops feeling like a closed room.
+    const directory = useDirectory();
+    const onShelf = new Set((rows || []).map((r) => r.root));
+    const known = (directory || []).filter((d) => d.root !== root && !onShelf.has(d.root));
 
     return html`
         <div class="people-inner">
@@ -88,6 +112,35 @@ export const PeopleApp = ({ current }) => {
                     (row) => html`<${PersonRow} key=${row.root} root=${row.root} current=${current} />`
                 )}
             </div>
+            ${known.length > 0 &&
+            html`<div class="people-known">
+                <div class="people-shelf-head">
+                    <span class="people-shelf-title">known around here</span>
+                    <span class="people-known-note">
+                        personas this node hosts or has reached - open one to say how you know them
+                    </span>
+                </div>
+                <div class="people-list">
+                    ${known.map(
+                        (d) => html`<${PersonRow}
+                            key=${d.root}
+                            root=${d.root}
+                            current=${current}
+                            profile=${/* the directory row IS the profile the widget needs -
+                                handing it down keeps this list from fetching (and the server
+                                from opening) one profile per face */ {
+                                fields: [
+                                    d.name && { field: 'name', value: d.name },
+                                    d.avatar && { field: 'avatar', value: d.avatar },
+                                ].filter(Boolean),
+                                hosted: d.hosted,
+                                foreign: !d.hosted,
+                                via: [],
+                            }}
+                        />`
+                    )}
+                </div>
+            </div>`}
         </div>
     `;
 };

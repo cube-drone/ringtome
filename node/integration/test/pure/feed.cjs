@@ -1,10 +1,13 @@
 // Feed's publication state: a durable public fact, and a local editing gesture.
 const assert = require('node:assert');
 
-let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor;
+let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor,
+    emphasisOf, leadOf, mergeFeed, feedCursor;
 before(async () => {
     ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts,
-        postCursor } = await import('../../../js/pure/feed.js'));
+        postCursor, emphasisOf, leadOf, mergeFeed, feedCursor } = await import(
+        '../../../js/pure/feed.js'
+    ));
 });
 
 const draft = { fields: {} };
@@ -165,5 +168,60 @@ describe('paging a public shelf', () => {
         assert.deepEqual(mergePosts([p('a', 1)], []).map((x) => x.doc_id), ['a']);
         assert.deepEqual(mergePosts([p('a', 1)]).map((x) => x.doc_id), ['a']);
         assert.deepEqual(mergePosts(undefined, [p('a', 1)]).map((x) => x.doc_id), ['a']);
+    });
+});
+
+// The feed's rendering dials: interest shapes SIZE and CUT, never order.
+describe('feed emphasis and truncation', () => {
+    it('maps the dial to three weights, with normal for the unset', () => {
+        assert.equal(emphasisOf(25), 'low');
+        assert.equal(emphasisOf(50), 'normal');
+        assert.equal(emphasisOf(75), 'high');
+        assert.equal(emphasisOf(undefined), 'normal', 'your own posts carry no dial');
+    });
+
+    it('cuts a low-interest multi-paragraph item to its first paragraph', () => {
+        const { lead, cut } = leadOf('the lead.\n\nthe rest, at length.', 'low');
+        assert.equal(lead, 'the lead.');
+        assert.equal(cut, true);
+    });
+
+    it('leaves a short item whole whatever the interest', () => {
+        assert.deepEqual(leadOf('brief.', 'low'), { lead: 'brief.', cut: false });
+    });
+
+    it('never cuts a high-interest source - that is its importance', () => {
+        const long = 'x'.repeat(5000);
+        assert.deepEqual(leadOf(long, 'high'), { lead: long, cut: false });
+    });
+
+    it('slices an unbroken low-interest wall at a word boundary', () => {
+        const wall = ('word '.repeat(200)).trim();
+        const { lead, cut } = leadOf(wall, 'low');
+        assert.ok(cut);
+        assert.ok(lead.length < 300);
+        assert.ok(lead.endsWith('\u2026'), 'and says it was cut');
+    });
+});
+
+describe('the feed page merge', () => {
+    const item = (author, doc, ms) => ({ author, doc_id: doc, published_ms: ms });
+
+    it('keys by author AND doc - two authors may mint colliding ids', () => {
+        const merged = mergeFeed([item('a', 'd1', 5)], [item('b', 'd1', 3)]);
+        assert.equal(merged.length, 2, 'same doc id, different author, both stay');
+    });
+
+    it('stays strictly chronological across pages', () => {
+        const merged = mergeFeed([item('a', 'x', 300)], [item('b', 'y', 500), item('a', 'z', 100)]);
+        assert.deepEqual(merged.map((i) => i.doc_id), ['y', 'x', 'z']);
+    });
+
+    it('cursors from the last item shown', () => {
+        assert.deepEqual(feedCursor([item('a', 'x', 300), item('b', 'y', 100)]), {
+            before_ms: 100,
+            before_doc: 'y',
+        });
+        assert.equal(feedCursor([]), null);
     });
 });

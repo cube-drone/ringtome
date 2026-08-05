@@ -53,6 +53,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/adopt/complete", post(adopt_complete_handler))
         .route("/api/identity/{root}/nodes", post(authorize_node_handler))
         .route("/api/identity/{root}/sync", post(sync_handler))
+        .route("/api/identity/{root}/feed", get(feed_handler))
         .route("/api/identity/{root}/serve", post(serve_handler))
         .route(
             "/api/identity/{root}/keys/{target}/revoke",
@@ -503,6 +504,94 @@ async fn sync_handler(
 #[derive(Serialize)]
 struct ServeResponse {
     served: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct FeedQuery {
+    before_ms: Option<i64>,
+    before_doc: Option<String>,
+}
+
+#[derive(Serialize)]
+struct FeedItem {
+    author: String,
+    doc_id: String,
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<String>,
+    published_ms: i64,
+    updated_ms: i64,
+    arrived_ms: i64,
+    /// Has THIS reader seen it - their own private-chain fact, joined here so the page
+    /// arrives ready ("Two cursors": this is the seen cursor, and it travels with them).
+    seen: bool,
+    /// The reader wrote this one themselves.
+    mine: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_avatar: Option<String>,
+}
+
+/// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly
+/// chronological, dressed with everything a row needs to render: byline from the cache (never
+/// a database per face), seen-state from the reader's own private chain, `mine` for the
+/// reader's own posts (which appear like anyone else's - they follow themselves by hosting).
+///
+/// What is deliberately NOT here: ranking. How a good feed orders is a research problem this
+/// draft does not attempt; the interest dials shape RENDERING only, client-side, off the
+/// reader's own mirror.
+async fn feed_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<FeedQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let before = match (q.before_ms, q.before_doc) {
+        (Some(ms), Some(doc)) => Some((ms, doc)),
+        _ => None,
+    };
+    let page = crate::idface::POSTS_PAGE;
+    let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1)
+        .await
+        .map_err(AppError::Internal)?;
+    let more = rows.len() as i64 > page;
+    rows.truncate(page as usize);
+
+    // The reader's seen-marks: their own `feed_seen` registers (a mark is a PUT to the
+    // existing private KV surface; nothing feed-specific writes).
+    let (seen_rows, _) = data.private_registers("feed_seen").all().await?;
+    let seen: std::collections::HashSet<String> =
+        seen_rows.into_iter().map(|r| r.key).collect();
+
+    let authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &authors)
+        .await
+        .map_err(AppError::Internal)?;
+
+    let items: Vec<FeedItem> = rows
+        .into_iter()
+        .map(|r| {
+            let mine = r.author_root == root;
+            let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
+            FeedItem {
+                // Your own words arrive pre-seen: you were there when you wrote them.
+                seen: mine || seen.contains(&r.doc_id),
+                mine,
+                author_name: byline.name,
+                author_avatar: byline.avatar,
+                author: r.author_root,
+                doc_id: r.doc_id,
+                title: r.title,
+                format: r.format,
+                published_ms: r.published_ms,
+                updated_ms: r.updated_ms,
+                arrived_ms: r.arrived_ms,
+            }
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items, "more": more })))
 }
 
 /// Mark this identity as served by this node and publish its serving record. This is the

@@ -32,13 +32,24 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from '../mirror/prefs.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { createdMs } from '../pure/docdate.js';
-import { FEED_STYLE, publishedState, openDraftOf, overlayPosted } from '../pure/feed.js';
+import {
+    FEED_STYLE,
+    publishedState,
+    openDraftOf,
+    overlayPosted,
+    emphasisOf,
+    leadOf,
+    mergeFeed,
+    feedCursor,
+} from '../pure/feed.js';
+import { api, apiText } from '../net.js';
+import { speakable } from '../speakable.js';
+import { PersonChip } from '../person.js';
 import { useDocSession } from '../doc/session.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
@@ -222,6 +233,212 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
     `;
 };
 
+// ---------------------------------------------------------------------------------------------
+// The feed itself: everyone you follow, and you, strictly newest-first.
+//
+// Chronology is the WHOLE ordering, on purpose. "How do we generate a good feed" is a
+// million-dollar question and an open research problem; this draft doesn't pretend to answer
+// it. The one thing your interest dials do is shape RENDERING - a low-interest source is
+// smaller, a little transparent, and cut to its lead; a high-interest one gets a touch more
+// visual importance and is never cut. Order never moves.
+
+// One feed item. The body arrives by the same anonymous path a stranger reads (the item may be
+// yours - your posts are public too). Seen is marked when the item enters the viewport, once,
+// via the reader's own private chain, so it travels to their other computers.
+const FeedItem = ({ item, interest, onSeen }) => {
+    const [body, setBody] = useState(undefined);
+    const [wholeThing, setWholeThing] = useState(false);
+    const itemRef = useRef(null);
+
+    useEffect(() => {
+        let live = true;
+        apiText(`/id/${item.author}/docs/${item.doc_id}/body`)
+            .then((t) => live && setBody(t))
+            .catch(() => live && setBody(null));
+        return () => {
+            live = false;
+        };
+    }, [item.author, item.doc_id]);
+
+    // Seen, once, when actually looked at. jsdom has no IntersectionObserver; there the item
+    // simply never auto-marks, which is the honest degradation (the probe marks by hand).
+    useEffect(() => {
+        if (item.seen || item.mine || typeof IntersectionObserver === 'undefined') return;
+        const el = itemRef.current;
+        if (!el) return;
+        const io = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting)) {
+                    io.disconnect();
+                    onSeen(item);
+                }
+            },
+            { threshold: 0.6 }
+        );
+        io.observe(el);
+        return () => io.disconnect();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [item.seen, item.mine, item.author, item.doc_id]);
+
+    const emphasis = item.mine ? 'normal' : emphasisOf(interest);
+    // Spelled out rather than interpolated, so the dead-CSS convention can see each class.
+    const entryClass =
+        emphasis === 'low'
+            ? 'feed-entry feed-entry-low'
+            : emphasis === 'high'
+              ? 'feed-entry feed-entry-high'
+              : 'feed-entry';
+    const tlProfile = useTurbolinks(body || '', item.format);
+    const when = new Date(item.published_ms).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+    // The item's link: the title when there is one, a quiet line at the foot when not. It
+    // goes to the author's page for now - which fresh-syncs them on arrival, most of what the
+    // eventual per-item page owes - and the item page will take this href over when it exists.
+    const href = `/id/${speakable(item.author)}`;
+    const { lead, cut } = leadOf(body || '', emphasis);
+    const shown = wholeThing ? body : lead;
+
+    return html`
+        <article class=${entryClass} ref=${itemRef}>
+            <header class="feed-entry-head">
+                <${PersonChip}
+                    root=${item.author}
+                    size="mini"
+                    profile=${{
+                        fields: [
+                            item.author_name && { field: 'name', value: item.author_name },
+                            item.author_avatar && { field: 'avatar', value: item.author_avatar },
+                        ].filter(Boolean),
+                        via: [],
+                    }}
+                />
+                <span class="feed-entry-when">${when}</span>
+                ${!item.seen && html`<span class="feed-entry-new" title="you haven't seen this yet"></span>`}
+            </header>
+            ${!!item.title && html`<h2 class="feed-entry-title"><a href=${href}>${item.title}</a></h2>`}
+            ${body === undefined && html`<p class="null-sub">…</p>`}
+            ${body === null &&
+            html`<p class="null-sub">
+                <span class="waiting-dot"></span> these words haven't reached this computer.
+            </p>`}
+            ${!!body &&
+            html`<div class="feed-entry-body">
+                ${item.format === 'marquee'
+                    ? html`<${MarqueeBody} source=${shown} profile=${tlProfile} onUnparsable=${bareSource} />`
+                    : html`<pre class="reader-plain">${shown}</pre>`}
+                ${cut &&
+                !wholeThing &&
+                html`<button class="feed-entry-more" onClick=${() => setWholeThing(true)}>
+                    the whole thing
+                </button>`}
+            </div>`}
+            ${!item.title &&
+            html`<p class="feed-entry-foot"><a href=${href}>from ${item.author_name || 'someone'}'s page</a></p>`}
+        </article>
+    `;
+};
+
+const FeedStream = ({ root, contacts }) => {
+    const [items, setItems] = useState([]);
+    const [more, setMore] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [unseenOnly, setUnseenOnly] = useState(false);
+    const streamRef = useRef(null);
+
+    const loadPage = async (cursor) => {
+        setLoading(true);
+        try {
+            const qs = cursor
+                ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}`
+                : '';
+            const page = await api(`/api/identity/${root}/feed${qs}`);
+            setItems((have) => mergeFeed(cursor ? have : [], page.items));
+            setMore(!!page.more);
+        } catch {
+            // A failed page leaves what's shown; scrolling retries.
+        }
+        setLoading(false);
+    };
+    useEffect(() => {
+        if (root) loadPage(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root]);
+
+    // Infinite scroll: nearing the bottom asks for the next page. The button below does the
+    // same by hand - the accessible path, and the only one an instrument can press.
+    useEffect(() => {
+        const el = streamRef.current;
+        if (!el || !more) return;
+        const onScroll = () => {
+            if (el.scrollTop + el.clientHeight > el.scrollHeight - 600 && !loading) {
+                loadPage(feedCursor(items));
+            }
+        };
+        el.addEventListener('scroll', onScroll);
+        return () => el.removeEventListener('scroll', onScroll);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [more, loading, items]);
+
+    const markSeen = async (item) => {
+        setItems((have) =>
+            have.map((i) => (i.doc_id === item.doc_id && i.author === item.author ? { ...i, seen: true } : i))
+        );
+        try {
+            await api(
+                `/api/identity/${root}/private/kv/feed_seen/${item.doc_id}`,
+                { method: 'PUT', body: JSON.stringify({ value: '1' }) }
+            );
+        } catch {
+            // An unmarked seen re-marks on the next look; never worth an error surface.
+        }
+    };
+
+    const interestOf = (author) => {
+        const row = (contacts || []).find((c) => c.root === author);
+        return row && row.facts ? row.facts.interest : undefined;
+    };
+    const visible = unseenOnly ? items.filter((i) => !i.seen) : items;
+
+    return html`
+        <main class="feed-stream" ref=${streamRef}>
+            <div class="feed-stream-head">
+                <span class="feed-stream-title">the feed</span>
+                <label class="feed-unseen-toggle">
+                    <input
+                        type="checkbox"
+                        checked=${unseenOnly}
+                        onChange=${(e) => setUnseenOnly(e.currentTarget.checked)}
+                    />
+                    only what's new to you
+                </label>
+            </div>
+            ${visible.map(
+                (item) => html`<${FeedItem}
+                    key=${`${item.author}:${item.doc_id}`}
+                    item=${item}
+                    interest=${interestOf(item.author)}
+                    onSeen=${markSeen}
+                />`
+            )}
+            ${visible.length === 0 &&
+            !loading &&
+            html`<p class="null-sub">
+                ${unseenOnly
+                    ? 'nothing new - you have seen it all.'
+                    : 'nothing here yet - follow someone, or write something on the left.'}
+            </p>`}
+            ${more &&
+            html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(feedCursor(items))}>
+                ${loading ? 'reading further back…' : 'further back'}
+            </button>`}
+        </main>
+    `;
+};
+
 export const FeedApp = ({ current }) => {
     const root = current && current.root;
     const [posting, setPosting] = useState(false);
@@ -245,6 +462,8 @@ export const FeedApp = ({ current }) => {
     const { resizer, colStyle } = useColWidths(root, 'feed', ['compose']);
 
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
+    // Your ledger, for the rendering dials: interest shapes an item's size, never its place.
+    const contactRows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
     const mine = (rows || [])
         .filter((d) => (d.buckets || []).includes(FEED_STYLE))
         // By when it was WRITTEN, not when it was last touched: editing a post is not saying
@@ -324,7 +543,14 @@ export const FeedApp = ({ current }) => {
         setPosting(false);
     };
 
-    const stack = mine.filter((d) => d.doc_id !== draftId);
+    // Older UNPOSTED drafts keep a home under the composer; posted items now live in the
+    // feed itself, where your own posts read like anyone else's ("as if the user themself had
+    // written them" - which they did). The in-place unlock-and-edit for a posted item moved
+    // with them out of the main area; editing your history is the persona page's business now,
+    // and re-posting a draft still works right here.
+    const drafts = mine.filter(
+        (d) => d.doc_id !== draftId && !publishedState(overlayPosted(d, postedAs[d.doc_id])).published
+    );
     return html`
         <div class="feed-app">
             <div class="feed-columns" style=${colStyle}>
@@ -351,25 +577,24 @@ export const FeedApp = ({ current }) => {
                                   columns, where a failed post reported itself a long way from
                                   the post. */ ''}
                               ${error && html`<p class="form-error">${error}</p>`}
+                              ${drafts.length > 0 &&
+                              html`<div class="feed-drafts">
+                                  <p class="feed-drafts-head">older drafts</p>
+                                  ${drafts.map(
+                                      (row) => html`<${StackItem}
+                                          key=${row.doc_id}
+                                          root=${root}
+                                          row=${overlayPosted(row, postedAs[row.doc_id])}
+                                          seal=${seals.get(sealKey(row.doc_id))}
+                                          onSeal=${() => setPref(root, sealKey(row.doc_id), 'open')}
+                                          onPost=${post}
+                                          posting=${posting}
+                                      />`
+                                  )}
+                              </div>`}
                           </aside>
                           ${resizer('compose')}`}
-                <main class="feed-stack">
-                    ${stack.length === 0 &&
-                    html`<p class="null-sub">
-                        nothing posted yet - what you write on the left lands here.
-                    </p>`}
-                    ${stack.map(
-                        (row) => html`<${StackItem}
-                            key=${row.doc_id}
-                            root=${root}
-                            row=${overlayPosted(row, postedAs[row.doc_id])}
-                            seal=${seals.get(sealKey(row.doc_id))}
-                            onSeal=${() => setPref(root, sealKey(row.doc_id), 'open')}
-                            onPost=${post}
-                            posting=${posting}
-                        />`
-                    )}
-                </main>
+                <${FeedStream} root=${root} contacts=${contactRows} />
             </div>
         </div>
     `;
