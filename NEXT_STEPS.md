@@ -71,7 +71,11 @@ Owed inside those directions, and easy to lose because the surfaces around them 
   prune to a window before any node hosts strangers; (4) **rebroadcast** - the push fires only
   for personas this node authors (relaying someone else's lane is a consent question); the
   rebroadcast dial is recorded and unread; (5) eventually, **ranking** - deliberately absent:
-  chronology is the whole ordering, interest shapes rendering only.
+  chronology is the whole ordering, interest shapes rendering only; (6) **follow-time journal
+  backfill** (surfaced 2026-08-05 by the fake network's first-born persona): journaling hangs
+  off the frontier EDGE, and a follow moves no frontier - so a fresh follow's feed stays empty
+  until the followee next posts. The fix is one call: a new subscription row triggers
+  `journal_for` for that one reader-author pair.
 - **The signpost rung** - serving records grow the public-web-URL field.
 - **The root-directory backstop** - a real design problem, found 2026-08-02: serving records
   publish under LEAF keys because pkarr requires the publisher's signing key and the root's is

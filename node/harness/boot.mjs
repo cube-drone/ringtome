@@ -12,31 +12,23 @@ const { JSDOM, ResourceLoader } = pkg;
 import 'fake-indexeddb/auto';
 import WsClient from 'ws';
 
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+import { httpSession, sleep } from './http.mjs';
+export { sleep };
 
 /// One node's session: a fetch that keeps cookies (register/login/API calls and everything
 /// the booted SPA does share the same jar), plus `boot(path)` opening the real SPA at a path.
+/// The cookie fetch itself lives in http.mjs, browser-free, so API-only scripts (the test-data
+/// generator) can have it without loading jsdom.
 export function session(base) {
-    let cookies = '';
-    const bridgedFetch = async (input, init = {}) => {
-        const url = new URL(typeof input === 'string' ? input : input.url, base).href;
-        const headers = new Headers(init.headers || {});
-        if (cookies) headers.set('cookie', cookies);
-        const resp = await fetch(url, { ...init, headers, redirect: 'manual' });
-        const setc = resp.headers.getSetCookie ? resp.headers.getSetCookie() : [];
-        for (const c of setc) {
-            const pair = c.split(';')[0];
-            const name = pair.split('=')[0];
-            cookies = [...cookies.split('; ').filter((x) => x && !x.startsWith(name + '=')), pair].join('; ');
-        }
-        return resp;
-    };
+    const http = httpSession(base);
+    const bridgedFetch = http.fetch;
+    const cookieHeader = http.cookieHeader;
 
     // The browser WebSocket surface mirror.js actually uses (onmessage/onclose/onerror/close),
     // bridged to a real client carrying the session cookie.
     class BridgedWebSocket {
         constructor(url) {
-            this.ws = new WsClient(url, { headers: { cookie: cookies } });
+            this.ws = new WsClient(url, { headers: { cookie: cookieHeader() } });
             this.ws.on('open', () => this.onopen && this.onopen());
             this.ws.on('message', (data) => this.onmessage && this.onmessage({ data: data.toString() }));
             this.ws.on('close', () => this.onclose && this.onclose());

@@ -2667,3 +2667,40 @@ foot line. The per-item page, with its own fresh-sync, is ledgered.
 The probe lied twice before the app was proven right: it read emphasis classes before the
 mirror's contacts had arrived, and held element references across re-renders that replaced the
 nodes. Re-query after every wait; a stale reference reads the page as it was.
+
+## A vibrant fake network, on tap (2026-08-05)
+
+Every schema wipe cost Curtis his hand-built test users, and rebuilding a believable network by
+hand is exactly the labor a generator should do. `just test_data [personas] [actions] [seed]`:
+finds every booted dev node by health check, births N named personas per node (one account
+each), then runs interleaved rounds where every persona draws an action from a weighted hat -
+public posts (some untitled, on purpose), cross-node follows done the way a human does them
+(from the person's page, which is also the fetch that makes the follow feed-capable), trust
+with occasional published consent, untrust and unfollow, private notebooks and private writing,
+going public, and spreading onto another node via the real adoption ceremony.
+
+Extensibility is the design center, stated at the top of the file: an action is one entry in
+ACTIONS - name, weight, async run(ctx, persona, rng) - because "populating a vibrant fake
+network" is a permanent testing need, not this script's one-off shape. Deterministic by seed
+(same seed, same network), so a bug found in generated data can be regrown. Credentials land in
+harness/testdata-state.json (gitignored), one password for everyone, so any generated persona
+can be logged into by hand - which is the point: this exists so a human can walk around in a
+populated world. Marquee images are the ledgered TODO; lorem prose ships first.
+
+Proven by census rather than by exit code: a 5x12 run across two nodes produced 11 identities a
+side (births plus adoptions), twenty-odd subscriptions each, published trust edges, and 71-97
+feed-journal rows spanning 12-14 distinct authors - foreign posts crossing nodes into local
+feeds with nobody asking, the whole week's plumbing exercised by accident, which is what a
+generator is for.
+
+It also flushed out a dependency it never should have had: the generator imported boot.mjs for
+its cookie fetch, and boot.mjs imports jsdom - a fake browser, for a script that never opens a
+page - which broke on an older system Node before a single line of the generator's own code
+ran. The HTTP half now lives in harness/http.mjs, browser-free (boot.mjs layers jsdom on top,
+one cookie-jar implementation as before), and the recipe preflights the interpreter with a
+sentence - "needs Node 18+, found vX at <path>" - instead of a stack trace from cssstyle.
+
+And it found a product gap within minutes of existing: the first-born persona's feed held only
+their own posts, because journaling hangs off the frontier EDGE and a follow moves no frontier -
+a fresh follow's feed stays empty until the followee next posts. Ledgered with its one-call fix.
+A data generator that surfaces design gaps on its first run has already paid for itself.

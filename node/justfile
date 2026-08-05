@@ -240,6 +240,25 @@ ui-csswatch:
 integration-install:
     cd "{{justfile_directory()}}/integration" && npm install
 
+# Populate the currently-running nodes with a vibrant fake network: N personas per booted
+# node (default 100), each performing N actions (default 100) drawn from a weighted hat -
+# public posts, follows and trust across nodes, private notebooks, spreading onto other
+# nodes. Same seed, same network; credentials land in harness/testdata-state.json. Extend it
+# by adding an entry to ACTIONS in harness/testdata.mjs.
+#
+# Seed a fake network onto the running nodes (see harness/testdata.mjs; extensible).
+test_data personas="100" actions="100" seed="":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # Preflight the interpreter BEFORE any parse: an old Node dies on modern syntax deep in a
+    # dependency, and a stack trace from cssstyle is a riddle where a sentence would do.
+    major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+    if [ "$major" -lt 18 ]; then
+        echo "test_data needs Node 18+ (global fetch); found $(node --version 2>/dev/null || echo 'no node') at $(which node 2>/dev/null || echo '?')" >&2
+        exit 1
+    fi
+    cd "{{justfile_directory()}}/harness" && node testdata.mjs {{personas}} {{actions}} {{seed}}
+
 # Kill any running ringtome (Windows or POSIX), ignoring "not found".
 kill:
     -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || pkill -f 'target/debug/ringtome' 2>/dev/null || true

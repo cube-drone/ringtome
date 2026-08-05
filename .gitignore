@@ -24,3 +24,6 @@ node_modules/
 # stupid mac computers
 .DS_Store
 
+
+# generated fake-network credentials (`just test_data`)
+**/harness/testdata-state.json
