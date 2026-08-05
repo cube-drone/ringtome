@@ -142,10 +142,17 @@
     margin: 0 0 1rem;
 }
 
+/* Their own words about themselves, in a frame of their own - so the bio reads as something
+   they wrote rather than as more of the page's chrome. */
 .person-card-bio {
     white-space: pre-wrap;
     color: var(--ink-soft);
     margin-top: 1rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.7rem 0.9rem;
+    overflow-wrap: anywhere;
 }
 
 /* The gallery at /id/<persona>/ui-demo (js/persondemo.js): a workbench, dressed plainly. */

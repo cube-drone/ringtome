@@ -600,8 +600,11 @@ pub async fn id_profile(
     let root_hex = hex::encode(root);
     let hosted = hosted_here(&state, &root_hex).await?;
 
-    // Whether a refresh is running behind this response, so the caller knows to look again.
+    // Whether a refresh is running behind this response, so the caller knows to look again, and
+    // when this node last successfully reached them. Both are honest only for a FOREIGN
+    // persona: one we host has no "last synced" - its words are written here.
     let mut refreshing = false;
+    let mut synced_ms: Option<i64> = None;
     if !hosted {
         let Some(_member) = session else {
             return Err(AppError::NotFound("no such persona here".into()));
@@ -629,6 +632,7 @@ pub async fn id_profile(
             // Nothing held: there is nothing to serve stale, so this one waits. A first visit
             // to a stranger is the only case that pays the network's latency.
             None => {
+                synced_ms = Some(now); // this request IS the sync; saying so beats saying nothing
                 if !fetch_foreign(&state, &root_hex, &via).await {
                     return Err(AppError::NotFound(
                         "not carried here, and none of the address's computers answered".into(),
@@ -639,6 +643,7 @@ pub async fn id_profile(
             // signal the pull model is built on, so it always means "go and look" - but the
             // reader should not wait on a stranger's node to find that out.
             Some((at, _)) => {
+                synced_ms = Some(*at);
                 if now - at >= FOREIGN_REVALIDATE_MS {
                     refreshing = spawn_revalidate(&state, root_hex.clone(), via);
                 }
@@ -709,6 +714,9 @@ pub async fn id_profile(
         // A refresh is running behind this answer: what you are reading may be a moment old,
         // and asking again shortly will say so honestly either way.
         "refreshing": refreshing,
+        // When this node last reached them, for a persona it does not host. Absent for one it
+        // does: a persona we host has no "last synced" - its words are written here.
+        "synced_ms": synced_ms,
         "posts": posts.iter().map(post_json).collect::<Vec<_>>(),
         // Whether the shelf goes further back than this first page.
         "posts_more": posts_more,

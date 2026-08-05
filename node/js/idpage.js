@@ -14,6 +14,8 @@ import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { parseSpeakable, speakable } from './speakable.js';
 import { personaHue } from './pure/person.js';
+import { agoUnit } from './pure/ago.js';
+import { Icons } from './icons.js';
 import { PersonCard } from './person.js';
 import { PublicPosts } from './posts.js';
 
@@ -21,6 +23,37 @@ const html = htm.bind(h);
 
 // The card every shape renders into - the persona-page look, reused.
 const Card = ({ children }) => html`<div class="persona-page id-page">${children}</div>`;
+
+// Where this page's words came from, and whether newer ones are on the way.
+//
+// Only for a persona this node does NOT host: one it hosts has no "last synced" - its words are
+// written here, and a timestamp would be answering a question nobody asked. For a foreign one it
+// is the honest caption on everything above it, because what is shown is what this node holds,
+// which is what it last managed to fetch.
+const SyncLine = ({ syncedMs, refreshing }) => {
+    // Re-render on a slow beat so "a minute ago" doesn't sit there being wrong for an hour.
+    const [, tick] = useState(0);
+    useEffect(() => {
+        const t = setInterval(() => tick((n) => n + 1), 30_000);
+        return () => clearInterval(t);
+    }, []);
+
+    const ago = agoUnit(syncedMs, Date.now());
+    // The reader's machine turns the count into their language; we only chose the unit.
+    const when = !syncedMs
+        ? null
+        : ago
+          ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit)
+          : 'just now';
+    if (!when && !refreshing) return null;
+    return html`<p class="id-sync">
+        ${when && html`<span title=${new Date(syncedMs).toLocaleString()}>synced ${when}</span>`}
+        ${refreshing &&
+        html`<span class="id-sync-now">
+            <span class="status-spin"><${Icons.spinner} /></span> checking for anything newer
+        </span>`}
+    </p>`;
+};
 
 export const IdPage = ({ seg, current, onTitle }) => {
     const loc = useLocation();
@@ -135,6 +168,8 @@ export const IdPage = ({ seg, current, onTitle }) => {
         <${PersonCard} root=${root} current=${current} profile=${profile}>
             ${profile.foreign &&
             html`<p class="id-words">reached across the network - not carried on this node</p>`}
+            ${profile.foreign &&
+            html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} />`}
         <//>
         <${PublicPosts} root=${root} posts=${profile.posts} more=${profile.posts_more} />
     <//>`;

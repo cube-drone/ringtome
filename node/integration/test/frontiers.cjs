@@ -245,6 +245,9 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
         const nameOf = (p) => (p.fields || []).find((f) => f.field === "name")?.value;
         assert.equal(nameOf(first), "Before", "the first visit fetched them");
         assert.equal(first.refreshing, false, "nothing left running - that visit did the work");
+        // The page says where its words came from, and a first sight IS a sync: saying "just
+        // now" beats saying nothing, which is what an unset stamp would render as.
+        assert.ok(first.synced_ms > 0, "the first visit reports when it synced - now");
 
         // They change their name on their own node.
         await setName("After");
@@ -254,6 +257,10 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
         await new Promise((r) => setTimeout(r, 31000));
         const stale = await (await us(`api/id/${far}/profile${via}`)).json();
         assert.equal(stale.refreshing, true, "a revalidation is running behind this answer");
+        assert.ok(
+            stale.synced_ms <= Date.now() - 30000,
+            "and it reports the older sync it is serving from, not this moment"
+        );
 
         // And asking again shortly gets the new name, with nobody dialing by hand.
         const fresh = await settle(async () => {

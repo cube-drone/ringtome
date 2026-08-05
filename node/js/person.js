@@ -236,9 +236,12 @@ export const PersonCard = ({ root, current, profile, children }) => {
             ${person.isYou && html`<p class="person-card-others"><a href="/home/persona">this is you</a></p>`}
             ${children}
             <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} />
-            ${person.bio && html`<p class="person-card-bio">${person.bio}</p>`}
+            ${/* Your relationship sits above their bio: how you stand with someone is the
+                first thing you want when you arrive on their page, and the bio is what you
+                read once you have it. */ ''}
             ${!person.isYou && current &&
             html`<${ContactLedger} myRoot=${current.root} theirRoot=${root} />`}
+            ${person.bio && html`<p class="person-card-bio">${person.bio}</p>`}
         </div>
     `;
 };

@@ -1025,3 +1025,21 @@
     color: var(--faint);
     cursor: default;
 }
+
+/* The /id page's provenance line: when this node last reached a foreign persona, and whether
+   it is reaching again right now. */
+.id-sync {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    margin: 0.3rem 0 0;
+    color: var(--faint);
+    font-size: 0.78rem;
+}
+
+.id-sync-now {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}

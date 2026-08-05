@@ -2383,3 +2383,38 @@ of the process.
 The doctrine this lands on: a visit is the demand signal the pull model runs on. Someone opening
 your page is the system's only honest cue that your words are wanted somewhere, and it should
 always mean "go and look" - just never at the reader's expense.
+
+## Where these words came from (2026-08-04)
+
+The /id page now says when this node last reached a foreign persona, and spins while it is
+reaching again. It is the honest caption on everything above it: what a reader sees is what this
+node holds, which is what it last managed to fetch.
+
+Only for a persona this node does NOT host. One it hosts has no "last synced" - its words are
+written here, and a timestamp would answer a question nobody asked.
+
+A first sight reports the sync as happening NOW rather than reporting nothing. The row it writes
+is younger than the response, so the obvious implementation renders an empty caption on the one
+visit that definitely just synced; setting it explicitly is both truer and more useful.
+
+`pure/ago.js` splits the judgement from the rendering: choosing the unit is ours (ninety minutes
+reads as "an hour ago", not "90 minutes ago") and testable, while turning a count into words
+belongs to `Intl.RelativeTimeFormat`, which knows the reader's language and their idea of
+"yesterday" - the same rule the date field settled on when the locale-aware native control beat
+the hand-rolled one. A stamp from the FUTURE - their clock ahead of ours, ordinary between
+machines - falls through the just-now door and declines to count, because "in 3 minutes" for
+something that already happened is worse than saying nothing.
+
+The plant-the-violation habit paid a different way than usual here: the clock-skew vector did
+NOT fail when its guard was removed, because a `Math.max(0, ...)` clamp was unreachable - the
+just-now threshold already swallowed every negative delta. The clamp came out and the comment now
+says which rule actually carries the case. A test that cannot fail is not the only thing worth
+finding this way; code that cannot run is the other.
+
+## The relationship comes first (2026-08-04)
+
+On a person's card, your relationship with them now sits above their bio, and the bio wears a
+frame of its own. How you stand with someone is the first thing you want when you arrive on their
+page; the bio is what you read once you have it. The frame does the other half - it makes the
+bio read as something they WROTE rather than as more of the page's chrome, which matters more the
+more of the card is ours rather than theirs.
