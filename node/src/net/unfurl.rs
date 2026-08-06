@@ -243,6 +243,86 @@ async fn vetted_addr(url: &url::Url) -> Result<IpAddr, Refusal> {
     Ok(addrs[0])
 }
 
+/// Download a media file from the open web for the publication bake (record::bake): the same
+/// SSRF posture as unfurling - vetted public address, pinned resolution, no automatic
+/// redirects - but returning the raw bytes under a hard cap instead of parsing HTML.
+///
+/// `allow_loopback` exists for the integration rigs, where "the open web" is the other test
+/// node on 127.0.0.1; it is passed `config.local_test` and nothing else, so a production node
+/// can never be talked into fetching from inside its own network.
+pub async fn fetch_media_bytes(
+    raw_url: &str,
+    max_bytes: usize,
+    allow_loopback: bool,
+) -> Result<Vec<u8>, String> {
+    let mut url = url::Url::parse(raw_url).map_err(|_| "that isn't a URL".to_string())?;
+    for _hop in 0..3 {
+        if !matches!(url.scheme(), "http" | "https") {
+            return Err("only http(s) can be fetched".into());
+        }
+        let addr = if allow_loopback {
+            // Test rigs only: resolve without the public-address demand.
+            let host = url.host_str().ok_or_else(|| "no host".to_string())?;
+            let port = url.port_or_known_default().unwrap_or(80);
+            tokio::net::lookup_host((host, port))
+                .await
+                .ok()
+                .and_then(|mut a| a.next())
+                .map(|sa| sa.ip())
+                .ok_or_else(|| "host does not resolve".to_string())?
+        } else {
+            vetted_addr(&url).await.map_err(|r| format!("{r:?}"))?
+        };
+        let host = url.host_str().unwrap_or_default().to_string();
+        let port = url.port_or_known_default().unwrap_or(80);
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve(&host, std::net::SocketAddr::new(addr, port))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| format!("client: {e}"))?;
+        let resp = client
+            .get(url.clone())
+            .header(reqwest::header::USER_AGENT, UA)
+            .send()
+            .await
+            .map_err(|e| format!("fetch failed: {e}"))?;
+        if resp.status().is_redirection() {
+            let loc = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| "redirect without a location".to_string())?;
+            // Each hop re-vets: a public host redirecting inward is the classic bounce.
+            url = url.join(loc).map_err(|_| "unfollowable redirect".to_string())?;
+            continue;
+        }
+        if !resp.status().is_success() {
+            return Err(format!("the server answered {}", resp.status()));
+        }
+        if let Some(len) = resp.content_length() {
+            if len as usize > max_bytes {
+                return Err(format!("file is larger than the {max_bytes}-byte cap"));
+            }
+        }
+        let mut bytes = Vec::new();
+        let mut stream = resp;
+        loop {
+            match stream.chunk().await {
+                Ok(Some(chunk)) => {
+                    if bytes.len() + chunk.len() > max_bytes {
+                        return Err(format!("file exceeded the {max_bytes}-byte cap mid-read"));
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(None) => return Ok(bytes),
+                Err(e) => return Err(format!("read failed: {e}")),
+            }
+        }
+    }
+    Err("too many redirects".into())
+}
+
 /// Public-internet address check: everything a node must refuse to dial on a user's say-so.
 fn is_public(ip: IpAddr) -> bool {
     match ip {

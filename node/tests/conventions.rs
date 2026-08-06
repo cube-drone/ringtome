@@ -30,6 +30,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("foreign_fetches", vec!["idface.rs"]),
         ("persona_frontiers", vec!["net/frontier.rs"]),
         ("chain_heads", vec!["net/frontier.rs"]),
+        ("media_bakes", vec!["record/bake.rs"]),
         ("subscriptions", vec!["net/subscriptions.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
         ("feed_journal", vec!["fanout.rs"]),
@@ -131,6 +132,7 @@ fn user_db_opens_are_deliberate() {
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute
         ("net/resync.rs", 1),
         ("net/sync.rs", 2),
+        ("record/bake.rs", 1),     // bake_one: ONE persona per external-media job, the ingest pattern
         ("record/documents.rs", 1),
         ("record/store.rs", 2),
         ("identity/adoption.rs", 2),

@@ -122,6 +122,76 @@ export const Composer = ({ root, docId, published, onPost, posting }) => {
 };
 
 /**
+ * Publish, riding out the media bake: POST until the answer is a post id, reporting the
+ * modal's item list along the way. The server's 202 means "media still preparing" - private
+ * embeds bake inline (never seen here), external ones download and crush in the background,
+ * and re-POSTing is the idempotent "how's it going?" (a failed item stays failed until the
+ * next attempt re-arms it, so the author sees the tombstone before the retry).
+ *
+ * `onBaking(items | null)` drives the modal: items while preparing, null when done or failed
+ * out. Resolves to the response with `post_id`, or throws after a failed bake round.
+ */
+export async function publishWithBaking(root, privDocId, onBaking) {
+    for (;;) {
+        const resp = await api(`/api/identity/${root}/docs/${privDocId}/publish`, {
+            method: 'POST',
+        });
+        if (resp.post_id) {
+            onBaking(null);
+            return resp;
+        }
+        const items = resp.baking || [];
+        onBaking(items);
+        if (items.some((i) => i.status === 'failed')) {
+            // The modal has shown the tombstones; the author edits or re-Posts to retry.
+            const failed = items.filter((i) => i.status === 'failed').length;
+            onBaking(null);
+            throw new Error(
+                failed === 1 ? "one media item couldn't be prepared" : `${failed} media items couldn't be prepared`
+            );
+        }
+        await new Promise((r) => setTimeout(r, 900));
+    }
+}
+
+/// The "preparing media for the network" modal: every media item a post embeds, with its bake
+/// status - the upload progress view's shape, for potentially many files at once.
+export const BakeModal = ({ items }) => {
+    if (!items) return null;
+    return html`
+        <div class="bake-modal-backdrop">
+            <div class="bake-modal">
+                <p class="bake-modal-head">preparing media for the network…</p>
+                ${items.map(
+                    (i) => html`<div class="bake-item" key=${i.source}>
+                        <span class="bake-item-kind">${i.kind === 'external' ? 'fetching' : 'yours'}</span>
+                        <span class="bake-item-source" title=${i.source}>
+                            ${i.source.replace(/^https?:\/\//, '').slice(0, 48)}
+                        </span>
+                        <span
+                            class=${/* spelled out so the dead-CSS convention can see each */
+                            i.status === 'failed'
+                                ? 'bake-item-status bake-item-failed'
+                                : i.status === 'ready'
+                                  ? 'bake-item-status bake-item-ready'
+                                  : 'bake-item-status bake-item-busy'}
+                        >
+                            ${i.status === 'ready'
+                                ? 'ready'
+                                : i.status === 'failed'
+                                  ? i.error || 'failed'
+                                  : i.progress != null
+                                    ? `processing ${i.progress}%`
+                                    : i.status}
+                        </span>
+                    </div>`
+                )}
+            </div>
+        </div>
+    `;
+};
+
+/**
  * The editing wiring for posts that are YOURS, resolved off your own mirror. Returns
  * `editingFor(publicDocId)` - the props PostEntry's edit affordance needs, or null when the
  * post isn't yours (or you aren't signed in, or the mirror hasn't answered yet).
@@ -134,11 +204,13 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
     const rows = useLive(() => (myRoot ? openMirror(myRoot).docs.toArray() : []), [myRoot]);
     const seals = usePrefMap(myRoot, SEAL_PREFIX) || new Map();
     const [posting, setPosting] = useState(false);
+    // The bake modal's items while an edit's media prepares; null when quiet.
+    const [baking, setBaking] = useState(null);
 
     const post = async (privDocId) => {
         setPosting(true);
         try {
-            await api(`/api/identity/${myRoot}/docs/${privDocId}/publish`, { method: 'POST' });
+            await publishWithBaking(myRoot, privDocId, setBaking);
             // Said again in public: seal it again, so the next edit costs the unlock again.
             setPref(myRoot, sealKey(privDocId), 'locked');
         } finally {
@@ -160,6 +232,7 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
             unseal: () => setPref(myRoot, sealKey(row.doc_id), 'open'),
             post: () => post(row.doc_id),
             posting,
+            baking,
         };
     };
     return editingFor;
@@ -244,6 +317,7 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
 
     return html`
         <article class=${entryClass} ref=${itemRef}>
+            ${editing && html`<${BakeModal} items=${editing.baking} />`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini hexagon made you
                 hover. The when, the unseen dot, and - for your own posts - the unlock ride

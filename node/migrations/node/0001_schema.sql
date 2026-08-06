@@ -204,6 +204,30 @@ CREATE TABLE feed_journal (
 CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
 
 -- ---------------------------------------------------------------------------------------------
+-- The media bake registry: external media a publication pulled INTO the network, one row per
+-- (persona, source URL). Publication's copy-don't-flip crossing extends to what a post embeds:
+-- a public post may not depend on a private blob (unreadable to strangers) or a foreign server
+-- (gone tomorrow), so at publish time embedded external images/audio are downloaded, crushed
+-- through the same pipeline as uploads, and minted as public media documents.
+--
+-- The row is BOTH pipeline state and provenance. Status walks pending -> fetching -> ready (or
+-- failed, terminally, with a human tombstone); after that the row stays forever as the record
+-- of where the bytes came from and when - and as the dedupe that lets the same URL, embedded
+-- in a later post, reuse its baked twin instead of fetching again. (Provenance ON the public
+-- header is owed at the next deliberate wire break; DocHeaderPlain is fixed-arity CBOR and a
+-- new field today would invalidate every existing header, journals included.)
+CREATE TABLE media_bakes (
+    root_pubkey   TEXT    NOT NULL,  -- the persona whose publication pulled it in
+    source_url    TEXT    NOT NULL,
+    status        TEXT    NOT NULL,  -- pending | fetching | ready | failed
+    public_doc_id TEXT,              -- hex, once ready
+    error         TEXT,              -- the tombstone, once failed
+    created_ms    INTEGER NOT NULL,
+    fetched_ms    INTEGER,           -- when the bytes actually arrived (the provenance stamp)
+    PRIMARY KEY (root_pubkey, source_url)
+);
+
+-- ---------------------------------------------------------------------------------------------
 -- The chain-heads memo: the tip of every chain this node stores, for every persona - fed at
 -- WRITE time by the three places entries change (local append, sync ingest, gate eviction),
 -- so that "did anything move?" is answerable from node.db without opening a single per-user

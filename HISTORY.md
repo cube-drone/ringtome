@@ -2918,3 +2918,43 @@ replacements, writing nothing - so the handler expected words the composer never
 card showed one edit behind. The probe's stale-title symptom diagnosed it. Two turns of this
 session have now been spent on half-landed multi-replace scripts; the discipline going forward
 is one replace per write, or verify the write happened before building on it.
+
+## The membrane learns about media (2026-08-06)
+
+Publication's copy-don't-flip crossing now extends past the words to what a post EMBEDS. A
+public post may not lean on a private blob (a stranger following the link gets ciphertext they
+can never open) or on a foreign server (gone tomorrow, changed silently, watching its
+referrers) - so at publish time the body is walked with the Marquee reference parser (our own
+crate, off crates.io, pinned like turso; the AST, never a regex - the markup repo keeps
+adversarial examples precisely to punish pattern-matching) and every media embed is BAKED:
+
+- A PRIVATE media document gets a public twin, inline and in milliseconds: its already-crushed
+  bytes decrypt and re-mint via save_public_media, remembered on the private doc's
+  published_as annotation - media publication IS publication, the same one door, the same
+  reuse (a second post embedding the same image shares the twin).
+- An EXTERNAL image or audio URL is downloaded under the unfurl module's SSRF posture (vetted
+  public address, pinned resolution, re-vetted redirects, hard size cap; loopback permitted
+  under LOCAL_TEST and nothing else), crushed through the SAME pipeline uploads take, and
+  minted public by the node's own leaf - the ingest worker's session-free path. The bake
+  registry (media_bakes, node schema gen 7) is pipeline state AND provenance: where the bytes
+  came from, when they arrived, deduped so the same URL across posts bakes once. Provenance ON
+  the public header is ledgered for the next deliberate wire break - DocHeaderPlain is
+  fixed-arity CBOR, and a new field today would invalidate every existing header, journals
+  included.
+- VIDEO is refused, both kinds, with an honest tombstone - the agreed scope line.
+
+The published body is REWRITTEN to the twins' anonymous /id targets (which grew the
+decorative-filename route the renderer's kind-sniff needs); the private draft keeps its private
+links untouched, because the crossing mints, never moves - the probe pins both directions.
+
+External bakes are slow, so publish became honestly two-phase: 202 with the item list until
+everything lands, re-POST as the idempotent "how's it going", 200 with the post only when the
+post can actually stand. The composer's "preparing media for the network" modal rides that
+loop - every item, its kind, its live crush percentage from the same meter uploads use, its
+tombstone on failure (Post again re-arms the retry). Driven end to end twice: the API contract
+in the integration suite, and the human path in a probe - click Post, watch the modal appear,
+watch it clear, watch the post top the feed.
+
+The thrash sentinel earned its keep once more: it flagged the bake worker's user_dbs.get the
+moment it was written, and the ledger bump records the verdict - one open per bake job, the
+ingest worker's own pattern.

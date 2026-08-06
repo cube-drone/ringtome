@@ -76,6 +76,14 @@ Owed inside those directions, and easy to lose because the surfaces around them 
   off the frontier EDGE, and a follow moves no frontier - so a fresh follow's feed stays empty
   until the followee next posts. The fix is one call: a new subscription row triggers
   `journal_for` for that one reader-author pair.
+- **Media baking's deferred edges** (opened 2026-08-06 with the publication bake): (1)
+  **video**, both kinds, refused with a tombstone for now - wants the preview/segment story;
+  (2) **provenance on the public header** - the bake registry holds it node-locally;
+  DocHeaderPlain is fixed-arity CBOR, so the field waits for the next deliberate wire break;
+  (3) **:::media directive targets** - the AST walk collects `![]()` embeds and directive
+  CHILDREN, but a media directive naming its target in attrs isn't gathered yet; (4) baked
+  external media keeps its source URL as the public doc's TITLE (v1 provenance-on-artifact) -
+  revisit when public annotations exist.
 - **The signpost rung** - serving records grow the public-web-URL field.
 - **The root-directory backstop** - a real design problem, found 2026-08-02: serving records
   publish under LEAF keys because pkarr requires the publisher's signing key and the root's is

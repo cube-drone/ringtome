@@ -1169,3 +1169,71 @@
 .feed-fresh-btn:hover {
     border-color: var(--teal);
 }
+
+/* The "preparing media for the network" modal: a post's embedded media, each with its bake
+   status - the upload progress view's shape, for many files at once. */
+.bake-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--scrim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 40;
+}
+
+.bake-modal {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 1.1rem 1.3rem;
+    min-width: 22rem;
+    max-width: 34rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.bake-modal-head {
+    font-weight: 600;
+    margin: 0 0 0.3rem;
+}
+
+.bake-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-size: 0.85rem;
+}
+
+.bake-item-kind {
+    color: var(--faint);
+    font-size: 0.72rem;
+    width: 4rem;
+    flex-shrink: 0;
+}
+
+.bake-item-source {
+    font-family: ui-monospace, monospace;
+    font-size: 0.78rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.bake-item-status {
+    flex-shrink: 0;
+}
+
+.bake-item-ready {
+    color: var(--sea);
+}
+
+.bake-item-busy {
+    color: var(--muted);
+}
+
+.bake-item-failed {
+    color: var(--coral);
+}

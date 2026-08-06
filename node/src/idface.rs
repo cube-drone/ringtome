@@ -609,6 +609,20 @@ pub async fn public_body_route(
     public_doc_bytes(&state, &seg, &doc_hex, false, inm).await
 }
 
+/// The decorative-filename twin of the body route: baked embeds mint as
+/// `/id/<root>/docs/<doc>/body/media.<ext>` so the renderer's media-kind sniff has an
+/// extension to read; the name itself is ignored, exactly like the private twin.
+pub async fn public_body_named_route(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Path((seg, doc_hex, _filename)): Path<(String, String, String)>,
+) -> Result<Response, AppError> {
+    let inm = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok());
+    public_doc_bytes(&state, &seg, &doc_hex, false, inm).await
+}
+
 pub async fn public_thumb_route(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,

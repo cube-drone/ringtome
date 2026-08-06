@@ -55,6 +55,8 @@ import {
     Composer,
     LockButton,
     useOwnPostEditing,
+    publishWithBaking,
+    BakeModal,
 } from '../postentry.js';
 
 const html = htm.bind(h);
@@ -406,6 +408,8 @@ export const FeedApp = ({ current }) => {
     // date (copy-don't-flip). No pinning needed: chronology already guarantees the top slot
     // for a first publication, and the prepend just beats the journal's round trip.
     const [fresh, setFresh] = useState(null);
+    // The "preparing media for the network" modal's items, while a post's embeds bake.
+    const [baking, setBaking] = useState(null);
 
     const post = async (docId) => {
         const posted = docId || draftId;
@@ -420,9 +424,7 @@ export const FeedApp = ({ current }) => {
             mintDraft(); // deliberately not awaited - it carries its own error path
         }
         try {
-            const made = await api(`/api/identity/${root}/docs/${posted}/publish`, {
-                method: 'POST',
-            });
+            const made = await publishWithBaking(root, posted, setBaking);
             // Say it here rather than waiting for the stream to say it back: the label and the
             // public link are true the moment the server answers.
             setPostedAs((p) => ({ ...p, [posted]: made.post_id }));
@@ -458,6 +460,7 @@ export const FeedApp = ({ current }) => {
     );
     return html`
         <div class="feed-app">
+            <${BakeModal} items=${baking} />
             <div class="feed-columns" style=${colStyle}>
                 ${tucked.has('compose')
                     ? html`<${Rail}

@@ -163,6 +163,12 @@ impl Store {
         Ok(out)
     }
 
+    /// The store's database handle, for publication machinery that reads public heads
+    /// (record::bake) - public-lane reads only through this door.
+    pub fn db(&self) -> &Db {
+        &self.db
+    }
+
     /// A named private LWW-element-set collection ("follows", ...).
     pub fn private_set<'s>(&'s self, collection: &'s str) -> PrivateSet<'s> {
         PrivateSet {
@@ -703,7 +709,14 @@ impl Documents<'_> {
     /// (amending canon's original sketch, 2026-08-03): recording a publication must not mint
     /// a new VERSION of the note - it would read as an edit in the history, and two computers
     /// publishing at once would fork the note over bookkeeping.
-    pub async fn publish(&self, doc_id: &[u8; 16]) -> Result<[u8; 16], AppError> {
+    /// `body_override`: the publication's media pre-pass hands back the body with private
+    /// media targets rewritten to their baked public twins (record::bake). `None` publishes
+    /// the resolved text verbatim - the plaintext path, and marquee with nothing to bake.
+    pub async fn publish(
+        &self,
+        doc_id: &[u8; 16],
+        body_override: Option<String>,
+    ) -> Result<[u8; 16], AppError> {
         let view = self.all().await?;
         let doc = view
             .docs
@@ -716,9 +729,14 @@ impl Documents<'_> {
             ));
         }
         let resolved = self.resolved(doc).await?;
-        let body = resolved.body.ok_or_else(|| {
-            AppError::BadRequest("this note's words haven't arrived on this computer yet".into())
-        })?;
+        let body = match body_override {
+            Some(prepared) => prepared,
+            None => resolved.body.ok_or_else(|| {
+                AppError::BadRequest(
+                    "this note's words haven't arrived on this computer yet".into(),
+                )
+            })?,
+        };
         let format = doc
             .display_head()
             .map(|h| crate::record::documents::Format::from_wire(h.header.format))
@@ -778,6 +796,81 @@ impl Documents<'_> {
             .set_field(doc_id, PUBLISHED_AS, &hex::encode(post))
             .await?;
         Ok(post)
+    }
+
+    /// Bake one of the author's PRIVATE media documents into its public twin - media
+    /// publication through the same one door as text (copy-don't-flip, `published_as` reuse).
+    /// The bytes were crushed once at upload; this decrypts and re-mints them, never
+    /// re-encodes. Returns the public doc and its format (the embed rewrite needs the
+    /// extension). Video is refused for now - the 2026-08-06 scope line.
+    pub async fn bake_private_media(
+        &self,
+        media_doc: &[u8; 16],
+    ) -> Result<([u8; 16], crate::record::documents::Format), AppError> {
+        let view = self.all().await?;
+        let doc = view
+            .docs
+            .get(media_doc)
+            .ok_or_else(|| AppError::BadRequest("an embedded media document is missing".into()))?;
+        let head = doc
+            .display_head()
+            .ok_or_else(|| AppError::BadRequest("embedded media has no readable head".into()))?;
+        let format = crate::record::documents::Format::from_wire(head.header.format);
+        match format {
+            crate::record::documents::Format::Avif
+            | crate::record::documents::Format::Apng
+            | crate::record::documents::Format::OggOpus => {}
+            crate::record::documents::Format::WebmAv1 => {
+                return Err(AppError::BadRequest(
+                    "video can't be baked into a post yet - image and audio only for now".into(),
+                ));
+            }
+            _ => {
+                return Err(AppError::BadRequest(
+                    "an embedded target is not a media document".into(),
+                ));
+            }
+        }
+        // Already baked by an earlier post? The same twin serves every embed of it.
+        if let Some(existing) = self
+            .store
+            .annotations()
+            .field(media_doc, PUBLISHED_AS)
+            .await?
+            .and_then(|v| hex::decode(v).ok())
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        {
+            return Ok((existing, format));
+        }
+        let body = self.body(head).await?.ok_or_else(|| {
+            AppError::BadRequest("this media's bytes haven't arrived on this computer yet".into())
+        })?;
+        let thumb_avif = match head.header.thumb_hash {
+            Some(h) => self.blob(h).await?,
+            None => None,
+        };
+        let ingested = crate::media::Ingested {
+            body,
+            format,
+            thumb_avif,
+            preview_webm: None,
+            width: head.header.width,
+            height: head.header.height,
+            duration_ms: head.header.duration_ms,
+        };
+        let public = crate::record::documents::save_public_media(
+            &self.store.db,
+            &self.store.authorship.signer,
+            &self.store.files,
+            &head.header.title,
+            ingested,
+        )
+        .await?;
+        self.store
+            .annotations()
+            .set_field(media_doc, PUBLISHED_AS, &hex::encode(public))
+            .await?;
+        Ok((public, format))
     }
 
     /// The document's synthesized current text: one head's body verbatim, a clean three-way

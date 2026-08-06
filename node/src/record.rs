@@ -6,6 +6,7 @@
 //!   - [`documents`]: versioned documents on top - the merge DAG, twins/echoes, diff3.
 //!   - [`store`]: the per-identity facade the HTTP layer talks to.
 
+pub mod bake;
 pub mod documents;
 pub mod imaol;
 pub mod journal;

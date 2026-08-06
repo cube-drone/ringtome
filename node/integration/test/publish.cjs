@@ -218,6 +218,61 @@ describe("publication", () => {
         assert.equal((await anon(`api/id/${nobody}/posts`)).status, 404);
     });
 
+    it("bakes an embedded EXTERNAL image before the post can exist", async function () {
+        this.timeout(60000);
+        // "The open web": one PNG on loopback, allowed only under LOCAL_TEST.
+        const http = require("node:http");
+        const fs = require("node:fs");
+        const png = fs.readFileSync(require("node:path").join(__dirname, "../../../sample_media/bowie_comic.png"));
+        const web = http.createServer((req, res) => {
+            res.writeHead(200, { "Content-Type": "image/png" });
+            res.end(png);
+        });
+        await new Promise((r) => web.listen(8125, "127.0.0.1", r));
+        try {
+            const note = await (
+                await owner(`api/identity/${root}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title: "Bakes",
+                        body: "![pic](http://127.0.0.1:8125/x.png)",
+                        format: "marquee",
+                    }),
+                })
+            ).json();
+            const first = await owner(`api/identity/${root}/docs/${note.doc_id}/publish`, {
+                method: "POST",
+            });
+            const firstBody = JSON.parse(await first.text());
+            assert.equal(first.status, 202, "the post does not exist until its media does");
+            assert.equal(firstBody.baking[0].kind, "external");
+
+            let postId = null;
+            for (let i = 0; i < 100 && !postId; i++) {
+                const r = await owner(`api/identity/${root}/docs/${note.doc_id}/publish`, {
+                    method: "POST",
+                });
+                const b = JSON.parse(await r.text());
+                if (r.status === 200) postId = b.post_id;
+                assert.ok(
+                    !(b.baking || []).some((x) => x.status === "failed"),
+                    `bake failed: ${JSON.stringify(b.baking)}`
+                );
+                await new Promise((rr) => setTimeout(rr, 500));
+            }
+            assert.ok(postId, "the bake landed and the post minted");
+
+            const body = await (await anon(`id/${root}/docs/${postId}/body`)).text();
+            assert.ok(!body.includes("127.0.0.1:8125"), "the public body no longer leans on the web");
+            const target = body.match(/\]\((\/id\/[^)]+)\)/)[1];
+            const media = await anon(target.slice(1));
+            assert.equal(media.status, 200, "the baked bytes serve to a stranger");
+            assert.equal(media.headers.get("content-type"), "image/avif", "crushed like any upload");
+        } finally {
+            web.close();
+        }
+    });
+
     it("refuses to publish a diverged note - the conflict is nobody's intent", async () => {
         const forked = await (
             await owner(`api/identity/${root}/docs`, {

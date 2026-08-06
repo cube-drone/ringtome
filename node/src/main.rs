@@ -272,6 +272,14 @@ async fn main() -> anyhow::Result<()> {
         state.clone(),
         identity::serving::republish_pass,
     );
+    // The publication media baker (record::bake): downloads and mints external media that
+    // published posts embed. Same 2s heartbeat as the ingest worker it mirrors.
+    loops::periodic(
+        "media-bake",
+        std::time::Duration::from_secs(2),
+        state.clone(),
+        crate::record::bake::bake_pass,
+    );
     // The media ingest worker: drains the transcode queue. A short cadence keeps upload latency
     // low; a pass drains everything pending, so under load it's effectively continuous.
     loops::periodic(
@@ -360,6 +368,10 @@ async fn main() -> anyhow::Result<()> {
         // Public document bytes: static segments beat the page wildcard below, so these
         // resolve first (matchit's specificity, relied on deliberately).
         .route("/id/{seg}/docs/{doc}/body", get(idface::public_body_route))
+        .route(
+            "/id/{seg}/docs/{doc}/body/{filename}",
+            get(idface::public_body_named_route),
+        )
         .route("/id/{seg}/docs/{doc}/thumb", get(idface::public_thumb_route))
         .route("/id/{seg}/{*rest}", get(idface::idface_deep))
         .route("/api/id/{seg}/profile", get(idface::id_profile))

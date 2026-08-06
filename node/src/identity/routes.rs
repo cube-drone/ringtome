@@ -684,8 +684,11 @@ struct CrownResponse {
 /// count (any nonzero value is evidence of key duplication or compromise).
 #[derive(serde::Serialize)]
 struct PublishResponse {
-    /// The post's doc_id - a NEW artifact, not the note's id (copy, don't flip).
-    post_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    post_id: Option<String>,
+    /// Media still preparing (or failed): the modal's list. Present only with a 202.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    baking: Option<Vec<crate::record::bake::BakeItem>>,
 }
 
 /// Publish a note: mint (or extend) its public post. The deliberate act the whole membrane
@@ -694,13 +697,27 @@ async fn publish_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
-) -> Result<Json<PublishResponse>, AppError> {
+) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let post_id = data.documents().publish(&doc_id).await?;
-    Ok(Json(PublishResponse {
-        post_id: hex::encode(post_id),
-    }))
+    // Publication goes through the media pre-pass (record::bake): embedded private media
+    // bakes inline; external media bakes in the background, and until it lands the answer
+    // is 202 with the modal's item list - re-POST to check again (idempotent).
+    match crate::record::bake::publish(&state, &data, &root, &doc_id).await? {
+        crate::record::bake::Outcome::Posted(post_id) => Ok(Json(PublishResponse {
+            post_id: Some(hex::encode(post_id)),
+            baking: None,
+        })
+        .into_response()),
+        crate::record::bake::Outcome::Baking(items) => Ok((
+            axum::http::StatusCode::ACCEPTED,
+            Json(PublishResponse {
+                post_id: None,
+                baking: Some(items),
+            }),
+        )
+            .into_response()),
+    }
 }
 
 #[derive(serde::Serialize)]
