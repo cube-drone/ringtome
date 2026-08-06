@@ -1,0 +1,331 @@
+// One post, anywhere a post is shown - and editable wherever it turns out to be yours.
+//
+// The feed's stream and the persona page's post list rendered two different cards until
+// 2026-08-06, which is how the edit affordance vanished: it lived on the card the feed rework
+// retired, and the "editing is the persona page's business now" comment pointed at a page with
+// no editor. One component ends that class of loss: PostEntry is the card BOTH surfaces render
+// (the banner riding on every one - redundant on a persona's own page, and accepted), and the
+// editing machinery is a hook either surface can wear.
+//
+// Editing a published post crosses the membrane deliberately: a feed item names the PUBLIC
+// document, but editing means opening the PRIVATE note it was minted from. The `published_as`
+// annotation is the thread between them (pure/feed.js publishedState), so `useOwnPostEditing`
+// resolves public doc -> your private twin off your own mirror, and the unlock ceremony (the
+// Journal's fifteen-second lock, same CSS, same promise) guards the door exactly as it did
+// when the affordance lived on the old stack card.
+import { h } from 'preact';
+import { useState, useEffect, useRef } from 'preact/hooks';
+import htm from 'htm';
+
+import { api, apiText } from './net.js';
+import { openMirror, useLive } from './mirror.js';
+import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
+import { Icons } from './icons.js';
+import { speakable } from './speakable.js';
+import { FEED_STYLE, publishedState, emphasisOf, leadOf } from './pure/feed.js';
+import { useDocSession } from './doc/session.js';
+import { useDocDetail } from './doc/detail.js';
+import { MarqueeBody, bareSource } from './doc/marqueebody.js';
+import { LiveMarquee } from './doc/livemarquee.js';
+import { useTurbolinks } from './doc/turbolinks.js';
+import { emojiCompletions, linkCompletions, mediaCompletions } from './doc/completions.js';
+import { PersonBanner } from './person.js';
+
+const html = htm.bind(h);
+
+export const StatusDot = ({ status }) =>
+    html`<span class=${`status-dot status-${status}`} title=${status}></span>`;
+
+// The unlock: a click starts a fifteen-second fill, and the item opens when it completes.
+// Journal's gesture exactly (shared CSS) - the same promise, for the same reason.
+export const LockButton = ({ onUnlocked }) => {
+    const [unlocking, setUnlocking] = useState(false);
+    return html`
+        <button
+            class=${unlocking ? 'journal-lock unlocking' : 'journal-lock'}
+            title="Posted - click, then wait 15 seconds, to edit this again"
+            onClick=${() => setUnlocking(true)}
+            disabled=${unlocking}
+        >
+            <span class="journal-lock-face"><${Icons.lock} /></span>
+            ${unlocking &&
+            html`<span class="journal-unlock-bar" onAnimationEnd=${onUnlocked}></span>`}
+        </button>
+    `;
+};
+
+// The composer: a draft (or an unlocked post) edited IN PLACE with the interactive editor. It
+// uses every other editing surface's save machinery (doc/session.js) - autosave, blur flush,
+// the lookout that fast-forwards a clean buffer when another computer writes - because this is
+// an editing surface like any other; only what it does at the end differs.
+export const Composer = ({ root, docId, published, onPost, posting }) => {
+    const s = useDocSession(root, docId);
+    const tlProfile = useTurbolinks(s.body, s.format);
+    const empty = !s.body.trim() && !s.title.trim();
+
+    if (s.status === 'opening' && !s.loaded) {
+        return html`<p class="null-sub">opening…</p>`;
+    }
+    if (s.status === 'waiting') {
+        return html`<p class="null-sub">
+            <span class="waiting-dot"></span> some of this draft's words are still arriving
+            from another computer.
+        </p>`;
+    }
+    return html`
+        <div class="feed-composer">
+            <input
+                class="feed-title"
+                value=${s.title}
+                placeholder="a title, if you like"
+                onInput=${(e) => {
+                    s.setTitle(e.currentTarget.value);
+                    s.touched();
+                }}
+                onBlur=${() => s.save()}
+            />
+            <${LiveMarquee}
+                body=${s.body}
+                profile=${tlProfile}
+                completions=${[
+                    emojiCompletions,
+                    linkCompletions(root, FEED_STYLE),
+                    mediaCompletions(root, FEED_STYLE),
+                ]}
+                onInput=${(text) => {
+                    s.setBody(text);
+                    s.touched();
+                }}
+                onBlur=${s.save}
+            />
+            <div class="feed-composer-foot">
+                <${StatusDot} status=${s.status} />
+                <span class="feed-note">
+                    posting is public - anyone with your address can read it
+                </span>
+                <button
+                    class="feed-post"
+                    disabled=${posting || empty}
+                    title=${empty ? 'write something first' : 'publish these words'}
+                    onClick=${async () => {
+                        await s.save(); // the post publishes what is SAVED, so flush first
+                        // The words ride along: whoever clicked already HAS them, and showing
+                        // a user their own edit must never require asking the server for what
+                        // they just typed. The confirmation is the publish; the display is
+                        // the buffer.
+                        onPost({ title: s.title, body: s.body });
+                    }}
+                >${posting ? 'posting…' : published ? 'post the changes' : 'post'}</button>
+            </div>
+        </div>
+    `;
+};
+
+/**
+ * The editing wiring for posts that are YOURS, resolved off your own mirror. Returns
+ * `editingFor(publicDocId)` - the props PostEntry's edit affordance needs, or null when the
+ * post isn't yours (or you aren't signed in, or the mirror hasn't answered yet).
+ *
+ * `decorate` lets a caller overlay local knowledge on the mirror rows before the
+ * published_as lookup - the feed uses it for publications the stream hasn't echoed yet.
+ */
+export function useOwnPostEditing(current, decorate = (row) => row) {
+    const myRoot = current && current.root;
+    const rows = useLive(() => (myRoot ? openMirror(myRoot).docs.toArray() : []), [myRoot]);
+    const seals = usePrefMap(myRoot, SEAL_PREFIX) || new Map();
+    const [posting, setPosting] = useState(false);
+
+    const post = async (privDocId) => {
+        setPosting(true);
+        try {
+            await api(`/api/identity/${myRoot}/docs/${privDocId}/publish`, { method: 'POST' });
+            // Said again in public: seal it again, so the next edit costs the unlock again.
+            setPref(myRoot, sealKey(privDocId), 'locked');
+        } finally {
+            setPosting(false);
+        }
+    };
+
+    const editingFor = (publicDocId) => {
+        if (!myRoot || !rows) return null;
+        const row = rows
+            .map(decorate)
+            .find((r) => publishedState(r).postId === publicDocId);
+        if (!row) return null;
+        const seal = seals.get(sealKey(row.doc_id));
+        return {
+            root: myRoot,
+            row,
+            locked: publishedState(row, seal).locked,
+            unseal: () => setPref(myRoot, sealKey(row.doc_id), 'open'),
+            post: () => post(row.doc_id),
+            posting,
+        };
+    };
+    return editingFor;
+}
+
+/**
+ * One post, as the feed and the persona page both show it: banner, date, the words (cut to
+ * their lead by the reader's interest), the unseen dot - and, when `editing` is present, the
+ * unlock-then-edit-in-place ceremony.
+ *
+ * `item`: { author, doc_id (PUBLIC), title, format, published_ms, seen, mine,
+ *           author_name?, author_avatar? }
+ */
+export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
+    const [body, setBody] = useState(undefined);
+    const [wholeThing, setWholeThing] = useState(false);
+    const [open, setOpen] = useState(false);
+    // The words as this reader last CONFIRMED them: after an in-place edit, the session's
+    // own buffer - already in hand, already acknowledged by the publish - never a refetch of
+    // what the user just typed.
+    const [amended, setAmended] = useState(null);
+    const itemRef = useRef(null);
+
+    useEffect(() => {
+        let live = true;
+        apiText(`/id/${item.author}/docs/${item.doc_id}/body`)
+            .then((t) => live && setBody(t))
+            .catch(() => live && setBody(null));
+        return () => {
+            live = false;
+        };
+    }, [item.author, item.doc_id]);
+
+    // Seen, once, when actually looked at. jsdom has no IntersectionObserver; there the item
+    // simply never auto-marks, which is the honest degradation (the probe marks by hand).
+    useEffect(() => {
+        if (item.seen || item.mine || !onSeen || typeof IntersectionObserver === 'undefined')
+            return;
+        const el = itemRef.current;
+        if (!el) return;
+        const io = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting)) {
+                    io.disconnect();
+                    onSeen(item);
+                }
+            },
+            { threshold: 0.6 }
+        );
+        io.observe(el);
+        return () => io.disconnect();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [item.seen, item.mine, item.author, item.doc_id]);
+
+    const emphasis = item.mine ? 'normal' : emphasisOf(interest);
+    // Spelled out rather than interpolated, so the dead-CSS convention can see each class.
+    const entryClass =
+        emphasis === 'low'
+            ? 'feed-entry feed-entry-low'
+            : emphasis === 'high'
+              ? 'feed-entry feed-entry-high'
+              : 'feed-entry';
+
+    const when = new Date(item.published_ms).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+    // The item's link: the title when there is one, a quiet line at the foot when not. It
+    // goes to the author's page for now - which fresh-syncs them on arrival, most of what the
+    // eventual per-item page owes - and the item page will take this href over when it exists.
+    const href = `/id/${speakable(item.author)}`;
+    // The words as shown: after an in-place edit, the buffer the user just confirmed - not a
+    // refetch of what they typed. The item prop's copies are snapshots; a page refresh
+    // reconciles everything against the canonical fold anyway.
+    const shownBody = amended ? amended.body : body;
+    const title = amended ? amended.title : item.title;
+    const tlProfile = useTurbolinks(shownBody || '', item.format);
+    const { lead, cut } = leadOf(shownBody || '', emphasis);
+    const shown = wholeThing ? shownBody : lead;
+
+    return html`
+        <article class=${entryClass} ref=${itemRef}>
+            ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
+                the face-plus-names row says who at a glance where the mini hexagon made you
+                hover. The when, the unseen dot, and - for your own posts - the unlock ride
+                its actions slot. */ ''}
+            <${PersonBanner}
+                root=${item.author}
+                current=${current}
+                profile=${{
+                    fields: [
+                        item.author_name && { field: 'name', value: item.author_name },
+                        item.author_avatar && { field: 'avatar', value: item.author_avatar },
+                    ].filter(Boolean),
+                    via: [],
+                }}
+                actions=${html`<span class="feed-entry-when">${when}</span>
+                    ${!item.seen &&
+                    html`<span class="feed-entry-new" title="you haven't seen this yet"></span>`}
+                    ${editing &&
+                    !open &&
+                    (editing.locked
+                        ? html`<${LockButton}
+                              onUnlocked=${() => {
+                                  editing.unseal();
+                                  setOpen(true);
+                              }}
+                          />`
+                        : html`<button
+                              class="feed-edit"
+                              title="open this for editing"
+                              onClick=${() => setOpen(true)}
+                          >edit</button>`)}`}
+            />
+            ${!open &&
+            !!title &&
+            html`<h2 class="feed-entry-title"><a href=${href}>${title}</a></h2>`}
+            ${open
+                ? html`<${Composer}
+                      root=${editing.root}
+                      docId=${editing.row.doc_id}
+                      published=${true}
+                      onPost=${async (words) => {
+                          // The publish's 200 IS the confirmation; on failure the editor
+                          // stays open with the buffer intact, and nothing pretends.
+                          try {
+                              await editing.post();
+                          } catch {
+                              return;
+                          }
+                          setAmended(words);
+                          setOpen(false);
+                      }}
+                      posting=${editing.posting}
+                  />`
+                : html`${shownBody === undefined && html`<p class="null-sub">…</p>`}
+                      ${shownBody === null &&
+                      html`<p class="null-sub">
+                          <span class="waiting-dot"></span> these words haven't reached this
+                          computer.
+                      </p>`}
+                      ${!!shownBody &&
+                      html`<div class="feed-entry-body">
+                          ${item.format === 'marquee'
+                              ? html`<${MarqueeBody}
+                                    source=${shown}
+                                    profile=${tlProfile}
+                                    onUnparsable=${bareSource}
+                                />`
+                              : html`<pre class="reader-plain">${shown}</pre>`}
+                          ${cut &&
+                          !wholeThing &&
+                          html`<button class="feed-entry-more" onClick=${() => setWholeThing(true)}>
+                              the whole thing
+                          </button>`}
+                      </div>`}`}
+            ${!open &&
+            !title &&
+            html`<p class="feed-entry-foot">
+                <a href=${href}>from ${item.author_name || 'someone'}'s page</a>
+            </p>`}
+        </article>
+    `;
+};
+
+// Re-exported for the drafts column's card, which stayed in the feed app.
+export { useDocDetail };

@@ -2821,3 +2821,100 @@ test settles in seconds against a ten-minute tick and only the write-time path c
 
 Schema generation 6 - one more wipe, regrown in seconds by the generator that started this
 whole excavation.
+
+## The feed learns when to move and when to hold still (2026-08-06)
+
+Curtis's post never appeared in his own feed - the stream fetched once on mount and never asked
+again - and his design for fixing it drew the line exactly where attention lives: a list you are
+READING must never move under you, and a thing you just POSTED must appear instantly, because
+"seeing the thing I just posted" is the feedback that says it really happened.
+
+Both halves landed. Arrivals are detected by a slow poll (and on window focus - coming back to
+the tab is when "anything new?" is the live question) but never shown: they wait in a reserved
+bar reading "3 updates · refresh". The bar's space is HELD at fixed height whether or not it has
+anything to say, so even its appearance can't move a read position. Your own post is the one
+exception, prepended the moment the server confirms - your attention is already at the top, so
+the popping-in objection doesn't apply to the thing you just did - and the synthesized item
+carries the same key the real journal row will, so the poll's later copy dedupes instead of
+doubling.
+
+The design got simpler mid-flight because Curtis caught me building on a false premise. I had
+invented a "pinned outside chronology" slot on the theory that a public post inherits its
+draft's creation date - a draft begun yesterday would sort below today. It doesn't: publication
+MINTS a parentless public document stamped at publish (copy-don't-flip means the private editing
+history never enters the public date), so a first publication tops the feed by plain chronology
+and the pin was solving a conflict that doesn't exist. Re-publications keep their original date
+and deliberately do not jump - "dated by when it was said" holding exactly as ruled.
+
+One casualty of the interrupted build: the rejected edit's CSS had already landed, leaving
+orphaned pin styles and a duplicated bar block - which the dead-CSS convention caught by name,
+as designed.
+
+## Further back reaches the past (2026-08-06)
+
+The feed's "further back" button did nothing, and the nothing was two bugs stacked so neatly
+that each hid the other. The server's keyset query used numbered placeholders with ?2 appearing
+twice - which binds ONE value - while the code passed five values into four slots, and turso
+refused with "bind index 5 out of bounds". Only the CURSOR branch has that shape; the first page
+never takes it, and no test had ever paged the feed, so the 500 lived exclusively behind the
+button. And the client's catch was silent by design ("a failed page leaves what's shown"), which
+turned a server error into a button that simply did nothing - hiding the bug from the user AND
+from the developer, which is the same lesson the "storing entry" error taught on the other side
+of the wire: an error a human can't see is a bug that gets to stay.
+
+Three fixes: the bind (four values for four slots), the silence (the button itself now says
+"couldn't reach further back - try again"), and the test gap (an integration test that fills
+past a page and walks the cursor branch, asserting page two arrives and never repeats page one).
+The shelf pagination one module over never had this bug - it uses bare positional placeholders,
+where marker count IS value count and the mistake cannot be written.
+
+## One card for a post, and the editor found its way home (2026-08-06)
+
+Curtis: the edit UI for our own posted feed items vanished in the feed rework. It had - worse,
+the comment that retired it pointed editing at "the persona page's business", and the persona
+page had no editor. A regression narrated instead of caught, possible because the feed and the
+persona page rendered two DIFFERENT cards for the same thing, so an affordance could die on one
+while the other never had it.
+
+The fix is the ruling Curtis made when he caught it: one card, everywhere a post is shown.
+`PostEntry` (js/postentry.js) is now the entry both surfaces render - banner on every post,
+redundant on your own page and accepted - and the editing machinery is a shared hook
+(`useOwnPostEditing`) either surface wears. The hook is where the membrane crossing lives: a
+card names the PUBLIC document, editing means opening the PRIVATE note it was minted from, and
+the `published_as` annotation is the thread the hook follows through your own mirror. The
+Journal's fifteen-second unlock guards the door in both homes, "post the changes" re-publishes
+in place, the card refetches its own words when the editor closes, and the seal re-locks so the
+next edit costs the ceremony again.
+
+The feed decorates the hook's lookup with its local publication overlay, so a post made seconds
+ago is editable before the stream echoes it back. The probe drives the whole ceremony in BOTH
+homes - unlock, editor-in-place holding the words, post-the-changes, close, re-seal - and
+confirms the world still sees exactly one post after two rounds of editing.
+
+Moving out retired the persona page's bespoke post card; the dead-CSS convention named all six
+of its orphaned classes on the first run after, as designed.
+
+## Your own words don't need fetching (2026-08-06)
+
+An edited post showed its old words until a page refresh, and my first fix ran the wrong way:
+refetch the body after the editor closes - a server round trip to show a user what they had
+just typed. Curtis cut it down to its shape: the client HOLDS the new words, the publish's 200
+IS the confirmation, and any later refresh reconciles against the canonical fold for free. So
+the composer now hands its buffer along with the post ("the words ride along"), and the card
+displays exactly what was confirmed - no refetch, no race with folds or caches, editor staying
+open with the buffer intact if the publish refuses.
+
+Two real bugs surfaced on the way and both got fixed. The public body route was serving
+`immutable, max-age=1y` on a URL addressed by DOC ID - whose content changes on every edit; only
+the blob underneath is content-addressed. That promise meant OTHER readers' browsers could hold
+an edited post stale for a year. It now serves no-cache with the blob hash as the ETag: an
+unchanged body costs a 304, an edited one arrives the moment anyone asks. And a
+temporal-dead-zone crash (`tlProfile` reading `shownBody` before its declaration) sailed through
+eslint and 343 green jsdom tests - nothing mounts the card in the unit layer - and died on first
+real render; the probe caught it because the probe renders.
+
+The editing scars compounded once more: an edit script aborted mid-assertions AFTER its early
+replacements, writing nothing - so the handler expected words the composer never sent, and the
+card showed one edit behind. The probe's stale-title symptom diagnosed it. Two turns of this
+session have now been spent on half-landed multi-replace scripts; the discipline going forward
+is one replace per write, or verify the write happened before building on it.

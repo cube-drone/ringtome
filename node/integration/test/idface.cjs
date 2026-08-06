@@ -298,7 +298,11 @@ describe("the avatar (public documents, tenant zero)", function () {
         const thumb = await anon(`id/${root2}/docs/${avatarDoc}/thumb`);
         assert.equal(thumb.status, 200);
         assert.equal(thumb.headers.get("content-type"), "image/avif");
-        assert.match(thumb.headers.get("cache-control"), /immutable/);
+        // Revalidation, not immutability (2026-08-06): the URL names the DOCUMENT, and a
+        // re-uploaded avatar changes these bytes under the same address. The blob hash rides
+        // as the ETag, so an unchanged thumb costs a 304 and never a year of staleness.
+        assert.ok(!/immutable/.test(thumb.headers.get("cache-control") || ""));
+        assert.ok(thumb.headers.get("etag"), "the blob hash rides as the ETag");
         const body = await anon(`id/${root2}/docs/${avatarDoc}/body`);
         assert.equal(body.status, 200);
         assert.equal(body.headers.get("content-type"), "image/avif");

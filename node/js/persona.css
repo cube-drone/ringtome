@@ -959,43 +959,6 @@
     margin: 0;
 }
 
-.public-post {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.7rem 1rem;
-}
-
-.public-post-head {
-    display: flex;
-    align-items: baseline;
-    gap: 0.6rem;
-}
-
-.public-post-when {
-    color: var(--faint);
-    font-size: 0.75rem;
-}
-
-.public-post-link {
-    margin-left: auto;
-    color: var(--muted);
-    font-size: 0.75rem;
-}
-
-.public-post-title {
-    font-size: 1.05rem;
-    font-weight: 600;
-    margin: 0.3rem 0 0;
-}
-
-.public-post-body {
-    margin-top: 0.4rem;
-    font-size: 0.95rem;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-}
-
 .public-posts-more {
     align-self: center;
     background: var(--surface-2);
@@ -1099,23 +1062,23 @@
     font-size: 1.15rem;
 }
 
-.feed-entry-head {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
 .feed-entry-when {
     color: var(--faint);
     font-size: 0.75rem;
 }
 
 .feed-entry-new {
+    display: inline-block;
     width: 0.5rem;
     height: 0.5rem;
     border-radius: 50%;
     background: var(--teal);
-    margin-left: auto;
+    margin-left: 0.4rem;
+}
+
+/* The banner sits flush in the card; its own page-margins don't apply here. */
+.feed-entry .person-banner {
+    margin: 0;
 }
 
 .feed-entry-title {
@@ -1178,4 +1141,31 @@
     color: var(--muted);
     font-size: 0.78rem;
     margin: 0 0 0.4rem;
+}
+
+/* The reserved update slot: always the same height, so the bar appearing never moves your
+   read position - which is the whole reason updates wait to be asked for. */
+/* The reserved update slot: always the same height, so the bar appearing never moves your
+   read position - which is the whole reason updates wait to be asked for. */
+.feed-fresh-bar {
+    height: 2rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.feed-fresh-btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    color: var(--sea);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.2rem 1rem;
+    cursor: pointer;
+}
+
+.feed-fresh-btn:hover {
+    border-color: var(--teal);
 }

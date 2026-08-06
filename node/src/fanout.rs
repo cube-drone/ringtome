@@ -203,13 +203,16 @@ pub async fn feed_page(
                 (reader_root, limit),
             )
             .await,
+        // Numbered placeholders: ?2 appears twice and binds ONE value - the first version
+        // passed `ms` twice and bound five values into four slots, which turso refused with
+        // "bind index 5 out of bounds"... only on the cursor branch, which no test paged.
         Some((ms, doc)) => node_db
             .fetch_all(
                 "SELECT author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
                  ORDER BY published_ms DESC, doc_id LIMIT ?4",
-                (reader_root, ms, ms, doc.as_str(), limit),
+                (reader_root, ms, doc.as_str(), limit),
             )
             .await,
     }

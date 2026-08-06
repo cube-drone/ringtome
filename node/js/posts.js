@@ -1,89 +1,33 @@
-// Someone's public posts, read the way they were written.
+// Someone's public posts, on their page - the SAME card the feed renders (postentry.js).
 //
-// This is the first surface in the console that renders somebody ELSE'S words. Everything up
-// to now rendered documents out of your own mirror; these come from the public lane, by the
-// same anonymous path a stranger would use (`/id/<root>/docs/<id>/body`), which is the point -
-// a member reading a foreign persona's post and a stranger reading it are fetching the same
-// bytes, and only the chrome around them differs. It works for a persona this node has never
-// carried, because the profile fetch that named these posts also brought their bodies home.
+// One component for "a post, shown" everywhere a post is shown (Curtis's ruling, 2026-08-06):
+// the banner rides on every entry even on the persona's own page (redundant, and accepted),
+// and when the page is YOURS the unlock-and-edit ceremony works right here, exactly as it
+// does in the feed. This file is just the persona page's data adapter: the profile's post
+// list and its keyset paging, mapped into the entry's item shape.
 //
-// One body fetch per post and no mirror involved, deliberately: another person's public
-// documents are not ours to keep in a local table (PROJECT_PLAN, Other People Live in Their
-// Own Database). Pages of twenty are what keep that arithmetic honest - a visit fetches the
-// twenty it shows, and reading further back is something the reader asks for.
+// Bodies still arrive by the same anonymous path a stranger reads, and there is still no
+// mirror table for another person's documents (Other People Live in Their Own Database).
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
-import { api, apiText } from './net.js';
+import { api } from './net.js';
 import { recentPosts, mergePosts, postCursor } from './pure/feed.js';
-import { MarqueeBody, bareSource } from './doc/marqueebody.js';
-import { useTurbolinks } from './doc/turbolinks.js';
+import { PostEntry, useOwnPostEditing } from './postentry.js';
 
 const html = htm.bind(h);
-
-const PublicPost = ({ root, post }) => {
-    // undefined: still fetching. null: the words didn't come - a header can outrun its body
-    // across the network, so this is a normal state, not an error.
-    const [body, setBody] = useState(undefined);
-    useEffect(() => {
-        let live = true;
-        setBody(undefined);
-        apiText(`/id/${root}/docs/${post.doc_id}/body`)
-            .then((t) => live && setBody(t))
-            .catch(() => live && setBody(null));
-        return () => {
-            live = false;
-        };
-    }, [root, post.doc_id]);
-    const tlProfile = useTurbolinks(body || '', post.format);
-
-    const when = post.published_ms
-        ? new Date(post.published_ms).toLocaleString(undefined, {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-          })
-        : '';
-    return html`
-        <article class="public-post">
-            <header class="public-post-head">
-                <span class="public-post-when">${when}</span>
-                <a class="public-post-link" href=${`/id/${root}/docs/${post.doc_id}/body`}>
-                    the public copy
-                </a>
-            </header>
-            ${/* No title, no heading - the app doesn't get to name someone else's post. */ ''}
-            ${!!post.title && html`<h3 class="public-post-title">${post.title}</h3>`}
-            ${body === undefined && html`<p class="null-sub">…</p>`}
-            ${body === null &&
-            html`<p class="null-sub">
-                <span class="waiting-dot"></span> these words haven't reached this computer.
-            </p>`}
-            ${!!body &&
-            html`<div class="public-post-body">
-                ${post.format === 'marquee'
-                    ? html`<${MarqueeBody}
-                          source=${body}
-                          profile=${tlProfile}
-                          onUnparsable=${bareSource}
-                      />`
-                    : html`<pre class="reader-plain">${body}</pre>`}
-            </div>`}
-        </article>
-    `;
-};
 
 /// The stream on a person's page: what they have said in public, newest first, and as far
 /// back as the reader cares to go. The profile brought the first page; each further one is
 /// asked for by hand, because reading someone's whole history is a decision, not a default.
-export const PublicPosts = ({ root, posts, more }) => {
+export const PublicPosts = ({ root, posts, more, current }) => {
     const [extra, setExtra] = useState([]);
     const [hasMore, setHasMore] = useState(!!more);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const mine = !!(current && current.root === root);
+    const editingFor = useOwnPostEditing(current);
 
     // A different persona is a different shelf: drop what the last one's pages left behind.
     useEffect(() => {
@@ -113,10 +57,30 @@ export const PublicPosts = ({ root, posts, more }) => {
     };
 
     if (!list.length) return null; // nothing said in public yet - say nothing about it
+
+    // The profile's post rows, dressed as the shared entry's item shape. Seen is a feed
+    // concept (the arrival journal's dot); on a person's page every post is simply shown.
+    const items = list.map((p) => ({
+        author: root,
+        doc_id: p.doc_id,
+        title: p.title,
+        format: p.format,
+        published_ms: p.published_ms,
+        seen: true,
+        mine,
+    }));
+
     return html`
         <section class="public-posts">
             <h2 class="public-posts-head">recent posts</h2>
-            ${list.map((p) => html`<${PublicPost} key=${p.doc_id} root=${root} post=${p} />`)}
+            ${items.map(
+                (item) => html`<${PostEntry}
+                    key=${item.doc_id}
+                    item=${item}
+                    current=${current}
+                    editing=${mine ? editingFor(item.doc_id) : null}
+                />`
+            )}
             ${error && html`<p class="form-error">${error}</p>`}
             ${hasMore &&
             html`<button class="public-posts-more" disabled=${loading} onClick=${loadMore}>

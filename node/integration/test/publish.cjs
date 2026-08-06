@@ -90,6 +90,23 @@ describe("publication", () => {
         assert.match(await body.text(), /canoes/, "the world sees the newer words");
     });
 
+    it("serves edited words immediately - revalidation, never a year of immutable", async () => {
+        // The body URL names the DOCUMENT, which edits; only the blob under it is content-
+        // addressed. This route once sent `immutable, max-age=1y`, so a browser held every
+        // edited post stale until a hard refresh. The contract now: no-cache + the blob hash
+        // as ETag - unchanged bodies cost a 304, edited ones arrive at once.
+        const first = await anon(`id/${root}/docs/${postId}/body`);
+        assert.equal(first.status, 200);
+        const cc = first.headers.get("cache-control") || "";
+        assert.ok(!cc.includes("immutable"), `cache-control must not be immutable: ${cc}`);
+        const etag = first.headers.get("etag");
+        assert.ok(etag, "the blob hash rides as the ETag");
+        const again = await anon(`id/${root}/docs/${postId}/body`, {
+            headers: { "If-None-Match": etag },
+        });
+        assert.equal(again.status, 304, "an unchanged body costs nothing");
+    });
+
     it("says nothing new when nothing changed - the chain does not grow", async () => {
         const before = await (await owner(`api/identity/${root}/entries`)).json();
         const count = (e) => (Array.isArray(e) ? e.length : (e.entries || []).length);

@@ -42,108 +42,24 @@ import {
     publishedState,
     openDraftOf,
     overlayPosted,
-    emphasisOf,
-    leadOf,
     mergeFeed,
+    feedKey,
     feedCursor,
 } from '../pure/feed.js';
-import { api, apiText } from '../net.js';
-import { speakable } from '../speakable.js';
-import { PersonChip } from '../person.js';
-import { useDocSession } from '../doc/session.js';
+import { api } from '../net.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
-import { LiveMarquee } from '../doc/livemarquee.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
-import { emojiCompletions, linkCompletions, mediaCompletions } from '../doc/completions.js';
+import {
+    PostEntry,
+    Composer,
+    LockButton,
+    useOwnPostEditing,
+} from '../postentry.js';
 
 const html = htm.bind(h);
 
 const EMPTY = new Map();
-
-const StatusDot = ({ status }) =>
-    html`<span class=${`status-dot status-${status}`} title=${status}></span>`;
-
-// The unlock: a click starts a fifteen-second fill, and the item opens when it completes.
-// Journal's gesture exactly (shared CSS) - the same promise, for the same reason.
-const LockButton = ({ onUnlocked }) => {
-    const [unlocking, setUnlocking] = useState(false);
-    return html`
-        <button
-            class=${unlocking ? 'journal-lock unlocking' : 'journal-lock'}
-            title="Posted - click, then wait 15 seconds, to edit this again"
-            onClick=${() => setUnlocking(true)}
-            disabled=${unlocking}
-        >
-            <span class="journal-lock-face"><${Icons.lock} /></span>
-            ${unlocking &&
-            html`<span class="journal-unlock-bar" onAnimationEnd=${onUnlocked}></span>`}
-        </button>
-    `;
-};
-
-// The composer: the open draft, edited IN PLACE with the interactive editor. It uses every
-// other editing surface's save machinery (doc/session.js) - autosave, blur flush, the lookout
-// that fast-forwards a clean buffer when another computer writes - because this is an editing
-// surface like any other; only what it does at the end differs.
-const Composer = ({ root, docId, published, onPost, posting }) => {
-    const s = useDocSession(root, docId);
-    const tlProfile = useTurbolinks(s.body, s.format);
-    const empty = !s.body.trim() && !s.title.trim();
-
-    if (s.status === 'opening' && !s.loaded) {
-        return html`<p class="null-sub">opening…</p>`;
-    }
-    if (s.status === 'waiting') {
-        return html`<p class="null-sub">
-            <span class="waiting-dot"></span> some of this draft's words are still arriving
-            from another computer.
-        </p>`;
-    }
-    return html`
-        <div class="feed-composer">
-            <input
-                class="feed-title"
-                value=${s.title}
-                placeholder="a title, if you like"
-                onInput=${(e) => {
-                    s.setTitle(e.currentTarget.value);
-                    s.touched();
-                }}
-                onBlur=${() => s.save()}
-            />
-            <${LiveMarquee}
-                body=${s.body}
-                profile=${tlProfile}
-                completions=${[
-                    emojiCompletions,
-                    linkCompletions(root, FEED_STYLE),
-                    mediaCompletions(root, FEED_STYLE),
-                ]}
-                onInput=${(text) => {
-                    s.setBody(text);
-                    s.touched();
-                }}
-                onBlur=${s.save}
-            />
-            <div class="feed-composer-foot">
-                <${StatusDot} status=${s.status} />
-                <span class="feed-note">
-                    posting is public - anyone with your address can read it
-                </span>
-                <button
-                    class="feed-post"
-                    disabled=${posting || empty}
-                    title=${empty ? 'write something first' : 'publish these words'}
-                    onClick=${async () => {
-                        await s.save(); // the post publishes what is SAVED, so flush first
-                        onPost();
-                    }}
-                >${posting ? 'posting…' : published ? 'post the changes' : 'post'}</button>
-            </div>
-        </div>
-    `;
-};
 
 // A stack item's words, rendered. Journal's reader exactly (doc/detail.js, cache-first and
 // patient about a body still in flight), and the BARE fallback for an unparsable document
@@ -242,115 +158,21 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
 // smaller, a little transparent, and cut to its lead; a high-interest one gets a touch more
 // visual importance and is never cut. Order never moves.
 
-// One feed item. The body arrives by the same anonymous path a stranger reads (the item may be
-// yours - your posts are public too). Seen is marked when the item enters the viewport, once,
-// via the reader's own private chain, so it travels to their other computers.
-const FeedItem = ({ item, interest, onSeen }) => {
-    const [body, setBody] = useState(undefined);
-    const [wholeThing, setWholeThing] = useState(false);
-    const itemRef = useRef(null);
-
-    useEffect(() => {
-        let live = true;
-        apiText(`/id/${item.author}/docs/${item.doc_id}/body`)
-            .then((t) => live && setBody(t))
-            .catch(() => live && setBody(null));
-        return () => {
-            live = false;
-        };
-    }, [item.author, item.doc_id]);
-
-    // Seen, once, when actually looked at. jsdom has no IntersectionObserver; there the item
-    // simply never auto-marks, which is the honest degradation (the probe marks by hand).
-    useEffect(() => {
-        if (item.seen || item.mine || typeof IntersectionObserver === 'undefined') return;
-        const el = itemRef.current;
-        if (!el) return;
-        const io = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((e) => e.isIntersecting)) {
-                    io.disconnect();
-                    onSeen(item);
-                }
-            },
-            { threshold: 0.6 }
-        );
-        io.observe(el);
-        return () => io.disconnect();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [item.seen, item.mine, item.author, item.doc_id]);
-
-    const emphasis = item.mine ? 'normal' : emphasisOf(interest);
-    // Spelled out rather than interpolated, so the dead-CSS convention can see each class.
-    const entryClass =
-        emphasis === 'low'
-            ? 'feed-entry feed-entry-low'
-            : emphasis === 'high'
-              ? 'feed-entry feed-entry-high'
-              : 'feed-entry';
-    const tlProfile = useTurbolinks(body || '', item.format);
-    const when = new Date(item.published_ms).toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-    });
-    // The item's link: the title when there is one, a quiet line at the foot when not. It
-    // goes to the author's page for now - which fresh-syncs them on arrival, most of what the
-    // eventual per-item page owes - and the item page will take this href over when it exists.
-    const href = `/id/${speakable(item.author)}`;
-    const { lead, cut } = leadOf(body || '', emphasis);
-    const shown = wholeThing ? body : lead;
-
-    return html`
-        <article class=${entryClass} ref=${itemRef}>
-            <header class="feed-entry-head">
-                <${PersonChip}
-                    root=${item.author}
-                    size="mini"
-                    profile=${{
-                        fields: [
-                            item.author_name && { field: 'name', value: item.author_name },
-                            item.author_avatar && { field: 'avatar', value: item.author_avatar },
-                        ].filter(Boolean),
-                        via: [],
-                    }}
-                />
-                <span class="feed-entry-when">${when}</span>
-                ${!item.seen && html`<span class="feed-entry-new" title="you haven't seen this yet"></span>`}
-            </header>
-            ${!!item.title && html`<h2 class="feed-entry-title"><a href=${href}>${item.title}</a></h2>`}
-            ${body === undefined && html`<p class="null-sub">…</p>`}
-            ${body === null &&
-            html`<p class="null-sub">
-                <span class="waiting-dot"></span> these words haven't reached this computer.
-            </p>`}
-            ${!!body &&
-            html`<div class="feed-entry-body">
-                ${item.format === 'marquee'
-                    ? html`<${MarqueeBody} source=${shown} profile=${tlProfile} onUnparsable=${bareSource} />`
-                    : html`<pre class="reader-plain">${shown}</pre>`}
-                ${cut &&
-                !wholeThing &&
-                html`<button class="feed-entry-more" onClick=${() => setWholeThing(true)}>
-                    the whole thing
-                </button>`}
-            </div>`}
-            ${!item.title &&
-            html`<p class="feed-entry-foot"><a href=${href}>from ${item.author_name || 'someone'}'s page</a></p>`}
-        </article>
-    `;
-};
-
-const FeedStream = ({ root, contacts }) => {
+const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
     const [items, setItems] = useState([]);
     const [more, setMore] = useState(false);
     const [loading, setLoading] = useState(true);
     const [unseenOnly, setUnseenOnly] = useState(false);
+    // Arrivals detected but NOT shown: things popping into a list you are reading is
+    // infuriating, so updates wait in a reserved bar until asked for. The bar's space is
+    // always held (fixed height), so its appearance never moves your read position either.
+    const [pending, setPending] = useState([]);
+    const [pageError, setPageError] = useState(false);
     const streamRef = useRef(null);
 
     const loadPage = async (cursor) => {
         setLoading(true);
+        setPageError(false);
         try {
             const qs = cursor
                 ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}`
@@ -359,7 +181,9 @@ const FeedStream = ({ root, contacts }) => {
             setItems((have) => mergeFeed(cursor ? have : [], page.items));
             setMore(!!page.more);
         } catch {
-            // A failed page leaves what's shown; scrolling retries.
+            // A failed page leaves what's shown - but says so. The silent version of this
+            // catch hid a server 500 behind a button that "did nothing" (2026-08-06).
+            setPageError(true);
         }
         setLoading(false);
     };
@@ -367,6 +191,51 @@ const FeedStream = ({ root, contacts }) => {
         if (root) loadPage(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root]);
+
+    // Notice new arrivals without showing them: poll the head page on a slow beat (and on
+    // window focus - coming back to the tab is when "anything new?" is the live question),
+    // and count what isn't already on screen.
+    useEffect(() => {
+        if (!root) return;
+        let live = true;
+        const look = async () => {
+            try {
+                const page = await api(`/api/identity/${root}/feed`);
+                if (!live) return;
+                setPending((cur) => {
+                    const shown = new Set(items.map(feedKey));
+                    const news = (page.items || []).filter((i) => !shown.has(feedKey(i)));
+                    return news.length === cur.length ? cur : news;
+                });
+            } catch {
+                // A failed look leaves the bar as it was; the next beat retries.
+            }
+        };
+        const timer = setInterval(look, 30_000);
+        window.addEventListener('focus', look);
+        return () => {
+            live = false;
+            clearInterval(timer);
+            window.removeEventListener('focus', look);
+        };
+    }, [root, items]);
+
+    // A fresh post of your own joins the stream immediately - your attention is already at
+    // the top, so the popping-in objection doesn't apply to the thing you just did. The
+    // synthesized item merges by the same key the real journal row will carry, so when the
+    // poll later brings the real one, the dedupe swallows it instead of doubling it.
+    useEffect(() => {
+        if (!fresh) return;
+        setItems((have) => mergeFeed([fresh], have));
+        setPending((p) => p.filter((i) => feedKey(i) !== feedKey(fresh)));
+        if (streamRef.current) streamRef.current.scrollTop = 0;
+    }, [fresh]);
+
+    const takePending = () => {
+        setItems((have) => mergeFeed(have, pending));
+        setPending([]);
+        if (streamRef.current) streamRef.current.scrollTop = 0;
+    };
 
     // Infinite scroll: nearing the bottom asks for the next page. The button below does the
     // same by hand - the accessible path, and the only one an instrument can press.
@@ -405,6 +274,12 @@ const FeedStream = ({ root, contacts }) => {
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
+            <div class="feed-fresh-bar">
+                ${pending.length > 0 &&
+                html`<button class="feed-fresh-btn" onClick=${takePending}>
+                    ${pending.length === 1 ? '1 update' : `${pending.length} updates`} · refresh
+                </button>`}
+            </div>
             <div class="feed-stream-head">
                 <span class="feed-stream-title">the feed</span>
                 <label class="feed-unseen-toggle">
@@ -417,11 +292,13 @@ const FeedStream = ({ root, contacts }) => {
                 </label>
             </div>
             ${visible.map(
-                (item) => html`<${FeedItem}
+                (item) => html`<${PostEntry}
                     key=${`${item.author}:${item.doc_id}`}
                     item=${item}
                     interest=${interestOf(item.author)}
+                    current=${current}
                     onSeen=${markSeen}
+                    editing=${item.mine ? editingFor(item.doc_id) : null}
                 />`
             )}
             ${visible.length === 0 &&
@@ -433,7 +310,11 @@ const FeedStream = ({ root, contacts }) => {
             </p>`}
             ${more &&
             html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(feedCursor(items))}>
-                ${loading ? 'reading further back…' : 'further back'}
+                ${loading
+                    ? 'reading further back…'
+                    : pageError
+                      ? "couldn't reach further back - try again"
+                      : 'further back'}
             </button>`}
         </main>
     `;
@@ -456,6 +337,10 @@ export const FeedApp = ({ current }) => {
     // than needing to be cleared).
     const [postedAs, setPostedAs] = useState({});
     const seals = usePrefMap(root, SEAL_PREFIX) || EMPTY;
+    // The shared edit wiring (postentry.js): resolves a public post to your private twin so
+    // the stream's own items carry the unlock-and-edit ceremony. Decorated with the local
+    // publication overlay, so a post made seconds ago is editable before the stream echoes.
+    const editingFor = useOwnPostEditing(current, (r) => overlayPosted(r, postedAs[r.doc_id]));
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
     const { tucked, toggleTuck } = useColTucks(root, 'feed');
@@ -514,6 +399,14 @@ export const FeedApp = ({ current }) => {
     // for all of them. Only the first two have to happen in that order. The next page is
     // minted ALONGSIDE the publish, and the composer hands over the moment that document
     // exists, so what you wrote joins the stream while the publish is still in flight.
+    // The freshly-published post, handed to the stream the moment the server confirms:
+    // "seeing the thing I just posted" is the feedback that says it really happened. It goes
+    // in AT ITS CHRONOLOGICAL PLACE, which is the top - a public post is minted at publish,
+    // parentless, stamped now; the private draft's editing history never enters the public
+    // date (copy-don't-flip). No pinning needed: chronology already guarantees the top slot
+    // for a first publication, and the prepend just beats the journal's round trip.
+    const [fresh, setFresh] = useState(null);
+
     const post = async (docId) => {
         const posted = docId || draftId;
         if (!posted) return;
@@ -533,6 +426,18 @@ export const FeedApp = ({ current }) => {
             // Say it here rather than waiting for the stream to say it back: the label and the
             // public link are true the moment the server answers.
             setPostedAs((p) => ({ ...p, [posted]: made.post_id }));
+            const row = (rows || []).find((d) => d.doc_id === posted);
+            setFresh({
+                author: root,
+                doc_id: made.post_id,
+                title: (row && row.title) || '',
+                format: 'marquee',
+                published_ms: Date.now(),
+                updated_ms: Date.now(),
+                arrived_ms: Date.now(),
+                seen: true,
+                mine: true,
+            });
             // Said in public: seal it, so editing again costs the unlock.
             setPref(root, sealKey(posted), 'locked');
         } catch (e) {
@@ -569,7 +474,7 @@ export const FeedApp = ({ current }) => {
                                         published=${!!onDraft &&
                                         publishedState(onDraft, seals.get(sealKey(draftId)))
                                             .published}
-                                        onPost=${post}
+                                        onPost=${() => post()}
                                         posting=${posting}
                                     />`
                                   : html`<p class="null-sub">opening a fresh page…</p>`}
@@ -594,7 +499,13 @@ export const FeedApp = ({ current }) => {
                               </div>`}
                           </aside>
                           ${resizer('compose')}`}
-                <${FeedStream} root=${root} contacts=${contactRows} />
+                <${FeedStream}
+                    root=${root}
+                    current=${current}
+                    contacts=${contactRows}
+                    fresh=${fresh}
+                    editingFor=${editingFor}
+                />
             </div>
         </div>
     `;

@@ -171,6 +171,11 @@ export const IdPage = ({ seg, current, onTitle }) => {
             ${profile.foreign &&
             html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} />`}
         <//>
-        <${PublicPosts} root=${root} posts=${profile.posts} more=${profile.posts_more} />
+        <${PublicPosts}
+            root=${root}
+            posts=${profile.posts}
+            more=${profile.posts_more}
+            current=${current}
+        />
     <//>`;
 };

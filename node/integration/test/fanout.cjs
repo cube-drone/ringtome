@@ -269,6 +269,37 @@ describe("the feed endpoint", () => {
         assert.equal(item.seen, true);
     });
 
+    it("pages further back with the keyset cursor - the branch no test had walked", async () => {
+        // Fill past one page. The first version of the cursor SQL bound five values into four
+        // numbered slots and 500'd on exactly this path, behind a silent client catch.
+        for (let i = 0; i < 22; i++) {
+            const d = await (
+                await voice(`api/identity/${voiceRoot}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({ title: `Back ${i}`, body: "w", format: "plaintext" }),
+                })
+            ).json();
+            await voice(`api/identity/${voiceRoot}/docs/${d.doc_id}/publish`, { method: "POST" });
+        }
+        const first = await settle(async () => {
+            const page = await (await me(`api/identity/${myRoot}/feed`)).json();
+            return page.more ? page : null;
+        });
+        assert.ok(first, "a full first page, with more behind it");
+        const last = first.items[first.items.length - 1];
+        const resp = await me(
+            `api/identity/${myRoot}/feed?before_ms=${last.published_ms}&before_doc=${last.doc_id}`
+        );
+        const text = await resp.text();
+        assert.equal(resp.status, 200, text);
+        const second = JSON.parse(text);
+        assert.ok(second.items.length > 0, "the past is reachable");
+        assert.ok(
+            !second.items.some((i) => first.items.some((j) => j.doc_id === i.doc_id)),
+            "and never repeats the first page"
+        );
+    });
+
     it("refuses a feed that isn't yours", async () => {
         const resp = await voice(`api/identity/${myRoot}/feed`);
         assert.ok([403, 404].includes(resp.status), `got ${resp.status}`);

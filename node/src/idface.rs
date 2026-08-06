@@ -520,13 +520,14 @@ pub async fn directory(
 /// GET `/id/{seg}/docs/{doc}/body` and `/thumb` - a public document's bytes, anonymously.
 /// The lane check is the whole gate: `public_head` answers only for POSTS-lane documents, so
 /// a private doc_id asked through this door is a 404, never a leak. Bytes are served with
-/// the stored format's own Content-Type, nosniff, and immutable caching (content-addressed:
+/// the stored format's own Content-Type, nosniff, and ETag revalidation (the blob hash:
 /// a different avatar is a different document).
 async fn public_doc_bytes(
     state: &AppState,
     seg: &str,
     doc_hex: &str,
     thumb: bool,
+    if_none_match: Option<&str>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(seg) else {
         return Err(AppError::NotFound("no such persona here".into()));
@@ -555,6 +556,23 @@ async fn public_doc_bytes(
             crate::record::documents::Format::from_wire(head.format).mime(),
         )
     };
+    // The URL names the DOCUMENT (mutable - editing re-publishes new words under the same
+    // doc_id); only the blob underneath is content-addressed. This once said `immutable,
+    // max-age=1y`, which promised browsers a year of staleness on every edited post - the
+    // "my edit isn't visible until refresh" bug (2026-08-06). The honest shape: the blob
+    // hash IS content-addressed, so it makes a perfect ETag - an unchanged body costs a
+    // 304 and no bytes, an edited one arrives the moment the card asks.
+    let etag = format!("\"{}\"", hex::encode(hash));
+    if if_none_match.is_some_and(|inm| inm == etag) {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+        )
+            .into_response());
+    }
     let Some(bytes) = state
         .files
         .get_public(iroh_blobs::Hash::from_bytes(hash))
@@ -570,7 +588,10 @@ async fn public_doc_bytes(
         [
             (header::CONTENT_TYPE, mime),
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
-            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            // no-cache = "keep a copy, ask before using it": every use revalidates against
+            // the ETag, so staleness is bounded by one conditional request, not a year.
+            (header::CACHE_CONTROL, "no-cache"),
+            (header::ETAG, etag.as_str()),
         ],
         bytes,
     )
@@ -579,16 +600,24 @@ async fn public_doc_bytes(
 
 pub async fn public_body_route(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Path((seg, doc_hex)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    public_doc_bytes(&state, &seg, &doc_hex, false).await
+    let inm = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok());
+    public_doc_bytes(&state, &seg, &doc_hex, false, inm).await
 }
 
 pub async fn public_thumb_route(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Path((seg, doc_hex)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    public_doc_bytes(&state, &seg, &doc_hex, true).await
+    let inm = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok());
+    public_doc_bytes(&state, &seg, &doc_hex, true, inm).await
 }
 
 /// GET `/api/id/{root}/profile` - the JSON face. Anonymous callers get the shelf rule (hosted
