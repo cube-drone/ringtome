@@ -23,12 +23,11 @@ import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { speakable } from './speakable.js';
 import { FEED_STYLE, publishedState, emphasisOf, leadOf } from './pure/feed.js';
-import { useDocSession } from './doc/session.js';
+import { appById, featuresOf } from './pure/apps.js';
+import { Editor } from './doc/editor.js';
 import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
-import { LiveMarquee } from './doc/livemarquee.js';
 import { useTurbolinks } from './doc/turbolinks.js';
-import { emojiCompletions, linkCompletions, mediaCompletions } from './doc/completions.js';
 import { PersonBanner } from './person.js';
 
 const html = htm.bind(h);
@@ -54,69 +53,49 @@ export const LockButton = ({ onUnlocked }) => {
     `;
 };
 
-// The composer: a draft (or an unlocked post) edited IN PLACE with the interactive editor. It
-// uses every other editing surface's save machinery (doc/session.js) - autosave, blur flush,
-// the lookout that fast-forwards a clean buffer when another computer writes - because this is
-// an editing surface like any other; only what it does at the end differs.
-export const Composer = ({ root, docId, published, onPost, posting }) => {
-    const s = useDocSession(root, docId);
-    const tlProfile = useTurbolinks(s.body, s.format);
-    const empty = !s.body.trim() && !s.title.trim();
-
-    if (s.status === 'opening' && !s.loaded) {
-        return html`<p class="null-sub">opening…</p>`;
-    }
-    if (s.status === 'waiting') {
-        return html`<p class="null-sub">
-            <span class="waiting-dot"></span> some of this draft's words are still arriving
-            from another computer.
-        </p>`;
-    }
+// The composer: the REAL notes editor, wearing Feed's clothes (Curtis's ruling, 2026-08-06:
+// both point at a private document, so the features come over whole rather than being
+// reimplemented). The registry's feature block does the tailoring - Feed already declares
+// `date: false` (a post happens NOW; nobody claims a date for one) and `pin: false` - and
+// everything else arrives free: the format-convert chip, the upload chip with drop-and-paste
+// inline, tags and description, view modes, the delete chip (which, on the open draft, just
+// clears it - the one-draft rule mints a fresh page the moment the old one dies).
+//
+// The Post button rides the editor's `foot` render-prop: the editor owns the session, the
+// foot flushes the save and carries the confirmed words out (never refetched - the buffer in
+// hand IS what the server acknowledged).
+export const Composer = ({ root, docId, published, onPost, posting, onDeleted }) => {
+    const feedApp = appById('feed');
     return html`
         <div class="feed-composer">
-            <input
-                class="feed-title"
-                value=${s.title}
-                placeholder="a title, if you like"
-                onInput=${(e) => {
-                    s.setTitle(e.currentTarget.value);
-                    s.touched();
+            <${Editor}
+                root=${root}
+                docId=${docId}
+                features=${featuresOf(feedApp)}
+                bucket=${FEED_STYLE}
+                onDeleted=${onDeleted}
+                foot=${({ save, status, body, title }) => {
+                    const empty = !body.trim() && !title.trim();
+                    return html`<div class="feed-composer-foot">
+                        <${StatusDot} status=${status} />
+                        <span class="feed-note">
+                            posting is public - anyone with your address can read it
+                        </span>
+                        <button
+                            class="feed-post"
+                            disabled=${posting || empty}
+                            title=${empty ? 'write something first' : 'publish these words'}
+                            onClick=${async () => {
+                                await save(); // the post publishes what is SAVED, so flush first
+                                // The words ride along: whoever clicked already HAS them, and
+                                // showing a user their own edit must never require asking the
+                                // server for what they just typed.
+                                onPost({ title, body });
+                            }}
+                        >${posting ? 'posting…' : published ? 'post the changes' : 'post'}</button>
+                    </div>`;
                 }}
-                onBlur=${() => s.save()}
             />
-            <${LiveMarquee}
-                body=${s.body}
-                profile=${tlProfile}
-                completions=${[
-                    emojiCompletions,
-                    linkCompletions(root, FEED_STYLE),
-                    mediaCompletions(root, FEED_STYLE),
-                ]}
-                onInput=${(text) => {
-                    s.setBody(text);
-                    s.touched();
-                }}
-                onBlur=${s.save}
-            />
-            <div class="feed-composer-foot">
-                <${StatusDot} status=${s.status} />
-                <span class="feed-note">
-                    posting is public - anyone with your address can read it
-                </span>
-                <button
-                    class="feed-post"
-                    disabled=${posting || empty}
-                    title=${empty ? 'write something first' : 'publish these words'}
-                    onClick=${async () => {
-                        await s.save(); // the post publishes what is SAVED, so flush first
-                        // The words ride along: whoever clicked already HAS them, and showing
-                        // a user their own edit must never require asking the server for what
-                        // they just typed. The confirmation is the publish; the display is
-                        // the buffer.
-                        onPost({ title: s.title, body: s.body });
-                    }}
-                >${posting ? 'posting…' : published ? 'post the changes' : 'post'}</button>
-            </div>
         </div>
     `;
 };

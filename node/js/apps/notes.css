@@ -374,6 +374,14 @@
     padding-bottom: 0.4rem;
 }
 
+/* Every editor surface measures its OWN width: the composer lives in a draggable column, so
+   the squeeze is a container question, never a viewport one. (The narrow-mode rules live in
+   doc/editor.css, AFTER the tabs' own display rule - a same-specificity @container block
+   earlier in the cascade loses to it, which is how narrow mode shipped broken once.) */
+.reader {
+    container-type: inline-size;
+}
+
 /* An open toggle chip wears the "on" look, like a pinned chip. */
 .chip-open {
     color: var(--dock-text);

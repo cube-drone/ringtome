@@ -6,11 +6,11 @@
 const assert = require('node:assert');
 
 let APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp,
-    bucketHolds, featuresOf, itemNoun, itemPlural, homeAppFor;
+    bucketHolds, featuresOf, itemNoun, itemPlural, homeAppFor, editorModes;
 let Icons;
 before(async () => {
     ({ APPS, DEFAULT_STYLE, appById, appLabel, appForStyle, appTypeOf, bucketsForApp, bucketHolds, homeAppFor,
-       featuresOf, itemNoun, itemPlural } = await import('../../../js/pure/apps.js'));
+       featuresOf, itemNoun, itemPlural, editorModes } = await import('../../../js/pure/apps.js'));
     ({ Icons } = await import('../../../js/icons.js'));
 });
 
@@ -240,5 +240,29 @@ describe('app registry', () => {
         it('and no app forgets to name one', () => {
             assert.deepEqual(APPS.filter((a) => !a.blank && !a.icon).map((a) => a.id), []);
         });
+    });
+});
+
+// The editor's mode row: which tabs a document actually offers (2026-08-06 rules).
+describe('editorModes', () => {
+    it('hides the plain tab wherever side-by-side is offered - side already shows the source', () => {
+        assert.deepEqual(editorModes('marquee', ['interactive', 'side', 'plain', 'read']),
+            ['interactive', 'side', 'read']);
+    });
+
+    it('keeps plain exactly where it is the only way to edit', () => {
+        assert.deepEqual(editorModes('plaintext', ['interactive', 'side', 'plain', 'read']),
+            ['plain', 'read']);
+    });
+
+    it("the feed's list: no read-only, and side hides plain", () => {
+        const feed = featuresOf(appById('feed'));
+        assert.deepEqual(editorModes('marquee', feed.modes), ['interactive', 'side']);
+        assert.deepEqual(editorModes('plaintext', feed.modes), ['plain'],
+            'a plaintext post is still editable');
+    });
+
+    it('an app list that leaves a format nothing falls back rather than trapping the doc', () => {
+        assert.deepEqual(editorModes('plaintext', ['interactive']), ['plain', 'read']);
     });
 });

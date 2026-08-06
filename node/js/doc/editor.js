@@ -32,7 +32,7 @@ import { useUploadCapture } from './upload.js';
 import { stripSelfOrigin } from '../pure/portable.js';
 import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
 import { slugPathFor } from './address.js';
-import { featuresOf } from '../pure/apps.js';
+import { featuresOf, editorModes } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
@@ -46,8 +46,8 @@ const MODES = {
     plain: 'plaintext', // the raw source in a plain textarea
     read: 'read only', // the rendered document, nothing editable
 };
-const modesFor = (format) =>
-    format === 'marquee' ? ['interactive', 'side', 'plain', 'read'] : ['plain', 'read'];
+// (The availability computation itself lives in pure/apps.js `editorModes`, vectored - it
+// carries the house rules: side-by-side hides the plain tab, an empty app list falls back.)
 const defaultMode = (format) => (format === 'marquee' ? 'interactive' : 'plain');
 
 // The mode tabs show icons, not words; the words (MODES) live in each tab's tooltip.
@@ -68,7 +68,7 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
+export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) => {
     const feat = features || featuresOf();
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
@@ -168,8 +168,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
     // interactive/side pick back to the plain textarea). The app narrows the offered modes
     // (Recipes offers only interactive); if its list leaves nothing for this format, fall back
     // to the format's full set rather than trapping the doc.
-    let available = modesFor(format).filter((m) => feat.modes.includes(m));
-    if (available.length === 0) available = modesFor(format);
+    const available = editorModes(format, feat.modes);
     const mode =
         chosenMode && available.includes(chosenMode)
             ? chosenMode
@@ -443,6 +442,10 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket }) => {
             </div>`}
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
             ${writingSurface()}
+            ${/* A host's own footer (the Feed composer's Post button): a render-prop so the
+                host can flush the save and take the confirmed words - the editor owns the
+                session, the host owns what happens at the end. */ ''}
+            ${foot && foot({ save, status, body, title })}
             ${uploadExtras}
         </div>
     `;

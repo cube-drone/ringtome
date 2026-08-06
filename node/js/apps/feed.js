@@ -346,7 +346,9 @@ export const FeedApp = ({ current }) => {
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
     const { tucked, toggleTuck } = useColTucks(root, 'feed');
-    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose']);
+    // The composer's floor is 260px: below that the editor's chrome crushes even in its
+    // narrow mode (panes.js applies the floor to drags AND to previously-stored widths).
+    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose'], { compose: 260 });
 
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     // Your ledger, for the rendering dials: interest shapes an item's size, never its place.
@@ -479,6 +481,12 @@ export const FeedApp = ({ current }) => {
                                             .published}
                                         onPost=${() => post()}
                                         posting=${posting}
+                                        onDeleted=${() => {
+                                            /* the one-draft rule mints the next page; the
+                                               overlay must not resurrect the dead one */
+                                            setMinted(null);
+                                            minting.current = false;
+                                        }}
                                     />`
                                   : html`<p class="null-sub">opening a fresh page…</p>`}
                               ${/* Beside the button that caused it. This used to sit above the

@@ -2958,3 +2958,65 @@ watch it clear, watch the post top the feed.
 The thrash sentinel earned its keep once more: it flagged the bake worker's user_dbs.get the
 moment it was written, and the ledger bump records the verdict - one open per bake job, the
 ingest worker's own pattern.
+
+## The composer grows up (2026-08-06)
+
+Media baking shipped with no way to put media INTO a post - the composer was a title box and an
+editor pane, built bespoke while the notes editor next door had everything. Curtis's ruling cut
+the duplication at the root: both surfaces point at a private document, so the features come
+over WHOLE. The Composer is now the real Editor (doc/editor.js) wearing Feed's clothes, and the
+tailoring was already sewn: the app registry's feature block - written when Feed was born -
+declares `date: false` (a post happens NOW; nobody claims a date for one) and `pin: false`, and
+the Editor has honored feature blocks all along. One new seam was needed: a `foot` render-prop,
+so the Post button lives inside the editor's chrome, flushes the session's save, and carries
+the confirmed words out.
+
+What arrived free, probed live: the format-convert chip (marquee <-> plaintext), the upload
+chip with drop-and-paste-inline, tags and description in the meta dropdown WITH the date field
+absent, view modes, the crosslink chip - and delete, which on the open draft simply clears it:
+the one-draft rule mints a fresh page the moment the old one dies (the fresh-post overlay
+learns to stand down so it can't resurrect the dead draft). The in-place edit composer on
+published posts inherits everything except delete, deliberately - removing the private twin of
+a published post is not a card-level gesture.
+
+The full circle, live: upload a real PNG through the pipeline, embed it in the open draft,
+click Post - and the baked twin serves to a stranger as image/avif from the /id path. The
+feature that motivated this (yesterday's media baking) is now reachable by hand.
+
+Probe scars, small but recorded: jsdom has no window.confirm (the delete dialog needs a stub -
+a human clicking through it is the same yes), and placeholders aren't textContent (the meta
+panel looked empty to a probe reading the wrong property).
+
+## The editor learns to be narrow (2026-08-06)
+
+Three refinements from Curtis watching the composer squeezed into its column, all landing on
+every editor surface at once because the composer IS the notes editor now:
+
+- Under 400px of width the title gets the whole first row (crowded beside the chips it had
+  become uneditable) and the view-mode tabs step aside. Measured with a CONTAINER query, not a
+  media query - the composer lives in a draggable column, so the squeeze is a property of the
+  column, and a viewport rule would answer the wrong question.
+- Wherever side-by-side is offered, the plaintext tab is hidden: side-by-side contains the raw
+  source already, so plain was a duplicate crowding the row. A plaintext-format document never
+  offers side-by-side, so plain survives exactly where it is the only way to edit.
+- The feed's editor drops read-only: a post's read view is the feed itself.
+
+The mode-availability rules moved from the editor's closure into pure/apps.js (`editorModes`),
+vectored, with the plant confirming the side-hides-plain vector bites. The plant also taught a
+build-chain lesson the hard way: `just ui-check` REBUILDS the bundle, so a planted violation
+followed by a source-only restore leaves the violation LIVE in the embedded JS - the re-probe
+was green-source, planted-bundle, and read exactly backwards until the recipe chain was reread.
+Restore means rebuild.
+
+## Narrow mode, actually (2026-08-06)
+
+The first narrow-mode shipment was broken in the exact way the index.css header warns about:
+the @container block lived in notes.css, editor.css imports after it, and a container query
+adds no specificity - so the tabs' own display rule won the cascade and narrow mode never
+fired. Worse, the unconditional flex-wrap added alongside it made mid-width headers LOOK like
+narrow mode, which is why it appeared half-working. The block now lives in editor.css after the
+rule it overrides, and the wrap is scoped inside the query.
+
+Also per Curtis: the feed composer's column floor is 260px - below that the editor's chrome
+crushes even in narrow mode. panes.js grew per-column minimums, applied to drags AND to
+previously-stored widths, so a pref written under the old 140 floor honors the new one on read.

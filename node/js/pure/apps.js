@@ -117,7 +117,16 @@ export const APPS = [
         searchable: false,
         bucketNoun: 'Feed',
         itemNoun: 'post',
-        features: { tree: false, tagColumn: false, pin: false, date: false },
+        // No read-only tab: a post's read view is the feed itself, and the composer is for
+        // writing. 'plain' stays listed so a plaintext-format post is still editable - the
+        // side-by-side rule (editorModes) hides it whenever side is offered anyway.
+        features: {
+            tree: false,
+            tagColumn: false,
+            pin: false,
+            date: false,
+            modes: ['interactive', 'side', 'plain'],
+        },
     },
     {
         id: 'all',
@@ -159,6 +168,24 @@ export const itemNoun = (app) => (app && app.itemNoun) || 'item';
 /// which is right for notes and recipes and pages and wrong for entries - so an app whose plural is
 /// irregular says so, rather than every caller reaching for a pluralizer or dodging the plural.
 export const itemPlural = (app) => (app && app.itemPlural) || `${itemNoun(app)}s`;
+
+/// The view modes an editor actually OFFERS for a document, from the format's possibilities
+/// narrowed by the app's feature list - plus two house rules (2026-08-06):
+///
+///   - Wherever SIDE-BY-SIDE is available, the plaintext tab is hidden: side-by-side contains
+///     the raw source already, so the plain tab was a duplicate that crowded the row. (A
+///     plaintext-format document never offers side-by-side, so plain survives exactly where
+///     it is the only way to edit.)
+///   - An app's list that leaves a format nothing falls back to the format's full set rather
+///     than trapping the document.
+export function editorModes(format, featureModes) {
+    const base =
+        format === 'marquee' ? ['interactive', 'side', 'plain', 'read'] : ['plain', 'read'];
+    let available = base.filter((m) => featureModes.includes(m));
+    if (available.length === 0) available = base;
+    if (available.includes('side')) available = available.filter((m) => m !== 'plain');
+    return available;
+}
 
 /// The resolved feature set for an app (defaults, then the app's overrides). Safe on undefined.
 export const featuresOf = (app) => ({ ...DEFAULT_FEATURES, ...((app && app.features) || {}) });

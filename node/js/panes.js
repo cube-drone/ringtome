@@ -47,7 +47,7 @@ export function useColTucks(root, appId) {
     };
 }
 
-export function useColWidths(root, appId, cols) {
+export function useColWidths(root, appId, cols, mins = {}) {
     const widths = usePrefMap(root, widthPrefix(appId));
     const prefWidths = {};
     for (const [col, value] of widths || []) {
@@ -55,8 +55,14 @@ export function useColWidths(root, appId, cols) {
         if (w) prefWidths[col] = w;
     }
     const [dragWidths, setDragWidths] = useState({});
-    const widthOf = (c) => dragWidths[c] ?? prefWidths[c];
-    const clampW = (w) => Math.max(140, Math.min(560, Math.round(w)));
+    // Per-column floors (the feed's composer needs 260px before its chrome crushes); 140 is
+    // the house default. Applied to STORED widths too, so a pref written under an older,
+    // lower floor honors the new one on read.
+    const clampW = (c, w) => Math.max(mins[c] ?? 140, Math.min(560, Math.round(w)));
+    const widthOf = (c) => {
+        const w = dragWidths[c] ?? prefWidths[c];
+        return w == null ? undefined : clampW(c, w);
+    };
     const startResize = (col) => (e) => {
         e.preventDefault();
         const strip = e.currentTarget;
@@ -66,11 +72,11 @@ export function useColWidths(root, appId, cols) {
         const startX = e.clientX;
         strip.setPointerCapture(e.pointerId);
         const move = (ev) =>
-            setDragWidths((s) => ({ ...s, [col]: clampW(startW + ev.clientX - startX) }));
+            setDragWidths((s) => ({ ...s, [col]: clampW(col, startW + ev.clientX - startX) }));
         const up = (ev) => {
             strip.removeEventListener('pointermove', move);
             strip.removeEventListener('pointerup', up);
-            setPref(root, widthKey(appId, col), String(clampW(startW + ev.clientX - startX)));
+            setPref(root, widthKey(appId, col), String(clampW(col, startW + ev.clientX - startX)));
         };
         strip.addEventListener('pointermove', move);
         strip.addEventListener('pointerup', up);

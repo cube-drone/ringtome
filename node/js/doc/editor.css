@@ -242,3 +242,19 @@
     min-height: 30vh;
     text-align: center;
 }
+
+/* The narrow editor (under 400px of its own column): the title gets the whole first row -
+   crowded beside the chips it had become uneditable - and the view-mode tabs disappear
+   entirely to save the space. Lives HERE, after .editor-tabs' own display rule, because a
+   container query adds no specificity and an earlier block would lose the cascade. */
+@container (max-width: 400px) {
+    .reader-head {
+        flex-wrap: wrap;
+    }
+    .reader-head .editor-title {
+        flex: 1 1 100%;
+    }
+    .editor-tabs {
+        display: none;
+    }
+}
