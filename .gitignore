@@ -4,7 +4,7 @@
 *.pdb
 
 # local node data (per-user databases, key files, materialized views)
-# data-b + data-dht: `just start_two`'s second node and shared local discovery folder
+# data-b + data-dht: `just start-two`'s second node and shared local discovery folder
 /data
 **/data/
 /data-b
@@ -25,5 +25,5 @@ node_modules/
 .DS_Store
 
 
-# generated fake-network credentials (`just test_data`)
+# generated fake-network credentials (`just test-data`)
 **/harness/testdata-state.json

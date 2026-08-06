@@ -94,7 +94,7 @@ start: ui-install
 # (default data dir, hostname name), node B on :5282 (./data-b, named "second-brain"), sharing
 # a local discovery folder so post-adoption background sync can find addresses. Create a
 # persona at :5281, register a fresh account at :5282, carry the codes between tabs.
-start_two: ui-install
+start-two: ui-install
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
@@ -143,7 +143,7 @@ start_two: ui-install
 # B "second-brain" on :5282 (./data-b), C "third-brain" on :5283 (./data-c), shared local
 # discovery. Found a persona on A, invite B from A, then invite C *from B* - the un-trimmed
 # junior grant: the chain of computers doesn't route through the founder.
-start_three: ui-install
+start-three: ui-install
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
@@ -247,14 +247,14 @@ integration-install:
 # by adding an entry to ACTIONS in harness/testdata.mjs.
 #
 # Seed a fake network onto the running nodes (see harness/testdata.mjs; extensible).
-test_data personas="15" actions="15" seed="":
+test-data personas="15" actions="15" seed="":
     #!/usr/bin/env bash
     set -uo pipefail
     # Preflight the interpreter BEFORE any parse: an old Node dies on modern syntax deep in a
     # dependency, and a stack trace from cssstyle is a riddle where a sentence would do.
     major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
     if [ "$major" -lt 18 ]; then
-        echo "test_data needs Node 18+ (global fetch); found $(node --version 2>/dev/null || echo 'no node') at $(which node 2>/dev/null || echo '?')" >&2
+        echo "test-data needs Node 18+ (global fetch); found $(node --version 2>/dev/null || echo 'no node') at $(which node 2>/dev/null || echo '?')" >&2
         exit 1
     fi
     cd "{{justfile_directory()}}/harness" && node testdata.mjs {{personas}} {{actions}} {{seed}}
@@ -336,7 +336,7 @@ kill:
 # no in-place migration - delete the database and rebuild"). This is that delete.
 #
 # Covers `start` / `run` (./data, which also contains the integration rig's ./data/test*),
-# `start_two` (adds ./data-b, ./data-dht) and `start_three` (adds ./data-c). Kills any running
+# `start-two` (adds ./data-b, ./data-dht) and `start-three` (adds ./data-c). Kills any running
 # node first, so nothing is holding a file open while it disappears.
 #
 # DESTROYS every dev persona, key and chain - the wipe a schema generation bump asks for.

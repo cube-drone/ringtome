@@ -41,7 +41,7 @@ exactly that — run it, or the relevant prefix, before declaring done.
 
 ## Live-process safety (hard rules; born from the 2026-08-05 incident)
 
-- Ports 5281–5283 belong to the dev network (`just start`, `start_two`, `start_three`). Never
+- Ports 5281–5283 belong to the dev network (`just start`, `start-two`, `start-three`). Never
   bind them for testing.
 - Never `pkill` by pattern. `just kill` is machine-wide **by design**, and `just integration`
   depends on it — warn the user before running either while a dev network may be up.
@@ -49,7 +49,7 @@ exactly that — run it, or the relevant prefix, before declaring done.
   in `/tmp` and waits for health; `just scratch-kill` removes them by PID file and structurally
   cannot touch the dev network.
 - Point the fake-network generator at scratch nodes:
-  `RINGTOME_TESTDATA_PORTS=5298,5299 just test_data` — its default ports are the dev network's.
+  `RINGTOME_TESTDATA_PORTS=5298,5299 just test-data` — its default ports are the dev network's.
 - `just clean` destroys every dev database and key (accounts, personas, chains) — it is the
   schema-generation-bump wipe, not a build clean. Confirm before running.
 - `just mainline-smoke` talks to the real public DHT and publishes throwaway records including
