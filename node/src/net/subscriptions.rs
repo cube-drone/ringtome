@@ -176,11 +176,44 @@ pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
         if who.as_deref().is_some_and(|w| w != root) {
             continue;
         }
+        // The backstop's stat-guard (see frontier::sweep): a full sweep is recovery, and this
+        // pass pays a keystore unseal per persona it opens - the most expensive per-root cost
+        // of any sweep on the node, which is exactly why an idle persona must cost a stat.
+        if who.is_none() {
+            match state.user_dbs.db_mtime_ms(&root) {
+                Some(mt) if state.sweep_marks.is_stale("subscriptions", &root, mt) => {
+                    state.sweep_marks.record("subscriptions", &root, mt);
+                }
+                _ => continue,
+            }
+        } else if let Some(mt) = state.user_dbs.db_mtime_ms(&root) {
+            state.sweep_marks.record("subscriptions", &root, mt);
+        }
         if let Err(e) = refresh(&state, &root, &account).await {
             tracing::warn!(root = %root, error = ?e, "subscription refresh failed");
         }
     }
     Ok(())
+}
+
+/// Refresh one root's memo when its account is not in hand - the post-INGEST hook's shape.
+///
+/// A contact dial turned on one device reaches the others by sync, and ingest never rings the
+/// nudge bus (relay damping). Without this, the memo only learned about cross-device dials
+/// from the backstop tick - which made the tick load-bearing instead of recovery, and was the
+/// missing event hook behind "why are we reopening every database every tick?".
+pub async fn refresh_root(state: &AppState, root_hex: &str) {
+    let Ok(hosted) = crate::identity::hosted_roots_with_accounts(&state.node_db).await else {
+        return;
+    };
+    if let Some((root, account)) = hosted.into_iter().find(|(r, _)| r == root_hex) {
+        if let Some(mt) = state.user_dbs.db_mtime_ms(&root) {
+            state.sweep_marks.record("subscriptions", &root, mt);
+        }
+        if let Err(e) = refresh(state, &root, &account).await {
+            tracing::debug!(root = %root, error = ?e, "post-ingest subscription refresh failed");
+        }
+    }
 }
 
 #[cfg(test)]

@@ -40,7 +40,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 5; // 5: feed_journal - the arrival journal (2026-08-05)
+const NODE_SCHEMA_GENERATION: i64 = 6; // 6: chain_heads - the write-time tip memo (2026-08-05)
 const USER_SCHEMA_GENERATION: i64 = 5; // 5: lane on doc_versions/doc_heads (2026-08-02)
 
 /// How long a write waits on a busy connection before failing.
@@ -152,6 +152,13 @@ pub struct Db {
     /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
     /// mechanism - sealed dumps) and for in-memory test databases.
     journal: Option<Journal>,
+    /// The node-level database, attached to per-user handles opened through [`UserDbManager`]
+    /// so the entry writers (append, ingest, eviction) can co-write the chain-heads memo at
+    /// the moment they know the tip - the fact is in hand in plaintext exactly once, and
+    /// re-deriving it later means opening this encrypted file again. `None` for node.db
+    /// itself and for bare test databases (the memo is then simply not fed; the reconciling
+    /// sweep is the recovery path either way).
+    memo: Option<std::sync::Arc<Db>>,
     /// Whose database this is: the identity's root pubkey, attached when opened through
     /// [`UserDbManager`]. `None` for `node.db` and in-memory test databases. Lets code holding
     /// only the handle answer identity-scoped questions (the signing gate in `imaol::append`
@@ -178,6 +185,12 @@ pub struct Db {
 /// exactly as before. The name is the whole fix; `imaol::append` knows it at the moment it
 /// rings the bell.
 pub type WriteNudge = tokio::sync::broadcast::Sender<String>;
+
+/// Capacity of the nudge bus. Roomy on purpose: a lagged receiver can no longer say WHO wrote
+/// and must fall back to sweeping everyone, so the channel should absorb any realistic burst -
+/// pings are one String each, and the coalescing drain in `loops::periodic_nudged` empties it
+/// between passes.
+pub const NUDGE_CAPACITY: usize = 1024;
 
 /// Await the next write nudge, answering WHICH identity wrote - or `None` for "something did,
 /// and I no longer know what".
@@ -261,6 +274,27 @@ impl Db {
             .ok_or_else(|| anyhow!("query returned no rows"))
     }
 
+    /// Truncate this database's WAL: backfill every frame into the main file, then cut the
+    /// log to zero.
+    ///
+    /// Needed because turso's own maintenance bounds WORK, not the FILE: its auto-checkpoint
+    /// (1000-frame threshold, on by default) runs in passive mode, which backfills pages but
+    /// never shrinks the log - and on a node generating steady memo traffic the WAL grew
+    /// without bound (568MB observed against a 12MB database after one fake-network run,
+    /// 2026-08-05). A fat WAL is a tax on every read that follows, which made the whole node
+    /// feel quadratically slower as it filled. TRUNCATE is the one mode that resets the file.
+    ///
+    /// `fetch_all`, not `execute`: the pragma answers with a row (busy / log / checkpointed),
+    /// and the open-statement rule says drain it - an undrained statement wedges the shared
+    /// connection.
+    pub async fn checkpoint(&self) -> Result<()> {
+        let _rows: Vec<(i64, i64, i64)> = self
+            .fetch_all("PRAGMA wal_checkpoint(TRUNCATE)", ())
+            .await
+            .context("truncating the WAL")?;
+        Ok(())
+    }
+
     /// Hold this identity's ingest gate for the duration of one sync-gate batch. Under eager
     /// push, simultaneous bidirectional exchanges on one root are routine (A pushes to B while
     /// B pushes to A, both carrying the same re-offered entries); two concurrent ingests race
@@ -326,6 +360,19 @@ impl Db {
     /// The identity's root pubkey, when this is a per-user database. See the field doc.
     pub fn root(&self) -> Option<&str> {
         self.root.as_deref()
+    }
+
+    /// The node.db handle riding along for memo co-writes, when this is a managed user db.
+    pub fn memo(&self) -> Option<&Db> {
+        self.memo.as_deref()
+    }
+
+    /// This handle with the node-level database attached (see the `memo` field).
+    fn with_memo(self, node_db: std::sync::Arc<Db>) -> Db {
+        Db {
+            memo: Some(node_db),
+            ..self
+        }
     }
 
     /// This handle (and every clone made from it) knowing whose it is.
@@ -432,6 +479,7 @@ fn connect(database: turso::Database) -> Result<Db> {
         stmt_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         ingest_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         append_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        memo: None,
         journal: None,
         root: None,
         write_nudge: None,
@@ -556,6 +604,10 @@ pub struct UserDbManager {
     journals_directory: PathBuf,
     keystore: Keystore,
     handles: moka::future::Cache<String, Db>,
+    /// node.db, attached to every per-user handle for chain-heads memo co-writes (see
+    /// [`Db::memo`]). Set once by `attach_memo` in main after both databases exist; `None`
+    /// in fixtures that never wire it, where the memo simply isn't fed.
+    node_db: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<Db>>>,
     /// The one write-nudge bus, attached to every per-user handle (see [`Db::nudge_sync`]).
     /// Owned here so wiring is automatic: whoever opens a user DB gets a nudging handle, and
     /// consumers subscribe via [`UserDbManager::subscribe_writes`].
@@ -572,13 +624,20 @@ impl UserDbManager {
             journals_directory: data_directory.join("journals"),
             keystore,
             handles: moka::future::Cache::new(max_open),
+            node_db: std::sync::Arc::new(std::sync::OnceLock::new()),
             // 16 is ample: pings carry no data and lag folds to one re-check.
-            write_nudge: tokio::sync::broadcast::channel(16).0,
+            write_nudge: tokio::sync::broadcast::channel(NUDGE_CAPACITY).0,
         }
     }
 
     /// Subscribe to the write-nudge bus - a ping on every locally-signed write. Each consumer
     /// (the eager loop, a live-cache stream) gets its own receiver.
+    /// Wire node.db in for memo co-writes. Once, at boot, after both databases exist; a
+    /// second call is a no-op rather than an error, which keeps fixtures painless.
+    pub fn attach_memo(&self, node_db: Db) {
+        let _ = self.node_db.set(std::sync::Arc::new(node_db));
+    }
+
     pub fn subscribe_writes(&self) -> tokio::sync::broadcast::Receiver<String> {
         self.write_nudge.subscribe()
     }
@@ -586,6 +645,40 @@ impl UserDbManager {
     /// The bus itself, for a consumer that subscribes on its own schedule (the eager loop).
     pub fn write_nudge(&self) -> WriteNudge {
         self.write_nudge.clone()
+    }
+
+    /// When this root's database files last changed, by stat alone - no open, no decrypt, no
+    /// handle-cache pressure. The tick sweeps' cheap dirty check (`loops::FreshnessMarks`):
+    /// the WAL's mtime moves on every write, the main file's on every checkpoint, so the max
+    /// of the two moves whenever anything at all happened. `None` when the files don't exist.
+    pub fn db_mtime_ms(&self, root_pubkey: &str) -> Option<i64> {
+        let path = self.path_for(root_pubkey);
+        let mtime = |p: std::path::PathBuf| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+        };
+        let wal = path.with_extension("db-wal");
+        match (mtime(path), mtime(wal)) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    /// Every user database currently OPEN, for maintenance that walks the warm set (the WAL
+    /// checkpoint pass). Deliberately not "every user database on disk": reopening cold files
+    /// to maintain them would recreate the thrash the handle cache exists to prevent. A cold
+    /// file keeps whatever WAL it had - it only grows while written, writes only happen
+    /// through an open handle, and the next open puts it back on this walk.
+    pub fn open_handles(&self) -> Vec<(String, Db)> {
+        self.handles
+            .iter()
+            .map(|(root, db)| (root.as_ref().clone(), db))
+            .collect()
     }
 
     fn path_for(&self, root_pubkey: &str) -> PathBuf {
@@ -665,10 +758,13 @@ impl UserDbManager {
                 );
             }
         }
-        let db = db
+        let mut db = db
             .with_journal(journal)
             .with_root(root_pubkey.to_string())
             .with_write_nudge(self.write_nudge.clone());
+        if let Some(node_db) = self.node_db.get() {
+            db = db.with_memo(node_db.clone());
+        }
 
         self.handles
             .insert(root_pubkey.to_string(), db.clone())
@@ -949,5 +1045,42 @@ mod tests {
         );
 
         tokio::fs::remove_dir_all(&dir).await.ok();
+    }
+
+    /// The WAL is a file, and files must stop growing: turso's auto-checkpoint bounds work
+    /// (passive backfill) but only TRUNCATE shrinks the log - a fake-network run left a 568MB
+    /// WAL over a 12MB database, and every read after it paid the difference. This pins the
+    /// mechanism the wal-checkpoint loop rides: write enough to fatten the log, truncate,
+    /// and the FILE is measurably near-empty while the data still answers.
+    #[tokio::test]
+    async fn a_checkpoint_actually_shrinks_the_wal_file() {
+        let dir = temp_dir().await;
+        let keystore = temp_keystore(&dir);
+        let db = open_database(&dir.join("walcheck.db"), &keystore).await.unwrap();
+        db.execute("CREATE TABLE fat (id INTEGER PRIMARY KEY, words TEXT)", ())
+            .await
+            .unwrap();
+        for i in 0..300i64 {
+            db.execute(
+                "INSERT INTO fat (id, words) VALUES (?1, ?2)",
+                (i, "x".repeat(2000)),
+            )
+            .await
+            .unwrap();
+        }
+        let wal = dir.join("walcheck.db-wal");
+        let before = std::fs::metadata(&wal).map(|m| m.len()).unwrap_or(0);
+        assert!(before > 100_000, "sanity: the writes fattened the log ({before} bytes)");
+
+        db.checkpoint().await.unwrap();
+        let after = std::fs::metadata(&wal).map(|m| m.len()).unwrap_or(0);
+        assert!(
+            after < before / 10,
+            "TRUNCATE must cut the file, not just backfill it ({before} -> {after} bytes)"
+        );
+
+        // And the data still answers from the main file.
+        let (count,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM fat", ()).await.unwrap();
+        assert_eq!(count, 300);
     }
 }

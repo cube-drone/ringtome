@@ -339,6 +339,7 @@ for (const base of nodes) {
 let done = 0;
 let failed = 0;
 const failures = new Map();
+let lastReport = Date.now(); // per-decade rate, so the log can't read as "each step slower"
 for (let round = 0; round < PER; round++) {
     const order = personas.slice().sort(() => rng() - 0.5);
     for (const p of order) {
@@ -353,8 +354,16 @@ for (let round = 0; round < PER; round++) {
         done++;
     }
     if ((round + 1) % 10 === 0 || round === PER - 1) {
+        // Both clocks, labeled: the DELTA is the health signal (a rising ms/action means the
+        // node is slowing), the total is just how long you've waited. An earlier version
+        // printed only elapsed-since-start, which read as "every round is slower than the
+        // last" even when the rate was flat.
+        const now = Date.now();
+        const batch = personas.length * 10;
+        const rate = ((now - lastReport) / Math.min(batch, done || 1)).toFixed(0);
+        lastReport = now;
         console.log(`  round ${round + 1}/${PER}: ${done} actions, ${failed} failed`
-            + ` (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+            + ` (${rate}ms/action this stretch, ${((now - t0) / 1000).toFixed(0)}s total)`);
     }
 }
 

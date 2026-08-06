@@ -258,3 +258,52 @@ describe("the byline cache", () => {
         assert.equal(them.name, "Cache Me Again", "wearing the name the cache holds");
     });
 });
+
+/*
+    The memo hears about a dial turned on ANOTHER device. A contact dial reaches the persona's
+    other nodes by sync, and ingest never rings the nudge bus (relay damping) - so this only
+    works through the post-ingest hook. The backstop tick is ten MINUTES now precisely so this
+    test cannot pass by accident: if the hook goes missing, the settle window expires long
+    before the tick would mask it.
+*/
+(HOST_B ? describe : describe.skip)("the memo, across devices", function () {
+    this.timeout(60000);
+
+    it("a dial turned on device A reaches device B's subscriptions memo by sync", async function () {
+        const onA = await makeUserFetch({ prefix: "memoa" });
+        const made = await (await onA("api/identity", { method: "POST" })).json();
+        const shared = made.root_pubkey;
+
+        // The add-a-node ceremony: the persona now lives on A and B.
+        const onB = await makeUserFetch({ prefix: "memob", host: HOST_B });
+        const request = await (await onB("api/identity/adopt/begin", { method: "POST" })).json();
+        const grant = await (
+            await onA(`api/identity/${shared}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        const done = await onB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+        assert.equal(done.status, 200, await done.text());
+
+        // Turn a dial on A...
+        await onA(`api/identity/${shared}/private/kv/contact:${THEM}/interest`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "75" }),
+        });
+
+        // ...and B's node-level memo must learn it from the exchange itself.
+        const onBMemo = await settle(async () => {
+            const { rows } = await sqlOn(
+                `SELECT eagerness FROM subscriptions
+                 WHERE local_root = '${shared}' AND foreign_root = '${THEM}'`,
+                HOST_B
+            );
+            return rows.length && rows[0].eagerness === 75 ? rows : null;
+        }, 80);
+        assert.ok(onBMemo, "the dial crossed devices into the memo, by event - not by backstop");
+    });
+});

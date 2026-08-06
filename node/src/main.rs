@@ -78,6 +78,9 @@ pub struct AppState {
     /// times dials their node once rather than ten times (idface's stale-while-revalidate).
     /// In-memory and per-process: a boot clears it, which at worst costs one extra exchange.
     pub refreshing: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// The tick sweeps' stat-before-open marks (loops::FreshnessMarks): a backstop sweep
+    /// skips every root whose files haven't moved since it last folded them.
+    pub sweep_marks: loops::FreshnessMarks,
 }
 
 /// See [`AppState::view_epochs`].
@@ -208,6 +211,9 @@ async fn main() -> anyhow::Result<()> {
     // Bound on simultaneously-open per-user DB handles. A placeholder default for now; will move to
     // config when it matters (many-user nodes tuning against file-handle limits).
     let user_dbs = db::UserDbManager::new(&config.data_directory, keystore.clone(), 128);
+    // Every per-user handle carries node.db for chain-heads memo co-writes (Db::memo): the
+    // entry writers feed the memo at the moment they hold the tip in hand.
+    user_dbs.attach_memo(node_db.clone());
 
     let bind = format!("{}:{}", config.bind_address, config.port);
     let local_test = config.local_test;
@@ -247,6 +253,7 @@ async fn main() -> anyhow::Result<()> {
         unfurl,
         view_epochs: ViewEpochs::default(),
         refreshing: Default::default(),
+        sweep_marks: Default::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
 
@@ -286,26 +293,49 @@ async fn main() -> anyhow::Result<()> {
         net::resync::eager_pass,
     );
     // The public-frontier map (net::frontier): what this node holds of each persona's public
-    // lane, one fingerprint per (persona, service). Nudged, because a local write is exactly
-    // when it goes stale, and ticked as the backstop for writes that arrive by sync. Off the
-    // hot path deliberately - recomputing inside the append would charge every entry for a
-    // fact only sweeps read, and Feed writes several entries per post.
+    // lane, one fingerprint per (persona, service). EVENT-driven for correctness as well as
+    // latency - local writes nudge, and both ends of a sync exchange refresh directly - so
+    // the tick is pure disaster recovery: rare, and stat-guarded so an idle persona costs a
+    // stat, never an open. (It was 30s and unguarded once, which meant reopening every
+    // database on the node twice a minute to learn nothing - the design smell Curtis called,
+    // 2026-08-05.)
     loops::periodic_nudged(
         "frontier-map",
-        std::time::Duration::from_secs(30),
+        std::time::Duration::from_secs(600),
         state.user_dbs.write_nudge(),
         state.clone(),
         net::frontier::sweep,
     );
     // The subscription memo (net::subscriptions): who each hosted persona follows, and whom
-    // they publicly trust. Nudged like the frontier map - turning a contact dial is a
-    // private-chain write, so it rings the bell with that persona's name on it.
+    // they publicly trust. Nudged (a contact dial is a private-chain write) AND refreshed
+    // post-ingest (a dial turned on another device arrives by sync, which never nudges) - the
+    // second hook was missing while the 60s tick masked it. The tick is recovery now: rare,
+    // stat-guarded.
     loops::periodic_nudged(
         "subscription-memo",
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(600),
         state.user_dbs.write_nudge(),
         state.clone(),
         net::subscriptions::sweep,
+    );
+    // WAL maintenance (Db::checkpoint): truncate node.db's and every open user db's log on a
+    // slow beat. Turso's own auto-checkpoint bounds work, not the file - the log only shrinks
+    // on TRUNCATE, and an unbounded WAL taxes every read after it (568MB observed, 2026-08-05).
+    loops::periodic(
+        "wal-checkpoint",
+        std::time::Duration::from_secs(60),
+        state.clone(),
+        |state: AppState| async move {
+            if let Err(e) = state.node_db.checkpoint().await {
+                tracing::warn!(error = ?e, "node.db checkpoint failed");
+            }
+            for (root, db) in state.user_dbs.open_handles() {
+                if let Err(e) = db.checkpoint().await {
+                    tracing::warn!(root = %root, error = ?e, "user db checkpoint failed");
+                }
+            }
+            Ok(())
+        },
     );
     loops::periodic(
         "sync-anti-entropy",

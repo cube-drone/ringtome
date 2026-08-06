@@ -135,6 +135,23 @@ pub async fn append(
     .context("storing entry")
     .map_err(AppError::Internal)?;
 
+    // The chain-heads memo, fed at the source: this signer just became the tip of its chain,
+    // and the fact is in hand - re-deriving it later means reopening this encrypted file.
+    if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
+        if let Err(e) = crate::net::frontier::note_head(
+            memo,
+            root,
+            &author_hex,
+            service_id,
+            seq,
+            signed.hash(),
+        )
+        .await
+        {
+            tracing::debug!(error = ?e, "noting a chain head failed (sweep reconciles)");
+        }
+    }
+
     // Every locally-signed write rings the eager-sync bell (this function is the one funnel:
     // only local writes sign; sync-received entries take the gate path and deliberately ride
     // the lazy tick instead - the relay damping, see net::resync).

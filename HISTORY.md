@@ -2726,3 +2726,98 @@ An editing scar worth its sentence: the first fix verified as broken, because th
 asserted on a call site that didn't exist AFTER performing the register replacement in memory -
 the throw skipped the file write, so the change tested was half-landed. The live re-test caught
 it, which is why the live re-test exists.
+
+## The log learns to end (2026-08-05)
+
+The fifth slowdown term from the fake-network autopsy, taken first because it multiplies the
+other four: nothing ever checkpointed the databases, and one generator run left node.db with a
+568MB WAL over a 12MB main file - every read afterwards paying the difference, the whole node
+feeling quadratically slower as the log grew.
+
+The subtlety is that turso is NOT failing to checkpoint. Its auto-checkpoint (1000-frame
+threshold, on by default) runs in passive mode, which bounds WORK - pages get backfilled into
+the main file - but never the FILE: only a TRUNCATE checkpoint cuts the log. So the node was
+dutifully maintaining a WAL that grew forever anyway. `Db::checkpoint()` issues
+`PRAGMA wal_checkpoint(TRUNCATE)` (drained with fetch_all - the pragma answers a row, and an
+undrained statement wedges the shared connection), and a sixty-second loop walks node.db plus
+every OPEN user handle. The warm set only, deliberately: a cold file's WAL only grows while
+written, writes only happen through an open handle, and the next open puts it back on the walk -
+reopening cold files to maintain them would be the thrash the handle cache exists to prevent.
+
+Proven twice. A unit test writes 300 fat rows, checkpoints, and asserts the FILE shrank tenfold
+while the data still answers - pinning the mode distinction, since a passive checkpoint passes
+the work test and fails the file test. And live: a seeded scratch node's WAL went 4.6MB after
+load to 109KB after one pass, with all ten user WALs cut to zero.
+
+## Events for latency, sweeps for recovery (2026-08-05)
+
+Curtis, watching a polluted node run SLOWER than a clean one with the extra personas doing
+nothing: reopening every database on the node every tick is itself a design smell - why are we
+doing that at all? The audit his question forced found the answer was "mostly for nothing, and
+once for a bug".
+
+The ticks exist as the correctness backstop behind "nudging is pure latency, never correctness".
+That doctrine is right; what was wrong is that the backstops were frequent AND expensive - the
+frontier sweep opened every known persona's encrypted database twice a minute, and the
+subscriptions sweep paid a keystore unseal per persona per minute, all to learn that idle
+personas were idle. A recovery mechanism should be rare and nearly free; ours was neither, which
+is why two hundred RESIDENT personas taxed a run they took no part in.
+
+Worse, one tick was load-bearing in disguise: a contact dial turned on one device reaches the
+persona's other devices by sync, and ingest never rings the nudge bus (relay damping) - so the
+subscriptions memo only learned about cross-device dials from the 60-second everyone-sweep. The
+backstop was masking a missing event hook. The hook exists now (post-ingest, both ends of the
+exchange), pinned by a two-node test that only passes through it: the tick is ten minutes,
+so the settle window expires long before a backstop could fake the event.
+
+Three changes, one shape - make events complete, make backstops cheap:
+- The missing ingest hook, above.
+- Backstop sweeps STAT before they OPEN (`loops::FreshnessMarks` + `db_mtime_ms`): a file's
+  mtime is readable without decrypting anything, so an idle persona costs a stat, never an open,
+  never an unseal. Marks record what the files looked like when the fold STARTED, so a write
+  landing mid-fold is redone once rather than skipped forever. In-memory, boot resets it, and
+  the first sweep after boot folding everyone is the catch-up every loop wanted anyway.
+- Nudge COALESCING in periodic_nudged: one action is several appends, each ringing the bell,
+  and each ping ran a full pass - up to nine redundant refreshes per action across the three
+  nudged loops. The drain dedupes a burst by root; four pings across two roots is two passes.
+  Bus capacity went 16 -> 1024, because a lagged receiver falls back to sweeping everyone.
+
+Measured on a scratch node: 60 resident personas, then a 200-action run over them - 20ms an
+action, flat across rounds, where the polluted dev trio had been at 125ms and climbing. The
+remaining floor is durability, not waste: each action is 1-3 chain appends, each an fsynced
+journal frame, which is the never-lose-words contract being paid for at macOS fsync prices.
+
+## The fact was in hand (2026-08-05)
+
+Curtis, pressing past the stat-guard: the ticks are rarer, but why does anything open every
+user database at all - what does a sweep actually NEED from in there? Enumerating the answer
+exposed the real smell: one head-hash per chain, a handful of dial values, a page of titles -
+and every one of those facts was in somebody's hand, in plaintext, at the moment it was
+written. We were throwing them away and re-deriving them later from the encrypted file.
+
+`chain_heads` is the first correction: the tip of every chain, for every persona, fed at WRITE
+time by the three places entries change - the local append (imaol), the sync gate's store, and
+the gate's eviction - each of which holds the tuple as it acts. The frontier map now derives
+entirely from node.db: the event path opens no per-user file, the per-write GROUP BY over the
+whole entries table is gone (both of them - the fingerprint read and its ingredient), and the
+backstop sweep's only remaining open is RECONCILIATION, for stale roots only, through the
+owning module's door (`sync::chain_ranges` - the conventions test caught the reconciler
+reading `entries` directly and was right).
+
+Private chains included, and the doctrine got sharper rather than quietly dropped: Curtis
+called the "already-assembled" hedge overweight, and he was right for a reason worth pinning -
+node.db and every user database are sealed by the SAME keystore, so an attacker who can read
+the memo already holds the key to everything it summarizes; on-disk dispersal bought
+milliseconds. The rule with actual force is the WIRE: private heads go only to member-proven
+peers, one predicate, enforced at egress. Foreign personas appear public-only in the memo
+automatically, because the exchange never gives us their private chains to store.
+
+The honest cost is the system's first deliberate dual-write: a user-db commit and its memo
+note cannot be atomic across two files, so a crash between them leaves the memo one write
+behind - which is now precisely what the backstop is FOR, the first real job it has had since
+the ingest-hook fix. Planted violation confirms the feeding is load-bearing: severing the
+append-side note fails fourteen integration tests, because every frontier, fanout, and feed
+test settles in seconds against a ten-minute tick and only the write-time path can carry them.
+
+Schema generation 6 - one more wipe, regrown in seconds by the generator that started this
+whole excavation.

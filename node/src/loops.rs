@@ -7,8 +7,44 @@
 //! the loop's name, and panic containment (a panicking pass is logged and the loop keeps
 //! ticking, because a loop that silently dies is how republishing quietly stops forever).
 
+use std::collections::HashMap;
 use std::future::Future;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// Per-domain, per-root freshness marks for tick sweeps: "when I last folded this root, its
+/// files looked like T". A tick can then STAT before it OPENS - a file's mtime is readable
+/// without decrypting anything - and skip every root whose files haven't moved. This is what
+/// keeps a node full of idle personas from paying for them on every backstop tick: the
+/// conventions test pins db opens per call SITE, but a sweep is a loop around a pinned site,
+/// and 300 idle personas were being opened (and keystore-unsealed) every sweep to learn that
+/// nothing happened.
+///
+/// In-memory, reset by boot on purpose: the first sweep after a restart folds everyone once,
+/// which is the boot catch-up every loop already wants.
+#[derive(Clone, Default)]
+pub struct FreshnessMarks(Arc<Mutex<HashMap<(&'static str, String), i64>>>);
+
+impl FreshnessMarks {
+    /// Has this root changed since `domain` last looked? Records nothing.
+    pub fn is_stale(&self, domain: &'static str, root: &str, mtime_ms: i64) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .get(&(domain, root.to_string()))
+            .is_none_or(|seen| *seen < mtime_ms)
+    }
+
+    /// Record what the files looked like when the fold STARTED - never when it finished, so a
+    /// write landing mid-fold moves mtime past the mark and the next tick redoes one root
+    /// (idempotent) instead of skipping a real change forever.
+    pub fn record(&self, domain: &'static str, root: &str, mtime_ms: i64) {
+        self.0
+            .lock()
+            .unwrap()
+            .insert((domain, root.to_string()), mtime_ms);
+    }
+}
 
 /// Run `job(state)` every `every`, forever, on its own task. The first pass runs immediately
 /// (so boot re-establishes published state without waiting a full interval). Failures and
@@ -64,17 +100,35 @@ fn periodic_inner<S, F, Fut>(
         loop {
             // Either the tick fires or a write nudge arrives (a no-nudge loop's receiver is
             // None, so `await_write_nudge` parks forever and only the tick drives it).
-            let who = tokio::select! {
+            let first = tokio::select! {
                 _ = tick.tick() => None, // the backstop sweeps everything
                 nudged = crate::db::await_write_nudge(&mut nudge) => nudged,
             };
-            // Each pass runs in its own task so a panic is contained (and logged as a join
-            // error) instead of killing the loop.
-            match tokio::spawn(job(state.clone(), who)).await {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => tracing::warn!(loop_name = name, "background pass failed: {e:#}"),
-                Err(join_error) => {
-                    tracing::error!(loop_name = name, "background pass panicked: {join_error}")
+            // COALESCE the burst: one user action is several chain appends, and each append
+            // rings the bell - so a pass per ping ran the same refresh two or three times per
+            // action, and the subscriptions pass paid a key-unseal each time. Drain whatever
+            // has already queued, dedupe by root, and run each distinct root once. A lag
+            // (None from a full channel) still means "sweep everything", exactly as before.
+            let mut batch: Vec<Option<String>> = vec![first];
+            if let Some(rx) = nudge.as_mut() {
+                while let Ok(root) = rx.try_recv() {
+                    batch.push(Some(root));
+                }
+            }
+            batch.sort();
+            batch.dedup();
+            if batch.iter().any(|b| b.is_none()) {
+                batch = vec![None]; // a full sweep covers every named root
+            }
+            for who in batch {
+                // Each pass runs in its own task so a panic is contained (and logged as a
+                // join error) instead of killing the loop.
+                match tokio::spawn(job(state.clone(), who)).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => tracing::warn!(loop_name = name, "background pass failed: {e:#}"),
+                    Err(join_error) => {
+                        tracing::error!(loop_name = name, "background pass panicked: {join_error}")
+                    }
                 }
             }
         }
@@ -132,18 +186,21 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(seen.lock().unwrap().as_slice(), &[None], "the boot pass ran, unnamed");
 
-        // A ping mid-interval wakes the loop right away - virtual time is nowhere near the
-        // hour tick - and carries the identity that wrote.
+        // A BURST mid-interval - one action is several appends, each ringing the bell - wakes
+        // the loop once and coalesces: one pass per distinct root, not one per ping.
+        let _ = bus.send("abcd".to_string());
+        let _ = bus.send("abcd".to_string());
+        let _ = bus.send("beef".to_string());
         let _ = bus.send("abcd".to_string());
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(
             seen.lock().unwrap().as_slice(),
-            &[None, Some("abcd".to_string())],
-            "the nudge ran a pass, and said who"
+            &[None, Some("abcd".to_string()), Some("beef".to_string())],
+            "four pings, two distinct roots, two passes - and each said who"
         );
 
         // Quiet bus, quiet loop: no extra passes sneak in between ticks.
         tokio::time::sleep(Duration::from_secs(60)).await;
-        assert_eq!(seen.lock().unwrap().len(), 2, "no phantom passes");
+        assert_eq!(seen.lock().unwrap().len(), 3, "no phantom passes");
     }
 }

@@ -91,40 +91,31 @@ pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Front
         .collect()
 }
 
-/// The head ANCHOR of every public chain this identity has: `(author, service, head_hash)`.
-///
-/// The hash, not the seq, is what makes this a fingerprint ingredient. `local_frontiers` above
-/// reports ranges, which is what the exchange needs to decide who lacks what; two chains that
-/// forked carry the SAME max seq and different entries, so a seq-derived fingerprint compares
-/// equal across a divergence and reports "nothing to do". Canon names the right tuple already:
-/// `(chain, seq, head_hash)` anchors.
-///
-/// Public only, and by the same predicate the gate uses - this feeds `net::frontier`, whose
-/// output is told to other people.
-pub async fn public_anchors(db: &Db) -> Result<Vec<([u8; 32], u32, [u8; 32])>> {
-    let rows: Vec<(String, i64, Vec<u8>)> = db
+/// Every chain this identity stores, as `(author_hex, service, floor, head, head_hash)` -
+/// the chain-heads memo's reconciliation read (`net::frontier::reconcile_from_entries`).
+/// Lives here because `entries` is this module's table; the memo is fed at write time and
+/// this is the recovery path that re-derives it after a crash between the dual writes.
+pub async fn chain_ranges(db: &Db) -> Result<Vec<(String, u32, u64, u64, [u8; 32])>> {
+    type Row = (String, i64, i64, i64, Vec<u8>);
+    let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT e.author_pubkey, e.service, e.entry_hash FROM entries e
-             WHERE e.seq = (SELECT MAX(seq) FROM entries
-                            WHERE author_pubkey = e.author_pubkey AND service = e.service)
-             ORDER BY e.author_pubkey, e.service",
+            "SELECT e.author_pubkey, e.service, MIN(e.seq), MAX(e.seq),
+                    (SELECT entry_hash FROM entries
+                      WHERE author_pubkey = e.author_pubkey AND service = e.service
+                      ORDER BY seq DESC LIMIT 1)
+             FROM entries e GROUP BY e.author_pubkey, e.service",
             (),
         )
         .await
-        .context("reading public chain anchors")?;
-    let mut out = Vec::with_capacity(rows.len());
-    for (author_hex, svc, head) in rows {
-        if is_private_service(svc as u32) {
-            continue;
-        }
-        let author = pubkey::decode(&author_hex)
-            .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
-        let head: [u8; 32] = head
-            .try_into()
-            .map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
-        out.push((author, svc as u32, head));
-    }
-    Ok(out)
+        .context("reading chain ranges")?;
+    rows.into_iter()
+        .map(|(author_hex, svc, floor, head, hash)| {
+            let hash: [u8; 32] = hash
+                .try_into()
+                .map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
+            Ok((author_hex, svc as u32, floor as u64, head as u64, hash))
+        })
+        .collect()
 }
 
 /// Stream every stored entry the peer's frontiers say it lacks, identity chains first (service
@@ -444,6 +435,10 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
                 .await
                 .context("evicting a quarantined key's unanchored chain")?;
             evicted += rows_affected;
+            // The evicted chain's memo row is a lie now; the memo forgets with it.
+            if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
+                let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, svc).await;
+            }
             tracing::warn!(
                 author = %author_hex,
                 service = svc,
@@ -500,6 +495,9 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
                 );
             }
             continue;
+        }
+        if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
+            let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, *svc).await;
         }
         let rows_affected = db
             .execute(
@@ -675,6 +673,12 @@ async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32) -> Result<Optio
 }
 
 async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
+    let entry_meta = (
+        hex::encode(e.entry().chain.author),
+        e.entry().chain.service,
+        e.entry().seq,
+        *e.hash(),
+    );
     // Write-ahead: the journal frame lands (fsynced) before the row does, so journal ⊇ database
     // survives a crash between the two (record::journal).
     db.journal_append(e.bytes())
@@ -698,6 +702,15 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
     )
     .await
     .context("storing synced entry")?;
+
+    // The memo, fed at the source (see imaol::append's twin): an ingested entry is a tip too.
+    if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
+        let (author_hex, service, seq, hash) = &entry_meta;
+        if let Err(err) = crate::net::frontier::note_head(memo, root, author_hex, *service, *seq, hash).await
+        {
+            tracing::debug!(error = ?err, "noting an ingested chain head failed (sweep reconciles)");
+        }
+    }
     Ok(())
 }
 
@@ -854,6 +867,10 @@ pub async fn sync_with_peer(
         Ok(false) => {}
         Err(e) => tracing::debug!(error = ?e, "post-exchange frontier refresh failed"),
     }
+    if received > 0 {
+        // The requester ingests too (see serve's twin comment): cross-device dials arrive here.
+        crate::net::subscriptions::refresh_root(state, root_hex).await;
+    }
     let verdict = if received > 0 {
         crate::net::frontier::Verdict::Ahead
     } else {
@@ -987,6 +1004,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             Ok(false) => {}
             Err(e) => tracing::debug!(error = ?e, "post-ingest frontier refresh failed"),
         }
+        // Private records ride the same exchange (member-proven peers), and a contact dial
+        // turned elsewhere must reach this node's memo by EVENT, not by backstop.
+        crate::net::subscriptions::refresh_root(&state, &root_hex).await;
     }
     conn.close(0u8.into(), b"done");
 

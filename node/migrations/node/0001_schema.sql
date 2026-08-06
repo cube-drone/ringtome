@@ -204,11 +204,42 @@ CREATE TABLE feed_journal (
 CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
 
 -- ---------------------------------------------------------------------------------------------
--- What THIS node holds of each persona's PUBLIC lane, one row per (persona, public service).
+-- The chain-heads memo: the tip of every chain this node stores, for every persona - fed at
+-- WRITE time by the three places entries change (local append, sync ingest, gate eviction),
+-- so that "did anything move?" is answerable from node.db without opening a single per-user
+-- file. The frontier map derives from this; the backstop sweep's only remaining job is
+-- reconciling it against `entries` after a crash between the two un-atomic writes.
 --
--- Why it exists: per-user databases are separate files, so "which personas changed?" otherwise
--- means opening every one of them. This answers it in one scan, and is the hook fan-out hangs
--- from - a subscriber wakes when the service it subscribed to moves.
+-- PRIVATE CHAINS INCLUDED, deliberately (settled 2026-08-05). The earlier public-only rule for
+-- node-level tables guarded against on-disk assembly - but node.db and every user database are
+-- sealed by the SAME keystore, so an attacker who can read this table already holds the key to
+-- every file it summarizes; dispersal was buying milliseconds. The rule that keeps its force is
+-- the WIRE: private chain heads go only to member-proven peers, enforced at the exchange by
+-- `is_private_service` - egress is the boundary, not table layout. (Foreign personas appear
+-- public-only here automatically: the exchange never gives us their private chains to store.)
+CREATE TABLE chain_heads (
+    root_pubkey   TEXT    NOT NULL,  -- whose database the chain lives in
+    author_pubkey TEXT    NOT NULL,  -- the device key that signs the chain
+    service       INTEGER NOT NULL,
+    floor_seq     INTEGER NOT NULL,  -- lowest stored seq (pruning/eviction moves it)
+    head_seq      INTEGER NOT NULL,
+    head_hash     BLOB    NOT NULL,  -- the tip entry's hash: which chain, not just how far
+    updated_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (root_pubkey, author_pubkey, service)
+);
+
+-- ---------------------------------------------------------------------------------------------
+-- What this node last ACTED ON of each persona's PUBLIC lane, one digest per (persona,
+-- service) - DERIVED from chain_heads since 2026-08-05, which now owns the founding rationale
+-- (answering "who changed?" without opening per-user files). What survives here, and why a
+-- digest layer over the memo is still a table:
+--
+--   * The EDGE baseline: chain_heads is updated in place at write time and always shows NOW;
+--     fan-out needs "changed since I last looked", and the compare against this row is that
+--     edge. A state table cannot be its own acknowledgment cursor.
+--   * The WIRE-comparable form: peer claims arrive and are judged as fingerprints
+--     (identity_peers.seen_fp/chased_fp); the digest is the unit that crosses nodes.
+--   * The per-service rollup: "did they post" vs "did they add a computer", folded once.
 --
 -- Why per SERVICE and not per persona: a single fingerprint over every public chain is maximally
 -- sensitive, so adding a computer (an authorize entry on IDENTITY_PUBLIC) would wake every

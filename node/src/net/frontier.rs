@@ -14,10 +14,11 @@
 //!
 //! ## What it is for
 //!
-//! Per-user databases are separate files. Without this table, "which personas changed?" means
-//! opening every one of them; with it, one scan. That is the sweep behind fan-out, and behind
-//! ever knowing that an identity we follow has moved (nothing continuously syncs a followed
-//! identity today - `add_peer` fires only from adoption).
+//! Since chain_heads (2026-08-05), "which personas changed?" is answered by the write-time
+//! memo; this module DERIVES from it and keeps the three things a digest layer still owes:
+//! the edge baseline (changed since fan-out last looked - the memo always shows NOW and
+//! cannot be its own acknowledgment cursor), the wire-comparable fingerprint peer claims are
+//! judged against, and the per-service rollup subscribers wake on.
 //!
 //! ## What it is NOT
 //!
@@ -30,7 +31,6 @@
 //! to be compared with other nodes. The filter is `net::sync::is_private_service`, the same
 //! predicate the sync gate enforces - one definition of private, not two.
 use anyhow::{Context, Result};
-
 use crate::clock::now_ms;
 use crate::db::Db;
 use crate::AppState;
@@ -45,6 +45,149 @@ pub struct Held {
     /// legible without decoding a hash.
     pub chains: i64,
     pub held_at_ms: i64,
+}
+
+// ---------------------------------------------------------------------------------------------
+// The chain-heads memo: fed at write time, read here, reconciled by the sweep.
+
+/// Record a chain's new tip, at the moment a writer stores the entry and holds the fact in
+/// hand. Monotonic on seq: an out-of-order arrival (a re-offered older entry the gate
+/// deduplicates) must not drag the memo backwards.
+pub async fn note_head(
+    node_db: &Db,
+    root_hex: &str,
+    author_hex: &str,
+    service: u32,
+    seq: u64,
+    head_hash: &[u8; 32],
+) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO chain_heads
+               (root_pubkey, author_pubkey, service, floor_seq, head_seq, head_hash, updated_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6)
+             ON CONFLICT (root_pubkey, author_pubkey, service) DO UPDATE SET
+                 head_seq = excluded.head_seq,
+                 head_hash = excluded.head_hash,
+                 updated_at_ms = excluded.updated_at_ms,
+                 floor_seq = MIN(floor_seq, excluded.floor_seq)
+             WHERE excluded.head_seq > head_seq",
+            (
+                root_hex,
+                author_hex,
+                service as i64,
+                seq as i64,
+                head_hash.to_vec(),
+                now_ms(),
+            ),
+        )
+        .await
+        .context("noting a chain head")?;
+    Ok(())
+}
+
+/// Forget a chain the gate evicted - its rows are gone, so its tip is a lie.
+pub async fn forget_chain(
+    node_db: &Db,
+    root_hex: &str,
+    author_hex: &str,
+    service: u32,
+) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM chain_heads
+             WHERE root_pubkey = ?1 AND author_pubkey = ?2 AND service = ?3",
+            (root_hex, author_hex, service as i64),
+        )
+        .await
+        .context("forgetting an evicted chain")?;
+    Ok(())
+}
+
+/// The public anchors of one persona, from the MEMO - no per-user file is opened. This is what
+/// lets both the event path and the fingerprint live entirely in node.db.
+async fn memo_public_anchors(
+    node_db: &Db,
+    root_hex: &str,
+) -> Result<Vec<([u8; 32], u32, [u8; 32])>> {
+    let rows: Vec<(String, i64, Vec<u8>)> = node_db
+        .fetch_all(
+            "SELECT author_pubkey, service, head_hash FROM chain_heads
+             WHERE root_pubkey = ?1 ORDER BY author_pubkey, service",
+            (root_hex,),
+        )
+        .await
+        .context("reading the chain-heads memo")?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (author_hex, svc, head) in rows {
+        if crate::net::sync::is_private_service(svc as u32) {
+            continue; // the fingerprint is told to other people; the wire is the boundary
+        }
+        let author = crate::pubkey::decode(&author_hex)
+            .ok_or_else(|| anyhow::anyhow!("corrupt author in chain_heads"))?;
+        let head: [u8; 32] = head
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("corrupt head_hash in chain_heads"))?;
+        out.push((author, svc as u32, head));
+    }
+    Ok(out)
+}
+
+/// Rebuild one persona's memo rows from its own entries table - the RECONCILER, and the only
+/// path here that opens a per-user file. Dual writes aren't atomic across two databases, so a
+/// crash between an entry landing and its memo note leaves the memo one write behind; the
+/// stat-guarded sweep notices the file moved and calls this. Idempotent, whole-root.
+pub async fn reconcile_from_entries(state: &AppState, root_hex: &str) -> Result<()> {
+    let db = state
+        .user_dbs
+        .get(root_hex)
+        .await
+        .with_context(|| format!("opening {root_hex} to reconcile its memo"))?;
+    // Through the owner's door: `entries` belongs to imaol + the sync gate, so the range
+    // read lives there (sync::chain_ranges) and this module keeps only its own table's SQL.
+    let rows = crate::net::sync::chain_ranges(&db).await?;
+    let now = now_ms();
+    let mut keep: Vec<String> = Vec::new();
+    for (author_hex, svc, floor, head, hash) in rows {
+        keep.push(format!("'{author_hex}:{svc}'"));
+        state
+            .node_db
+            .execute(
+                "INSERT INTO chain_heads
+                   (root_pubkey, author_pubkey, service, floor_seq, head_seq, head_hash, updated_at_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT (root_pubkey, author_pubkey, service) DO UPDATE SET
+                     floor_seq = excluded.floor_seq,
+                     head_seq = excluded.head_seq,
+                     head_hash = excluded.head_hash,
+                     updated_at_ms = excluded.updated_at_ms",
+                (
+                    root_hex,
+                    author_hex.as_str(),
+                    svc as i64,
+                    floor as i64,
+                    head as i64,
+                    hash.to_vec(),
+                    now,
+                ),
+            )
+            .await
+            .context("reconciling a chain head")?;
+    }
+    // Chains that vanished from entries (eviction, genesis cut) leave the memo too.
+    state
+        .node_db
+        .execute(
+            &format!(
+                "DELETE FROM chain_heads WHERE root_pubkey = ?1
+                   AND (author_pubkey || ':' || service) NOT IN ({})",
+                if keep.is_empty() { "''".into() } else { keep.join(",") }
+            ),
+            (root_hex,),
+        )
+        .await
+        .context("clearing vanished chains from the memo")?;
+    Ok(())
 }
 
 /// The fingerprint of one service's chains, from that service's anchors.
@@ -91,12 +234,10 @@ pub fn persona_fingerprint(rows: &[Held]) -> [u8; 32] {
 /// Rows for services that no longer have chains are deleted rather than left stale: this table
 /// says what we hold NOW, and a fingerprint nobody deleted is worse than no fingerprint.
 pub async fn refresh(state: &AppState, root_hex: &str) -> Result<bool> {
-    let db = state
-        .user_dbs
-        .get(root_hex)
-        .await
-        .with_context(|| format!("opening {root_hex} to read its frontier"))?;
-    let anchors = crate::net::sync::public_anchors(&db).await?;
+    // From the MEMO, never the per-user file: every writer of `entries` notes the tip at
+    // write time (Db::memo), so the answer is already in node.db. The sweep reconciles the
+    // rare crash-window drift; nothing else ever needs the encrypted file for this.
+    let anchors = memo_public_anchors(&state.node_db, root_hex).await?;
     let mut services: Vec<u32> = anchors.iter().map(|(_, s, _)| *s).collect();
     services.sort_unstable();
     services.dedup();
@@ -288,11 +429,30 @@ async fn known_roots(node_db: &Db) -> Result<Vec<String>> {
 /// A persona that fails to open is logged and skipped, never fatal - one unreadable database
 /// must not stop the node learning that the other two hundred changed.
 pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
-    let roots = match who {
-        Some(root) => vec![root],
+    let roots = match &who {
+        Some(root) => vec![root.clone()],
         None => known_roots(&state.node_db).await?,
     };
     for root in roots {
+        // The backstop's stat-guard: a named pass KNOWS its root wrote, but a full sweep is
+        // recovery, and recovery must not open three hundred idle personas' encrypted files
+        // to learn that nothing happened. A stat answers first - and only a STALE root pays
+        // the reconcile, which is the one remaining reason this module opens a user file.
+        if who.is_none() {
+            match state.user_dbs.db_mtime_ms(&root) {
+                Some(mt) if state.sweep_marks.is_stale("frontier", &root, mt) => {
+                    state.sweep_marks.record("frontier", &root, mt);
+                    if let Err(e) = reconcile_from_entries(&state, &root).await {
+                        tracing::warn!(root = %root, error = ?e, "memo reconcile failed");
+                        continue;
+                    }
+                }
+                Some(_) => continue,
+                None => continue, // no files: nothing to fold
+            }
+        } else if let Some(mt) = state.user_dbs.db_mtime_ms(&root) {
+            state.sweep_marks.record("frontier", &root, mt);
+        }
         match refresh(&state, &root).await {
             Ok(true) => {
                 tracing::info!(root = %root, "public frontier moved");
