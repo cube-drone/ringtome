@@ -254,8 +254,11 @@ function drawAction(rng) {
 // ---------------------------------------------------------------------------------------------
 // The run.
 
-const PERSONAS = Number(process.argv[2]) || 100;
-const PER = Number(process.argv[3]) || 100;
+// Defaults sized for "a vibrant town in under a minute" (settled 2026-08-05 after the 100x100
+// original spent its evenings measuring the node instead of populating it - useful, but a
+// seeding tool should seed). Scale up explicitly when you WANT a soak test: `just test_data 100 100`.
+const PERSONAS = Number(process.argv[2]) || 15;
+const PER = Number(process.argv[3]) || 15;
 const SEED = Number(process.argv[4]) || Math.floor(Math.random() * 2 ** 31);
 const rng = mulberry32(SEED);
 

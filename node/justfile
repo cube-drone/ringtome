@@ -241,13 +241,13 @@ integration-install:
     cd "{{justfile_directory()}}/integration" && npm install
 
 # Populate the currently-running nodes with a vibrant fake network: N personas per booted
-# node (default 100), each performing N actions (default 100) drawn from a weighted hat -
+# node (default 15), each performing N actions (default 15) drawn from a weighted hat -
 # public posts, follows and trust across nodes, private notebooks, spreading onto other
 # nodes. Same seed, same network; credentials land in harness/testdata-state.json. Extend it
 # by adding an entry to ACTIONS in harness/testdata.mjs.
 #
 # Seed a fake network onto the running nodes (see harness/testdata.mjs; extensible).
-test_data personas="100" actions="100" seed="":
+test_data personas="15" actions="15" seed="":
     #!/usr/bin/env bash
     set -uo pipefail
     # Preflight the interpreter BEFORE any parse: an old Node dies on modern syntax deep in a
