@@ -500,6 +500,18 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
     }
     let task_state = state.clone();
     tokio::spawn(async move {
+        // Widen the hints with the tree we already hold (2026-08-07): a revalidation only
+        // runs for a persona we've fetched before, so its identity chain is here - and its
+        // Active leaves are exactly the members the mesh now uses to find its own siblings.
+        // This is what un-pins a mirror from the one node that answered its first fetch:
+        // last_via dead, every explicit hint rotten, and the refresh still finds any device
+        // whose serving record is alive.
+        let mut via = via;
+        for leaf in stored_tree_leaves(&task_state, &root_hex).await {
+            if !via.contains(&leaf) {
+                via.push(leaf);
+            }
+        }
         let ok = fetch_foreign(&task_state, &root_hex, &via).await;
         if !ok {
             tracing::debug!(root = %root_hex, "background revalidation reached nobody");
@@ -507,6 +519,25 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
         task_state.refreshing.lock().unwrap().remove(&root_hex);
     });
     true
+}
+
+/// The Active leaves of a persona's stored identity chain, hex - candidates for re-fetching
+/// it. Empty on any failure: a mirror we can't read just falls back to the explicit hints.
+/// Callers must hold a reason to believe the mirror exists (a foreign_fetches row); this is
+/// not a first-contact path.
+async fn stored_tree_leaves(state: &AppState, root_hex: &str) -> Vec<String> {
+    let result: anyhow::Result<Vec<String>> = async {
+        let db = state.user_dbs.get(root_hex).await?;
+        let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
+        Ok(tree
+            .members()
+            .into_iter()
+            .filter(|(_, status)| *status == ringtome_proto::crown::KeyStatus::Active)
+            .map(|(leaf, _)| hex::encode(leaf))
+            .collect())
+    }
+    .await;
+    result.unwrap_or_default()
 }
 
 #[derive(serde::Serialize)]

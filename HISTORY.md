@@ -3199,3 +3199,30 @@ Pinned by integration/test/peerderive.cjs (3-host ceremony chain -> leaf-bound m
 ends -> repudiation prunes the dial list; the justfile's integration nodes now run a 3s
 derive beat) and three probes (peer-derive, leaf-via mint/resolve, bare-root). Node schema
 gen 8 -> 9: dev node.db rebuilds on next start.
+
+## 2026-08-07: discovery phase 2 - the edge, the ladder, and the forgetting
+
+Three small bricks that finish making peer knowledge self-healing.
+
+**Derive on the failure edge** (net/resync.rs): an eager push that reaches zero peers is the
+loudest possible "your peer view is stale" - it now re-derives the root's peers from tree x
+directory on that transition and immediately retries at just the newcomers (freshly-resolved
+rows are exactly the endpoints most likely alive). Probed with the sweep pinned an hour
+away: A knows only dead B, writes anyway, and the words reach C seconds later - only the
+edge could have done it.
+
+**Mirrors re-fetch through stored-tree leaves** (idface.rs): a background revalidation now
+widens its hints with the Active leaves of the tree it already holds - the same trick the
+member mesh uses, pointed at a mirror. This un-pins a followed persona from the one node
+that answered its first fetch. Probed: bob mirrors alice through her founder, the founder
+dies, alice posts from her second device, bob's mirror heals with last_via dead and the
+zeroth root rung resolving to the dead founder; planted (rung emptied), the mirror stays
+pinned forever.
+
+**The forgetting** (net::sync::prune_forgotten_peers, on the derive sweep): a week of
+silence on BOTH clocks and a row is forgotten - `last_synced_ms` stale alone would evict
+NAT-bound devices that are alive and publishing, so the fresh serving record is the tell
+that keeps them; `added_at_ms` grace spares newborns. Safe only because rows became cache
+entries over a derivable truth: the leaf set lives in the tree, the endpoint in the serving
+record, revocation memory in the chains - a forgotten node that returns re-enters within a
+beat. Dead hardware finally leaves dial lists. Unit-tested across all quadrants.

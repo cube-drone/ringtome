@@ -235,10 +235,30 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
     }
 
     let peers = sync::peers_for(&state.node_db, root).await?;
-    let results = sync::sync_peers(state, root, &peers).await?;
-    let any_ok = results.iter().any(|r| r.ok);
+    let mut results = sync::sync_peers(state, root, &peers).await?;
+    let mut any_ok = results.iter().any(|r| r.ok);
     for r in results.iter().filter(|r| !r.ok) {
         tracing::debug!(root = %root, peer = %r.peer, error = ?r.error, "eager push: peer unreachable");
+    }
+    if !any_ok && !decision.was_failing {
+        // The failure EDGE: reaching zero peers is the loudest possible signal that the peer
+        // view is stale, so re-derive it from tree x directory right now rather than letting
+        // the write wait out the backoff plus the derive sweep's beat. If derivation surfaces
+        // anyone new, one immediate retry at just the newcomers - the freshly-resolved rows
+        // are exactly the endpoints most likely to be alive (their records are current).
+        sync::derive_peers_for(state, root).await;
+        let refreshed = sync::peers_for(&state.node_db, root).await?;
+        let newcomers: Vec<String> = refreshed
+            .into_iter()
+            .filter(|p| !peers.contains(p))
+            .collect();
+        if !newcomers.is_empty() {
+            tracing::info!(root = %root, newcomers = newcomers.len(),
+                "eager push found nobody home; derived fresh peers and retrying");
+            let retry = sync::sync_peers(state, root, &newcomers).await?;
+            any_ok = any_ok || retry.iter().any(|r| r.ok);
+            results.extend(retry);
+        }
     }
     if !any_ok && !decision.was_failing {
         tracing::warn!(root = %root, peers = results.len(),

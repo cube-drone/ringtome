@@ -1343,14 +1343,49 @@ pub async fn derive_peers_for(state: &crate::AppState, root_hex: &str) {
 }
 
 /// The derive sweep: every hosted identity's peer set, re-derived from tree x directory.
-/// Recovery-paced - the event edges (adoption, member-proven dials) keep the set fresh in the
-/// common case; this pass is what heals a dead introducer's partition and enforces
-/// revocation-to-routing on a beat.
+/// Recovery-paced - the event edges (adoption, member-proven dials, the eager loop's
+/// zero-reached retry) keep the set fresh in the common case; this pass is what heals a dead
+/// introducer's partition, enforces revocation-to-routing on a beat, and forgets the dead.
 pub async fn derive_peers(state: crate::AppState) -> Result<()> {
     for root in crate::identity::hosted_roots(&state.node_db).await? {
         derive_peers_for(&state, &root).await;
     }
+    match prune_forgotten_peers(&state.node_db, now_ms()).await {
+        Ok(n) if n > 0 => tracing::info!(rows = n, "forgot peers dark on both clocks"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = ?e, "peer pruning failed"),
+    }
     Ok(())
+}
+
+/// A week of silence on BOTH clocks and a row is forgotten. Safe only because rows became
+/// cache entries over a derivable truth (2026-08-07): the leaf set lives in the tree, the
+/// endpoint in the serving record, revocation memory in the chains - a forgotten node that
+/// returns re-enters within a beat, and the only thing lost was a dial target that wasn't
+/// answering anyway. Before derivation existed, hoarding was rational (a lost row took a
+/// re-ceremony to restore) - which is how dial lists accumulated dead hardware forever.
+///
+/// Two-sided on purpose: `last_synced_ms` stale alone would evict NAT-bound devices that
+/// can't take our inbound dial but are alive and publishing - their fresh serving record
+/// (`last_resolved_ms`, the derive sweep's stamp) is the tell that keeps them. Dead hardware
+/// fails both clocks. The `added_at_ms` grace spares newborns their first quiet week, and
+/// the pass is GLOBAL - proven-dialer rows for personas this node merely mirrors age out by
+/// the same rule, though no derive refreshes them.
+const PEER_FORGET_MS: i64 = 7 * 24 * 3600 * 1000;
+
+pub(crate) async fn prune_forgotten_peers(node_db: &Db, now: i64) -> Result<u64> {
+    let cutoff = now - PEER_FORGET_MS;
+    let n = node_db
+        .execute(
+            "DELETE FROM identity_peers
+             WHERE (last_synced_ms IS NULL OR last_synced_ms < ?1)
+               AND (last_resolved_ms IS NULL OR last_resolved_ms < ?1)
+               AND added_at_ms < ?1",
+            (cutoff,),
+        )
+        .await
+        .context("forgetting long-dark peers")?;
+    Ok(n)
 }
 
 /// Known peer endpoint ids for an identity.
@@ -2220,5 +2255,51 @@ mod tests {
             vec![*common.hash(), *left.hash()]
         );
         assert!(!has_public_equivocation(&c).await.unwrap());
+    }
+
+    /// The forget rule, all four quadrants: dark-on-both-clocks dies; either clock fresh
+    /// survives; newborns get their grace week.
+    #[tokio::test]
+    async fn peers_dark_on_both_clocks_are_forgotten() {
+        let db = crate::db::test_node_db().await;
+        let now = 100 * 24 * 3600 * 1000i64;
+        let old = now - PEER_FORGET_MS - 1;
+        let fresh = now - 1000;
+        let plant = |ep: &'static str, synced: Option<i64>, resolved: Option<i64>, added: i64| {
+            let db = db.clone();
+            async move {
+                db.execute(
+                    "INSERT INTO identity_peers
+                       (root_pubkey, endpoint_id, last_synced_ms, last_resolved_ms, added_at_ms)
+                     VALUES ('aa11', ?1, ?2, ?3, ?4)",
+                    (ep, synced, resolved, added),
+                )
+                .await
+                .unwrap();
+            }
+        };
+        plant("dead-hardware", Some(old), Some(old), old).await;
+        plant("never-heard", None, None, old).await;
+        plant("nat-bound-but-publishing", Some(old), Some(fresh), old).await;
+        plant("answering-but-unpublished", Some(fresh), None, old).await;
+        plant("newborn", None, None, fresh).await;
+
+        let n = prune_forgotten_peers(&db, now).await.unwrap();
+        assert_eq!(n, 2, "exactly the two dark-on-both-clocks rows");
+        let survivors: Vec<(String,)> = db
+            .fetch_all(
+                "SELECT endpoint_id FROM identity_peers ORDER BY endpoint_id",
+                (),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            survivors,
+            vec![
+                ("answering-but-unpublished".to_string(),),
+                ("nat-bound-but-publishing".to_string(),),
+                ("newborn".to_string(),),
+            ]
+        );
     }
 }

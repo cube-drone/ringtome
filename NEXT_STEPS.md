@@ -98,11 +98,6 @@ Does a mutual follow+trust make a "friend"?
   * **Grant codes carry sibling leaves** (~10 liveliest): un-cut-vertexes onboarding - the
     corroboration ladder gets real rungs from minute zero; bootstrap addresses stay for
     same-room pairing.
-  * **Derive on failure edge**: a push that reaches zero peers should trigger
-    derive_peers_for for that root now, not wait for the 600s beat.
-  * **Mirrored personas re-fetch through stored-tree leaves**: the foreign refresh ladder
-    still leans on last_via + hints; it could enumerate Active leaves from its own stored
-    copy of the tree and resolve them - same trick the member mesh now uses.
   * Equivocation quarantine residuals (2026-08-06): reader-facing "disputed" notice;
     evidence rows live outside the raw-entry journal (rebuild forgets a standing quarantine
     until proof re-arrives).
