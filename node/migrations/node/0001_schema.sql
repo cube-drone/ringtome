@@ -228,6 +228,31 @@ CREATE TABLE media_bakes (
 );
 
 -- ---------------------------------------------------------------------------------------------
+-- The gravedigger's ledger: referenced blobs this node has noticed it lacks. Headers ride
+-- entry sync and bodies ride iroh-blobs behind them, so "I hold a head whose body isn't here"
+-- is an ordinary transient - and, when the event-driven heals all miss (the pusher's poke
+-- failed, nothing dials us again until the author's next post), a permanent one. This memo is
+-- the recovery half: the body walk (`documents::fetch_missing_bodies`) already computes each
+-- persona's missing set on every exchange, and instead of discarding the shortfall it records
+-- it here; a periodic sweep re-tries the noted rows against the nodes most likely to hold the
+-- bytes (the via that answered our fetch, the nodes that asked us, the device peers).
+--
+-- The memo idiom, disposable by design: the truth is doc_versions versus the blob store, and
+-- this table is a note of their disagreement. Every walk REPLACES its persona's rows with the
+-- freshly computed set, so satisfied rows clear on arrival (whatever path the bytes took) and
+-- rows for documents that vanished (retraction, repudiation) clear on the next look. `tries`
+-- and `last_tried_ms` belong to the SWEEP alone - walks never touch them - and drive backoff
+-- so a permanently lost blob stops costing dials.
+CREATE TABLE missing_bodies (
+    root_pubkey    TEXT    NOT NULL,
+    blob_hash      BLOB    NOT NULL,
+    first_noted_ms INTEGER NOT NULL,
+    last_tried_ms  INTEGER NOT NULL DEFAULT 0,  -- 0 = the sweep has never tried it
+    tries          INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (root_pubkey, blob_hash)
+);
+
+-- ---------------------------------------------------------------------------------------------
 -- The chain-heads memo: the tip of every chain this node stores, for every persona - fed at
 -- WRITE time by the three places entries change (local append, sync ingest, gate eviction),
 -- so that "did anything move?" is answerable from node.db without opening a single per-user

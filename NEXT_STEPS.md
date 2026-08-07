@@ -36,11 +36,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Save to bucket
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")
-* Body-lane recovery backstop (2026-08-06, from the two-hop body fix): the race now heals by
-  events (fruitful body fetches re-ride the fan-out edge; the responder dial-back is ungated),
-  but a transiently failed poke leaves a follower bodiless until its next inbound exchange -
-  the author's next post, at worst. The recovery half: followers keep a retryable source set
-  and a sweep retries missing public bodies from known peers.
 
 ### Inbox
 

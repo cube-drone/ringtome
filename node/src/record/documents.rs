@@ -1613,13 +1613,25 @@ pub async fn fetch_missing_bodies(
                 }
             }
         }
-        if missing.is_empty() {
-            return Ok(0);
+        let fetched = if missing.is_empty() {
+            0u64
+        } else {
+            state.files.fetch_many(&state.endpoint, addr, &missing).await as u64
+        };
+
+        // The gravedigger's ledger (net::bodies): whatever is STILL absent after this attempt
+        // is recorded, and whatever landed - here or by any other path - clears. This is the
+        // one write that turns the walk's throwaway computation into recoverable knowledge;
+        // without it, a follower that lost the multi-hop race and then missed the poke stayed
+        // bodiless until the author's next post.
+        let mut still: Vec<[u8; 32]> = Vec::new();
+        for hash in &missing {
+            if !state.files.has(*hash).await {
+                still.push(*hash.as_bytes());
+            }
         }
-        Ok(state
-            .files
-            .fetch_many(&state.endpoint, addr, &missing)
-            .await as u64)
+        crate::net::bodies::reconcile(&state.node_db, root_hex, &still).await?;
+        Ok(fetched)
     }
     .await;
 

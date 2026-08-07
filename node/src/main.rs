@@ -326,6 +326,20 @@ async fn main() -> anyhow::Result<()> {
         state.clone(),
         net::subscriptions::sweep,
     );
+    // The gravedigger's rounds (net::bodies): retry blobs the body walks noted missing, from
+    // the nodes most likely to hold them. Recovery only - the event half is every exchange's
+    // walk plus the fan-out re-ride - so the beat is slow, and an empty ledger costs one
+    // query. LOCAL_TEST may shorten the beat so probes can watch a full round.
+    let body_beat = if local_test {
+        std::env::var("RINGTOME_TEST_BODY_SWEEP_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(300))
+    } else {
+        std::time::Duration::from_secs(300)
+    };
+    loops::periodic("missing-bodies", body_beat, state.clone(), net::bodies::sweep);
     // WAL maintenance (Db::checkpoint): truncate node.db's and every open user db's log on a
     // slow beat. Turso's own auto-checkpoint bounds work, not the file - the log only shrinks
     // on TRUNCATE, and an unbounded WAL taxes every read after it (568MB observed, 2026-08-05).

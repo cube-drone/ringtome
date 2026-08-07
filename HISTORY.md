@@ -3100,3 +3100,26 @@ predicted. Pinned knob-free in the integration suite as a two-hop liveness test 
 ceremony + third-node follower + body resolved through the follower's own serving route).
 Residual ledgered: the recovery-sweep half (retryable source set) for the transient-failure
 case.
+
+## 2026-08-06: the gravedigger's ledger
+
+The body-lane recovery backstop, closing the residual the two-hop fix opened. The design
+came out of conversation: the body walk already computes each persona's missing set on every
+exchange and threw it away - now it records the shortfall in `missing_bodies` (node.db, gen
+8), replace-set per persona, so satisfied rows clear on arrival by any path and rows for
+vanished documents clear on the next look. The memo IS the guard: the sweep's worklist is
+one query, an empty ledger costs nothing, and no stat-marks are needed.
+
+The sweep (net::bodies, "the gravedigger's rounds", 300s beat) takes each due persona,
+guesses who might hold the bytes - the via that answered our fetch, the nodes that asked us,
+the device peers; all three already knew of our interest, so asking discloses nothing new -
+and runs the ordinary body walk at each candidate until whole. Backoff (30s doubling to an
+hour) lives in tries/last_tried_ms, which belong to the sweep alone; walks reconcile
+membership only, so exchange churn never resets the ladder. A fruitful round re-rides the
+fan-out edge, same as any body arrival.
+
+Probed end to end on three scratch nodes with the failure the backstop exists for: B loses
+the race (A1's body lane lagged), then misses the poke (SIGSTOPped through the window),
+resumes bodiless with nothing ever dialing it again - and heals by its own rounds, confirmed
+by the sweep's own log line rather than inference. Five unit tests pin the ledger semantics.
+NOTE: node schema generation bumped 7 -> 8; dev node.db rebuilds on next start.

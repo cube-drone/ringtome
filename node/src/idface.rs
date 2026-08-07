@@ -340,6 +340,18 @@ pub async fn has_fetched(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Res
     Ok(row.is_some())
 }
 
+/// The endpoint that last answered a fetch of this persona, if any - the recovery sweep's
+/// best first guess for who holds its bodies (net::bodies).
+pub async fn fetched_via(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<Option<String>> {
+    let row: Option<(Option<String>,)> = node_db
+        .fetch_optional(
+            "SELECT last_via FROM foreign_fetches WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await?;
+    Ok(row.and_then(|(via,)| via))
+}
+
 async fn foreign_fetch_row(
     state: &AppState,
     root_hex: &str,

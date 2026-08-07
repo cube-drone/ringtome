@@ -34,6 +34,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("subscriptions", vec!["net/subscriptions.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
         ("feed_journal", vec!["fanout.rs"]),
+        ("missing_bodies", vec!["net/bodies.rs"]),
         ("persona_profiles", vec!["profiles.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.

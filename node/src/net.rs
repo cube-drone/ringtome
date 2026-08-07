@@ -13,6 +13,7 @@
 //!     globally rate-limited, cached).
 
 pub mod adopt;
+pub mod bodies;
 pub mod demand;
 pub mod discovery;
 pub mod frontier;
