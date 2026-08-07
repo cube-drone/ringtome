@@ -194,11 +194,16 @@ pub async fn feed_page(
     limit: i64,
 ) -> Result<Vec<FeedRow>> {
     type Row = (String, String, String, Option<String>, i64, i64, i64);
+    // Text only, twice over: the shelf read upstream no longer journals media documents at
+    // all (`public_docs` filters them - they're ingredients, not posts), and this clause
+    // makes journals written BEFORE that filter harmless rather than a page of raw bytes
+    // rendered as text.
     let rows: Vec<Row> = match before {
         None => node_db
             .fetch_all(
                 "SELECT author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
                  FROM feed_journal WHERE reader_root = ?1
+                   AND format IN ('marquee', 'plaintext')
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
                 (reader_root, limit),
             )
@@ -210,6 +215,7 @@ pub async fn feed_page(
             .fetch_all(
                 "SELECT author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
                  FROM feed_journal WHERE reader_root = ?1
+                   AND format IN ('marquee', 'plaintext')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
                  ORDER BY published_ms DESC, doc_id LIMIT ?4",
                 (reader_root, ms, doc.as_str(), limit),

@@ -640,26 +640,43 @@ pub struct PublicDoc {
 /// is now immutable, so a re-publication mid-read can no longer shuffle a row across a page
 /// boundary. The reader still dedupes, which costs nothing and covers the remaining honest
 /// case: a post published while the reader was between pages.
+///
+/// TEXT ONLY: the shelf lists posts, and a post is something written. Published media
+/// documents live in the same lane - baking mints them there so posts can embed them - but
+/// they are ingredients, linked into posts and served as bytes, never listed as posts
+/// themselves (a feed row of raw AVIF bytes rendered as text was the field version of this
+/// mistake). The filter is here, at the query, rather than in each display: this one shelf
+/// feeds the /id posts view, its pager, AND fanout's journaling into readers' feeds - and
+/// filtering in SQL keeps keyset pages full instead of mysteriously short. An unknown future
+/// format is hidden too: better absent than binary shown as text.
 pub async fn public_docs(
     db: &Db,
     after: Option<(i64, [u8; 16])>,
     limit: i64,
 ) -> Result<Vec<PublicDoc>, AppError> {
     catch_up_public_lane(db).await?;
+    // NULL is plaintext (absent on the wire); the only other text format is marquee.
+    let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
     type Row = (Vec<u8>, String, Option<i64>, i64, i64, Option<Vec<u8>>);
     let rows: Vec<Row> = match after {
         None => db
             .fetch_all(
-                "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
-                 WHERE lane = 'public' ORDER BY genesis_ms DESC, doc_id LIMIT ?",
+                &format!(
+                    "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
+                     WHERE lane = 'public' AND {text_only}
+                     ORDER BY genesis_ms DESC, doc_id LIMIT ?"
+                ),
                 (limit,),
             )
             .await,
         Some((ms, doc)) => db
             .fetch_all(
-                "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
-                 WHERE lane = 'public' AND (genesis_ms < ? OR (genesis_ms = ? AND doc_id > ?))
-                 ORDER BY genesis_ms DESC, doc_id LIMIT ?",
+                &format!(
+                    "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
+                     WHERE lane = 'public' AND {text_only}
+                       AND (genesis_ms < ? OR (genesis_ms = ? AND doc_id > ?))
+                     ORDER BY genesis_ms DESC, doc_id LIMIT ?"
+                ),
                 (ms, ms, doc.to_vec(), limit),
             )
             .await,

@@ -41,6 +41,7 @@ import {
     FEED_STYLE,
     publishedState,
     openDraftOf,
+    isTextDoc,
     overlayPosted,
     mergeFeed,
     feedKey,
@@ -458,7 +459,10 @@ export const FeedApp = ({ current }) => {
     // with them out of the main area; editing your history is the persona page's business now,
     // and re-posting a draft still works right here.
     const drafts = mine.filter(
-        (d) => d.doc_id !== draftId && !publishedState(overlayPosted(d, postedAs[d.doc_id])).published
+        (d) =>
+            d.doc_id !== draftId &&
+            isTextDoc(d) && // an uploaded image in the feed bucket is media, never a draft
+            !publishedState(overlayPosted(d, postedAs[d.doc_id])).published
     );
     return html`
         <div class="feed-app">

@@ -61,6 +61,16 @@ describe('the one open draft', () => {
         assert.equal(openDraftOf(docs).doc_id, 'a');
     });
 
+    it('never mistakes uploaded media for the draft - the composer must not eat an image', () => {
+        // A fresh upload is the NEWEST unpublished thing in the feed bucket; without the text
+        // filter it becomes the open draft, the composer flips to it, and the upload's
+        // reference swap fires into an unmounted session (field-found 2026-08-06).
+        const image = { doc_id: 'img', format: 'avif', fields: {} };
+        const text = { doc_id: 'words', format: 'marquee', fields: {} };
+        assert.equal(openDraftOf([image, text]).doc_id, 'words');
+        assert.equal(openDraftOf([image]), null, 'media alone is no draft at all');
+    });
+
     it('is null when everything has been posted - which is what mints the next one', () => {
         assert.equal(openDraftOf([doc('a', 'p1')]), null);
         assert.equal(openDraftOf([]), null);

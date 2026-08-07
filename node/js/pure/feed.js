@@ -54,7 +54,17 @@ export function overlayPosted(row, postId) {
 /// Older unposted drafts (from before this rule, or from a post that moved the slot along)
 /// are not lost - they fall into the stack, visible and editable.
 export function openDraftOf(docs) {
-    return (docs || []).find((d) => !publishedState(d).published) || null;
+    return (docs || []).find((d) => !publishedState(d).published && isTextDoc(d)) || null;
+}
+
+/// Only TEXT can be a draft. Uploading an image from the composer files the media document
+/// into the feed bucket (so the picker lists it) - and since a fresh upload is the NEWEST
+/// unpublished thing in the bucket, it would otherwise BECOME the open draft: the composer's
+/// docId flips to the image, the text session (upload placeholder and all) unmounts, and the
+/// reference swap fires into the void (field-found 2026-08-06 - "the image uploaded but never
+/// landed in the document").
+export function isTextDoc(d) {
+    return !d || !d.format || d.format === 'marquee' || d.format === 'plaintext';
 }
 
 /**

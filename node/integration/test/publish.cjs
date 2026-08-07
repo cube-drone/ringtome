@@ -268,6 +268,25 @@ describe("publication", () => {
             const media = await anon(target.slice(1));
             assert.equal(media.status, 200, "the baked bytes serve to a stranger");
             assert.equal(media.headers.get("content-type"), "image/avif", "crushed like any upload");
+
+            // The bake just minted a media DOCUMENT on the public lane - same lane as the
+            // post. The shelf must list the post and not the ingredient: a media row in a
+            // feed renders its bytes as text ("ftypavifmif1miaf..." - the field version).
+            const mediaId = target.match(/\/docs\/([0-9a-f]+)\/body/)[1];
+            const prof = await (await anon(`api/id/${root}/profile`)).json();
+            assert.ok(
+                prof.posts.some((p) => p.doc_id === postId),
+                "the post is on the shelf"
+            );
+            assert.ok(
+                !prof.posts.some((p) => p.doc_id === mediaId),
+                "the media document is not - ingredients are linked, never listed"
+            );
+            for (const p of prof.posts)
+                assert.ok(
+                    p.format === "marquee" || p.format === "plaintext",
+                    `only text formats are posts, got ${p.format}`
+                );
         } finally {
             web.close();
         }
