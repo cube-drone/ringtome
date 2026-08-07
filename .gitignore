@@ -7,9 +7,7 @@
 # data-b + data-dht: `just start-two`'s second node and shared local discovery folder
 /data
 **/data/
-/data-b
-/data-c
-/data-dht
+/data-*
 
 # env / secrets
 .env
