@@ -3251,3 +3251,33 @@ design - nothing anywhere can prove the newborn - so the probe must let the entr
 first, and that is the protocol being honest, not the test being fragile.
 
 Discovery arc remaining: the root announce rendezvous (founder-dead personas), alone.
+
+## 2026-08-07: the wake pass - follow the person, not the node
+
+Follower-side anti-entropy (idface::refresh_followed_pass, 60s beat): for each followed
+persona whose mirror has gone stale, re-fetch through the ordinary ladder - which does both
+halves of the reunion in one exchange: pulls what was missed while the laptop was closed,
+and re-arms this node on the answerer's push list, because the dial IS the demand signal
+("asking is telling" - no new message needed). Steady state is near silent: a delivered push
+now stamps the mirror's freshness (sync responder -> touch_foreign_fetch), so an online node
+finds nothing stale. Priority per Curtis: personas followed by humans PRESENT AT THE NODE
+first (ActivityMarks, stamped by the session extractor, in-memory), then the interest dial
+(a cadence dial by design), stalest first - capped at 8 per beat so a hundred users' worth
+of follows catches up ordered instead of stampeding.
+
+Two catches worth their ink, both found because plants refused to fail:
+
+* **Phase-1 scope creep**: the member-proven dialer upsert was enrolling MIRRORED personas
+  into identity_peers when their devices pushed to us - and identity_peers is the device-
+  mesh worklist, so every follower node was quietly running unpaced, unfollow-blind
+  anti-entropy for everyone it followed. Exactly the conflation the schema comment warns
+  about. Now gated to hosted personas; the wake pass is the follower-side channel, with
+  presence, pacing, and the dial.
+* **QUIC patience**: a SIGSTOPPED process's UDP socket buffers the push's dial and completes
+  it on thaw - a 12s nap wasn't a missed push at all, just a slow one. The probe's freeze
+  now outlasts the handshake patience (45s), after which the plant finally failed honestly:
+  no wake pass, post missed forever.
+
+Also: the wake pass makes DEMAND RETENTION safe to build - their node can prune quiet
+askers aggressively because askers who still care re-ask on every wake. The two halves make
+each other's settings correct.

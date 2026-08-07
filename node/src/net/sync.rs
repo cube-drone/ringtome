@@ -973,8 +973,18 @@ pub async fn sync_with_peer(
             }
             let proven = peer_is_member(&db, root, &proof, &peer_id, &our_id).await;
             // A proven member is a sibling worth remembering: healing on any contact, and
-            // the proof names the leaf, which binds the row for revocation cleanup.
-            if proven {
+            // the proof names the leaf, which binds the row for revocation cleanup. HOSTED
+            // personas only (2026-08-07): identity_peers is the device-mesh worklist
+            // (roots_with_peers drives eager sync + anti-entropy), and enrolling a merely-
+            // mirrored persona there because its device dialed us gave every follower node
+            // an unpaced, unfollow-blind background sync of everyone it follows - the wake
+            // pass (idface::refresh_followed_pass) is that job, done with presence priority,
+            // the eagerness dial, and a cap.
+            if proven
+                && crate::identity::is_agented(&state.node_db, root_hex)
+                    .await
+                    .unwrap_or(false)
+            {
                 if let (Some(p), Ok(ep)) = (&proof, iroh::PublicKey::from_bytes(&peer_id)) {
                     if let Err(e) = add_peer_with_leaf(
                         &state.node_db,
@@ -1135,7 +1145,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
     // The dialer proved membership: remember it as a peer, leaf-bound (healing on any
     // contact - a sibling that found US, by whatever path, is one we can find again).
-    if peer_proven {
+    // Hosted personas only - same conflation guard as the initiator side: a follower node
+    // must not enroll the personas it mirrors into its device-mesh worklist.
+    if peer_proven && agented {
         if let (Some(p), Ok(ep)) = (&peer_proof, iroh::PublicKey::from_bytes(&peer_id)) {
             if let Err(e) =
                 add_peer_with_leaf(&state.node_db, &root_hex, &ep.to_string(), Some(&hex::encode(p.leaf)))
@@ -1189,6 +1201,16 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         // Private records ride the same exchange (member-proven peers), and a contact dial
         // turned elsewhere must reach this node's memo by EVENT, not by backstop.
         crate::net::subscriptions::refresh_root(&state, &root_hex).await;
+        // A delivered push IS freshness for a mirrored persona - stamp it so the
+        // follow-refresh sweep stays quiet while the push machinery is working.
+        if !crate::identity::is_agented(&state.node_db, &root_hex)
+            .await
+            .unwrap_or(true)
+        {
+            if let Err(e) = crate::idface::touch_foreign_fetch(&state.node_db, &root_hex).await {
+                tracing::debug!(error = ?e, "freshness touch failed");
+            }
+        }
     }
     conn.close(0u8.into(), b"done");
 

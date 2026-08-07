@@ -62,6 +62,10 @@ impl FromRequestParts<AppState> for Session {
             .await?
             .ok_or_else(|| AppError::Unauthorized("session invalid or expired".into()))?;
 
+        // The presence signal: an authenticated request is a human at the keyboard, and the
+        // follow-refresh sweep spends its budget on present humans first.
+        state.activity.stamp(&account.id.to_string());
+
         Ok(Session { account })
     }
 }

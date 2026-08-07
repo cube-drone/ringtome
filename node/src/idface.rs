@@ -521,6 +521,131 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
     true
 }
 
+/// Stamp a mirrored persona as fresh without a fetch - called by the sync responder when a
+/// push DELIVERS for a followed persona, so the follow-refresh sweep stays quiet exactly
+/// while the push machinery is doing its job. Update-only: a persona with no fetch record
+/// yet keeps "never fetched", which correctly reads as stale.
+pub async fn touch_foreign_fetch(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<()> {
+    node_db
+        .execute(
+            "UPDATE foreign_fetches SET fetched_at_ms = ?2 WHERE root_pubkey = ?1",
+            (root_hex, crate::clock::now_ms()),
+        )
+        .await?;
+    Ok(())
+}
+
+/// One followed persona, as the refresh sweep weighs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RefreshCandidate {
+    foreign: String,
+    /// Any follower's account touched the node within the activity window.
+    active: bool,
+    /// The highest eagerness any follower set.
+    eagerness: i64,
+    /// COALESCE(fetched_at_ms, 0) - never-fetched sorts stalest.
+    fetched_at: i64,
+}
+
+/// Priority for a wake-up's limited sync budget: personas followed by HUMANS PRESENT AT THE
+/// NODE first (a computer waking with a hundred users must serve the ones actually here),
+/// then by the interest dial (already a cadence dial by design), stalest first within a tie.
+fn order_refresh(mut candidates: Vec<RefreshCandidate>) -> Vec<String> {
+    candidates.sort_by(|a, b| {
+        b.active
+            .cmp(&a.active)
+            .then(b.eagerness.cmp(&a.eagerness))
+            .then(a.fetched_at.cmp(&b.fetched_at))
+    });
+    candidates.into_iter().map(|c| c.foreign).collect()
+}
+
+/// How long a follower's account counts as "active on the node" after its last request.
+const ACTIVITY_WINDOW_MS: i64 = 30 * 60 * 1000;
+/// A mirror this stale gets a wake-up sync. LOCAL_TEST may shorten it.
+const FOLLOW_REFRESH_STALE_MS: i64 = 30 * 60 * 1000;
+/// Refreshes started per pass - the stampede cap. A laptop waking with hundreds of stale
+/// follows catches up over a few beats, priority-ordered, instead of dialing them all at once.
+const FOLLOW_REFRESH_CAP: usize = 8;
+
+/// Follower-side anti-entropy (2026-08-07): the wake pass. For each followed persona whose
+/// mirror has gone stale, re-fetch through the ordinary ladder (zeroth root rung, stored-tree
+/// leaves, last_via) - which does BOTH halves of the reunion in one exchange: pulls whatever
+/// we missed while closed, and re-records this node as an asker on whoever answers ("asking
+/// is telling"), re-arming their push list until we go quiet again. Steady state is near
+/// silent: delivered pushes touch the freshness stamp, so an online node's sweep finds
+/// nothing stale. This is what makes a follow bind to the PERSON: their founder can die and
+/// their fleet can migrate, and the next wake finds whoever currently answers for the tree.
+pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()> {
+    let stale_ms = if state.config.local_test {
+        std::env::var("RINGTOME_TEST_FOLLOW_STALE_MS")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(FOLLOW_REFRESH_STALE_MS)
+    } else {
+        FOLLOW_REFRESH_STALE_MS
+    };
+    let now = crate::clock::now_ms();
+
+    let follows = crate::net::subscriptions::followed_foreign(&state.node_db).await?;
+    if follows.is_empty() {
+        return Ok(());
+    }
+    // Local personas are the eager loop's job, whoever follows them; and the follower ->
+    // account join is how presence reaches priority.
+    let hosted: std::collections::HashMap<String, String> =
+        crate::identity::hosted_roots_with_accounts(&state.node_db)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .into_iter()
+            .map(|(root, account)| (root, account.to_string()))
+            .collect();
+    let active_accounts = state.activity.active_within(ACTIVITY_WINDOW_MS);
+    let fetched: std::collections::HashMap<String, i64> = state
+        .node_db
+        .fetch_all("SELECT root_pubkey, fetched_at_ms FROM foreign_fetches", ())
+        .await?
+        .into_iter()
+        .map(|(r, at): (String, i64)| (r, at))
+        .collect();
+
+    let mut by_foreign: std::collections::HashMap<String, RefreshCandidate> =
+        std::collections::HashMap::new();
+    for (foreign, local, eagerness) in follows {
+        if hosted.contains_key(&foreign) {
+            continue;
+        }
+        let fetched_at = fetched.get(&foreign).copied().unwrap_or(0);
+        if now - fetched_at < stale_ms {
+            continue;
+        }
+        let active = hosted
+            .get(&local)
+            .is_some_and(|account| active_accounts.contains(account));
+        let entry = by_foreign
+            .entry(foreign.clone())
+            .or_insert(RefreshCandidate { foreign, active: false, eagerness: 0, fetched_at });
+        entry.active |= active;
+        entry.eagerness = entry.eagerness.max(eagerness);
+    }
+    if by_foreign.is_empty() {
+        return Ok(());
+    }
+
+    let started: Vec<String> = order_refresh(by_foreign.into_values().collect())
+        .into_iter()
+        .take(FOLLOW_REFRESH_CAP)
+        .collect();
+    let n = started.len();
+    for foreign in started {
+        // The revalidate machinery is the whole ladder: dedup against in-flight fetches,
+        // stored-tree leaves, the zeroth root rung, last_via.
+        spawn_revalidate(&state, foreign, Vec::new());
+    }
+    tracing::info!(refreshed = n, "follow-refresh pass reached for stale mirrors");
+    Ok(())
+}
+
 /// The Active leaves of a persona's stored identity chain, hex - candidates for re-fetching
 /// it. Empty on any failure: a mirror we can't read just falls back to the explicit hints.
 /// Callers must hold a reason to believe the mirror exists (a foreign_fetches row); this is
@@ -947,4 +1072,41 @@ pub async fn id_profile(
         })).collect::<Vec<_>>(),
     }))
     .into_response())
+}
+
+#[cfg(test)]
+mod refresh_order_tests {
+    use super::*;
+
+    fn cand(foreign: &str, active: bool, eagerness: i64, fetched_at: i64) -> RefreshCandidate {
+        RefreshCandidate { foreign: foreign.into(), active, eagerness, fetched_at }
+    }
+
+    #[test]
+    fn present_humans_outrank_every_dial_setting() {
+        // A node waking with a hundred users serves the ones actually here first: an active
+        // follower's mild interest beats an absent follower's obsession.
+        let order = order_refresh(vec![
+            cand("absent-obsessed", false, 100, 0),
+            cand("present-mild", true, 10, 0),
+        ]);
+        assert_eq!(order, vec!["present-mild".to_string(), "absent-obsessed".to_string()]);
+    }
+
+    #[test]
+    fn within_presence_the_dial_ranks_and_staleness_breaks_ties() {
+        let order = order_refresh(vec![
+            cand("low-dial", true, 20, 0),
+            cand("high-dial", true, 90, 0),
+            cand("high-dial-fresher", true, 90, 500),
+        ]);
+        assert_eq!(
+            order,
+            vec![
+                "high-dial".to_string(),        // same dial, stalest first
+                "high-dial-fresher".to_string(),
+                "low-dial".to_string(),
+            ]
+        );
+    }
 }

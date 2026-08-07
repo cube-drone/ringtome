@@ -195,6 +195,22 @@ pub async fn followers_of(node_db: &crate::db::Db, foreign_root: &str) -> Result
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
+/// Every followed foreign persona, with who follows it and how eagerly - the follow-refresh
+/// sweep's worklist (idface::refresh_followed_pass). Eagerness > 0 is the feed criterion,
+/// same as followers_of: the dial's bottom stop means "don't show", and it also means
+/// "don't spend wake-up syncs on them".
+pub async fn followed_foreign(node_db: &crate::db::Db) -> Result<Vec<(String, String, i64)>> {
+    let rows: Vec<(String, String, i64)> = node_db
+        .fetch_all(
+            "SELECT foreign_root, local_root, eagerness FROM subscriptions
+             WHERE eagerness IS NOT NULL AND eagerness > 0",
+            (),
+        )
+        .await
+        .context("listing followed foreign personas")?;
+    Ok(rows)
+}
+
 /// One pass. `who` is the identity a write nudge named - a contact dial is a private-chain
 /// write like any other, so turning one wakes this with that persona's name on it. `None` (a
 /// tick, or a lag that can no longer say) rebuilds everyone's.

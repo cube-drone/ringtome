@@ -81,6 +81,37 @@ pub struct AppState {
     /// The tick sweeps' stat-before-open marks (loops::FreshnessMarks): a backstop sweep
     /// skips every root whose files haven't moved since it last folded them.
     pub sweep_marks: loops::FreshnessMarks,
+    /// Which accounts are actively using this node right now (see [`ActivityMarks`]).
+    pub activity: ActivityMarks,
+}
+
+/// Who has touched this node lately: account id -> last authenticated request, in memory.
+/// Stamped by the session extractor, read by the follow-refresh sweep so a node hosting many
+/// accounts spends its wake-up syncs on the humans actually present. Boot-reset by design -
+/// the first request back repopulates it, and "nobody is active yet" just means the sweep
+/// falls back to eagerness order.
+#[derive(Clone, Default)]
+pub struct ActivityMarks(std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, i64>>>);
+
+impl ActivityMarks {
+    pub fn stamp(&self, account_id: &str) {
+        self.0
+            .lock()
+            .expect("activity marks poisoned")
+            .insert(account_id.to_string(), crate::clock::now_ms());
+    }
+
+    /// Accounts seen within the window, as a set for joining against identities.
+    pub fn active_within(&self, window_ms: i64) -> std::collections::HashSet<String> {
+        let cutoff = crate::clock::now_ms() - window_ms;
+        self.0
+            .lock()
+            .expect("activity marks poisoned")
+            .iter()
+            .filter(|(_, at)| **at >= cutoff)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
 }
 
 /// See [`AppState::view_epochs`].
@@ -254,6 +285,7 @@ async fn main() -> anyhow::Result<()> {
         view_epochs: ViewEpochs::default(),
         refreshing: Default::default(),
         sweep_marks: Default::default(),
+        activity: Default::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
 
@@ -354,6 +386,19 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(600)
     };
     loops::periodic("peer-derive", derive_beat, state.clone(), net::sync::derive_peers);
+    // Follower-side anti-entropy (idface::refresh_followed_pass): the wake pass that
+    // re-fetches stale followed mirrors AND re-arms this node on their push lists - one
+    // exchange does both. Presence-prioritized, eagerness-ordered, capped per beat.
+    let follow_beat = if local_test {
+        std::env::var("RINGTOME_TEST_FOLLOW_REFRESH_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(60))
+    } else {
+        std::time::Duration::from_secs(60)
+    };
+    loops::periodic("follow-refresh", follow_beat, state.clone(), idface::refresh_followed_pass);
     // WAL maintenance (Db::checkpoint): truncate node.db's and every open user db's log on a
     // slow beat. Turso's own auto-checkpoint bounds work, not the file - the log only shrinks
     // on TRUNCATE, and an unbounded WAL taxes every read after it (568MB observed, 2026-08-05).
