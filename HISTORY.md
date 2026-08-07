@@ -3226,3 +3226,28 @@ that keeps them; `added_at_ms` grace spares newborns. Safe only because rows bec
 entries over a derivable truth: the leaf set lives in the tree, the endpoint in the serving
 record, revocation memory in the chains - a forgotten node that returns re-enters within a
 beat. Dead hardware finally leaves dial lists. Unit-tested across all quadrants.
+
+## 2026-08-07: grant codes carry sibling leaves
+
+The onboarding cut-vertex, removed. A grant code now carries up to ten of the identity's
+liveliest OTHER leaves (granter's own first, ranked by serving-record freshness; serde
+default keeps old codes decoding as "granter or bust"). Completion's bootstrap became a
+ladder: the granter's ephemeral addresses first, then each sibling leaf resolved through its
+serving record (root-checked, 8s per rung) - and the SECOND pass (the member-proven private
+pull) now rides whichever peer actually answered, which the build caught red: it used to
+re-dial "the granter" unconditionally, so a sibling-completed adoption 500'd after
+registering the identity.
+
+The scenario this buys: the granter dies (or NATs out) between grant and paste. Before, the
+newborn was stranded permanently at "initial sync failed" - the authorize was already on the
+siblings' chains, but completion knew only one door. Probed properly the hard way: the first
+probe version passed its own plant, because in-band grant delivery (net/adopt.rs,
+best-effort at grant time) had completed the adoption before the granter died - the valid
+probe freezes the newborn's node through the grant, lets the authorize escape to a sibling,
+kills the granter, thaws, pastes. Fixed build: 200 through the ladder, log-attributed,
+history inherited. Planted (ladder capped to zero rungs): 500, stranded. A probe-timing
+lesson worth keeping: a grant whose authorize dies WITH its granter is unrecoverable by
+design - nothing anywhere can prove the newborn - so the probe must let the entry escape
+first, and that is the protocol being honest, not the test being fragile.
+
+Discovery arc remaining: the root announce rendezvous (founder-dead personas), alone.

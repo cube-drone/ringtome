@@ -95,9 +95,6 @@ Does a mutual follow+trust make a "friend"?
   * **Root announce rendezvous**: now needed only for personas whose FOUNDING node is gone
     (a founder's leaf is the root, so its serving record already makes bare roots resolve).
     Unauthenticated announce under a root-derived key; verified by chain-to-root at dial.
-  * **Grant codes carry sibling leaves** (~10 liveliest): un-cut-vertexes onboarding - the
-    corroboration ladder gets real rungs from minute zero; bootstrap addresses stay for
-    same-room pairing.
   * Equivocation quarantine residuals (2026-08-06): reader-facing "disputed" notice;
     evidence rows live outside the raw-entry journal (rebuild forgets a standing quarantine
     until proof re-arrives).

@@ -97,6 +97,46 @@ pub struct GrantCode {
     pub leaf_pubkey: String,
     pub endpoint_id: String,
     pub addrs: Vec<String>,
+    /// The identity's liveliest OTHER leaves (2026-08-07, "grant codes carry sibling
+    /// leaves"): up to ten, granter's own first, ranked by serving-record freshness. The
+    /// newborn's bootstrap ladder - if the granter dies (or NATs out) between grant and
+    /// paste, completion resolves a sibling's serving record and fetches the tree there;
+    /// the authorize already reached the siblings' chains, and the tree check after sync
+    /// verifies everything regardless of who served it. Also the corroboration ladder's
+    /// first rungs: sources independent of the recruiter, from minute zero. Absent in old
+    /// codes; empty means "granter or bust", the pre-2026-08-07 behavior.
+    #[serde(default)]
+    pub sibling_leaves: Vec<String>,
+}
+
+#[cfg(test)]
+mod code_tests {
+    use super::*;
+
+    #[test]
+    fn old_grant_codes_without_siblings_still_decode() {
+        // Codes in flight when the field shipped - and any minted by an older node - carry
+        // no sibling_leaves; serde's default makes that "granter or bust", never an error.
+        let old_json = r#"{"v":0,"kind":"ringtome-adopt-grant","root_pubkey":"aa","leaf_pubkey":"bb","endpoint_id":"cc","addrs":["1.2.3.4:5"]}"#;
+        let code: GrantCode = serde_json::from_str(old_json).unwrap();
+        assert!(code.sibling_leaves.is_empty());
+    }
+
+    #[test]
+    fn grant_codes_roundtrip_their_siblings_through_the_pack() {
+        let code = GrantCode {
+            v: 0,
+            kind: GRANT_KIND.to_string(),
+            root_pubkey: "aa".into(),
+            leaf_pubkey: "bb".into(),
+            endpoint_id: "cc".into(),
+            addrs: vec![],
+            sibling_leaves: vec!["dd".into(), "ee".into()],
+        };
+        let packed = pack(&code).unwrap();
+        let back: GrantCode = unpack(&packed, "grant code").unwrap();
+        assert_eq!(back.sibling_leaves, vec!["dd".to_string(), "ee".to_string()]);
+    }
 }
 
 /// Step 1, on the joining node: mint a leaf keypair for a prospective identity and emit the
@@ -241,6 +281,24 @@ pub async fn authorize_node(
     .map_err(AppError::Internal)?;
 
     tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, "authorized new node");
+    // The newborn's escape hatches: our own leaf plus the liveliest siblings, so completion
+    // survives this very node dying before the paste (and the corroboration ladder has
+    // independent rungs from minute zero). The joiner's own new leaf is excluded - it names
+    // no serving record yet and would be a hint pointing at the asker.
+    let mut sibling_leaves: Vec<String> = Vec::new();
+    if let Ok(Some(own)) = crate::identity::leaf_hex_of(&state.node_db, root_hex).await {
+        sibling_leaves.push(own);
+    }
+    if let Ok(leaves) = crate::net::sync::liveliest_leaves(&state.node_db, root_hex, 16).await {
+        for leaf in leaves {
+            if sibling_leaves.len() >= 10 {
+                break;
+            }
+            if leaf != code.leaf_pubkey && !sibling_leaves.contains(&leaf) {
+                sibling_leaves.push(leaf);
+            }
+        }
+    }
     Ok(GrantCode {
         v: 0,
         kind: GRANT_KIND.to_string(),
@@ -248,6 +306,7 @@ pub async fn authorize_node(
         leaf_pubkey: code.leaf_pubkey,
         endpoint_id: state.endpoint.id().to_string(),
         addrs: crate::net::p2p::addr_strings(&state.endpoint),
+        sibling_leaves,
     })
 }
 
@@ -332,16 +391,85 @@ pub async fn complete(
     crate::net::sync::add_peer(&state.node_db, &code.root_pubkey, &code.endpoint_id)
         .await
         .map_err(AppError::Internal)?;
-    // Bootstrap dial: the grant code's addresses are ephemeral single-use hints (allowed to be
-    // addresses precisely because they don't live long enough to rot). Later syncs resolve via
-    // the directory.
-    let addr = crate::net::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
-        .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
-
-    let stats = crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr)
-        .await
-        .map_err(|e| AppError::Internal(anyhow!("initial sync failed: {e}")))?;
-    tracing::info!(root = %code.root_pubkey, ?stats, "adoption sync complete");
+    // Bootstrap dial: the granter first (its addresses are ephemeral single-use hints -
+    // allowed to be addresses precisely because they don't live long enough to rot), then
+    // the code's sibling leaves, each resolved through its serving record. A granter that
+    // died between grant and paste used to strand the newborn here permanently ("initial
+    // sync failed", nothing to retry against) - the authorize is already on the siblings'
+    // chains, and the tree check below verifies the result no matter who served it.
+    let mut bootstrap_err: Option<String> = None;
+    // Whoever answers the first pass serves the second (the member-proven private pull) and
+    // gets the mark_synced credit - completing through a sibling means the GRANTER is
+    // unreachable, and every later step that assumed "the granter" must follow the ladder.
+    let mut boot_peer: Option<(String, iroh::EndpointAddr)> = None;
+    match crate::net::sync::endpoint_addr(&code.endpoint_id, &code.addrs) {
+        Ok(addr) => {
+            match crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr.clone()).await {
+                Ok(stats) => {
+                    tracing::info!(root = %code.root_pubkey, ?stats, "adoption sync complete");
+                    boot_peer = Some((code.endpoint_id.clone(), addr));
+                }
+                Err(e) => bootstrap_err = Some(format!("granter unreachable: {e}")),
+            }
+        }
+        Err(e) => bootstrap_err = Some(format!("bad grant code addresses: {e}")),
+    }
+    if boot_peer.is_none() {
+        for sibling in code.sibling_leaves.iter().take(10) {
+            let Some(leaf_key) = pubkey::decode(sibling) else {
+                continue;
+            };
+            let Ok(Some(record)) = state.directory.resolve_serving(&leaf_key).await else {
+                continue;
+            };
+            if hex::encode(record.record().root) != code.root_pubkey {
+                continue; // a sibling hint for the wrong identity buys nothing
+            }
+            let Ok(ep) = iroh::PublicKey::from_bytes(&record.record().endpoint_id) else {
+                continue;
+            };
+            let Ok(addr) = crate::net::sync::dial_addr(state, &ep.to_string()).await else {
+                continue;
+            };
+            // Bounded per rung: a ladder of dead siblings must cost seconds each, not a
+            // hanging dial apiece - the human is standing at the new computer waiting.
+            let attempt = tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr.clone()),
+            )
+            .await;
+            match attempt {
+                Err(_) => {
+                    tracing::debug!(sibling = %sibling, "sibling bootstrap timed out");
+                    continue;
+                }
+                Ok(Err(e)) => {
+                    tracing::debug!(sibling = %sibling, "sibling bootstrap failed: {e:#}");
+                    continue;
+                }
+                Ok(Ok(stats)) => {
+                    tracing::info!(root = %code.root_pubkey, sibling = %sibling, ?stats,
+                        "adoption sync completed through a sibling - the granter was unreachable");
+                    crate::net::sync::add_peer_with_leaf(
+                        &state.node_db,
+                        &code.root_pubkey,
+                        &ep.to_string(),
+                        Some(sibling),
+                    )
+                    .await
+                    .map_err(AppError::Internal)?;
+                    boot_peer = Some((ep.to_string(), addr));
+                    break;
+                }
+            }
+        }
+    }
+    let Some((boot_endpoint, boot_addr)) = boot_peer else {
+        return Err(AppError::Internal(anyhow!(
+            "initial sync failed: {} (and no sibling from the code answered)",
+            bootstrap_err.unwrap_or_else(|| "no granter address".into())
+        )));
+    };
 
     let db = state
         .user_dbs
@@ -375,16 +503,16 @@ pub async fn complete(
         .await
         .context("clearing pending adoption")
         .map_err(AppError::Internal)?;
-    crate::net::sync::mark_synced(&state.node_db, &code.root_pubkey, &code.endpoint_id)
+    crate::net::sync::mark_synced(&state.node_db, &code.root_pubkey, &boot_endpoint)
         .await
         .map_err(AppError::Internal)?;
 
     // Second pass, now that we agent the identity: the first sync ran proof-less (no identities
-    // row yet), so the granter rightly withheld the private chains. This one carries our member
-    // proof and pulls them - adoption ends with the private state here, not eventually.
-    let addr = crate::net::sync::endpoint_addr(&code.endpoint_id, &code.addrs)
-        .map_err(|e| AppError::BadRequest(format!("bad grant code addresses: {e}")))?;
-    let stats = crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr)
+    // row yet), so the peer rightly withheld the private chains. This one carries our member
+    // proof and pulls them - adoption ends with the private state here, not eventually. Same
+    // peer as the first pass: when the ladder completed through a sibling, "the granter" is
+    // exactly who this used to dial, and exactly who isn't answering.
+    let stats = crate::net::sync::sync_with_peer(state, &code.root_pubkey, boot_addr)
         .await
         .map_err(|e| AppError::Internal(anyhow!("private-chain sync failed: {e}")))?;
     tracing::info!(root = %code.root_pubkey, ?stats, "adoption private sync complete");
