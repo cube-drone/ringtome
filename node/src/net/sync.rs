@@ -896,6 +896,15 @@ pub async fn sync_with_peer(
     let bodies_fetched =
         crate::record::documents::fetch_missing_bodies(state, root_hex, addr).await;
 
+    // A body landing is availability moving, even though no frontier did: nodes that heard
+    // the header from us may have dialed back for bytes we didn't have yet (the multi-hop
+    // race: device -> this node -> follower). Ride the fan-out edge again so they can finish;
+    // when entries also landed the caller fires the same edge and this one is a cheap
+    // idempotent second pass.
+    if bodies_fetched > 0 {
+        crate::fanout::after_public_move(state, root_hex).await;
+    }
+
     Ok(ExchangeStats {
         received,
         rejected,
@@ -1010,13 +1019,20 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     }
     conn.close(0u8.into(), b"done");
 
-    // The responder's half of the body lane: entries just landed, and the peer that sent
-    // their headers is online RIGHT NOW - dial back by endpoint id and fetch the referenced
-    // blobs, instead of sitting bodiless until our own next initiated sync (eager push makes
-    // the WRITER the initiator, so "catch up next time" meant an editor on this node could
-    // stare at a null body for a whole anti-entropy interval). Spawned: never blocks or fails
-    // the exchange.
-    if received > 0 {
+    // The responder's half of the body lane: the peer that dialed us is online RIGHT NOW -
+    // dial back by endpoint id and fetch any referenced blobs we lack, instead of sitting
+    // bodiless until our own next initiated sync (eager push makes the WRITER the initiator,
+    // so "catch up next time" meant an editor on this node could stare at a null body for a
+    // whole anti-entropy interval). Spawned: never blocks or fails the exchange.
+    //
+    // UNGATED on `received` (2026-08-06): this used to run only when entries landed, which
+    // left a follower that lost the multi-hop body race (header pushed onward before its body
+    // arrived at the pusher) bodiless until the author's NEXT post - the only exchanges such
+    // a node ever sees are inbound pushes. Now every inbound exchange is a chance to finish;
+    // the walk exits at one query when nothing is missing. The `after_public_move` on a
+    // fruitful fetch is the same edge the initiator side rides: bodies arriving here may be
+    // the bytes a node further downstream is waiting on.
+    {
         let state = state.clone();
         let remote = conn.remote_id();
         tokio::spawn(async move {
@@ -1025,6 +1041,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
                 crate::record::documents::fetch_missing_bodies(&state, &root_hex, addr).await;
             if fetched > 0 {
                 tracing::info!(root = %root_hex, fetched, "backfilled bodies after serving sync");
+                crate::fanout::after_public_move(&state, &root_hex).await;
             }
         });
     }

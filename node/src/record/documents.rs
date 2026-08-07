@@ -1546,6 +1546,17 @@ pub async fn fetch_missing_bodies(
     root_hex: &str,
     addr: iroh::EndpointAddr,
 ) -> u64 {
+    // Test-only, LOCAL_TEST-gated: hold the body lane open for a beat so the multi-hop race
+    // (headers pushed onward before their bodies arrive here) can be made deterministic
+    // instead of lucky - the fanout probe sets this on the middle node. Production ignores it.
+    if state.config.local_test {
+        if let Some(ms) = std::env::var("RINGTOME_TEST_BODY_LAG_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        }
+    }
     let result: anyhow::Result<u64> = async {
         let db = state.user_dbs.get(root_hex).await?;
         let mut missing: Vec<iroh_blobs::Hash> = Vec::new();

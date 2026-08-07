@@ -8,8 +8,8 @@
     what came" (Journal, then index), and how a feed READS is decided when its reader opens it.
 */
 const assert = require("node:assert");
-const { sql, HOST_B } = require("./fetch.cjs");
-const { makeUserFetch } = require("./helpers.cjs");
+const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
+const { makeUserFetch, decodeCode } = require("./helpers.cjs");
 
 const settle = async (fn, tries = 80) => {
     for (let i = 0; i < tries; i++) {
@@ -365,5 +365,101 @@ describe("the feed endpoint", () => {
     it("refuses a feed that isn't yours", async () => {
         const resp = await voice(`api/identity/${myRoot}/feed`);
         assert.ok([403, 404].includes(resp.status), `got ${resp.status}`);
+    });
+});
+
+/*
+    The two-hop body lane: a post AUTHORED on a secondary device must reach a follower on a
+    third node with its BODY - not just its journal row.
+
+    Headers ride entry sync; bodies ride iroh-blobs, joined by an after-exchange fetch. The
+    race this pins: the middle node (the device that knows the follower) pushes headers onward
+    the moment they land, BEFORE its own body backfill from the authoring device completes -
+    so the follower's dial-back for bytes can arrive at a node that doesn't have them yet.
+    The property (not the mechanism): the follower ends up with the body anyway, with no
+    manual sync and no second post. Today that works because a fruitful body fetch re-rides
+    the fan-out edge on both sides of an exchange.
+*/
+(HOST_B && HOST_C ? describe : describe.skip)("fan-out: the two-hop body", function () {
+    this.timeout(120000);
+
+    const settle = async (fn, tries = 120) => {
+        for (let i = 0; i < tries; i++) {
+            const got = await fn();
+            if (got) return got;
+            await new Promise((r) => setTimeout(r, 250));
+        }
+        return null;
+    };
+
+    it("a secondary device's post reaches a remote follower with its body", async () => {
+        // Alice: senior device on A, second device on B (the adopt ceremony).
+        const a1 = await makeUserFetch({ prefix: "hopsenior" });
+        const root = (await (await a1("api/identity", { method: "POST" })).json()).root_pubkey;
+        const a2 = await makeUserFetch({ prefix: "hopdevice", host: HOST_B });
+        const request = await (await a2("api/identity/adopt/begin", { method: "POST" })).json();
+        const grant = await (
+            await a1(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await a2("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+
+        // Bob, on a third node, discovers Alice THROUGH THE SENIOR DEVICE ONLY - so the
+        // demand record (who to push to) lives on A1, and A2 has never heard of Bob's node.
+        const { toBase58 } = await import("../../js/speakable.js");
+        const viaA1 = toBase58((await (await a1("api/node")).json()).endpoint_id);
+        const bob = await makeUserFetch({ prefix: "hopbob", host: HOST_C });
+        const bobRoot = (await (await bob("api/identity", { method: "POST" })).json()).root_pubkey;
+        assert.equal((await bob(`api/id/${root}/profile?via=${viaA1}`)).status, 200);
+        await follow(bob, bobRoot, root, 80);
+        assert.ok(
+            await settle(async () => {
+                const { rows } = await sql(
+                    `SELECT 1 FROM subscriptions WHERE local_root = '${bobRoot}'
+                     AND foreign_root = '${root}'`,
+                    HOST_C
+                );
+                return rows.length ? true : null;
+            }),
+            "the follow reached C's memo"
+        );
+
+        // The post, from the SECOND device. After this line: no manual syncs, no second
+        // post, nothing on Bob's node asks for anything. Two hops on their own.
+        const d = await (
+            await a2(`api/identity/${root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "Two Hops",
+                    body: "written on the second device",
+                    format: "plaintext",
+                }),
+            })
+        ).json();
+        const pub = await a2(`api/identity/${root}/docs/${d.doc_id}/publish`, { method: "POST" });
+        const postId = JSON.parse(await pub.text()).post_id;
+
+        const rows = await settle(async () => {
+            const j = await journalOf(bobRoot, HOST_C);
+            return j.length ? j : null;
+        });
+        assert.ok(rows, "the post crossed both hops into the follower's journal");
+        assert.equal(rows.length, 1, "exactly one feed row - no duplicates from the re-rides");
+        assert.equal(rows[0].doc_id, postId);
+        assert.equal(rows[0].title, "Two Hops");
+
+        // And the WORDS arrive - resolved through the same route the feed UI reads, from
+        // Bob's own node. This is the assertion the direct-path test never made.
+        const body = await settle(async () => {
+            const resp = await bob(`id/${root}/docs/${postId}/body`);
+            if (resp.status !== 200) return null;
+            return await resp.text();
+        });
+        assert.equal(body, "written on the second device", "the body itself crossed both hops");
     });
 });

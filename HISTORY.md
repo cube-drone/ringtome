@@ -3072,3 +3072,31 @@ pairing, posts from both devices, strike from the senior - the disowned post lea
 feed, the honest one stands. What was NOT built from the pitch: replay-resistance and
 rebuild-from-journal assertions (already pinned by the existing repudiation suite) and the
 restart-invariance one (the journal is durable SQL; deletion is trivially restart-safe).
+
+## 2026-08-06: the two-hop body race
+
+ChatGPT's second pitch, and again the mechanism analysis held up under code reading: headers
+ride entry sync, bodies ride iroh-blobs in a separate after-exchange pass - and on the
+responder path, fan-out (push headers onward) fires BEFORE the spawned body backfill. So a
+post authored on a second device could reach a follower two hops away as a journal row whose
+body dial-back found nothing - and since the follower only ever RESPONDS (it never initiates
+sync for a mirrored persona) and its dial-back was gated on entries-received, it stayed
+bodiless until the author's next post. Even the pitch's sharpest claim was literal: the body
+backfill's comment says "Bodies arrived without any frontier moving" and bumps only the
+local view epoch.
+
+Two small changes close it, pinning the property (the pitch's option b) rather than
+reordering the pipeline: (1) a fruitful body fetch re-rides `after_public_move` on both
+sides of an exchange - bodies arriving here may be the bytes a node downstream is waiting
+on; (2) the responder dial-back is ungated - every inbound exchange is a chance to finish,
+and the walk exits at one query when nothing is missing. Fan-out still pushes headers
+immediately (notification speed is a feature); the body follows one poke behind.
+
+Made deterministic with a LOCAL_TEST-only knob (RINGTOME_TEST_BODY_LAG_MS holds the middle
+node's body lane open) and probed on three scratch nodes: journal row lands with the body
+404 in the race window, then the body arrives with no manual sync and no second post.
+Planted (old gate restored): the body never arrives - the exact permanent bodiless state
+predicted. Pinned knob-free in the integration suite as a two-hop liveness test (adopt
+ceremony + third-node follower + body resolved through the follower's own serving route).
+Residual ledgered: the recovery-sweep half (retryable source set) for the transient-failure
+case.
