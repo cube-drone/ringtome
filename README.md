@@ -11,6 +11,33 @@ federated, unapologetically Old Internet.
 > that's wrong. Don't read the plan cover-to-cover: grep its headers and read the sections you
 > need (see *The documents*, below).
 
+## The documents
+
+- [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — the doctrine: architecture, identity model, trust model,
+  threat model, every load-bearing design decision with its reasoning. Edited in place; always
+  current. **Too big to read whole — that's accepted**: grep the `##`/`###` headers, read the
+  sections your task touches, and follow its cross-references by header name.
+- [`NEXT_STEPS.md`](NEXT_STEPS.md) — the trajectory: where the ladder stands, the standing
+  residuals, and the unordered tiers ahead. Forward-looking only.
+- [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status notes and
+  residuals as recorded at the time. New work appends at the bottom in full detail; when the tail
+  grows unwieldy it is folded into the era narrative above it. Read the tail for recent status.
+- [`NOTES_APP.md`](NOTES_APP.md) — the first application spec: multi-device encrypted notes on
+  the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
+  Also the discovery narrative for the file layer, versioned documents, and taxonomies — the
+  canonical statements graduated to PROJECT_PLAN's Data Layer.
+- [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
+  language mapping.
+- [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and
+  the pragmatism rules; the patterns every new file is expected to hold.
+- [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
+  a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
+- [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
+  cautionary tales.
+
+**Suggested first hour:** this file top to bottom; PROJECT_PLAN's *Vision* and *Doctrine*
+sections; GLOSSARY skimmed for unfamiliar terms; then NEXT_STEPS to see what's in motion.
+
 ## The shape of the system
 
 Seven load-bearing ideas; everything else hangs off one of them. Each pointer names a
@@ -65,7 +92,7 @@ PROJECT_PLAN section.
 ## Quickstart
 
 ```sh
-cd node && just start       # server + UI watchers in one terminal (Ctrl-C stops everything)
+cd node && just install && just start       # server + UI watchers in one terminal (Ctrl-C stops everything)
 ```
 
 Other useful commands (from `node/`, unless cargo):
@@ -81,40 +108,3 @@ cargo run --bin ringtome    # run a node (see node/README.md for configuration)
 ./target/debug/ringtome inspect <hex>   # pretty-print any signed entry
 ```
 
-## Where things stand (as of 2026-07-22)
-
-The sequential ladder is complete — signed canonical entries, the key tree, two-node sync behind
-the validation gate, discovery (pkarr/mainline, field-tested against the real DHT), private
-chains, the typed store layer, the file layer, versioned documents with divergence handling, the
-media ingest pipeline, the Turso substrate with journal + persisted materialized views, the
-embedded UI, and background sync with eager push. Current work is Tier 4's client/notes lane
-(annotations shipped; taxonomies next). The authoritative version of this paragraph is
-[`NEXT_STEPS.md`](NEXT_STEPS.md) ("Where we are") — if the date above looks old, trust that file.
-
-## The documents
-
-- [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — the doctrine: architecture, identity model, trust model,
-  threat model, every load-bearing design decision with its reasoning. Edited in place; always
-  current. **Too big to read whole — that's accepted**: grep the `##`/`###` headers, read the
-  sections your task touches, and follow its cross-references by header name.
-- [`NEXT_STEPS.md`](NEXT_STEPS.md) — the trajectory: where the ladder stands, the standing
-  residuals, and the unordered tiers ahead. Forward-looking only.
-- [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status notes and
-  residuals as recorded at the time. New work appends at the bottom in full detail; when the tail
-  grows unwieldy it is folded into the era narrative above it (last compressed 2026-07-29, with the
-  per-unit originals left in git). Read the tail for recent status.
-- [`NOTES_APP.md`](NOTES_APP.md) — the first application spec: multi-device encrypted notes on
-  the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
-  Also the discovery narrative for the file layer, versioned documents, and taxonomies — the
-  canonical statements graduated to PROJECT_PLAN's Data Layer.
-- [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
-  language mapping.
-- [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and
-  the pragmatism rules; the patterns every new file is expected to hold.
-- [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
-  a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
-- [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
-  cautionary tales.
-
-**Suggested first hour:** this file top to bottom; PROJECT_PLAN's *Vision* and *Doctrine*
-sections; GLOSSARY skimmed for unfamiliar terms; then NEXT_STEPS to see what's in motion.
