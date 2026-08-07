@@ -1,18 +1,15 @@
 # Ringtome — Style
 
-The patterns we hold across the whole codebase. Sibling documents: API_OLD.md is the *why*
-(autopsy of the last system), REFACTOR.md is the ledger of known violations, PROJECT_PLAN.md is
-what we're building. This one is *how we write it* — and the acceptance test for everything below
-is the same: **the codebase must remain holdable by a human who did not write most of it.** Code
-is written under the assumption that its author (robot or Curtis) will forget how it works within
-weeks; every rule here is a defense against that prison of context.
+* If we've taken on tech debt, record it in [REFACTOR.md](./REFACTOR.md).
+* Write all code defensively under the assumption that _context will disappear rapidly_: Curtis is forgetful
+    and LLMs don't maintain it at all.
 
 ## Names
 
 - **Blunt, descriptive, useful. No clever names.** A module that parses pubkeys is `pubkey`; a
   clock is `clock`; the keystore is `keystore`. If a name needs a decoder ring or a backstory, it
-  is wrong. (Humor is welcome — in test data, fixtures, and commit messages, where `EVIL TWIN`
-  and `hotdog-stand` live — never in the names code must be read through.)
+  is wrong.
+  - (Humor is welcome — in test data, fixtures, comments, and commit messages, not in the code itself)
 - **Words are free.** Reading is more expensive than writing, forever. `epoch_entry` beats `ke`;
   `recovery_seed` beats `rs`. Tolerated shorthand: `i`/`j` in loops, `x` in lambdas, and
   pervasive tightly-local idiom (`w`/`r` in the CBOR codec, `e` for an entry in a loop over
@@ -23,7 +20,7 @@ weeks; every rule here is a defense against that prison of context.
   site; the repetition is the searchability.
 - **Name the tuple.** A function returning `(SqlitePool, SigningKey, EpochKeys)` should return a
   struct whose field names document it (`PrivateStore`). Interfaces are documentation.
-- Shared vocabulary gets written down (api_old's `nomenclature.md`; here, GLOSSARY.md). Words
+- Shared vocabulary gets written down ( [GLOSSARY.md](./GLOSSARY.md)). Words
   cost nothing and drift costs plenty.
 
 ## Comments
@@ -40,6 +37,12 @@ weeks; every rule here is a defense against that prison of context.
   like code: a change that falsifies a header updates the header in the same pass.
 - Config structs use the commented-field style (every field: inline purpose + default). It is the
   one place per-line commentary is the point.
+- **Citation Needed**. Example: "Will add full encryption when we get to Part 3" -
+  what is Part 3? That may be something we're talking about in the current conversation but
+  if the context doesn't live with the code, it will be lost.
+  If we can, link this to a document explaining what Part 3 is - if no such document
+  can be found, consider rewriting without "Part 3" and simply writing in more detail locally,
+  or creating the document where whatever rollout plan was discussed lives now.
 
 ## Modules and composition
 
@@ -97,8 +100,7 @@ weeks; every rule here is a defense against that prison of context.
   risk lives, so the tests run the actual queries against actual data (the local-test SQL
   passthrough and throwaway nodes exist to make this cheap).
 - **Unit tests are reserved for isolated boundaries and pure logic:** codecs, chain validation,
-  key-tree resolution, LWW folds, crypto round-trips — the proto crate and the node's pure
-  corners. That's also where the hard tests (property tests, fuzz targets) attach.
+  key-tree resolution, LWW folds, crypto round-trips.
 - **Logic that can be a value-in, value-out function belongs in a file that is one** - gathered
   where it can be interrogated without a node, a browser, or a fixture (`ringtome-proto`;
   `node/js/pure/`). Extract freely when the logic is a *decision over values the caller already
@@ -119,8 +121,11 @@ weeks; every rule here is a defense against that prison of context.
   tripwire.
 - **No automated UI testing.** Selenium-class suites are brittle and end up ignored. The
   integration suite drives the API; humans drive the UI.
-- Test mode tunes work factors (minimal Argon2 params), it never forks a security code path
-  (api_old's dev-plaintext-passwords lesson). Enforcement paths run in development.
+  - encourage UI-based flows to lean even more heavily into "pure" testing.
+  - (edit: this is a rule derived from human-based workflows, Curtis is increasingly
+    concerned that this may be tying his poor LLM's hands, especially given they struggle
+    to interact directly with the UI)
+- Test mode can tune work factors (minimal Argon2 params, for example) to speed up CI.
 
 ## Abstraction and pragmatism
 
@@ -171,12 +176,15 @@ weeks; every rule here is a defense against that prison of context.
 - **Good-enough speed.** Fast enough not to annoy a human (~100–500ms for interactions) is fast
   enough. Architecture may be chosen for model fit (per-identity DB files, recompute-on-read
   views); functions are not optimized below the annoyance threshold without a measurement.
+- **There's a Widget for that.** Examples include "Person" and the document-editor: we like to build
+  complex display objects that can own rendering for a wide variety of shapes of a concept.
 
 ## Working on it together
 
-- **Expand, don't replace.** The robot's job includes explaining errors, summarizing the complex
+- **Expand, don't replace.** The LLM's job includes explaining errors, summarizing the complex
   parts, and reasoning through problems out loud — so Curtis can meaningfully hold and contribute
   to code he didn't type. A change nobody can explain is a regression even if the tests pass.
 - Plans and docs move in the same commit as the code that changes them (NEXT_STEPS status,
   PROJECT_PLAN sections, this file). The documents are load-bearing; see Comments.
 - Preserve the humor you find. Nobody is required to generate any.
+
