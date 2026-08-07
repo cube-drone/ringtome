@@ -213,6 +213,11 @@ CREATE TABLE feed_journal (
     PRIMARY KEY (reader_root, author_root, doc_id)
 );
 CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
+-- The other direction: `fanout::retract_vanished` reconciles BY AUTHOR on every public move,
+-- and both the PK and the reader index lead with reader_root - without this, that reconcile
+-- is a full-table scan of every reader's rows. doc_id rides along so the DISTINCT doc_id
+-- listing never touches the table itself.
+CREATE INDEX feed_journal_by_author ON feed_journal (author_root, doc_id);
 
 -- ---------------------------------------------------------------------------------------------
 -- The media bake registry: external media a publication pulled INTO the network, one row per

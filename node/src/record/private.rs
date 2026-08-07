@@ -588,10 +588,14 @@ pub struct PrivateView {
 }
 
 impl PrivateView {
+    /// Readers walk their collection as a contiguous `range` of the `(collection, key)` map,
+    /// never a filter over the whole of it: a filter is O(everything) per call, and
+    /// `Store::contacts` calls a reader once per contact collection - at large follow counts
+    /// the full-map scan made that quadratic.
     pub fn registers_in(&self, collection: &str) -> Vec<RegisterValue> {
         self.registers
-            .iter()
-            .filter(|((c, _), _)| c == collection)
+            .range((collection.to_string(), String::new())..)
+            .take_while(|((c, _), _)| c == collection)
             .map(|((_, k), (v, stamp))| RegisterValue {
                 key: k.clone(),
                 value: v.clone(),
@@ -602,8 +606,9 @@ impl PrivateView {
 
     pub fn set_elements(&self, collection: &str) -> Vec<SetElement> {
         self.sets
-            .iter()
-            .filter(|((c, _), (present, _, _))| c == collection && *present)
+            .range((collection.to_string(), String::new())..)
+            .take_while(|((c, _), _)| c == collection)
+            .filter(|(_, (present, _, _))| *present)
             .map(|((_, e), (_, value, stamp))| SetElement {
                 element: e.clone(),
                 value: value.clone(),
@@ -619,8 +624,9 @@ impl PrivateView {
     pub fn set_elements_ordered(&self, collection: &str) -> Vec<SetElement> {
         let mut items: Vec<(&Stamp, SetElement)> = self
             .sets
-            .iter()
-            .filter(|((c, _), (present, _, _))| c == collection && *present)
+            .range((collection.to_string(), String::new())..)
+            .take_while(|((c, _), _)| c == collection)
+            .filter(|(_, (present, _, _))| *present)
             .map(|((_, e), (_, value, stamp))| {
                 (
                     stamp,

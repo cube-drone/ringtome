@@ -44,13 +44,23 @@ pub async fn record_ask(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Resu
     Ok(())
 }
 
-/// Every node that has asked about this persona - the fan-out address list.
+/// How recent an ask must be to earn a push. An asker who still cares re-asks on every wake
+/// pass (`idface::refresh_followed_pass` - staleness-triggered, so even a long partition
+/// re-asks on heal), which means a week of silence is demand that LEFT, not demand at rest -
+/// and the push was only ever latency; the pull on re-contact is what carries correctness.
+/// Same window as `identity_peers`' pruning (`sync::PEER_FORGET_MS`), for the same reason.
+/// The table itself still grows without bound - its pruning is the retention debt recorded
+/// in the schema comment and NEXT_STEPS (Popularity Problems); this bounds the DIALS.
+const ASK_FRESHNESS_MS: i64 = 7 * 24 * 3600 * 1000;
+
+/// Every node that asked about this persona recently - the fan-out address list.
 pub async fn askers_of(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(
-            "SELECT endpoint_id FROM identity_demand WHERE root_pubkey = ?1
+            "SELECT endpoint_id FROM identity_demand
+             WHERE root_pubkey = ?1 AND last_asked_ms > ?2
              ORDER BY last_asked_ms DESC",
-            (root_hex,),
+            (root_hex, now_ms() - ASK_FRESHNESS_MS),
         )
         .await
         .context("reading demand")?;
