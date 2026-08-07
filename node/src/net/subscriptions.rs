@@ -93,12 +93,35 @@ pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) 
         .await
         .map_err(|e| anyhow::anyhow!("reading the contact ledger: {e}"))?;
 
+    // The eager set BEFORE the rewrite, so the rewrite's delta is visible after: an edge
+    // crossing from silent to eager is a new follow (backfill their page into this feed), and
+    // one crossing out is an unfollow (excise them from it). Eagerness > 0 is the feed
+    // criterion, deliberately narrower than `keep`: a trust-only or rebroadcast-only edge
+    // keeps its subscription row but earns no feed rows, and dropping the interest dial to
+    // its bottom stop is an unfollow even when trust remains.
+    let eager_before: std::collections::HashSet<String> = state
+        .node_db
+        .fetch_all(
+            "SELECT foreign_root FROM subscriptions
+             WHERE local_root = ?1 AND eagerness IS NOT NULL AND eagerness > 0",
+            (root_hex,),
+        )
+        .await
+        .context("reading the eager set before the rewrite")?
+        .into_iter()
+        .map(|(r,): (String,)| r)
+        .collect();
+
     let now = now_ms();
     let mut keep: Vec<String> = Vec::new();
+    let mut eager_now: Vec<String> = Vec::new();
     for (foreign_root, facts) in contacts {
         let edge = edge_of(&facts);
         if edge.is_empty() {
             continue;
+        }
+        if edge.eagerness.is_some_and(|e| e > 0) {
+            eager_now.push(foreign_root.clone());
         }
         keep.push(foreign_root.clone());
         state
@@ -144,6 +167,16 @@ pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) 
         )
         .await
         .context("clearing withdrawn subscriptions")?;
+
+    // The feed consequences of the delta, in the same breath as the memo itself. Both live
+    // in fanout (feed_journal is its table); both are idempotent, so re-running a refresh
+    // that saw no change costs one DELETE that matches nothing.
+    crate::fanout::excise_unfollowed(state, root_hex, &eager_now)
+        .await
+        .context("excising unfollowed feeds")?;
+    for author in eager_now.iter().filter(|a| !eager_before.contains(*a)) {
+        crate::fanout::backfill_follow(state, root_hex, author).await;
+    }
     Ok(())
 }
 

@@ -84,6 +84,13 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     if readers.is_empty() {
         return Ok(0); // nobody here follows them - the common case, and it costs one query
     }
+    journal_page(state, author_root, &readers).await
+}
+
+/// The shelf's newest page, journaled to exactly these readers. The shared bottom half of
+/// both arrival paths: a public move journals to every current follower (`journal_for`), and
+/// a NEW follow journals to its one new reader (`backfill_follow`).
+async fn journal_page(state: &AppState, author_root: &str, readers: &[String]) -> Result<usize> {
     let db = state
         .user_dbs
         .get(author_root)
@@ -97,7 +104,7 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
 
     let now = now_ms();
     let mut journaled = 0;
-    for reader in &readers {
+    for reader in readers {
         for p in &posts {
             // arrived_ms survives the upsert: it answers "when did this reach me", and a
             // re-publication changes what the post says, not when it arrived.
@@ -129,6 +136,63 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
         journaled += 1;
     }
     Ok(journaled)
+}
+
+/// A new follow's backfill: the author's newest page, journaled to this one reader, NOW -
+/// not whenever the author next moves. Without this, the common gesture (follow from their
+/// /id page, which already resynced them on visit) followed nothing: the follow-moment sync
+/// receives zero, `after_public_move` never fires, and the feed stays empty until the author
+/// next posts. Same burst-to-bound as any backfill: their latest page, not their life story.
+///
+/// Infallible by design: the caller is the subscription memo's refresh, and a persona whose
+/// database is not here yet (followed by pasted address, never synced) must not fail it -
+/// the first real sync will fire `after_public_move` and journal them then.
+pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &str) {
+    let just_them = [reader_root.to_string()];
+    match journal_page(state, author_root, &just_them).await {
+        Ok(n) if n > 0 => {
+            tracing::info!(reader = %reader_root, author = %author_root, "backfilled a new follow");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::debug!(reader = %reader_root, author = %author_root, error = ?e,
+                "follow backfill skipped - their shelf isn't here yet");
+        }
+    }
+}
+
+/// Unfollow (or block) excises: every journal row from an author this reader no longer
+/// eagerly follows is deleted, in the same breath that drops the subscription. "Don't show"
+/// means it retroactively too - the feed is the reader's room, and stopping listening to
+/// someone includes what they already said in it. The rows are a node-level delivery memo,
+/// not history (the posts still exist on the author's shelf; a re-follow backfills them
+/// right back), so deletion loses nothing anyone owns.
+///
+/// `followed` is the CURRENT eager set; own rows are exempt (your posts are in your feed
+/// because you are hosted here, not because you follow yourself).
+pub async fn excise_unfollowed(
+    state: &AppState,
+    reader_root: &str,
+    followed: &[String],
+) -> Result<()> {
+    let quoted: Vec<String> = followed
+        .iter()
+        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|r| format!("'{r}'"))
+        .collect();
+    state
+        .node_db
+        .execute(
+            &format!(
+                "DELETE FROM feed_journal WHERE reader_root = ?1 AND author_root != ?1
+                 AND author_root NOT IN ({})",
+                if quoted.is_empty() { "''".into() } else { quoted.join(",") }
+            ),
+            (reader_root,),
+        )
+        .await
+        .context("excising unfollowed authors from the feed journal")?;
+    Ok(())
 }
 
 /// Dial the nodes that have asked about this persona, in the background - a dead asker's

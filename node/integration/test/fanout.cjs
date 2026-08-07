@@ -134,6 +134,68 @@ describe("fan-out: the arrival journal", () => {
         assert.ok(grew, "the real follower's journal grew");
         assert.deepEqual(await journalOf(shunRoot), [], "the zero-interest reader heard nothing");
     });
+
+    it("a NEW follow backfills the author's page - history arrives at follow time", async () => {
+        // The author has posted twice already; this reader arrives late. Without backfill,
+        // the follow-moment sync receives nothing (nothing moved), and the feed stays empty
+        // until the author's NEXT post - the gap the follow itself is supposed to close.
+        const late = await makeUserFetch({ prefix: "fanlate" });
+        const lateRoot = (await (await late("api/identity", { method: "POST" })).json())
+            .root_pubkey;
+        await follow(late, lateRoot, authorRoot, 60);
+        const rows = await settle(async () => {
+            const j = await journalOf(lateRoot);
+            return j.length >= 2 ? j : null;
+        });
+        assert.ok(rows, "the existing posts reached the new follower, unprompted");
+        assert.deepEqual(
+            rows.map((r) => r.title),
+            ["First", "Second"],
+            "the author's page, in its own order"
+        );
+        const veteran = await journalOf(readerRoot);
+        assert.equal(
+            rows[0].published_ms,
+            veteran.find((r) => r.title === "First").published_ms,
+            "backfilled rows keep the ORIGINAL date - they interleave, not clump at the top"
+        );
+    });
+
+    it("unfollowing excises their rows - and only theirs", async () => {
+        // The reader says something of their own first, so the excision has an exemption to
+        // prove: your own posts are in your feed because you are hosted here, not because
+        // you follow yourself - unfollowing someone must not touch them.
+        const mine = await (
+            await reader(`api/identity/${readerRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "Mine stays", body: "still here", format: "plaintext" }),
+            })
+        ).json();
+        await reader(`api/identity/${readerRoot}/docs/${mine.doc_id}/publish`, { method: "POST" });
+        await settle(async () => {
+            const j = await journalOf(readerRoot);
+            return j.some((r) => r.title === "Mine stays") ? true : null;
+        });
+
+        await follow(reader, readerRoot, authorRoot, 0);
+        const after = await settle(async () => {
+            const j = await journalOf(readerRoot);
+            return j.some((r) => r.author_root === authorRoot) ? null : j;
+        });
+        assert.ok(after, "the unfollowed author's rows are gone");
+        assert.ok(
+            after.some((r) => r.title === "Mine stays"),
+            "the reader's own post survived the excision"
+        );
+
+        // And nothing was lost that anyone owns: a re-follow backfills them right back.
+        await follow(reader, readerRoot, authorRoot, 50);
+        const back = await settle(async () => {
+            const j = await journalOf(readerRoot);
+            return j.some((r) => r.author_root === authorRoot) ? j : null;
+        });
+        assert.ok(back, "a change of heart re-earns the page");
+    });
 });
 
 /*

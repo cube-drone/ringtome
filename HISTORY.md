@@ -3020,3 +3020,32 @@ rule it overrides, and the wrap is scoped inside the query.
 Also per Curtis: the feed composer's column floor is 260px - below that the editor's chrome
 crushes even in narrow mode. panes.js grew per-column minimums, applied to drags AND to
 previously-stored widths, so a pref written under the old 140 floor honors the new one on read.
+
+## 2026-08-06: the follow lifecycle earns its feed consequences
+
+Three fixes in one sitting, all at the seam between the public lane and the feed.
+
+**Media documents are not posts.** Publishing a post with baked media mints the media onto
+the same public lane as the post - and every listing surface (the /id shelf, its pager, and
+fanout's journaling) listed it as if it were one, rendering AVIF bytes as text. The filter
+went into `public_docs` itself (the one shelf query all three consumers share): text formats
+only, in SQL, so keyset pages stay full and media is never journaled into feeds at all.
+`feed_page` grew the matching guard so journals written before the filter are harmless -
+no data wipe needed. Plant-validated live: with the shelf clause neutralized, the probe
+reproduced the field bug on the shelf while the feed guard independently held the line.
+
+**A new follow backfills at follow time.** Journaling hung off the frontier edge, and a
+follow moves no frontier - worse, the common gesture (follow from their /id page, which
+resynced them on visit) guaranteed the follow-moment sync received nothing. Now the
+subscription memo's rewrite diffs the eager set (eagerness > 0, the feed criterion - narrower
+than `keep`) and a silent-to-eager crossing journals the author's newest page to that one
+reader via `fanout::backfill_follow`. Same burst-to-bound as ever: their latest page, not
+their life story, interleaved at original published_ms. Infallible by design - a followee
+whose shelf isn't here yet just waits for the first real sync to fire the normal edge.
+
+**Unfollowing excises.** The same rewrite's delta drives `fanout::excise_unfollowed`: rows
+from authors outside the current eager set are deleted in the same breath that drops the
+subscription - "don't show" means it retroactively. Own rows are exempt (your posts are in
+your feed because you're hosted, not because you follow yourself), and nothing anyone owns
+is lost: a re-follow backfills the page right back. Live-probed on a scratch node: follow
+backfills Alpha+Beta, unfollow leaves only "Mine stays", re-follow restores all three.

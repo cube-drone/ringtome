@@ -71,11 +71,7 @@ Owed inside those directions, and easy to lose because the surfaces around them 
   prune to a window before any node hosts strangers; (4) **rebroadcast** - the push fires only
   for personas this node authors (relaying someone else's lane is a consent question); the
   rebroadcast dial is recorded and unread; (5) eventually, **ranking** - deliberately absent:
-  chronology is the whole ordering, interest shapes rendering only; (6) **follow-time journal
-  backfill** (surfaced 2026-08-05 by the fake network's first-born persona): journaling hangs
-  off the frontier EDGE, and a follow moves no frontier - so a fresh follow's feed stays empty
-  until the followee next posts. The fix is one call: a new subscription row triggers
-  `journal_for` for that one reader-author pair.
+  chronology is the whole ordering, interest shapes rendering only.
 - **Media baking's deferred edges** (opened 2026-08-06 with the publication bake): (1)
   **video**, both kinds, refused with a tombstone for now - wants the preview/segment story;
   (2) **provenance on the public header** - the bake registry holds it node-locally;
