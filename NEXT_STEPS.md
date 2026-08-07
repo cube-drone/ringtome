@@ -8,6 +8,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ## Near-Term Goals
 
+### ChatGPT's three proposed tests:
+* get them and pitch them
+
 ### Private Notes
 
 * Import/export bucket or whole persona
@@ -24,7 +27,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Public posts and fan-out
 
-* "poll"? what do you mean by that?
 * Posts link to a post-specific page (each post has its own location)
 * Search my posts
 * Search my feed
