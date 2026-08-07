@@ -3280,4 +3280,12 @@ Two catches worth their ink, both found because plants refused to fail:
 
 Also: the wake pass makes DEMAND RETENTION safe to build - their node can prune quiet
 askers aggressively because askers who still care re-ask on every wake. The two halves make
-each other's settings correct.
+each other's settings correct. Curtis's partition question sharpened both points: the pass
+is STALENESS-triggered, not wake-triggered, so a partition just keeps the reunion attempt
+standing until connectivity returns - and pruning can never cost data, because the re-ask
+is a full exchange that PULLS the pushless window (pushes are latency; the pull on
+re-contact is correctness). The question also surfaced a real bug: failures advance no
+ordering key, so a partition re-dialed the same top-of-cap mirrors every beat forever while
+the tail starved. Fixed with an attempt cooldown (5min, in-memory, boot-reset): the cap
+rotates the whole list, partition-time dialing is rate-limited, and heal latency is bounded
+by one cooldown.

@@ -567,6 +567,17 @@ const FOLLOW_REFRESH_STALE_MS: i64 = 30 * 60 * 1000;
 /// Refreshes started per pass - the stampede cap. A laptop waking with hundreds of stale
 /// follows catches up over a few beats, priority-ordered, instead of dialing them all at once.
 const FOLLOW_REFRESH_CAP: usize = 8;
+/// How long an ATTEMPTED mirror rests before the sweep tries it again, success or failure.
+/// Without this, a partition starves the tail: failures don't advance any ordering key, so
+/// the same top-of-list mirrors would be re-dialed every beat forever while everything
+/// behind them is never attempted. The cooldown rotates the cap through the whole list and
+/// rate-limits partition-time dialing; partition-heal latency is bounded by one cooldown.
+const FOLLOW_ATTEMPT_COOLDOWN_MS: i64 = 5 * 60 * 1000;
+
+/// In-memory attempt stamps for the rotation above. Boot-reset by design: the first pass
+/// after boot may retry everything once, which is exactly what a booting node wants.
+static FOLLOW_ATTEMPTS: std::sync::Mutex<Option<std::collections::HashMap<String, i64>>> =
+    std::sync::Mutex::new(None);
 
 /// Follower-side anti-entropy (2026-08-07): the wake pass. For each followed persona whose
 /// mirror has gone stale, re-fetch through the ordinary ladder (zeroth root rung, stored-tree
@@ -584,6 +595,14 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
             .unwrap_or(FOLLOW_REFRESH_STALE_MS)
     } else {
         FOLLOW_REFRESH_STALE_MS
+    };
+    let cooldown_ms = if state.config.local_test {
+        std::env::var("RINGTOME_TEST_FOLLOW_COOLDOWN_MS")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(FOLLOW_ATTEMPT_COOLDOWN_MS)
+    } else {
+        FOLLOW_ATTEMPT_COOLDOWN_MS
     };
     let now = crate::clock::now_ms();
 
@@ -619,6 +638,14 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
         if now - fetched_at < stale_ms {
             continue;
         }
+        {
+            let marks = FOLLOW_ATTEMPTS.lock().expect("attempt marks poisoned");
+            if let Some(at) = marks.as_ref().and_then(|m| m.get(&foreign)) {
+                if now - at < cooldown_ms {
+                    continue; // recently attempted - let the rest of the list have the cap
+                }
+            }
+        }
         let active = hosted
             .get(&local)
             .is_some_and(|account| active_accounts.contains(account));
@@ -637,6 +664,13 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
         .take(FOLLOW_REFRESH_CAP)
         .collect();
     let n = started.len();
+    {
+        let mut marks = FOLLOW_ATTEMPTS.lock().expect("attempt marks poisoned");
+        let map = marks.get_or_insert_with(Default::default);
+        for foreign in &started {
+            map.insert(foreign.clone(), now);
+        }
+    }
     for foreign in started {
         // The revalidate machinery is the whole ladder: dedup against in-flight fetches,
         // stored-tree leaves, the zeroth root rung, last_via.
