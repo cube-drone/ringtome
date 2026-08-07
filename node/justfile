@@ -17,6 +17,14 @@ test_data := "./data/test"
 default:
     @just --list
 
+# --- install ---------------------------------------------------------------
+
+# Install every dependency the app needs to run (assumes node and rust already
+# exist): npm packages for the UI and the integration harness, and the Rust
+# workspace's crates via cargo fetch (downloads only - `just build` compiles).
+install: ui-install integration-install
+    cd "{{workspace}}" && cargo fetch
+
 # --- build / check ---------------------------------------------------------
 
 # Compile the workspace (debug).
