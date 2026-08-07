@@ -96,6 +96,37 @@ Does a mutual follow+trust make a "friend"?
   * Fork-aftermath ceremony (the Mallowy case): owner-facing "your key doubled, here's the
     ceremony" flow; post-restore write-fence; the root-chain fork tiebreaker stays deferred.
 
+### Popularity Problems
+
+Making the 50k-in/50k-out user survivable. The follow ledger is assumed small in many places
+(`subscriptions.rs` says so outright); every existing cap is on the read-a-page or dial-a-peer
+axis, none on the follow-list axis. The steps, roughly worst-first:
+
+* Fan-out journaling: batch `feed_journal` inserts (multi-row VALUES, one transaction) instead
+  of one awaited INSERT per (reader × post) — `fanout.rs`
+* Index `feed_journal.author_root` — `retract_vanished` full-scans the table on every public move
+* Author-side push bounds: `askers_of` has no LIMIT and `sync_peers` dials sequentially with no
+  concurrency, cap, or timeout budget (the follower side got a cap of 8; the author side got none)
+* `identity_demand` retention — the table never prunes (`identity_peers` prunes at 7 days);
+  the wake pass's re-ask makes aggressive pruning safe now
+* `Store::contacts()` is O(F²): `registers_in` linear-scans the whole registers BTreeMap per
+  collection instead of `range()` on the `(collection, key)` key — `record/private.rs`
+* Per-collection read path for the private view: `materialize_service` folds the whole store
+  (200k rows at F=50k) for every private read, even a feed page's few `feed_seen` marks
+* WebSocket mirror: `gather` ships the whole contact list (tens of MB of JSON) on every cursor
+  change, and `stream_cursor` runs a whole-table GROUP BY per second per socket — needs deltas;
+  client side, `mirror.js` clears and rewrites the entire IndexedDB contacts table per update
+* People page: virtualize (50k mounted `<PersonRow>`s, each holding 4 liveQueries ≈ 200k live
+  subscriptions); `/api/directory` is also unbounded
+* Megabyte SQL literals: the 50k-term `NOT IN ('<hex>',...)` strings in the subscription memo
+  rewrite and `excise_unfollowed` → temp table or join
+* First-sync backfill stampede: every follow is "newly eager" ⇒ 50k user-DB opens through the
+  128-slot LRU; frontier sweep stats every root (~100k syscalls/pass)
+* Wake-pass starvation: 8 refreshes/minute means a full rotation over 50k follows takes days —
+  the interest dial needs to actually tier the rotation, not just order it
+* `missing_for_peer` buffers every missing entry in RAM before sending — stream instead
+  (a new device joining a 50k-follow identity = ~200k entries held by the sender)
+
 ### Mixtape & Radio
 *  a mp3 browser
 
