@@ -25,6 +25,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ### Public posts and fan-out
 
 * Posts link to a post-specific page (each post has its own location)
+* obviously the feed should use swatch internet time rather than dumb old localized time, or maybe ... both
 * Search my posts
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets
