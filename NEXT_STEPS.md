@@ -59,12 +59,6 @@ Does a mutual follow+trust make a "friend"?
 ### Public means public (Gateway)
 * the public-HTML browser for this repo
 
-### Marquee Promises
-* Marquee provides fixtures for drop-in functionality: do we still have a use for those?
-* Marquee provides tools to build whole websites: do we still plan to let users host a geocities-style-page?
-* We could do better marquee completion; right now we hardcode a bunch of Marquee stuff but we could do better at
-    pulling Marquee information directly from the spec or active version.
-
 ### Node Management & Federation
 * multiple-personas per user
 * use the spare key to build a new identity, create a new spare key
@@ -114,6 +108,12 @@ Does a mutual follow+trust make a "friend"?
 * tray sidecar, autostart, app-mode window
 * signing the application so it can actually ship to mac/windows boxes
 * consider: a tauri or embedded browser to offer a more encapsulated experience
+
+### Marquee Promises
+* Marquee provides fixtures for drop-in functionality: do we still have a use for those?
+* Marquee provides tools to build whole websites: do we still plan to let users host a geocities-style-page?
+* We could do better marquee completion; right now we hardcode a bunch of Marquee stuff but we could do better at
+    pulling Marquee information directly from the spec or active version.
 
 ### Mobile
 * oh this one's hard as fuck
