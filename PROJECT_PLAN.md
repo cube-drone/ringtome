@@ -1970,11 +1970,16 @@ hints are for. Everything load-bearing survives, re-homed below; the scheme was 
   `nodeID` slot, it is **clickable**. A consumer with no ringtome anywhere follows it like any link and reads
   through that node's public face (Public Means Public); a ringtome-aware consumer may instead **re-home** the path
   at its own lens. One URL serves both audiences, which the scheme served neither of.
-- **`?via=` - reachability.** An unordered, best-effort set of additional node pubkeys, biased toward nodes online
-  at production time, offering more pkarr entry points so discovery does not hinge on any one node. Hints are
-  **keys, never addresses** - a key delegates freshness to pkarr (self-healing while its owner is online); an
-  address would freeze a routing snapshot into the string and rot. Never trusted; verified against `root` on
-  arrival and discarded on failure.
+- **`?via=` - reachability.** An unordered, best-effort set of additional pubkeys offering more discovery entry
+  points so resolution does not hinge on any one node. A via key may be an **identity leaf** of the target (the
+  preferred form, settled 2026-08-07: mint the ~10 most-recently-active leaves, ranked by serving-record
+  freshness - each resolves through a leaf-signed serving record carrying its root binding, checkable against the
+  resolver's revocation memory), a **friend's identity root** ("you can find me through Alice": resolve their
+  rendezvous, ask their nodes), or a bare **node key** (the original form, transport-layer, kept for
+  compatibility). With the target root itself resolvable via the announce, vias as a whole demote from
+  load-bearing to accelerant. Hints are **keys, never addresses** - a key delegates
+  freshness to the DHT (self-healing while its owner is online); an address would freeze a routing snapshot into
+  the string and rot. Never trusted; verified against `root` on arrival and discarded on failure.
 
 ### The prefix gets its name: `/id/` (settled 2026-08-01)
 
@@ -2909,7 +2914,8 @@ tree is simply **its local frontier of the identity chains**: every key it knows
 has synced. That picture is signed (never wrong), possibly stale (missing the newest branches), and converges through
 sync itself:
 
-- **Who:** the chain frontier is the peer list. **Where:** pkarr resolves keys to current addresses, and its
+- **Who:** the chain frontier is the peer list. **Where:** pkarr resolves keys to current addresses, the root's
+  announce rendezvous resolves the identity itself to its live announcers (the discoverability doctrine), and
   record expiry doubles, unchanged, as the liveness signal for the identity's own nodes.
 - **Juniors sync upward from birth:** a new key's signed ancestry (its usurper list) tells it exactly who its
   seniors are, and in the common case it was just talking to its parent's node anyway.
@@ -2922,7 +2928,10 @@ sync itself:
   accepting them is what makes it self-healing.
 - **Partition is latency, not damage.** Two halves of an identity that cannot talk accumulate separate
   single-writer chains; whenever they reconnect, everything merges with zero conflict. The only thing that makes a
-  partition ugly is the same *key* signing in both halves - equivocation, already handled.
+  partition ugly is the same *key* signing in both halves - equivocation, already handled. Reconnection itself is
+  the root rendezvous's job: without it, two honest replicas whose only mutual awareness ran through a dead
+  introducer held the same identity forever apart - the sync graph healed only along edges the adoption ceremonies
+  happened to draw.
 
 **Sync discipline:** each node syncs with a few peers per interval (k = 3-5), **selected randomly over its full
 known peer set - never a fixed subset.** Anti-entropy between up-to-date peers is a kilobyte frontier exchange, and
@@ -3012,22 +3021,46 @@ key (and the root may be cold, retired, or gone), records are keyed by each **no
 
 - Each online node **publishes a record under its own node key**, containing its current addresses (~1000 bytes),
   plus the chain proving that node key is authorized to serve the identity (chain-to-root, verified by the resolver).
-- **Discovery is via the node keys in the reference** (the origin's node / `via` hints), not via the root. The root is the *authority*
-  you verify against; it is not a resolvable address. This is why a bare root alone does not reliably
-  resolve - it needs a hint, a cache hit, or an index to supply a live node key to look up. This is a feature, not a
-  gap: the online nodes are exactly the resolvable ones, and the root need not be online at all.
+- **The root is the *authority* you verify against - and, since 2026-08-06, also a resolvable rendezvous.** A
+  pkarr record cannot be keyed by the root (records are self-signed by the key they live under, and nodes never
+  hold the root key), so root resolution uses the DHT's announce shape instead: every device of an identity
+  announces under a key derived from the root, and a resolver who knows nothing but the root collects the
+  announcers, dials them over Iroh, and believes only whoever presents a valid chain-to-root. Announces are
+  unauthenticated at the DHT layer on purpose - they are hints, never facts, same posture as frontier claims; a
+  poisoned announce costs the resolver one dial and a failed chain check. (The earlier doctrine here - "a bare
+  root does not resolve, and that is a feature" - is deliberately reversed; see the discoverability doctrine
+  below.)
 - Records **expire after a few hours** if not republished. Each node **republishes its own record on a fixed
   schedule** (e.g. hourly) as a background task, for as long as it is online. The record is thus a **liveness
   signal**: it answers "which of this identity's nodes is currently online and reachable?"
 - If all of an identity's nodes go offline, all their records expire, which is correct - there is nobody to serve
   the data. Anyone who previously cached the identity's data still has it; the DHT is only needed for first contact.
 
+**The discoverability doctrine (settled 2026-08-06): participation implies locatability; there are no fully dark
+personas.** Every device of every identity publishes - node-key pkarr record and root-keyed announce alike, one
+tier, no opt-out posture. The reasoning: a network whose thesis is *my files, encrypted, available from anywhere to
+anywhere* cannot also promise that nobody can tell your devices exist - your own devices finding each other and a
+crawler noticing that they exist are the same mechanism. What is deliberately given up: anyone holding a root can
+walk root -> announcers -> endpoint -> an IP that answers, so an identity's device count and network locations are
+crawlable. What does NOT move is the disclosure floor of the machine at the end of that trail: the serving
+wanted-check's uniform empty answer stands, so the dialed node confirms no holdings, no chains, no content, no
+relationships - the accepted leak is **existence and locatability, never contents**. What this buys, besides
+discovery: the adoption tree stops being a single point of partition (a persona's surviving devices re-find each
+other when the node that introduced them dies - without this, two honest replicas that shared only a dead middle
+node were split-brained *forever*), and total-device-loss recovery works from a bare machine holding nothing but a
+spare key - no surviving bookmark or friend's hint required. Division of labor between the two record kinds
+(sharpened 2026-08-07): anyone HOLDING the identity chain never needs the announce at all - the tree enumerates the
+leaves, and each leaf's serving record resolves authenticated (the tree is the index; universal publication is what
+makes it complete). The unauthenticated announce is the bootstrap ramp only: first contact from a bare root, and
+the stale-tree corner where every leaf you knew is gone and the survivors were authorized after your last sync.
+
 ### Discovery Flow
 
 ```
-Node X wants <root>/... (with an origin node and/or via-hints in hand)
+Node X wants <root>/... (with or without an origin node / via-hints in hand)
   → Check local cache (instant if we've seen this identity before)
-  → Miss? Resolve the node keys from the URL (nodeID first, then hints) via pkarr in parallel
+  → Miss? Resolve in parallel: the root's announce rendezvous, plus any node keys from the
+    URL (origin nodeID, then hints) via pkarr - hints accelerate, but a bare root now suffices
   → Get back the current addresses of whichever of those nodes are online
   → Connect to one via Iroh; it presents its chain-to-root
   → Verify that chain terminates at <root>; discard the responder if it does not
@@ -3036,10 +3069,12 @@ Node X wants <root>/... (with an origin node and/or via-hints in hand)
   → Future lookups are instant cache hits
 ```
 
-Two things this flow assumes. First, **you must know a node key to look one up** - pkarr resolves a key you name
-into addresses; it does not let you enumerate keys you have never heard of, so the DHT is a *lookup* channel, not an
-enumeration one (consistent with the graph-privacy model). Second, **trust comes from the chain-to-root check, never
-from who answered** - any node may respond; only one presenting a valid chain to `<root>` is believed.
+Two things this flow assumes. First, **you must know a key to look one up** - the DHT resolves a root or node
+key you name; it does not let you enumerate identities you have never heard of, so it remains a *lookup* channel,
+not an enumeration one (consistent with the graph-privacy model - what the discoverability doctrine concedes is the
+device topology of identities you already know, never the existence of identities you don't). Second, **trust comes
+from the chain-to-root check, never from who answered** - any node may respond, announces are unauthenticated; only
+a responder presenting a valid chain to `<root>` is believed.
 
 ### How people find each other (Discovery Channels)
 
