@@ -55,6 +55,13 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str) {
         Ok(_) => {}
         Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed journal write failed"),
     }
+    match retract_vanished(state, root_hex).await {
+        Ok(n) if n > 0 => {
+            tracing::info!(root = %root_hex, rows = n, "retracted vanished documents from feeds");
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed retraction failed"),
+    }
     // Push onward only for personas this node authors. Relaying someone ELSE's lane onward is
     // rebroadcast - a consent question, not a routing one - and waits for its own design.
     match crate::identity::is_agented(&state.node_db, root_hex).await {
@@ -159,6 +166,61 @@ pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &
                 "follow backfill skipped - their shelf isn't here yet");
         }
     }
+}
+
+/// The journal's other direction: rows whose DOCUMENTS are gone. The upsert half above only
+/// ever adds and updates; this is the reconcile that makes the journal honest when the public
+/// lane shrinks - today that means a repudiation's genesis cut ("that device was never me"),
+/// whose eviction deletes the disproven entries and refolds every view. The feed journal is a
+/// delivery memo, not a view over the log, so the rebuild never touches it - without this, a
+/// disproven post's title kept rendering in every follower's feed as live content, laundered
+/// by the delivery record of a delivery nobody can re-verify.
+///
+/// Retraction DELETES, no tombstone - same doctrine as the unfollow excision: the rows are
+/// bookkeeping, not history, and a "previously delivered" marker would keep disproven words
+/// in the room under a politer name. Runs on the same edge as journaling and reconciles ALL
+/// readers' rows for this author at once; the empty-journal early return keeps the common
+/// case (nobody here ever heard of them) at one indexed query.
+async fn retract_vanished(state: &AppState, author_root: &str) -> Result<u64> {
+    let journaled: Vec<(String,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT DISTINCT doc_id FROM feed_journal WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("listing an author's journaled documents")?;
+    if journaled.is_empty() {
+        return Ok(0);
+    }
+    let db = state
+        .user_dbs
+        .get(author_root)
+        .await
+        .with_context(|| format!("opening {author_root} to check its public lane"))?;
+    let alive = crate::record::documents::public_doc_ids(&db).await?;
+    let stale: Vec<String> = journaled
+        .into_iter()
+        .map(|(id,)| id)
+        .filter(|id| !alive.contains(id))
+        .filter(|id| id.len() == 32 && id.chars().all(|c| c.is_ascii_hexdigit()))
+        .collect();
+    if stale.is_empty() {
+        return Ok(0);
+    }
+    let quoted: Vec<String> = stale.iter().map(|id| format!("'{id}'")).collect();
+    state
+        .node_db
+        .execute(
+            &format!(
+                "DELETE FROM feed_journal WHERE author_root = ?1 AND doc_id IN ({})",
+                quoted.join(",")
+            ),
+            (author_root,),
+        )
+        .await
+        .context("retracting vanished documents from the feed journal")?;
+    Ok(stale.len() as u64)
 }
 
 /// Unfollow (or block) excises: every journal row from an author this reader no longer

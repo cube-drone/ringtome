@@ -702,6 +702,24 @@ pub async fn public_docs(
     Ok(out)
 }
 
+/// Every public document's id, as the fold currently knows them - hex, because the one
+/// consumer (feed retraction) compares against journal rows that store hex.
+///
+/// This is the reference set for reconciling DERIVED state after an eviction: a repudiation's
+/// genesis cut deletes the disproven entries and `rebuild_views` refolds this table, so a
+/// document that "was never them" simply isn't here anymore. The feed journal is NOT a view
+/// over the log - it's a delivery memo - so it must be checked against this set instead of
+/// healing itself.
+pub async fn public_doc_ids(db: &Db) -> Result<std::collections::HashSet<String>, AppError> {
+    catch_up_public_lane(db).await?;
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all("SELECT doc_id FROM doc_heads WHERE lane = 'public'", ())
+        .await
+        .context("listing public document ids")
+        .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().map(|(id,)| hex::encode(id)).collect())
+}
+
 /// A public document's display facts, for the anonymous serving routes: format and blob
 /// hashes, lane-checked - a private doc_id asked for through the public door is a 404, never
 /// a leak. Runs the fold first, keys only for the private half it may catch up alongside.

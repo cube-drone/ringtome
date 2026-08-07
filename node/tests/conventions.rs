@@ -124,7 +124,7 @@ fn sql_stays_in_its_owning_module() {
 #[test]
 fn user_db_opens_are_deliberate() {
     let expected: BTreeMap<&str, usize> = BTreeMap::from([
-        ("fanout.rs", 1),          // journal_for: ONE author's shelf per public-move edge
+        ("fanout.rs", 2),          // journal_page + retract_vanished: ONE author per public-move edge
         ("identity.rs", 4),
         ("idface.rs", 4),
         ("ingest.rs", 1),

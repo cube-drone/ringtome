@@ -3049,3 +3049,26 @@ subscription - "don't show" means it retroactively. Own rows are exempt (your po
 your feed because you're hosted, not because you follow yourself), and nothing anyone owns
 is lost: a re-follow backfills the page right back. Live-probed on a scratch node: follow
 backfills Alpha+Beta, unfollow leaves only "Mine stays", re-follow restores all three.
+
+## 2026-08-06: a repudiation reaches the feeds
+
+ChatGPT pitched an integration test with a sharp prediction: eviction rebuilds the VIEWS
+(doc_heads refolds, the shelf heals), but feed_journal is a delivery memo, not a view over
+the log - so a repudiated device's post that had already crossed into a follower's journal
+would keep rendering as live content, laundered by the delivery record. Code reading
+confirmed it; a planted probe (retraction disabled) reproduced it live: after the strike,
+doomed-post sat in Alice's own feed forever.
+
+The fix is `fanout::retract_vanished`, on the same edge as journaling: after every public
+move, the author's journaled doc_ids are checked against `documents::public_doc_ids` (the
+fold's current truth) and rows whose documents are gone are DELETED - no tombstone, same
+doctrine as the unfollow excision: the rows are bookkeeping, and a "previously delivered"
+marker would keep disproven words in the room under a politer name. The reconcile covers
+any future public-lane shrink (retraction, unpublish) for free.
+
+Pinned by a three-node integration test in repudiation.cjs (senior + doomed device + a
+follower on a third node who hears everything by push) and probed live on scratch nodes:
+pairing, posts from both devices, strike from the senior - the disowned post leaves the
+feed, the honest one stands. What was NOT built from the pitch: replay-resistance and
+rebuild-from-journal assertions (already pinned by the existing repudiation suite) and the
+restart-invariance one (the journal is durable SQL; deletion is trivially restart-safe).

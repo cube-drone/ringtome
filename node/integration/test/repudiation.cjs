@@ -28,7 +28,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { HOST_B } = require("./fetch.cjs");
+const { HOST_B, HOST_C, sql } = require("./fetch.cjs");
 const { makeUserFetch, decodeCode } = require("./helpers.cjs");
 
 // --- world-building helpers -----------------------------------------------------------------
@@ -329,5 +329,125 @@ const listIds = async (fetch, root) =>
                 );
             }
         });
+    });
+});
+
+/*
+    The strike's reach into DERIVED state on a third party: a follower's feed journal.
+
+    The suite above proves the signed world heals - eviction deletes the disproven entries and
+    the views refold. But feed_journal is a delivery memo, not a view over the log: it only
+    ever upserts. Without an explicit retraction, a repudiated device's post that had already
+    crossed into a follower's journal kept rendering there as live content - the delivery
+    record laundering words the identity itself has disproven ("that device was never me").
+*/
+(HOST_B && HOST_C ? describe : describe.skip)("a repudiation reaches the feeds", function () {
+    this.timeout(120000);
+
+    const settle = async (fn, tries = 120) => {
+        for (let i = 0; i < tries; i++) {
+            const got = await fn();
+            if (got) return got;
+            await new Promise((r) => setTimeout(r, 250));
+        }
+        return null;
+    };
+    const feedTitles = async (reader, host) => {
+        const { rows } = await sql(
+            `SELECT title FROM feed_journal WHERE reader_root = '${reader}'`,
+            host
+        );
+        return rows.map((r) => r.title).sort();
+    };
+
+    it("a repudiated device's posts are retracted from feeds - here and on a follower's node", async () => {
+        const { a, b, root, leaf } = await bootPersona("retractfeed");
+        const { toBase58 } = await import("../../js/speakable.js");
+        const viaA = toBase58((await (await a("api/node")).json()).endpoint_id);
+
+        // Bob, on a THIRD node, finds Alice and follows her - before anything is posted, so
+        // every arrival below travels by push (the fanout suite's proven road).
+        const bob = await makeUserFetch({ prefix: "retractbob", host: HOST_C });
+        const bobRoot = (await (await bob("api/identity", { method: "POST" })).json()).root_pubkey;
+        const seen = await bob(`api/id/${root}/profile?via=${viaA}`);
+        assert.equal(seen.status, 200, await seen.text());
+        await bob(`api/identity/${bobRoot}/private/kv/contact:${root}/interest`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "75" }),
+        });
+        assert.ok(
+            await settle(async () => {
+                const { rows } = await sql(
+                    `SELECT 1 FROM subscriptions WHERE local_root = '${bobRoot}'
+                     AND foreign_root = '${root}'`,
+                    HOST_C
+                );
+                return rows.length ? true : null;
+            }),
+            "the follow reached C's memo"
+        );
+
+        // The honest post from the senior device; the doomed one from the device that will
+        // be repudiated. Both must actually arrive in Bob's journal before the strike, or
+        // the retraction below would be vacuously "proven" by lag.
+        const honest = await createDoc(a, root, "honest-post", "words that were always mine");
+        await a(`api/identity/${root}/docs/${honest.id}/publish`, { method: "POST" });
+        const doomed = await createDoc(b, root, "doomed-post", "words from the disowned device");
+        const doomedPub = await b(`api/identity/${root}/docs/${doomed.id}/publish`, {
+            method: "POST",
+        });
+        const doomedPost = JSON.parse(await doomedPub.text()).post_id;
+        await b(`api/identity/${root}/sync`, { method: "POST" });
+
+        const delivered = await settle(async () => {
+            const t = await feedTitles(bobRoot, HOST_C);
+            return t.includes("honest-post") && t.includes("doomed-post") ? t : null;
+        });
+        assert.ok(delivered, "both posts crossed into the follower's journal before the strike");
+        assert.deepEqual(
+            await settle(async () => {
+                const t = await feedTitles(root);
+                return t.length >= 2 ? t : null;
+            }),
+            ["doomed-post", "honest-post"],
+            "and into Alice's own feed at home"
+        );
+
+        // The strike: it was never that device.
+        await a(`api/identity/${root}/keys/${leaf}/revoke`, {
+            method: "POST",
+            body: JSON.stringify({ disposition: "repudiation", cut: "genesis" }),
+        });
+
+        // Alice's own node first: eviction refolds the views, and the retraction must sweep
+        // the journal on the same edge.
+        assert.deepEqual(
+            await settle(async () => {
+                const t = await feedTitles(root);
+                return t.includes("doomed-post") ? null : t;
+            }),
+            ["honest-post"],
+            "the disowned post left Alice's own feed; the honest one stands"
+        );
+
+        // Then the follower's node, which hears by push (Bob asked A once; A remembers).
+        assert.deepEqual(
+            await settle(async () => {
+                const t = await feedTitles(bobRoot, HOST_C);
+                return t.includes("doomed-post") ? null : t;
+            }),
+            ["honest-post"],
+            "the follower's journal retracted it too - a delivery memo cannot launder disproven content"
+        );
+
+        // And the words themselves no longer resolve on the follower's node: the journal row
+        // is gone AND the document under it is gone, on a node Alice never touched directly.
+        const body = await bob(`id/${root}/docs/${doomedPost}/body`);
+        assert.equal(body.status, 404, "the disproven document does not serve");
+        const honestStill = await settle(async () => {
+            const t = await feedTitles(bobRoot, HOST_C);
+            return t.includes("honest-post") ? true : null;
+        });
+        assert.ok(honestStill, "and the honest post was never collateral");
     });
 });
