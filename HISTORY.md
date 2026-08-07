@@ -3123,3 +3123,41 @@ the race (A1's body lane lagged), then misses the poke (SIGSTOPped through the w
 resumes bodiless with nothing ever dialing it again - and heals by its own rounds, confirmed
 by the sweep's own log line rather than inference. Five unit tests pin the ledger semantics.
 NOTE: node schema generation bumped 7 -> 8; dev node.db rebuilds on next start.
+
+## 2026-08-06: equivocation - detected, contained, adjudicated
+
+ChatGPT's third pitch, the protocol-level one, and the strongest: equal-height public forks.
+Every mechanical claim verified. The wire's Frontier carries head_hash precisely because two
+forked chains at one height agree by range arithmetic - detection was built, response wasn't:
+send_missing reduced peer frontiers to (author, service) -> head and sent from head+1, so
+two nodes holding different branches at the same seq each concluded the other lacked nothing,
+forever. And the resync tracker's change fingerprint omitted head_hash entirely, so even a
+resolved fork (same-height replacement by eviction) read as "nothing moved".
+
+The doctrine was already settled in PROJECT_PLAN ("forks are self-proving... a fork on any
+single chain condemns the key"); what was missing was mechanism, in four pieces:
+
+* **The proof crosses the wire.** missing_for_peer (send_missing's testable core): a peer
+  whose claimed head we hold at a different hash is sent our entry at that position - one
+  entry, and the receiver holds two valid signatures at one (chain, seq). Works for unequal
+  lengths too; only the exact fork POINT goes unfound, and condemnation doesn't need it.
+* **The gate records rather than stores.** The Active path's at-or-below-head skip now
+  compares hashes; a contradiction writes both signed envelopes to `equivocations` (user db,
+  gen 6) - EVIDENCE, never touched by rebuild_views. Neither branch displaces the other.
+* **Containment is presentation-level.** While evidence stands on a public content chain,
+  public_docs/public_doc_ids return nothing - the shelf goes dark, and everything downstream
+  follows free: /id empty, fan-out journals nothing, feed retraction sweeps delivered rows.
+  Quarantine on PROOF only, never on a bare fingerprint mismatch - a hostile peer
+  advertising garbage must not be able to suppress an honest persona (Unresolvable-with-
+  backoff already handles the unproven case).
+* **The crown adjudicates.** ingest_batch clears evidence for any no-longer-Active author:
+  the revocation's anchors decide honored history (machinery that existed), the quarantine
+  lifts, the vindicated shelf returns, and losing-branch replays are the ceiling's problem.
+  Plus the resync tracker fingerprint gained head_hash - same-height replacement is movement.
+
+Pinned by the pitched Rust test (net::sync::tests), driving the whole arc: fork -> proof
+crosses both ways -> recorded not stored -> shelves dark -> idempotent under re-delivery ->
+senior anchors left -> C evicts right and converges -> quarantines lift -> replay refused
+without re-arming. Plant-validated (wire branch removed -> proof never crosses -> red).
+User schema gen 5 -> 6: user DBs rebuild from journal on next start. Residuals ledgered:
+a reader-facing "disputed" notice, and evidence surviving journal rebuilds.

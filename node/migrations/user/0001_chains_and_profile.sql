@@ -24,6 +24,31 @@ CREATE TABLE entries (
 -- and seq); the unique index doubles as the lookup path for prev_hash / anchor resolution.
 CREATE UNIQUE INDEX entries_by_hash ON entries (entry_hash);
 
+-- Equivocation evidence: proof that a single-writer key signed two different entries at the
+-- same (service, seq) - the one act the chain format makes self-incriminating ("forks are
+-- self-proving" - PROJECT_PLAN, IM-AOL). Rows are written by the sync gate when a second
+-- branch's entry arrives for a position we already hold (the proof now crosses the wire: a
+-- peer whose frontier matches ours in height but not in head hash is sent our head entry,
+-- and sends us theirs). Both signed envelopes are kept - the pair is portable, checkable
+-- proof no matter what later happens to the entries table.
+--
+-- EVIDENCE, not a view: rebuild_views never touches it. Consumed conservatively: while a
+-- persona has unresolved evidence on a public content chain, its public shelf presents
+-- nothing (documents::public_docs) - neither branch is presented as uncomplicated truth.
+-- Cleared when the crown takes the key over (revocation seen): the anchored-prefix machinery
+-- then decides what is honored history, which is the resolution the quarantine waited for.
+CREATE TABLE equivocations (
+    author_pubkey TEXT    NOT NULL,  -- the double-signing key
+    service       INTEGER NOT NULL,
+    seq           INTEGER NOT NULL,
+    held_hash     BLOB    NOT NULL,  -- the branch this replica stored first
+    other_hash    BLOB    NOT NULL,  -- the branch that arrived and proved the fork
+    held_bytes    BLOB    NOT NULL,  -- both signed envelopes: the portable proof
+    other_bytes   BLOB    NOT NULL,
+    noted_ms      INTEGER NOT NULL,
+    PRIMARY KEY (author_pubkey, service, seq)
+);
+
 -- Materialized view of the identity's public profile: one row per field, last-writer-wins by
 -- (timestamp_ms, seq, entry_hash) - see imaol::apply_profile_set for the merge rule.
 CREATE TABLE profile_view (

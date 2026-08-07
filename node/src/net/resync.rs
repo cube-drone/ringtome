@@ -58,15 +58,19 @@ const FAILED_PUSH_RETRY_MS: i64 = 30_000;
 /// Anti-entropy fanout: k random peers per interval over the full peer set (doctrine k=3-5).
 const ANTI_ENTROPY_PEERS: usize = 3;
 
-/// Frontier snapshot used for change detection: sorted (author, service, floor, head) rows.
-/// Compared by equality only - a frontier moving *down* (forgery eviction) is a change too.
-/// Includes private chains: the snapshot never leaves this process, so no disclosure arises.
-type Fingerprint = Vec<([u8; 32], u32, u64, u64)>;
+/// Frontier snapshot used for change detection: sorted (author, service, floor, head,
+/// head_hash) rows. Compared by equality only - a frontier moving *down* (forgery eviction)
+/// is a change too. HEAD_HASH INCLUDED (2026-08-06): a same-height replacement - eviction
+/// re-admitting an anchored prefix of equal length - changes authoritative content without
+/// moving a single seq, and a hashless snapshot called that "nothing happened", so the eager
+/// loop never pushed the correction. Includes private chains: the snapshot never leaves this
+/// process, so no disclosure arises.
+type Fingerprint = Vec<([u8; 32], u32, u64, u64, [u8; 32])>;
 
 fn fingerprint(frontiers: Vec<ringtome_proto::sync::Frontier>) -> Fingerprint {
     let mut fp: Fingerprint = frontiers
         .into_iter()
-        .map(|f| (f.author, f.service, f.floor, f.head))
+        .map(|f| (f.author, f.service, f.floor, f.head, f.head_hash))
         .collect();
     fp.sort_unstable();
     fp
@@ -303,11 +307,28 @@ mod tests {
     const RETRY: i64 = 30_000;
 
     fn fp(head: u64) -> Fingerprint {
-        vec![([0xAA; 32], 3, 0, head)]
+        // The hash column derives from the head here so plain "the chain grew" scenarios
+        // stay one-parameter; same_height_new_hash below varies it independently.
+        vec![([0xAA; 32], 3, 0, head, [head as u8; 32])]
     }
 
     fn observe(prior: Option<RootState>, f: Fingerprint, now: i64) -> (RootState, bool) {
         observe_state(prior, f, now, DEBOUNCE, MAX_DELAY, RETRY)
+    }
+
+    #[test]
+    fn a_same_height_replacement_is_movement() {
+        // Eviction re-admitting an anchored prefix of equal length changes WHICH chain is
+        // held without moving a seq. The snapshot must call that a change, or the eager loop
+        // never pushes the correction (ChatGPT's third pitch, 2026-08-06: "a same-height
+        // replacement changes authoritative content without changing that tracker's
+        // snapshot").
+        let before: Fingerprint = vec![([0xAA; 32], 3, 0, 7, [0xBB; 32])];
+        let after: Fingerprint = vec![([0xAA; 32], 3, 0, 7, [0xCC; 32])];
+        assert_ne!(before, after, "same height, different chain - the tracker must see it");
+        let (settled, _) = observe(None, before.clone(), 0);
+        let (state, _) = observe(Some(settled), after, DEBOUNCE + 1);
+        assert!(state.dirty_since_ms.is_some(), "the replacement dirtied the root");
     }
 
     #[test]

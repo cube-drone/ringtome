@@ -655,6 +655,9 @@ pub async fn public_docs(
     limit: i64,
 ) -> Result<Vec<PublicDoc>, AppError> {
     catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok(Vec::new());
+    }
     // NULL is plaintext (absent on the wire); the only other text format is marquee.
     let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
     type Row = (Vec<u8>, String, Option<i64>, i64, i64, Option<Vec<u8>>);
@@ -712,12 +715,29 @@ pub async fn public_docs(
 /// healing itself.
 pub async fn public_doc_ids(db: &Db) -> Result<std::collections::HashSet<String>, AppError> {
     catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok(Default::default());
+    }
     let rows: Vec<(Vec<u8>,)> = db
         .fetch_all("SELECT doc_id FROM doc_heads WHERE lane = 'public'", ())
         .await
         .context("listing public document ids")
         .map_err(AppError::Internal)?;
     Ok(rows.into_iter().map(|(id,)| hex::encode(id)).collect())
+}
+
+/// The equivocation quarantine, at the one chokepoint every public listing shares: while this
+/// persona's store holds unresolved proof that a key double-signed a public chain (net::sync,
+/// `equivocations`), the shelf presents NOTHING - neither branch is presented as
+/// uncomplicated truth, and everything downstream follows for free: the /id posts view and
+/// pager go empty, fan-out journals nothing new, and the feed retraction sweeps the rows
+/// already delivered (they are a delivery memo; the vindicated page re-journals after the
+/// crown adjudicates). Individual bodies stay fetchable by exact id - the quarantine is
+/// about presentation, and the evidence handling needs the bytes to remain resolvable.
+async fn quarantined(db: &Db) -> Result<bool, AppError> {
+    crate::net::sync::has_public_equivocation(db)
+        .await
+        .map_err(AppError::Internal)
 }
 
 /// A public document's display facts, for the anonymous serving routes: format and blob

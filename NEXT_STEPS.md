@@ -8,9 +8,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ## Near-Term Goals
 
-### ChatGPT's three proposed tests:
-* get them and pitch them
-
 ### Private Notes
 
 * Import/export bucket or whole persona
@@ -93,6 +90,19 @@ Does a mutual follow+trust make a "friend"?
 
 ### Sync
 * within a persona, how are we managing our peer set? can we learn about new identity rows?
+* Equivocation quarantine residuals (2026-08-06): the shelf goes silently dark while fork
+  evidence stands - a reader-facing notice ("this identity's public history is disputed")
+  beats unexplained emptiness; and evidence rows live outside the raw-entry journal, so a
+  rebuild-from-journal forgets a standing quarantine until the proof re-arrives by sync.
+* Fork-aftermath ceremony (2026-08-06, the Mallowy case - PROJECT_PLAN's "stale-backup fork,
+  innocent flavor"): an innocent restore-from-backup fork condemns the key like any fork
+  (doctrine - intent doesn't sign), and recovery exists mechanically (retire the doubled leaf
+  anchoring one branch - the evidence rows hold BOTH envelopes, so either is anchorable -
+  adopt a fresh key, re-sign what the anchor dropped) but is neither surfaced nor guided.
+  Wants: an owner-facing "your key doubled, here's the ceremony" flow. Related prevention: a
+  post-restore write-fence (hold signing until one sync round completes) turns most stale-
+  backup forks into fast-forwards. The unhandled hard case: a fork on the ROOT's own identity
+  chain - the plan's deferred tiebreaker, no senior left to adjudicate.
 
 ### Mixtape & Radio
 *  a mp3 browser

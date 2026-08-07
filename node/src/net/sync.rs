@@ -127,9 +127,37 @@ async fn send_missing(
     send: &mut SendStream,
     include_private: bool,
 ) -> Result<u64> {
-    let peer: HashMap<([u8; 32], u32), u64> = peer_frontiers
+    let mut sent = 0u64;
+    for bytes in missing_for_peer(db, peer_frontiers, include_private).await? {
+        write_frame(send, &SyncMessage::Entry(bytes)).await?;
+        sent += 1;
+    }
+    Ok(sent)
+}
+
+/// The entry bytes a peer with these frontiers lacks - `send_missing` without the stream, so
+/// the selection is testable against raw databases.
+///
+/// The ordinary rule: start just past their head. The exception is the EQUIVOCATION window:
+/// a peer whose frontier matches ours in height but not in `head_hash` holds a different
+/// chain than we do - "a peer comparing ranges alone sees agreement where there is a
+/// divergence" (proto::sync::Frontier). Range arithmetic would send nothing forever, each
+/// side concluding the other lacks nothing while their fingerprints disagree. So we send our
+/// head entry anyway: one entry, and the receiver now holds two valid signatures at the same
+/// (chain, seq) - portable, self-proving evidence of a fork ("forks are self-proving" -
+/// PROJECT_PLAN, IM-AOL), which its gate records rather than stores. The check runs at the
+/// peer's claimed head, whatever our own height - so unequal-length forks are caught too,
+/// from whichever side holds an entry at the other's head; what nobody finds is the exact
+/// fork POINT (that bisect is unnecessary for condemnation - one proven double-sign is
+/// enough).
+pub(crate) async fn missing_for_peer(
+    db: &Db,
+    peer_frontiers: &[Frontier],
+    include_private: bool,
+) -> Result<Vec<Vec<u8>>> {
+    let peer: HashMap<([u8; 32], u32), (u64, [u8; 32])> = peer_frontiers
         .iter()
-        .map(|f| ((f.author, f.service), f.head))
+        .map(|f| ((f.author, f.service), (f.head, f.head_hash)))
         .collect();
 
     let chains: Vec<(String, i64)> = db
@@ -140,17 +168,31 @@ async fn send_missing(
         .await
         .context("listing chains")?;
 
-    let mut sent = 0u64;
+    let mut out = Vec::new();
     for (author_hex, svc) in chains {
         if !include_private && is_private_service(svc as u32) {
             continue;
         }
         let author = pubkey::decode(&author_hex)
             .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
-        let start = peer
-            .get(&(author, svc as u32))
-            .map(|head| head + 1)
-            .unwrap_or(0);
+        let claimed = peer.get(&(author, svc as u32));
+        let start = claimed.map(|(head, _)| head + 1).unwrap_or(0);
+
+        if let Some((peer_head, peer_hash)) = claimed {
+            let ours: Option<(Vec<u8>, Vec<u8>)> = db
+                .fetch_optional(
+                    "SELECT entry_hash, bytes FROM entries
+                     WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
+                    (author_hex.as_str(), svc, *peer_head as i64),
+                )
+                .await
+                .context("reading our entry at the peer's claimed head")?;
+            if let Some((hash, bytes)) = ours {
+                if hash.as_slice() != peer_hash.as_slice() {
+                    out.push(bytes);
+                }
+            }
+        }
 
         let rows: Vec<(Vec<u8>,)> = db
             .fetch_all(
@@ -160,13 +202,9 @@ async fn send_missing(
             )
             .await
             .context("reading entries to send")?;
-
-        for (bytes,) in rows {
-            write_frame(send, &SyncMessage::Entry(bytes)).await?;
-            sent += 1;
-        }
+        out.extend(rows.into_iter().map(|(bytes,)| bytes));
     }
-    Ok(sent)
+    Ok(out)
 }
 
 /// The validation gate: admit a batch of arrived entries into the store, or reject them.
@@ -353,7 +391,14 @@ pub(crate) async fn ingest_batch(
                 for e in entries {
                     if let Some(p) = &prev {
                         if e.entry().seq <= p.entry().seq {
-                            continue; // duplicate of something we hold
+                            // At or below our head: usually a duplicate resend - but a valid
+                            // signature at a position we hold, with a DIFFERENT hash, is the
+                            // single-writer key contradicting itself. Record the proof; never
+                            // store the second branch (neither branch is "the" chain now,
+                            // and displacing stored history on a live fork would let the
+                            // equivocator steer every replica it dials).
+                            note_if_equivocation(db, &e).await?;
+                            continue;
                         }
                     }
                     match validate_next(prev.as_ref(), &e) {
@@ -381,7 +426,107 @@ pub(crate) async fn ingest_batch(
             .map_err(|e| anyhow!("rebuilding views after forgery eviction: {e}"))?;
     }
 
+    // Equivocation evidence is the quarantine's clock and the crown is its judge: the moment
+    // a key with recorded evidence stops being Active (a revocation arrived - possibly in
+    // this very batch, possibly the empty sweep a local revoke runs), the anchored-prefix
+    // machinery decides what is honored history, and the quarantine has nothing left to hold.
+    clear_adjudicated_equivocations(db, &tree).await?;
+
     Ok((received, rejected))
+}
+
+/// Record proof that a single-writer key signed two different entries at one (service, seq),
+/// if this arrival is one. Called for every at-or-below-head arrival in the Active path: the
+/// common case (an identical resend) returns after one indexed hash compare; the fork case
+/// stores BOTH signed envelopes - portable, checkable proof regardless of what later becomes
+/// of the entries table. While evidence stands on a public content chain, the persona's
+/// shelf presents nothing (documents::public_docs) - neither branch is uncomplicated truth.
+async fn note_if_equivocation(db: &Db, arrived: &SignedEntry) -> Result<()> {
+    let entry = arrived.entry();
+    let author_hex = hex::encode(entry.chain.author);
+    let held: Option<(Vec<u8>, Vec<u8>)> = db
+        .fetch_optional(
+            "SELECT entry_hash, bytes FROM entries
+             WHERE author_pubkey = ?1 AND service = ?2 AND seq = ?3",
+            (
+                author_hex.as_str(),
+                i64::from(entry.chain.service),
+                entry.seq as i64,
+            ),
+        )
+        .await
+        .context("reading the held entry at a duplicate's position")?;
+    let Some((held_hash, held_bytes)) = held else {
+        return Ok(()); // a hole below our head is a store gap, not a contradiction
+    };
+    if held_hash.as_slice() == arrived.hash().as_slice() {
+        return Ok(()); // the ordinary duplicate resend
+    }
+    tracing::warn!(
+        author = %author_hex,
+        service = entry.chain.service,
+        seq = entry.seq,
+        "equivocation proven: two valid signatures at one chain position - quarantining"
+    );
+    db.execute(
+        "INSERT OR IGNORE INTO equivocations
+           (author_pubkey, service, seq, held_hash, other_hash, held_bytes, other_bytes, noted_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        (
+            author_hex.as_str(),
+            i64::from(entry.chain.service),
+            entry.seq as i64,
+            held_hash,
+            arrived.hash().to_vec(),
+            held_bytes,
+            arrived.bytes().to_vec(),
+            crate::clock::now_ms(),
+        ),
+    )
+    .await
+    .context("recording equivocation evidence")?;
+    Ok(())
+}
+
+/// Does this persona's store hold unresolved fork evidence on any PUBLIC content chain? The
+/// quarantine read: while true, the public shelf presents nothing. Identity-chain forks are
+/// excluded - the crown sees both branches and convicts on its own - and private-chain
+/// evidence is a matter between the persona's own devices, not a public-presentation fact.
+pub async fn has_public_equivocation(db: &Db) -> Result<bool> {
+    let rows: Vec<(i64,)> = db
+        .fetch_all("SELECT DISTINCT service FROM equivocations", ())
+        .await
+        .context("reading equivocation services")?;
+    Ok(rows.iter().any(|(s,)| {
+        let svc = *s as u32;
+        !is_private_service(svc) && svc != service::IDENTITY_PUBLIC
+    }))
+}
+
+/// Drop evidence for every no-longer-Active author: the revocation's anchors now govern what
+/// is honored history, which is the resolution the quarantine existed to wait for. Replays of
+/// the losing branch after this are the ceiling machinery's problem (seal-or-nothing), and
+/// re-recording is impossible - evidence is only noted on the Active path.
+async fn clear_adjudicated_equivocations(db: &Db, tree: &Crown) -> Result<()> {
+    let rows: Vec<(String,)> = db
+        .fetch_all("SELECT DISTINCT author_pubkey FROM equivocations", ())
+        .await
+        .context("listing equivocating authors")?;
+    for (author_hex,) in rows {
+        let Some(author) = pubkey::decode(&author_hex) else {
+            continue;
+        };
+        if !matches!(tree.status(&author), KeyStatus::Active) {
+            db.execute(
+                "DELETE FROM equivocations WHERE author_pubkey = ?1",
+                (author_hex.as_str(),),
+            )
+            .await
+            .context("clearing adjudicated equivocation evidence")?;
+            tracing::info!(author = %author_hex, "equivocation adjudicated by the crown - quarantine lifted");
+        }
+    }
+    Ok(())
 }
 
 /// Proven-forgery eviction (PROJECT_PLAN, Anchored Revocations). For every ceiling the resolved
@@ -1230,6 +1375,17 @@ mod tests {
             }
         }
 
+        /// A second pen at the same position: clone the chain state so the SAME key can sign
+        /// two different continuations of one prefix - the equivocator's move.
+        fn fork(&self) -> Chain {
+            Chain {
+                sk: self.sk.clone(),
+                svc: self.svc,
+                seq: self.seq,
+                prev: self.prev,
+            }
+        }
+
         fn pk(&self) -> [u8; 32] {
             self.sk.verifying_key().to_bytes()
         }
@@ -1754,5 +1910,152 @@ mod tests {
         let mut roots = roots_with_peers(&node_db).await.unwrap();
         roots.sort();
         assert_eq!(roots, vec!["aa11".to_string(), "bb22".to_string()]);
+    }
+
+    /// ChatGPT's third pitched test (2026-08-06): equal-height public equivocation must be
+    /// detected, contained, and resolvable. The wire carries head_hash precisely because two
+    /// forked chains at one height agree by range arithmetic - this drives the whole arc:
+    /// the proof entry crossing the wire, the gate recording rather than storing it, the
+    /// shelf going dark while the contradiction stands, and the crown's anchors resolving it.
+    #[tokio::test]
+    async fn equal_height_public_fork_is_quarantined_then_resolved_by_anchor() {
+        use ringtome_proto::DocHeaderPlain;
+        fn post(chain: &mut Chain, id: u8, title: &str) -> SignedEntry {
+            let header = DocHeaderPlain {
+                doc_id: [id; 16],
+                parents: vec![],
+                file_hash: [id; 32],
+                body_hash: [id; 32],
+                title: title.into(),
+                format: None,
+                width: None,
+                height: None,
+                duration_ms: None,
+                thumb_hash: None,
+                preview_hash: None,
+            };
+            chain.append(entry_type::DOC_HEADER, header.encode().unwrap())
+        }
+        let shelf = |docs: Vec<crate::record::documents::PublicDoc>| -> Vec<String> {
+            let mut titles: Vec<String> = docs.into_iter().map(|d| d.title).collect();
+            titles.sort();
+            titles
+        };
+
+        // Root authorizes K; K posts a common prefix, then the same key signs two different
+        // entries at seq 1: `left` and `right`, both valid, different hashes.
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut posts = Chain::new(2, service::POSTS);
+        let k = posts.pk();
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
+        );
+        let common = post(&mut posts, 0x0a, "common");
+        let mut other_pen = posts.fork();
+        let left = post(&mut posts, 0x0b, "left");
+        let right = post(&mut other_pen, 0x0c, "right");
+        assert_eq!(left.entry().seq, right.entry().seq, "the fork is at one height");
+        assert_ne!(left.hash(), right.hash());
+
+        // Node B holds the left branch; node C holds the right.
+        let b = test_db().await;
+        let c = test_db().await;
+        let root = root_chain.pk();
+        assert_eq!(ingest(&b, root, &[authorize.clone(), common.clone(), left.clone()]).await, (3, 0));
+        assert_eq!(ingest(&c, root, &[authorize.clone(), common.clone(), right.clone()]).await, (3, 0));
+
+        // CONTAINMENT, wire half: range arithmetic sees agreement (equal heads), but the
+        // head-hash mismatch makes each side send its head entry - the proof crosses.
+        let b_frontiers = local_frontiers(&b, false).await.unwrap();
+        let c_frontiers = local_frontiers(&c, false).await.unwrap();
+        let b_sends = missing_for_peer(&b, &c_frontiers, false).await.unwrap();
+        let c_sends = missing_for_peer(&c, &b_frontiers, false).await.unwrap();
+        assert_eq!(b_sends, vec![left.bytes().to_vec()], "B offers its head as proof");
+        assert_eq!(c_sends, vec![right.bytes().to_vec()], "C offers its head as proof");
+
+        // CONTAINMENT, gate half: the proof arrives; neither branch overwrites the other,
+        // the second branch is NOT a second post, and the evidence is on the record.
+        assert_eq!(ingest(&b, root, &[right.clone()]).await, (0, 0), "recorded, not stored");
+        assert_eq!(ingest(&c, root, &[left.clone()]).await, (0, 0));
+        assert_eq!(
+            stored_hashes(&b, &k, service::POSTS).await,
+            vec![*common.hash(), *left.hash()],
+            "B's chain is exactly what it was"
+        );
+        assert_eq!(
+            stored_hashes(&c, &k, service::POSTS).await,
+            vec![*common.hash(), *right.hash()]
+        );
+        assert!(has_public_equivocation(&b).await.unwrap(), "the contradiction is on record");
+        assert!(has_public_equivocation(&c).await.unwrap());
+
+        // CONTAINMENT, presentation half: while the fork stands, the shelf presents nothing -
+        // not the disputed head, not even the common prefix. Neither branch is truth yet.
+        assert_eq!(
+            shelf(crate::record::documents::public_docs(&b, None, 10).await.unwrap()),
+            Vec::<String>::new(),
+            "B's shelf is dark under quarantine"
+        );
+        assert_eq!(
+            shelf(crate::record::documents::public_docs(&c, None, 10).await.unwrap()),
+            Vec::<String>::new()
+        );
+
+        // Idempotence: the same proof arriving again (anti-entropy re-sends) changes nothing.
+        assert_eq!(ingest(&b, root, &[right.clone()]).await, (0, 0));
+        assert!(has_public_equivocation(&b).await.unwrap());
+
+        // RESOLUTION: the senior repudiates K, anchoring the exact prefix ending in `left`.
+        let revoke = root_chain.append(
+            entry_type::REVOKE,
+            Revoke {
+                target: k,
+                disposition: Disposition::Repudiation,
+                anchors: vec![Anchor {
+                    service: service::POSTS,
+                    seq: left.entry().seq,
+                    head_hash: *left.hash(),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        );
+
+        // C holds the losing branch: the ceiling evicts it, the sealed prefix ships whole
+        // (the revoker's nodes hold it - here, the same batch), and the quarantine lifts.
+        ingest(&c, root, &[revoke.clone(), common.clone(), left.clone()]).await;
+        assert_eq!(
+            stored_hashes(&c, &k, service::POSTS).await,
+            vec![*common.hash(), *left.hash()],
+            "C converged on the anchored prefix - right is gone"
+        );
+        assert!(!has_public_equivocation(&c).await.unwrap(), "the crown adjudicated");
+        assert_eq!(
+            shelf(crate::record::documents::public_docs(&c, None, 10).await.unwrap()),
+            vec!["common".to_string(), "left".to_string()],
+            "the shelf returns with the honored history, and only it"
+        );
+
+        // B held the winning branch all along: the revocation alone lifts its quarantine.
+        ingest(&b, root, &[revoke.clone()]).await;
+        assert_eq!(stored_hashes(&b, &k, service::POSTS).await, vec![*common.hash(), *left.hash()]);
+        assert!(!has_public_equivocation(&b).await.unwrap());
+        assert_eq!(
+            shelf(crate::record::documents::public_docs(&b, None, 10).await.unwrap()),
+            vec!["common".to_string(), "left".to_string()]
+        );
+
+        // Replaying the losing branch after adjudication: refused by the ceiling (the sealed
+        // prefix is the only admissible history), and the quarantine does NOT re-arm - the
+        // evidence path only runs for Active keys.
+        assert_eq!(ingest(&c, root, &[right.clone()]).await, (0, 1));
+        assert_eq!(
+            stored_hashes(&c, &k, service::POSTS).await,
+            vec![*common.hash(), *left.hash()]
+        );
+        assert!(!has_public_equivocation(&c).await.unwrap());
     }
 }
