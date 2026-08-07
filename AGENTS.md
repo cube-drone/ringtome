@@ -41,8 +41,8 @@ exactly that — run it, or the relevant prefix, before declaring done.
 
 ## Live-process safety (hard rules; born from the 2026-08-05 incident)
 
-- Ports 5281–5283 belong to the dev network (`just start`, `start-two`, `start-three`). Never
-  bind them for testing.
+- Ports 5281–5296 belong to the dev network (`just start`, `start-two`, `start-three`, and `just
+  start-n N` up to N=16). Never bind them for testing.
 - Never `pkill` by pattern. `just kill` is machine-wide **by design**, and `just integration`
   depends on it — warn the user before running either while a dev network may be up.
 - Agent/harness testing uses scratch nodes: `just scratch [5297-5299]` boots a throwaway node

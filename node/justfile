@@ -201,6 +201,73 @@ start-three: ui-install
     # Node A in the foreground — Ctrl-C lands here and takes everything down.
     RINGTOME_DISCOVERY=local:./data-dht cargo run --bin ringtome
 
+# Boot N dev nodes in one terminal, one Ctrl-C: the generalized playground. Node A on :5281
+# (default data dir, hostname name), then "node-2" on :5282 (./data-2), "node-3" on :5283
+# (./data-3), ... through node-N on :5280+N (./data-N) — N up to 16 keeps the top port at 5296,
+# below the scratch floor of 5297. All share a local discovery folder so post-adoption background
+# sync can find addresses. N=1 is a bare `start`; the default N=3 is a `start-three`. Create a
+# persona at :5281, register fresh accounts at the others, carry the codes between tabs.
+start-n n="3": ui-install
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{workspace}}"
+
+    n="{{n}}"
+    if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt 16 ]; then
+        echo "start-n: n must be an integer from 1 to 16 (got '$n')" >&2
+        exit 1
+    fi
+
+    # Shared local discovery so post-adoption background sync can find addresses. A lone node
+    # (n=1) has no peers to find, so it goes bare like `just start`.
+    discovery="local:./data-dht"
+    [ "$n" -ge 2 ] || discovery=""
+
+    # ensure esbuild output dirs exist
+    mkdir -p node/js/target/js node/js/target/css
+
+    # initial build so the servers have bundles to include_str! on first compile
+    cd node/js && npx esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser --sourcemap --keep-names && \
+                  npx esbuild index.css --bundle --outfile=target/css/bundle.css --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png'
+    cd "{{workspace}}"
+
+    # JS watcher
+    (cd node/js && npx esbuild index.js --bundle --outfile=target/js/bundle.js --platform=browser \
+        --watch --sourcemap --keep-names --define:process.env.NODE_ENV=\"development\" \
+        --log-level=info --legal-comments=inline) &
+    JS_PID=$!
+
+    # CSS watcher
+    (cd node/js && npx esbuild index.css --bundle --outfile=target/css/bundle.css \
+        --external:'*.woff2' --external:'*.woff' --external:'*.ttf' --external:'*.png' --watch) &
+    CSS_PID=$!
+
+    # Build once so the N `cargo run`s below don't race the compiler.
+    cargo build --bin ringtome
+
+    # Nodes 2..N in the background, logs to /tmp (their terminal noise would interleave with A's).
+    node_pids=""
+    for ((i = 2; i <= n; i++)); do
+        port=$((5280 + i))
+        RINGTOME_PORT="$port" RINGTOME_DATA_DIRECTORY="./data-$i" RINGTOME_NODE_NAME="node-$i" \
+            RINGTOME_DISCOVERY="$discovery" \
+            cargo run --bin ringtome > "/tmp/ringtome-node-$i.log" 2>&1 &
+        node_pids="$node_pids $!"
+        echo "node $i (node-$i) on http://localhost:$port — data ./data-$i — logs: /tmp/ringtome-node-$i.log"
+    done
+
+    cleanup() {
+        echo ""
+        echo "shutting down..."
+        kill "$JS_PID" "$CSS_PID" $node_pids 2>/dev/null || true
+        wait "$JS_PID" "$CSS_PID" $node_pids 2>/dev/null || true
+        echo "done."
+    }
+    trap cleanup EXIT
+
+    # Node A in the foreground — Ctrl-C lands here and takes everything down.
+    RINGTOME_DISCOVERY="$discovery" cargo run --bin ringtome
+
 # --- ui -----------------------------------------------------------------------
 
 # Install JS dependencies for the Preact UI.
@@ -267,9 +334,9 @@ test-data personas="15" actions="15" seed="":
     fi
     cd "{{justfile_directory()}}/harness" && node testdata.mjs {{personas}} {{actions}} {{seed}}
 
-# --- scratch nodes (agent/probe testing) ---------------------------------------------------
+# --- scratch nodes (agent/probe testing) ----------------------------------------------------
 # Throwaway nodes for harness probes and agent testing, kept STRUCTURALLY apart from the dev
-# network: they refuse the dev ports (5281-5283), live in /tmp, and are killed by PID file -
+# network: they refuse the dev ports (5281-5296), live in /tmp, and are killed by PID file -
 # never by pattern - so no scratch cleanup can ever take down `just start*`. Born from the
 # 2026-08-05 incident where a broad pkill killed the running dev trio mid-test and a scratch
 # node then squatted 5281 impersonating it.
@@ -279,7 +346,7 @@ scratch port="5299":
     #!/usr/bin/env bash
     set -uo pipefail
     case "{{port}}" in
-        5281|5282|5283)
+        5281|5282|5283|5284|5285|5286|5287|5288|5289|5290|5291|5292|5293|5294|5295|5296)
             echo "port {{port}} belongs to the dev network (just start*) - scratch uses 5297-5299" >&2
             exit 1;;
     esac
@@ -344,7 +411,8 @@ kill:
 # no in-place migration - delete the database and rebuild"). This is that delete.
 #
 # Covers `start` / `run` (./data, which also contains the integration rig's ./data/test*),
-# `start-two` (adds ./data-b, ./data-dht) and `start-three` (adds ./data-c). Kills any running
+# `start-two` (adds ./data-b, ./data-dht), `start-three` (adds ./data-c) and `start-n` (adds
+# ./data-2.. ./data-N, all swept by the data-* glob). Kills any running
 # node first, so nothing is holding a file open while it disappears.
 #
 # DESTROYS every dev persona, key and chain - the wipe a schema generation bump asks for.
@@ -352,7 +420,7 @@ clean: kill
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
-    for d in data data-b data-c data-dht; do
+    for d in data data-*; do
         if [ -e "$d" ]; then
             rm -rf "$d" && echo "removed $d"
         fi
