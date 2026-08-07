@@ -133,7 +133,7 @@ fn user_db_opens_are_deliberate() {
         ("profiles.rs", 1),        // refresh: ONE persona per claim-change edge
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute
         ("net/resync.rs", 1),
-        ("net/sync.rs", 2),
+        ("net/sync.rs", 3),        // + derive_peers_for: ONE persona's crown per derive edge
         ("record/bake.rs", 1),     // bake_one: ONE persona per external-media job, the ingest pattern
         ("record/documents.rs", 1),
         ("record/store.rs", 2),

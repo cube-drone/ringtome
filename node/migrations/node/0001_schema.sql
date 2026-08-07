@@ -73,6 +73,17 @@ CREATE INDEX identities_account_idx ON identities (account_id);
 CREATE TABLE identity_peers (
     root_pubkey    TEXT    NOT NULL,
     endpoint_id    TEXT    NOT NULL,  -- iroh endpoint id; transport identity, never an identity key
+    -- The identity leaf behind this endpoint, when known (2026-08-07): ceremony rows learn it
+    -- from the adoption codes, member-proven dialers from their proof, derived rows from the
+    -- serving record. NULL means "ceremony-era row, leaf never learned". The leaf is what lets
+    -- revocation reach routing: the derive sweep deletes rows whose leaf the crown no longer
+    -- credits - before it, NOTHING removed a repudiated device's row and the eager loop kept
+    -- dialing the attacker's machine forever.
+    leaf_pubkey    TEXT,
+    -- When the derive sweep last confirmed this row against a live serving record (0/NULL for
+    -- rows known only by ceremony or proof). Freshness feeds hint minting ("most recently
+    -- active leaves").
+    last_resolved_ms INTEGER,
     added_at_ms    INTEGER NOT NULL,
     last_synced_ms INTEGER,
     -- What this node last CLAIMED about the persona's public frontier, and what we did about

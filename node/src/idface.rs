@@ -199,7 +199,28 @@ pub async fn idface(
         let fields = public_profile(&state, &root_hex).await.unwrap_or_default();
         let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
         let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
-        let mut via = vec![state.endpoint.id().to_string()];
+        // Leaves first ("hints become leaves"): our own leaf for this persona, then the
+        // liveliest sibling leaves by serving-record freshness. Endpoint-id peers remain as
+        // filler for rows whose leaf was never learned - the resolver tries each hint as a
+        // leaf and falls back to dialing it as an endpoint, so a mixed list is fine.
+        let mut via = Vec::new();
+        if let Ok(Some(own_leaf)) = crate::identity::leaf_hex_of(&state.node_db, &root_hex).await {
+            via.push(own_leaf);
+        }
+        for leaf in crate::net::sync::liveliest_leaves(&state.node_db, &root_hex, 16)
+            .await
+            .unwrap_or_default()
+        {
+            if via.len() >= 10 {
+                break;
+            }
+            if !via.contains(&leaf) {
+                via.push(leaf);
+            }
+        }
+        if via.is_empty() {
+            via.push(state.endpoint.id().to_string());
+        }
         for peer in crate::net::sync::liveliest_peers(&state.node_db, &root_hex, 16)
             .await
             .unwrap_or_default()
@@ -289,6 +310,26 @@ const FOREIGN_REVALIDATE_MS: i64 = 30 * 1000;
 /// not orphan chains they still hold. Durable KNOWLEDGE, still member-scoped SERVING - this
 /// table never touches the identities table (the anonymous shelf) or identity_peers (the
 /// background sync worklist): a fetch is remembered, never promoted to fronting.
+/// A via hint interpreted as an identity leaf: if a fresh serving record exists under this
+/// key AND names the root we are fetching, the record's endpoint is the dial target -
+/// authenticated by the leaf's own signature, with the root binding checked so a leaf via
+/// for the WRONG identity can't redirect a fetch. Anything else returns the key unchanged,
+/// to be dialed as the endpoint id it presumably is.
+async fn leaf_via_to_endpoint(state: &AppState, root_hex: &str, key_hex: &str) -> String {
+    let Some(leaf) = crate::pubkey::decode(key_hex) else {
+        return key_hex.to_string();
+    };
+    match state.directory.resolve_serving(&leaf).await {
+        Ok(Some(signed)) if hex::encode(signed.record().root) == root_hex => {
+            match iroh::PublicKey::from_bytes(&signed.record().endpoint_id) {
+                Ok(ep) => ep.to_string(),
+                Err(_) => key_hex.to_string(),
+            }
+        }
+        _ => key_hex.to_string(),
+    }
+}
+
 async fn record_foreign_fetch(state: &AppState, root_hex: &str, via: &str) -> Result<(), AppError> {
     state
         .node_db
@@ -384,12 +425,21 @@ pub struct IdQuery {
 /// ordinary sync exchange (an unproven requester with empty frontiers receives exactly the
 /// public lane - the same from-empty path adoption exercises), the gate validates everything
 /// against `root`, and concurrent winners are safe (single-writer chains, duplicate-skip
-/// ingest; the also-rans are aborted). Candidates arrive base58 or hex; the resolve-a-bare-
-/// root directory backstop does not exist yet (serving records publish under LEAF keys;
-/// ledgered in NEXT_STEPS).
+/// ingest; the also-rans are aborted). Candidates arrive base58 or hex, and each may be
+/// either kind of key (2026-08-07, "hints become leaves"): an identity LEAF - resolved
+/// through its signed serving record, which must name OUR target root or the hint is
+/// discarded - or a bare endpoint id, the original transport-layer form. Leaves are tried as
+/// leaves first; a key that resolves no serving record falls back to being dialed as an
+/// endpoint. The resolve-a-bare-root announce backstop remains NEXT_STEPS.
 async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool {
     let mut set = tokio::task::JoinSet::new();
-    for candidate in via.iter().take(10) {
+    // The zeroth hint is the root itself: a founding node signs with the root AS its leaf,
+    // so its serving record lives under the root key - which makes a bare root resolve with
+    // no hint at all, for every persona whose founding node still publishes. (The announce
+    // rendezvous, when built, covers the personas whose founder is gone.)
+    let implicit = std::iter::once(root_hex.to_string());
+    for candidate in implicit.chain(via.iter().take(10).cloned()) {
+        let candidate = &candidate;
         // A hint in neither spelling costs a shrug, never the ladder.
         let Some(key_hex) = speakable::node_key_from_via(candidate) else {
             continue;
@@ -397,6 +447,7 @@ async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool
         let task_state = state.clone();
         let task_root = root_hex.to_string();
         set.spawn(async move {
+            let key_hex = leaf_via_to_endpoint(&task_state, &task_root, &key_hex).await;
             let addr = crate::net::sync::dial_addr(&task_state, &key_hex).await.ok()?;
             match tokio::time::timeout(
                 FETCH_TIMEOUT,

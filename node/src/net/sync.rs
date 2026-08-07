@@ -972,6 +972,22 @@ pub async fn sync_with_peer(
                 bail!("peer answered for a different identity");
             }
             let proven = peer_is_member(&db, root, &proof, &peer_id, &our_id).await;
+            // A proven member is a sibling worth remembering: healing on any contact, and
+            // the proof names the leaf, which binds the row for revocation cleanup.
+            if proven {
+                if let (Some(p), Ok(ep)) = (&proof, iroh::PublicKey::from_bytes(&peer_id)) {
+                    if let Err(e) = add_peer_with_leaf(
+                        &state.node_db,
+                        root_hex,
+                        &ep.to_string(),
+                        Some(&hex::encode(p.leaf)),
+                    )
+                    .await
+                    {
+                        tracing::debug!(error = ?e, "recording a proven peer failed");
+                    }
+                }
+            }
             (frontiers, proven)
         }
         other => bail!("expected Hello from peer, got {other:?}"),
@@ -1117,6 +1133,18 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 
     let db = state.user_dbs.get(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
+    // The dialer proved membership: remember it as a peer, leaf-bound (healing on any
+    // contact - a sibling that found US, by whatever path, is one we can find again).
+    if peer_proven {
+        if let (Some(p), Ok(ep)) = (&peer_proof, iroh::PublicKey::from_bytes(&peer_id)) {
+            if let Err(e) =
+                add_peer_with_leaf(&state.node_db, &root_hex, &ep.to_string(), Some(&hex::encode(p.leaf)))
+                    .await
+            {
+                tracing::debug!(error = ?e, "recording a proven dialer failed");
+            }
+        }
+    }
 
     // Our Hello carries our own proof (so the requester will send *us* private entries) and our
     // frontiers - private ones included only for a proven member.
@@ -1199,14 +1227,129 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 /// Remember a peer for an identity. Endpoint ids only - addresses are the discovery layer's
 /// problem, resolved at dial time (hints are keys, never addresses).
 pub async fn add_peer(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Result<()> {
+    add_peer_with_leaf(node_db, root_hex, endpoint_id, None).await
+}
+
+/// Remember a peer AND which identity leaf answers at it, when known - the leaf is what lets
+/// revocation reach routing (the derive sweep deletes rows whose leaf the crown no longer
+/// credits). Ceremony call sites know the joiner's leaf from the codes; the responder learns a
+/// dialer's leaf from its member proof; the derive sweep learns it from the serving record.
+/// Upsert semantics: a later, better-informed sighting fills in a leaf the first sighting
+/// lacked, and never un-learns one.
+pub async fn add_peer_with_leaf(
+    node_db: &Db,
+    root_hex: &str,
+    endpoint_id: &str,
+    leaf_hex: Option<&str>,
+) -> Result<()> {
     node_db
         .execute(
-            "INSERT OR IGNORE INTO identity_peers (root_pubkey, endpoint_id, added_at_ms)
-         VALUES (?1, ?2, ?3)",
-            (root_hex, endpoint_id, now_ms()),
+            "INSERT INTO identity_peers (root_pubkey, endpoint_id, leaf_pubkey, added_at_ms)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (root_pubkey, endpoint_id) DO UPDATE SET
+                 leaf_pubkey = COALESCE(excluded.leaf_pubkey, identity_peers.leaf_pubkey)",
+            (root_hex, endpoint_id, leaf_hex, now_ms()),
         )
         .await
         .context("recording peer")?;
+    Ok(())
+}
+
+/// Derive one hosted identity's peer set from the truth: Active leaves out of the crown, each
+/// resolved through its signed serving record ("the chain frontier is the peer list" -
+/// PROJECT_PLAN, finally honored by the implementation; the ceremony rows the table
+/// accumulated are the seed, not the ceiling). Three moves:
+///
+///   * every Active leaf with a fresh serving record naming OUR root upserts a row
+///     (leaf-bound, `last_resolved_ms` stamped - freshness feeds hint minting);
+///   * rows bound to a leaf the crown no longer credits are DELETED - the revocation finally
+///     reaching routing (before this, a repudiated device's row lived forever and the eager
+///     loop kept dialing the attacker's machine);
+///   * leaf-less rows (ceremony-era, proof never seen) are left alone - they are the fallback
+///     for siblings whose publish is failing, and the proof-upsert backfills them over time.
+///
+/// Infallible-logging: the sweep and the adoption edge both call this, and neither may fail
+/// on a dark directory or an unreadable tree.
+pub async fn derive_peers_for(state: &crate::AppState, root_hex: &str) {
+    let result: Result<()> = async {
+        let db = state.user_dbs.get(root_hex).await?;
+        let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
+        let our_endpoint = state.endpoint.id().to_string();
+        let mut active: Vec<String> = Vec::new();
+        for (leaf, status) in tree.members() {
+            if status != KeyStatus::Active {
+                continue;
+            }
+            let leaf_hex = hex::encode(leaf);
+            active.push(leaf_hex.clone());
+            let record = match state.directory.resolve_serving(&leaf).await {
+                Ok(Some(r)) => r,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::debug!(leaf = %leaf_hex, "serving resolution failed: {e:#}");
+                    continue;
+                }
+            };
+            let rec = record.record();
+            if hex::encode(rec.root) != root_hex {
+                continue; // a leaf serving some other root is not this persona's peer
+            }
+            let endpoint_hex =
+                iroh::PublicKey::from_bytes(&rec.endpoint_id).map(|k| k.to_string());
+            let Ok(endpoint_id) = endpoint_hex else {
+                continue;
+            };
+            if endpoint_id == our_endpoint {
+                continue; // we are not our own peer
+            }
+            state
+                .node_db
+                .execute(
+                    "INSERT INTO identity_peers
+                       (root_pubkey, endpoint_id, leaf_pubkey, last_resolved_ms, added_at_ms)
+                     VALUES (?1, ?2, ?3, ?4, ?4)
+                     ON CONFLICT (root_pubkey, endpoint_id) DO UPDATE SET
+                         leaf_pubkey = excluded.leaf_pubkey,
+                         last_resolved_ms = excluded.last_resolved_ms",
+                    (root_hex, endpoint_id.as_str(), leaf_hex.as_str(), now_ms()),
+                )
+                .await
+                .context("recording a derived peer")?;
+        }
+        // Revocation reaches routing: leaf-bound rows the crown no longer credits die here.
+        let quoted: Vec<String> = active
+            .iter()
+            .filter(|l| l.len() == 64 && l.chars().all(|c| c.is_ascii_hexdigit()))
+            .map(|l| format!("'{l}'"))
+            .collect();
+        state
+            .node_db
+            .execute(
+                &format!(
+                    "DELETE FROM identity_peers WHERE root_pubkey = ?1
+                     AND leaf_pubkey IS NOT NULL AND leaf_pubkey NOT IN ({})",
+                    if quoted.is_empty() { "''".into() } else { quoted.join(",") }
+                ),
+                (root_hex,),
+            )
+            .await
+            .context("dropping peers whose leaf the crown no longer credits")?;
+        Ok(())
+    }
+    .await;
+    if let Err(e) = result {
+        tracing::debug!(root = %root_hex, "peer derivation skipped: {e:#}");
+    }
+}
+
+/// The derive sweep: every hosted identity's peer set, re-derived from tree x directory.
+/// Recovery-paced - the event edges (adoption, member-proven dials) keep the set fresh in the
+/// common case; this pass is what heals a dead introducer's partition and enforces
+/// revocation-to-routing on a beat.
+pub async fn derive_peers(state: crate::AppState) -> Result<()> {
+    for root in crate::identity::hosted_roots(&state.node_db).await? {
+        derive_peers_for(&state, &root).await;
+    }
     Ok(())
 }
 
@@ -1237,6 +1380,26 @@ pub async fn liveliest_peers(node_db: &Db, root_hex: &str, cap: u32) -> Result<V
         .await
         .context("listing liveliest peers")?;
     Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// The persona's liveliest LEAVES - the preferred via-hint form ("hints become leaves",
+/// 2026-08-07): identity-layer keys that resolve through signed serving records with a root
+/// binding, where an endpoint id is a transport key with no identity semantics until dial.
+/// Ranked by serving-record freshness (`last_resolved_ms` is the derive sweep's stamp), so a
+/// minted address leads with the devices most recently seen alive.
+pub async fn liveliest_leaves(node_db: &Db, root_hex: &str, cap: u32) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT leaf_pubkey FROM identity_peers
+             WHERE root_pubkey = ?1 AND leaf_pubkey IS NOT NULL
+             ORDER BY last_resolved_ms IS NULL, last_resolved_ms DESC,
+                      last_synced_ms IS NULL, last_synced_ms DESC
+             LIMIT ?2",
+            (root_hex, cap),
+        )
+        .await
+        .context("listing liveliest leaves")?;
+    Ok(rows.into_iter().map(|(l,)| l).collect())
 }
 
 /// Distinct roots that have at least one known peer - the background sync worklist.

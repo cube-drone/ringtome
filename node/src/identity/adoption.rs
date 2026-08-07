@@ -231,9 +231,14 @@ pub async fn authorize_node(
     tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, resealed, "sealed epoch history");
 
     // Remember the joining node as a peer so future syncs reach it.
-    crate::net::sync::add_peer(&state.node_db, root_hex, &code.endpoint_id)
-        .await
-        .map_err(AppError::Internal)?;
+    crate::net::sync::add_peer_with_leaf(
+        &state.node_db,
+        root_hex,
+        &code.endpoint_id,
+        Some(&code.leaf_pubkey),
+    )
+    .await
+    .map_err(AppError::Internal)?;
 
     tracing::info!(root = %root_hex, leaf = %code.leaf_pubkey, "authorized new node");
     Ok(GrantCode {

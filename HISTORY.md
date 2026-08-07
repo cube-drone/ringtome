@@ -3161,3 +3161,41 @@ senior anchors left -> C evicts right and converges -> quarantines lift -> repla
 without re-arming. Plant-validated (wire branch removed -> proof never crosses -> red).
 User schema gen 5 -> 6: user DBs rebuild from journal on next start. Residuals ledgered:
 a reader-facing "disputed" notice, and evidence surviving journal rebuilds.
+
+## 2026-08-07: the chain frontier becomes the peer list (discovery, phase 1)
+
+The build that fell out of a week of design conversation (equivocation -> "how do nodes
+even know their siblings" -> the discoverability doctrine). The plan always said "the chain
+frontier IS the peer list"; the implementation's identity_peers was only ever the adoption
+ceremonies' pairwise edges, so a dead introducer partitioned honest replicas forever and a
+repudiated device's row was never removed - the eager loop kept dialing the attacker's
+machine with fresh frontiers.
+
+What shipped, on machinery that mostly existed:
+
+* **Serving records go universal** (identity/serving.rs): every hosted identity publishes
+  its leaf-signed record - at creation, at adoption, and on the republish beat. "Publication
+  is an act" is retired for serving records; served_at_ms remains as the HTTP-face flag.
+* **The derived peer set** (net::sync::derive_peers_for): Active crown leaves x resolved
+  serving records, upserted leaf-bound into identity_peers (node gen 9 adds leaf_pubkey +
+  last_resolved_ms); rows whose leaf the crown no longer credits are DELETED - revocation
+  finally reaches routing. Runs at adoption and on a 600s beat (LOCAL_TEST override:
+  RINGTOME_TEST_PEER_DERIVE_MS). Probed: A adopts B adopts C, kill B, write on C - the words
+  reach A with the introducer dead; planted (derive no-op'd), the partition stands.
+* **Member-proven dialers are remembered**, leaf-bound from their proof, on both sides of
+  an exchange - healing on any contact.
+* **Hints become leaves**: the /id face mints ?via= as identity leaves (own leaf first,
+  then liveliest siblings by serving-record freshness; endpoint ids remain as filler and
+  fallback), and fetch_foreign tries every hint as a leaf (serving record must name the
+  target root - a leaf via for the wrong identity is discarded) before falling back to
+  dialing it as an endpoint.
+* **Bare roots resolve** - the accident that fell out: a founding node signs with the root
+  AS its leaf, so its serving record lives at the root's own slot. fetch_foreign gained the
+  zeroth rung (the target root as implicit hint), and a stranger node resolved a persona
+  from nothing but its root, live-probed. The announce rendezvous shrinks again: needed only
+  when the founder is gone.
+
+Pinned by integration/test/peerderive.cjs (3-host ceremony chain -> leaf-bound mesh on both
+ends -> repudiation prunes the dial list; the justfile's integration nodes now run a 3s
+derive beat) and three probes (peer-derive, leaf-via mint/resolve, bare-root). Node schema
+gen 8 -> 9: dev node.db rebuilds on next start.

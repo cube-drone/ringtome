@@ -266,6 +266,9 @@ async fn create_handler(
         &state.config.node_name,
     )
     .await?;
+    // Participation implies locatability (the discoverability doctrine): a newborn identity
+    // publishes its serving record now, not at some later "act of publication".
+    super::serving::publish_best_effort(&state, &created.root_pubkey).await;
     Ok(Json(CreatedIdentityInfo {
         root_pubkey: created.root_pubkey,
         created_at_ms: created.created_at_ms,
@@ -480,6 +483,11 @@ async fn adopt_complete_handler(
 ) -> Result<Json<IdentityInfo>, AppError> {
     let grant: super::adoption::GrantCode = super::adoption::unpack(&req.code, "grant code")?;
     let identity = super::adoption::complete(&state, &session.account.id, grant).await?;
+    // The newborn device is locatable from its first breath (discoverability doctrine), and
+    // immediately derives its peer view from the tree it just received - the ceremony's
+    // pairwise knowledge is the seed, not the ceiling.
+    super::serving::publish_best_effort(&state, &identity.root_pubkey).await;
+    crate::net::sync::derive_peers_for(&state, &identity.root_pubkey).await;
     // A just-adopted leaf is Active by construction; no need to resolve the tree to say so.
     Ok(Json(IdentityInfo::new(identity, "active")))
 }

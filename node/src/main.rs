@@ -340,6 +340,20 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(300)
     };
     loops::periodic("missing-bodies", body_beat, state.clone(), net::bodies::sweep);
+    // The peer-set derive sweep (net::sync::derive_peers): every hosted identity's peer list,
+    // re-derived from Active crown leaves x live serving records. The event edges (adoption,
+    // member-proven dials) keep it fresh; the beat heals dead-introducer partitions and
+    // enforces revocation-to-routing. LOCAL_TEST may shorten it so probes can watch a round.
+    let derive_beat = if local_test {
+        std::env::var("RINGTOME_TEST_PEER_DERIVE_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(600))
+    } else {
+        std::time::Duration::from_secs(600)
+    };
+    loops::periodic("peer-derive", derive_beat, state.clone(), net::sync::derive_peers);
     // WAL maintenance (Db::checkpoint): truncate node.db's and every open user db's log on a
     // slow beat. Turso's own auto-checkpoint bounds work, not the file - the log only shrinks
     // on TRUNCATE, and an unbounded WAL taxes every read after it (568MB observed, 2026-08-05).

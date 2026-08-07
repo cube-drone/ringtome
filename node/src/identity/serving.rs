@@ -1,9 +1,14 @@
 //! Serving records: "our leaf serves this root, reachable at our endpoint" (PROJECT_PLAN,
 //! Hosting and the Colocation Problem).
 //!
-//! Publication is an act: nothing publishes until an identity is explicitly marked served, and
-//! the republish pass only refreshes what was marked. A record is a pointer + liveness signal,
-//! never a trust source - chain-to-root verification happens at sync time (`proto::directory`).
+//! UNIVERSAL since 2026-08-07 (the discoverability doctrine: participation implies
+//! locatability, no dark personas): every hosted identity's record publishes, and the
+//! republish pass walks all of them - "publication is an act" is retired for serving records.
+//! The synced identity chain enumerates the leaves and each leaf's record resolves
+//! authenticated, so the tree is the index of the whole live mesh (`net::sync::derive_peers`
+//! is the consumer). `served_at_ms` remains as the HTTP-face flag it also was, but no longer
+//! gates discovery. A record is a pointer + liveness signal, never a trust source -
+//! chain-to-root verification happens at sync time (`proto::directory`).
 
 use anyhow::anyhow;
 use ringtome_proto::directory::{ServingRecord, SignedServingRecord, RECORD_VERSION};
@@ -56,14 +61,23 @@ pub async fn publish_record(state: &AppState, root_hex: &str) -> Result<(), AppE
     Ok(())
 }
 
-/// One pass of the serving-record republish loop: refresh the record of every identity marked
-/// served. Per-identity failures are logged and skipped - one identity's bad state must not
-/// starve the rest of the worklist.
+/// One pass of the serving-record republish loop: refresh the record of EVERY hosted
+/// identity (universal publication - the discoverability doctrine). Per-identity failures
+/// are logged and skipped - one identity's bad state must not starve the rest of the
+/// worklist, and Directory::Off makes every publish a warn, not a wedge.
 pub async fn republish_pass(state: AppState) -> anyhow::Result<()> {
-    for root in super::served_roots(&state.node_db).await? {
+    for root in crate::identity::hosted_roots(&state.node_db).await? {
         if let Err(e) = publish_record(&state, &root).await {
             tracing::warn!(root = %root, "serving record republish failed: {e:#}");
         }
     }
     Ok(())
+}
+
+/// Publish immediately and tolerate failure - the shape adoption and identity creation want:
+/// the republish loop will retry on its beat, and a dark directory must not fail a ceremony.
+pub async fn publish_best_effort(state: &AppState, root_hex: &str) {
+    if let Err(e) = publish_record(state, root_hex).await {
+        tracing::debug!(root = %root_hex, "immediate serving publish skipped: {e:#}");
+    }
 }

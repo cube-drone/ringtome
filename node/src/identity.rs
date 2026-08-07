@@ -503,6 +503,21 @@ pub async fn hosted_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
+/// The leaf key THIS node signs with for a hosted identity, hex (the root itself on the
+/// founding node) - None when the identity isn't hosted here. The via mint leads with it:
+/// our own leaf is the one hint we can vouch for absolutely.
+pub async fn leaf_hex_of(node_db: &Db, root_hex: &str) -> Result<Option<String>, AppError> {
+    let row: Option<(Option<String>,)> = node_db
+        .fetch_optional(
+            "SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("reading a hosted identity's leaf")
+        .map_err(AppError::Internal)?;
+    Ok(row.and_then(|(l,)| l))
+}
+
 pub async fn served_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(
