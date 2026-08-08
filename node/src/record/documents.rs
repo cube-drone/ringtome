@@ -2275,6 +2275,11 @@ mod tests {
         SigningKey::from_bytes(&[byte; 32])
     }
 
+    // The two save helpers below take the `Save` struct's fields positionally on purpose:
+    // being a terse shorthand for a struct literal IS their job, at ~40 call sites, and
+    // giving them a struct parameter would just restore the thing they exist to avoid. The
+    // arity lint is right about production signatures and wrong about this.
+    #[allow(clippy::too_many_arguments)]
     async fn save(
         db: &Db,
         key: &SigningKey,
@@ -2304,6 +2309,7 @@ mod tests {
     }
 
     /// Save helper that lets a test pick the format (for the Marquee conflict tests).
+    #[allow(clippy::too_many_arguments)]
     async fn save_fmt(
         db: &Db,
         key: &SigningKey,

@@ -48,38 +48,6 @@ impl RequestContext {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use uuid::Uuid;
-
-    fn ctx(ip: &str, forwarded: &str) -> RequestContext {
-        RequestContext {
-            remote_ip: ip.parse().unwrap(),
-            forwarded_for: forwarded.into(),
-            user_agent: "test".into(),
-            correlation_id: Uuid::nil(),
-        }
-    }
-
-    #[test]
-    fn the_operators_own_machine_is_direct() {
-        assert!(ctx("127.0.0.1", NOT_FORWARDED).is_direct_loopback());
-        assert!(ctx("::1", NOT_FORWARDED).is_direct_loopback(), "v6 loopback counts too");
-    }
-
-    #[test]
-    fn a_proxied_request_is_never_direct_even_from_loopback() {
-        // Behind nginx, everyone is 127.0.0.1 - the forwarding header is what says so.
-        assert!(!ctx("127.0.0.1", "203.0.113.9").is_direct_loopback());
-    }
-
-    #[test]
-    fn the_network_is_the_network() {
-        assert!(!ctx("203.0.113.9", NOT_FORWARDED).is_direct_loopback());
-    }
-}
-
 impl<S> FromRequestParts<S> for RequestContext
 where
     S: Send + Sync,
@@ -120,5 +88,37 @@ where
             user_agent,
             correlation_id,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn ctx(ip: &str, forwarded: &str) -> RequestContext {
+        RequestContext {
+            remote_ip: ip.parse().unwrap(),
+            forwarded_for: forwarded.into(),
+            user_agent: "test".into(),
+            correlation_id: Uuid::nil(),
+        }
+    }
+
+    #[test]
+    fn the_operators_own_machine_is_direct() {
+        assert!(ctx("127.0.0.1", NOT_FORWARDED).is_direct_loopback());
+        assert!(ctx("::1", NOT_FORWARDED).is_direct_loopback(), "v6 loopback counts too");
+    }
+
+    #[test]
+    fn a_proxied_request_is_never_direct_even_from_loopback() {
+        // Behind nginx, everyone is 127.0.0.1 - the forwarding header is what says so.
+        assert!(!ctx("127.0.0.1", "203.0.113.9").is_direct_loopback());
+    }
+
+    #[test]
+    fn the_network_is_the_network() {
+        assert!(!ctx("203.0.113.9", NOT_FORWARDED).is_direct_loopback());
     }
 }

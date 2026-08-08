@@ -3649,3 +3649,26 @@ folded into this diff. And `cargo clippy --all-targets` has 16 pre-existing lint
 test code on main (this change makes it 15) - `just lint` doesn't pass `--all-targets`, so
 test-code lints have never been gated. Worth a decision sometime; not worth smuggling in
 here.
+
+## 2026-08-08: the lint gate learns about test code
+
+`just lint` was `cargo clippy -- -D warnings`, which lints the binary and the library and
+never the tests - so sixteen real lint failures had been sitting in test modules on main
+without CI noticing, because the workflow runs `just ci` verbatim and `just ci` runs `lint`.
+Warnings-as-errors on production code beside zero linting on the code that PROVES it is an
+odd seam, and sixteen is an afternoon, so the flag went on and the backlog went away:
+
+* **Eleven `&[x.clone()]` -> `std::slice::from_ref(&x)`** in the sync gate's tests - each was
+  cloning a signed entry purely to build a one-element slice.
+* **`items after a test module`** in `request_context.rs`, where an `impl FromRequestParts`
+  block had drifted below `mod tests`. Clippy and the house rule (STYLE, File ordering:
+  "tests at the bottom") wanted the same thing, so it moved rather than being suppressed.
+* **A stray `vec!`** where an array does, in the fan-out batching test.
+* **Two arity allows, with the reason inline** (`documents.rs`'s `save`/`save_fmt`): taking
+  the `Save` struct's fields positionally IS what those helpers are for, at ~40 call sites,
+  and handing them a struct parameter would restore exactly the verbosity they exist to
+  remove. Curtis's rule for this pass - genuinely exceptional cases may carry "the lint does
+  not apply here" inline - and these two are it. An `#[allow]` with a stated reason is a
+  decision on the record; an ungated lint is a silence.
+
+Nothing was suppressed to make the gate pass that could reasonably have been fixed instead.

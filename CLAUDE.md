@@ -20,7 +20,9 @@
   that is ALREADY red is a finding, not background noise: report it and settle it (fix, or
   Curtis explicitly defers it) before stacking new work on top; prove "unrelated to my
   change" with a clean-tree rerun, never by vibes. Mind the dev-network rule below before
-  running `just integration`.
+  running `just integration`. **`just ci` IS the gate**: `.github/workflows/ci.yml` runs that
+  recipe verbatim and nothing else, so green locally is green on the action — there is no
+  second bar to reason about, and no "CI will probably be fine".
 - **Testing beside a running dev network** (2026-08-05, after a broad pkill killed it):
   throwaway nodes come from `just scratch [5297-5299]` and die by `just scratch-kill` — PID-file
   scoped, structurally unable to touch `just start*`'s ports or processes. Never bind 5281-5296

@@ -1951,7 +1951,7 @@ mod tests {
         let written: Vec<SignedEntry> = (0..count)
             .map(|n| posts.append(entry_type::POST, vec![0xa0, (n >> 8) as u8, n as u8]))
             .collect();
-        assert_eq!(ingest(&db, root_chain.pk(), &[authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, root_chain.pk(), std::slice::from_ref(&authorize)).await, (1, 0));
         assert_eq!(ingest(&db, root_chain.pk(), &written).await.0, count as u64);
 
         // A peer holding nothing lacks everything: the identity chain first, then every post.
@@ -2081,7 +2081,7 @@ mod tests {
         // the combined stored ∪ incoming set.
         let db = test_db().await;
         let s = scenario();
-        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, std::slice::from_ref(&s.authorize)).await, (1, 0));
         assert_eq!(ingest(&db, s.root, &s.honest[..2]).await, (2, 0));
 
         // The revocation arrives; the stored prefix is consistent with the anchor, so nothing
@@ -2182,7 +2182,7 @@ mod tests {
         // swept the moment the revocation lands.
         let db = test_db().await;
         let s = scenario();
-        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, std::slice::from_ref(&s.authorize)).await, (1, 0));
         assert_eq!(ingest(&db, s.root, &s.honest).await, (3, 0)); // seqs 0..=2 stored
 
         // Root repudiates K anchoring seq 1 - it never saw seq 2.
@@ -2230,7 +2230,7 @@ mod tests {
         // ceiling, above.
         let db = test_db().await;
         let s = scenario();
-        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, std::slice::from_ref(&s.authorize)).await, (1, 0));
         assert_eq!(ingest(&db, s.root, &s.honest).await, (3, 0));
 
         // Root repudiates K anchoring NOTHING - built directly, since scenario()'s revoke is
@@ -2336,7 +2336,7 @@ mod tests {
         // honest history, not cryptographically-proven fabrications.
         let db = test_db().await;
         let s = scenario();
-        assert_eq!(ingest(&db, s.root, &[s.authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, s.root, std::slice::from_ref(&s.authorize)).await, (1, 0));
         assert_eq!(ingest(&db, s.root, &s.forged).await, (3, 0));
         assert_eq!(
             stored_hashes(&db, &s.k, service::POSTS).await,
@@ -2427,7 +2427,7 @@ mod tests {
             .await
             .is_empty());
 
-        assert_eq!(ingest(&db, root, &[honest_auth.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, root, std::slice::from_ref(&honest_auth)).await, (1, 0));
         assert_eq!(
             stored_hashes(&db, &k, service::IDENTITY_PUBLIC).await,
             vec![*honest_auth.hash()]
@@ -2512,8 +2512,8 @@ mod tests {
 
         // CONTAINMENT, gate half: the proof arrives; neither branch overwrites the other,
         // the second branch is NOT a second post, and the evidence is on the record.
-        assert_eq!(ingest(&b, root, &[right.clone()]).await, (0, 0), "recorded, not stored");
-        assert_eq!(ingest(&c, root, &[left.clone()]).await, (0, 0));
+        assert_eq!(ingest(&b, root, std::slice::from_ref(&right)).await, (0, 0), "recorded, not stored");
+        assert_eq!(ingest(&c, root, std::slice::from_ref(&left)).await, (0, 0));
         assert_eq!(
             stored_hashes(&b, &k, service::POSTS).await,
             vec![*common.hash(), *left.hash()],
@@ -2539,7 +2539,7 @@ mod tests {
         );
 
         // Idempotence: the same proof arriving again (anti-entropy re-sends) changes nothing.
-        assert_eq!(ingest(&b, root, &[right.clone()]).await, (0, 0));
+        assert_eq!(ingest(&b, root, std::slice::from_ref(&right)).await, (0, 0));
         assert!(has_public_equivocation(&b).await.unwrap());
 
         // RESOLUTION: the senior repudiates K, anchoring the exact prefix ending in `left`.
@@ -2574,7 +2574,7 @@ mod tests {
         );
 
         // B held the winning branch all along: the revocation alone lifts its quarantine.
-        ingest(&b, root, &[revoke.clone()]).await;
+        ingest(&b, root, std::slice::from_ref(&revoke)).await;
         assert_eq!(stored_hashes(&b, &k, service::POSTS).await, vec![*common.hash(), *left.hash()]);
         assert!(!has_public_equivocation(&b).await.unwrap());
         assert_eq!(
@@ -2585,7 +2585,7 @@ mod tests {
         // Replaying the losing branch after adjudication: refused by the ceiling (the sealed
         // prefix is the only admissible history), and the quarantine does NOT re-arm - the
         // evidence path only runs for Active keys.
-        assert_eq!(ingest(&c, root, &[right.clone()]).await, (0, 1));
+        assert_eq!(ingest(&c, root, std::slice::from_ref(&right)).await, (0, 1));
         assert_eq!(
             stored_hashes(&c, &k, service::POSTS).await,
             vec![*common.hash(), *left.hash()]

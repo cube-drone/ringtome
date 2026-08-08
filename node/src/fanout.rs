@@ -522,7 +522,7 @@ mod tests {
         db.execute("UPDATE feed_journal SET arrived_ms = 42", ())
             .await
             .unwrap();
-        let edited = vec![post("0", "better words", 9_000)];
+        let edited = [post("0", "better words", 9_000)];
         let edited_refs: Vec<&JournalRow> = edited.iter().collect();
         journal_rows(&db, &author, &readers, &edited_refs).await.unwrap();
 

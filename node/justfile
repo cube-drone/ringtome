@@ -43,9 +43,13 @@ build:
 check:
     cd "{{workspace}}" && cargo check
 
-# Clippy lints, warnings-as-errors.
+# Clippy lints, warnings-as-errors - ALL targets, tests included (2026-08-08). Test code is
+# where the proof lives, and it was the one place nothing was gated: sixteen real lint
+# failures had accumulated in test modules without CI ever looking. Genuinely exceptional
+# cases carry an inline `#[allow]` with the reason, which is a decision on the record rather
+# than a silence.
 lint:
-    cd "{{workspace}}" && cargo clippy -- -D warnings
+    cd "{{workspace}}" && cargo clippy --all-targets -- -D warnings
 
 # Format all Rust code.
 fmt:

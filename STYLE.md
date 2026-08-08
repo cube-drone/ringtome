@@ -126,6 +126,18 @@
     concerned that this may be tying his poor LLM's hands, especially given they struggle
     to interact directly with the UI)
 - Test mode can tune work factors (minimal Argon2 params, for example) to speed up CI.
+- **The lint gate covers test code too** (added 2026-08-08, on finding sixteen lint failures
+  aged quietly in test modules): `just lint` is `cargo clippy --all-targets -- -D warnings`,
+  so the code that PROVES the system is held to the bar the system is. Warnings-as-errors on
+  production code beside an unlinted test suite is a seam, and the tests are exactly where
+  quick-and-dirty accretes.
+- **A lint that is wrong for one case earns an inline `#[allow]` with its reason; never a
+  loosened gate.** An allow with a stated reason is a decision on the record - the next
+  reader learns why - while an ungated lint is a silence nobody can date or argue with. The
+  bar is that the lint is wrong HERE, not that obeying it is inconvenient: `documents.rs`'s
+  `save`/`save_fmt` take the `Save` struct's fields positionally because being a terse
+  shorthand for a struct literal is the whole job of those helpers at ~40 call sites, so the
+  arity lint is measuring the wrong thing. "This would take a refactor" is not that.
 
 ## Abstraction and pragmatism
 
