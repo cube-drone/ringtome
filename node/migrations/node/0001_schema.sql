@@ -155,10 +155,11 @@ CREATE INDEX subscriptions_by_foreign ON subscriptions (foreign_root);
 -- internally, which is "the node routes; the user ranks" falling out of the mechanism rather
 -- than being enforced on top of it.
 --
--- Retention deliberately deferred (2026-08-05): this assembles a readership graph for personas
--- we host, which is the same already-possible/already-assembled line trust had to respect. The
--- mitigation is pruning to a window so it records CURRENT demand rather than a permanent
--- readership log - owed before any node hosts strangers, not before then.
+-- Retention (deferred 2026-08-05, paid 2026-08-08): this assembles a readership graph for
+-- personas we host, which is the same already-possible/already-assembled line trust had to
+-- respect - so rows quieter than the freshness window are pruned on the derive beat
+-- (`demand::prune_quiet_askers`), and the table records CURRENT demand, never a permanent
+-- readership log. Safe because the wake pass re-asks on every staleness beat.
 CREATE TABLE identity_demand (
     root_pubkey   TEXT    NOT NULL,  -- the persona they asked about
     endpoint_id   TEXT    NOT NULL,  -- the node that asked; transport identity, never a person

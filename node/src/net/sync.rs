@@ -1377,6 +1377,11 @@ pub async fn derive_peers(state: crate::AppState) -> Result<()> {
         Ok(_) => {}
         Err(e) => tracing::warn!(error = ?e, "peer pruning failed"),
     }
+    match crate::net::demand::prune_quiet_askers(&state.node_db, now_ms()).await {
+        Ok(n) if n > 0 => tracing::info!(rows = n, "pruned quiet demand rows"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = ?e, "demand pruning failed"),
+    }
     Ok(())
 }
 

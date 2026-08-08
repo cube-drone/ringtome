@@ -109,8 +109,6 @@ axis, none on the follow-list axis. The steps, roughly worst-first:
 * Author-side push polish: dials within the per-move cap (16, rotating via ask recency) are
   still sequential in `sync_peers` — worst case is cap × dial-timeout in a background task.
   Concurrent dialing (`buffer_unordered`) when that's measured to matter.
-* `identity_demand` retention — the table never prunes (`identity_peers` prunes at 7 days);
-  the wake pass's re-ask makes aggressive pruning safe, and the read side already windows
 * Stream compute residual: a documents movement now ships a one-row diff, but still
   RECOMPUTES `search_rows` and the annotation sweep whole to produce it — the wire is quiet,
   the gather isn't. A doc-scoped search/annotation refresh, if profiling ever names it.

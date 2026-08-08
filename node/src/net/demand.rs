@@ -49,9 +49,26 @@ pub async fn record_ask(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Resu
 /// re-asks on heal), which means a week of silence is demand that LEFT, not demand at rest -
 /// and the push was only ever latency; the pull on re-contact is what carries correctness.
 /// Same window as `identity_peers`' pruning (`sync::PEER_FORGET_MS`), for the same reason.
-/// The table itself still grows without bound - its pruning is the retention debt recorded
-/// in the schema comment and NEXT_STEPS (Popularity Problems); this bounds the DIALS.
+/// One window, two halves: this bounds the DIALS at read time, and `prune_quiet_askers`
+/// deletes the rows themselves on the derive beat.
 const ASK_FRESHNESS_MS: i64 = 7 * 24 * 3600 * 1000;
+
+/// Demand retention, ridden by the derive beat: rows quieter than the freshness window are
+/// DELETED, not merely skipped. The read side already ignores them (`askers_of`); this is
+/// the privacy half of the same window - the table records CURRENT demand, never a
+/// readership log (the "retention deliberately deferred" debt in the schema comment, paid
+/// 2026-08-08). Deletion can never cost data: the wake pass re-asks on every staleness
+/// beat, so an asker who still cares re-enters within one cadence, and the pull on
+/// re-contact carries correctness - pushes were only ever latency.
+pub async fn prune_quiet_askers(node_db: &Db, now: i64) -> Result<u64> {
+    node_db
+        .execute(
+            "DELETE FROM identity_demand WHERE last_asked_ms < ?1",
+            (now - ASK_FRESHNESS_MS,),
+        )
+        .await
+        .context("pruning quiet demand rows")
+}
 
 /// The `limit` most-recently-asking nodes for this persona - the fan-out address list.
 ///
@@ -71,4 +88,37 @@ pub async fn askers_of(node_db: &Db, root_hex: &str, limit: i64) -> Result<Vec<S
         .await
         .context("reading demand")?;
     Ok(rows.into_iter().map(|(e,)| e).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window's two halves agree: a quiet asker leaves the table (not just the reads),
+    /// and re-asking re-enters - the doorbell, never the archive.
+    #[tokio::test]
+    async fn quiet_askers_age_out_and_reasking_reenters() {
+        let db = crate::db::test_node_db().await;
+        let root = "aa".repeat(32);
+        record_ask(&db, &root, "node-fresh").await.unwrap();
+        record_ask(&db, &root, "node-quiet").await.unwrap();
+        // Backdate one past the window (this module owns the table, so its test may).
+        db.execute(
+            "UPDATE identity_demand SET last_asked_ms = ?1 WHERE endpoint_id = 'node-quiet'",
+            (now_ms() - ASK_FRESHNESS_MS - 1,),
+        )
+        .await
+        .unwrap();
+
+        let pruned = prune_quiet_askers(&db, now_ms()).await.unwrap();
+        assert_eq!(pruned, 1, "the quiet row is DELETED, not merely unread");
+        assert_eq!(askers_of(&db, &root, 10).await.unwrap(), vec!["node-fresh"]);
+
+        record_ask(&db, &root, "node-quiet").await.unwrap();
+        let askers = askers_of(&db, &root, 10).await.unwrap();
+        assert!(
+            askers.contains(&"node-quiet".to_string()),
+            "a re-ask re-enters within one beat - pruning never costs data"
+        );
+    }
 }

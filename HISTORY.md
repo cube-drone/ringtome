@@ -3454,3 +3454,18 @@ delta on a primed socket, whole-kind on a fresh one, removal naming one doc. The
 residual moved from the wire to the compute and is recorded in NEXT_STEPS: producing that
 one-row diff still recomputes `search_rows` and the annotation sweep whole; a doc-scoped
 refresh waits for a profile to name it.
+
+## 2026-08-08: demand retention - the doorbell, never the archive
+
+The schema comment's stated debt ("retention deliberately deferred... owed before any node
+hosts strangers"), paid in the small pass it always wanted to be: `identity_demand` rows
+quieter than the 7-day freshness window are now DELETED on the derive beat
+(`demand::prune_quiet_askers`, beside `prune_forgotten_peers`), completing the window whose
+read half `askers_of` already applied. Almost no performance angle - the reads were already
+windowed and indexed - and that was never the point: the table is the one place the
+network's most deliberately-protected relationship data (who READS whom - the quiet-follow
+graph the disclosure tiers exist to keep non-public, reproducible from no DHT) condenses as
+a routing side effect, and without retention a popular persona's node accumulated a
+permanent timestamped roster of everyone who ever peeked. The already-assembled object is
+now bounded to current demand. Safe because the wake pass re-asks on every staleness beat;
+the unit test pins both halves - a quiet row leaves the TABLE, and a re-ask re-enters.
