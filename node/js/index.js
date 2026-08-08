@@ -311,7 +311,7 @@ const Inside = ({ session }) => {
                     onSwitch=${switchBucket}
                 />`}
             </span>
-            ${appHere.lookup && html`<${PeopleLookup} />`}
+            ${appHere.lookup && html`<${PeopleLookup} query=${query} onQuery=${setQuery} />`}
             ${showSearch &&
             html`<span class="app-header-search-box">
                 <input
@@ -389,7 +389,7 @@ const Inside = ({ session }) => {
             <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
-            <${PeopleApp} path="/home/people" current=${persona.current} />
+            <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
             <${FeedApp} path="/home/feed" current=${persona.current} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />

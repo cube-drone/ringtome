@@ -3469,3 +3469,27 @@ a routing side effect, and without retention a popular persona's node accumulate
 permanent timestamped roster of everyone who ever peeked. The already-assembled object is
 now bounded to current demand. Safe because the wake pass re-asks on every staleness beat;
 the unit test pins both halves - a quiet row leaves the TABLE, and a re-ask re-enters.
+
+## 2026-08-08: the rolodex goes search-first
+
+The last hard breakage on the popularity list: the People page mounted one PersonRow per
+contact, unconditionally - at 50k contacts that is 50k DOM subtrees and ~200k Dexie
+liveQuery subscriptions all re-evaluating on every mirror write, plus an unbounded
+/api/directory rendered in full underneath. A dead tab. The shape question (virtualize?
+paginate? search?) went to Curtis; search-first won: **the filter is how you find someone;
+the slice is only what idle browsing shows.** The shelf renders the top PEOPLE_SHELF_SLICE
+(100) by the active sort, "show more" extends it, and a filter box in the shelf head narrows
+against the full mirror by every spelling a person is known by - nickname, self-claimed
+name, root-hex prefix, and the speakable words. The DOM never holds more than a slice
+regardless of ledger size, no virtualization machinery ever, and the filter doubles as the
+"Search my people" NEXT_STEPS wish. Server side, /api/directory is capped (200,
+hosted-first, BEFORE the byline join - so a mirror-rich node neither builds a 50k-root IN
+clause nor ships one); which fetched personas make the cut is arbitrary past hosted-first,
+and honest for a discovery shelf.
+
+A cop earned its keep: filterContacts first imported speakable.js, and the pure-set
+conventions test refused it - pure modules import only pure modules. The forced fix was
+better than the sin: callers annotate rows with their words once per LIST change (the
+directory rows already carry theirs from the server), so the filter stays value-in/value-out
+AND stops recomputing base58 per keystroke. Filter behavior pinned in test/pure/people.cjs;
+the UI itself is human-verified per the no-automated-UI rule - Curtis, kick the tires.

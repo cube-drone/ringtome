@@ -1,9 +1,11 @@
 // The rolodex's ordering rules.
 const assert = require('node:assert');
 
-let PEOPLE_SORTS, sortContacts;
+let PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts;
 before(async () => {
-    ({ PEOPLE_SORTS, sortContacts } = await import('../../../js/pure/people.js'));
+    ({ PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts } = await import(
+        '../../../js/pure/people.js'
+    ));
 });
 
 const row = (root, facts) => ({ root, facts });
@@ -37,5 +39,41 @@ describe('the People shelf', () => {
         const rows = [row('bb', { trust: '1' }), row('aa', { trust: '2' })];
         sortContacts(rows, 'trust');
         assert.deepEqual(rows.map((r) => r.root), ['bb', 'aa']);
+    });
+});
+
+describe('the People filter (search-first: the filter finds, the slice bounds)', () => {
+    const greg = {
+        root: 'ab'.repeat(32),
+        name: 'Gregory Itself',
+        words: 'sway-broke',
+        facts: { nickname: 'greg from work' },
+    };
+    const dave = { root: 'cd'.repeat(32), name: 'Dave', words: 'tidal-crumb', facts: {} };
+
+    it('an empty query keeps everything', () => {
+        assert.deepEqual(filterContacts([greg, dave], ''), [greg, dave]);
+        assert.deepEqual(filterContacts([greg, dave], '   '), [greg, dave]);
+    });
+
+    it('matches every spelling a person is known by', () => {
+        // your nickname for them
+        assert.deepEqual(filterContacts([greg, dave], 'from work'), [greg]);
+        // their self-claimed name, case-insensitively
+        assert.deepEqual(filterContacts([greg, dave], 'gregORY'), [greg]);
+        // their root hex, by prefix
+        assert.deepEqual(filterContacts([greg, dave], 'cdcd'), [dave]);
+        // the speakable words the caller derived (the spelling the identicon wears)
+        assert.deepEqual(filterContacts([greg, dave], 'tidal'), [dave]);
+    });
+
+    it('rows without names, words, or facts filter without throwing', () => {
+        const bare = { root: 'ef'.repeat(32) };
+        assert.deepEqual(filterContacts([bare], 'zzzz-no-match-zzzz'), []);
+        assert.deepEqual(filterContacts([bare], 'efef'), [bare]);
+    });
+
+    it('the shelf slice is a real bound', () => {
+        assert.ok(Number.isInteger(PEOPLE_SHELF_SLICE) && PEOPLE_SHELF_SLICE > 0);
     });
 });

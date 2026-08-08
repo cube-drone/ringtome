@@ -698,6 +698,19 @@
     font-size: 0.9rem;
 }
 
+.people-more {
+    align-self: center;
+    margin-top: 0.5rem;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.25rem 1rem;
+    cursor: pointer;
+}
+
 .people-list {
     display: flex;
     flex-direction: column;

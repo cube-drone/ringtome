@@ -727,6 +727,9 @@ pub struct DirectoryRow {
 ///
 /// Bylines come from the cache - one query, no database per face (the conventions test pins
 /// this surface to zero `user_dbs.get` calls simply by counting).
+/// Directory rows served per request - see the cap comment in `directory` for the reasoning.
+const DIRECTORY_CAP: usize = 200;
+
 pub async fn directory(
     _session: Session,
     State(state): State<AppState>,
@@ -741,6 +744,13 @@ pub async fn directory(
         .map_err(AppError::Internal)?;
     let mut roots: Vec<String> = served.iter().cloned().collect();
     roots.extend(fetched.into_iter().filter(|r| !served.contains(r)));
+    // The directory is a shelf to scan, never an export: capped, hosted-first, BEFORE the
+    // byline join so a node fronting tens of thousands of mirrors neither builds a
+    // roots-long IN clause nor ships them all. Which fetched personas make the cut is
+    // arbitrary past "hosted first", and that is fine for a discovery surface - finding a
+    // KNOWN persona is the lookup box's job (and a search endpoint's, the day it exists:
+    // NEXT_STEPS, "Search my people / all visible people").
+    roots.truncate(DIRECTORY_CAP);
 
     let bylines = crate::profiles::bylines(&state.node_db, &roots)
         .await
