@@ -3289,3 +3289,68 @@ ordering key, so a partition re-dialed the same top-of-cap mirrors every beat fo
 the tail starved. Fixed with an attempt cooldown (5min, in-memory, boot-reset): the cap
 rotates the whole list, partition-time dialing is rate-limited, and heal latency is bounded
 by one cooldown.
+
+## 2026-08-07: popularity problems - the 50k-follow audit and the fan-out diet
+
+The prompt was a thought experiment: a user with fifty thousand followers and fifty thousand
+follows - where does the platform get slow? The audit found the follow ledger assumed small
+in about nine distinct places (subscriptions.rs said so in as many words), one of them
+genuinely O(F squared), and every existing mitigation sitting on the read-a-page or
+dial-a-peer axis with none on the follow-list axis. The full list lives in NEXT_STEPS under
+"Popularity Problems"; what shipped today, worst-first
+(fd6dea1..070e851):
+
+**The easy wins.** `Store::contacts()` was quadratic - `registers_in` filtered the ENTIRE
+registers map once per contact collection; the map was already keyed `(collection, key)`, so
+a `range()` + take_while made each lookup a contiguous walk (both set readers had the same
+shape - the second copy is the finding). `feed_journal` had no author-side index, so
+`retract_vanished` full-scanned every reader's rows on every public move (schema generation
+9 -> 10). And `askers_of` gained a 7-day freshness window mirroring `PEER_FORGET_MS`: a
+week of silence is demand that LEFT, not demand at rest - safe because the wake pass re-asks
+on every staleness beat.
+
+**The push cap.** `push_to_askers` dialed every node that EVER asked, sequentially, no cap -
+50k followers meant 50k QUIC dials per post. Now `PUSH_DIAL_CAP = 16` per move, and the cap
+costs promptness, never data ("pushes are latency; the pull on re-contact is correctness").
+The part worth remembering: most-recent-first under a cap is a FREE round-robin. A pushed
+node stays fresh, stops dialing, and ages down the recency order; an un-pushed node goes
+stale, pulls, and re-stamps itself to the top - successive posts sweep the whole asker set
+with zero rotation bookkeeping. Known sawtooth, accepted unbuilt: a follower kept
+perpetually fresh by pushes never dials, falls out of the 7-day window, misses one push,
+pulls, re-enters - one cadence of latency, once a week, for the hottest followers.
+
+**The fan-out diet.** Journaling wrote the author's whole newest page per reader per move -
+one awaited INSERT each, inline in the frontier sweep, so a popular author's post was a
+million serial statements that also froze the node's change detection. Two independent
+fixes: a per-author high-water mark (`sweep_marks`, domain "journal", in-memory and
+boot-reset - the first move after restart re-journals one page and the upsert makes it a
+no-op) so only the DELTA writes; and chunked multi-row upserts (100 rows/statement, under
+the classic 999-bind floor), with turso's multi-row `ON CONFLICT ... excluded.` behavior
+proven by a unit test against a real db rather than trusted from docs. The boundary filter
+is `>=` not `>`: two posts sharing the boundary millisecond across two exchanges would slip
+a strict filter forever, and a re-upserted boundary row costs a fraction of a chunk.
+Arithmetic: celebrity posts once, 50k local followers - 1,000,000 statements before, 50,000
+after the delta, ~500 after both. `backfill_follow` ignores the mark on purpose: it records
+what CURRENT followers have, and a new follower has none of it.
+
+**Fix that CI.** Two integration tests had been red since the discovery arc landed at 00:38
+and a day of commits stacked on top unnoticed (a stash-and-rerun proved they predated the
+day's work - hence the new "Green before forward" rule in CLAUDE.md). The serving test was
+asserting retired doctrine - "dark at birth" died when universal publication shipped - so it
+now asserts the new contract: locatable from birth, within the pkarr budget, `/serve` as the
+HTTP-face flag it remains. peerderive needed a derive pass inside its 30-second patience
+against a 600-second beat; the `RINGTOME_TEST_PEER_DERIVE_MS` hatch existed but nothing
+armed it. The catch worth its ink came from the first fix attempt: a synchronous re-derive
+in `revoke_key` passed peerderive and broke repudiation.cjs and the twonode eviction test,
+because **the lag between a revocation and its routing eviction is the strike's delivery
+window, not slack** - prune the struck node's row in the same breath and, when that node is
+your only peer, the revocation strands on your side forever. Reverted with a scar comment;
+the fix is a local-test-gated `POST /test/derive` the probe rings on demand, which also
+avoids a fast global beat racing every other strike test's choreography. Plus the two
+clippy warnings that were failing `just lint`'s `-D warnings`.
+
+Residuals, all in NEXT_STEPS: journaling still runs inline in the sweep (now cheap enough
+that moving it waits on a measurement); dials within the push cap are still sequential;
+`identity_demand` still never prunes its rows (the read side windows); and the rest of the
+Popularity Problems list - the whole-store private fold, the whole-mirror websocket
+snapshot, the unvirtualized People page - stands open.
