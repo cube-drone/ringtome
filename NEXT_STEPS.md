@@ -102,8 +102,10 @@ Making the 50k-in/50k-out user survivable. The follow ledger is assumed small in
 (`subscriptions.rs` says so outright); every existing cap is on the read-a-page or dial-a-peer
 axis, none on the follow-list axis. The steps, roughly worst-first:
 
-* Fan-out journaling: batch `feed_journal` inserts (multi-row VALUES via `params_from_iter`,
-  chunked under the bind limit) instead of one awaited INSERT per (reader × post) — `fanout.rs`
+* Fan-out journaling still runs inline in the frontier sweep — the delta watermark + chunked
+  upserts shrank a move to ~1 statement per 100 readers per new post, so move it behind a
+  spawned task only if it still measures as sweep lag (the recursion knot in
+  `after_public_move` makes that non-mechanical)
 * Author-side push polish: dials within the per-move cap (16, rotating via ask recency) are
   still sequential in `sync_peers` — worst case is cap × dial-timeout in a background task.
   Concurrent dialing (`buffer_unordered`) when that's measured to matter.

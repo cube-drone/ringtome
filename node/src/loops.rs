@@ -35,6 +35,14 @@ impl FreshnessMarks {
             .is_none_or(|seen| *seen < mtime_ms)
     }
 
+    /// The recorded mark itself, for a caller that filters BY the value rather than asking
+    /// staleness - the feed journal's per-author high-water mark ("newest updated_ms I have
+    /// journaled") reads it to keep only the posts that moved past it. `None` (unseen, or
+    /// boot) means the caller takes everything, which is the boot catch-up above.
+    pub fn last(&self, domain: &'static str, root: &str) -> Option<i64> {
+        self.0.lock().unwrap().get(&(domain, root.to_string())).copied()
+    }
+
     /// Record what the files looked like when the fold STARTED - never when it finished, so a
     /// write landing mid-fold moves mtime past the mark and the next tick redoes one root
     /// (idempotent) instead of skipping a real change forever.

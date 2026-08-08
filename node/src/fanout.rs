@@ -33,6 +33,17 @@ use crate::AppState;
 /// dialing from prerequisite to polish (NEXT_STEPS, Popularity Problems).
 const PUSH_DIAL_CAP: i64 = 16;
 
+/// The per-author high-water mark's domain in `sweep_marks`: the newest `updated_ms` this
+/// node has journaled for the author, so a move journals only what passed it (the delta)
+/// instead of re-upserting the whole page per reader. In-memory and boot-reset like every
+/// mark: the first move after a restart re-journals one full page, and the upsert makes
+/// that a no-op rather than a duplicate.
+const JOURNAL_MARK: &str = "journal";
+
+/// Rows per multi-row journal upsert: 8 binds each, kept well under SQLite's classic
+/// 999-variable floor so the statement never outgrows the engine.
+const JOURNAL_CHUNK_ROWS: usize = 100;
+
 /// A persona's public frontier moved on this node. Journal it for local readers, and - if the
 /// persona is ours to speak for - push it to the nodes that have asked about them.
 ///
@@ -81,12 +92,17 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str) {
     }
 }
 
-/// One journal row per (reader who follows them) x (post on their newest page).
+/// One journal row per (reader who follows them) x (post that moved past the watermark).
 ///
 /// The newest page is the whole journal window, and that bound is doing deliberate work:
 /// following someone with years of history journals their latest twenty posts, not their life
 /// story ("backfill is the burst to bound" - PROJECT_PLAN, Data Layer). The older posts are not
 /// lost - they are on the persona's page, where reading further back is a choice.
+///
+/// Within the page, only the DELTA is written: the high-water mark remembers the newest
+/// `updated_ms` already journaled for this author, so the common move (one new post) writes
+/// one row per reader, not the whole page per reader - re-upserting nineteen unchanged rows
+/// per reader was most of the fan-out write bill, and it stalled the sweep this runs inside.
 async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let mut readers = crate::net::subscriptions::followers_of(&state.node_db, author_root).await?;
     // Your own posts appear in your own feed, as if you had written them - which you did
@@ -101,13 +117,34 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     if readers.is_empty() {
         return Ok(0); // nobody here follows them - the common case, and it costs one query
     }
-    journal_page(state, author_root, &readers).await
+    let page = shelf_page(state, author_root).await?;
+    if page.is_empty() {
+        return Ok(0); // the move was profile/keys, not posts - nothing feed-shaped arrived
+    }
+    // `>=` at the boundary, not `>`: two posts sharing the boundary millisecond but arriving
+    // across two exchanges would slip a strict filter forever; re-upserting one boundary row
+    // per move costs a fraction of a chunk. A missing mark (first move since boot) takes the
+    // whole page - the boot catch-up, and the heal for any mark this logic ever gets wrong.
+    let mark = state.sweep_marks.last(JOURNAL_MARK, author_root);
+    let fresh: Vec<&JournalRow> = page
+        .iter()
+        .filter(|r| mark.is_none_or(|m| r.updated_ms >= m))
+        .collect();
+    if fresh.is_empty() {
+        return Ok(0);
+    }
+    journal_rows(&state.node_db, author_root, &readers, &fresh).await?;
+    // Advance only after the write landed: a failed write leaves the mark behind, and the
+    // next move re-journals the same delta (idempotent) instead of skipping it forever.
+    if let Some(newest) = page.iter().map(|r| r.updated_ms).max() {
+        state.sweep_marks.record(JOURNAL_MARK, author_root, newest);
+    }
+    Ok(readers.len())
 }
 
-/// The shelf's newest page, journaled to exactly these readers. The shared bottom half of
-/// both arrival paths: a public move journals to every current follower (`journal_for`), and
-/// a NEW follow journals to its one new reader (`backfill_follow`).
-async fn journal_page(state: &AppState, author_root: &str, readers: &[String]) -> Result<usize> {
+/// The author's newest public page, shaped for journaling - the one user-DB open on the
+/// journal path, shared by both arrival flows (`journal_for`, `backfill_follow`).
+async fn shelf_page(state: &AppState, author_root: &str) -> Result<Vec<JournalRow>> {
     let db = state
         .user_dbs
         .get(author_root)
@@ -115,44 +152,94 @@ async fn journal_page(state: &AppState, author_root: &str, readers: &[String]) -
         .with_context(|| format!("opening {author_root} to read its shelf"))?;
     let posts =
         crate::record::documents::public_docs(&db, None, crate::idface::POSTS_PAGE).await?;
-    if posts.is_empty() {
-        return Ok(0); // the move was profile/keys, not posts - nothing feed-shaped arrived
-    }
+    Ok(posts
+        .into_iter()
+        .map(|p| JournalRow {
+            doc_id_hex: hex::encode(p.doc_id),
+            title: p.title,
+            format: crate::record::documents::Format::from_wire(p.format)
+                .as_str()
+                .to_string(),
+            published_ms: p.genesis_ms,
+            updated_ms: p.head_ms,
+        })
+        .collect())
+}
 
+/// One post's journalable facts, computed once per move rather than once per (reader x post).
+struct JournalRow {
+    doc_id_hex: String,
+    title: String,
+    format: String,
+    published_ms: i64,
+    updated_ms: i64,
+}
+
+/// Write (reader x post) journal rows as chunked multi-row upserts: one statement - one round
+/// trip, one commit - per chunk, where the row-at-a-time version paid both PER ROW and froze
+/// the frontier sweep for the duration (this runs inline in it). arrived_ms survives the
+/// upsert: it answers "when did this reach me", and a re-publication changes what the post
+/// says, not when it arrived.
+async fn journal_rows(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    readers: &[String],
+    rows: &[&JournalRow],
+) -> Result<()> {
     let now = now_ms();
-    let mut journaled = 0;
-    for reader in readers {
-        for p in &posts {
-            // arrived_ms survives the upsert: it answers "when did this reach me", and a
-            // re-publication changes what the post says, not when it arrived.
-            state
-                .node_db
-                .execute(
-                    "INSERT INTO feed_journal
-                       (reader_root, author_root, doc_id, title, format,
-                        published_ms, updated_ms, arrived_ms)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-                     ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
-                         title = excluded.title,
-                         format = excluded.format,
-                         updated_ms = excluded.updated_ms",
-                    (
-                        reader.as_str(),
-                        author_root,
-                        hex::encode(p.doc_id),
-                        p.title.as_str(),
-                        crate::record::documents::Format::from_wire(p.format).as_str(),
-                        p.genesis_ms,
-                        p.head_ms,
-                        now,
-                    ),
+    let pairs: Vec<(&String, &&JournalRow)> = readers
+        .iter()
+        .flat_map(|reader| rows.iter().map(move |row| (reader, row)))
+        .collect();
+    for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
+        let placeholders: Vec<String> = (0..chunk.len())
+            .map(|i| {
+                let b = i * 8;
+                format!(
+                    "(?{},?{},?{},?{},?{},?{},?{},?{})",
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6,
+                    b + 7,
+                    b + 8
                 )
-                .await
-                .context("journaling an arrival")?;
-        }
-        journaled += 1;
+            })
+            .collect();
+        let sql = format!(
+            "INSERT INTO feed_journal
+               (reader_root, author_root, doc_id, title, format,
+                published_ms, updated_ms, arrived_ms)
+             VALUES {}
+             ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
+                 title = excluded.title,
+                 format = excluded.format,
+                 updated_ms = excluded.updated_ms",
+            placeholders.join(",")
+        );
+        let params: Vec<turso::Value> = chunk
+            .iter()
+            .flat_map(|(reader, row)| {
+                [
+                    turso::Value::Text((*reader).clone()),
+                    turso::Value::Text(author_root.to_string()),
+                    turso::Value::Text(row.doc_id_hex.clone()),
+                    turso::Value::Text(row.title.clone()),
+                    turso::Value::Text(row.format.clone()),
+                    turso::Value::Integer(row.published_ms),
+                    turso::Value::Integer(row.updated_ms),
+                    turso::Value::Integer(now),
+                ]
+            })
+            .collect();
+        node_db
+            .execute(&sql, turso::params_from_iter(params))
+            .await
+            .context("journaling arrivals")?;
     }
-    Ok(journaled)
+    Ok(())
 }
 
 /// A new follow's backfill: the author's newest page, journaled to this one reader, NOW -
@@ -165,8 +252,19 @@ async fn journal_page(state: &AppState, author_root: &str, readers: &[String]) -
 /// database is not here yet (followed by pasted address, never synced) must not fail it -
 /// the first real sync will fire `after_public_move` and journal them then.
 pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &str) {
+    // The FULL page, never the watermark's delta: the mark records what current followers
+    // already have, and this reader is new and has none of it.
     let just_them = [reader_root.to_string()];
-    match journal_page(state, author_root, &just_them).await {
+    let attempt = async {
+        let page = shelf_page(state, author_root).await?;
+        if page.is_empty() {
+            return Ok(0);
+        }
+        let all: Vec<&JournalRow> = page.iter().collect();
+        journal_rows(&state.node_db, author_root, &just_them, &all).await?;
+        Ok::<usize, anyhow::Error>(1)
+    };
+    match attempt.await {
         Ok(n) if n > 0 => {
             tracing::info!(reader = %reader_root, author = %author_root, "backfilled a new follow");
         }
@@ -374,4 +472,70 @@ pub async fn feed_page(
             },
         )
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn post(doc: &str, title: &str, updated_ms: i64) -> JournalRow {
+        JournalRow {
+            doc_id_hex: format!("{doc:0>32}"),
+            title: title.to_string(),
+            format: "plaintext".to_string(),
+            published_ms: 1_000,
+            updated_ms,
+        }
+    }
+
+    /// The load-bearing claim: turso executes a MULTI-ROW upsert - many VALUES groups, one
+    /// ON CONFLICT with `excluded.` references - correctly across chunk boundaries. This is
+    /// the statement shape the batching rests on, and the reason it gets a real database
+    /// rather than a reading of the docs.
+    #[tokio::test]
+    async fn journal_rows_batches_across_chunks_and_upserts() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let readers: Vec<String> = (0..3).map(|i| format!("{i:0>64}")).collect();
+        let posts: Vec<JournalRow> = (0..40)
+            .map(|i| post(&i.to_string(), "first words", 2_000 + i))
+            .collect();
+        let refs: Vec<&JournalRow> = posts.iter().collect();
+
+        // 3 readers x 40 posts = 120 pairs: two chunks, the second partial.
+        journal_rows(&db, &author, &readers, &refs).await.unwrap();
+        let (count,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(count, 120);
+
+        // The upsert half: re-journal one edited post. A sentinel arrival stamp proves the
+        // conflict arm ran an UPDATE (not insert-or-ignore) and left arrived_ms alone.
+        db.execute("UPDATE feed_journal SET arrived_ms = 42", ())
+            .await
+            .unwrap();
+        let edited = vec![post("0", "better words", 9_000)];
+        let edited_refs: Vec<&JournalRow> = edited.iter().collect();
+        journal_rows(&db, &author, &readers, &edited_refs).await.unwrap();
+
+        let (count,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(count, 120, "an edit rewrites rows, never adds them");
+        let rows: Vec<(String, i64, i64)> = db
+            .fetch_all(
+                "SELECT title, updated_ms, arrived_ms FROM feed_journal WHERE doc_id = ?1",
+                (format!("{:0>32}", "0"),),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 3);
+        for (title, updated_ms, arrived_ms) in rows {
+            assert_eq!(title, "better words");
+            assert_eq!(updated_ms, 9_000);
+            assert_eq!(arrived_ms, 42, "arrival is set once, never rewritten");
+        }
+    }
 }
