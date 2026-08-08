@@ -690,7 +690,6 @@ async fn stored_tree_leaves(state: &AppState, root_hex: &str) -> Vec<String> {
         let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
         Ok(tree
             .members()
-            .into_iter()
             .filter(|(_, status)| *status == ringtome_proto::crown::KeyStatus::Active)
             .map(|(leaf, _)| hex::encode(leaf))
             .collect())

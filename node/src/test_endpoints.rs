@@ -118,6 +118,18 @@ pub async fn resolve_serving(
     }))
 }
 
+/// Run one peer-derive pass on demand (`net::sync::derive_peers`). The derive beat is
+/// recovery-paced (minutes), and its lag behind a revocation is the strike's DELIVERY window,
+/// not slack - so a probe that wants to watch revocation reach routing must ring this beat
+/// itself: shortening the beat globally races every strike test's own choreography (the
+/// prune lands mid-test and the struck peer vanishes before the strike is delivered).
+pub async fn derive_pass(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    crate::net::sync::derive_peers(state)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "derived": true })))
+}
+
 /// Convert a database row into a JSON object. The stored value's own type drives the JSON shape
 /// (SQLite values are self-describing, so computed expressions like `COUNT(*)` come through as
 /// what they are); blobs become arrays of byte values, since JSON has no bytes type.

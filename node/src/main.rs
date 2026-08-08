@@ -476,6 +476,10 @@ async fn main() -> anyhow::Result<()> {
             .route(
                 "/test/resolve-serving/{leaf}",
                 axum::routing::get(test_endpoints::resolve_serving),
+            )
+            .route(
+                "/test/derive",
+                axum::routing::post(test_endpoints::derive_pass),
             );
     }
 

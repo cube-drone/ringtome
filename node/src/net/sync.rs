@@ -1304,7 +1304,7 @@ pub async fn derive_peers_for(state: &crate::AppState, root_hex: &str) {
             }
             let leaf_hex = hex::encode(leaf);
             active.push(leaf_hex.clone());
-            let record = match state.directory.resolve_serving(&leaf).await {
+            let record = match state.directory.resolve_serving(leaf).await {
                 Ok(Some(r)) => r,
                 Ok(None) => continue,
                 Err(e) => {

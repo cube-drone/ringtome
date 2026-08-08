@@ -411,7 +411,7 @@ async function profileValue(fetch, root, field) {
         assert.deepEqual(await (await aliceOnB("api/identity")).json(), [], "nobody lives here");
     });
 
-    it("serving is an act: no record until marked, a signed record after", async function () {
+    it("a serving record publishes at birth: universal publication, within budget", async function () {
         const dhtDir = process.env.RINGTOME_TEST_DISCOVERY_DIR;
         if (!dhtDir) this.skip();
         const fs = require("node:fs");
@@ -420,17 +420,21 @@ async function profileValue(fetch, root, field) {
         const created = await (await user("api/identity", { method: "POST" })).json();
         const root = created.root_pubkey;
 
-        // Dark at birth: no serving record exists for this identity's leaf (= root on the
-        // creating node).
+        // Universal publication (the discoverability doctrine, 2026-08-07): participation
+        // implies locatability, so creation publishes the founding leaf's record before the
+        // POST even returns - "publication is an act" is retired for serving records, and
+        // the dark-at-birth assertion that used to live here retired with it. Records are
+        // keyed by LEAF; the founder's leaf is the root, which is what makes bare roots
+        // resolvable at all.
         const recordPath = `${dhtDir}/s_${root}.bin`;
-        assert.ok(!fs.existsSync(recordPath), "unpublished identities leave no record");
+        assert.ok(fs.existsSync(recordPath), "a hosted identity is locatable from birth");
+        assert.ok(fs.statSync(recordPath).size < 512, "records stay within the pkarr budget");
 
+        // Marking served survives as the HTTP-face flag - still an act, no longer discovery.
         const resp = await (
             await user(`api/identity/${root}/serve`, { method: "POST" })
         ).json();
         assert.equal(resp.served, true);
-        assert.ok(fs.existsSync(recordPath), "the publication act writes the signed record");
-        assert.ok(fs.statSync(recordPath).size < 512, "records stay within the pkarr budget");
     });
 
     // "junior nodes cannot grant adoption in v1" lived here until 2026-07-24, when the M3

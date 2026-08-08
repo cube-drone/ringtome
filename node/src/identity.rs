@@ -756,6 +756,13 @@ pub async fn revoke_key(
         tracing::error!(root = %root_hex, "post-revocation sweep failed: {e}");
     }
 
+    // Routing eviction (dropping the struck leaf from identity_peers) stays on the derive
+    // BEAT, deliberately - a synchronous re-derive here was tried (2026-08-07) and reverted:
+    // it prunes the struck node's row before the eager push can DELIVER the strike, and when
+    // that node is the only peer, the revocation strands on this side (repudiation.cjs and
+    // the twonode eviction test both caught it). The lag between act and eviction is the
+    // delivery window, not slack; anything faster must sequence after delivery.
+
     tracing::info!(root = %root_hex, target = %target_hex, ?disposition, "revoked key");
     Ok(hex::encode(signed.hash()))
 }

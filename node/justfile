@@ -472,6 +472,9 @@ integration: build kill
     pc=$(( {{port_c}} + {{port_offset}} ))
     # Fast eager-push debounce so eagersync.cjs observes propagation quickly; the anti-entropy
     # interval deliberately stays at its 5-minute default so the eager path is what gets tested.
+    # The peer-derive beat keeps its recovery pace on purpose - its lag behind a revocation is
+    # the strike's delivery window, and a fast beat races every strike test's choreography.
+    # peerderive.cjs rings the beat itself via POST /test/derive when it wants to watch one.
     RINGTOME_PORT=$pa RINGTOME_DATA_DIRECTORY="{{test_data}}" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_NODE_NAME=alpha \

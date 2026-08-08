@@ -89,6 +89,11 @@ const adopt = async (haver, joiner, root) => {
             body: JSON.stringify({ disposition: "repudiation", cut: "genesis" }),
         });
         assert.equal(struck.status, 200, await struck.text());
+        // The derive beat is recovery-paced (minutes) and its lag behind the strike is the
+        // strike's DELIVERY window, so this probe rings the beat itself rather than waiting
+        // out (or globally shortening, which races other strike tests) the real cadence.
+        const derived = await a("test/derive", { method: "POST" });
+        assert.equal(derived.status, 200, "the derive pass can be rung on demand");
         const pruned = await settle(async () => {
             const { rows } = await sql(
                 `SELECT 1 FROM identity_peers

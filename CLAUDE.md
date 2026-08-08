@@ -9,6 +9,15 @@
 - Read `STYLE.md` before writing code.
 - Do not add history to `NEXT_STEPS.md`: it's only for work that needs to get done, history goes in `HISTORY.md`.
 - Do not commit changes directly unless asked to: I would like to look at the code and the changes on their way in to the codebase.
+- **Green before forward** (2026-08-07, after two broken tests sat red under a day of commits
+  and nobody noticed until a stash-and-rerun proved they predated the day's work): at the
+  start of a coding session, and again before calling any change done, run the cheapest gate
+  that covers what moved — `just ui-check` for JS, `cargo test -p ringtome-node` for Rust —
+  and full `just ci` before anything lands near sync, storage, or the HTTP surface. A suite
+  that is ALREADY red is a finding, not background noise: report it and settle it (fix, or
+  Curtis explicitly defers it) before stacking new work on top; prove "unrelated to my
+  change" with a clean-tree rerun, never by vibes. Mind the dev-network rule below before
+  running `just integration`.
 - **Testing beside a running dev network** (2026-08-05, after a broad pkill killed it):
   throwaway nodes come from `just scratch [5297-5299]` and die by `just scratch-kill` — PID-file
   scoped, structurally unable to touch `just start*`'s ports or processes. Never bind 5281-5296
