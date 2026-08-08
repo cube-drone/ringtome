@@ -123,6 +123,12 @@ fn sql_stays_in_its_owning_module() {
 /// moment to answer one question: is the new call inside anything iterating over personas?
 /// If it is, you want a memo table (persona_frontiers, subscriptions, persona_profiles,
 /// feed_journal are the four precedents) - the fold writes it once, and lists read the memo.
+///
+/// All THREE opening verbs count (`get`, `held`, `create` - 2026-08-08): thrash is about
+/// opening a file per item, and it does not care which door you came through. The separate
+/// MINTING hazard those verbs split apart is now the type system's job, not this test's -
+/// `get` returns `Option`, so a read path can no longer create a database by forgetting to
+/// check. `create_sites_stay_rare` below pins what is left of it.
 #[test]
 fn user_db_opens_are_deliberate() {
     let expected: BTreeMap<&str, usize> = BTreeMap::from([
@@ -152,7 +158,9 @@ fn user_db_opens_are_deliberate() {
         // most recently added - which is how this test's own survey was wrong on its first
         // draft.
         let flat: String = source.chars().filter(|c| !c.is_whitespace()).collect();
-        let n = flat.matches("user_dbs.get(").count();
+        let n = flat.matches("user_dbs.get(").count()
+            + flat.matches("user_dbs.held(").count()
+            + flat.matches("user_dbs.create(").count();
         if n > 0 {
             let rel = path
                 .strip_prefix(&src)
@@ -169,5 +177,48 @@ fn user_db_opens_are_deliberate() {
         "user-db call sites changed. If the new call runs once per request or per edge, bump \
          the count here and move on; if it runs once per PERSONA in a loop, stop - that is the \
          thrash this test exists to catch, and the answer is a node-level memo table."
+    );
+}
+
+/// Minting a user database is rarer still, and this pins it.
+///
+/// `UserDbs::get` returns `Option` precisely so a READ path cannot create a database by
+/// forgetting a precondition - which two of them did, silently, until the files turned up on
+/// disk (2026-08-08: ~96 KB of empty database, WAL and journal per stranger a contact list
+/// mentioned, a whole ledger's worth on a device adopting one). `create` is the deliberate
+/// other half, and there should only ever be a handful: the paths that are the REASON a
+/// persona's data is about to exist here.
+///
+/// If this count goes up, the question to answer is "am I the reason this persona's data is
+/// arriving, or am I just reading?" - and if it is the second, `get` (or `held`) is the verb.
+#[test]
+fn create_sites_stay_rare() {
+    let expected: BTreeMap<&str, usize> = BTreeMap::from([
+        ("identity.rs", 1),  // create: a new persona's own database, minted at birth
+        ("net/sync.rs", 2),  // both ends of an exchange: a first fetch, and the responder
+    ]);
+
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut found: BTreeMap<String, usize> = BTreeMap::new();
+    for path in files {
+        let source = std::fs::read_to_string(&path).expect("readable source");
+        let flat: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        let n = flat.matches("user_dbs.create(").count();
+        if n > 0 {
+            let rel = path
+                .strip_prefix(&src)
+                .expect("path under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            found.insert(rel, n);
+        }
+    }
+    let found_ref: BTreeMap<&str, usize> = found.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    assert_eq!(
+        found_ref, expected,
+        "database-MINTING call sites changed. A read path must never be one: `get` returns \
+         Option so absence is an answer, and `held` is for personas whose absence is a bug."
     );
 }

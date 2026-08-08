@@ -520,7 +520,8 @@ integration: build kill
     cd "{{justfile_directory()}}/integration"
     RINGTOME_TEST_HOST="127.0.0.1:$pa" RINGTOME_TEST_HOST_B="127.0.0.1:$pb" \
         RINGTOME_TEST_HOST_C="127.0.0.1:$pc" \
-        RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" npm test
+        RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" \
+        RINGTOME_TEST_DATA_DIR="{{workspace}}/{{test_data}}" npm test
 
 # The mainline field test: two local nodes on RINGTOME_DISCOVERY=mainline, talking to the REAL
 # public mainline DHT and n0 relay/DNS infrastructure. Seconds when that infrastructure is

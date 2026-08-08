@@ -3563,3 +3563,89 @@ The residual is now honest and differently shaped: paging fixed the RESIDENCY, n
 POLICY - a first sync still sends dense-from-their-head, i.e. the whole history, just never
 all at once. "Content chains: suffix-first, backfill lazy" is still unbuilt, and NEXT_STEPS
 now says so in those words rather than as a memory complaint.
+
+## 2026-08-08: exists, not get - the stampede was minting, not opening
+
+The audit line read "first-sync backfill stampede: 50k user-DB opens through a 128-slot
+LRU". Reading the code found something worse and then the disk proved it: `user_dbs.get`
+CREATES on open, so backfilling a persona this node has never synced did not open a database,
+it WROTE one - and `data/test/users/` was already carrying `abababab….db` from the test
+suite's own stranger root, 4 KB of database plus 86 KB of WAL plus a journal, ~96 KB per
+contact nobody here has ever met. A device adopting a 50k-follow ledger does that for every
+contact at once (the memo's first refresh sees an empty `eager_before`, so all of them are
+"newly eager"), inside the adoption exchange that triggered it: ~4.5 GB and 150,000 files
+before the newcomer has read a single post.
+
+The codebase had already named this hazard and built the guard - `UserDbs::exists` exists
+"without `get`'s create-on-open minting empty databases for every stranger a contact list
+mentions" - and was using it in exactly one place, the anonymous doc-bytes probe. Two more
+call sites needed it, and the second one only surfaced because the first fix's test went
+red on a rerun after passing once:
+
+* **`fanout::backfill_follow`** - whose own doc comment had always claimed a persona "not
+  here yet" was skipped, which `get`'s create-on-open meant it never was. The doc described
+  the intent; the code did the opposite.
+* **`idface::stored_tree_leaves`** - the real minter behind the flake, caught in the node log
+  (`generated new database encryption key` for the stranger root, thirteen milliseconds
+  before `background revalidation reached nobody`). Its doc said "callers must hold a reason
+  to believe the mirror exists" - but one caller is the WAKE PASS, whose entire job is
+  chasing followed personas we may never have synced, so it structurally cannot hold that
+  reason. The precondition moved into the callee: no mirror, no stored leaves, no
+  database - structural rather than disciplinary, per STYLE.
+
+Pinned by an integration test (a dial for a stranger mints nothing), which needed the
+harness to export its data directory - `RINGTOME_TEST_DATA_DIR`, beside the discovery dir it
+already exported for the same kind of filesystem assertion. The plant went red before green,
+and the second minting site is exactly why the plant matters: the first version of this fix
+passed CI once and failed the rerun, because whether the wake pass's 60-second beat landed
+inside the suite's runtime was luck.
+
+Two things demoted on the way past. The frontier sweep's "stat storm" (~100k syscalls a
+pass) came off the list entirely: that sweep is 600s and stat-guarded, which is the cheap
+thing the guard was introduced to substitute for opens. And what remains of the stampede is
+narrower and honestly stated in NEXT_STEPS: a MEMO REBUILD (node.db is disposable by design)
+makes every mirror this node actually holds newly-eager at once, which wants pacing - and
+pacing needs a pending-backfill marker, because "newly eager" is edge-triggered and a capped
+loop would drop the remainder forever.
+
+## 2026-08-08: get returns Option - minting becomes a verb you have to mean
+
+Curtis's question on the previous fix ("does it make sense to guard every call site, or is it
+more practical to change `get`?") was the right one: two guards had just been added to two
+paths whose doc comments ALREADY asserted the precondition they failed to enforce, which is
+a rule living in prose losing to the next caller who doesn't read it. So the API changed
+instead of the callers.
+
+`UserDbManager::get` now returns `Result<Option<Db>>`, and the create-on-open half became
+its own verb. Three doors where there was one:
+
+* **`get` -> `Option`** - read if held. Absence is a value the compiler makes you handle.
+* **`held`** - read, where absence is a BUG (a persona this node hosts, whose database was
+  minted at creation). Never mints, so the worst a misuse does is fail loudly.
+* **`create`** - mint if absent. The rare, deliberate half: identity creation, and both ends
+  of a sync exchange, where a first arrival is the point.
+
+Twenty-nine call sites, compiler-driven, and the per-file totals came out IDENTICAL to
+before - no opens added or removed, only their intent made explicit. The two `exists()`
+stopgaps from the morning were deleted; the type does that job now. The conventions cop
+learned to count all three verbs (thrash is about opening a file per item and does not care
+which door), and gained a sibling, `create_sites_stay_rare`, pinning the minting sites at
+three - because a read path must never quietly become one.
+
+Both plants went red before green, and the first is the one worth keeping:
+
+* Deleting an absence check (`let db = ...get(x).await?` used as a `Db`) now **fails to
+  compile** - `expected &Db, found &Option<Db>`. The bug that shipped twice in one afternoon
+  and cost ~96 KB of empty database per stranger is now unwritable, not merely discouraged.
+* An added `create` in a read module turns the new cop red with the file named.
+
+Two things surfaced and deliberately left alone. The responder (`sync::serve`) keeps
+`create`, preserving exactly what that door has always done - but a stranger naming a root we
+hold nothing of makes us mint a database for it, which is unsolicited hosting arriving
+through the responder ("Rehosting Policy: Pull, Not Push"). Refusing is a PROTOCOL change,
+not a refactor, because adoption's in-band grant delivery may legitimately serve before we
+hold; it is now a comment at the call site and a NEXT_STEPS line rather than a surprise
+folded into this diff. And `cargo clippy --all-targets` has 16 pre-existing lint failures in
+test code on main (this change makes it 15) - `just lint` doesn't pass `--all-targets`, so
+test-code lints have never been gated. Worth a decision sometime; not worth smuggling in
+here.

@@ -82,6 +82,11 @@ Does a mutual follow+trust make a "friend"?
 
 ### Safety
 * sync-request floods: malicious nodes can DDoS with sync-requests, probably?
+* Unsolicited hosting through the responder: `sync::serve` opens with `create`, so a stranger
+  naming a root we hold nothing of mints a database for it — content arriving by push, which
+  "Rehosting Policy: Pull, Not Push" forbids. Refusing needs a survey of who legitimately
+  serves before holding (adoption's in-band grant delivery is the suspect), which makes it a
+  protocol decision, not a cleanup.
 
 ### Sync
 * Peer-set/discovery build, remaining bricks (Phase 1 SHIPPED 2026-08-07 - see HISTORY:
@@ -112,8 +117,11 @@ axis, none on the follow-list axis. The steps, roughly worst-first:
 * Stream compute residual: a documents movement now ships a one-row diff, but still
   RECOMPUTES `search_rows` and the annotation sweep whole to produce it — the wire is quiet,
   the gather isn't. A doc-scoped search/annotation refresh, if profiling ever names it.
-* First-sync backfill stampede: every follow is "newly eager" ⇒ 50k user-DB opens through the
-  128-slot LRU; frontier sweep stats every root (~100k syscalls/pass)
+* Paced backfill on a MEMO REBUILD: `node.db` is disposable by design, and deleting it makes
+  every held mirror "newly eager" at once ⇒ one serial user-DB open each, inside whichever
+  path triggered the refresh. Bounded by mirrors actually held (the stranger case is fixed),
+  so it wants pacing, not a guard — and pacing needs a pending-backfill marker, because
+  "newly eager" is edge-triggered and a capped loop would drop the remainder forever.
 * Wake-pass starvation: 8 refreshes/minute means a full rotation over 50k follows takes days —
   the interest dial needs to actually tier the rotation, not just order it
 * Shallow sync proper: the send path now PAGES, but still sends dense-from-their-head, so a

@@ -252,7 +252,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow!("node does not agent identity {}", job.root))?;
     let leaf_pub = leaf.verifying_key().to_bytes();
     let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
-    let db = state.user_dbs.get(&job.root).await?;
+    let db = state.user_dbs.held(&job.root).await?;
     let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
     let (epoch, epoch_key) = keys
         .current()

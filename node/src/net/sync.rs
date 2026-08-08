@@ -1150,7 +1150,9 @@ pub async fn sync_with_peer(
     addr: EndpointAddr,
 ) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
-    let db = state.user_dbs.get(root_hex).await?;
+    // create: the requester dials to FETCH, and a first fetch is exactly the case where
+    // this node holds nothing of theirs yet (idface::fetch_foreign is the caller).
+    let db = state.user_dbs.create(root_hex).await?;
 
     let conn = state
         .endpoint
@@ -1348,7 +1350,12 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         tracing::debug!(error = ?e, "recording a demand edge failed");
     }
 
-    let db = state.user_dbs.get(&root_hex).await?;
+    // create, preserving what this door has always done - and worth a hard look on its
+    // own (NEXT_STEPS): a stranger naming a root we hold nothing of makes us mint a database
+    // for it, which is unsolicited hosting arriving through the responder ("Rehosting Policy:
+    // Pull, Not Push"). Refusing instead is a PROTOCOL change, not a refactor, because the
+    // adoption ceremony's in-band grant delivery may legitimately serve before we hold.
+    let db = state.user_dbs.create(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
     // The dialer proved membership: remember it as a peer, leaf-bound (healing on any
     // contact - a sibling that found US, by whatever path, is one we can find again).
@@ -1499,7 +1506,7 @@ pub async fn add_peer_with_leaf(
 /// on a dark directory or an unreadable tree.
 pub async fn derive_peers_for(state: &crate::AppState, root_hex: &str) {
     let result: Result<()> = async {
-        let db = state.user_dbs.get(root_hex).await?;
+        let db = state.user_dbs.held(root_hex).await?;
         let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
         let our_endpoint = state.endpoint.id().to_string();
         let mut active: Vec<String> = Vec::new();

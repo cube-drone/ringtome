@@ -689,27 +689,63 @@ impl UserDbManager {
         self.journals_directory.join(format!("{root_pubkey}.jnl"))
     }
 
-    /// Get (opening and migrating if necessary) the database for one identity, its raw-entry
-    /// journal attached.
-    /// Does a database for this root already exist on disk? For joins that want to READ a
-    /// root's data if this node happens to hold it, without `get`'s create-on-open minting
-    /// empty databases for every stranger a contact list mentions.
-    pub fn exists(&self, root_pubkey: &str) -> bool {
-        self.path_for(root_pubkey).exists()
+    /// READ one persona's database - `None` when this node holds nothing of theirs.
+    ///
+    /// The `Option` is the whole point, and it is load-bearing rather than tidy. This used to
+    /// create on open, so every read path was one forgotten precondition away from WRITING an
+    /// empty database (plus WAL, plus journal - ~96 KB) for any stranger it was asked about:
+    /// a contact list's worth of them on a device adopting a big ledger. Two call sites
+    /// carried doc comments asserting "the caller checks first" and neither caller did
+    /// (2026-08-08, found on disk and then in the node log). Absence is now a value the
+    /// compiler makes you handle, not a rule you have to remember - and minting is its own
+    /// verb (`create`), reached deliberately by the handful of paths that mean it.
+    ///
+    /// Still a PER-FILE act: decryption, migration check, journal validation - cheap once,
+    /// ruinous per-item. If the call you are writing sits inside a loop over personas (a
+    /// roster's names, a feed's bylines, "which of these changed?"), stop: that is the fan-in
+    /// thrash the Data Layer warns about, and the answer is a node-level memo written at fold
+    /// time (persona_frontiers, subscriptions, persona_profiles, feed_journal - four
+    /// precedents). The conventions test pins every call site for exactly that reason - a
+    /// separate hazard from minting, and one the type system cannot see.
+    pub async fn get(&self, root_pubkey: &str) -> Result<Option<Db>> {
+        if let Some(db) = self.handles.get(root_pubkey).await {
+            return Ok(Some(db));
+        }
+        // Stat, then open. Not atomic - a concurrent `create` between the two just means the
+        // next call finds it - but the window lives in ONE place now instead of at every
+        // read site, which is the difference that matters. (turso's builder takes a path, not
+        // open flags, so there is no open-if-exists to hand this to.)
+        if !self.path_for(root_pubkey).exists() {
+            return Ok(None);
+        }
+        self.open(root_pubkey).await.map(Some)
     }
 
-    /// Open (or create) one persona's database. A PER-FILE act: decryption, migration check,
-    /// journal validation - cheap once, ruinous per-item. If the call you are writing sits
-    /// inside a loop over personas (a roster's names, a feed's bylines, "which of these
-    /// changed?"), stop: that is the fan-in thrash the Data Layer warns about, and the answer
-    /// is a node-level memo written at fold time (persona_frontiers, subscriptions,
-    /// persona_profiles, feed_journal - four precedents). The conventions test pins every
-    /// call site of this function for exactly this reason.
-    pub async fn get(&self, root_pubkey: &str) -> Result<Db> {
+    /// `get`, where absence is a BUG rather than an answer: the persona is one this node
+    /// hosts (its database was minted at creation) or one we just observed entries from, so
+    /// `None` means something is broken, not that someone is a stranger. Never mints, so the
+    /// worst a misuse can do is fail loudly - which is the whole point of not having one verb
+    /// that both reads and creates.
+    pub async fn held(&self, root_pubkey: &str) -> Result<Db> {
+        self.get(root_pubkey)
+            .await?
+            .ok_or_else(|| anyhow!("no database held for {root_pubkey}"))
+    }
+
+    /// Open one persona's database, MINTING it if this node holds nothing of theirs yet -
+    /// first sync of a foreign persona, a newly created or adopted identity, a journal
+    /// rebuild. The rare, deliberate half of `get`: if you are not the reason this persona's
+    /// data is about to exist here, you want `get`.
+    pub async fn create(&self, root_pubkey: &str) -> Result<Db> {
         if let Some(db) = self.handles.get(root_pubkey).await {
             return Ok(db);
         }
+        self.open(root_pubkey).await
+    }
 
+    /// The shared body: open (creating if absent), migrate, attach the journal, cache the
+    /// handle. Callers choose whether absence is allowed; this one just does the work.
+    async fn open(&self, root_pubkey: &str) -> Result<Db> {
         let path = self.path_for(root_pubkey);
         let db = open_database(&path, &self.keystore).await?;
         migrate(&db, USER_SCHEMA, USER_SCHEMA_GENERATION, "user")
@@ -830,7 +866,7 @@ mod tests {
         {
             let ks = temp_keystore(&dir);
             let mgr = UserDbManager::new(&dir, ks, 4);
-            let db = mgr.get(&root_hex).await.unwrap();
+            let db = mgr.create(&root_hex).await.unwrap();
             crate::record::imaol::set_profile_field(&db, &key, "name", "Survivor Sue")
                 .await
                 .unwrap();
@@ -843,7 +879,7 @@ mod tests {
 
         let ks = temp_keystore(&dir); // same envelope key on disk: same keystore
         let mgr = UserDbManager::new(&dir, ks, 4);
-        let db = mgr.get(&root_hex).await.unwrap();
+        let db = mgr.create(&root_hex).await.unwrap();
         let profile = crate::record::imaol::get_profile(&db).await.unwrap();
         assert_eq!(
             profile.iter().find(|f| f.field == "name").map(|f| f.value.as_str()),
@@ -949,8 +985,8 @@ mod tests {
         let mgr = UserDbManager::new(&dir, ks, 8);
 
         // Two distinct identities get two distinct, independent databases.
-        let a = mgr.get("alice_pubkey").await.unwrap();
-        let b = mgr.get("bob_pubkey").await.unwrap();
+        let a = mgr.create("alice_pubkey").await.unwrap();
+        let b = mgr.create("bob_pubkey").await.unwrap();
 
         // Prove isolation: a table created in alice's DB is not visible in bob's.
         a.execute("CREATE TABLE probe (v INTEGER)", ())
@@ -967,7 +1003,7 @@ mod tests {
         assert!(bob_sees_probe, "bob's db must not see alice's table");
 
         // Re-getting alice returns the cached handle and the data persists.
-        let a2 = mgr.get("alice_pubkey").await.unwrap();
+        let a2 = mgr.create("alice_pubkey").await.unwrap();
         let (v,): (i64,) = a2.fetch_one("SELECT v FROM probe", ()).await.unwrap();
         assert_eq!(v, 1);
 
@@ -994,7 +1030,7 @@ mod tests {
         // imaol::append's signing gate resolves the key tree with it - a non-hex root would
         // now fail loudly, which is correct for real code and wrong for this fixture.
         let root = "aa".repeat(32);
-        let db = mgr.get(&root).await.unwrap();
+        let db = mgr.create(&root).await.unwrap();
         db.nudge_sync();
 
         for (name, rx) in [("a", &mut a), ("b", &mut b)] {
@@ -1020,7 +1056,7 @@ mod tests {
         // imaol::append's signing gate resolves the key tree with it - a non-hex root would
         // now fail loudly, which is correct for real code and wrong for this fixture.
         let root = "aa".repeat(32);
-        let db = mgr.get(&root).await.unwrap();
+        let db = mgr.create(&root).await.unwrap();
         let key = ringtome_proto::SigningKey::from_bytes(&[5u8; 32]);
         let signed = crate::record::imaol::set_profile_field(&db, &key, "name", "Hats Ahoy")
             .await

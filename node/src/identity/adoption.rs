@@ -214,7 +214,7 @@ pub async fn authorize_node(
 
     let db = state
         .user_dbs
-        .get(root_hex)
+        .held(root_hex)
         .await
         .map_err(AppError::Internal)?;
     let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
@@ -473,7 +473,7 @@ pub async fn complete(
 
     let db = state
         .user_dbs
-        .get(&code.root_pubkey)
+        .held(&code.root_pubkey)
         .await
         .map_err(AppError::Internal)?;
     let tree = crate::record::imaol::load_key_tree(&db, &code.root_pubkey).await?;

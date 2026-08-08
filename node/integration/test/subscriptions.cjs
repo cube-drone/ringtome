@@ -99,6 +99,33 @@ describe("the subscription memo", () => {
         assert.equal(rows[0].eagerness, 75, "and leaves the routing facts alone");
     });
 
+    /*
+        THEM is a stranger root - nothing of theirs was ever synced here - and following a
+        stranger is the ordinary case (you paste an address before any content arrives). The
+        follow-backfill path reaches for their shelf, and `user_dbs.get` CREATES on open, so
+        it used to write them an empty database, WAL and journal: ~96 KB of files per contact
+        this node has never met. A device adopting a big ledger does that for every contact
+        at once, since the memo's first refresh sees them all as newly eager.
+    */
+    it("backfilling a stranger mints no database - exists, not get", async function () {
+        const dataDir = process.env.RINGTOME_TEST_DATA_DIR;
+        if (!dataDir) this.skip();
+        const fs = require("node:fs");
+        const dbPath = `${dataDir}/users/${THEM}.db`;
+
+        // The dials above already put THEM on the roster; prove the memo actually ran (so
+        // the assertion below can't pass by arriving before the backfill path did).
+        const rows = await settle(async () => {
+            const got = await rowsFor(root);
+            return got.length ? got : null;
+        });
+        assert.ok(rows, "the memo refresh has run for this contact");
+        assert.ok(
+            !fs.existsSync(dbPath),
+            "a persona we hold nothing of gets no database minted for them"
+        );
+    });
+
     it("forgets a contact whose last dial goes back to nothing", async () => {
         // Clearing a register writes an empty value, which parses as no dial at all.
         await dial("interest", "");

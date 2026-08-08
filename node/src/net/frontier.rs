@@ -140,7 +140,7 @@ async fn memo_public_anchors(
 pub async fn reconcile_from_entries(state: &AppState, root_hex: &str) -> Result<()> {
     let db = state
         .user_dbs
-        .get(root_hex)
+        .held(root_hex)
         .await
         .with_context(|| format!("opening {root_hex} to reconcile its memo"))?;
     // Through the owner's door: `entries` belongs to imaol + the sync gate, so the range

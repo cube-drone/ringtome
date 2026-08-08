@@ -427,7 +427,7 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
         .ok_or_else(|| "this node no longer agents the publisher".to_string())?;
     let db = state
         .user_dbs
-        .get(root)
+        .held(root)
         .await
         .map_err(|e| format!("db: {e}"))?;
     // The source URL is the title: v1's provenance-on-the-artifact, until the public header

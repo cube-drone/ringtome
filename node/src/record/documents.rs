@@ -1578,7 +1578,7 @@ pub async fn fetch_missing_bodies(
         }
     }
     let result: anyhow::Result<u64> = async {
-        let db = state.user_dbs.get(root_hex).await?;
+        let db = state.user_dbs.held(root_hex).await?;
         let mut missing: Vec<iroh_blobs::Hash> = Vec::new();
 
         // The PUBLIC lane first, KEYLESS: any node holding public headers may fetch the

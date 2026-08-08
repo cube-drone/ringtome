@@ -101,7 +101,7 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
         .map_err(AppError::Internal)?;
     let db = state
         .user_dbs
-        .get(root_hex)
+        .held(root_hex)
         .await
         .map_err(AppError::Internal)?;
     let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
@@ -121,7 +121,7 @@ pub async fn read_public(state: &AppState, root_hex: &str) -> Result<PublicView,
     }
     let db = state
         .user_dbs
-        .get(root_hex)
+        .held(root_hex)
         .await
         .map_err(AppError::Internal)?;
     Ok(PublicView { db })

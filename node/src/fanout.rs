@@ -145,11 +145,17 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
 /// The author's newest public page, shaped for journaling - the one user-DB open on the
 /// journal path, shared by both arrival flows (`journal_for`, `backfill_follow`).
 async fn shelf_page(state: &AppState, author_root: &str) -> Result<Vec<JournalRow>> {
-    let db = state
+    // `get`, not `create`: a followed persona whose content has never arrived here has no
+    // shelf to page, and asking for one used to WRITE them an empty database (~96 KB, once
+    // per contact - a whole ledger's worth on a device adopting one). Nothing to journal.
+    let Some(db) = state
         .user_dbs
         .get(author_root)
         .await
-        .with_context(|| format!("opening {author_root} to read its shelf"))?;
+        .with_context(|| format!("opening {author_root} to read its shelf"))?
+    else {
+        return Ok(Vec::new());
+    };
     let posts =
         crate::record::documents::public_docs(&db, None, crate::idface::POSTS_PAGE).await?;
     Ok(posts
@@ -301,11 +307,14 @@ async fn retract_vanished(state: &AppState, author_root: &str) -> Result<u64> {
     if journaled.is_empty() {
         return Ok(0);
     }
-    let db = state
+    let Some(db) = state
         .user_dbs
         .get(author_root)
         .await
-        .with_context(|| format!("opening {author_root} to check its public lane"))?;
+        .with_context(|| format!("opening {author_root} to check its public lane"))?
+    else {
+        return Ok(0); // nothing of theirs held: nothing to reconcile against
+    };
     let alive = crate::record::documents::public_doc_ids(&db).await?;
     let stale: Vec<String> = journaled
         .into_iter()

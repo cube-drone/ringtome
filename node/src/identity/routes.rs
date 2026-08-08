@@ -378,7 +378,7 @@ async fn rebuild_handler(
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let db = state
         .user_dbs
-        .get(&root)
+        .held(&root)
         .await
         .map_err(AppError::Internal)?;
     let entries_replayed = imaol::rebuild_views(&db).await?;
@@ -394,7 +394,7 @@ async fn entries_handler(
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let db = state
         .user_dbs
-        .get(&root)
+        .held(&root)
         .await
         .map_err(AppError::Internal)?;
     Ok(Json(imaol::list_entries(&db).await?))
@@ -764,7 +764,7 @@ async fn keys_handler(
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let db = state
         .user_dbs
-        .get(&root)
+        .held(&root)
         .await
         .map_err(AppError::Internal)?;
     let tree = imaol::load_key_tree(&db, &root).await?;
@@ -1252,7 +1252,7 @@ async fn set_avatar_handler(
         ));
     }
 
-    let db = state.user_dbs.get(&root).await.map_err(AppError::Internal)?;
+    let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
         .await?;
     let doc_id =
@@ -2849,7 +2849,7 @@ async fn serve_stream(
         .map_err(|e| anyhow::anyhow!("opening store for stream: {e}"))?;
     let db = state
         .user_dbs
-        .get(&root)
+        .held(&root)
         .await
         .map_err(|e| anyhow::anyhow!("opening db for stream: {e}"))?;
 

@@ -29,7 +29,7 @@ pub struct Byline {
 pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
     let db = state
         .user_dbs
-        .get(root_hex)
+        .held(root_hex)
         .await
         .with_context(|| format!("opening {root_hex} to read its profile"))?;
     let fields = crate::record::imaol::get_profile(&db)

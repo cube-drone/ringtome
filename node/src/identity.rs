@@ -103,7 +103,7 @@ pub async fn create(
 
     // 5. Materialize the per-user database (opens + migrates it).
     let user_db = user_dbs
-        .get(&pubkey_hex)
+        .create(&pubkey_hex)
         .await
         .context("creating per-user database")
         .map_err(AppError::Internal)?;
@@ -340,7 +340,7 @@ pub async fn recover_password(
     for identity in &identities {
         let db = state
             .user_dbs
-            .get(&identity.root_pubkey)
+            .held(&identity.root_pubkey)
             .await
             .map_err(AppError::Internal)?;
         let tree = crate::record::imaol::load_key_tree(&db, &identity.root_pubkey).await?;
@@ -433,8 +433,8 @@ pub async fn standing(
     else {
         return "unknown";
     };
-    let Ok(db) = state.user_dbs.get(root_hex).await else {
-        return "unknown";
+    let Ok(Some(db)) = state.user_dbs.get(root_hex).await else {
+        return "unknown"; // unreadable, or nothing of theirs held: the same non-answer
     };
     let Ok(tree) = crate::record::imaol::load_key_tree(&db, root_hex).await else {
         return "unknown";
@@ -670,7 +670,7 @@ pub async fn revoke_key(
 
     let db = state
         .user_dbs
-        .get(root_hex)
+        .held(root_hex)
         .await
         .map_err(AppError::Internal)?;
     let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;

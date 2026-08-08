@@ -111,7 +111,9 @@ async fn hosted_here(state: &AppState, root_hex: &str) -> Result<bool, AppError>
 /// The public profile straight off the identity's own db - the public lane, no account in
 /// the question. Absent fields render as absent; a profile-less persona is still a page.
 async fn public_profile(state: &AppState, root_hex: &str) -> Result<Vec<imaol::ProfileField>, AppError> {
-    let db = state.user_dbs.get(root_hex).await.map_err(AppError::Internal)?;
+    let Some(db) = state.user_dbs.get(root_hex).await.map_err(AppError::Internal)? else {
+        return Err(AppError::NotFound("nothing of theirs is held here".into()));
+    };
     imaol::get_profile(&db).await
 }
 
@@ -682,11 +684,21 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
 
 /// The Active leaves of a persona's stored identity chain, hex - candidates for re-fetching
 /// it. Empty on any failure: a mirror we can't read just falls back to the explicit hints.
-/// Callers must hold a reason to believe the mirror exists (a foreign_fetches row); this is
-/// not a first-contact path.
+///
+/// A mirror we hold NOTHING of has no stored leaves, and says so by existing-check rather
+/// than by trusting its callers to have checked: `user_dbs.get` creates on open, so the
+/// version that asked the question directly minted an empty database (and WAL, and journal)
+/// for every persona it was asked about cold. The doc used to say "callers must hold a
+/// reason to believe the mirror exists" - and the wake pass, whose whole job is chasing
+/// followed personas we may never have synced, is a caller that structurally cannot. Found
+/// 2026-08-08 in the node log: `generated new database encryption key` for a stranger root,
+/// thirteen milliseconds before `background revalidation reached nobody`. A precondition a
+/// caller cannot satisfy belongs in the callee (STYLE: structural, not disciplinary).
 async fn stored_tree_leaves(state: &AppState, root_hex: &str) -> Vec<String> {
     let result: anyhow::Result<Vec<String>> = async {
-        let db = state.user_dbs.get(root_hex).await?;
+        let Some(db) = state.user_dbs.get(root_hex).await? else {
+            return Ok(Vec::new()); // hold nothing of them, so we know none of their leaves
+        };
         let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
         Ok(tree
             .members()
@@ -795,15 +807,15 @@ async fn public_doc_bytes(
         return Err(AppError::NotFound("no such persona here".into()));
     };
     let root_hex = hex::encode(root);
-    // exists, not get: an anonymous probe for a stranger's bytes must not mint a database.
-    if !state.user_dbs.exists(&root_hex) {
-        return Err(AppError::NotFound("nothing of theirs is held here".into()));
-    }
     let doc_id: [u8; 16] = hex::decode(doc_hex)
         .ok()
         .and_then(|b| b.try_into().ok())
         .ok_or_else(|| AppError::NotFound("no such document".into()))?;
-    let db = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)?;
+    // An anonymous probe for a stranger's bytes finds nothing rather than minting a place
+    // to look: absence is the answer here, and `get` is the verb that can say it.
+    let Some(db) = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? else {
+        return Err(AppError::NotFound("nothing of theirs is held here".into()));
+    };
     let Some(head) = crate::record::documents::public_head(&db, &doc_id).await? else {
         return Err(AppError::NotFound("no such public document here".into()));
     };
@@ -950,10 +962,10 @@ pub async fn id_posts(
     // One more than the page, to learn whether there IS a further page without counting the
     // whole shelf - the extra row is the answer and never reaches the reader.
     let mut posts = match state.user_dbs.get(&root_hex).await {
-        Ok(db) => crate::record::documents::public_docs(&db, after, POSTS_PAGE + 1)
+        Ok(Some(db)) => crate::record::documents::public_docs(&db, after, POSTS_PAGE + 1)
             .await
             .unwrap_or_default(),
-        Err(_) => Vec::new(),
+        _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
     };
     let more = posts.len() as i64 > POSTS_PAGE;
     posts.truncate(POSTS_PAGE as usize);
@@ -1046,10 +1058,10 @@ pub async fn id_profile(
     // lane-checked like everything on this surface; a private note cannot appear here
     // because the query cannot name one.
     let mut posts = match state.user_dbs.get(&root_hex).await {
-        Ok(db) => crate::record::documents::public_docs(&db, None, POSTS_PAGE + 1)
+        Ok(Some(db)) => crate::record::documents::public_docs(&db, None, POSTS_PAGE + 1)
             .await
             .unwrap_or_default(),
-        Err(_) => Vec::new(),
+        _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
     };
     let posts_more = posts.len() as i64 > POSTS_PAGE;
     posts.truncate(POSTS_PAGE as usize);

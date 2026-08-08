@@ -225,7 +225,7 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let db = state.user_dbs.get(root).await?;
+    let db = state.user_dbs.held(root).await?;
     let fp = fingerprint(sync::local_frontiers(&db, true).await?);
     let decision = state
         .resync
