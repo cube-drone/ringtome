@@ -24,6 +24,16 @@ CREATE TABLE entries (
 -- and seq); the unique index doubles as the lookup path for prev_hash / anchor resolution.
 CREATE UNIQUE INDEX entries_by_hash ON entries (entry_hash);
 
+-- The FOLD path's index (added 2026-08-08, measured): every catch-up-on-read asks
+-- "entries of this (service, entry_type), in (author, seq) order" - `imaol::entries_of_type`
+-- (epoch keys, on every store open) and `entries_past_watermarks` (every private and document
+-- read). The primary key leads with author_pubkey, so neither could use it: EXPLAIN showed a
+-- raw `SCAN entries` - reading every row's BLOB bytes off disk - plus a sorter, on a table
+-- that grows with everything the identity ever writes. Ordering the tail columns as
+-- (author_pubkey, seq) serves the ORDER BY from the index too, so the sorter goes away with
+-- the scan. Deliberately NOT covering: adding `bytes` would duplicate the whole log.
+CREATE INDEX entries_by_service_type ON entries (service, entry_type, author_pubkey, seq);
+
 -- Equivocation evidence: proof that a single-writer key signed two different entries at the
 -- same (service, seq) - the one act the chain format makes self-incriminating ("forks are
 -- self-proving" - PROJECT_PLAN, IM-AOL). Rows are written by the sync gate when a second

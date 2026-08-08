@@ -565,6 +565,22 @@ pub async fn chain_heads_for_author(
         .collect()
 }
 
+
+/// Does this database hold any entry at all? The cheap half of what the journal-invariant
+/// check used to ask `all_entry_bytes` - which read every entry's BLOB off disk on EVERY
+/// database open (so every handle-cache miss) to compute one boolean, on a table that grows
+/// with the whole of an identity's history. Measured 2026-08-08 while chasing the test-data
+/// generator's latency curve: 150 databases through a 128-slot cache, each miss re-reading
+/// the log.
+pub async fn entries_are_empty(db: &Db) -> Result<bool, AppError> {
+    let row: Option<(i64,)> = db
+        .fetch_optional("SELECT 1 FROM entries LIMIT 1", ())
+        .await
+        .context("probing for stored entries")
+        .map_err(AppError::Internal)?;
+    Ok(row.is_none())
+}
+
 /// Every stored entry's exact envelope bytes, ordered by `(author, service, seq)` - the
 /// deterministic order journal backfill writes frames in (replay revalidates regardless).
 pub async fn all_entry_bytes(db: &Db) -> Result<Vec<Vec<u8>>, AppError> {
@@ -811,5 +827,50 @@ mod tests {
             .unwrap();
 
         assert!(rebuild_views(&db).await.is_err());
+    }
+
+    /// The fold path's two reads SEEK, never scan. Both ask "(service, entry_type), in
+    /// (author, seq) order" - `entries_of_type` on every store open (epoch keys) and
+    /// `entries_past_watermarks` on every private or document read - against a table that
+    /// grows with everything the identity ever writes. Before `entries_by_service_type`
+    /// (2026-08-08) the plan was a raw `SCAN entries`, blobs and all, plus a sorter; a
+    /// dropped index would put it back, and nothing else in the suite would notice, because
+    /// a scan over test-sized data is fast. Hence a plan assertion rather than a timing one:
+    /// it fails on the shape, not on how slow the machine felt today.
+    #[tokio::test]
+    async fn the_fold_path_reads_seek_and_never_scan() {
+        let db = crate::db::test_user_db().await;
+        for sql in [
+            "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
+             ORDER BY author_pubkey, seq",
+            "SELECT bytes FROM entries e
+             WHERE service = ?1 AND entry_type = ?2
+               AND seq > COALESCE((SELECT folded_seq FROM view_watermarks w
+                                   WHERE w.author_pubkey = e.author_pubkey
+                                     AND w.service = e.service), -1)
+             ORDER BY author_pubkey, seq",
+        ] {
+            let rows: Vec<(i64, i64, i64, String)> = db
+                .fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), (5i64, 6i64))
+                .await
+                .unwrap();
+            let plan: String = rows
+                .iter()
+                .map(|(_, _, _, d)| d.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            assert!(
+                plan.contains("entries_by_service_type"),
+                "the fold read must use its index, got: {plan}"
+            );
+            assert!(
+                !plan.contains("SCAN entries"),
+                "and must not fall back to a table scan, got: {plan}"
+            );
+            assert!(
+                !plan.contains("USE TEMP B-TREE FOR ORDER BY") && !plan.contains("USE SORTER"),
+                "the index supplies (author, seq) order, so no sorter should appear: {plan}"
+            );
+        }
     }
 }

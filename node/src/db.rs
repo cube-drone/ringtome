@@ -41,7 +41,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
 const NODE_SCHEMA_GENERATION: i64 = 10; // 10: feed_journal gains its author-side index (2026-08-07)
-const USER_SCHEMA_GENERATION: i64 = 6; // 6: equivocations - fork evidence (2026-08-06)
+const USER_SCHEMA_GENERATION: i64 = 7; // 7: entries_by_service_type - the fold path's index (2026-08-08)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -612,6 +612,12 @@ pub struct UserDbManager {
     /// Owned here so wiring is automatic: whoever opens a user DB gets a nudging handle, and
     /// consumers subscribe via [`UserDbManager::subscribe_writes`].
     write_nudge: WriteNudge,
+    /// Journals whose torn tail this PROCESS has already checked (see [`Journal::reopen`]).
+    /// The check is crash recovery and costs a full read plus a frame walk; a handle cache
+    /// smaller than the number of personas made it run on every miss, over files that grow
+    /// with an identity's whole history. Boot-reset by being in memory, which is exactly
+    /// right: a fresh process has not written any of these bytes and validates again.
+    validated_journals: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl UserDbManager {
@@ -625,6 +631,7 @@ impl UserDbManager {
             keystore,
             handles: moka::future::Cache::new(max_open),
             node_db: std::sync::Arc::new(std::sync::OnceLock::new()),
+            validated_journals: Default::default(),
             // 16 is ample: pings carry no data and lag folds to one re-check.
             write_nudge: tokio::sync::broadcast::channel(NUDGE_CAPACITY).0,
         }
@@ -755,21 +762,39 @@ impl UserDbManager {
         // Open (torn-tail-validating) the journal, and initialize the journal ⊇ database
         // invariant: an empty journal over a non-empty entries table gets every stored entry
         // backfilled as frames, or rebuild-by-replay would silently lose the prefix.
-        let journal = Journal::open(&self.journal_path_for(root_pubkey))
-            .with_context(|| format!("opening journal for {root_pubkey}"))?;
+        let journal_path = self.journal_path_for(root_pubkey);
+        let first_look = self
+            .validated_journals
+            .lock()
+            .unwrap()
+            .insert(root_pubkey.to_string());
+        let journal = if first_look {
+            Journal::open(&journal_path)
+                .with_context(|| format!("opening journal for {root_pubkey}"))?
+        } else {
+            Journal::reopen(&journal_path)
+                .with_context(|| format!("reopening journal for {root_pubkey}"))?
+        };
         let journal_empty = journal
             .is_empty()
             .with_context(|| format!("checking journal for {root_pubkey}"))?;
-        let existing = crate::record::imaol::all_entry_bytes(&db)
-            .await
-            .with_context(|| format!("reading entries for journal init of {root_pubkey}"))?;
+        // The entry BYTES are fetched only on the branch that writes them. The version that
+        // read them unconditionally spent a whole-log read per open - so per handle-cache
+        // miss - to answer `is_empty()` in the common case where the journal and the database
+        // are both populated and there is nothing to do (measured 2026-08-08).
         if journal_empty {
+            let existing = crate::record::imaol::all_entry_bytes(&db)
+                .await
+                .with_context(|| format!("reading entries for journal init of {root_pubkey}"))?;
             if !existing.is_empty() {
                 journal
                     .append_all(&existing)
                     .with_context(|| format!("backfilling journal for {root_pubkey}"))?;
             }
-        } else if existing.is_empty() {
+        } else if crate::record::imaol::entries_are_empty(&db)
+            .await
+            .with_context(|| format!("probing entries for journal init of {root_pubkey}"))?
+        {
             // The invariant's OTHER direction - the pre-launch migration promise ("per-user
             // data replays from its journal") actually kept: an EMPTY database under a
             // non-empty journal is a rebuilt file (the schema-generation bail told the
@@ -782,7 +807,7 @@ impl UserDbManager {
                 let (accepted, rejected) = crate::record::journal::rebuild_from_journal(
                     &db,
                     root,
-                    &self.journal_path_for(root_pubkey),
+                    &journal_path,
                 )
                 .await
                 .with_context(|| format!("replaying journal for {root_pubkey}"))?;
@@ -858,6 +883,10 @@ mod tests {
     /// the database file out from under a fresh manager, and the reopened database must
     /// hold the same facts - by validated replay, not by luck.
     #[tokio::test]
+    /// Also pins the cheap-probe branch (2026-08-08): the open path stopped reading every
+    /// entry's bytes to decide this, and asks `imaol::entries_are_empty` instead - so the
+    /// replay firing here is what proves the probe answers the same question the whole-log
+    /// read used to.
     async fn empty_db_under_a_nonempty_journal_replays_on_open() {
         let dir = temp_dir().await;
         let key = ringtome_proto::SigningKey::generate(&mut rand::rngs::OsRng);
@@ -1118,5 +1147,33 @@ mod tests {
         // And the data still answers from the main file.
         let (count,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM fat", ()).await.unwrap();
         assert_eq!(count, 300);
+    }
+
+    /// Reopening an evicted handle attaches to the journal without re-validating it - the
+    /// whole-file read that used to run on every handle-cache miss. Proven by the appends
+    /// still landing in order across an eviction, so the reattached handle is a real one.
+    #[tokio::test]
+    async fn an_evicted_handle_reopens_and_keeps_appending() {
+        let dir = temp_dir().await;
+        let dir = dir.as_path();
+        let key = ringtome_proto::SigningKey::from_bytes(&[11u8; 32]);
+        let root_hex = hex::encode(key.verifying_key().to_bytes());
+        let mgr = UserDbManager::new(dir, temp_keystore(dir), 4);
+
+        let db = mgr.create(&root_hex).await.unwrap();
+        crate::record::imaol::set_profile_field(&db, &key, "name", "First").await.unwrap();
+        drop(db);
+        // Evict deterministically: capacity eviction is lazy, and a test that only USUALLY
+        // reopens is a test that only usually tests anything (found by planting a broken
+        // reopen and watching this pass anyway).
+        mgr.handles.invalidate(&root_hex).await;
+        mgr.handles.run_pending_tasks().await;
+        assert_eq!(mgr.open_count().await, 0, "the handle really is gone");
+
+        let db = mgr.create(&root_hex).await.unwrap();
+        crate::record::imaol::set_profile_field(&db, &key, "name", "Second").await.unwrap();
+        let journal_path = dir.join("journals").join(format!("{root_hex}.jnl"));
+        let frames = crate::record::journal::read_journal(&journal_path).unwrap();
+        assert_eq!(frames.len(), 2, "both appends are in the journal, across the eviction");
     }
 }

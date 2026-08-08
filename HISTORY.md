@@ -3334,3 +3334,79 @@ odd seam, and sixteen is an afternoon, so the flag went on and the backlog went 
   decision on the record; an ungated lint is a silence.
 
 Nothing was suppressed to make the gate pass that could reasonably have been fixed instead.
+
+## 2026-08-08: the fold path gets its index
+
+Curtis's 3-node 50x50 test-data run (7500 actions, 647s) showed per-action latency climbing
+34ms -> 158ms as the network densified - linear data growth producing a 4.6x slowdown, which
+is the signature of per-action work that scans something accumulating. EXPLAIN over the three
+hottest queries found the entries table carrying exactly one index beyond its primary key,
+and the worst offender not on the sync path at all:
+
+`imaol::entries_past_watermarks` and `entries_of_type` both ask "entries of this (service,
+entry_type), in (author, seq) order" - the first on every private and document read (via
+`catch_up`), the second on every store open (unsealing epoch keys). The primary key leads
+with `author_pubkey`, so neither could use it, and the plan was a raw `SCAN entries` - reading
+every row's BLOB bytes off disk - followed by a sorter, over a table that grows with
+everything the identity ever writes.
+
+`entries_by_service_type (service, entry_type, author_pubkey, seq)` fixes both: equality on
+the first two columns, and the tail columns supply the ORDER BY so the sorter disappears with
+the scan. Deliberately not covering - adding `bytes` would duplicate the entire log. User
+schema generation 6 -> 7.
+
+Pinned by a plan assertion rather than a timing one (`the_fold_path_reads_seek_and_never_scan`):
+it fails on the query's SHAPE, not on how slow the machine felt, which is the property that
+makes it safe to run on a shared CI box. Planted by deleting the index - back to
+`SCAN entries | USE SORTER FOR ORDER BY`, red, as it should be.
+
+Two known offenders left standing, deliberately: `local_frontiers` (twice per exchange) and
+`missing_plan`'s chain list (once) both scan the whole entries table to recompute what the
+`chain_heads` memo already holds. Reading the memo instead would be O(chains) rather than
+O(entries) - but those two answers back the frontier we CLAIM to peers and the entries we
+SEND them, so a memo that ever understates means a peer silently never receives something we
+hold, with nothing to heal it. Today they are derived from the log itself and cannot be
+wrong. That swap is its own change with its own adversarial tests, not a perf patch.
+
+## 2026-08-08: opening a database stops costing a whole history
+
+Chasing the test-data generator's latency curve past the fold-path index (which bought 2%,
+because the benchmark's identities are ~60 entries deep and the scan it fixed had nothing to
+scan). The real find was the handle cache: each node ends the 50x50 run holding **150** user
+databases against a cache of **128**, so the back half of every run is thrash - and a miss
+was O(the identity's entire history), twice over:
+
+* `UserDbManager::open` called `all_entry_bytes` unconditionally - every entry's BLOB, off
+  disk - and in the common case (journal populated, database populated) used the result for
+  nothing but `is_empty()`. The bytes are needed only on the journal-backfill branch, so
+  that is the only branch that fetches them now; the other asks `imaol::entries_are_empty`,
+  one indexed probe.
+* `Journal::open` read the WHOLE journal file and walked every frame to apply the torn-tail
+  rule - a rule its own doc comment calls a one-time act ("once, here - after which appends
+  proceed blindly"), which the cache quietly turned into once-per-miss. Torn tails are crash
+  recovery; within a process run every byte past the first check was written here as a whole
+  frame. `Journal::reopen` attaches for append with no read and no walk, and `UserDbManager`
+  remembers which journals it has validated this run. In-memory, so a fresh process - which
+  wrote none of those bytes - validates again.
+
+And the cap itself became `RINGTOME_MAX_OPEN_DATABASES` (default unchanged at 128), because
+it was never really a magic number: it is a file-descriptor budget, ~4 per open database
+(main, WAL, shm, journal), and stock limits run from 256 on old macOS through 1024 on Linux
+to 1,048,576 on Curtis's machine - which is where the 399 descriptors a running node was
+holding got measured. A userspace p2p node gets whatever the host hands it, so it wants a
+knob, and the knob makes the thrash hypothesis testable in one command instead of a
+recompile. Deriving it from `getrlimit` automatically is the obvious follow-up and is
+deliberately not here.
+
+The plants earned their keep twice over. A lying `entries_are_empty` (always "populated")
+correctly killed the journal-replay test. But the first eviction test PASSED with a
+deliberately broken `reopen` - capacity eviction in moka is lazy, so the handle was never
+actually evicted and the test had been asserting nothing. Rewritten to invalidate the entry
+explicitly and assert the cache is empty first; then the broken reopen failed it, as it
+should have all along. A test that only USUALLY exercises its path is a test that only
+usually tests anything.
+
+Also deleted on the way past: a new test that turned out to duplicate
+`empty_db_under_a_nonempty_journal_replays_on_open` outright. That coverage already existed;
+what changed is what it guards, so the note went into its doc comment instead of into a
+second copy.

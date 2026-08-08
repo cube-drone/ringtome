@@ -74,6 +74,19 @@ pub struct Config {
     /// debounce (~10s) is what batches a typing burst into one save, so this stays short.
     /// Override with `RINGTOME_SYNC_DEBOUNCE_MS`.
     pub sync_debounce_ms: i64,
+    /// How many per-user databases stay open at once (the handle cache's size). A miss is a
+    /// PER-FILE act - key unseal, decrypt, migration check, journal attach - so the cache is
+    /// what keeps a node with many personas from paying it constantly; a node holding more
+    /// personas than this thrashes, which is exactly what the 3-node test-data run found
+    /// (150 databases per node against a cache of 128, 2026-08-08).
+    ///
+    /// It is a FILE DESCRIPTOR budget in disguise: roughly four per open database (main, WAL,
+    /// shm, journal), so the default 128 is about 512 descriptors. Stock limits vary wildly -
+    /// old macOS defaults to 256 soft, Linux commonly 1024, a tuned machine may allow a
+    /// million - and a userspace p2p node gets whatever the host hands it, so this is a knob
+    /// rather than a constant. Leave headroom: sockets (iroh, HTTP, blobs) come out of the
+    /// same budget. Override with `RINGTOME_MAX_OPEN_DATABASES`.
+    pub max_open_databases: u64,
     /// The unfurl endpoint's global outbound budget, in fetches per minute - also the burst
     /// capacity (one minute's allowance up front). This exists so a node can't be aimed at a
     /// foreign server as a load test; it is sized per NODE, not per user, so a single-user
@@ -172,6 +185,14 @@ impl Config {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(10 * 1024 * 1024);
 
+        // Floored at 8: a cache too small to hold the handles one request touches would
+        // thrash on a single operation, which is worse than any descriptor it saves.
+        let max_open_databases = env::var("RINGTOME_MAX_OPEN_DATABASES")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(128)
+            .max(8);
+
         let sync_debounce_ms = env::var("RINGTOME_SYNC_DEBOUNCE_MS")
             .ok()
             .and_then(|s| s.parse::<i64>().ok())
@@ -229,6 +250,7 @@ impl Config {
             discovery,
             max_upload_bytes,
             max_document_bytes,
+            max_open_databases,
             sync_debounce_ms,
             resync_interval_secs,
             unfurl_rate_per_min,

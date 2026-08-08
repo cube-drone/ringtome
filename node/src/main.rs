@@ -241,7 +241,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Bound on simultaneously-open per-user DB handles. A placeholder default for now; will move to
     // config when it matters (many-user nodes tuning against file-handle limits).
-    let user_dbs = db::UserDbManager::new(&config.data_directory, keystore.clone(), 128);
+    let user_dbs =
+        db::UserDbManager::new(&config.data_directory, keystore.clone(), config.max_open_databases);
     // Every per-user handle carries node.db for chain-heads memo co-writes (Db::memo): the
     // entry writers feed the memo at the moment they hold the tip in hand.
     user_dbs.attach_memo(node_db.clone());

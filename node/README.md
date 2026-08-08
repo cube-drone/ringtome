@@ -24,6 +24,7 @@ RINGTOME_PORT=8080 cargo run --bin ringtome
 | `RINGTOME_DISCOVERY` | *(off)* | `off`, `local:<path>` (shared-folder DHT simulation, for tests/LAN), or `mainline` (real DHT + iroh relays via the `N0` preset). Also selects the iroh preset. |
 | `RINGTOME_ENVELOPE_KEY` | *(generated)* | 64 hex chars (32 bytes). Envelope key for private keys at rest. If unset, generated on first boot and persisted to `data/envelope.key` (0600). Set it explicitly for anything you'd restore from backup. |
 | `RINGTOME_LOCAL_TEST` | *(off)* | **DANGEROUS.** `1`/`true` arms local-integration-test mode: raw SQL passthrough over HTTP, rate limiting off, no first-account admin bootstrap, minimal-parameter (weak, fast) Argon2, `/rebuild` exposed. Never on a reachable node. |
+| `RINGTOME_MAX_OPEN_DATABASES` | `128` | How many per-user databases stay open at once. A miss is a per-file act (key unseal, decrypt, migration check, journal attach), so a node holding more personas than this thrashes. Really a file-descriptor budget: ~4 per open database (main, WAL, shm, journal), so 128 ≈ 512 fds — leave headroom for sockets. |
 | `RINGTOME_SYNC_DEBOUNCE_MS` | `3000` | Eager push: how long a changed identity sits quiet before its peers get an unprompted exchange (change detection ticks every ~2s, so the write-to-peer floor is ~tick + debounce + tick). |
 | `RINGTOME_RESYNC_INTERVAL_SECS` | `300` | Anti-entropy cadence: every interval, each identity with peers exchanges with up to 3 random peers, dirty or not. The immediate first pass is the boot catch-up. |
 

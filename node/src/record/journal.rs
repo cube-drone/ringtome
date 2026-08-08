@@ -128,9 +128,33 @@ struct JournalInner {
 }
 
 impl Journal {
+    /// Attach to an already-validated journal for appending: no read, no frame walk. The
+    /// torn-tail rule is CRASH RECOVERY (see `open`), and within one process run every byte
+    /// past the first check was written here as a whole frame - so re-walking the file on
+    /// every handle-cache miss is re-checking our own work, at a cost that grows with the
+    /// identity's whole history. `UserDbManager` validates once per journal per run and uses
+    /// this thereafter (2026-08-08; the deep test-data scenarios are where a megabyte journal
+    /// re-read per miss would have hurt most).
+    ///
+    /// Only sound because this node owns its data directory: a SECOND writer appending mid-run
+    /// would go unchecked here - which is a scenario that corrupts far more than journals.
+    pub fn reopen(path: &Path) -> Result<Journal> {
+        let file = OpenOptions::new()
+            .append(true)
+            .open(path)
+            .with_context(|| format!("reopening journal {}", path.display()))?;
+        Ok(Journal {
+            inner: Arc::new(JournalInner {
+                path: path.to_path_buf(),
+                file: Mutex::new(file),
+            }),
+        })
+    }
+
     /// Open (creating if absent) the journal at `path`, applying the torn-tail rule: a file
     /// ending mid-frame is truncated back to the last complete frame boundary, once, here -
-    /// after which appends proceed blindly.
+    /// after which appends proceed blindly. Costs a full read and frame walk, so callers that
+    /// reopen the same journal repeatedly want `reopen` after the first time.
     pub fn open(path: &Path) -> Result<Journal> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
