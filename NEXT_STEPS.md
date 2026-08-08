@@ -84,45 +84,10 @@ Does a mutual follow+trust make a "friend"?
 * sync-request floods: malicious nodes can DDoS with sync-requests, probably?
 
 ### Sync
-* Peer-set/discovery build, remaining bricks (Phase 1 SHIPPED 2026-08-07 - see HISTORY:
-  universal serving records, derived peer set with revocation pruning, member-proven dialer
-  upserts, leaf-first via minting + resolution, bare-root zeroth rung):
-  * **Root announce rendezvous**: now needed only for personas whose FOUNDING node is gone
-    (a founder's leaf is the root, so its serving record already makes bare roots resolve).
-    Unauthenticated announce under a root-derived key; verified by chain-to-root at dial.
-  * Equivocation quarantine residuals (2026-08-06): reader-facing "disputed" notice;
-    evidence rows live outside the raw-entry journal (rebuild forgets a standing quarantine
-    until proof re-arrives).
-  * Fork-aftermath ceremony (the Mallowy case): owner-facing "your key doubled, here's the
-    ceremony" flow; post-restore write-fence; the root-chain fork tiebreaker stays deferred.
-
-### Popularity Problems
-
-Making the 50k-in/50k-out user survivable. The follow ledger is assumed small in many places
-(`subscriptions.rs` says so outright); every existing cap is on the read-a-page or dial-a-peer
-axis, none on the follow-list axis. The steps, roughly worst-first:
-
-* Fan-out journaling still runs inline in the frontier sweep — the delta watermark + chunked
-  upserts shrank a move to ~1 statement per 100 readers per new post, so move it behind a
-  spawned task only if it still measures as sweep lag (the recursion knot in
-  `after_public_move` makes that non-mechanical)
-* Author-side push polish: dials within the per-move cap (16, rotating via ask recency) are
-  still sequential in `sync_peers` — worst case is cap × dial-timeout in a background task.
-  Concurrent dialing (`buffer_unordered`) when that's measured to matter.
-* Stream compute residual: a documents movement now ships a one-row diff, but still
-  RECOMPUTES `search_rows` and the annotation sweep whole to produce it — the wire is quiet,
-  the gather isn't. A doc-scoped search/annotation refresh, if profiling ever names it.
-* Paced backfill on a MEMO REBUILD: `node.db` is disposable by design, and deleting it makes
-  every held mirror "newly eager" at once ⇒ one serial user-DB open each, inside whichever
-  path triggered the refresh. Bounded by mirrors actually held (the stranger case is fixed),
-  so it wants pacing, not a guard — and pacing needs a pending-backfill marker, because
-  "newly eager" is edge-triggered and a capped loop would drop the remainder forever.
-* Wake-pass starvation: 8 refreshes/minute means a full rotation over 50k follows takes days —
-  the interest dial needs to actually tier the rotation, not just order it
-* Shallow sync proper: the send path now PAGES, but still sends dense-from-their-head, so a
-  first sync is still the whole history (just no longer resident). "Content chains:
-  suffix-first, backfill lazy" (PROJECT_PLAN, Shallow Sync) is the unbuilt half — head plus a
-  window, older history on demand.
+* Shallow sync: our first sync from a dense user is yuuuuge
+* Detected equivocation kills the key that generated it
+ * After a restore-from-backup, try to sync with ANYONE ELSE to make sure we aren't accidentally equivocating
+ * What's the UI for this?
 
 ### Mixtape & Radio
 *  a mp3 browser
