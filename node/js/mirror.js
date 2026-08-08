@@ -56,9 +56,11 @@ export async function forgetMirror(root) {
     await Dexie.delete(`ringtome-mirror-${root}`).catch(() => {});
 }
 
-// Apply one streamed payload. Whole-kind refresh (the v1 shape): each kind present in the
-// message replaces its table entirely, inside one transaction with the cursor - so the mirror
-// is always a consistent frame, never a half-applied one.
+// Apply one streamed payload. Each kind PRESENT in the message replaces its table entirely
+// (an absent kind means "unchanged", never "empty" - updates carry only the kinds whose
+// chains moved); the contacts roster additionally arrives as deltas on the update path.
+// Everything lands inside one transaction with the cursor, so the mirror is always a
+// consistent frame, never a half-applied one.
 async function apply(db, msg) {
     await db.transaction(
         'rw',
@@ -93,6 +95,17 @@ async function apply(db, msg) {
             if (msg.contacts) {
                 await db.contacts.clear();
                 await db.contacts.bulkPut(msg.contacts);
+            }
+            // Roster deltas (update path): the contacts table is the one kind big enough to
+            // earn diffs, so live updates carry changed rows and removed roots instead of
+            // the whole roster - applied WITHOUT clearing. Snapshots still send `contacts`
+            // whole, and any cursor doubt collapses to a snapshot, so a missed delta can
+            // never outlive the next reconnect.
+            if (msg.contacts_changed) {
+                await db.contacts.bulkPut(msg.contacts_changed);
+            }
+            if (msg.contacts_removed) {
+                await db.contacts.bulkDelete(msg.contacts_removed);
             }
             await db.kv.put({ key: 'cursor', value: msg.cursor });
         }

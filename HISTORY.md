@@ -3386,3 +3386,45 @@ PLAN`, so the parity test asserts the per-collection SELECTs plan as an index SE
 never a SCAN - "proportional to the question, not the store" pinned as a cop that goes red
 on any rewrite into a table scan, whatever the collection count, rather than as a comment
 hoping to be believed.
+
+## 2026-08-08: the stream stops shouting - per-kind stamps and roster deltas
+
+The live-cache stream had the popularity list's most user-visible offender: one cursor over
+everything, so ANY movement regathered all six kinds ("everything the mirror holds,
+refreshed whole") - a contact dial re-ran the search indexer over every document, a note
+save re-serialized the whole roster, and at 50k contacts every dial turn shipped tens of MB
+of JSON to every open browser, which then cleared and rewrote its entire IndexedDB contacts
+table. Under it all, the per-second tick ran a whole-entries-table GROUP BY per open socket
+to discover, almost always, that nothing had happened. Three layers, outermost first:
+
+**The tick got the sweeps' stat-guard.** mtime + view epoch checked before stamping,
+recorded BEFORE the stamp so a mid-stamp write re-runs one round instead of being skipped -
+a quiet persona's tick is now two syscalls. A write-nudge always re-stamps; the guard exists
+only to spare quiet ticks.
+
+**The cursor split into per-kind stamps.** One frontier read now feeds four group
+fingerprints (profile / documents+search / organizers / contacts) through a service map
+that is conservative by construction - identity chains and unknown services touch
+everything, because a wrong "nothing" is a stale mirror while a wrong "everything" is one
+extra gather. Updates carry only the kinds whose chains moved; absent means "unchanged",
+never "empty". The wire needed NOTHING for this: every kind was already optional and the
+client already applied per-kind - the v1 shape had left the door open without knowing it.
+The public cursor token hashes all four stamps, so reconnect semantics are exactly the old
+single cursor's.
+
+**The roster ships as diffs.** The server holds the socket, so it holds the roster it last
+shipped and diffs against it: updates carry changed rows and removed roots; snapshots still
+carry the roster whole; any cursor doubt still collapses to snapshot, so a missed delta
+cannot outlive a reconnect. Two catches worth their ink. A "live" reconnect must PRIME the
+diff baseline (a read, nothing sent): an empty baseline could never name a contact removed
+after the connect, and the client would have kept the row until its next snapshot - found in
+design review, not in the field, which is what design review is for. And a general-private
+write that isn't roster-shaped (a seen mark, a device name) moves the contacts stamp but
+diffs to nothing and ships nothing - the diff is the filter the fingerprint is too coarse to
+be. Client-side, deltas upsert and delete without clearing, in the same transaction as the
+cursor, so the mirror stays a consistent frame.
+
+Scoping and deltas are pinned by livecache.cjs (a profile write ships no docs; a dial turn
+ships one row and never the roster). Residual, recorded in NEXT_STEPS: docs + search still
+re-ship whole when any document moves - the per-socket diff generalizes to them if
+note-hoarders ever feel it, and that curve is account lifetime, not popularity.

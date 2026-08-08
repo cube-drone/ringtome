@@ -117,6 +117,10 @@ describe("the live cache stream", function () {
         assert.equal(update.type, "update");
         assert.equal(profileName(update), "Second");
         assert.notEqual(update.cursor, snapshot.cursor, "the cursor moved with the frontier");
+        // Updates are scoped to what moved: a profile write ships no other kind (absent
+        // means "unchanged", never "empty").
+        assert.equal(update.docs, undefined, "a profile write carries no docs");
+        assert.equal(update.contacts, undefined, "nor the roster");
 
         // Documents ride the same stream: create one, watch it arrive.
         await authed(`api/identity/${root}/docs`, {
@@ -126,6 +130,7 @@ describe("the live cache stream", function () {
         const docUpdate = await stream.next();
         assert.equal(docUpdate.docs.length, 1);
         assert.equal(docUpdate.docs[0].title, "first note");
+        assert.equal(docUpdate.profile, undefined, "a doc write carries no profile");
 
         // The search index rides the same stream: a token-bag row over title + body.
         assert.equal(docUpdate.search.length, 1, "one search row");
@@ -151,6 +156,41 @@ describe("the live cache stream", function () {
         assert.equal(again.type, "snapshot");
         assert.equal(again.docs.length, 1);
         doubtful.ws.close();
+    });
+
+    it("the roster rides updates as deltas: changed rows, never the whole list", async function () {
+        const { cookie, authed } = await rawLogin(HOST);
+        const created = await (await authed("api/identity", { method: "POST" })).json();
+        const root = created.root_pubkey;
+        // Any root-shaped hex: the ledger records judgments, acquaintance not required.
+        const other = "ab".repeat(32);
+        await authed(`api/identity/${root}/private/kv/contact:${other}/interest`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "50" }),
+        });
+
+        const stream = openStream(HOST, root, cookie);
+        await stream.opened;
+        const snapshot = await stream.next();
+        assert.equal(snapshot.type, "snapshot");
+        assert.ok(
+            (snapshot.contacts || []).some((c) => c.root === other),
+            "snapshots carry the roster whole"
+        );
+
+        // Turn one dial: the update names the one changed row, not the roster.
+        await authed(`api/identity/${root}/private/kv/contact:${other}/interest`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "80" }),
+        });
+        const update = await stream.next();
+        assert.equal(update.type, "update");
+        assert.equal(update.contacts, undefined, "updates never re-ship the roster");
+        assert.equal(update.contacts_changed.length, 1, "one row changed, one row shipped");
+        assert.equal(update.contacts_changed[0].root, other);
+        assert.equal(update.contacts_changed[0].facts.interest, "80");
+        assert.equal(update.docs, undefined, "a dial turn is not a document change");
+        stream.ws.close();
     });
 
     it("the socket is read-only: client chatter is ignored, never honored", async function () {

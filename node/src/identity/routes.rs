@@ -2466,9 +2466,10 @@ struct StreamQuery {
     cursor: Option<String>,
 }
 
-/// One streamed payload: everything the mirror holds, refreshed whole. `snapshot` tells the
-/// browser to clear-and-replace (its cursor was absent or doubtful); `update` is the same
-/// operation while live; `live` is "your cursor still holds, nothing to send".
+/// One streamed payload. `snapshot` tells the browser to clear-and-replace every kind (its
+/// cursor was absent or doubtful); `update` refreshes only the kinds whose chains moved (the
+/// per-kind stamps below) - an absent kind means "unchanged", never "empty"; `live` is "your
+/// cursor still holds, nothing to send".
 #[derive(Serialize)]
 struct StreamMessage {
     #[serde(rename = "type")]
@@ -2486,32 +2487,102 @@ struct StreamMessage {
     contacts: Option<Vec<ContactRow>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     buckets: Option<Vec<BucketRow>>,
+    /// Update-path roster deltas: the contacts table is the one kind big enough to earn
+    /// diffs, so a live update ships changed-or-new rows and removed roots instead of the
+    /// whole roster. A snapshot always carries full `contacts` instead; the client upserts
+    /// and deletes these WITHOUT clearing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contacts_changed: Option<Vec<ContactRow>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contacts_removed: Option<Vec<String>>,
 }
 
-/// The stream cursor: resync's frontier fingerprint (sorted `(author, service, floor, head)`
-/// rows - the same equality that drives eager push), hashed to an opaque token - PLUS the
-/// root's view epoch, so changes frontiers can't see (a body arriving by backfill, which
-/// moves resolution and the search index without moving any chain) still tick the cursor.
-async fn stream_cursor(
-    db: &crate::db::Db,
-    view_epoch: u64,
-) -> Result<String, AppError> {
+impl StreamMessage {
+    /// A payload carrying nothing but the verdict and the cursor.
+    fn quiet(kind: &'static str, cursor: String) -> Self {
+        StreamMessage {
+            kind,
+            cursor,
+            profile: None,
+            docs: None,
+            taxonomies: None,
+            search: None,
+            contacts: None,
+            buckets: None,
+            contacts_changed: None,
+            contacts_removed: None,
+        }
+    }
+}
+
+/// The stream's change detector, split BY KIND: one frontier read (resync's fingerprint -
+/// sorted `(author, service, floor, head)` rows, plus the view epoch for changes frontiers
+/// can't see, like a body arriving by backfill) feeds four group stamps, so an update
+/// regathers only the kinds whose chains actually moved. A contact dial no longer re-runs
+/// the search indexer; a note save no longer re-serializes the roster. The public cursor
+/// token hashes all four, so its equality semantics are exactly the old single cursor's.
+#[derive(Clone, PartialEq)]
+struct StreamStamp {
+    profile: [u8; 32],
+    /// docs + search: the two wire kinds that move together (versions, annotations, bodies).
+    documents: [u8; 32],
+    /// taxonomies + buckets: the doc-meta organizers.
+    organizers: [u8; 32],
+    contacts: [u8; 32],
+}
+
+impl StreamStamp {
+    fn token(&self) -> String {
+        let mut hasher = blake3::Hasher::new();
+        for part in [
+            &self.profile,
+            &self.documents,
+            &self.organizers,
+            &self.contacts,
+        ] {
+            hasher.update(part);
+        }
+        hasher.finalize().to_hex().to_string()
+    }
+}
+
+async fn stream_stamp(db: &crate::db::Db, view_epoch: u64) -> Result<StreamStamp, AppError> {
+    use ringtome_proto::registry::service;
     let mut frontiers = crate::net::sync::local_frontiers(db, true)
         .await
         .map_err(AppError::Internal)?;
     frontiers.sort_by_key(|f| (f.author, f.service));
-    let mut hasher = blake3::Hasher::new();
+    // Which groups one service's movement can influence - CONSERVATIVE by construction:
+    // identity chains and unknown services touch everything (a key-epoch entry can unlock
+    // private folds anywhere), because a wrong "nothing" is a stale mirror while a wrong
+    // "everything" is one extra gather.
+    let mut parts: [Vec<u8>; 4] = Default::default(); // profile, documents, organizers, contacts
     for f in &frontiers {
-        hasher.update(&f.author);
-        hasher.update(&f.service.to_be_bytes());
-        hasher.update(&f.floor.to_be_bytes());
-        hasher.update(&f.head.to_be_bytes());
+        let touched: &[usize] = match f.service {
+            service::PROFILE_PUBLIC => &[0],
+            service::POSTS | service::DOCUMENTS_PRIVATE => &[1],
+            service::DOC_META_PRIVATE => &[1, 2],
+            service::GENERAL_PRIVATE | service::FOLLOWS_PUBLIC => &[3],
+            _ => &[0, 1, 2, 3],
+        };
+        for &i in touched {
+            parts[i].extend_from_slice(&f.author);
+            parts[i].extend_from_slice(&f.service.to_be_bytes());
+            parts[i].extend_from_slice(&f.floor.to_be_bytes());
+            parts[i].extend_from_slice(&f.head.to_be_bytes());
+        }
     }
-    hasher.update(&view_epoch.to_be_bytes());
-    Ok(hasher.finalize().to_hex().to_string())
+    parts[1].extend_from_slice(&view_epoch.to_be_bytes());
+    let stamp = |i: usize| *blake3::hash(&parts[i]).as_bytes();
+    Ok(StreamStamp {
+        profile: stamp(0),
+        documents: stamp(1),
+        organizers: stamp(2),
+        contacts: stamp(3),
+    })
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, PartialEq)]
 struct ContactRow {
     /// The other persona's root, hex - the row key, and what /id/<root> opens.
     root: String,
@@ -2535,66 +2606,140 @@ struct ContactRow {
 // materialized at node level, refreshed on the frontier map's edge; the roster now reads one
 // table for the whole list.
 
-async fn gather(
+/// Which stamp groups moved - the gather below reads only these.
+struct Moved {
+    profile: bool,
+    documents: bool,
+    organizers: bool,
+    contacts: bool,
+}
+
+impl Moved {
+    fn all() -> Self {
+        Moved {
+            profile: true,
+            documents: true,
+            organizers: true,
+            contacts: true,
+        }
+    }
+
+    fn since(prev: &StreamStamp, now: &StreamStamp) -> Self {
+        Moved {
+            profile: prev.profile != now.profile,
+            documents: prev.documents != now.documents,
+            organizers: prev.organizers != now.organizers,
+            contacts: prev.contacts != now.contacts,
+        }
+    }
+}
+
+/// The roster as the stream ships it, keyed for diffing.
+async fn contact_rows(
     state: &AppState,
     data: &store::Store,
-    kind: &'static str,
-    cursor: String,
-) -> Result<StreamMessage, AppError> {
-    let profile = data.profile().all().await?;
-    let (rows, _undecryptable) = data.documents().summaries().await?;
-    let annots = annotation_map(data).await?;
-    let buckets = bucket_map(data).await?;
-    let pinned = data.documents().pinned().await?;
-    let docs = rows.into_iter().map(|r| summarize(r, &annots, &buckets, &pinned)).collect();
-    let taxonomies = data
-        .taxonomies()
-        .all()
-        .await?
-        .into_iter()
-        .map(|t| TaxonomyRow {
-            taxonomy_id: hex::encode(t.taxonomy_id),
-            title: t.title,
-            members: t.members,
-        })
-        .collect();
-    let search = data.documents().search_rows().await?;
+) -> Result<std::collections::BTreeMap<String, ContactRow>, AppError> {
     let ledger = data.contacts().await?;
     let roots: Vec<String> = ledger.iter().map(|(root, _)| root.clone()).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &roots)
         .await
         .unwrap_or_default();
-    let mut contacts = Vec::new();
-    for (root, facts) in ledger {
-        let byline = bylines.get(&root).cloned().unwrap_or_default();
-        contacts.push(ContactRow {
-            root,
-            name: byline.name,
-            avatar: byline.avatar,
-            facts,
-        });
-    }
-    let buckets = data
-        .buckets()
-        .roster()
-        .await?
+    Ok(ledger
         .into_iter()
-        .map(|b| BucketRow {
-            name: b.name,
-            app: b.app,
-            members: b.members,
+        .map(|(root, facts)| {
+            let byline = bylines.get(&root).cloned().unwrap_or_default();
+            (
+                root.clone(),
+                ContactRow {
+                    root,
+                    name: byline.name,
+                    avatar: byline.avatar,
+                    facts,
+                },
+            )
         })
-        .collect();
-    Ok(StreamMessage {
-        kind,
-        cursor,
-        profile: Some(profile),
-        docs: Some(docs),
-        taxonomies: Some(taxonomies),
-        search: Some(search),
-        buckets: Some(buckets),
-        contacts: Some(contacts),
-    })
+        .collect())
+}
+
+/// Gather the moved kinds into one payload. `roster` is this SOCKET's memory of the contact
+/// rows it last shipped: a snapshot replaces it and sends the full roster; an update diffs
+/// against it and sends changed rows plus removed roots - the roster is the one kind that
+/// scales with popularity, and re-shipping 50k rows because one dial turned was most of the
+/// stream's byte bill. Held per-socket, in memory, bounded by open sockets.
+async fn gather(
+    state: &AppState,
+    data: &store::Store,
+    kind: &'static str,
+    cursor: String,
+    moved: Moved,
+    roster: &mut std::collections::BTreeMap<String, ContactRow>,
+) -> Result<StreamMessage, AppError> {
+    let mut msg = StreamMessage::quiet(kind, cursor);
+    let snapshot = kind == "snapshot";
+    if moved.profile {
+        msg.profile = Some(data.profile().all().await?);
+    }
+    if moved.documents {
+        let (rows, _undecryptable) = data.documents().summaries().await?;
+        let annots = annotation_map(data).await?;
+        let buckets = bucket_map(data).await?;
+        let pinned = data.documents().pinned().await?;
+        msg.docs = Some(
+            rows.into_iter()
+                .map(|r| summarize(r, &annots, &buckets, &pinned))
+                .collect(),
+        );
+        msg.search = Some(data.documents().search_rows().await?);
+    }
+    if moved.organizers {
+        msg.taxonomies = Some(
+            data.taxonomies()
+                .all()
+                .await?
+                .into_iter()
+                .map(|t| TaxonomyRow {
+                    taxonomy_id: hex::encode(t.taxonomy_id),
+                    title: t.title,
+                    members: t.members,
+                })
+                .collect(),
+        );
+        msg.buckets = Some(
+            data.buckets()
+                .roster()
+                .await?
+                .into_iter()
+                .map(|b| BucketRow {
+                    name: b.name,
+                    app: b.app,
+                    members: b.members,
+                })
+                .collect(),
+        );
+    }
+    if moved.contacts {
+        let next = contact_rows(state, data).await?;
+        if snapshot {
+            msg.contacts = Some(next.values().cloned().collect());
+        } else {
+            let changed: Vec<ContactRow> = next
+                .iter()
+                .filter(|(root, row)| roster.get(*root) != Some(row))
+                .map(|(_, row)| row.clone())
+                .collect();
+            let removed: Vec<String> = roster
+                .keys()
+                .filter(|root| !next.contains_key(*root))
+                .cloned()
+                .collect();
+            // A general-private write that isn't roster-shaped (a seen mark, a device name)
+            // moves the contacts stamp but diffs to nothing - ship nothing, honestly.
+            msg.contacts_changed = (!changed.is_empty()).then_some(changed);
+            msg.contacts_removed = (!removed.is_empty()).then_some(removed);
+        }
+        *roster = next;
+    }
+    Ok(msg)
 }
 
 async fn stream_handler(
@@ -2634,26 +2779,34 @@ async fn serve_stream(
         .await
         .map_err(|e| anyhow::anyhow!("opening db for stream: {e}"))?;
 
-    let mut cursor = stream_cursor(&db, state.view_epochs.get(&root))
+    let mut stamp = stream_stamp(&db, state.view_epochs.get(&root))
         .await
         .map_err(anyhow::Error::new)?;
+    // This socket's memory of the roster it shipped - what update-path contact diffs are
+    // computed against.
+    let mut roster = std::collections::BTreeMap::new();
 
     // First word: live if the client's cursor still holds, a full snapshot on any doubt.
-    let first = if client_cursor.as_deref() == Some(cursor.as_str()) {
-        StreamMessage {
-            kind: "live",
-            cursor: cursor.clone(),
-            profile: None,
-            docs: None,
-            taxonomies: None,
-            search: None,
-            buckets: None,
-            contacts: None,
-        }
-    } else {
-        gather(&state, &data, "snapshot", cursor.clone())
+    // The live path still PRIMES the roster memory (read, nothing sent): a matching cursor
+    // means the client's mirror equals current state, so diffs must run against current
+    // state - an empty baseline could never name a contact removed after this moment, and
+    // the client would keep the row until its next snapshot.
+    let first = if client_cursor.as_deref() == Some(stamp.token().as_str()) {
+        roster = contact_rows(&state, &data)
             .await
-            .map_err(anyhow::Error::new)?
+            .map_err(anyhow::Error::new)?;
+        StreamMessage::quiet("live", stamp.token())
+    } else {
+        gather(
+            &state,
+            &data,
+            "snapshot",
+            stamp.token(),
+            Moved::all(),
+            &mut roster,
+        )
+        .await
+        .map_err(anyhow::Error::new)?
     };
     socket
         .send(Message::Text(serde_json::to_string(&first)?.into()))
@@ -2666,15 +2819,26 @@ async fn serve_stream(
     let mut nudge = Some(state.user_dbs.subscribe_writes());
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // The tick's stat-guard (the sweeps' idiom): a quiet persona's tick is two syscalls, not
+    // a stamp over the whole entries table - per second, per open socket, that was most of
+    // the stream's idle cost. Recorded BEFORE stamping, so a write landing mid-stamp moves
+    // mtime past the guard and the next tick re-runs one round instead of skipping a change.
+    let mut guard: Option<(Option<i64>, u64)> = None;
     loop {
         tokio::select! {
-            _ = tick.tick() => {}
+            _ = tick.tick() => {
+                let now_guard = (state.user_dbs.db_mtime_ms(&root), state.view_epochs.get(&root));
+                if guard == Some(now_guard) { continue; }
+                guard = Some(now_guard);
+            }
             // Only OUR identity's writes. The nudge names who wrote, so a node carrying many
             // personas no longer wakes every open stream whenever anyone anywhere saves; a
             // lagged nudge (None) still wakes us, because a receiver that missed pings cannot
-            // rule itself out.
+            // rule itself out. A nudge always re-stamps (guard cleared): it is the write's
+            // own announcement, and the guard exists only to spare quiet ticks.
             who = crate::db::await_write_nudge(&mut nudge) => {
                 if who.is_some_and(|w| w != root) { continue; }
+                guard = None;
             }
             incoming = socket.recv() => {
                 match incoming {
@@ -2686,13 +2850,14 @@ async fn serve_stream(
                 }
             }
         }
-        // Reached after a tick or a nudge: re-check the cursor and push an update if it moved.
-        let now = stream_cursor(&db, state.view_epochs.get(&root))
+        // Reached after a guarded tick or a nudge: re-stamp, and push only what moved.
+        let now = stream_stamp(&db, state.view_epochs.get(&root))
             .await
             .map_err(anyhow::Error::new)?;
-        if now != cursor {
-            cursor = now;
-            let update = gather(&state, &data, "update", cursor.clone())
+        if now != stamp {
+            let moved = Moved::since(&stamp, &now);
+            stamp = now;
+            let update = gather(&state, &data, "update", stamp.token(), moved, &mut roster)
                 .await
                 .map_err(anyhow::Error::new)?;
             socket

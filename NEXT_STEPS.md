@@ -111,9 +111,9 @@ axis, none on the follow-list axis. The steps, roughly worst-first:
   Concurrent dialing (`buffer_unordered`) when that's measured to matter.
 * `identity_demand` retention — the table never prunes (`identity_peers` prunes at 7 days);
   the wake pass's re-ask makes aggressive pruning safe, and the read side already windows
-* WebSocket mirror: `gather` ships the whole contact list (tens of MB of JSON) on every cursor
-  change, and `stream_cursor` runs a whole-table GROUP BY per second per socket — needs deltas;
-  client side, `mirror.js` clears and rewrites the entire IndexedDB contacts table per update
+* Stream residual: docs + search rows still re-ship whole when any document moves — the
+  roster's per-socket diff mechanism generalizes to them if note-hoarders ever feel it
+  (doc rows grow with account lifetime, the same curve the private view had)
 * People page: virtualize (50k mounted `<PersonRow>`s, each holding 4 liveQueries ≈ 200k live
   subscriptions); `/api/directory` is also unbounded
 * Megabyte SQL literals: the 50k-term `NOT IN ('<hex>',...)` strings in the subscription memo

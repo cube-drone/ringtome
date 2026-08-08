@@ -8,6 +8,10 @@
   what's in motion and the standing residuals.
 - Read `STYLE.md` before writing code.
 - Do not add history to `NEXT_STEPS.md`: it's only for work that needs to get done, history goes in `HISTORY.md`.
+- **HISTORY rides the work, unprompted** (2026-08-08): when a piece of work wraps — gates
+  green, NEXT_STEPS item struck — append its `HISTORY.md` entry in the same pass, don't wait
+  to be asked. Curtis edits the voice on review; an entry that never got drafted is the
+  failure mode.
 - Do not commit changes directly unless asked to: I would like to look at the code and the changes on their way in to the codebase.
 - **Green before forward** (2026-08-07, after two broken tests sat red under a day of commits
   and nobody noticed until a stash-and-rerun proved they predated the day's work): at the
