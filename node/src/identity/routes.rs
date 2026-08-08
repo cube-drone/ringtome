@@ -2487,14 +2487,24 @@ struct StreamMessage {
     contacts: Option<Vec<ContactRow>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     buckets: Option<Vec<BucketRow>>,
-    /// Update-path roster deltas: the contacts table is the one kind big enough to earn
-    /// diffs, so a live update ships changed-or-new rows and removed roots instead of the
-    /// whole roster. A snapshot always carries full `contacts` instead; the client upserts
-    /// and deletes these WITHOUT clearing.
+    /// Update-path deltas for the keyed kinds (contacts by root; docs and search by doc_id):
+    /// the tables that grow with popularity or account lifetime ship changed-or-new rows and
+    /// removed keys instead of themselves, and the client upserts/deletes WITHOUT clearing.
+    /// A snapshot always carries the whole kind instead - as does the first movement of a
+    /// kind after a "live" reconnect, because a fresh socket has no diff baseline and a
+    /// whole-kind refresh is the one shape that carries removals without one.
     #[serde(skip_serializing_if = "Option::is_none")]
     contacts_changed: Option<Vec<ContactRow>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     contacts_removed: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    docs_changed: Option<Vec<DocSummary>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    docs_removed: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    search_changed: Option<Vec<crate::record::documents::SearchRow>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    search_removed: Option<Vec<String>>,
 }
 
 impl StreamMessage {
@@ -2511,6 +2521,10 @@ impl StreamMessage {
             buckets: None,
             contacts_changed: None,
             contacts_removed: None,
+            docs_changed: None,
+            docs_removed: None,
+            search_changed: None,
+            search_removed: None,
         }
     }
 }
@@ -2582,7 +2596,7 @@ async fn stream_stamp(db: &crate::db::Db, view_epoch: u64) -> Result<StreamStamp
     })
 }
 
-#[derive(Serialize, Clone, PartialEq)]
+#[derive(Serialize)]
 struct ContactRow {
     /// The other persona's root, hex - the row key, and what /id/<root> opens.
     root: String,
@@ -2634,11 +2648,11 @@ impl Moved {
     }
 }
 
-/// The roster as the stream ships it, keyed for diffing.
+/// The roster as the stream ships it.
 async fn contact_rows(
     state: &AppState,
     data: &store::Store,
-) -> Result<std::collections::BTreeMap<String, ContactRow>, AppError> {
+) -> Result<Vec<ContactRow>, AppError> {
     let ledger = data.contacts().await?;
     let roots: Vec<String> = ledger.iter().map(|(root, _)| root.clone()).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &roots)
@@ -2648,34 +2662,93 @@ async fn contact_rows(
         .into_iter()
         .map(|(root, facts)| {
             let byline = bylines.get(&root).cloned().unwrap_or_default();
-            (
-                root.clone(),
-                ContactRow {
-                    root,
-                    name: byline.name,
-                    avatar: byline.avatar,
-                    facts,
-                },
-            )
+            ContactRow {
+                root,
+                name: byline.name,
+                avatar: byline.avatar,
+                facts,
+            }
         })
         .collect())
 }
 
-/// Gather the moved kinds into one payload. `roster` is this SOCKET's memory of the contact
-/// rows it last shipped: a snapshot replaces it and sends the full roster; an update diffs
-/// against it and sends changed rows plus removed roots - the roster is the one kind that
-/// scales with popularity, and re-shipping 50k rows because one dial turned was most of the
-/// stream's byte bill. Held per-socket, in memory, bounded by open sockets.
+/// This socket's diff baselines for the keyed kinds: per row, a FINGERPRINT of what was last
+/// shipped, never the row itself - search token bags are the stream's biggest rows, and the
+/// socket must not hold a second copy of the store. `None` means unprimed (a fresh socket, or
+/// a snapshot forcing whole): the kind's next movement ships whole and primes the baseline,
+/// which is also what makes removals sound across a "live" reconnect - a whole-kind refresh
+/// is the one shape that carries removals without a baseline to diff against.
+#[derive(Default)]
+struct Baselines {
+    contacts: Option<std::collections::BTreeMap<String, [u8; 32]>>,
+    docs: Option<std::collections::BTreeMap<String, [u8; 32]>>,
+    search: Option<std::collections::BTreeMap<String, [u8; 32]>>,
+}
+
+/// What one keyed kind ships this frame: itself, or its diff.
+enum KindShip<T> {
+    Whole(Vec<T>),
+    Delta { changed: Vec<T>, removed: Vec<String> },
+}
+
+/// Diff one keyed kind against the socket's baseline fingerprints and advance them. An
+/// unprimed baseline ships whole; a primed one ships changed-or-new rows (fingerprint moved)
+/// plus removed keys. A stamp that moved without visible change (a seen mark riding the same
+/// service as the roster) diffs to an empty delta, and the caller ships nothing - the diff
+/// is the filter the fingerprint is too coarse to be.
+fn ship_kind<T: Serialize>(
+    baseline: &mut Option<std::collections::BTreeMap<String, [u8; 32]>>,
+    rows: Vec<T>,
+    key_of: impl Fn(&T) -> String,
+) -> Result<KindShip<T>, AppError> {
+    let mut next = std::collections::BTreeMap::new();
+    let mut keyed: Vec<(String, [u8; 32], T)> = Vec::with_capacity(rows.len());
+    for row in rows {
+        let bytes = serde_json::to_vec(&row)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("fingerprinting a stream row: {e}")))?;
+        let hash = *blake3::hash(&bytes).as_bytes();
+        let key = key_of(&row);
+        next.insert(key.clone(), hash);
+        keyed.push((key, hash, row));
+    }
+    let ship = match baseline.take() {
+        None => KindShip::Whole(keyed.into_iter().map(|(_, _, row)| row).collect()),
+        Some(prev) => {
+            let removed: Vec<String> = prev
+                .keys()
+                .filter(|key| !next.contains_key(*key))
+                .cloned()
+                .collect();
+            let changed: Vec<T> = keyed
+                .into_iter()
+                .filter(|(key, hash, _)| prev.get(key) != Some(hash))
+                .map(|(_, _, row)| row)
+                .collect();
+            KindShip::Delta { changed, removed }
+        }
+    };
+    *baseline = Some(next);
+    Ok(ship)
+}
+
+/// Gather the moved kinds into one payload. `baselines` is this socket's memory of what it
+/// last shipped (fingerprints, per row) for the kinds big enough to earn diffs - the roster
+/// scales with popularity, docs and search with account lifetime, and re-shipping either
+/// whole because one row moved was most of the stream's byte bill.
 async fn gather(
     state: &AppState,
     data: &store::Store,
     kind: &'static str,
     cursor: String,
     moved: Moved,
-    roster: &mut std::collections::BTreeMap<String, ContactRow>,
+    baselines: &mut Baselines,
 ) -> Result<StreamMessage, AppError> {
     let mut msg = StreamMessage::quiet(kind, cursor);
-    let snapshot = kind == "snapshot";
+    if kind == "snapshot" {
+        // A snapshot is clear-and-replace on the client, so every kind ships whole and the
+        // baselines re-prime from what it carried.
+        *baselines = Baselines::default();
+    }
     if moved.profile {
         msg.profile = Some(data.profile().all().await?);
     }
@@ -2684,12 +2757,25 @@ async fn gather(
         let annots = annotation_map(data).await?;
         let buckets = bucket_map(data).await?;
         let pinned = data.documents().pinned().await?;
-        msg.docs = Some(
-            rows.into_iter()
-                .map(|r| summarize(r, &annots, &buckets, &pinned))
-                .collect(),
-        );
-        msg.search = Some(data.documents().search_rows().await?);
+        let docs: Vec<DocSummary> = rows
+            .into_iter()
+            .map(|r| summarize(r, &annots, &buckets, &pinned))
+            .collect();
+        match ship_kind(&mut baselines.docs, docs, |d| d.doc_id.clone())? {
+            KindShip::Whole(rows) => msg.docs = Some(rows),
+            KindShip::Delta { changed, removed } => {
+                msg.docs_changed = (!changed.is_empty()).then_some(changed);
+                msg.docs_removed = (!removed.is_empty()).then_some(removed);
+            }
+        }
+        let search = data.documents().search_rows().await?;
+        match ship_kind(&mut baselines.search, search, |s| s.doc_id.clone())? {
+            KindShip::Whole(rows) => msg.search = Some(rows),
+            KindShip::Delta { changed, removed } => {
+                msg.search_changed = (!changed.is_empty()).then_some(changed);
+                msg.search_removed = (!removed.is_empty()).then_some(removed);
+            }
+        }
     }
     if moved.organizers {
         msg.taxonomies = Some(
@@ -2718,26 +2804,14 @@ async fn gather(
         );
     }
     if moved.contacts {
-        let next = contact_rows(state, data).await?;
-        if snapshot {
-            msg.contacts = Some(next.values().cloned().collect());
-        } else {
-            let changed: Vec<ContactRow> = next
-                .iter()
-                .filter(|(root, row)| roster.get(*root) != Some(row))
-                .map(|(_, row)| row.clone())
-                .collect();
-            let removed: Vec<String> = roster
-                .keys()
-                .filter(|root| !next.contains_key(*root))
-                .cloned()
-                .collect();
-            // A general-private write that isn't roster-shaped (a seen mark, a device name)
-            // moves the contacts stamp but diffs to nothing - ship nothing, honestly.
-            msg.contacts_changed = (!changed.is_empty()).then_some(changed);
-            msg.contacts_removed = (!removed.is_empty()).then_some(removed);
+        let rows = contact_rows(state, data).await?;
+        match ship_kind(&mut baselines.contacts, rows, |c| c.root.clone())? {
+            KindShip::Whole(rows) => msg.contacts = Some(rows),
+            KindShip::Delta { changed, removed } => {
+                msg.contacts_changed = (!changed.is_empty()).then_some(changed);
+                msg.contacts_removed = (!removed.is_empty()).then_some(removed);
+            }
         }
-        *roster = next;
     }
     Ok(msg)
 }
@@ -2782,19 +2856,14 @@ async fn serve_stream(
     let mut stamp = stream_stamp(&db, state.view_epochs.get(&root))
         .await
         .map_err(anyhow::Error::new)?;
-    // This socket's memory of the roster it shipped - what update-path contact diffs are
-    // computed against.
-    let mut roster = std::collections::BTreeMap::new();
+    // This socket's per-row fingerprints of what it last shipped, per keyed kind. Fresh
+    // sockets start unprimed on purpose - a kind's first movement ships whole (see
+    // `Baselines`), which is what keeps removals sound across a "live" reconnect without
+    // the connect paying a priming read.
+    let mut baselines = Baselines::default();
 
     // First word: live if the client's cursor still holds, a full snapshot on any doubt.
-    // The live path still PRIMES the roster memory (read, nothing sent): a matching cursor
-    // means the client's mirror equals current state, so diffs must run against current
-    // state - an empty baseline could never name a contact removed after this moment, and
-    // the client would keep the row until its next snapshot.
     let first = if client_cursor.as_deref() == Some(stamp.token().as_str()) {
-        roster = contact_rows(&state, &data)
-            .await
-            .map_err(anyhow::Error::new)?;
         StreamMessage::quiet("live", stamp.token())
     } else {
         gather(
@@ -2803,7 +2872,7 @@ async fn serve_stream(
             "snapshot",
             stamp.token(),
             Moved::all(),
-            &mut roster,
+            &mut baselines,
         )
         .await
         .map_err(anyhow::Error::new)?
@@ -2857,7 +2926,7 @@ async fn serve_stream(
         if now != stamp {
             let moved = Moved::since(&stamp, &now);
             stamp = now;
-            let update = gather(&state, &data, "update", stamp.token(), moved, &mut roster)
+            let update = gather(&state, &data, "update", stamp.token(), moved, &mut baselines)
                 .await
                 .map_err(anyhow::Error::new)?;
             socket

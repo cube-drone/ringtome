@@ -3428,3 +3428,29 @@ Scoping and deltas are pinned by livecache.cjs (a profile write ships no docs; a
 ships one row and never the roster). Residual, recorded in NEXT_STEPS: docs + search still
 re-ship whole when any document moves - the per-socket diff generalizes to them if
 note-hoarders ever feel it, and that curve is account lifetime, not popularity.
+
+## 2026-08-08: docs and search join the delta stream
+
+The residual from the morning's stream diet, closed the same day on Curtis's call
+("thousands of documents aren't hard to rack up - first-hand experience"): docs and search
+rows now ship as per-socket diffs like the roster does, so saving one note among five
+thousand sends one changed row and its search tokens, not the library. Two design upgrades
+over the roster's first draft, both of which then simplified the roster itself:
+
+* **Baselines hold fingerprints, never rows.** A blake3 of each serialized row, keyed by
+  doc_id/root - search token bags are the stream's biggest rows, and a socket must not hold
+  a second copy of the store to know what it shipped. One generic `ship_kind` now serves all
+  three keyed kinds.
+* **An unprimed baseline ships whole.** Yesterday's live-reconnect fix primed the roster
+  baseline with a read at connect; today's shape deletes that: a fresh socket's baseline is
+  simply None, and a kind's FIRST movement ships the kind whole (which the client already
+  applies as clear-and-replace, so removals are carried without any baseline) and primes it.
+  Zero connect cost, removals sound, less code than the fix it replaced - the better shape
+  was a day behind the working one, which is the usual distance.
+
+Deletion rides the same wire: tombstoning a doc arrives as `docs_removed`/`search_removed`
+naming the one id, with the surviving rows unshipped. livecache.cjs pins all three shapes -
+delta on a primed socket, whole-kind on a fresh one, removal naming one doc. The honest
+residual moved from the wire to the compute and is recorded in NEXT_STEPS: producing that
+one-row diff still recomputes `search_rows` and the annotation sweep whole; a doc-scoped
+refresh waits for a profile to name it.

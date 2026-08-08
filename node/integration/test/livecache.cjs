@@ -122,23 +122,26 @@ describe("the live cache stream", function () {
         assert.equal(update.docs, undefined, "a profile write carries no docs");
         assert.equal(update.contacts, undefined, "nor the roster");
 
-        // Documents ride the same stream: create one, watch it arrive.
+        // Documents ride the same stream - as DELTAS: the snapshot primed this socket's
+        // diff baseline, so an update names the changed row, never the whole list.
         await authed(`api/identity/${root}/docs`, {
             method: "POST",
             body: JSON.stringify({ title: "first note", body: "hello mirror" }),
         });
         const docUpdate = await stream.next();
-        assert.equal(docUpdate.docs.length, 1);
-        assert.equal(docUpdate.docs[0].title, "first note");
+        assert.equal(docUpdate.docs, undefined, "a primed socket never re-ships the list");
+        assert.equal(docUpdate.docs_changed.length, 1);
+        assert.equal(docUpdate.docs_changed[0].title, "first note");
         assert.equal(docUpdate.profile, undefined, "a doc write carries no profile");
 
-        // The search index rides the same stream: a token-bag row over title + body.
-        assert.equal(docUpdate.search.length, 1, "one search row");
-        assert.equal(docUpdate.search[0].doc_id, docUpdate.docs[0].doc_id);
-        const tokens = docUpdate.search[0].tokens.split(" ");
+        // The search index rides the same delta: a token-bag row over title + body.
+        assert.equal(docUpdate.search_changed.length, 1, "one changed search row");
+        assert.equal(docUpdate.search_changed[0].doc_id, docUpdate.docs_changed[0].doc_id);
+        const tokens = docUpdate.search_changed[0].tokens.split(" ");
         for (const w of ["first", "note", "hello", "mirror"]) {
             assert.ok(tokens.includes(w), `search tokens include "${w}": ${tokens}`);
         }
+        const firstDocId = docUpdate.docs_changed[0].doc_id;
 
         // Reconnect with the fresh cursor: nothing missed, no snapshot - just "live".
         stream.ws.close();
@@ -147,6 +150,23 @@ describe("the live cache stream", function () {
         const first = await resumed.next();
         assert.equal(first.type, "live", "a matching cursor skips the snapshot");
         assert.equal(first.cursor, docUpdate.cursor);
+
+        // A fresh socket has no diff baseline, so a kind's FIRST movement ships whole -
+        // the shape that carries removals without a baseline - and primes it.
+        await authed(`api/identity/${root}/docs`, {
+            method: "POST",
+            body: JSON.stringify({ title: "second note", body: "more words" }),
+        });
+        const wholeAgain = await resumed.next();
+        assert.equal(wholeAgain.docs_changed, undefined, "unprimed ships whole, not delta");
+        assert.equal(wholeAgain.docs.length, 2, "both notes, refreshed whole");
+
+        // Now primed: a deletion arrives as a removal delta, nothing re-shipped.
+        await authed(`api/identity/${root}/docs/${firstDocId}`, { method: "DELETE" });
+        const gone = await resumed.next();
+        assert.deepEqual(gone.docs_removed, [firstDocId], "the delete names the one doc");
+        assert.deepEqual(gone.search_removed, [firstDocId], "and its search row");
+        assert.equal(gone.docs_changed, undefined, "the surviving note did not change");
         resumed.ws.close();
 
         // A doubtful cursor gets the full snapshot: the mirror is disposable by design.
@@ -154,7 +174,7 @@ describe("the live cache stream", function () {
         await doubtful.opened;
         const again = await doubtful.next();
         assert.equal(again.type, "snapshot");
-        assert.equal(again.docs.length, 1);
+        assert.equal(again.docs.length, 1, "the snapshot reflects the deletion");
         doubtful.ws.close();
     });
 
