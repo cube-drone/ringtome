@@ -265,7 +265,7 @@ pub async fn get_profile(db: &Db) -> Result<Vec<ProfileField>, AppError> {
 ///
 /// The encrypted views (doc versions, private registers/sets) cannot be refolded here - replay
 /// has no epoch keys - so for them rebuild is the *drop* half: clearing the tables and their
-/// watermarks makes the next keyed read (`documents::materialize`, `private::materialize`)
+/// watermarks makes the next keyed read (`documents::materialize`, `private::materialize_service`)
 /// refold the whole log. Drop + replay still holds everywhere; the replay is just deferred to
 /// the first reader that can decrypt.
 pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
@@ -383,7 +383,7 @@ pub async fn entries_of_type(
 
 /// Every stored entry of one `(service, entry_type)` that each author's view watermark has not
 /// yet folded, decoded, in `(author, seq)` order - the catch-up-on-read fetch for the persisted
-/// views (`documents::materialize`, `private::materialize`). A chain with no watermark row is
+/// views (`documents::materialize`, `private::materialize_service`). A chain with no watermark row is
 /// unfolded from seq 0.
 pub(crate) async fn entries_past_watermarks(
     db: &Db,

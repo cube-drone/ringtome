@@ -148,17 +148,26 @@ impl Store {
     pub async fn contacts(
         &self,
     ) -> Result<Vec<(String, std::collections::BTreeMap<String, String>)>, AppError> {
-        let view = self.private_view().await?;
-        let mut out = Vec::new();
-        for collection in view.collections() {
-            if let Some(root) = collection.strip_prefix("contact:") {
-                let facts = view
-                    .registers_in(collection)
-                    .into_iter()
-                    .map(|r| (r.key, r.value))
-                    .collect();
-                out.push((root.to_string(), facts));
+        let rows = private::prefixed_registers(
+            &self.db,
+            &self.authorship.epoch_keys,
+            service::GENERAL_PRIVATE,
+            "contact:",
+        )
+        .await?;
+        // Rows arrive collection-ordered, so each contact's registers are one contiguous run.
+        let mut out: Vec<(String, std::collections::BTreeMap<String, String>)> = Vec::new();
+        for (collection, r) in rows {
+            let Some(root) = collection.strip_prefix("contact:") else {
+                continue;
+            };
+            if out.last().is_none_or(|(last, _)| last != root) {
+                out.push((root.to_string(), std::collections::BTreeMap::new()));
             }
+            out.last_mut()
+                .expect("pushed above")
+                .1
+                .insert(r.key, r.value);
         }
         Ok(out)
     }
@@ -278,8 +287,13 @@ impl PrivateRegisters<'_> {
     /// Every register in the collection, merged, plus the count of records this node holds but
     /// cannot decrypt (history from outside this key's membership era - worth showing a user).
     pub async fn all(&self) -> Result<(Vec<private::RegisterValue>, u64), AppError> {
-        let view = self.store.private_view().await?;
-        Ok((view.registers_in(self.collection), view.undecryptable))
+        private::collection_registers(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::GENERAL_PRIVATE,
+            self.collection,
+        )
+        .await
     }
 }
 
@@ -321,8 +335,13 @@ impl PrivateSet<'_> {
 
     /// The present elements, merged, plus the undecryptable count (see `PrivateRegisters::all`).
     pub async fn elements(&self) -> Result<(Vec<private::SetElement>, u64), AppError> {
-        let view = self.store.private_view().await?;
-        Ok((view.set_elements(self.collection), view.undecryptable))
+        private::collection_set_elements(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::GENERAL_PRIVATE,
+            self.collection,
+        )
+        .await
     }
 }
 
@@ -401,9 +420,6 @@ impl Store {
         .await
     }
 
-    async fn private_view(&self) -> Result<private::PrivateView, AppError> {
-        private::materialize(&self.db, &self.authorship.epoch_keys).await
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -434,7 +450,13 @@ fn deleted_from_view(view: &private::PrivateView) -> BTreeSet<[u8; 16]> {
 
 /// The doc ids present as elements of one doc-meta roster collection (`deleted`, `pinned`).
 fn ids_in(view: &private::PrivateView, collection: &str) -> BTreeSet<[u8; 16]> {
-    view.set_elements(collection)
+    ids_from(view.set_elements(collection))
+}
+
+/// The same parse for roster elements read per-collection (the `deleted()`/`pinned()` door,
+/// which seeks the memo instead of folding a view).
+fn ids_from(elements: Vec<private::SetElement>) -> BTreeSet<[u8; 16]> {
+    elements
         .into_iter()
         .filter_map(|e| hex::decode(&e.element).ok()?.try_into().ok())
         .collect()
@@ -585,8 +607,14 @@ impl Documents<'_> {
 
     /// The tombstone roster: every deleted document's id. The filter every list read applies.
     pub async fn deleted(&self) -> Result<BTreeSet<[u8; 16]>, AppError> {
-        let view = self.store.doc_meta_view().await?;
-        Ok(deleted_from_view(&view))
+        let (elements, _) = private::collection_set_elements(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            DELETED_DOCS,
+        )
+        .await?;
+        Ok(ids_from(elements))
     }
 
     /// Pin a document to the top of the list (an LWW set-add on the `pinned` roster). Unlike
@@ -624,8 +652,14 @@ impl Documents<'_> {
 
     /// The pin roster: every pinned document's id - the join input that sets `DocSummary.pinned`.
     pub async fn pinned(&self) -> Result<BTreeSet<[u8; 16]>, AppError> {
-        let view = self.store.doc_meta_view().await?;
-        Ok(ids_in(&view, PINNED_DOCS))
+        let (elements, _) = private::collection_set_elements(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            PINNED_DOCS,
+        )
+        .await?;
+        Ok(ids_from(elements))
     }
 
     /// The docs-list read: every (non-deleted) document's memoized display row (`doc_heads`),
@@ -881,11 +915,12 @@ impl Documents<'_> {
         &self,
         doc: &crate::record::documents::Doc,
     ) -> Result<crate::record::documents::ResolvedDoc, AppError> {
-        let names: BTreeMap<[u8; 32], String> = self
+        let (registers, _) = self
             .store
-            .private_view()
-            .await?
-            .registers_in(DEVICES_COLLECTION)
+            .private_registers(DEVICES_COLLECTION)
+            .all()
+            .await?;
+        let names: BTreeMap<[u8; 32], String> = registers
             .into_iter()
             .filter(|r| !r.value.is_empty())
             .filter_map(|r| crate::pubkey::decode(&r.key).map(|pk| (pk, r.value)))
@@ -961,11 +996,14 @@ impl Annotations<'_> {
     /// collection and says "no such field", which is how the first version of this silently
     /// re-published a post as a stranger).
     pub async fn field(&self, doc_id: &[u8; 16], field: &str) -> Result<Option<String>, AppError> {
-        Ok(self
-            .store
-            .doc_meta_view()
-            .await?
-            .registers_in(&self.collection(doc_id))
+        let (registers, _) = private::collection_registers(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            &self.collection(doc_id),
+        )
+        .await?;
+        Ok(registers
             .into_iter()
             .find(|r| r.key == field)
             .map(|r| r.value)
@@ -1023,9 +1061,14 @@ impl Annotations<'_> {
     /// Every set field of one document, merged. Cleared fields (absent value) do not appear -
     /// and an empty value reads as cleared too: an empty description is no description.
     pub async fn fields(&self, doc_id: &[u8; 16]) -> Result<BTreeMap<String, String>, AppError> {
-        let view = self.store.doc_meta_view().await?;
-        Ok(view
-            .registers_in(&self.collection(doc_id))
+        let (registers, _) = private::collection_registers(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            &self.collection(doc_id),
+        )
+        .await?;
+        Ok(registers
             .into_iter()
             .filter(|r| !r.value.is_empty())
             .map(|r| (r.key, r.value))
@@ -1067,12 +1110,16 @@ impl Annotations<'_> {
     /// (element as the deterministic tiebreak for same-millisecond adds). Insertion order is the
     /// order the author built, so it reads more like their intent than an alphabetical shuffle.
     pub async fn tags(&self, doc_id: &[u8; 16]) -> Result<Vec<String>, AppError> {
-        let view = self.store.doc_meta_view().await?;
-        Ok(view
-            .set_elements_ordered(&self.collection(doc_id))
-            .into_iter()
-            .map(|e| e.element)
-            .collect())
+        Ok(private::collection_set_elements_ordered(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            &self.collection(doc_id),
+        )
+        .await?
+        .into_iter()
+        .map(|e| e.element)
+        .collect())
     }
 
     /// Every document's annotations at once (own-root collections only) - the stream's bulk
@@ -1287,14 +1334,15 @@ impl Buckets<'_> {
 
     /// Every bucket one document is in, sorted.
     pub async fn of(&self, doc_id: &[u8; 16]) -> Result<Vec<String>, AppError> {
-        let view = self.store.doc_meta_view().await?;
-        let mut names: Vec<String> = view
-            .set_elements(&self.collection(doc_id))
-            .into_iter()
-            .map(|e| e.element)
-            .collect();
-        names.sort();
-        Ok(names)
+        let (elements, _) = private::collection_set_elements(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            &self.collection(doc_id),
+        )
+        .await?;
+        // Element order IS sorted order - the reader returns elements ascending.
+        Ok(elements.into_iter().map(|e| e.element).collect())
     }
 
     /// Each of this identity's own documents mapped to its buckets - the join the mirror row
@@ -1368,9 +1416,14 @@ impl Buckets<'_> {
     /// The app-type registered to open a bucket, if any.
     pub async fn app_of(&self, bucket: &str) -> Result<Option<String>, AppError> {
         let name = Self::clean(bucket)?;
-        let view = self.store.doc_meta_view().await?;
-        Ok(view
-            .registers_in(BUCKET_REGISTRY)
+        let (registers, _) = private::collection_registers(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            BUCKET_REGISTRY,
+        )
+        .await?;
+        Ok(registers
             .into_iter()
             .find(|r| r.key == name && !r.value.is_empty())
             .map(|r| r.value))
@@ -1547,13 +1600,24 @@ impl Taxonomies<'_> {
     /// tiebreak (equal ranks are the concurrent same-spot race - adjacent, arbitrary relative
     /// order, every device agreeing; `record::rank`).
     pub async fn members(&self, taxonomy_id: &[u8; 16]) -> Result<Vec<TaxonomyMember>, AppError> {
-        let view = self.store.doc_meta_view().await?;
-        Ok(Self::members_of(&view, taxonomy_id))
+        let (elements, _) = private::collection_set_elements(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            &tax_collection(taxonomy_id),
+        )
+        .await?;
+        Ok(Self::members_from(elements))
     }
 
     fn members_of(view: &private::PrivateView, taxonomy_id: &[u8; 16]) -> Vec<TaxonomyMember> {
-        let mut members: Vec<(TaxonomyMember, String)> = view
-            .set_elements(&tax_collection(taxonomy_id))
+        Self::members_from(view.set_elements(&tax_collection(taxonomy_id)))
+    }
+
+    /// The shared parse-and-order: rank ascending, element string as the deterministic
+    /// tiebreak, fed by either door (the per-collection seek above, the graph walks' view).
+    fn members_from(elements: Vec<private::SetElement>) -> Vec<TaxonomyMember> {
+        let mut members: Vec<(TaxonomyMember, String)> = elements
             .into_iter()
             .filter_map(|e| {
                 let (root, doc_id) = parse_member_element(&e.element)?;

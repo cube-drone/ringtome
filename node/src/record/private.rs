@@ -583,7 +583,10 @@ pub struct PrivateView {
     registers: BTreeMap<(String, String), (String, Stamp)>,
     /// `(present, value, stamp)` per element - LWW-element-set semantics.
     sets: BTreeMap<(String, String), (bool, Option<String>, Stamp)>,
-    /// Records we hold but cannot open (epochs from outside our membership era).
+    /// Records we hold but cannot open (epochs from outside our membership era). Production
+    /// callers read this count from the per-collection readers' tuples (`catch_up`'s return);
+    /// on the view it remains the fold tests' window into the stall rule.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub undecryptable: u64,
 }
 
@@ -825,11 +828,6 @@ type RegisterRow = (String, String, Option<Vec<u8>>, i64, i64, Vec<u8>);
 /// Set-element row shape: collection, element, present, value, timestamp_ms, seq, entry_hash.
 type SetElementRow = (String, String, i64, Option<Vec<u8>>, i64, i64, Vec<u8>);
 
-/// The general private store's view (see [`materialize_service`]).
-pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<PrivateView, AppError> {
-    materialize_service(db, keys, service::GENERAL_PRIVATE).await
-}
-
 /// One private-record service's view: catch the persisted tables up to that service's chains
 /// (with its AAD domain), then read its rows back. General-private and doc-meta are the same
 /// machinery pointed at different chains; the watermark table is keyed `(author, service)`, so
@@ -919,6 +917,147 @@ pub async fn collections_with_element(
     Ok(rows.into_iter().map(|(collection,)| collection).collect())
 }
 
+// The per-collection readers: catch up, then SEEK. `(service, collection, key)` is the primary
+// key of both persisted tables, so each of these reads rows proportional to its ANSWER, never
+// to the size of the store. This is the hot-path door; `materialize_service`'s whole-view load
+// remains for callers that genuinely sweep every collection (the search indexer, the mirror's
+// bulk annotation read, the taxonomy graph walks). Field-found 2026-08-07: every private read
+// was loading the entire folded store into a fresh BTreeMap to answer one collection's
+// question - a cost that grows with the lifetime of the account (feed_seen marks, per-doc
+// annotations), not just its relationships.
+
+/// One collection's registers (key order), plus the undecryptable count (see `catch_up`).
+/// Cleared registers (absent value) appear with an empty value, same as the view readers.
+pub async fn collection_registers(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+    collection: &str,
+) -> Result<(Vec<RegisterValue>, u64), AppError> {
+    let undecryptable = catch_up(db, keys, service_id).await?;
+    let rows: Vec<(String, Option<Vec<u8>>, i64)> = db
+        .fetch_all(
+            "SELECT key, value, timestamp_ms FROM private_registers
+             WHERE service = ?1 AND collection = ?2 ORDER BY key",
+            (i64::from(service_id), collection),
+        )
+        .await
+        .context("reading one collection's registers")
+        .map_err(AppError::Internal)?;
+    Ok((
+        rows.into_iter()
+            .map(|(key, value, timestamp_ms)| RegisterValue {
+                key,
+                value: value
+                    .map(|v| String::from_utf8_lossy(&v).into_owned())
+                    .unwrap_or_default(),
+                updated_at_ms: timestamp_ms,
+            })
+            .collect(),
+        undecryptable,
+    ))
+}
+
+/// One collection's present set elements (element order), plus the undecryptable count.
+pub async fn collection_set_elements(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+    collection: &str,
+) -> Result<(Vec<SetElement>, u64), AppError> {
+    let undecryptable = catch_up(db, keys, service_id).await?;
+    Ok((
+        set_element_rows(db, service_id, collection, "ORDER BY element").await?,
+        undecryptable,
+    ))
+}
+
+/// One collection's present set elements in LWW-stamp (insertion) order - the SQL twin of
+/// `PrivateView::set_elements_ordered`, same `(timestamp_ms, seq, entry_hash)` total order.
+pub async fn collection_set_elements_ordered(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+    collection: &str,
+) -> Result<Vec<SetElement>, AppError> {
+    catch_up(db, keys, service_id).await?;
+    set_element_rows(db, service_id, collection, "ORDER BY timestamp_ms, seq, entry_hash").await
+}
+
+/// Shared bottom of the two set readers; `order_by` is one of two fixed literals above, never
+/// caller input.
+async fn set_element_rows(
+    db: &Db,
+    service_id: u32,
+    collection: &str,
+    order_by: &str,
+) -> Result<Vec<SetElement>, AppError> {
+    let rows: Vec<(String, Option<Vec<u8>>, i64)> = db
+        .fetch_all(
+            &format!(
+                "SELECT element, value, timestamp_ms FROM private_set_elements
+                 WHERE service = ?1 AND collection = ?2 AND present = 1 {order_by}"
+            ),
+            (i64::from(service_id), collection),
+        )
+        .await
+        .context("reading one collection's set elements")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .map(|(element, value, timestamp_ms)| SetElement {
+            element,
+            value: value.map(|v| String::from_utf8_lossy(&v).into_owned()),
+            updated_at_ms: timestamp_ms,
+        })
+        .collect())
+}
+
+/// Registers across every collection sharing a prefix (`contact:` is the consumer), as
+/// `(collection, register)` rows in collection-then-key order - one index range scan. The
+/// bound arithmetic instead of LIKE is deliberate: LIKE is case-insensitive by default, so
+/// the planner cannot drive it through the index, while `>= prefix AND < bumped-prefix` is a
+/// straight primary-key range. ASCII prefixes only, by construction of the callers.
+pub async fn prefixed_registers(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+    prefix: &str,
+) -> Result<Vec<(String, RegisterValue)>, AppError> {
+    catch_up(db, keys, service_id).await?;
+    let mut upper = prefix.as_bytes().to_vec();
+    let last = upper.last_mut().expect("a collection prefix is never empty");
+    *last += 1; // "contact:" -> "contact;" - sound because prefixes are ASCII punctuation-terminated
+    let upper = String::from_utf8(upper)
+        .context("bumping a collection prefix")
+        .map_err(AppError::Internal)?;
+    let rows: Vec<(String, String, Option<Vec<u8>>, i64)> = db
+        .fetch_all(
+            "SELECT collection, key, value, timestamp_ms FROM private_registers
+             WHERE service = ?1 AND collection >= ?2 AND collection < ?3
+             ORDER BY collection, key",
+            (i64::from(service_id), prefix, upper.as_str()),
+        )
+        .await
+        .context("reading a collection prefix's registers")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .map(|(collection, key, value, timestamp_ms)| {
+            (
+                collection,
+                RegisterValue {
+                    key,
+                    value: value
+                        .map(|v| String::from_utf8_lossy(&v).into_owned())
+                        .unwrap_or_default(),
+                    updated_at_ms: timestamp_ms,
+                },
+            )
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1003,7 +1142,7 @@ mod tests {
         .await
         .unwrap();
 
-        let view = materialize(&db, &keys).await.unwrap();
+        let view = materialize_service(&db, &keys, service::GENERAL_PRIVATE).await.unwrap();
         let regs = view.registers_in("config");
         assert_eq!(regs.len(), 1);
         assert_eq!(regs[0].value, "plain", "later write wins");
@@ -1047,7 +1186,7 @@ mod tests {
             .await
             .unwrap();
 
-        let view = materialize(&db, &keys).await.unwrap();
+        let view = materialize_service(&db, &keys, service::GENERAL_PRIVATE).await.unwrap();
         let elements: Vec<String> = view
             .set_elements("follows")
             .into_iter()
@@ -1111,7 +1250,7 @@ mod tests {
         .unwrap();
 
         // A (still a member) sees everything.
-        let a_view = materialize(&db, &a_keys).await.unwrap();
+        let a_view = materialize_service(&db, &a_keys, service::GENERAL_PRIVATE).await.unwrap();
         assert_eq!(a_view.registers_in("contacts").len(), 2);
 
         // B holds only epoch 0: the pre-rotation record opens, the post-rotation one does not.
@@ -1122,7 +1261,7 @@ mod tests {
         crate::record::imaol::clone_entries_for_test(&db, &b_db).await;
         let b_keys = unseal_epoch_keys(&b_db, &b_leaf, &b_enc).await.unwrap();
         assert_eq!(b_keys.current().unwrap().0, 0);
-        let b_view = materialize(&b_db, &b_keys).await.unwrap();
+        let b_view = materialize_service(&b_db, &b_keys, service::GENERAL_PRIVATE).await.unwrap();
         let names: Vec<String> = b_view
             .registers_in("contacts")
             .into_iter()
@@ -1187,7 +1326,7 @@ mod tests {
         assert_eq!(resealed, 2);
 
         let n_keys = unseal_epoch_keys(&db, &n_leaf, &n_enc).await.unwrap();
-        let n_view = materialize(&db, &n_keys).await.unwrap();
+        let n_view = materialize_service(&db, &n_keys, service::GENERAL_PRIVATE).await.unwrap();
         assert_eq!(n_view.registers_in("config").len(), 2);
         assert_eq!(n_view.undecryptable, 0);
     }
@@ -1266,7 +1405,7 @@ mod tests {
         .await
         .unwrap();
 
-        let view = materialize(&db, &keys).await.unwrap();
+        let view = materialize_service(&db, &keys, service::GENERAL_PRIVATE).await.unwrap();
         assert_eq!(view.registers_in("config")[0].value, "plain");
         assert_eq!(
             crate::record::imaol::view_watermark(&db, &author_hex, service::GENERAL_PRIVATE).await,
@@ -1288,7 +1427,7 @@ mod tests {
         assert_eq!(before.len(), 1, "LWW: one row per register");
 
         // Second materialize: nothing new to fold, identical view and tables.
-        let again = materialize(&db, &keys).await.unwrap();
+        let again = materialize_service(&db, &keys, service::GENERAL_PRIVATE).await.unwrap();
         assert_eq!(again.registers_in("config")[0].value, "plain");
         assert_eq!(rows(&db).await, before);
         assert_eq!(
@@ -1298,7 +1437,7 @@ mod tests {
 
         // Forced double-fold: same entries over the same rows land identically.
         crate::record::imaol::reset_watermarks_for_test(&db).await;
-        materialize(&db, &keys).await.unwrap();
+        materialize_service(&db, &keys, service::GENERAL_PRIVATE).await.unwrap();
         assert_eq!(rows(&db).await, before);
     }
 
@@ -1345,7 +1484,7 @@ mod tests {
 
         // A reader holding only epoch 0, twice (the second call is the retry).
         for _ in 0..2 {
-            let view = materialize(&db, &era0).await.unwrap();
+            let view = materialize_service(&db, &era0, service::GENERAL_PRIVATE).await.unwrap();
             let names: Vec<String> = view.registers_in("c").into_iter().map(|r| r.key).collect();
             assert_eq!(
                 names,
@@ -1367,12 +1506,140 @@ mod tests {
         // The epoch-1 key arrives: the stalled entry folds and the watermark completes.
         let mut both = EpochKeys::single(0, k0);
         both.insert(1, k1);
-        let view = materialize(&db, &both).await.unwrap();
+        let view = materialize_service(&db, &both, service::GENERAL_PRIVATE).await.unwrap();
         assert_eq!(view.registers_in("c").len(), 3);
         assert_eq!(view.undecryptable, 0);
         assert_eq!(
             crate::record::imaol::view_watermark(&db, &author_hex, service::GENERAL_PRIVATE).await,
             Some(2)
         );
+    }
+
+    /// The per-collection door answers exactly what the whole view answers - registers, sets,
+    /// insertion order, prefix sweep - and does it by SEEKING the primary key. The plan
+    /// assertion is the proportionality tripwire: the moment someone rewrites one of these
+    /// reads into a table scan, this goes red, whatever the collection count.
+    #[tokio::test]
+    async fn per_collection_readers_match_the_view_and_seek_the_index() {
+        let db = test_db().await;
+        let key = signer(9);
+        let leaf = key.verifying_key().to_bytes();
+        let enc = EncKeyPair::generate();
+        mint_epoch(&db, &key, 0, &fresh_epoch_key(), &[(leaf, enc.public)])
+            .await
+            .unwrap();
+        let keys = unseal_epoch_keys(&db, &leaf, &enc).await.unwrap();
+
+        for (collection, k, v) in [
+            ("contact:aa", "nickname", "greg"),
+            ("contact:aa", "interest", "80"),
+            ("contact:bb", "nickname", "dave"),
+            ("config", "theme", "hotdog"),
+        ] {
+            write_record(
+                &db,
+                &key,
+                &keys,
+                service::GENERAL_PRIVATE,
+                &plain_register(collection, k, v),
+            )
+            .await
+            .unwrap();
+        }
+        // A set whose insertion order (zz then aa) differs from element order, plus a removal.
+        for (kind, element) in [
+            (PrivateKind::SetAdd, "zz"),
+            (PrivateKind::SetAdd, "aa"),
+            (PrivateKind::SetAdd, "dropped"),
+            (PrivateKind::SetRemove, "dropped"),
+        ] {
+            write_record(
+                &db,
+                &key,
+                &keys,
+                service::GENERAL_PRIVATE,
+                &PrivatePlain {
+                    kind,
+                    collection: "roster".into(),
+                    key: element.into(),
+                    value: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let view = materialize_service(&db, &keys, service::GENERAL_PRIVATE)
+            .await
+            .unwrap();
+        let as_tuples =
+            |rs: Vec<RegisterValue>| -> Vec<(String, String)> {
+                rs.into_iter().map(|r| (r.key, r.value)).collect()
+            };
+
+        let (regs, undecryptable) =
+            collection_registers(&db, &keys, service::GENERAL_PRIVATE, "config")
+                .await
+                .unwrap();
+        assert_eq!(undecryptable, 0);
+        assert_eq!(as_tuples(regs), as_tuples(view.registers_in("config")));
+
+        let (elements, _) = collection_set_elements(&db, &keys, service::GENERAL_PRIVATE, "roster")
+            .await
+            .unwrap();
+        let names: Vec<&str> = elements.iter().map(|e| e.element.as_str()).collect();
+        assert_eq!(names, vec!["aa", "zz"], "element order, removals absent");
+
+        let ordered =
+            collection_set_elements_ordered(&db, &keys, service::GENERAL_PRIVATE, "roster")
+                .await
+                .unwrap();
+        let ordered_names: Vec<&str> = ordered.iter().map(|e| e.element.as_str()).collect();
+        let view_names: Vec<String> = view
+            .set_elements_ordered("roster")
+            .into_iter()
+            .map(|e| e.element)
+            .collect();
+        assert_eq!(ordered_names, view_names, "same LWW-stamp insertion order");
+
+        let contacts = prefixed_registers(&db, &keys, service::GENERAL_PRIVATE, "contact:")
+            .await
+            .unwrap();
+        let rows: Vec<(String, String, String)> = contacts
+            .into_iter()
+            .map(|(c, r)| (c, r.key, r.value))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("contact:aa".into(), "interest".into(), "80".into()),
+                ("contact:aa".into(), "nickname".into(), "greg".into()),
+                ("contact:bb".into(), "nickname".into(), "dave".into()),
+            ],
+            "the prefix range takes both contacts and nothing else"
+        );
+
+        // The tripwire: both per-collection SELECTs must run as an index SEARCH, never a SCAN
+        // of the whole table - "proportional to the question, not the store".
+        for sql in [
+            "EXPLAIN QUERY PLAN SELECT key FROM private_registers
+             WHERE service = ?1 AND collection = ?2",
+            "EXPLAIN QUERY PLAN SELECT element FROM private_set_elements
+             WHERE service = ?1 AND collection = ?2 AND present = 1",
+        ] {
+            let plan: Vec<(i64, i64, i64, String)> = db
+                .fetch_all(sql, (i64::from(service::GENERAL_PRIVATE), "config"))
+                .await
+                .unwrap();
+            let detail: String = plan
+                .iter()
+                .map(|(_, _, _, d)| d.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            assert!(
+                detail.contains("SEARCH") && !detail.contains("SCAN"),
+                "per-collection read must seek the index, got plan: {detail}"
+            );
+        }
     }
 }

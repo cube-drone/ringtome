@@ -3354,3 +3354,35 @@ that moving it waits on a measurement); dials within the push cap are still sequ
 `identity_demand` still never prunes its rows (the read side windows); and the rest of the
 Popularity Problems list - the whole-store private fold, the whole-mirror websocket
 snapshot, the unvirtualized People page - stands open.
+
+## 2026-08-07: the memo answers directly - per-collection reads for the private view
+
+Follow-through on the Popularity Problems list's deepest item, which Curtis's questions
+reframed into something better than a popularity fix. The private view had the fold doctrine
+NEARLY finished: incremental catch-up on a watermark, folded state persisted in indexed SQL
+(`private_registers` / `private_set_elements`, primary-keyed by exactly what readers filter
+on) - and then every read tipped the ENTIRE folded result into a fresh BTreeMap to consult
+three rows of it. Loading a feed page's `feed_seen` marks folded the whole store; so did one
+document's tags. The in-memory view wasn't a needed structure at all - it was a second copy
+of an index SQLite was already maintaining, rebuilt per read, and building the copy cost a
+full scan of the original. And the cost scales with the LIFETIME of the account (seen marks,
+per-doc annotations), not its relationships: the 50k-follow user was just the stress test
+that found what year-three of ordinary journaling would have found anyway.
+
+The fix extends an idiom the module already had (`collections_with_element`: catch up, then
+ask SQL the filtered question): four per-collection readers - registers, set elements, the
+LWW-stamp insertion order twin, and a prefix sweep for `contact:` - each a catch-up plus a
+primary-key SEEK, rows proportional to the answer. Eleven store read paths converted; the
+whole-view door survives only for the five genuine sweeps (search indexing, the mirror's
+bulk annotation read, bucket roster/all, the taxonomy graph walks), and general-private no
+longer has a whole-view production caller at all. Two details worth their ink: the prefix
+query is bound arithmetic (`>= 'contact:' AND < 'contact;'`) rather than LIKE, because LIKE
+is case-insensitive by default and the planner won't drive it through the index; and the
+undecryptable count now rides `catch_up`'s return into the per-collection tuples, keeping
+the "records you hold but cannot open" honesty without the view.
+
+The regression guard is the part built to outlive the change: turso supports `EXPLAIN QUERY
+PLAN`, so the parity test asserts the per-collection SELECTs plan as an index SEARCH and
+never a SCAN - "proportional to the question, not the store" pinned as a cop that goes red
+on any rewrite into a table scan, whatever the collection count, rather than as a comment
+hoping to be believed.
