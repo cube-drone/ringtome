@@ -3524,3 +3524,42 @@ chunked multi-row upserts (the fanout pattern, 150 rows a statement). The lesson
 ink is the shape of the whole exchange: both megabyte strings were compensation for
 discarding information the code already held - a stamp it had just written, a delta it had
 just computed - and the performance fix was remembering, not optimizing.
+
+## 2026-08-08: sync stops swallowing the transfer whole
+
+The audit line was "missing_for_peer buffers everything"; reading the code found the same
+shape on BOTH sides of the wire and a third copy in journal replay, with the worst instance
+the one nobody had listed. Per-message caps existed (entries 16 KiB, frames 256 KiB) and no
+aggregate cap did, which is the whole bug in one sentence.
+
+**The receiver was the urgent half.** The read loop pushed every arriving frame into an
+unbounded Vec and only then called the gate - so validation happened after residency, and
+any node that speaks our ALPN could stream entries until the process died. QUIC flow control
+is no help when the reader consumes eagerly. `ingest_stream` now flushes every 2048 entries,
+which bounds a stranger's leverage and shortens the per-identity ingest lock from "the whole
+transfer" to "one batch" as a bonus. The safety argument for batching, since the gate makes
+cross-batch judgments: the first branch of a fork is STORED by the time the second arrives,
+so `Crown::build`'s `stored ∪ arriving` input still sees both; a revocation in a later batch
+still evicts what earlier ones admitted (that path exists already - it is the raced-in-
+forgery case); and the one real cost is that content whose authorizing identity entry lands
+in a LATER batch is rejected rather than admitted - a re-send next exchange, never a wrong
+admission, and honest peers send identity chains first. The existing equivocation test
+turned out to already pin the cross-batch fork case, because it ingests the second branch in
+a separate call - which IS a batch boundary.
+
+**The sender pages.** `missing_for_peer` became `missing_plan` (which chains, from which seq,
+plus the fork proof to lead with) plus `MissingEntries`, a hand-rolled async walk that holds
+at most one 512-entry page. First cut had the paging loop written twice - once writing
+frames, once collecting for tests - and the tests would then have proven the collector's
+seam, not the wire's. Rewritten so `next()` is the only copy and both sinks are four-line
+loops around it; the collecting form survives `#[cfg(test)]`-only, deliberately not sitting
+one call away from the send path.
+
+Both plants went red before going green: truncating chains at one page (513 of 516) and
+advancing the seam by two (515 of 516). Plus a batch-invariance test asserting the gate's
+verdict and stored chain are identical whole vs. cut in twos.
+
+The residual is now honest and differently shaped: paging fixed the RESIDENCY, not the
+POLICY - a first sync still sends dense-from-their-head, i.e. the whole history, just never
+all at once. "Content chains: suffix-first, backfill lazy" is still unbuilt, and NEXT_STEPS
+now says so in those words rather than as a memory complaint.

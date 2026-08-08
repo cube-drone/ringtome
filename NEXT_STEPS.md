@@ -116,8 +116,10 @@ axis, none on the follow-list axis. The steps, roughly worst-first:
   128-slot LRU; frontier sweep stats every root (~100k syscalls/pass)
 * Wake-pass starvation: 8 refreshes/minute means a full rotation over 50k follows takes days —
   the interest dial needs to actually tier the rotation, not just order it
-* `missing_for_peer` buffers every missing entry in RAM before sending — stream instead
-  (a new device joining a 50k-follow identity = ~200k entries held by the sender)
+* Shallow sync proper: the send path now PAGES, but still sends dense-from-their-head, so a
+  first sync is still the whole history (just no longer resident). "Content chains:
+  suffix-first, backfill lazy" (PROJECT_PLAN, Shallow Sync) is the unbuilt half — head plus a
+  window, older history on demand.
 
 ### Mixtape & Radio
 *  a mp3 browser

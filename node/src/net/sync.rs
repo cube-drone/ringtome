@@ -15,7 +15,7 @@
 //! everything downstream, so nothing gets a row without earning it (PROJECT_PLAN, Iroh Protocol
 //! Mapping: "gate here!").
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use anyhow::{anyhow, bail, Context, Result};
 use iroh::endpoint::{Connection, SendStream};
@@ -118,9 +118,16 @@ pub async fn chain_ranges(db: &Db) -> Result<Vec<(String, u32, u64, u64, [u8; 32
         .collect()
 }
 
+/// Entries read (and held) at once while streaming one chain to a peer. The send path used to
+/// materialize the WHOLE transfer before writing a byte - a first sync of a big identity (a
+/// 50k-contact ledger is ~200k entries) meant tens of megabytes resident on the sender and
+/// again on the receiver, on exactly the hardware the adoption ceremony targets. Paging makes
+/// the sender's residency this constant instead of the history's size.
+const SEND_PAGE_ENTRIES: usize = 512;
+
 /// Stream every stored entry the peer's frontiers say it lacks, identity chains first (service
-/// ascending puts service 0 at the front), each chain in seq order. Returns entries sent.
-/// Private chains are streamed only to member-proven peers.
+/// ascending puts service 0 at the front), each chain in seq order, a page at a time. Returns
+/// entries sent. Private chains are streamed only to member-proven peers.
 async fn send_missing(
     db: &Db,
     peer_frontiers: &[Frontier],
@@ -128,15 +135,99 @@ async fn send_missing(
     include_private: bool,
 ) -> Result<u64> {
     let mut sent = 0u64;
-    for bytes in missing_for_peer(db, peer_frontiers, include_private).await? {
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private).await?;
+    while let Some(bytes) = missing.next().await? {
         write_frame(send, &SyncMessage::Entry(bytes)).await?;
         sent += 1;
     }
     Ok(sent)
 }
 
-/// The entry bytes a peer with these frontiers lacks - `send_missing` without the stream, so
-/// the selection is testable against raw databases.
+/// One chain a peer is behind on: where its ordinary entries resume, plus the fork proof to
+/// put in front of them when there is one.
+struct ChainSend {
+    author_hex: String,
+    service: u32,
+    /// The EQUIVOCATION window's one entry: our own entry at the peer's claimed head, when
+    /// our hash there differs from theirs. See `missing_plan`.
+    evidence: Option<Vec<u8>>,
+    /// The first seq the peer lacks.
+    from_seq: u64,
+}
+
+/// A peer's missing entries, yielded one at a time and read a page at a time - the whole
+/// point being that nothing here ever holds a transfer. At most one page (plus a fork proof)
+/// is resident, whatever the history's size.
+///
+/// One walk, two sinks: `send_missing` writes each entry to the wire, and the gate tests
+/// collect them (`missing_for_peer`). Keeping the paging arithmetic in `next` rather than in
+/// each sink is what lets a test of the collector be a test of what the wire does - the
+/// alternative, one loop per sink, is two copies whose seam bugs only one of them proves.
+pub(crate) struct MissingEntries<'a> {
+    db: &'a Db,
+    chains: std::vec::IntoIter<ChainSend>,
+    /// The chain being drained: `(author_hex, service, next page's first seq)`.
+    current: Option<(String, u32, u64)>,
+    /// Read and not yet yielded: at most one page, plus a leading fork proof.
+    page: VecDeque<Vec<u8>>,
+    /// Whether the current chain may have more pages (the last one came back full).
+    more: bool,
+}
+
+impl<'a> MissingEntries<'a> {
+    /// Plan what this peer lacks; read nothing yet.
+    async fn plan(
+        db: &'a Db,
+        peer_frontiers: &[Frontier],
+        include_private: bool,
+    ) -> Result<MissingEntries<'a>> {
+        Ok(MissingEntries {
+            db,
+            chains: missing_plan(db, peer_frontiers, include_private).await?.into_iter(),
+            current: None,
+            page: VecDeque::new(),
+            more: false,
+        })
+    }
+
+    /// The next entry the peer lacks, or `None` at the end of every chain.
+    async fn next(&mut self) -> Result<Option<Vec<u8>>> {
+        loop {
+            if let Some(bytes) = self.page.pop_front() {
+                return Ok(Some(bytes));
+            }
+            // The current chain may have more: read one page. A short page (or none) means
+            // this chain is finished, and the next loop turn moves on.
+            if self.more {
+                if let Some((author_hex, service, from_seq)) = self.current.clone() {
+                    let rows = chain_page(self.db, &author_hex, service, from_seq).await?;
+                    self.more = rows.len() == SEND_PAGE_ENTRIES;
+                    if let Some((last_seq, _)) = rows.last() {
+                        // Advance by the seq actually read, never by a count: a shallow-held
+                        // chain's floor is not zero, and its seqs are dense only within what
+                        // is held.
+                        self.current = Some((author_hex, service, last_seq + 1));
+                    }
+                    self.page.extend(rows.into_iter().map(|(_, bytes)| bytes));
+                    continue;
+                }
+            }
+            match self.chains.next() {
+                Some(chain) => {
+                    self.page.extend(chain.evidence);
+                    self.current = Some((chain.author_hex, chain.service, chain.from_seq));
+                    self.more = true;
+                }
+                None => return Ok(None),
+            }
+        }
+    }
+}
+
+/// What a peer with these frontiers is missing, as a PLAN rather than a payload: which chains,
+/// from which seq, and any fork proof to lead with. Bytes come from `chain_page`, so neither
+/// this nor its caller ever holds a whole transfer - and the selection stays testable against
+/// raw databases, which is what this function was split out for in the first place.
 ///
 /// The ordinary rule: start just past their head. The exception is the EQUIVOCATION window:
 /// a peer whose frontier matches ours in height but not in `head_hash` holds a different
@@ -150,11 +241,11 @@ async fn send_missing(
 /// from whichever side holds an entry at the other's head; what nobody finds is the exact
 /// fork POINT (that bisect is unnecessary for condemnation - one proven double-sign is
 /// enough).
-pub(crate) async fn missing_for_peer(
+async fn missing_plan(
     db: &Db,
     peer_frontiers: &[Frontier],
     include_private: bool,
-) -> Result<Vec<Vec<u8>>> {
+) -> Result<Vec<ChainSend>> {
     let peer: HashMap<([u8; 32], u32), (u64, [u8; 32])> = peer_frontiers
         .iter()
         .map(|f| ((f.author, f.service), (f.head, f.head_hash)))
@@ -168,7 +259,7 @@ pub(crate) async fn missing_for_peer(
         .await
         .context("listing chains")?;
 
-    let mut out = Vec::new();
+    let mut plan = Vec::new();
     for (author_hex, svc) in chains {
         if !include_private && is_private_service(svc as u32) {
             continue;
@@ -176,8 +267,9 @@ pub(crate) async fn missing_for_peer(
         let author = pubkey::decode(&author_hex)
             .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
         let claimed = peer.get(&(author, svc as u32));
-        let start = claimed.map(|(head, _)| head + 1).unwrap_or(0);
+        let from_seq = claimed.map(|(head, _)| head + 1).unwrap_or(0);
 
+        let mut evidence = None;
         if let Some((peer_head, peer_hash)) = claimed {
             let ours: Option<(Vec<u8>, Vec<u8>)> = db
                 .fetch_optional(
@@ -189,20 +281,64 @@ pub(crate) async fn missing_for_peer(
                 .context("reading our entry at the peer's claimed head")?;
             if let Some((hash, bytes)) = ours {
                 if hash.as_slice() != peer_hash.as_slice() {
-                    out.push(bytes);
+                    evidence = Some(bytes);
                 }
             }
         }
 
-        let rows: Vec<(Vec<u8>,)> = db
-            .fetch_all(
-                "SELECT bytes FROM entries
-             WHERE author_pubkey = ?1 AND service = ?2 AND seq >= ?3 ORDER BY seq",
-                (author_hex.as_str(), svc, start as i64),
-            )
-            .await
-            .context("reading entries to send")?;
-        out.extend(rows.into_iter().map(|(bytes,)| bytes));
+        plan.push(ChainSend {
+            author_hex,
+            service: svc as u32,
+            evidence,
+            from_seq,
+        });
+    }
+    Ok(plan)
+}
+
+/// One page of a chain's entries from `from_seq` up, as `(seq, bytes)` in seq order. The seq
+/// rides along so the caller advances by what it actually read rather than by a count, which
+/// keeps paging correct over a shallow-held chain whose floor is not zero.
+async fn chain_page(
+    db: &Db,
+    author_hex: &str,
+    service: u32,
+    from_seq: u64,
+) -> Result<Vec<(u64, Vec<u8>)>> {
+    let rows: Vec<(i64, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT seq, bytes FROM entries
+             WHERE author_pubkey = ?1 AND service = ?2 AND seq >= ?3
+             ORDER BY seq LIMIT ?4",
+            (
+                author_hex,
+                i64::from(service),
+                from_seq as i64,
+                SEND_PAGE_ENTRIES as i64,
+            ),
+        )
+        .await
+        .context("reading a page of entries to send")?;
+    Ok(rows
+        .into_iter()
+        .map(|(seq, bytes)| (seq as u64, bytes))
+        .collect())
+}
+
+/// The whole selection, collected - the shape the gate tests assert against, drained through
+/// the very walk the wire uses. Test-only by design: production streams (`send_missing`), and
+/// a helper that materializes an entire transfer must not sit one call away from the send
+/// path where somebody could reach for it.
+#[cfg(test)]
+pub(crate) async fn missing_for_peer(
+    db: &Db,
+    peer_frontiers: &[Frontier],
+    include_private: bool,
+) -> Result<Vec<Vec<u8>>> {
+    let mut out = Vec::new();
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private).await?;
+    while let Some(bytes) = missing.next().await? {
+        out.push(bytes);
     }
     Ok(out)
 }
@@ -229,10 +365,63 @@ pub(crate) async fn missing_for_peer(
 /// routing-relevant fact callers act on - whether the persona's own LEDGER chain moved
 /// (a general-private entry stored), so the subscription memo's post-ingest refresh runs
 /// only when a contact dial could actually have arrived, not on every batch of posts.
+#[derive(Default)]
 pub(crate) struct IngestOutcome {
     pub received: u64,
     pub rejected: u64,
     pub ledger_moved: bool,
+}
+
+impl IngestOutcome {
+    /// Fold one batch's verdict into a stream's running total (`ingest_stream`).
+    fn absorb(&mut self, batch: IngestOutcome) {
+        self.received += batch.received;
+        self.rejected += batch.rejected;
+        self.ledger_moved |= batch.ledger_moved;
+    }
+}
+
+/// Entries buffered before the gate runs. This buffer is fed by whoever is on the other end
+/// of the wire, and it fills BEFORE anything is validated - so an unbounded one let any node
+/// that speaks our ALPN stream frames until the process died (QUIC flow control does not
+/// help: the reader consumes eagerly). Flushing every page bounds that to this constant, and
+/// shortens the per-identity ingest lock from "the whole transfer" to "one batch" as a
+/// bonus. Batching is safe against the gate's cross-batch judgments because the first branch
+/// of a fork is STORED by the time the second arrives, so `Crown::build`'s `stored ∪ arriving`
+/// input still sees both, and a revocation landing in a later batch still evicts what earlier
+/// ones admitted (`evict_disproven_chains` is that path, and already exists for exactly this
+/// race). The one honest cost: content whose authorizing identity entry lands in a LATER
+/// batch is rejected rather than admitted - which is a re-send on the next exchange, never a
+/// wrong admission, and honest peers send identity chains first (service ascending).
+const INGEST_BATCH_ENTRIES: usize = 2048;
+
+/// Read the peer's half of an exchange, ingesting in bounded batches (see
+/// `INGEST_BATCH_ENTRIES`). Ends at the peer's `Done` or a clean end of stream.
+async fn ingest_stream(
+    db: &Db,
+    root: [u8; 32],
+    recv: &mut iroh::endpoint::RecvStream,
+    peer_proven: bool,
+) -> Result<IngestOutcome> {
+    let mut total = IngestOutcome::default();
+    let mut batch: Vec<Vec<u8>> = Vec::new();
+    loop {
+        match read_frame(recv).await? {
+            Some(SyncMessage::Entry(bytes)) => {
+                batch.push(bytes);
+                if batch.len() >= INGEST_BATCH_ENTRIES {
+                    let full = std::mem::take(&mut batch);
+                    total.absorb(ingest_batch(db, root, full, peer_proven).await?);
+                }
+            }
+            Some(SyncMessage::Done) | None => break,
+            Some(other) => bail!("unexpected frame mid-stream: {other:?}"),
+        }
+    }
+    if !batch.is_empty() {
+        total.absorb(ingest_batch(db, root, batch, peer_proven).await?);
+    }
+    Ok(total)
 }
 
 pub(crate) async fn ingest_batch(
@@ -1023,17 +1212,11 @@ pub async fn sync_with_peer(
         }
         other => bail!("expected Hello from peer, got {other:?}"),
     };
-    let mut incoming = Vec::new();
-    loop {
-        match read_frame(&mut recv).await? {
-            Some(SyncMessage::Entry(bytes)) => incoming.push(bytes),
-            Some(SyncMessage::Done) | None => break,
-            Some(other) => bail!("unexpected frame mid-stream: {other:?}"),
-        }
-    }
     // What they claim, before we act on it: the same digest we compute over our own holdings,
     // so the two are comparable (net::frontier). Best-effort - a bookkeeping failure must not
-    // fail an exchange that is otherwise working.
+    // fail an exchange that is otherwise working. Recorded BEFORE the drain because reading
+    // and ingesting are now interleaved (`ingest_stream`), and this is a note about what they
+    // said, which must not be coloured by what we did with it.
     let claimed = crate::net::frontier::claimed_fingerprint(&peer_frontiers);
     let peer_hex = hex::encode(peer_id);
     if let Err(e) =
@@ -1042,7 +1225,7 @@ pub async fn sync_with_peer(
         tracing::debug!(error = ?e, "recording a peer frontier claim failed");
     }
 
-    let outcome = ingest_batch(&db, root, incoming, peer_proven).await?;
+    let outcome = ingest_stream(&db, root, &mut recv, peer_proven).await?;
     let (received, rejected) = (outcome.received, outcome.rejected);
 
     // Now send what the peer lacks - private chains only to a proven member.
@@ -1196,16 +1379,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
     write_frame(&mut send, &SyncMessage::Done).await?;
 
-    // Then ingest the requester's half of the exchange.
-    let mut incoming = Vec::new();
-    loop {
-        match read_frame(&mut recv).await? {
-            Some(SyncMessage::Entry(bytes)) => incoming.push(bytes),
-            Some(SyncMessage::Done) | None => break,
-            Some(other) => bail!("unexpected frame mid-stream: {other:?}"),
-        }
-    }
-    let outcome = ingest_batch(&db, root, incoming, peer_proven).await?;
+    // Then ingest the requester's half of the exchange, in bounded batches - this side takes
+    // connections from anyone who speaks the ALPN, so this is the buffer a stranger drives.
+    let outcome = ingest_stream(&db, root, &mut recv, peer_proven).await?;
     let (received, rejected) = (outcome.received, outcome.rejected);
     tracing::info!(
         root = %root_hex,
@@ -1741,6 +1917,102 @@ mod tests {
 
     fn hashes(entries: &[SignedEntry]) -> Vec<[u8; 32]> {
         entries.iter().map(|e| *e.hash()).collect()
+    }
+
+    /// A chain longer than one send page comes back whole, in order, once. The send path
+    /// pages now (nothing holds a whole transfer), so the boundary arithmetic - advance to
+    /// `last_seq + 1`, stop on a short page - is what a lost or doubled entry would ride in
+    /// on, and neither shows up in a single-page test.
+    #[tokio::test]
+    async fn a_chain_longer_than_a_page_streams_whole_and_in_order() {
+        let db = test_db().await;
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut posts = Chain::new(2, service::POSTS);
+        let k = posts.pk();
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        // Deliberately astride the boundary: one full page, then a short one.
+        let count = SEND_PAGE_ENTRIES + 3;
+        let written: Vec<SignedEntry> = (0..count)
+            .map(|n| posts.append(entry_type::POST, vec![0xa0, (n >> 8) as u8, n as u8]))
+            .collect();
+        assert_eq!(ingest(&db, root_chain.pk(), &[authorize.clone()]).await, (1, 0));
+        assert_eq!(ingest(&db, root_chain.pk(), &written).await.0, count as u64);
+
+        // A peer holding nothing lacks everything: the identity chain first, then every post.
+        let sent = missing_for_peer(&db, &[], false).await.unwrap();
+        let mut expected = vec![authorize.bytes().to_vec()];
+        expected.extend(written.iter().map(|e| e.bytes().to_vec()));
+        assert_eq!(sent.len(), expected.len(), "no entry lost or doubled at the page seam");
+        assert_eq!(sent, expected, "and seq order survives paging");
+
+        // Resuming mid-chain pages from the right place too (the ordinary catch-up).
+        let caught_up = local_frontiers(&db, false).await.unwrap();
+        assert!(
+            missing_for_peer(&db, &caught_up, false).await.unwrap().is_empty(),
+            "a peer at our head lacks nothing"
+        );
+    }
+
+    /// The property the receiver's bounded batching rests on: for well-ordered input, the
+    /// gate's verdict does not depend on where the batch boundaries fall. `ingest_stream`
+    /// flushes every INGEST_BATCH_ENTRIES rather than at Done, and this is what says that is
+    /// a memory bound rather than a semantic change. (The cross-batch FORK case is pinned
+    /// separately, by the equivocation test below: it stores one branch, then ingests the
+    /// other in a second call - which is exactly a batch boundary between the two.)
+    #[tokio::test]
+    async fn the_gate_is_batch_invariant_for_well_ordered_input() {
+        let mut root_chain = Chain::new(3, service::IDENTITY_PUBLIC);
+        let mut posts = Chain::new(4, service::POSTS);
+        let k = posts.pk();
+        let root = root_chain.pk();
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: k,
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let written: Vec<SignedEntry> = (0..5)
+            .map(|n| posts.append(entry_type::POST, vec![0xa0, n]))
+            .collect();
+        let mut all = vec![authorize];
+        all.extend(written);
+
+        let whole = test_db().await;
+        let (received_whole, rejected_whole) = ingest(&whole, root, &all).await;
+
+        // The same stream, cut into batches at three arbitrary points.
+        let split = test_db().await;
+        let mut received_split = 0;
+        let mut rejected_split = 0;
+        for chunk in all.chunks(2) {
+            let (r, x) = ingest(&split, root, chunk).await;
+            received_split += r;
+            rejected_split += x;
+        }
+
+        assert_eq!(
+            (received_split, rejected_split),
+            (received_whole, rejected_whole),
+            "batching changes no verdict"
+        );
+        assert_eq!(
+            stored_hashes(&split, &k, service::POSTS).await,
+            stored_hashes(&whole, &k, service::POSTS).await,
+            "and stores exactly the same chain"
+        );
     }
 
     #[tokio::test]
