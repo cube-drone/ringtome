@@ -82,11 +82,6 @@ Does a mutual follow+trust make a "friend"?
 
 ### Safety
 * sync-request floods: malicious nodes can DDoS with sync-requests, probably?
-* Unsolicited hosting through the responder: `sync::serve` opens with `create`, so a stranger
-  naming a root we hold nothing of mints a database for it — content arriving by push, which
-  "Rehosting Policy: Pull, Not Push" forbids. Refusing needs a survey of who legitimately
-  serves before holding (adoption's in-band grant delivery is the suspect), which makes it a
-  protocol decision, not a cleanup.
 
 ### Sync
 * Peer-set/discovery build, remaining bricks (Phase 1 SHIPPED 2026-08-07 - see HISTORY:

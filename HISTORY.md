@@ -3639,16 +3639,30 @@ Both plants went red before green, and the first is the one worth keeping:
   and cost ~96 KB of empty database per stranger is now unwritable, not merely discouraged.
 * An added `create` in a read module turns the new cop red with the file named.
 
-Two things surfaced and deliberately left alone. The responder (`sync::serve`) keeps
-`create`, preserving exactly what that door has always done - but a stranger naming a root we
-hold nothing of makes us mint a database for it, which is unsolicited hosting arriving
-through the responder ("Rehosting Policy: Pull, Not Push"). Refusing is a PROTOCOL change,
-not a refactor, because adoption's in-band grant delivery may legitimately serve before we
-hold; it is now a comment at the call site and a NEXT_STEPS line rather than a surprise
-folded into this diff. And `cargo clippy --all-targets` has 16 pre-existing lint failures in
-test code on main (this change makes it 15) - `just lint` doesn't pass `--all-targets`, so
-test-code lints have never been gated. Worth a decision sometime; not worth smuggling in
-here.
+Two things surfaced on the way past, and the first one was WRONG - corrected here the same
+day, in place, because a false claim in the log is worse than an ugly one. This entry
+originally said the responder (`sync::serve`) let a stranger name any root and get a database
+minted for it: unsolicited hosting arriving through the back door, with adoption's grant
+delivery named as the reason it couldn't simply be refused. Neither half survived Curtis
+asking "tell me more about that". `serve` opens with a `wanted` gate - hosted, or followed by
+someone here, or fetched before - and anything else gets a deliberately uniform empty
+exchange and goes home; THAT gate is the Pull-Not-Push enforcement, sitting exactly where
+doctrine says. The only branch that mints is a followed persona whose content has never
+arrived, where a mirror appearing is the demand signal working as designed. And adoption
+turns out to run on its own ALPN (`ringtome/adopt/0`) with its own responder, so it never
+touches this door at all.
+
+Worth keeping the shape of the error: a real minting bug was found, correctly traced to the
+wake pass, and fixed - and then `create` in an unrelated function got pattern-matched to the
+same bug without reading the twenty lines above it. Extrapolating from one confirmed instance
+is exactly the failure mode as the two doc comments that asserted preconditions nobody
+enforced; the only difference is this one was written today rather than inherited. The
+NEXT_STEPS "safety" item it produced was removed, and the call-site comment now says what the
+gate actually does.
+
+The second thing was real: `cargo clippy --all-targets` had 16 pre-existing lint failures in
+test code on main (this change made it 15) - `just lint` didn't pass `--all-targets`, so
+test-code lints had never been gated. Decided and acted on the same day (see below).
 
 ## 2026-08-08: the lint gate learns about test code
 

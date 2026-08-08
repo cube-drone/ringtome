@@ -1350,11 +1350,12 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         tracing::debug!(error = ?e, "recording a demand edge failed");
     }
 
-    // create, preserving what this door has always done - and worth a hard look on its
-    // own (NEXT_STEPS): a stranger naming a root we hold nothing of makes us mint a database
-    // for it, which is unsolicited hosting arriving through the responder ("Rehosting Policy:
-    // Pull, Not Push"). Refusing instead is a PROTOCOL change, not a refactor, because the
-    // adoption ceremony's in-band grant delivery may legitimately serve before we hold.
+    // create, and rightly: the `wanted` gate above is this door's Pull-Not-Push enforcement,
+    // so we reach here only for a persona this node hosts, has fetched, or whose followers
+    // live here. The one branch that actually MINTS is the third - somebody here follows
+    // them and their content has never arrived - and a mirror appearing then is the doctrine
+    // working, not being dodged: "Follow is the demand signal: when a node's own users follow
+    // an identity, the node fronts it." A local human asked; this is the asking arriving.
     let db = state.user_dbs.create(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
     // The dialer proved membership: remember it as a peer, leaf-bound (healing on any
