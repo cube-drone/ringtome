@@ -225,12 +225,22 @@ pub(crate) async fn missing_for_peer(
 /// Also the raw-entry journal's replay path (`record::journal::rebuild_from_journal`): the
 /// journal is just what sync would send, written down, so rebuild enters through this same gate
 /// rather than growing a second insert path.
+/// What one gate pass admitted: the counts the exchange log wants, and the one
+/// routing-relevant fact callers act on - whether the persona's own LEDGER chain moved
+/// (a general-private entry stored), so the subscription memo's post-ingest refresh runs
+/// only when a contact dial could actually have arrived, not on every batch of posts.
+pub(crate) struct IngestOutcome {
+    pub received: u64,
+    pub rejected: u64,
+    pub ledger_moved: bool,
+}
+
 pub(crate) async fn ingest_batch(
     db: &Db,
     root: [u8; 32],
     raw: Vec<Vec<u8>>,
     peer_proven: bool,
-) -> Result<(u64, u64)> {
+) -> Result<IngestOutcome> {
     // One batch at a time per identity: concurrent exchanges (eager push makes simultaneous
     // bidirectional syncs routine) would race between head-read and insert and die on the
     // entry_hash UNIQUE constraint instead of duplicate-skipping. See Db::lock_ingest.
@@ -239,6 +249,7 @@ pub(crate) async fn ingest_batch(
     let mut rejected = 0u64;
     let mut received = 0u64;
     let mut evicted_rows = 0u64;
+    let mut ledger_moved = false;
 
     // Strict decode + signature check; split identity vs content.
     let mut identity_candidates: Vec<SignedEntry> = Vec::new();
@@ -380,6 +391,9 @@ pub(crate) async fn ingest_batch(
             for e in &stored_now {
                 apply_content_views(db, e).await?;
             }
+            if svc == service::GENERAL_PRIVATE && !stored_now.is_empty() {
+                ledger_moved = true;
+            }
             received += stored_now.len() as u64;
             rejected += refused;
             evicted_rows += evicted;
@@ -405,6 +419,9 @@ pub(crate) async fn ingest_batch(
                         Ok(()) => {
                             store_entry(db, &e).await?;
                             apply_content_views(db, &e).await?;
+                            if svc == service::GENERAL_PRIVATE {
+                                ledger_moved = true;
+                            }
                             received += 1;
                             prev = Some(e);
                         }
@@ -432,7 +449,11 @@ pub(crate) async fn ingest_batch(
     // machinery decides what is honored history, and the quarantine has nothing left to hold.
     clear_adjudicated_equivocations(db, &tree).await?;
 
-    Ok((received, rejected))
+    Ok(IngestOutcome {
+        received,
+        rejected,
+        ledger_moved,
+    })
 }
 
 /// Record proof that a single-writer key signed two different entries at one (service, seq),
@@ -1021,7 +1042,8 @@ pub async fn sync_with_peer(
         tracing::debug!(error = ?e, "recording a peer frontier claim failed");
     }
 
-    let (received, rejected) = ingest_batch(&db, root, incoming, peer_proven).await?;
+    let outcome = ingest_batch(&db, root, incoming, peer_proven).await?;
+    let (received, rejected) = (outcome.received, outcome.rejected);
 
     // Now send what the peer lacks - private chains only to a proven member.
     let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
@@ -1038,8 +1060,10 @@ pub async fn sync_with_peer(
         Ok(false) => {}
         Err(e) => tracing::debug!(error = ?e, "post-exchange frontier refresh failed"),
     }
-    if received > 0 {
-        // The requester ingests too (see serve's twin comment): cross-device dials arrive here.
+    if outcome.ledger_moved {
+        // The requester ingests too (see serve's twin comment): cross-device dials arrive
+        // here - and only a batch that actually stored a general-private entry can carry
+        // one, so a batch of posts no longer triggers a full memo rewrite.
         crate::net::subscriptions::refresh_root(state, root_hex).await;
     }
     let verdict = if received > 0 {
@@ -1181,7 +1205,8 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             Some(other) => bail!("unexpected frame mid-stream: {other:?}"),
         }
     }
-    let (received, rejected) = ingest_batch(&db, root, incoming, peer_proven).await?;
+    let outcome = ingest_batch(&db, root, incoming, peer_proven).await?;
+    let (received, rejected) = (outcome.received, outcome.rejected);
     tracing::info!(
         root = %root_hex,
         remote = %conn.remote_id(),
@@ -1199,8 +1224,12 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             Err(e) => tracing::debug!(error = ?e, "post-ingest frontier refresh failed"),
         }
         // Private records ride the same exchange (member-proven peers), and a contact dial
-        // turned elsewhere must reach this node's memo by EVENT, not by backstop.
-        crate::net::subscriptions::refresh_root(&state, &root_hex).await;
+        // turned elsewhere must reach this node's memo by EVENT, not by backstop - but only
+        // a batch that stored a general-private entry can carry a dial, so a push of posts
+        // no longer triggers a full memo rewrite.
+        if outcome.ledger_moved {
+            crate::net::subscriptions::refresh_root(&state, &root_hex).await;
+        }
         // A delivered push IS freshness for a mirrored persona - stamp it so the
         // follow-refresh sweep stays quiet while the push machinery is working.
         if !crate::identity::is_agented(&state.node_db, &root_hex)
@@ -1697,7 +1726,8 @@ mod tests {
 
     async fn ingest(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
         let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
-        ingest_batch(db, root, raw, false).await.unwrap()
+        let outcome = ingest_batch(db, root, raw, false).await.unwrap();
+        (outcome.received, outcome.rejected)
     }
 
     async fn stored_hashes(db: &Db, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {

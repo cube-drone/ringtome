@@ -112,8 +112,6 @@ axis, none on the follow-list axis. The steps, roughly worst-first:
 * Stream compute residual: a documents movement now ships a one-row diff, but still
   RECOMPUTES `search_rows` and the annotation sweep whole to produce it — the wire is quiet,
   the gather isn't. A doc-scoped search/annotation refresh, if profiling ever names it.
-* Megabyte SQL literals: the 50k-term `NOT IN ('<hex>',...)` strings in the subscription memo
-  rewrite and `excise_unfollowed` → temp table or join
 * First-sync backfill stampede: every follow is "newly eager" ⇒ 50k user-DB opens through the
   128-slot LRU; frontier sweep stats every root (~100k syscalls/pass)
 * Wake-pass starvation: 8 refreshes/minute means a full rotation over 50k follows takes days —

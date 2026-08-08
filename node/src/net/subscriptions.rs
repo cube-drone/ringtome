@@ -59,6 +59,10 @@ impl Edge {
     }
 }
 
+/// Rows per multi-row subscription upsert: 6 binds each, well under SQLite's classic
+/// 999-variable floor (the `fanout::JOURNAL_CHUNK_ROWS` discipline).
+const SUBSCRIPTION_CHUNK_ROWS: usize = 150;
+
 /// The ledger's keys, spelled once (they mirror `js/pure/contact.js`'s collection).
 const INTEREST: &str = "interest";
 const REBROADCAST: &str = "interest_rebroadcasts";
@@ -80,10 +84,12 @@ fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
 
 /// Rebuild one persona's rows from their own ledger.
 ///
-/// A whole-persona rewrite rather than a delta: the ledger is small (one row per person you
-/// have an opinion about), and the alternative is tracking which key changed, which is exactly
-/// the bookkeeping the memo idiom exists to avoid. Rows for contacts whose last dial went back
-/// to nothing are deleted, because a subscription nobody holds must not keep routing.
+/// A whole-persona rewrite rather than a delta - the alternative is tracking which ledger
+/// key changed, which is exactly the bookkeeping the memo idiom exists to avoid - but a
+/// rewrite that SCALES: upserts land as chunked multi-row statements (the `fanout` batching
+/// pattern), and the removal half is the stamp sweep below, never a list. Rows for contacts
+/// whose last dial went back to nothing are deleted, because a subscription nobody holds
+/// must not keep routing.
 pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) -> Result<()> {
     let store = crate::record::store::open(state, account_id, root_hex)
         .await
@@ -113,65 +119,81 @@ pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) 
         .collect();
 
     let now = now_ms();
-    let mut keep: Vec<String> = Vec::new();
-    let mut eager_now: Vec<String> = Vec::new();
+    let mut edges: Vec<(String, Edge)> = Vec::new();
+    let mut eager_now: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (foreign_root, facts) in contacts {
         let edge = edge_of(&facts);
         if edge.is_empty() {
             continue;
         }
         if edge.eagerness.is_some_and(|e| e > 0) {
-            eager_now.push(foreign_root.clone());
+            eager_now.insert(foreign_root.clone());
         }
-        keep.push(foreign_root.clone());
+        edges.push((foreign_root, edge));
+    }
+    for chunk in edges.chunks(SUBSCRIPTION_CHUNK_ROWS) {
+        let placeholders: Vec<String> = (0..chunk.len())
+            .map(|i| {
+                let b = i * 6;
+                format!("(?{},?{},?{},?{},?{},?{})", b + 1, b + 2, b + 3, b + 4, b + 5, b + 6)
+            })
+            .collect();
+        let sql = format!(
+            "INSERT INTO subscriptions
+               (local_root, foreign_root, eagerness, rebroadcast, trust, updated_at_ms)
+             VALUES {}
+             ON CONFLICT (local_root, foreign_root) DO UPDATE SET
+                 eagerness = excluded.eagerness,
+                 rebroadcast = excluded.rebroadcast,
+                 trust = excluded.trust,
+                 updated_at_ms = excluded.updated_at_ms",
+            placeholders.join(",")
+        );
+        let dial = |v: Option<i64>| v.map(turso::Value::Integer).unwrap_or(turso::Value::Null);
+        let params: Vec<turso::Value> = chunk
+            .iter()
+            .flat_map(|(foreign_root, edge)| {
+                [
+                    turso::Value::Text(root_hex.to_string()),
+                    turso::Value::Text(foreign_root.clone()),
+                    dial(edge.eagerness),
+                    dial(edge.rebroadcast),
+                    dial(edge.trust),
+                    turso::Value::Integer(now),
+                ]
+            })
+            .collect();
         state
             .node_db
-            .execute(
-                "INSERT INTO subscriptions
-                   (local_root, foreign_root, eagerness, rebroadcast, trust, updated_at_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                 ON CONFLICT (local_root, foreign_root) DO UPDATE SET
-                     eagerness = excluded.eagerness,
-                     rebroadcast = excluded.rebroadcast,
-                     trust = excluded.trust,
-                     updated_at_ms = excluded.updated_at_ms",
-                (
-                    root_hex,
-                    foreign_root.as_str(),
-                    edge.eagerness,
-                    edge.rebroadcast,
-                    edge.trust,
-                    now,
-                ),
-            )
+            .execute(&sql, turso::params_from_iter(params))
             .await
-            .context("storing a subscription")?;
+            .context("storing subscriptions")?;
     }
 
-    // Everything this persona no longer has any edge to. Quoting is safe here because these
-    // are hex roots that came out of the ledger's own collection names, but the filter is
-    // belt-and-braces: anything that isn't hex cannot name a row we wrote.
-    let quoted: Vec<String> = keep
-        .iter()
-        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
-        .map(|r| format!("'{r}'"))
-        .collect();
+    // The stamp sweep: every kept row was just stamped `updated_at_ms = now`, so "rows this
+    // rewrite didn't touch" IS the withdrawn set - contacts whose last edge cleared. The old
+    // form spelled that set out as a NOT IN literal of every followed root, megabytes of SQL
+    // re-parsed per call, which would have hit the engine's statement-length ceiling around
+    // fifteen thousand contacts. A timestamp already knows.
     state
         .node_db
         .execute(
-            &format!(
-                "DELETE FROM subscriptions WHERE local_root = ?1 AND foreign_root NOT IN ({})",
-                if quoted.is_empty() { "''".into() } else { quoted.join(",") }
-            ),
-            (root_hex,),
+            "DELETE FROM subscriptions WHERE local_root = ?1 AND updated_at_ms < ?2",
+            (root_hex, now),
         )
         .await
         .context("clearing withdrawn subscriptions")?;
 
     // The feed consequences of the delta, in the same breath as the memo itself. Both live
-    // in fanout (feed_journal is its table); both are idempotent, so re-running a refresh
-    // that saw no change costs one DELETE that matches nothing.
-    crate::fanout::excise_unfollowed(state, root_hex, &eager_now)
+    // in fanout (feed_journal is its table); both are idempotent, and both take the DELTA -
+    // who crossed the eager line, either way - because this function is the one place that
+    // knows it.
+    let unfollowed: Vec<String> = eager_before
+        .iter()
+        .filter(|a| !eager_now.contains(*a))
+        .cloned()
+        .collect();
+    crate::fanout::excise_unfollowed(state, root_hex, &unfollowed)
         .await
         .context("excising unfollowed feeds")?;
     for author in eager_now.iter().filter(|a| !eager_before.contains(*a)) {

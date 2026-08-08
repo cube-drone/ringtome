@@ -3493,3 +3493,34 @@ better than the sin: callers annotate rows with their words once per LIST change
 directory rows already carry theirs from the server), so the filter stays value-in/value-out
 AND stops recomputing base58 per keystroke. Filter behavior pinned in test/pure/people.cjs;
 the UI itself is human-verified per the no-automated-UI rule - Curtis, kick the tires.
+
+## 2026-08-08: the subscription memo diet - two questions delete two megabytes
+
+Curtis asked two questions about the memo refresh ("why ARE we looking for a subscription
+that's not in a set? why on every post ingest?") and both answers turned out to be "no good
+reason", which made the fix smaller and better than the batching pass originally planned:
+
+* **The NOT IN literal was doing a job a timestamp already does.** The refresh is
+  clear-and-replace, and its removal half deleted the complement of an inlined keep-list -
+  megabytes of quoted hex, re-parsed per call (giant constant IN-lists cost at PREPARE, not
+  probe), and doomed anyway: SQLite refuses statements past its 1MB default length ceiling,
+  so past ~15k contacts the old form would have simply errored. But every kept row was
+  already stamped `updated_at_ms = now` by its own upsert, so the withdrawn set IS "rows
+  this rewrite didn't touch": one indexed DELETE on the stamp, no list anywhere.
+  `excise_unfollowed`'s twin literal fell to the same question sharpened once more: the
+  rewrite computes eager_before for backfill detection, so it KNOWS who crossed out of the
+  eager set - the excise now takes that delta (almost always one name) instead of deleting
+  the complement of everything.
+* **The post-ingest refresh fired blind.** The hook exists so a dial turned on your phone
+  reaches your laptop's memo by event rather than the ten-minute backstop - but it fired on
+  ANY batch, and a batch of posts cannot carry a dial. Entry services ride in the clear, so
+  the gate now reports whether a general-private entry was actually STORED
+  (`IngestOutcome.ledger_moved`, retiring the bare `(u64, u64)` return), and the celebrity's
+  post-heavy ingests stop triggering full memo rewrites at all. The cross-device dial probe
+  still passes, which is the gate proven from the letting-through side.
+
+What remained of the original plan: the F rows a genuine refresh still writes now land as
+chunked multi-row upserts (the fanout pattern, 150 rows a statement). The lesson worth the
+ink is the shape of the whole exchange: both megabyte strings were compensation for
+discarding information the code already held - a stamp it had just written, a delta it had
+just computed - and the performance fix was remembering, not optimizing.

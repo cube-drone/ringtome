@@ -232,7 +232,8 @@ pub fn read_journal(path: &Path) -> Result<Vec<Vec<u8>>> {
 #[allow(dead_code)] // consumer: the admin rebuild surface (plan-in-hand); exercised by tests today
 pub async fn rebuild_from_journal(db: &Db, root: [u8; 32], path: &Path) -> Result<(u64, u64)> {
     let raw = read_journal(path)?;
-    crate::net::sync::ingest_batch(db, root, raw, true).await
+    let outcome = crate::net::sync::ingest_batch(db, root, raw, true).await?;
+    Ok((outcome.received, outcome.rejected))
 }
 
 #[cfg(test)]

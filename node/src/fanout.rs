@@ -338,30 +338,28 @@ async fn retract_vanished(state: &AppState, author_root: &str) -> Result<u64> {
 /// not history (the posts still exist on the author's shelf; a re-follow backfills them
 /// right back), so deletion loses nothing anyone owns.
 ///
-/// `followed` is the CURRENT eager set; own rows are exempt (your posts are in your feed
-/// because you are hosted here, not because you follow yourself).
+/// `unfollowed` is the DELTA - the authors who just crossed out of the eager set - because
+/// the subscription rewrite is the one place that knows it, and the delta is almost always
+/// one name. The old form took the whole eager set and deleted its complement (a NOT IN
+/// literal that grew with the follow count and re-parsed per call); rows for never-followed
+/// authors don't exist to need that healing - journaling only ever writes for eager
+/// followers, and the journal is disposable besides. Own rows stay exempt (your posts are
+/// in your feed because you are hosted here, not because you follow yourself).
 pub async fn excise_unfollowed(
     state: &AppState,
     reader_root: &str,
-    followed: &[String],
+    unfollowed: &[String],
 ) -> Result<()> {
-    let quoted: Vec<String> = followed
-        .iter()
-        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
-        .map(|r| format!("'{r}'"))
-        .collect();
-    state
-        .node_db
-        .execute(
-            &format!(
-                "DELETE FROM feed_journal WHERE reader_root = ?1 AND author_root != ?1
-                 AND author_root NOT IN ({})",
-                if quoted.is_empty() { "''".into() } else { quoted.join(",") }
-            ),
-            (reader_root,),
-        )
-        .await
-        .context("excising unfollowed authors from the feed journal")?;
+    for author in unfollowed.iter().filter(|a| *a != reader_root) {
+        state
+            .node_db
+            .execute(
+                "DELETE FROM feed_journal WHERE reader_root = ?1 AND author_root = ?2",
+                (reader_root, author.as_str()),
+            )
+            .await
+            .context("excising an unfollowed author from the feed journal")?;
+    }
     Ok(())
 }
 
