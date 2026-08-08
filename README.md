@@ -22,6 +22,11 @@ federated, unapologetically Old Internet.
 - [`HISTORY.md`](HISTORY.md) — the delivery log: what shipped when, with status notes and
   residuals as recorded at the time. New work appends at the bottom in full detail; when the tail
   grows unwieldy it is folded into the era narrative above it. Read the tail for recent status.
+- [`history/`](history/) — extracted investigation logs. When one thread runs long enough that
+  folding it would cost the story (the entries only make sense in sequence), it moves here whole
+  and HISTORY keeps a pointer entry in its place. First of these:
+  [`history/2026-08-popularity-problems.md`](history/2026-08-popularity-problems.md), the
+  50k-follow audit and its two days of consequences.
 - [`NOTES_APP.md`](NOTES_APP.md) — the first application spec: multi-device encrypted notes on
   the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
   Also the discovery narrative for the file layer, versioned documents, and taxonomies — the
