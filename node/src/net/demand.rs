@@ -53,14 +53,20 @@ pub async fn record_ask(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Resu
 /// in the schema comment and NEXT_STEPS (Popularity Problems); this bounds the DIALS.
 const ASK_FRESHNESS_MS: i64 = 7 * 24 * 3600 * 1000;
 
-/// Every node that asked about this persona recently - the fan-out address list.
-pub async fn askers_of(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
+/// The `limit` most-recently-asking nodes for this persona - the fan-out address list.
+///
+/// Most-recent-first under a cap is a free round-robin, not a fixed clique: a node that got
+/// the push stays fresh, stops dialing, and its row ages DOWN this ordering, while a node
+/// past the cap goes stale, pulls on its own wake pass, and the pull re-stamps it back to
+/// the top. Successive moves sweep the whole asker set with no rotation bookkeeping - the
+/// ordering key advances BECAUSE delivery succeeded, on the other side of the wire.
+pub async fn askers_of(node_db: &Db, root_hex: &str, limit: i64) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(
             "SELECT endpoint_id FROM identity_demand
              WHERE root_pubkey = ?1 AND last_asked_ms > ?2
-             ORDER BY last_asked_ms DESC",
-            (root_hex, now_ms() - ASK_FRESHNESS_MS),
+             ORDER BY last_asked_ms DESC LIMIT ?3",
+            (root_hex, now_ms() - ASK_FRESHNESS_MS, limit),
         )
         .await
         .context("reading demand")?;

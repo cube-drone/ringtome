@@ -28,6 +28,11 @@ use crate::clock::now_ms;
 use crate::db::Db;
 use crate::AppState;
 
+/// Asker candidates per healing attempt. Wider than the push's dial cap on purpose: healing
+/// wants breadth (any one candidate holding the bytes ends the walk - the loop below exits
+/// at whole), and the backoff ladder already paces how often a stubborn persona retries.
+const ASKER_CANDIDATE_CAP: i64 = 64;
+
 /// Replace one persona's ledger rows with the freshly computed missing set. Called by the
 /// body walk after every attempt, with whatever is STILL absent - so satisfied rows clear on
 /// arrival regardless of which path the bytes took, and rows whose documents vanished
@@ -101,7 +106,8 @@ pub async fn sweep(state: AppState) -> Result<()> {
         if let Some(via) = crate::idface::fetched_via(&state.node_db, &root).await? {
             candidates.push(via);
         }
-        for asker in crate::net::demand::askers_of(&state.node_db, &root).await? {
+        for asker in crate::net::demand::askers_of(&state.node_db, &root, ASKER_CANDIDATE_CAP).await?
+        {
             if !candidates.contains(&asker) {
                 candidates.push(asker);
             }

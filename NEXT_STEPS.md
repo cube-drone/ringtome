@@ -104,9 +104,9 @@ axis, none on the follow-list axis. The steps, roughly worst-first:
 
 * Fan-out journaling: batch `feed_journal` inserts (multi-row VALUES via `params_from_iter`,
   chunked under the bind limit) instead of one awaited INSERT per (reader × post) — `fanout.rs`
-* Author-side push bounds: `sync_peers` dials sequentially with no concurrency, cap, or timeout
-  budget (the follower side got a cap of 8; the author side got none). `askers_of` now has a
-  7-day freshness window; a hard cap on dials-per-move belongs with the concurrency work.
+* Author-side push polish: dials within the per-move cap (16, rotating via ask recency) are
+  still sequential in `sync_peers` — worst case is cap × dial-timeout in a background task.
+  Concurrent dialing (`buffer_unordered`) when that's measured to matter.
 * `identity_demand` retention — the table never prunes (`identity_peers` prunes at 7 days);
   the wake pass's re-ask makes aggressive pruning safe, and the read side already windows
 * Per-collection read path for the private view: `materialize_service` folds the whole store

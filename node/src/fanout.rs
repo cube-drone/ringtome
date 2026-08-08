@@ -23,6 +23,16 @@ use anyhow::{Context, Result};
 use crate::clock::now_ms;
 use crate::AppState;
 
+/// Dials per public move. Everyone past the cap learns by their own wake pass - "pushes are
+/// latency; the pull on re-contact is correctness" (HISTORY 2026-08-07) - and the recency
+/// rotation in `demand::askers_of` means the NEXT move pushes to different nodes, so a cap
+/// costs a popular persona's quieter followers promptness, never data. The follower side
+/// paces itself at 8 pulls per beat (`idface::FOLLOW_REFRESH_CAP`); this is the author
+/// side's same-order-of-politeness number. It also bounds the sequential dial loop's worst
+/// case to cap x dial-timeout in a background task, which is what demoted concurrent
+/// dialing from prerequisite to polish (NEXT_STEPS, Popularity Problems).
+const PUSH_DIAL_CAP: i64 = 16;
+
 /// A persona's public frontier moved on this node. Journal it for local readers, and - if the
 /// persona is ours to speak for - push it to the nodes that have asked about them.
 ///
@@ -263,7 +273,8 @@ pub async fn excise_unfollowed(
 /// The persona's own devices are excluded: the eager loop already keeps them current on its
 /// own debounce, and dialing them twice buys nothing but a no-op exchange.
 async fn push_to_askers(state: &AppState, root_hex: &str) {
-    let askers = match crate::net::demand::askers_of(&state.node_db, root_hex).await {
+    let askers = match crate::net::demand::askers_of(&state.node_db, root_hex, PUSH_DIAL_CAP).await
+    {
         Ok(a) => a,
         Err(e) => {
             tracing::debug!(error = ?e, "reading demand for fanout failed");
