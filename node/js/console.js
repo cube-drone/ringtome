@@ -5,6 +5,7 @@ import { h } from 'preact';
 import htm from 'htm';
 
 import { APPS, appLabel } from './pure/apps.js';
+import { tileLabel } from './pure/tilelabel.js';
 import { iconFor } from './icons.js';
 
 const html = htm.bind(h);
@@ -24,15 +25,19 @@ function chunk(arr, n) {
 // One hexagon: three nested clipped layers make the double border - the outer carries the dark
 // ring, the middle the lighter ring, the face the surface and content.
 function Hex(app, key, onLaunch, personaName) {
-    // Tiles show the first 10 characters only - a long persona name would otherwise run off the
-    // diagonal and clip against the hexagon. The full name still lives in the header and tooltips.
+    // A long name SHRINKS rather than being cut - the rule and its calibration live in
+    // pure/tilelabel.js. The full name still lives in the header and the tooltip either way.
     const label = appLabel(app, personaName) || '';
-    const shown = label.length > 11 ? label.slice(0, 11) + '…' : label;
+    const { text, scale } = tileLabel(label);
     const content = app.blank
         ? ''
         : html`
               <span class="app-tile-icon"><${iconFor(app)} /></span>
-              <span class="app-tile-name" title=${label}>${shown}</span>
+              <span
+                  class="app-tile-name"
+                  title=${label}
+                  style=${scale === 1 ? undefined : `font-size: ${scale}rem`}
+              >${text}</span>
           `;
     const stack = html`<span class="hex-mid"><span class="hex-face">${content}</span></span>`;
     const cls = `app-tile${app.blank ? ' blank' : ''}`;

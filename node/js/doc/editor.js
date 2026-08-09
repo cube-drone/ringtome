@@ -166,7 +166,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
     // The effective mode: the user's pick if the format still offers it, else the format's
     // default (a marquee doc opens interactive; converting it to plaintext clamps an
     // interactive/side pick back to the plain textarea). The app narrows the offered modes
-    // (Recipes offers only interactive); if its list leaves nothing for this format, fall back
+    // (the Feed drops the read tab); if its list leaves nothing for this format, fall back
     // to the format's full set rather than trapping the doc.
     const available = editorModes(format, feat.modes);
     const mode =

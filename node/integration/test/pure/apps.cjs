@@ -137,7 +137,7 @@ describe('app registry', () => {
             const orphan = { buckets: [] };
             assert.equal(bucketHolds(orphan, notes(), DEFAULT_STYLE), false);
             assert.equal(bucketHolds(orphan, journal(), 'journal'), false);
-            assert.equal(bucketHolds(orphan, appById('all'), undefined), true);
+            assert.equal(bucketHolds(orphan, appById('lost-found'), undefined), true);
         });
 
         it('is safe on a missing document or app', () => {
@@ -146,7 +146,7 @@ describe('app registry', () => {
         });
 
         it('the everything-view holds every document, filed or not', () => {
-            const all = appById('all');
+            const all = appById('lost-found');
             assert.equal(all.everything, true, 'the registry carries the flag');
             assert.equal(bucketHolds({ buckets: ['journal'] }, all, undefined), true);
             assert.equal(bucketHolds({ buckets: [] }, all, undefined), true);
@@ -161,9 +161,9 @@ describe('app registry', () => {
         });
 
         it('routes the unbucketed HOME to the everything-view, the unknown to the default app', () => {
-            assert.equal(homeAppFor({ buckets: [] }, []).id, 'all',
+            assert.equal(homeAppFor({ buckets: [] }, []).id, 'lost-found',
                 'nothing else holds a stray anymore');
-            assert.equal(homeAppFor({}, []).id, 'all');
+            assert.equal(homeAppFor({}, []).id, 'lost-found');
             assert.equal(homeAppFor({ buckets: ['mystery'] }, []).id, 'notes',
                 'an unregistered bucket still resolves to the default type');
         });

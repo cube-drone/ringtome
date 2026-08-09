@@ -212,7 +212,7 @@ const Inside = ({ session }) => {
     const showSearch = !!(appHere && (appHere.style || appHere.everything) && appHere.searchable !== false);
     const [query, setQuery] = useState('');
     // The kind dial rides the search state's lifecycle: chosen beside the box, cleared with
-    // it on app switch - a filter you set in Recipes shouldn't silently empty TurboNotes.
+    // it on app switch - a filter you set in the Journal shouldn't silently empty TurboNotes.
     const [searchKind, setSearchKind] = useState('all');
     const appHereId = appHere ? appHere.id : null;
     useEffect(() => {

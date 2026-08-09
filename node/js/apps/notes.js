@@ -1,5 +1,5 @@
-// The documents app: the surface every "documents" application wears (TurboNotes, Recipes), and
-// the everything-app at full stretch - up to four columns, each tuckable. Left to right: the tag
+// The documents app: the surface TurboNotes wears, and Lost & Found with it - up to four
+// columns, each tuckable. Left to right: the tag
 // cloud, the document list (newest-claimed-date first, straight off the live mirror, so another
 // computer's save re-sorts it within seconds and nothing fetches), the tree, and the open
 // document. Which columns appear is the app registry's `features` (pure/apps.js); the document
@@ -8,7 +8,8 @@
 // Everything reusable has moved below this file: the routing/resume/nav spine is doc/docapp.js, the
 // open document is doc/reader.js, the tree is doc/tree.js, the columns are panes.js. What is left
 // here is this app's own arrangement of them - the filters, the list rows, the tag cloud - which is
-// why the Wikibook can wear the same skeleton without importing a line of it.
+// what let Recipes and Wikibook wear the same skeleton before they were folded back into
+// TurboNotes (2026-08-08), and what lets Lost & Found wear it now without importing a line.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
@@ -35,7 +36,7 @@ const when = (ms) => new Date(ms).toLocaleString();
 /// Left/right ARROW KEYS walk the prev/next order - but only while the keyboard is FREE: no
 /// input, textarea, select, or editor focused, no modifier held. While typing, arrows move the
 /// caret, never the page. With no document selected, right opens the order's first document and
-/// left its last - the book falls open at either cover. Exported: the wiki walks the same way.
+/// left its last - the book falls open at either cover. Exported: other surfaces walk the same way.
 export function useArrowNav(nav, order, selected, select) {
     useEffect(() => {
         const onKey = (e) => {
@@ -129,7 +130,7 @@ const Snippet = ({ root, docId, query }) => {
 
 // One row in the list: title, and whatever this app has asked to show beneath it. Everything
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
-// description, no date and no tags is one line tall, which is what Recipes wants.
+// description, no date and no tags is one line tall.
 const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilter, onSelect,
                    onToggleTag, everything, onFollowHome }) => html`<button
     class=${doc.doc_id === selected ? 'note-row selected' : 'note-row'}
@@ -219,7 +220,7 @@ const TagColumn = ({ cloud, active, onToggleTag, onTuck }) => html`<aside class=
     ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('apps.notes.no-tags-yet', 'no tags yet')}</p>`}
 </aside>`;
 
-// The documents app - the shared surface every "documents" application (Notes, Recipes, ...)
+// The documents app - the shared surface a "documents" application (TurboNotes, Lost & Found)
 // currently renders. `app` is its registry entry (id, name, icon, style); the document
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
 // `searchQuery`, not `query` - preact-iso's Router injects its OWN `query` prop (parsed URL search
@@ -243,8 +244,8 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     const hits = useSearch(root, searchQuery);
     const list = orderDocs(docs, { app, bucket, hits, tags: tagFilter, kind: searchKind });
 
-    // The everything-view's follow-me-home: route to the document's OFFICIAL app (first
-    // bucket's type, via the live roster; unbucketed stays home in All) - the deep-link
+    // Lost & Found's follow-me-home: route to the document's OFFICIAL app (first bucket's
+    // type, via the live roster; the unbucketed stay home here) - the deep-link
     // bucket correction picks the right notebook once there, because the doc knows its own.
     const loc = useLocation();
     const roster = useLive(() => (app.everything ? openMirror(root).buckets.toArray() : []), [root]);
@@ -274,7 +275,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // Which order prev/next walks depends on what's showing: with the tree column open they read
     // it as a book (depth-first, and the tree wins when both columns are open); with it tucked or
     // absent they walk the list's time order, where NEXT goes back in time (the list reads
-    // newest-first, so next is simply "down the list" - Recipes always walks this way). A document
+    // newest-first, so next is simply "down the list" - a tucked tree always walks this way). A document
     // missing from the tree (unfiled) falls back to the list rather than stranding the arrows.
     const listOrder = list.map((d) => d.doc_id);
     const treeShowing = feat.tree && !tucked.has('tree');

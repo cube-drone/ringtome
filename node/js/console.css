@@ -121,7 +121,12 @@
 
 /* The name: a horizontal nameplate strip in the lower third, filled with the hex-background
    colour and laid OVER everything else (the diagonal fill and the icon), so the name always reads
-   cleanly. Clipped to the hexagon by the face, so it stays within the border. */
+   cleanly. Clipped to the hexagon by the face, so it stays within the border.
+
+   The 1rem here is the FULL size, and a long name overrides it inline with something smaller
+   (pure/tilelabel.js): the strip is a fixed budget, so the type shrinks to stay inside it rather
+   than overflowing or being cut. Keep this in rem - the inline override is rem too, so the two
+   cannot compound. */
 .app-tile-name {
     position: absolute;
     left: 0;

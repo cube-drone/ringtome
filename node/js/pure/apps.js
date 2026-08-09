@@ -101,20 +101,27 @@ export const APPS = [
         },
     },
     {
-        id: 'all',
-        name: 'All',
-        icon: 'all',
+        id: 'lost-found',
+        name: 'Lost & Found',
+        icon: 'lostFound',
         live: true,
-        // The everything-view: every document from every notebook, PLUS the unbucketed - the
-        // one surface where nothing can be orphaned out of sight (a repudiation striking a
-        // bucket's definition relocates its documents; this is where they remain findable).
+        // Every PRIVATE document, from every notebook, plus the unbucketed - the one surface
+        // where nothing can be orphaned out of sight (a repudiation striking a bucket's
+        // definition relocates its documents; this is where they remain findable).
+        //
+        // Named for what you come here to DO rather than what it holds, which is the honest
+        // trade: most of what is listed is filed and perfectly happy in its own notebook, and
+        // only the strays are genuinely lost. It was "All" until 2026-08-08, and that name told
+        // two lies at once - it is not everything (public posts live on the feed, not here) and
+        // nobody ever went looking for "all". It is emphatically NOT a trash can: a deleted
+        // document is tombstoned out of every list and search, including this one.
         // No `style` on purpose: it owns no bucket type, mints no implicit bucket, and the
         // bucket switcher never shows. A browsing surface: rows carry their bucket names and
         // a follow-me-home button to each document's own app; creation stays with the real
-        // apps. Its URLs live under /all and never re-dress into cozy bucket addresses -
-        // one document shows in many places, but an /all link means the everything-view.
+        // apps. Its URLs live under /lost-found and never re-dress into cozy bucket addresses -
+        // one document shows in many places, but a /lost-found link means this surface.
         everything: true,
-        bucketNoun: 'Archive',
+        bucketNoun: 'Lost & Found',
         itemNoun: 'file',
     },
     { blank: true },
@@ -128,7 +135,7 @@ const DEFAULT_FEATURES = {
     date: true, // the claimed date/time annotation
     description: true, // the description annotation
     tagColumn: false, // a sidebar listing every tag by frequency
-    tree: false, // the wiki tree pane (doc/tree.js), right of the list
+    tree: false, // the document tree pane (doc/tree.js), right of the list
     pin: true, // the pin chip - floats the doc atop the LIST, so list-less apps drop it
 };
 
@@ -207,14 +214,14 @@ export function bucketsForApp(app, roster) {
 /// Does this app, showing this bucket, hold that document?
 ///
 /// Membership IS the rule: a document is in view when it's a member of the notebook on screen,
-/// and the everything-view holds everything. The unbucketed live ONLY in the everything-view
+/// and Lost & Found holds every private document. The unbucketed live ONLY in the everything-view
 /// (labeled "unfiled" there) - that surface is the formal home for strays, and it retired the
 /// old catch-all clause that quietly mingled them into TurboNotes' home notebook (settled
-/// 2026-08-01; the default-app clause predated All, when "something has to hold them" had
-/// nowhere better to point).
+/// 2026-08-01; the default-app clause predated this surface, when "something has to hold
+/// them" had nowhere better to point).
 export function bucketHolds(doc, app, bucket) {
     if (!doc || !app) return false; // nothing holds a document that isn't there
-    if (app.everything) return true; // the everything-view: all notebooks, plus the unbucketed
+    if (app.everything) return true; // Lost & Found: every notebook, plus the unbucketed
     return (doc.buckets || []).includes(bucket);
 }
 
@@ -230,10 +237,10 @@ export const appForStyle = (style) =>
     liveApps.find((a) => a.style === DEFAULT_STYLE);
 
 /// A document's OFFICIAL home: the app that opens its first bucket (resolved through the
-/// roster) - and the unbucketed's official home IS the everything-view, since nothing else
-/// holds them anymore. What the follow-me-home button navigates to; the router's deep-link
+/// roster) - and the unbucketed's official home IS Lost & Found, since nothing else holds
+/// them anymore. What the follow-me-home button navigates to; the router's deep-link
 /// correction then picks the right notebook, because the document knows which buckets hold it.
 export const homeAppFor = (doc, roster) => {
     const first = ((doc && doc.buckets) || [])[0];
-    return first ? appForStyle(appTypeOf(first, roster)) : appById('all');
+    return first ? appForStyle(appTypeOf(first, roster)) : appById('lost-found');
 };

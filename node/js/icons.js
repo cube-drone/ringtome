@@ -5,7 +5,7 @@
 // `<${Icons.pin} />` comes out duotone, in `currentColor`, sized to its container's font
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
-    Folders,
+    Archive,
     Funnel,
     Path,
     NotePencil,
@@ -126,8 +126,9 @@ export const Icons = {
     link: LinkSimple,
     // the search-options dropdown (the funnel beside the search box)
     filter: Funnel,
-    // the everything-view (All Documents): the app tile, and follow-me-home on each row
-    all: Folders,
+    // Lost & Found: the app tile, and follow-me-home on each row. A lidded crate - the
+    // lost-property box, not a filing cabinet, because you come here having mislaid something.
+    lostFound: Archive,
     people: UsersThree,
     feed: Megaphone,
     // the People table's vocabulary: signal bars for the graded dials, and the rest

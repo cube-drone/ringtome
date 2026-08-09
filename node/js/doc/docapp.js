@@ -1,5 +1,5 @@
 // What makes something a documents app: its documents, which one is open, where it resumes, and
-// how you walk between them. TurboNotes/Recipes (apps/notes.js) and the Wikibook (apps/wiki.js)
+// how you walk between them. TurboNotes and Lost & Found (apps/notes.js)
 // both ran this spine, in ~80 lines of plumbing that had drifted into two slightly different
 // copies - one of them missing the unbucketed catch-all. The renders stay in the apps, which is
 // the point: they are honestly different surfaces over the same skeleton.

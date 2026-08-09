@@ -78,11 +78,11 @@ for (let i = 0; i < 3; i++) {
     console.log('dial:', dial().textContent.trim(), '->', JSON.stringify(titles()), 'tree:', JSON.stringify(tree()));
 }
 
-// --- The everything-view: file the image into a journal-typed bucket, then browse /home/all.
+// --- The everything-view: file the image into a journal-typed bucket, then browse /home/lost-found.
 await s.fetch(`/api/identity/${root}/buckets`, { method: 'POST', headers: J, body: JSON.stringify({ name: 'shots', app: 'journal' }) });
 await s.fetch(`/api/identity/${root}/docs/${queued.doc_id}/buckets/shots`, { method: 'PUT', headers: J });
 click(dom.window, [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'All'));
-await waitFor(doc, () => dom.window.location.pathname === '/home/all' && doc.querySelectorAll('.note-row').length >= 2, 'the everything-view');
+await waitFor(doc, () => dom.window.location.pathname === '/home/lost-found' && doc.querySelectorAll('.note-row').length >= 2, 'Lost & Found');
 await sleep(500);
 const allRows = [...doc.querySelectorAll('.note-row')].map((r) => ({
     title: r.querySelector('.note-row-title-text').textContent.trim(),
