@@ -8,6 +8,10 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ## Near-Term Goals
 
+### Accessibility
+* Localization
+* Blind users
+
 ### Private Notes
 
 * Import/export bucket or whole persona
