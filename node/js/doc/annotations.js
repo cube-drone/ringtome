@@ -15,6 +15,7 @@ import { api } from '../net.js';
 import { useShadowValue } from '../shadow.js';
 import { openMirror, useLive } from '../mirror.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -138,7 +139,7 @@ export const Annotations = ({ root, docId, features }) => {
         <div class="annotations">
             ${showDate &&
             html`<div class="annot-row">
-                <label class="annot-label" title="the date and time this document should be filed and sorted under - your claim, authoritative over the real save date">date</label>
+                <label class="annot-label" title=${t('doc.annotations.the-date-and-time-this', 'the date and time this document should be filed and sorted under - your claim, authoritative over the real save date')}>${t('doc.annotations.date', 'date')}</label>
                 <input
                     class="annot-date"
                     type="date"
@@ -153,7 +154,7 @@ export const Annotations = ({ root, docId, features }) => {
                     onInput=${claimed.onTime}
                     onBlur=${claimed.flush}
                     disabled=${!claimed.date}
-                    title=${claimed.date ? 'time (optional)' : 'set a date first'}
+                    title=${claimed.date ? t('doc.annotations.time-optional', 'time (optional)') : t('doc.annotations.set-a-date-first', 'set a date first')}
                 />
             </div>`}
             <div class="annot-tags">
@@ -162,14 +163,14 @@ export const Annotations = ({ root, docId, features }) => {
                         ${t}
                         <button
                             class="annot-tag-x"
-                            title="remove tag"
+                            title=${t('doc.annotations.remove-tag', 'remove tag')}
                             onClick=${() => removeTag(t)}
                         >×</button>
                     </span>`
                 )}
                 <input
                     class="annot-tag-input"
-                    placeholder="+ tag"
+                    placeholder=${t('doc.annotations.tag', '+ tag')}
                     value=${tagInput}
                     onInput=${(e) => setTagInput(e.currentTarget.value)}
                     onKeyDown=${(e) => {
@@ -184,7 +185,7 @@ export const Annotations = ({ root, docId, features }) => {
             ${showDesc &&
             html`<textarea
                 class="annot-desc"
-                placeholder="a short description (optional)"
+                placeholder=${t('doc.annotations.a-short-description-optional', 'a short description (optional)')}
                 value=${desc.value}
                 onInput=${desc.onInput}
                 onBlur=${desc.flush}

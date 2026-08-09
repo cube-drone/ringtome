@@ -29,6 +29,7 @@ import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
 import { useTurbolinks } from './doc/turbolinks.js';
 import { PersonBanner } from './person.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -42,7 +43,7 @@ export const LockButton = ({ onUnlocked }) => {
     return html`
         <button
             class=${unlocking ? 'journal-lock unlocking' : 'journal-lock'}
-            title="Posted - click, then wait 15 seconds, to edit this again"
+            title=${t('postentry.posted---click-then-wait', 'Posted - click, then wait 15 seconds, to edit this again')}
             onClick=${() => setUnlocking(true)}
             disabled=${unlocking}
         >
@@ -79,12 +80,12 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
                     return html`<div class="feed-composer-foot">
                         <${StatusDot} status=${status} />
                         <span class="feed-note">
-                            posting is public - anyone with your address can read it
+                            ${t('postentry.posting-is-public---anyone', 'posting is public - anyone with your address can read it')}
                         </span>
                         <button
                             class="feed-post"
                             disabled=${posting || empty}
-                            title=${empty ? 'write something first' : 'publish these words'}
+                            title=${empty ? t('postentry.write-something-first', 'write something first') : t('postentry.publish-these-words', 'publish these words')}
                             onClick=${async () => {
                                 await save(); // the post publishes what is SAVED, so flush first
                                 // The words ride along: whoever clicked already HAS them, and
@@ -92,7 +93,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
                                 // server for what they just typed.
                                 onPost({ title, body });
                             }}
-                        >${posting ? 'posting…' : published ? 'post the changes' : 'post'}</button>
+                        >${posting ? t('postentry.posting', 'posting…') : published ? t('postentry.post-the-changes', 'post the changes') : t('postentry.post', 'post')}</button>
                     </div>`;
                 }}
             />
@@ -140,10 +141,10 @@ export const BakeModal = ({ items }) => {
     return html`
         <div class="bake-modal-backdrop">
             <div class="bake-modal">
-                <p class="bake-modal-head">preparing media for the network…</p>
+                <p class="bake-modal-head">${t('postentry.preparing-media-for-the-network', 'preparing media for the network…')}</p>
                 ${items.map(
                     (i) => html`<div class="bake-item" key=${i.source}>
-                        <span class="bake-item-kind">${i.kind === 'external' ? 'fetching' : 'yours'}</span>
+                        <span class="bake-item-kind">${i.kind === 'external' ? t('postentry.fetching', 'fetching') : t('postentry.yours', 'yours')}</span>
                         <span class="bake-item-source" title=${i.source}>
                             ${i.source.replace(/^https?:\/\//, '').slice(0, 48)}
                         </span>
@@ -156,9 +157,9 @@ export const BakeModal = ({ items }) => {
                                   : 'bake-item-status bake-item-busy'}
                         >
                             ${i.status === 'ready'
-                                ? 'ready'
-                                : i.status === 'failed'
-                                  ? i.error || 'failed'
+                                ? t('postentry.ready', 'ready')
+                                : i.status === t('postentry.failed', 'failed')
+                                  ? i.error || t('postentry.failed-2', 'failed')
                                   : i.progress != null
                                     ? `processing ${i.progress}%`
                                     : i.status}
@@ -313,7 +314,7 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
                 }}
                 actions=${html`<span class="feed-entry-when">${when}</span>
                     ${!item.seen &&
-                    html`<span class="feed-entry-new" title="you haven't seen this yet"></span>`}
+                    html`<span class="feed-entry-new" title=${t('postentry.you-havent-seen-this-yet', "you haven't seen this yet")}></span>`}
                     ${editing &&
                     !open &&
                     (editing.locked
@@ -325,9 +326,9 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
                           />`
                         : html`<button
                               class="feed-edit"
-                              title="open this for editing"
+                              title=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
-                          >edit</button>`)}`}
+                          >${t('postentry.edit', 'edit')}</button>`)}`}
             />
             ${!open &&
             !!title &&
@@ -353,8 +354,7 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
                 : html`${shownBody === undefined && html`<p class="null-sub">…</p>`}
                       ${shownBody === null &&
                       html`<p class="null-sub">
-                          <span class="waiting-dot"></span> these words haven't reached this
-                          computer.
+                          <span class="waiting-dot"></span> ${t('postentry.these-words-havent-reached-this', "these words haven't reached this computer.")}
                       </p>`}
                       ${!!shownBody &&
                       html`<div class="feed-entry-body">
@@ -368,13 +368,13 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
                           ${cut &&
                           !wholeThing &&
                           html`<button class="feed-entry-more" onClick=${() => setWholeThing(true)}>
-                              the whole thing
+                              ${t('postentry.the-whole-thing', 'the whole thing')}
                           </button>`}
                       </div>`}`}
             ${!open &&
             !title &&
             html`<p class="feed-entry-foot">
-                <a href=${href}>from ${item.author_name || 'someone'}'s page</a>
+                <a href=${href}>${t('postentry.from', 'from')} ${item.author_name || t('postentry.someone', 'someone')}${t('postentry.s-page', "'s page")}</a>
             </p>`}
         </article>
     `;

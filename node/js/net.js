@@ -12,6 +12,7 @@
 //
 // `options` passes through to fetch untouched, which is how `doc/session.js` sets `keepalive` on
 // the unload path (see pure/keepalive.js for why that flag is conditional).
+import { t } from './i18n.js';
 
 export async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -26,7 +27,16 @@ export async function api(path, options = {}) {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-        const err = new Error(body.message || `request failed (${res.status})`);
+        // The server's prose is translated HERE, once, rather than at each of the fifteen places
+        // that display it - so every existing `setError(e.message)` shows the reader's own
+        // language without knowing anything changed. `key` is the catalog key and `params` the
+        // values that filled the sentence's holes (error.rs); with no catalog entry, `message` is
+        // the server's already-formatted English and nothing is lost.
+        const err = new Error(
+            body.key
+                ? t(body.key, body.message || '', body.params)
+                : body.message || `request failed (${res.status})`,
+        );
         err.status = res.status;
         // The server's structural discriminator, when it sent one (error.rs `code`). One code
         // matters enough to announce globally: "revoked-signer" means this computer is no

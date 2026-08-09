@@ -3410,3 +3410,73 @@ Also deleted on the way past: a new test that turned out to duplicate
 `empty_db_under_a_nonempty_journal_replays_on_open` outright. That coverage already existed;
 what changed is what it guards, so the note went into its doc comment instead of into a
 second copy.
+
+## 2026-08-08 — every word the app says, behind one key
+
+The app's copy became addressable. 277 interface phrases and 94 server errors now pass through
+`t(key, seed)` and `msg!(code, seed)` respectively, and `js/locales/en.js` is the authoritative
+English catalog: grouped by the screen each phrase appears on, the file to read when you want to
+hear the house voice all at once, the file to EDIT to change what the app says, and the file a
+translator copies to start a language. `just strings-check` (in `ci`) fails when it is out of step
+with the source, when a seed disagrees with it, when two phrases share a key, or when copy reaches
+a person without going through `t` — so new words cannot land silently, which was the whole point.
+
+The last of those took a second pass to get right. The first cut made the call-site string the
+English and left `en.js` generated and unread, which Curtis named as a category error: "default"
+means *what you reach when a lookup fails*, not *the English locale*, and conflating them leaves
+`en-GB` — and any copy edit that shouldn't touch code — with nowhere to live. The runtime turned
+out to already be correct (a registered `en` table beats the call-site string exactly the way `fr`
+does); what was wrong was that the generated catalog wasn't wired in, and the comments said so
+proudly. So `en.js` is now loaded and outranks the seeds, and `just strings` syncs BOTH ways: a key
+the catalog has never seen is added from its seed, a retired key is dropped and named in the
+output, and every seed is rewritten to agree with the catalog. New copy flows code → catalog once;
+every edit after that flows catalog → code. Without that write-back the seeds would quietly rot
+into stale documentation, which is the only thing they are for.
+
+The starting question was a voice map, not localization. The first attempt answered it literally:
+a generated `VOICE.md` listing every extractable string, call sites untouched. It was the wrong
+artifact, and the giveaway was its own keys — `file:line`, which move on every edit above them, so
+the claim that it "bootstraps a catalog later" was false. The reading surface and the translation
+catalog are the same artifact; building the report was building half the tool and throwing away
+the half that makes it load-bearing. `t(key, default)` — Curtis's call — keeps the English at the
+call site (so a screen still reads as prose) while the key survives rewording, which is the thing
+English-as-key cannot do.
+
+**Two-thirds of the work was finding the words, not moving them.** 112 of the 402 phrases are
+written in Rust: `AppError` prose that `net.js` lifts onto an `Error` and fifteen `setError(e.message)`
+sites render verbatim. Any tool that read only the UI would have shown a third of the app and
+looked complete. `AppError` variants now carry a `UserMessage` (code, formatted English, and the
+params kept SEPARATE so another language can reorder them); `net.js` translates once, at the point
+the `Error` is built, so every existing display site shows the reader's language without knowing
+anything changed. `error.rs`'s `code` stayed exactly what it was — the structural discriminator the
+revoked-signer farewell branches on — and the catalog key rides beside it, because "which failure
+is this" and "which sentence is this" are different questions.
+
+The migration is a codemod, which is why three wrong turns cost re-runs instead of rework. What it
+taught, in the order it hurt:
+
+* **Position is what separates voice from machinery.** `${busy ? 'bringing your things across…' :
+  'become me here'}` is prose; `class=${kind === 'all' ? 'search-opts-btn' : '…'}` is not. Same
+  syntax — the only difference is whether the hole landed in a text node or an attribute. The first
+  pass collapsed interpolations and silently dropped 46 real phrases, including both branches of
+  idpage.js's "none of the computers its address points at answered."
+* **Idempotency is correctness, not tidiness.** Run two found the English sitting inside the `t()`
+  wrapped by run one and wrapped it again, making the outer call's key the inner call's text.
+  Existing `t(...)` spans are now blanked before the choice scanner reads an expression, and
+  "migrate twice, second run reports zero" is how the codemod is tested.
+* **rustfmt's trailing comma hid the longest messages.** A pattern anchored without `,?$` skipped
+  exactly the constructions long enough to be broken across lines — which are the wordiest, most
+  user-visible ones. Two dozen of them.
+* `let USERNAME_MIN = &value` does not bind: an ALL-CAPS name in a `let` pattern is read as a
+  constant pattern, so `msg!` stopped compiling at precisely the call sites naming a constant. The
+  macro now evaluates its arguments twice and says so.
+
+Ten server errors carried positional `{}` holes that no codemod can map to their arguments; those
+were converted by hand, so all 94 have named parameters and none is stuck half-translatable.
+`locales/` is exempt from the purity cop — generated word tables are data, and pure/ owes test
+vectors. Left on the ledger: sentences split by an inline element are catalogued as fragments,
+which reads fine in English and fights a translator (REFACTOR.md).
+
+Gates: `ui-check` (352 passing), `check`, `lint`, `test-unit` (321 passing), `strings-check` all
+green. `integration` not run — it is machine-wide by design and the dev network's state was
+unknown.

@@ -61,20 +61,20 @@ pub fn unpack<T: serde::de::DeserializeOwned>(code: &str, what: &str) -> Result<
         use std::io::Read as _;
         let deflated = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(b64.trim())
-            .map_err(|_| AppError::BadRequest(format!("unreadable {what}")))?;
+            .map_err(|_| AppError::BadRequest(crate::msg!("identity.adoption.unreadable-what", "unreadable {what}", what = what)))?;
         let mut out = Vec::new();
         // A code is ~1 KiB; anything decompressing past this is not a code.
         flate2::read::DeflateDecoder::new(&deflated[..])
             .take(64 * 1024)
             .read_to_end(&mut out)
-            .map_err(|_| AppError::BadRequest(format!("unreadable {what}")))?;
+            .map_err(|_| AppError::BadRequest(crate::msg!("identity.adoption.unreadable-what-2", "unreadable {what}", what = what)))?;
         out
     } else if code.starts_with('{') {
         code.as_bytes().to_vec()
     } else {
-        return Err(AppError::BadRequest(format!("unreadable {what}")));
+        return Err(AppError::BadRequest(crate::msg!("identity.adoption.unreadable-what-3", "unreadable {what}", what = what)));
     };
-    serde_json::from_slice(&json).map_err(|_| AppError::BadRequest(format!("unreadable {what}")))
+    serde_json::from_slice(&json).map_err(|_| AppError::BadRequest(crate::msg!("identity.adoption.unreadable-what-4", "unreadable {what}", what = what)))
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -186,7 +186,7 @@ pub async fn authorize_node(
     code: RequestCode,
 ) -> Result<GrantCode, AppError> {
     if code.kind != REQUEST_KIND {
-        return Err(AppError::BadRequest("not an adoption request code".into()));
+        return Err(AppError::BadRequest(crate::msg!("identity.adoption.not-an-adoption-request-code", "not an adoption request code")));
     }
     // Refuse self-adoption HERE, before any tree pollution: granting a request minted by this
     // very node would authorize a stray leaf and then die at completion's sync (iroh refuses
@@ -194,12 +194,9 @@ pub async fn authorize_node(
     // persona to a computer that doesn't have it; a second account on THIS node joining the
     // same persona is a different, future mechanism (account linking - no new keys, no sync).
     if code.endpoint_id == state.endpoint.id().to_string() {
-        return Err(AppError::BadRequest(
-            "that request code comes from this very computer - it is already this persona. \
+        return Err(AppError::BadRequest(crate::msg!("identity.adoption.that-request-code-comes-from", "that request code comes from this very computer - it is already this persona. \
              Adoption brings a persona to a NEW computer; run \"bring your persona\" there \
-             instead."
-                .into(),
-        ));
+             instead.")));
     }
     super::require_owned(&state.node_db, account_id, root_hex).await?;
 
@@ -219,20 +216,15 @@ pub async fn authorize_node(
         .map_err(AppError::Internal)?;
     let tree = crate::record::imaol::load_key_tree(&db, root_hex).await?;
     if tree.status(&leaf) != KeyStatus::Unknown {
-        return Err(AppError::BadRequest(
-            "that key is already in the tree".into(),
-        ));
+        return Err(AppError::BadRequest(crate::msg!("identity.adoption.that-key-is-already-in", "that key is already in the tree")));
     }
     // Any Active member may extend the tree (the M3 root-only trim, un-trimmed 2026-07-24:
     // rank-path growth was always the model - spare-key succession depends on it - and the
     // crown computes the junior stamp now). A node whose own leaf has been revoked cannot
     // grant: its authorize entries would be quarantined anyway, so refuse in words up front.
     if tree.status(&our_leaf) != KeyStatus::Active {
-        return Err(AppError::Forbidden(
-            "this computer's key is no longer active for this persona - it can't invite new \
-             ones."
-                .into(),
-        ));
+        return Err(AppError::Forbidden(crate::msg!("identity.adoption.this-computers-key-is-no", "this computer's key is no longer active for this persona - it can't invite new \
+             ones.")));
     }
 
     // The stamp: everyone who outranks the parent, then the parent, then its prior children -
@@ -331,9 +323,7 @@ pub async fn complete_delivered(state: &AppState, code: GrantCode) -> Result<(),
         if super::leaf_agents_root(&state.node_db, &code.root_pubkey, &code.leaf_pubkey).await? {
             return Ok(());
         }
-        return Err(AppError::NotFound(
-            "no pending adoption for that key".into(),
-        ));
+        return Err(AppError::NotFound(crate::msg!("identity.adoption.no-pending-adoption-for-that", "no pending adoption for that key")));
     };
     let account_uuid = Uuid::parse_str(&account_id)
         .map_err(|e| AppError::Internal(anyhow!("malformed pending account id: {e}")))?;
@@ -346,16 +336,13 @@ pub async fn complete(
     code: GrantCode,
 ) -> Result<super::Identity, AppError> {
     if code.kind != GRANT_KIND {
-        return Err(AppError::BadRequest("not an adoption grant code".into()));
+        return Err(AppError::BadRequest(crate::msg!("identity.adoption.not-an-adoption-grant-code", "not an adoption grant code")));
     }
     // Belt to the grant-side braces: a grant whose addresses point back at this same computer
     // can only end in iroh's self-dial refusal - say so in words instead.
     if code.endpoint_id == state.endpoint.id().to_string() {
-        return Err(AppError::BadRequest(
-            "that invite points back at this very computer - it was granted here. Paste it on \
-             the NEW computer instead."
-                .into(),
-        ));
+        return Err(AppError::BadRequest(crate::msg!("identity.adoption.that-invite-points-back-at", "that invite points back at this very computer - it was granted here. Paste it on \
+             the NEW computer instead.")));
     }
     // The pending leaf must belong to this account (uniform 404 otherwise). One carve-out
     // makes completion IDEMPOTENT: if there is no pending row but this account already agents
@@ -381,9 +368,7 @@ pub async fn complete(
         {
             return Ok(identity);
         }
-        return Err(AppError::NotFound(
-            "no pending adoption for that key".into(),
-        ));
+        return Err(AppError::NotFound(crate::msg!("identity.adoption.no-pending-adoption-for-that-2", "no pending adoption for that key")));
     }
 
     let leaf = pubkey::require(&code.leaf_pubkey, "leaf pubkey in grant code")?;
@@ -478,11 +463,8 @@ pub async fn complete(
         .map_err(AppError::Internal)?;
     let tree = crate::record::imaol::load_key_tree(&db, &code.root_pubkey).await?;
     if tree.status(&leaf) != KeyStatus::Active {
-        return Err(AppError::BadRequest(
-            "our key is not (yet) authorized on the identity chain - paste the request code at \
-             the granting node first"
-                .into(),
-        ));
+        return Err(AppError::BadRequest(crate::msg!("identity.adoption.our-key-is-not-yet", "our key is not (yet) authorized on the identity chain - paste the request code at \
+             the granting node first")));
     }
 
     let created_at_ms = now_ms();

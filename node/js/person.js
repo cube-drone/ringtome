@@ -28,6 +28,7 @@ import { identityAddress, viaHints } from './pure/portable.js';
 import { personaHue, displayNames, signalLevel } from './pure/person.js';
 import { identiconUri } from './pure/identicon.js';
 import { Icons } from './icons.js';
+import { t } from './i18n.js';
 import {
     TRUST_STOPS,
     INTEREST_STOPS,
@@ -233,7 +234,7 @@ export const PersonCard = ({ root, current, profile, children }) => {
             <h1 class="person-card-name">${person.primary}</h1>
             ${person.others.length > 0 &&
             html`<p class="person-card-others">${person.others.join(' · ')}</p>`}
-            ${person.isYou && html`<p class="person-card-others"><a href="/home/persona">this is you</a></p>`}
+            ${person.isYou && html`<p class="person-card-others"><a href="/home/persona">${t('person.this-is-you', 'this is you')}</a></p>`}
             ${children}
             <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} />
             ${/* Your relationship sits above their bio: how you stand with someone is the
@@ -316,12 +317,12 @@ export const AddressRow = ({ root, via, hosted }) => {
     };
     return html`
         <div class="persona-address">
-            <span class="persona-address-label">address</span>
-            <a class="persona-address-value" href=${address} title="see this persona's page">
+            <span class="persona-address-label">${t('person.address', 'address')}</span>
+            <a class="persona-address-value" href=${address} title=${t('person.see-this-personas-page', "see this persona's page")}>
                 <code>${address}</code>
             </a>
             <button class="persona-address-copy" onClick=${copy}>
-                ${copied ? 'copied!' : 'copy'}
+                ${copied ? t('person.copied', 'copied!') : t('person.copy', 'copy')}
             </button>
         </div>
     `;
@@ -366,12 +367,12 @@ const GlancePair = ({ kind, stops, value, what }) => {
 /// relationship that matters is that it's shut.
 export const RelationshipGlance = ({ facts }) => {
     if (facts.blocked === 'yes') {
-        return html`<span class="ledger-glance ledger-glance-blocked" title="blocked">
+        return html`<span class="ledger-glance ledger-glance-blocked" title=${t('person.blocked', 'blocked')}>
             <${Icons.trustPrivate} weight="fill" />
         </span>`;
     }
     if (!facts.trust && !facts.interest && !facts.interest_rebroadcasts) {
-        return html`<span class="ledger-glance ledger-glance-empty">nothing recorded yet</span>`;
+        return html`<span class="ledger-glance ledger-glance-empty">${t('person.nothing-recorded-yet', 'nothing recorded yet')}</span>`;
     }
     return html`<span class="ledger-glance">
         <${GlancePair} kind=${Icons.colTrust} stops=${TRUST_STOPS} value=${facts.trust} what="trust" />
@@ -474,23 +475,22 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
     return html`
         <details class="contact-ledger">
             <summary class="ledger-head">
-                <span class="ledger-title">your relationship</span>
+                <span class="ledger-title">${t('person.your-relationship', 'your relationship')}</span>
                 <${RelationshipGlance} facts=${facts} />
             </summary>
             ${blocked &&
             html`<p class="ledger-note">
-                blocked - nothing of theirs will be shown to you, and nothing of theirs gets
-                through to you.
+                ${t('person.blocked---nothing-of-theirs', 'blocked - nothing of theirs will be shown to you, and nothing of theirs gets through to you.')}
             </p>`}
             <label class="ledger-dial">
                 <span class="ledger-label">
-                    your nickname for them
-                    <small>only you ever see this - it's how they'll appear in your People</small>
+                    ${t('person.your-nickname-for-them', 'your nickname for them')}
+                    <small>${t('person.only-you-ever-see-this', "only you ever see this - it's how they'll appear in your People")}</small>
                 </span>
                 <input
                     class="ledger-nick"
                     type="text"
-                    placeholder="a name of your choosing"
+                    placeholder=${t('person.a-name-of-your-choosing', 'a name of your choosing')}
                     value=${nickDraft !== null ? nickDraft : facts.nickname || ''}
                     onInput=${(e) => setNickDraft(e.currentTarget.value)}
                     onBlur=${commitNick}
@@ -498,7 +498,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 />
             </label>
             <${Dial}
-                label="trust"
+                label=${t('person.trust', 'trust')}
                 hint="not how much you like them - whether you believe they're real"
                 stops=${TRUST_STOPS}
                 value=${facts.trust}
@@ -506,28 +506,27 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             />
             <label class="ledger-dial">
                 <span class="ledger-label">
-                    who can see my trust
-                    <small>sharing your trust information helps the network grow, but gives
-                    up some of your privacy!</small>
+                    ${t('person.who-can-see-my-trust', 'who can see my trust')}
+                    <small>${t('person.sharing-your-trust-information-helps', 'sharing your trust information helps the network grow, but gives up some of your privacy!')}</small>
                 </span>
                 <select
                     class="ledger-select"
                     value=${trustPublic ? 'yes' : 'no'}
                     onChange=${(e) => put('trust_public', e.currentTarget.value)}
                 >
-                    <option value="no">private - just my computers</option>
-                    <option value="yes">public - shared with the network</option>
+                    <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
+                    <option value="yes">${t('person.public---shared-with-the', 'public - shared with the network')}</option>
                 </select>
             </label>
             <${Dial}
-                label="interest"
+                label=${t('person.interest', 'interest')}
                 hint="how much of theirs you want to see"
                 stops=${INTEREST_STOPS}
                 value=${facts.interest}
                 onPick=${(v) => put('interest', v)}
             />
             <${Dial}
-                label="their rebroadcasts"
+                label=${t('person.their-rebroadcasts', 'their rebroadcasts')}
                 hint="things they pass along from others"
                 stops=${INTEREST_STOPS}
                 value=${facts.interest_rebroadcasts}
@@ -538,7 +537,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             <button
                 class=${blocked ? 'ledger-block ledger-blocked' : 'ledger-block'}
                 onClick=${() => put('blocked', blocked ? 'no' : 'yes')}
-            >${blocked ? 'unblock this persona' : 'block this persona'}</button>
+            >${blocked ? t('person.unblock-this-persona', 'unblock this persona') : t('person.block-this-persona', 'block this persona')}</button>
         </details>
     `;
 };

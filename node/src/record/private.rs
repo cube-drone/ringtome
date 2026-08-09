@@ -344,7 +344,7 @@ pub fn encrypt_record(
     let aad = aad_for_service(service_id)?;
     let plaintext = plain
         .encode()
-        .map_err(|e| AppError::BadRequest(format!("invalid private record: {e}")))?;
+        .map_err(|e| AppError::BadRequest(crate::msg!("record.private.invalid-private-record-e", "invalid private record: {e}", e = e)))?;
     let mut nonce = [0u8; 24];
     {
         use rand::RngCore;
@@ -447,7 +447,7 @@ pub fn encrypt_doc_header(
 ) -> Result<PrivateRecord, AppError> {
     let plaintext = plain
         .encode()
-        .map_err(|e| AppError::BadRequest(format!("invalid doc header: {e}")))?;
+        .map_err(|e| AppError::BadRequest(crate::msg!("record.private.invalid-doc-header-e", "invalid doc header: {e}", e = e)))?;
     let mut nonce = [0u8; 24];
     {
         use rand::RngCore;

@@ -47,7 +47,7 @@ pub async fn raw_sql(
         .node_db
         .query(&req.sql, ())
         .await
-        .map_err(|e| AppError::BadRequest(format!("sql error: {e}")))?;
+        .map_err(|e| AppError::BadRequest(crate::msg!("test_endpoints.sql-error-e", "sql error: {e}", e = e)))?;
     let column_names = fetched.column_names();
 
     let mut rows = Vec::new();
@@ -55,7 +55,7 @@ pub async fn raw_sql(
         match fetched.next().await {
             Ok(Some(row)) => rows.push(row_to_json(&row, &column_names)),
             Ok(None) => break,
-            Err(e) => return Err(AppError::BadRequest(format!("sql error: {e}"))),
+            Err(e) => return Err(AppError::BadRequest(crate::msg!("test_endpoints.sql-error-e-2", "sql error: {e}", e = e))),
         }
     }
 

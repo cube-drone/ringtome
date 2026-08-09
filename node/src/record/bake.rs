@@ -170,7 +170,7 @@ pub async fn publish(
     let doc = view
         .docs
         .get(doc_id)
-        .ok_or_else(|| AppError::NotFound("no such document".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("record.bake.no-such-document", "no such document")))?;
     let format = doc
         .display_head()
         .map(|h| crate::record::documents::Format::from_wire(h.header.format))
@@ -181,7 +181,7 @@ pub async fn publish(
     }
     let resolved = docs.resolved(doc).await?;
     let body = resolved.body.ok_or_else(|| {
-        AppError::BadRequest("this note's words haven't arrived on this computer yet".into())
+        AppError::BadRequest(crate::msg!("record.bake.this-notes-words-havent-arrived", "this note's words haven't arrived on this computer yet"))
     })?;
 
     let refs = media_refs(&body, root_hex);

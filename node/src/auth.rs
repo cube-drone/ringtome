@@ -83,9 +83,13 @@ fn check_password_len(password: &str, min: usize) -> Result<(), AppError> {
         return Ok(());
     }
     Err(AppError::BadRequest(if min <= 1 {
-        "password can't be empty".into()
+        crate::msg!("auth.password-cant-be-empty", "password can't be empty")
     } else {
-        format!("password must be at least {min} characters")
+        crate::msg!(
+            "auth.password-must-be-at-least",
+            "password must be at least {min} characters",
+            min = min,
+        )
     }))
 }
 
@@ -119,28 +123,20 @@ pub fn normalize_username(input: &str) -> Result<String, AppError> {
     let name = input.trim().to_ascii_lowercase();
 
     if name.len() < USERNAME_MIN || name.len() > USERNAME_MAX {
-        return Err(AppError::BadRequest(format!(
-            "username must be {USERNAME_MIN}-{USERNAME_MAX} characters"
-        )));
+        return Err(AppError::BadRequest(crate::msg!("auth.username-must-be-usernamemin-usernamemax-characters", "username must be {min}-{max} characters", min = USERNAME_MIN, max = USERNAME_MAX)));
     }
     if !name
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
     {
-        return Err(AppError::BadRequest(
-            "username may contain only a-z, 0-9, - and _".into(),
-        ));
+        return Err(AppError::BadRequest(crate::msg!("auth.username-may-contain-only-a-z", "username may contain only a-z, 0-9, - and _")));
     }
     // Separators can't lead, trail, or double up - keeps slugs clean and unambiguous.
     if name.starts_with(['-', '_']) || name.ends_with(['-', '_']) {
-        return Err(AppError::BadRequest(
-            "username can't start or end with - or _".into(),
-        ));
+        return Err(AppError::BadRequest(crate::msg!("auth.username-cant-start-or-end", "username can't start or end with - or _")));
     }
     if name.contains("--") || name.contains("__") || name.contains("-_") || name.contains("_-") {
-        return Err(AppError::BadRequest(
-            "username can't contain consecutive separators".into(),
-        ));
+        return Err(AppError::BadRequest(crate::msg!("auth.username-cant-contain-consecutive-separators", "username can't contain consecutive separators")));
     }
 
     Ok(name)
@@ -177,9 +173,7 @@ pub async fn register(
 
     if let Err(e) = result {
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Err(AppError::BadRequest(format!(
-                "username \"{username}\" is taken"
-            )));
+            return Err(AppError::BadRequest(crate::msg!("auth.username-username-is-taken", "username \"{username}\" is taken", username = username)));
         }
         return Err(AppError::Internal(anyhow!("creating account: {e}")));
     }
@@ -222,9 +216,9 @@ pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, Ap
 
     // Uniform failure whether the account is missing or the password is wrong (no user enumeration).
     let (account_id, phc) =
-        row.ok_or_else(|| AppError::Unauthorized("invalid credentials".into()))?;
+        row.ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.invalid-credentials", "invalid credentials")))?;
     if !verify_password(password, &phc) {
-        return Err(AppError::Unauthorized("invalid credentials".into()));
+        return Err(AppError::Unauthorized(crate::msg!("auth.invalid-credentials-2", "invalid credentials")));
     }
 
     let token = generate_token();

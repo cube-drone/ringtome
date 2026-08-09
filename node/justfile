@@ -544,8 +544,33 @@ mainline-smoke: build kill integration-install
     # file args, which would run the whole suite against nodes this recipe never booted.
     RINGTOME_TEST_MAINLINE=1 RINGTOME_PORT_OFFSET={{port_offset}} npx mocha --no-config test/mainline.cjs --timeout 900000
 
+# --- strings ---------------------------------------------------------------
+
+# Sync js/locales/en.js with the source, both ways. That file is the AUTHORITATIVE English catalog
+# - the one place to read the house voice as a whole, the file to edit to change what the app says,
+# and the file a translator copies to start a language. This never overwrites its wording: it adds
+# keys new in the source, retires keys the source dropped, and rewrites the `t()` / `msg!` seeds at
+# the call sites to agree with it. Run it after writing new copy, and after editing en.js.
+strings:
+    cd "{{workspace}}" && node node/tools/strings.mjs
+
+# The strings cop: fails when en.js is out of step with the source, when a call-site seed disagrees
+# with the catalog, when two phrases share a key, or when copy reaches a person WITHOUT going
+# through `t`. New copy arrives a phrase at a time inside whichever component needed it, which is
+# how a house voice drifts with nobody deciding to change it. This makes new words impossible to
+# land silently - they show up in the diff of a file whose whole job is words - and stops the code
+# from claiming to say something the app does not say.
+strings-check:
+    cd "{{workspace}}" && node node/tools/strings.mjs --check
+
+# Wrap every un-wrapped user-facing phrase in `t()` / `msg!`, minting a stable key for each.
+# Idempotent: anything already wrapped is invisible to it, so it is safe to re-run.
+strings-migrate:
+    cd "{{workspace}}" && node node/tools/strings.mjs --migrate
+
 # --- everything ------------------------------------------------------------
 
 # Full local check: UI bundles + UI pure tests, then cargo check, clippy, Rust unit tests, and
 # the integration suite. `ui-check` runs FIRST because the Rust build embeds its output.
-ci: ui-check check lint test-unit integration
+# `strings-check` sits after it: a broken build is more urgent than an un-catalogued sentence.
+ci: ui-check strings-check check lint test-unit integration

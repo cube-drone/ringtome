@@ -73,9 +73,7 @@ pub async fn append(
         let tree = load_key_tree(db, root_hex).await?;
         match tree.status(&author) {
             KeyStatus::Retired | KeyStatus::Repudiated | KeyStatus::Invalid => {
-                return Err(AppError::RevokedSigner(
-                    "this computer's key is no longer part of the persona".into(),
-                ));
+                return Err(AppError::RevokedSigner(crate::msg!("record.imaol.this-computers-key-is-no", "this computer's key is no longer part of the persona")));
             }
             KeyStatus::Active | KeyStatus::Unknown => {}
         }
@@ -173,7 +171,7 @@ pub async fn set_profile_field(
         value: value.to_string(),
     }
     .encode()
-    .map_err(|e| AppError::BadRequest(format!("invalid profile field: {e}")))?;
+    .map_err(|e| AppError::BadRequest(crate::msg!("record.imaol.invalid-profile-field-e", "invalid profile field: {e}", e = e)))?;
 
     let signed = append(
         db,

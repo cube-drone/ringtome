@@ -8,6 +8,7 @@ import { useEffect } from 'preact/hooks';
 import htm from 'htm';
 
 import { Icons } from './icons.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -34,7 +35,7 @@ export const Modal = ({ title, onClose, children }) => {
             <div class="modal" role="dialog" aria-modal="true">
                 <header class="modal-head">
                     <span class="modal-title">${title}</span>
-                    <button class="modal-close" title="close" onClick=${onClose}>
+                    <button class="modal-close" title=${t('modal.close', 'close')} onClick=${onClose}>
                         <${Icons.close} />
                     </button>
                 </header>

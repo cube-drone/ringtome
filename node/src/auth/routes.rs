@@ -242,7 +242,7 @@ async fn grant_handler(
 
     let target = account_by_username(db, &req.username)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("no account \"{}\"", req.username)))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("auth.routes.no-account", "no account \"{username}\"", username = req.username)))?;
 
     add_tag(db, &target.id, &req.tag).await?;
     Ok(Json(AccountInfo {
@@ -262,7 +262,7 @@ async fn revoke_handler(
 
     let target = account_by_username(db, &req.username)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("no account \"{}\"", req.username)))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("auth.routes.no-account-2", "no account \"{username}\"", username = req.username)))?;
 
     remove_tag(db, &target.id, &req.tag).await?;
     Ok(Json(AccountInfo {
@@ -279,9 +279,7 @@ async fn authorize_tag_change(
     tag: &str,
 ) -> Result<(), AppError> {
     if tag == TAG_NODE_ADMIN && !has_tag(db, &admin.account.id, TAG_NODE_ADMIN).await? {
-        return Err(AppError::Forbidden(
-            "only a node_admin may grant or revoke node_admin".into(),
-        ));
+        return Err(AppError::Forbidden(crate::msg!("auth.routes.only-a-nodeadmin-may-grant", "only a node_admin may grant or revoke node_admin")));
     }
     Ok(())
 }
@@ -301,7 +299,7 @@ async fn tags_handler(
     let db = &state.node_db;
     let target = account_by_username(db, &q.username)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("no account \"{}\"", q.username)))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("auth.routes.no-account-3", "no account \"{username}\"", username = q.username)))?;
     let tags = tags_for(db, &target.id).await?;
     Ok(Json(TagsResponse {
         username: target.username,

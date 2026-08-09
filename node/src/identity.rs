@@ -317,7 +317,7 @@ pub async fn recover_password(
     new_password: &str,
     new_username: Option<&str>,
 ) -> Result<Recovery, AppError> {
-    let uniform = || AppError::Unauthorized("recovery failed".into());
+    let uniform = || AppError::Unauthorized(crate::msg!("identity.recovery-failed", "recovery failed"));
 
     let seed: [u8; 32] = hex::decode(recovery_secret_hex.trim())
         .ok()
@@ -574,7 +574,7 @@ pub async fn require_owned(
         .context("checking identity ownership")
         .map_err(AppError::Internal)?;
     if owned.is_none() {
-        return Err(AppError::NotFound("identity not found".into()));
+        return Err(AppError::NotFound(crate::msg!("identity.identity-not-found", "identity not found")));
     }
     Ok(())
 }
@@ -609,7 +609,7 @@ pub async fn load_signing_key(
         .context("checking identity ownership")
         .map_err(AppError::Internal)?;
     let Some((leaf,)) = row else {
-        return Err(AppError::NotFound("identity not found".into()));
+        return Err(AppError::NotFound(crate::msg!("identity.identity-not-found-2", "identity not found")));
     };
     // Pre-M3 rows have no leaf column value; they were created when the node key was the root.
     let key_name = leaf.unwrap_or_else(|| root_pubkey.to_string());
@@ -680,9 +680,7 @@ pub async fn revoke_key(
         Disposition::Repudiation => signer_pub != target && tree.is_senior(&signer_pub, &target),
     };
     if !authorized {
-        return Err(AppError::Forbidden(
-            "this node's key is not senior to the target".into(),
-        ));
+        return Err(AppError::Forbidden(crate::msg!("identity.this-nodes-key-is-not", "this node's key is not senior to the target")));
     }
 
     // Anchors: our stored head of every chain the target has written (via imaol - the entries

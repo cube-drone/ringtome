@@ -41,6 +41,7 @@ import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
 import { slugify, HEX_ID } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
+import { t, setLocale, detectLocale } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -50,8 +51,8 @@ const html = htm.bind(h);
 const NotFound = () => html`
     <div class="console">
         <p class="null-sub">
-            there's nothing at this address.
-            ${' '}<a href="/home">back to your applications</a>.
+            ${t('index.theres-nothing-at-this-address', "there's nothing at this address.")}
+            ${' '}<a href="/home">${t('index.back-to-your-applications', 'back to your applications')}</a>.
         </p>
     </div>
 `;
@@ -85,15 +86,15 @@ const SearchOptions = ({ kind, onKind }) => {
     return html`<span class="search-opts" ref=${boxRef}>
         <button
             class=${kind === 'all' ? 'search-opts-btn' : 'search-opts-btn active'}
-            title="more search options"
+            title=${t('index.more-search-options', 'more search options')}
             onClick=${() => setOpen((o) => !o)}
         ><${Icons.filter} /></button>
         ${open &&
         html`<div class="search-opts-menu">
-            <span class="search-opts-label">show</span>
+            <span class="search-opts-label">${t('index.show', 'show')}</span>
             <button
                 class="search-opts-kind"
-                title="rotates: all files / only documents / only media"
+                title=${t('index.rotates-all-files-only-documents', 'rotates: all files / only documents / only media')}
                 onClick=${() => onKind(nextSearchKind(kind))}
             >${SEARCH_KIND_LABELS[kind]}</button>
         </div>`}
@@ -137,7 +138,7 @@ const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
     const view = syncHit || fresh || lastView.current;
     if (view && view !== 'nope') lastView.current = view;
     if (!view) {
-        return html`<div class="console"><p class="null-sub">looking that up…</p></div>`;
+        return html`<div class="console"><p class="null-sub">${t('index.looking-that-up', 'looking that up…')}</p></div>`;
     }
     if (view === 'nope') return html`<${NotFound} />`;
     const app = appById(view.appId);
@@ -284,12 +285,12 @@ const Inside = ({ session }) => {
             <span class="app-header-actions">
                 <button
                     class="app-header-btn"
-                    title="back to People"
+                    title=${t('index.back-to-people', 'back to People')}
                     onClick=${() => loc.route('/home/people')}
                 ><${Icons.back} /></button>
                 <button
                     class="app-header-btn app-header-btn-square"
-                    title="close"
+                    title=${t('index.close', 'close')}
                     onClick=${() => loc.route('/home')}
                 ><${Icons.close} /></button>
             </span>
@@ -317,7 +318,7 @@ const Inside = ({ session }) => {
                 <input
                     class="app-header-search"
                     type="search"
-                    placeholder="search…"
+                    placeholder=${t('index.search', 'search…')}
                     value=${query}
                     onInput=${(e) => setQuery(e.currentTarget.value)}
                 />
@@ -330,12 +331,12 @@ const Inside = ({ session }) => {
                 ${inDoc &&
                 html`<button
                     class="app-header-btn"
-                    title="back to the list"
+                    title=${t('index.back-to-the-list', 'back to the list')}
                     onClick=${() => loc.route('/home/' + appHere.id)}
                 ><${Icons.back} /></button>`}
                 <button
                     class="app-header-btn app-header-btn-square"
-                    title="close this app"
+                    title=${t('index.close-this-app', 'close this app')}
                     onClick=${() => loc.route('/home')}
                 ><${Icons.close} /></button>
             </span>
@@ -356,7 +357,7 @@ const Inside = ({ session }) => {
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
     // whatever the URL says. These onboarding flows aren't apps either, so they ride the stage.
     if (persona.state === 'checking') {
-        return stage(html`<div class="loading-shell"><p>Loading…</p></div>`);
+        return stage(html`<div class="loading-shell"><p>${t('index.loading', 'Loading…')}</p></div>`);
     }
     if (persona.state === 'ceremony') {
         return stage(html`<${SpareKeyCeremony} persona=${persona} />`);
@@ -405,7 +406,7 @@ const App = () => {
 
     // First paint: don't flash the front door at someone who's already in.
     if (session.checking) {
-        return html`<div class="app-main"><div class="loading-shell"><p>Loading…</p></div></div>`;
+        return html`<div class="app-main"><div class="loading-shell"><p>${t('index.loading-2', 'Loading…')}</p></div></div>`;
     }
 
     if (!session.account) {
@@ -426,6 +427,10 @@ const App = () => {
 function main() {
     let app = document.getElementById('app');
     console.log("Ringtome UI loaded!");
+    // Before the first render: `t` reads the active catalog at call time, so a locale chosen after
+    // paint would leave the first screen in English. This also stamps `<html lang>`, which is where
+    // a screen reader takes its pronunciation from.
+    setLocale(detectLocale());
     // One provider at the root sets the house icon style: Phosphor, DUOTONE, sized to the font
     // (1em, so the containers' existing font-size rules size the glyphs), in currentColor. The
     // provider value REPLACES Phosphor's defaults rather than merging, so size lives here too; the

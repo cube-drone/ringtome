@@ -222,9 +222,13 @@ describe('the pure core', () => {
         // renders" is not visible from here.
         // Match on `from '...'` rather than the start of an import: this codebase's package
         // imports are often multi-line (icons.js names 45 glyphs before saying where from).
+        // `locales/` is generated translation DATA, not a module: it has no imports and touches no
+        // browser API because it is a table of words, and pure/ - whose every member owes test
+        // vectors - is not where a table of words belongs.
         const strays = jsFiles
             .map(rel)
             .filter((f) => !f.startsWith('pure' + path.sep) && f !== 'index.js')
+            .filter((f) => !f.startsWith('locales' + path.sep))
             .filter((f) => {
                 const src = code(path.join(JS_DIR, f));
                 if (/from\s+'\./.test(src)) return false; // has local imports

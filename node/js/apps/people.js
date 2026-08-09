@@ -13,6 +13,7 @@ import { parseIdReference, speakable } from '../speakable.js';
 import { PersonRow } from '../person.js';
 import { api } from '../net.js';
 import { PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts } from '../pure/people.js';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -44,18 +45,18 @@ export const PeopleLookup = ({ query, onQuery }) => {
             <input
                 class=${bad ? 'app-header-search people-lookup-bad' : 'app-header-search'}
                 type="search"
-                placeholder="filter, or paste an address…"
+                placeholder=${t('apps.people.filter-or-paste-an-address', 'filter, or paste an address…')}
                 title=${bad
-                    ? "that doesn't look like a persona's address - it should have two words and a key, like sway-broke-AwTy…"
-                    : 'type to narrow the shelf; paste an address and look up to go there'}
+                    ? t('apps.people.that-doesnt-look-like-a', "that doesn't look like a persona's address - it should have two words and a key, like sway-broke-AwTy…")
+                    : t('apps.people.type-to-narrow-the-shelf', 'type to narrow the shelf; paste an address and look up to go there')}
                 value=${query || ''}
                 onInput=${(e) => {
                     onQuery(e.currentTarget.value);
                     setBad(false);
                 }}
             />
-            <button class="people-lookup-go" type="submit" title="go to this persona">
-                look up
+            <button class="people-lookup-go" type="submit" title=${t('apps.people.go-to-this-persona', 'go to this persona')}>
+                ${t('apps.people.look-up', 'look up')}
             </button>
         </form>
     `;
@@ -115,7 +116,7 @@ export const PeopleApp = ({ current, searchQuery }) => {
     return html`
         <div class="people-inner">
             <div class="people-shelf-head">
-                <span class="people-shelf-title">everyone you know</span>
+                <span class="people-shelf-title">${t('apps.people.everyone-you-know', 'everyone you know')}</span>
                 <span class="people-sorts">
                     ${PEOPLE_SORTS.map(
                         (s) => html`<button
@@ -129,9 +130,8 @@ export const PeopleApp = ({ current, searchQuery }) => {
             ${sorted.length === 0 &&
             html`<p class="people-empty">
                 ${filter
-                    ? html`nobody matches "${filter}" - try fewer letters, or their address words.`
-                    : html`nobody yet - open someone's page and set your relationship, and
-                          they'll appear here.`}
+                    ? html`${t('apps.people.nobody-matches---try-fewer', 'nobody matches "{filter}" - try fewer letters, or their address words.', { filter })}`
+                    : html`${t('apps.people.nobody-yet---open-someones', "nobody yet - open someone's page and set your relationship, and they'll appear here.")}`}
             </p>`}
             <div class="people-list">
                 ${visible.map(
@@ -143,14 +143,14 @@ export const PeopleApp = ({ current, searchQuery }) => {
                 class="people-more"
                 onClick=${() => setShown(shown + PEOPLE_SHELF_SLICE)}
             >
-                show more (${visible.length} of ${sorted.length})
+                ${t('apps.people.show-more-of', 'show more ({length} of {p1})', { length: visible.length, p1: sorted.length })}
             </button>`}
             ${known.length > 0 &&
             html`<div class="people-known">
                 <div class="people-shelf-head">
-                    <span class="people-shelf-title">known around here</span>
+                    <span class="people-shelf-title">${t('apps.people.known-around-here', 'known around here')}</span>
                     <span class="people-known-note">
-                        personas this node hosts or has reached - open one to say how you know them
+                        ${t('apps.people.personas-this-node-hosts-or', 'personas this node hosts or has reached - open one to say how you know them')}
                     </span>
                 </div>
                 <div class="people-list">

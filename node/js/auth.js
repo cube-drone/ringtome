@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -150,11 +151,11 @@ export const Welcome = ({ session }) => {
     if (mode === 'recover') {
         return html`
             <div class="welcome">
-                <h1 class="welcome-title">ringtome</h1>
-                <p class="welcome-sub">locked out? your spare key gets you back in.</p>
+                <h1 class="welcome-title">${t('auth.ringtome', 'ringtome')}</h1>
+                <p class="welcome-sub">${t('auth.locked-out-your-spare-key', 'locked out? your spare key gets you back in.')}</p>
                 <form class="welcome-form" onSubmit=${submit}>
                     <label>
-                        name
+                        ${t('auth.name', 'name')}
                         <input
                             type="text"
                             value=${username}
@@ -165,18 +166,18 @@ export const Welcome = ({ session }) => {
                         />
                     </label>
                     <label>
-                        spare key
+                        ${t('auth.spare-key', 'spare key')}
                         <textarea
                             class="spare-paste"
                             rows="3"
-                            placeholder="paste your spare key here - the whole file is fine"
+                            placeholder=${t('auth.paste-your-spare-key-here', 'paste your spare key here - the whole file is fine')}
                             value=${spareKey}
                             onInput=${(e) => setSpareKey(e.currentTarget.value)}
                             required
                         ></textarea>
                     </label>
                     <label>
-                        new password
+                        ${t('auth.new-password', 'new password')}
                         <input
                             type="password"
                             value=${password}
@@ -187,7 +188,7 @@ export const Welcome = ({ session }) => {
                     </label>
                     ${needsNewName &&
                     html`<label>
-                        new sign-in name
+                        ${t('auth.new-sign-in-name', 'new sign-in name')}
                         <input
                             type="text"
                             value=${newUsername}
@@ -202,13 +203,13 @@ export const Welcome = ({ session }) => {
                     </p>`}`}
                     ${error && html`<p class="form-error">${error}</p>`}
                     <button class="welcome-go" type="submit" disabled=${busy}>
-                        ${busy ? '…' : needsNewName ? 'move me in' : 'let me back in'}
+                        ${busy ? '…' : needsNewName ? t('auth.move-me-in', 'move me in') : t('auth.let-me-back-in', 'let me back in')}
                     </button>
                     <button
                         type="button"
                         class="skip-link"
                         onClick=${() => switchMode('login')}
-                    >back to signing in</button>
+                    >${t('auth.back-to-signing-in', 'back to signing in')}</button>
                 </form>
             </div>
         `;
@@ -216,23 +217,23 @@ export const Welcome = ({ session }) => {
 
     return html`
         <div class="welcome">
-            <h1 class="welcome-title">ringtome</h1>
-            <p class="welcome-sub">a cozy corner of the internet</p>
+            <h1 class="welcome-title">${t('auth.ringtome-2', 'ringtome')}</h1>
+            <p class="welcome-sub">${t('auth.a-cozy-corner-of-the', 'a cozy corner of the internet')}</p>
 
             <div class="welcome-tabs">
                 <button
                     class=${mode === 'login' ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('login')}
-                >sign in</button>
+                >${t('auth.sign-in', 'sign in')}</button>
                 <button
                     class=${registering ? 'tab active' : 'tab'}
                     onClick=${() => switchMode('register')}
-                >new here?</button>
+                >${t('auth.new-here', 'new here?')}</button>
             </div>
 
             <form class="welcome-form" onSubmit=${submit}>
                 <label>
-                    name
+                    ${t('auth.name-2', 'name')}
                     <input
                         type="text"
                         value=${username}
@@ -247,7 +248,7 @@ export const Welcome = ({ session }) => {
                     ${availability.note}
                 </p>`}
                 <label>
-                    password
+                    ${t('auth.password', 'password')}
                     <input
                         type="password"
                         value=${password}
@@ -260,14 +261,14 @@ export const Welcome = ({ session }) => {
                 ${error && html`<p class="form-error">${error}</p>`}
 
                 <button class="welcome-go" type="submit" disabled=${busy}>
-                    ${busy ? '…' : registering ? 'make an account' : 'come in'}
+                    ${busy ? '…' : registering ? t('auth.make-an-account', 'make an account') : t('auth.come-in', 'come in')}
                 </button>
                 ${!registering &&
                 html`<button
                     type="button"
                     class="skip-link"
                     onClick=${() => switchMode('recover')}
-                >lost your password?</button>`}
+                >${t('auth.lost-your-password', 'lost your password?')}</button>`}
             </form>
         </div>
     `;

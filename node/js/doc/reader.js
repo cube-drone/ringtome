@@ -23,6 +23,7 @@ import { useTurbolinks } from './turbolinks.js';
 import { slugPathFor } from './address.js';
 import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -112,11 +113,11 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
 
     if (!docId) {
         return html`<div class="reader reader-empty">
-            <p class="null-sub">pick something on the left, or make something new.</p>
+            <p class="null-sub">${t('doc.reader.pick-something-on-the-left', 'pick something on the left, or make something new.')}</p>
         </div>`;
     }
     if (error) return html`<div class="reader"><p class="form-error">${error}</p></div>`;
-    if (!doc) return html`<div class="reader"><p class="null-sub">opening…</p></div>`;
+    if (!doc) return html`<div class="reader"><p class="null-sub">${t('doc.reader.opening', 'opening…')}</p></div>`;
 
     // The DECORATED byte URL, not the bare /body: right-click -> "copy image address" on the
     // rendered media must yield a URL that re-embeds when pasted into a document, and the
@@ -124,11 +125,11 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
     const mediaUrl = decoratedBodyUrl(root, docId, doc.format, doc.title);
     let body;
     if (doc.format === 'plaintext') {
-        body = html`<pre class="reader-plain">${doc.body ?? '(body not on this computer yet)'}</pre>`;
+        body = html`<pre class="reader-plain">${doc.body ?? t('doc.reader.body-not-on-this-computer', '(body not on this computer yet)')}</pre>`;
     } else if (doc.format === 'marquee') {
         body =
             doc.body == null
-                ? html`<p class="null-sub">(body not on this computer yet)</p>`
+                ? html`<p class="null-sub">${t('doc.reader.body-not-on-this-computer-2', '(body not on this computer yet)')}</p>`
                 : html`<${MarqueeBody} source=${doc.body} profile=${tlProfile} />`;
     } else if (doc.format === 'avif' || doc.format === 'apng') {
         body = html`<img class="reader-media" src=${mediaUrl} alt=${doc.title} />`;
@@ -137,7 +138,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
     } else if (doc.format === 'opus') {
         body = html`<audio controls src=${mediaUrl}></audio>`;
     } else {
-        body = html`<p class="null-sub">(a ${doc.format} document - no reader for it yet)</p>`;
+        body = html`<p class="null-sub">${t('doc.reader.a-document---no-reader', '(a {format} document - no reader for it yet)', { format: doc.format })}</p>`;
     }
 
     return html`
@@ -146,7 +147,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                 <input
                     class="editor-title"
                     value=${title}
-                    placeholder="untitled"
+                    placeholder=${t('doc.reader.untitled', 'untitled')}
                     onInput=${(e) => setTitle(e.currentTarget.value)}
                     onBlur=${saveTitle}
                 />
@@ -155,29 +156,29 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                     html`<${Chip}
                         icon=${Icons.trash}
                         modifier="chip-delete"
-                        title="Delete — removes this document from every list (its history is kept)"
+                        title=${t('doc.reader.delete-removes-this-document-from', 'Delete — removes this document from every list (its history is kept)')}
                         onClick=${remove}
                     />`}
                     ${doc.diverged &&
-                    (doc.resolution === 'conflict'
-                        ? html`<${Chip} modifier="chip-diverged" title="edited in the same place on two computers; every version is shown below">conflict</${Chip}>`
-                        : html`<${Chip} modifier="chip-merged" title="changes from two computers, woven together cleanly">merged</${Chip}>`)}
+                    (doc.resolution === t('doc.reader.conflict-2', 'conflict')
+                        ? html`<${Chip} modifier="chip-diverged" title=${t('doc.reader.edited-in-the-same-place', 'edited in the same place on two computers; every version is shown below')}>${t('doc.reader.conflict', 'conflict')}</${Chip}>`
+                        : html`<${Chip} modifier="chip-merged" title=${t('doc.reader.changes-from-two-computers-woven', 'changes from two computers, woven together cleanly')}>${t('doc.reader.merged', 'merged')}</${Chip}>`)}
                     <${Chip}>${doc.format}</${Chip}>
-                    <${Chip}>read-only</${Chip}>
+                    <${Chip}>${t('doc.reader.read-only', 'read-only')}</${Chip}>
                     <${Chip}
                         icon=${Icons.link}
                         on=${linkCopied}
                         title=${linkCopied
-                            ? 'Copied!'
+                            ? t('doc.reader.copied', 'Copied!')
                             : isMedia
-                            ? 'Copy the file’s address (paste it into a document as ![](…) to embed it)'
-                            : 'Copy a link to this document (paste it into another document to crosslink)'}
+                            ? t('doc.reader.copy-the-files-address-paste', 'Copy the file’s address (paste it into a document as ![](…) to embed it)')
+                            : t('doc.reader.copy-a-link-to-this', 'Copy a link to this document (paste it into another document to crosslink)')}
                         onClick=${copyLink}
                     />
                     <${Chip}
                         icon=${Icons.tag}
                         on=${showMeta}
-                        title="tags, date & description"
+                        title=${t('doc.reader.tags-date-description', 'tags, date & description')}
                         onClick=${() => setShowMeta((v) => !v)}
                     />
                     ${(features || featuresOf()).pin &&
@@ -185,8 +186,8 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                         icon=${Icons.pin}
                         modifier=${pinned ? 'chip-pinned' : null}
                         title=${pinned
-                            ? 'Pinned — click to unpin it from the top of the list'
-                            : 'Not pinned — click to pin it to the top of the list'}
+                            ? t('doc.reader.pinned-click-to-unpin-it', 'Pinned — click to unpin it from the top of the list')
+                            : t('doc.reader.not-pinned-click-to-pin', 'Not pinned — click to pin it to the top of the list')}
                         onClick=${togglePin}
                     />`}
                     <${NavChips} nav=${nav} />

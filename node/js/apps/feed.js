@@ -51,6 +51,7 @@ import { api } from '../net.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
+import { t } from '../i18n.js';
 import {
     PostEntry,
     Composer,
@@ -78,7 +79,7 @@ const PostBody = ({ root, docId }) => {
     if (!doc) return html`<p class="null-sub">…</p>`;
     if (doc.body == null) {
         return html`<p class="null-sub">
-            <span class="waiting-dot"></span> still arriving from another computer.
+            <span class="waiting-dot"></span> ${t('apps.feed.still-arriving-from-another-computer', 'still arriving from another computer.')}
         </p>`;
     }
     if (!doc.body.trim()) return null;
@@ -113,7 +114,7 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
         <article class=${state.locked ? 'feed-item feed-item-posted' : 'feed-item'}>
             <header class="feed-item-head">
                 <span class="feed-item-when">${when}</span>
-                <span class="feed-item-state">${open ? 'editing' : state.label}</span>
+                <span class="feed-item-state">${open ? t('apps.feed.editing', 'editing') : state.label}</span>
                 ${!open &&
                 (state.locked
                     ? html`<${LockButton}
@@ -124,9 +125,9 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
                       />`
                     : html`<button
                           class="feed-edit"
-                          title="open this for editing"
+                          title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
                           onClick=${() => setOpen(true)}
-                      >edit</button>`)}
+                      >${t('apps.feed.edit', 'edit')}</button>`)}
             </header>
             ${/* No title, no heading. A post that was never given one is untitled in the
                 ordinary sense of the word - the app inventing the LABEL "untitled" and
@@ -146,7 +147,7 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
                 : html`<${PostBody} root=${root} docId=${row.doc_id} />`}
             ${state.published &&
             html`<p class="feed-item-link">
-                <a href=${`/id/${root}/docs/${state.postId}/body`}>the public copy</a>
+                <a href=${`/id/${root}/docs/${state.postId}/body`}>${t('apps.feed.the-public-copy', 'the public copy')}</a>
             </p>`}
         </article>
     `;
@@ -280,18 +281,18 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
             <div class="feed-fresh-bar">
                 ${pending.length > 0 &&
                 html`<button class="feed-fresh-btn" onClick=${takePending}>
-                    ${pending.length === 1 ? '1 update' : `${pending.length} updates`} · refresh
+                    ${pending.length === 1 ? t('apps.feed.1-update', '1 update') : `${pending.length} updates`} ${t('apps.feed.refresh', '· refresh')}
                 </button>`}
             </div>
             <div class="feed-stream-head">
-                <span class="feed-stream-title">the feed</span>
+                <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
                 <label class="feed-unseen-toggle">
                     <input
                         type="checkbox"
                         checked=${unseenOnly}
                         onChange=${(e) => setUnseenOnly(e.currentTarget.checked)}
                     />
-                    only what's new to you
+                    ${t('apps.feed.only-whats-new-to-you', "only what's new to you")}
                 </label>
             </div>
             ${visible.map(
@@ -308,16 +309,16 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
             !loading &&
             html`<p class="null-sub">
                 ${unseenOnly
-                    ? 'nothing new - you have seen it all.'
-                    : 'nothing here yet - follow someone, or write something on the left.'}
+                    ? t('apps.feed.nothing-new---you-have', 'nothing new - you have seen it all.')
+                    : t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
             </p>`}
             ${more &&
             html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(feedCursor(items))}>
                 ${loading
-                    ? 'reading further back…'
+                    ? t('apps.feed.reading-further-back', 'reading further back…')
                     : pageError
-                      ? "couldn't reach further back - try again"
-                      : 'further back'}
+                      ? t('apps.feed.couldnt-reach-further-back--', "couldn't reach further back - try again")
+                      : t('apps.feed.further-back', 'further back')}
             </button>`}
         </main>
     `;
@@ -471,11 +472,11 @@ export const FeedApp = ({ current }) => {
                 ${tucked.has('compose')
                     ? html`<${Rail}
                           icon=${Icons.notes}
-                          label="write"
+                          label=${t('apps.feed.write', 'write')}
                           onClick=${() => toggleTuck('compose')}
                       />`
                     : html`<aside class="feed-compose">
-                              <${PaneHead} label="write" onTuck=${() => toggleTuck('compose')} />
+                              <${PaneHead} label=${t('apps.feed.write-2', 'write')} onTuck=${() => toggleTuck('compose')} />
                               ${draftId
                                   ? html`<${Composer}
                                         root=${root}
@@ -492,14 +493,14 @@ export const FeedApp = ({ current }) => {
                                             minting.current = false;
                                         }}
                                     />`
-                                  : html`<p class="null-sub">opening a fresh page…</p>`}
+                                  : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`}
                               ${/* Beside the button that caused it. This used to sit above the
                                   columns, where a failed post reported itself a long way from
                                   the post. */ ''}
                               ${error && html`<p class="form-error">${error}</p>`}
                               ${drafts.length > 0 &&
                               html`<div class="feed-drafts">
-                                  <p class="feed-drafts-head">older drafts</p>
+                                  <p class="feed-drafts-head">${t('apps.feed.older-drafts', 'older drafts')}</p>
                                   ${drafts.map(
                                       (row) => html`<${StackItem}
                                           key=${row.doc_id}

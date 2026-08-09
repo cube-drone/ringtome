@@ -15,7 +15,7 @@ pub fn decode(hex_str: &str) -> Option<[u8; 32]> {
 /// Parse a key arriving at a request boundary, rejecting with a uniform message naming the
 /// offending field ("bad root pubkey", "bad leaf pubkey in request code", ...).
 pub fn require(hex_str: &str, what: &str) -> Result<[u8; 32], AppError> {
-    decode(hex_str).ok_or_else(|| AppError::BadRequest(format!("bad {what}")))
+    decode(hex_str).ok_or_else(|| AppError::BadRequest(crate::msg!("pubkey.bad-what", "bad {what}", what = what)))
 }
 
 #[cfg(test)]
@@ -35,6 +35,6 @@ mod tests {
     #[test]
     fn require_names_the_field() {
         let err = require("nope", "target pubkey").unwrap_err();
-        assert!(matches!(err, AppError::BadRequest(m) if m == "bad target pubkey"));
+        assert!(matches!(err, AppError::BadRequest(m) if m.english == "bad target pubkey"));
     }
 }

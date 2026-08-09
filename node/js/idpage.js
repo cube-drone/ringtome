@@ -18,6 +18,7 @@ import { agoUnit } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { PersonCard } from './person.js';
 import { PublicPosts } from './posts.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -47,10 +48,10 @@ const SyncLine = ({ syncedMs, refreshing }) => {
           : 'just now';
     if (!when && !refreshing) return null;
     return html`<p class="id-sync">
-        ${when && html`<span title=${new Date(syncedMs).toLocaleString()}>synced ${when}</span>`}
+        ${when && html`<span title=${new Date(syncedMs).toLocaleString()}>${t('idpage.synced', 'synced {when}', { when })}</span>`}
         ${refreshing &&
         html`<span class="id-sync-now">
-            <span class="status-spin"><${Icons.spinner} /></span> checking for anything newer
+            <span class="status-spin"><${Icons.spinner} /></span> ${t('idpage.checking-for-anything-newer', 'checking for anything newer')}
         </span>`}
     </p>`;
 };
@@ -122,19 +123,17 @@ export const IdPage = ({ seg, current, onTitle }) => {
 
     if (!parsed) {
         return html`<${Card}>
-            <h1 class="persona-page-title">that's not an address</h1>
-            <p>The path after <code>/id/</code> should be a persona's address - two words and
-            a key, like <code>sway-broke-AwTy…</code></p>
+            <h1 class="persona-page-title">${t('idpage.thats-not-an-address', "that's not an address")}</h1>
+            <p>${t('idpage.the-path-after', 'The path after')} <code>/id/</code> ${t('idpage.should-be-a-personas-address', "should be a persona's address - two words and a key, like")} <code>sway-broke-AwTy…</code></p>
         <//>`;
     }
 
     if (!parsed.ok) {
         const key = seg.split('-').pop();
         return html`<${Card}>
-            <h1 class="persona-page-title">this address arrived mangled</h1>
-            <p>The words on this address don't match its key, so something got mixed up in
-            transit.</p>
-            <p>Did you mean${' '}
+            <h1 class="persona-page-title">${t('idpage.this-address-arrived-mangled', 'this address arrived mangled')}</h1>
+            <p>${t('idpage.the-words-on-this-address', "The words on this address don't match its key, so something got mixed up in transit.")}</p>
+            <p>${t('idpage.did-you-mean', 'Did you mean')}${' '}
                 <a href="/id/${parsed.expected}-${key}"><code>${parsed.expected}-${key.slice(0, 8)}…</code></a>?
             </p>
         <//>`;
@@ -144,7 +143,7 @@ export const IdPage = ({ seg, current, onTitle }) => {
     const words = speak.split('-').slice(0, 2).join('-');
 
     if (profile === undefined) {
-        return html`<${Card}><p class="id-quiet">looking around…</p><//>`;
+        return html`<${Card}><p class="id-quiet">${t('idpage.looking-around', 'looking around…')}</p><//>`;
     }
 
     if (profile === null) {
@@ -153,10 +152,10 @@ export const IdPage = ({ seg, current, onTitle }) => {
                 <span class="persona-chip" style="background: hsl(${personaHue(root)}, 60%, 55%)"></span>
                 ${words}
             </h1>
-            <p>Couldn't reach this persona just now - it isn't carried on your node, and
+            <p>${t('idpage.couldnt-reach-this-persona-just', "Couldn't reach this persona just now - it isn't carried on your node, and")}
             ${via
-                ? "none of the computers its address points at answered."
-                : 'its address carries no hints about where to find it.'}</p>
+                ? t('idpage.none-of-the-computers-its', 'none of the computers its address points at answered.')
+                : t('idpage.its-address-carries-no-hints', 'its address carries no hints about where to find it.')}</p>
             <p class="id-address"><code>/id/${speak}</code></p>
         <//>`;
     }
@@ -167,7 +166,7 @@ export const IdPage = ({ seg, current, onTitle }) => {
     return html`<${Card}>
         <${PersonCard} root=${root} current=${current} profile=${profile}>
             ${profile.foreign &&
-            html`<p class="id-words">reached across the network - not carried on this node</p>`}
+            html`<p class="id-words">${t('idpage.reached-across-the-network--', 'reached across the network - not carried on this node')}</p>`}
             ${profile.foreign &&
             html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} />`}
         <//>

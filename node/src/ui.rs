@@ -136,20 +136,20 @@ pub async fn font(
 ) -> Result<impl IntoResponse, AppError> {
     // Only serve .woff2 files — reject anything else before touching the filesystem.
     if !filename.ends_with(".woff2") {
-        return Err(AppError::NotFound(format!("not a font file: {filename}")));
+        return Err(AppError::NotFound(crate::msg!("ui.not-a-font-file-filename", "not a font file: {filename}", filename = filename)));
     }
 
     if state.config.is_dev() {
         let path = format!("{}/{}", FONTS_DEV_DIR, filename);
         let bytes = std::fs::read(&path)
-            .map_err(|e| AppError::NotFound(format!("font not found at {}: {}", path, e)))?;
+            .map_err(|e| AppError::NotFound(crate::msg!("ui.font-not-found-at", "font not found at {path}: {error}", path = path, error = e)))?;
         Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2")], bytes))
     } else {
         let bytes = EMBEDDED_FONTS
             .iter()
             .find(|(name, _)| *name == filename.as_str())
             .map(|(_, data)| *data)
-            .ok_or_else(|| AppError::NotFound(format!("unknown font: {filename}")))?;
+            .ok_or_else(|| AppError::NotFound(crate::msg!("ui.unknown-font-filename", "unknown font: {filename}", filename = filename)))?;
         Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2")], bytes.to_vec()))
     }
 }
@@ -159,14 +159,12 @@ pub async fn font(
 /// harmless. A *future* version, though, could let a malicious request poison the cache.
 fn check_version(requested: &str, current: &str) -> Result<(), AppError> {
     let req = semver::semver_to_comparable_integer(requested)
-        .map_err(|_| AppError::BadRequest(format!("invalid version: {requested}")))?;
+        .map_err(|_| AppError::BadRequest(crate::msg!("ui.invalid-version-requested", "invalid version: {requested}", requested = requested)))?;
     let cur = semver::semver_to_comparable_integer(current)
         .map_err(AppError::Internal)?;
 
     if req > cur {
-        return Err(AppError::BadRequest(format!(
-            "requested version {requested} is newer than running version {current}"
-        )));
+        return Err(AppError::BadRequest(crate::msg!("ui.requested-version-requested-is-newer", "requested version {requested} is newer than running version {current}", requested = requested, current = current)));
     }
     Ok(())
 }

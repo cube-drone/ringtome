@@ -23,6 +23,7 @@ import { dayKey, entryMs, isOpen, journalStack } from '../pure/daybook.js';
 import { LiveMarquee } from '../doc/livemarquee.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { Icons } from '../icons.js';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -50,7 +51,7 @@ const StatusDot = ({ status }) =>
         title=${STATUS_TIP[status]}
     >${status === 'clean'
         ? html`<${Icons.saved} />`
-        : status === 'error'
+        : status === t('apps.journal.error', 'error')
         ? html`<${Icons.warn} />`
         : html`<span class="status-spin"><${Icons.spinner} /></span>`}</span>`;
 
@@ -100,12 +101,11 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
     });
 
     if (s.status === 'opening' && !s.loaded) {
-        return html`<p class="null-sub">opening…</p>`;
+        return html`<p class="null-sub">${t('apps.journal.opening', 'opening…')}</p>`;
     }
     if (s.status === 'waiting') {
         return html`<p class="null-sub">
-            <span class="waiting-dot"></span> some of this entry's words are still arriving from
-            another computer.
+            <span class="waiting-dot"></span> ${t('apps.journal.some-of-this-entrys-words', "some of this entry's words are still arriving from another computer.")}
         </p>`;
     }
     return html`
@@ -119,7 +119,7 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
                 <input
                     class="journal-title"
                     value=${s.title}
-                    placeholder="untitled"
+                    placeholder=${t('apps.journal.untitled', 'untitled')}
                     onInput=${(e) => {
                         s.setTitle(e.currentTarget.value);
                         s.touched();
@@ -151,7 +151,7 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
                 <${StatusDot} status=${s.status} />
                 <button
                     class="journal-seal"
-                    title="Seal — lock this entry (unlocking takes 15 seconds)"
+                    title=${t('apps.journal.seal-lock-this-entry-unlocking', 'Seal — lock this entry (unlocking takes 15 seconds)')}
                     onClick=${async () => {
                         await s.save(); // flush pending edits so the locked view reads them
                         onSeal();
@@ -159,7 +159,7 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
                 ><${Icons.key} /></button>
                 <button
                     class="journal-delete"
-                    title="Delete — removes this entry (its history is kept)"
+                    title=${t('apps.journal.delete-removes-this-entry-its', 'Delete — removes this entry (its history is kept)')}
                     onClick=${s.remove}
                 ><${Icons.trash} /></button>
             </div>
@@ -176,7 +176,7 @@ const JournalReader = ({ root, docId }) => {
     if (!doc) return html`<p class="null-sub">…</p>`;
     if (doc.body == null) {
         return html`<p class="null-sub">
-            <span class="waiting-dot"></span> still arriving from another computer.
+            <span class="waiting-dot"></span> ${t('apps.journal.still-arriving-from-another-computer', 'still arriving from another computer.')}
         </p>`;
     }
     if (doc.format === 'marquee') {
@@ -197,7 +197,7 @@ const LockButton = ({ onUnlocked }) => {
     return html`
         <button
             class=${unlocking ? 'journal-lock unlocking' : 'journal-lock'}
-            title="Locked — click, then wait 15 seconds, to unlock this entry for editing"
+            title=${t('apps.journal.locked-click-then-wait-15', 'Locked — click, then wait 15 seconds, to unlock this entry for editing')}
             onClick=${() => setUnlocking(true)}
             disabled=${unlocking}
         >
@@ -252,7 +252,7 @@ const JournalEntry = ({ root, entry, bucket, open, onOverride }) => {
     const dateMs = entryMs(entry);
     const tagBtn = html`<button
         class=${showMeta ? 'journal-tag active' : 'journal-tag'}
-        title="tags, date & description"
+        title=${t('apps.journal.tags-date-description', 'tags, date & description')}
         onClick=${() => setShowMeta((v) => !v)}
     ><${Icons.tag} /></button>`;
     const meta = showMeta
@@ -279,7 +279,7 @@ const JournalEntry = ({ root, entry, bucket, open, onOverride }) => {
                       tags=${entry.tags}
                       actions=${html`${tagBtn}<${LockButton} onUnlocked=${() => onOverride('open')} />`}
                   >
-                      <div class="journal-title-read">${entry.title || 'untitled'}</div>
+                      <div class="journal-title-read">${entry.title || t('apps.journal.untitled-2', 'untitled')}</div>
                   </${JournalHead}>
                   ${meta}
                   <${JournalReader} key=${entry.doc_id} root=${root} docId=${entry.doc_id} />`}
@@ -296,7 +296,7 @@ const JournalPhantom = ({ now, onStart, busy }) => html`
         </header>
         <button class="journal-phantom-start" disabled=${busy} onClick=${onStart}>
             <p class="null-sub">
-                ${busy ? 'opening today’s page…' : 'Today’s page is blank. Click to start writing…'}
+                ${busy ? t('apps.journal.opening-todays-page', 'opening today’s page…') : t('apps.journal.todays-page-is-blank-click', 'Today’s page is blank. Click to start writing…')}
             </p>
         </button>
     </article>
@@ -475,7 +475,7 @@ export const JournalApp = ({ current, searchQuery, bucket = 'journal' }) => {
             <${JournalFonts} value=${font} onPick=${setFont} />
             ${searching && !stack.length
                 ? html`<p class="null-sub journal-empty">
-                      no entries match “${searchQuery}”.
+                      ${t('apps.journal.no-entries-match', 'no entries match “{searchQuery}”.', { searchQuery })}
                   </p>`
                 : shown.map((e) =>
                       e.phantom

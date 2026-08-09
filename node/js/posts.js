@@ -15,6 +15,7 @@ import htm from 'htm';
 import { api } from './net.js';
 import { recentPosts, mergePosts, postCursor } from './pure/feed.js';
 import { PostEntry, useOwnPostEditing } from './postentry.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -72,7 +73,7 @@ export const PublicPosts = ({ root, posts, more, current }) => {
 
     return html`
         <section class="public-posts">
-            <h2 class="public-posts-head">recent posts</h2>
+            <h2 class="public-posts-head">${t('posts.recent-posts', 'recent posts')}</h2>
             ${items.map(
                 (item) => html`<${PostEntry}
                     key=${item.doc_id}
@@ -84,7 +85,7 @@ export const PublicPosts = ({ root, posts, more, current }) => {
             ${error && html`<p class="form-error">${error}</p>`}
             ${hasMore &&
             html`<button class="public-posts-more" disabled=${loading} onClick=${loadMore}>
-                ${loading ? 'reading further back…' : 'load more'}
+                ${loading ? t('posts.reading-further-back', 'reading further back…') : t('posts.load-more', 'load more')}
             </button>`}
         </section>
     `;

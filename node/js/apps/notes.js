@@ -26,6 +26,7 @@ import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -137,7 +138,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
     onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
 >
     <span class="note-row-title">
-        ${doc.pinned && html`<span class="note-row-pin" title="pinned"><${Icons.pin} /></span> `}
+        ${doc.pinned && html`<span class="note-row-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span> `}
         ${doc.media && doc.media.has_thumb
             ? html`<img
                   class=${everything ? 'note-row-thumb note-row-thumb-big' : 'note-row-thumb'}
@@ -153,11 +154,11 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
               /> `
             : formatIcon(doc.format) &&
               html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `}
-        <span class="note-row-title-text">${doc.title || 'untitled'}</span>
+        <span class="note-row-title-text">${doc.title || t('apps.notes.untitled', 'untitled')}</span>
         ${everything &&
         html`<button
             class="note-row-home"
-            title="follow me home — open this in its own app"
+            title=${t('apps.notes.follow-me-home-open-this', 'follow me home — open this in its own app')}
             onClick=${(e) => {
                 e.stopPropagation();
                 onFollowHome(doc);
@@ -166,7 +167,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
     </span>
     ${everything &&
     html`<span class="note-row-buckets">
-        ${(doc.buckets || []).length ? (doc.buckets || []).join(' · ') : 'unfiled'}
+        ${(doc.buckets || []).length ? (doc.buckets || []).join(' · ') : t('apps.notes.unfiled', 'unfiled')}
     </span>`}
     ${feat.description &&
     doc.fields &&
@@ -179,10 +180,10 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
         (hasClaimedDate(doc)
             ? html`<span
                   class="note-row-claimed"
-                  title="a date you set for this document (its real last edit was ${when(doc.updated_ms)})"
+                  title=${t('apps.notes.a-date-you-set-for', 'a date you set for this document (its real last edit was {p0})', { p0: when(doc.updated_ms) })}
               >${formatClaimed(doc.fields[DISPLAY_DATE_FIELD])}</span>`
             : when(doc.updated_ms))}${doc.diverged
-            ? (feat.date ? ' · ' : '') + 'two versions'
+            ? (feat.date ? ' · ' : '') + t('apps.notes.two-versions', 'two versions')
             : ''}
     </span>`}
     ${(doc.tags || []).length > 0 &&
@@ -204,7 +205,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
 // The tag cloud: every tag in view, most-used first, clicking one into (or out of) the filter the
 // list reads. An optional column - only apps whose `features.tagColumn` asks for it.
 const TagColumn = ({ cloud, active, onToggleTag, onTuck }) => html`<aside class="tag-column">
-    <${PaneHead} label="tags" onTuck=${onTuck} />
+    <${PaneHead} label=${t('apps.notes.tags', 'tags')} onTuck=${onTuck} />
     ${cloud.map(
         ([tag, count]) => html`<button
             key=${tag}
@@ -215,7 +216,7 @@ const TagColumn = ({ cloud, active, onToggleTag, onTuck }) => html`<aside class=
             <span class="tag-cloud-count">${count}</span>
         </button>`
     )}
-    ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">no tags yet</p>`}
+    ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('apps.notes.no-tags-yet', 'no tags yet')}</p>`}
 </aside>`;
 
 // The documents app - the shared surface every "documents" application (Notes, Recipes, ...)

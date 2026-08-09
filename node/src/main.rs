@@ -24,6 +24,7 @@ mod inspect;
 mod keystore;
 mod loops;
 mod media;
+mod message;
 mod net;
 mod profiles;
 mod pubkey;
@@ -199,9 +200,7 @@ async fn unfurl_handler(
     match state.unfurl.unfurl(&q.url).await {
         Ok(summary) => Ok(Json(summary)),
         Err(net::unfurl::Refusal::BadTarget(m)) => Err(AppError::BadRequest(m)),
-        Err(net::unfurl::Refusal::RateLimited) => Err(AppError::TooManyRequests(
-            "the node's unfurl budget is spent for the moment - links still work plain".into(),
-        )),
+        Err(net::unfurl::Refusal::RateLimited) => Err(AppError::TooManyRequests(crate::msg!("main.the-nodes-unfurl-budget-is", "the node's unfurl budget is spent for the moment - links still work plain"))),
     }
 }
 

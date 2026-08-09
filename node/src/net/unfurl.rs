@@ -43,7 +43,7 @@ pub struct Summary {
 pub enum Refusal {
     /// Not a fetchable public http(s) URL (bad syntax, wrong scheme, private/loopback
     /// address, unresolvable host, too many redirects).
-    BadTarget(String),
+    BadTarget(crate::message::UserMessage),
     /// The global outbound budget is spent right now.
     RateLimited,
 }
@@ -128,9 +128,9 @@ impl Unfurler {
     /// hiccup doesn't wear a day-long scar). `Err` is a refusal - nothing was fetched.
     pub async fn unfurl(&self, raw: &str) -> Result<Option<Summary>, Refusal> {
         let parsed = url::Url::parse(raw.trim())
-            .map_err(|e| Refusal::BadTarget(format!("not a URL: {e}")))?;
+            .map_err(|e| Refusal::BadTarget(crate::msg!("net.unfurl.not-a-url", "not a URL: {reason}", reason = e)))?;
         if parsed.scheme() != "http" && parsed.scheme() != "https" {
-            return Err(Refusal::BadTarget("only http and https unfurl".into()));
+            return Err(Refusal::BadTarget(crate::msg!("net.unfurl.only-http-and-https-unfurl", "only http and https unfurl")));
         }
         let key = parsed.to_string();
         if let Some(hit) = self.cache.get(&key).await {
@@ -190,9 +190,7 @@ impl Unfurler {
                     .join(location)
                     .map_err(|e| FetchEnd::Failed(anyhow::anyhow!("bad redirect target: {e}")))?;
                 if url.scheme() != "http" && url.scheme() != "https" {
-                    return Err(FetchEnd::Refused(Refusal::BadTarget(
-                        "redirected off the web".into(),
-                    )));
+                    return Err(FetchEnd::Refused(Refusal::BadTarget(crate::msg!("net.unfurl.redirected-off-the-web", "redirected off the web"))));
                 }
                 continue;
             }
@@ -204,7 +202,7 @@ impl Unfurler {
                 .map_err(FetchEnd::Failed)?;
             return Ok(parse_open_graph(&body));
         }
-        Err(FetchEnd::Refused(Refusal::BadTarget("too many redirects".into())))
+        Err(FetchEnd::Refused(Refusal::BadTarget(crate::msg!("net.unfurl.too-many-redirects", "too many redirects"))))
     }
 }
 
@@ -219,26 +217,26 @@ enum FetchEnd {
 async fn vetted_addr(url: &url::Url) -> Result<IpAddr, Refusal> {
     let host = url
         .host_str()
-        .ok_or_else(|| Refusal::BadTarget("no host".into()))?;
+        .ok_or_else(|| Refusal::BadTarget(crate::msg!("net.unfurl.no-host", "no host")))?;
     let port = url.port_or_known_default().unwrap_or(80);
     // A literal IP skips DNS but not the vetting.
     if let Ok(ip) = host.trim_matches(['[', ']']).parse::<IpAddr>() {
         return if is_public(ip) {
             Ok(ip)
         } else {
-            Err(Refusal::BadTarget("address is not public".into()))
+            Err(Refusal::BadTarget(crate::msg!("net.unfurl.address-is-not-public", "address is not public")))
         };
     }
     let addrs: Vec<IpAddr> = tokio::net::lookup_host((host, port))
         .await
-        .map_err(|_| Refusal::BadTarget("host does not resolve".into()))?
+        .map_err(|_| Refusal::BadTarget(crate::msg!("net.unfurl.host-does-not-resolve", "host does not resolve")))?
         .map(|sa| sa.ip())
         .collect();
     if addrs.is_empty() {
-        return Err(Refusal::BadTarget("host does not resolve".into()));
+        return Err(Refusal::BadTarget(crate::msg!("net.unfurl.host-does-not-resolve-2", "host does not resolve")));
     }
     if addrs.iter().any(|ip| !is_public(*ip)) {
-        return Err(Refusal::BadTarget("address is not public".into()));
+        return Err(Refusal::BadTarget(crate::msg!("net.unfurl.address-is-not-public-2", "address is not public")));
     }
     Ok(addrs[0])
 }

@@ -21,6 +21,7 @@ import { docsInsideOnly, dropIndex, filedDocIds, flatDocs, pathToDoc, sectionIds
     from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
 import { PaneHead } from '../panes.js';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -141,7 +142,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
     if (!node.members) {
         return html`<div class="tree-row tree-stub" style=${`padding-left: ${0.4 + depth * 0.9}rem`}>
             <${Icons.section} />
-            <span class="tree-row-title">${node.title || '(untitled section)'} ↩</span>
+            <span class="tree-row-title">${node.title || t('doc.tree.untitled-section', '(untitled section)')} ↩</span>
         </div>`;
     }
     const open = !ops.folded.has(node.taxonomy_id);
@@ -211,7 +212,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
         >
             <span class=${open ? 'tree-caret open' : 'tree-caret'}><${Icons.forward} /></span>
             <${open ? Icons.sectionOpen : Icons.section} />
-            <span class="tree-row-title">${node.title || '(untitled section)'}</span>
+            <span class="tree-row-title">${node.title || t('doc.tree.untitled-section-2', '(untitled section)')}</span>
             <span class="tree-row-actions" onClick=${(e) => e.stopPropagation()}>
                 <button
                     class="tree-act"
@@ -220,12 +221,12 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                 ><${Icons.pageNew} /></button>
                 <button
                     class="tree-act"
-                    title="a new section inside this one"
+                    title=${t('doc.tree.a-new-section-inside-this', 'a new section inside this one')}
                     onClick=${() => ops.newSection(node.taxonomy_id)}
                 ><${Icons.sectionNew} /></button>
                 <button
                     class="tree-act"
-                    title="rename this section"
+                    title=${t('doc.tree.rename-this-section', 'rename this section')}
                     onClick=${() => ops.renameSection(node.taxonomy_id, node.title)}
                 ><${Icons.rename} /></button>
                 <button
@@ -288,7 +289,7 @@ const UnfiledBin = ({ unfiled, ops }) => {
             ops.completeDrag({ unfile: true });
         }}
     >
-        <div class="tree-unfiled-title">unfiled</div>
+        <div class="tree-unfiled-title">${t('doc.tree.unfiled', 'unfiled')}</div>
         ${unfiled.map(
             (d) => html`<${PageRow} key=${d.doc_id} id=${d.doc_id} summary=${d} depth=${0} ops=${ops} />`
         )}
@@ -442,7 +443,7 @@ export const WikiTree = ({
             refetch();
             onSelect(made.doc_id);
         } catch (e) {
-            alert(`couldn't start the ${itemNoun}: ${e.message}`);
+            alert(t('doc.tree.couldnt-start-the', "couldn't start the {itemNoun}: {message}", { itemNoun, message: e.message }));
         }
     };
 
@@ -461,7 +462,7 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(`couldn't create the section: ${e.message}`);
+            alert(t('doc.tree.couldnt-create-the-section', "couldn't create the section: {message}", { message: e.message }));
         }
     };
 
@@ -476,7 +477,7 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(`couldn't rename it: ${e.message}`);
+            alert(t('doc.tree.couldnt-rename-it', "couldn't rename it: {message}", { message: e.message }));
         }
     };
 
@@ -519,7 +520,7 @@ export const WikiTree = ({
             }
             refetch();
         } catch (e) {
-            alert(`couldn't delete it: ${e.message}`);
+            alert(t('doc.tree.couldnt-delete-it', "couldn't delete it: {message}", { message: e.message }));
         }
     };
 
@@ -578,7 +579,7 @@ export const WikiTree = ({
             }
             refetch();
         } catch (e) {
-            alert(`couldn't move that: ${e.message}`);
+            alert(t('doc.tree.couldnt-move-that', "couldn't move that: {message}", { message: e.message }));
         }
     };
 
@@ -620,20 +621,20 @@ export const WikiTree = ({
                 if (tree) completeDrag({ intoId: tree.taxonomy_id });
             }}
         >
-            ${onMinimize && html`<${PaneHead} label="tree" onTuck=${onMinimize} />`}
+            ${onMinimize && html`<${PaneHead} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
             <div class="tree-toolbar">
                 <button class="tree-tool" onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> ${itemNoun}
                 </button>
                 <button class="tree-tool" onClick=${() => newSection(null)}>
-                    <${Icons.sectionNew} /> section
+                    <${Icons.sectionNew} /> ${t('doc.tree.section', 'section')}
                 </button>
             </div>
             ${tree && html`<${MemberList} node=${tree} depth=${0} ops=${ops} />`}
             ${empty &&
             !unfiled.length &&
             html`<p class="null-sub tree-empty">
-                nothing here yet - start a ${itemNoun}, or a section to put them in.
+                ${t('doc.tree.nothing-here-yet---start', 'nothing here yet - start a {itemNoun}, or a section to put them in.', { itemNoun })}
             </p>`}
             ${!!unfiled.length && html`<${UnfiledBin} unfiled=${unfiled} ops=${ops} />`}
         </aside>

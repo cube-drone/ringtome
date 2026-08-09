@@ -72,9 +72,7 @@ impl RateLimiter {
         let count = counter.fetch_add(1, Ordering::Relaxed) + 1;
 
         if count > limit {
-            return Err(AppError::TooManyRequests(format!(
-                "rate limit for {action} exceeded; slow down"
-            )));
+            return Err(AppError::TooManyRequests(crate::msg!("rate_limit.rate-limit-for-action-exceeded", "rate limit for {action} exceeded; slow down", action = action)));
         }
         Ok(())
     }

@@ -17,6 +17,7 @@
 import { h } from 'preact';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -26,15 +27,14 @@ export const bareSource = (_error, source) => html`<pre class="reader-plain">${s
 /// The default: what happened, and then the source so nothing is hidden.
 export const marqueeApology = (_error, source) => html`<div>
     <p class="null-sub">
-        this marquee doesn't parse right now (likely a conflict split a block) - showing the
-        source; edit to tidy it.
+        ${t('doc.marqueebody.this-marquee-doesnt-parse-right', "this marquee doesn't parse right now (likely a conflict split a block) - showing the source; edit to tidy it.")}
     </p>
     <pre class="reader-plain">${source}</pre>
 </div>`;
 
 /// The parser's own complaint, for someone with the document open in an editor.
 export const parseError = (error) =>
-    html`<p class="form-error">marquee doesn't parse: ${error.message}</p>`;
+    html`<p class="form-error">${t('doc.marqueebody.marquee-doesnt-parse', "marquee doesn't parse: {message}", { message: error.message })}</p>`;
 
 /**
  * @param handle       a ref for the MarqueeHandle, when the host drives scrolling (the editor's

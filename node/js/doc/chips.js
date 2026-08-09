@@ -10,6 +10,7 @@ import { h } from 'preact';
 import htm from 'htm';
 
 import { Icons } from '../icons.js';
+import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
@@ -44,13 +45,13 @@ export const NavChips = ({ nav }) => {
     if (!nav) return null;
     return html`<${Chip}
             icon=${Icons.navPrev}
-            title=${nav.prevTip || 'the previous document'}
+            title=${nav.prevTip || t('doc.chips.the-previous-document', 'the previous document')}
             disabled=${!nav.prev}
             onClick=${() => nav.prev && nav.go(nav.prev)}
         />
         <${Chip}
             icon=${Icons.navNext}
-            title=${nav.nextTip || 'the next document'}
+            title=${nav.nextTip || t('doc.chips.the-next-document', 'the next document')}
             disabled=${!nav.next}
             onClick=${() => nav.next && nav.go(nav.next)}
         />`;

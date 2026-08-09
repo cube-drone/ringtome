@@ -11,6 +11,7 @@ import { shortcode } from './persona.js';
 import { Modal } from './modal.js';
 import { Icons } from './icons.js';
 import { blastRadius } from './pure/removal.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -81,7 +82,7 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
     // Every terminal screen echoes the key itself: the name is how you found the row, the
     // fingerprint is what actually leaves the tree.
     const fingerprint = html`<p class="removal-fact" title=${target.pubkey}>
-        this computer's key: ${shortcode(target.pubkey)}
+        ${t('computers.this-computers-key', "this computer's key: {p0}", { p0: shortcode(target.pubkey) })}
     </p>`;
 
     const title = isSelf
@@ -92,19 +93,17 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
 
     return html`<${Modal} title=${title} onClose=${onClose}>
         ${step === 'choose' &&
-        html`<p class="null-sub">How should ${d.label} go?</p>
+        html`<p class="null-sub">${t('computers.how-should-go', 'How should {label} go?', { label: d.label })}</p>
             <button class="removal-option" onClick=${() => setStep('leave')}>
-                <span class="removal-option-title">have this computer leave</span>
+                <span class="removal-option-title">${t('computers.have-this-computer-leave', 'have this computer leave')}</span>
                 <span class="removal-option-sub">
-                    A graceful goodbye. Everything it wrote stays good, and any computers it
-                    invited stay too.
+                    ${t('computers.a-graceful-goodbye-everything-it', 'A graceful goodbye. Everything it wrote stays good, and any computers it invited stay too.')}
                 </span>
             </button>
             <button class="removal-option removal-option-forceful" onClick=${() => setStep('lockout')}>
-                <span class="removal-option-title">lock this computer out</span>
+                <span class="removal-option-title">${t('computers.lock-this-computer-out', 'lock this computer out')}</span>
                 <span class="removal-option-sub">
-                    For a computer you don't trust anymore. It is shut out - and every computer
-                    it invited is shut out with it.
+                    ${t('computers.for-a-computer-you-dont', "For a computer you don't trust anymore. It is shut out - and every computer it invited is shut out with it.")}
                 </span>
             </button>`}
         ${step === 'leave' &&
@@ -118,33 +117,32 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
             </p>
             ${fingerprint}
             <button class="removal-go" disabled=${busy} onClick=${() => revoke('retirement')}>
-                ${busy ? '…' : isSelf ? 'leave this persona' : 'have it leave'}
+                ${busy ? '…' : isSelf ? t('computers.leave-this-persona', 'leave this persona') : t('computers.have-it-leave', 'have it leave')}
             </button>`}
         ${step === 'lockout' &&
-        html`<p class="null-sub">Was this computer really you?</p>
+        html`<p class="null-sub">${t('computers.was-this-computer-really-you', 'Was this computer really you?')}</p>
             <button
                 class="removal-option ${cut === 'now' ? 'removal-option-picked' : ''}"
                 onClick=${() => setCut('now')}
             >
-                <span class="removal-option-title">it was me, until now</span>
+                <span class="removal-option-title">${t('computers.it-was-me-until-now', 'it was me, until now')}</span>
                 <span class="removal-option-sub">
-                    It was mine, but it isn't safe anymore. What it already wrote stands;
-                    nothing new gets in.
+                    ${t('computers.it-was-mine-but-it', "It was mine, but it isn't safe anymore. What it already wrote stands; nothing new gets in.")}
                 </span>
             </button>
             <button
                 class="removal-option ${cut === 'genesis' ? 'removal-option-picked' : ''}"
                 onClick=${() => setCut('genesis')}
             >
-                <span class="removal-option-title">it was never me</span>
+                <span class="removal-option-title">${t('computers.it-was-never-me', 'it was never me')}</span>
                 <span class="removal-option-sub">
-                    An impostor all along. Everything it ever wrote is struck from the record.
+                    ${t('computers.an-impostor-all-along-everything', 'An impostor all along. Everything it ever wrote is struck from the record.')}
                 </span>
             </button>
             ${cut &&
             html`${radius.length > 0 &&
                 html`<p class="removal-blast">
-                    locked out with it:${' '}
+                    ${t('computers.locked-out-with-it', 'locked out with it:')}${' '}
                     ${radius.map((k) => describe(k).label).join(', ')}
                 </p>`}
                 ${fingerprint}
@@ -153,7 +151,7 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
                     disabled=${busy}
                     onClick=${() => revoke('repudiation', cut)}
                 >
-                    ${busy ? '…' : 'lock it out'}
+                    ${busy ? '…' : t('computers.lock-it-out', 'lock it out')}
                 </button>`}`}
         ${error && html`<p class="form-error">${error}</p>`}
     <//>`;
@@ -203,8 +201,8 @@ export const Computers = ({ current }) => {
 
     return html`
         <div class="computers">
-            <h2 class="computers-title">your computers</h2>
-            ${!keys && !error && html`<p class="null-sub">looking around…</p>`}
+            <h2 class="computers-title">${t('computers.your-computers', 'your computers')}</h2>
+            ${!keys && !error && html`<p class="null-sub">${t('computers.looking-around', 'looking around…')}</p>`}
             ${keys &&
             html`<ul class="computer-list">
                 ${keys.map((k) => {
@@ -228,8 +226,8 @@ export const Computers = ({ current }) => {
                         html`<button
                             class="computer-remove"
                             title=${k.removal === 'self'
-                                ? 'leave this persona'
-                                : 'remove this computer'}
+                                ? t('computers.leave-this-persona-2', 'leave this persona')
+                                : t('computers.remove-this-computer', 'remove this computer')}
                             onClick=${() => setRemoving(k)}
                         >
                             <${Icons.trash} />
@@ -238,41 +236,38 @@ export const Computers = ({ current }) => {
                 })}
             </ul>`}
 
-            <h3 class="computers-subtitle">invite another computer to be you</h3>
+            <h3 class="computers-subtitle">${t('computers.invite-another-computer-to-be', 'invite another computer to be you')}</h3>
             ${delivered &&
             html`<p class="field-note ok">
-                    It moved right in - nothing to carry back. It should be itself over there
-                    already.
+                    ${t('computers.it-moved-right-in--', 'It moved right in - nothing to carry back. It should be itself over there already.')}
                 </p>
                 <button class="skip-link" onClick=${() => setDelivered(false)}>
-                    invite another computer
+                    ${t('computers.invite-another-computer', 'invite another computer')}
                 </button>`}
             ${grantCode
                 ? html`<p class="null-sub">
-                          Couldn't reach the new computer directly - carry this invite back
-                          and paste it there. Keep this computer awake while it moves in.
+                          ${t('computers.couldnt-reach-the-new-computer', "Couldn't reach the new computer directly - carry this invite back and paste it there. Keep this computer awake while it moves in.")}
                       </p>
                       <code class="spare-key">${grantCode}</code>
                       <button class="skip-link" onClick=${() => setGrantCode(null)}>
-                          invite a different computer
+                          ${t('computers.invite-a-different-computer', 'invite a different computer')}
                       </button>`
                 : !delivered &&
                   html`<p class="null-sub">
-                          On the new computer, sign in and choose
-                          ${' '}<strong>bring your persona from another computer</strong> - it
-                          will give you a code to paste here.
+                          ${t('computers.on-the-new-computer-sign', 'On the new computer, sign in and choose')}
+                          ${' '}<strong>${t('computers.bring-your-persona-from-another', 'bring your persona from another computer')}</strong> ${t('computers.--it-will-give-you', '- it will give you a code to paste here.')}
                       </p>
                       <form class="welcome-form" onSubmit=${invite}>
                           <textarea
                               class="spare-paste"
                               rows="4"
-                              placeholder="paste the new computer's code here"
+                              placeholder=${t('computers.paste-the-new-computers-code', "paste the new computer's code here")}
                               value=${requestCode}
                               onInput=${(e) => setRequestCode(e.currentTarget.value)}
                               required
                           ></textarea>
                           <button class="welcome-go" type="submit" disabled=${busy}>
-                              ${busy ? '…' : 'invite this computer to be you'}
+                              ${busy ? '…' : t('computers.invite-this-computer-to-be', 'invite this computer to be you')}
                           </button>
                       </form>`}
             ${error && html`<p class="form-error">${error}</p>`}

@@ -112,7 +112,7 @@ async fn hosted_here(state: &AppState, root_hex: &str) -> Result<bool, AppError>
 /// the question. Absent fields render as absent; a profile-less persona is still a page.
 async fn public_profile(state: &AppState, root_hex: &str) -> Result<Vec<imaol::ProfileField>, AppError> {
     let Some(db) = state.user_dbs.get(root_hex).await.map_err(AppError::Internal)? else {
-        return Err(AppError::NotFound("nothing of theirs is held here".into()));
+        return Err(AppError::NotFound(crate::msg!("idface.nothing-of-theirs-is-held", "nothing of theirs is held here")));
     };
     imaol::get_profile(&db).await
 }
@@ -804,24 +804,24 @@ async fn public_doc_bytes(
     if_none_match: Option<&str>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(seg) else {
-        return Err(AppError::NotFound("no such persona here".into()));
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here", "no such persona here")));
     };
     let root_hex = hex::encode(root);
     let doc_id: [u8; 16] = hex::decode(doc_hex)
         .ok()
         .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| AppError::NotFound("no such document".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("idface.no-such-document", "no such document")))?;
     // An anonymous probe for a stranger's bytes finds nothing rather than minting a place
     // to look: absence is the answer here, and `get` is the verb that can say it.
     let Some(db) = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? else {
-        return Err(AppError::NotFound("nothing of theirs is held here".into()));
+        return Err(AppError::NotFound(crate::msg!("idface.nothing-of-theirs-is-held-2", "nothing of theirs is held here")));
     };
     let Some(head) = crate::record::documents::public_head(&db, &doc_id).await? else {
-        return Err(AppError::NotFound("no such public document here".into()));
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
     };
     let (hash, mime) = if thumb {
         let Some(t) = head.thumb_hash else {
-            return Err(AppError::NotFound("this document has no thumbnail".into()));
+            return Err(AppError::NotFound(crate::msg!("idface.this-document-has-no-thumbnail", "this document has no thumbnail")));
         };
         (t, "image/avif")
     } else {
@@ -853,9 +853,7 @@ async fn public_doc_bytes(
         .await
         .map_err(AppError::Internal)?
     else {
-        return Err(AppError::NotFound(
-            "the bytes haven't arrived here yet - headers travel ahead of bodies".into(),
-        ));
+        return Err(AppError::NotFound(crate::msg!("idface.the-bytes-havent-arrived-here", "the bytes haven't arrived here yet - headers travel ahead of bodies")));
     };
     Ok((
         StatusCode::OK,
@@ -938,10 +936,10 @@ pub async fn id_posts(
     axum::extract::Query(query): axum::extract::Query<PostsQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound("no such persona here".into()));
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-2", "no such persona here")));
     };
     let root_hex = hex::encode(root);
-    let missing = || AppError::NotFound("no such persona here".into());
+    let missing = || AppError::NotFound(crate::msg!("idface.no-such-persona-here-3", "no such persona here"));
     if !hosted_here(&state, &root_hex).await?
         && (session.is_none() || foreign_fetch_row(&state, &root_hex).await?.is_none())
     {
@@ -952,7 +950,7 @@ pub async fn id_posts(
     // this was written against a 32-byte id, and document ids are 16).
     let after = match (query.after_ms, query.after_doc.as_deref()) {
         (Some(ms), Some(doc)) => {
-            let bad = || AppError::BadRequest("that cursor isn't a document id".into());
+            let bad = || AppError::BadRequest(crate::msg!("idface.that-cursor-isnt-a-document", "that cursor isn't a document id"));
             let raw = hex::decode(doc).map_err(|_| bad())?;
             let id: [u8; 16] = raw.try_into().map_err(|_| bad())?;
             Some((ms, id))
@@ -997,7 +995,7 @@ pub async fn id_profile(
     axum::extract::Query(query): axum::extract::Query<IdQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
-        return Err(AppError::NotFound("no such persona here".into()));
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-4", "no such persona here")));
     };
     let root_hex = hex::encode(root);
     let hosted = hosted_here(&state, &root_hex).await?;
@@ -1009,7 +1007,7 @@ pub async fn id_profile(
     let mut synced_ms: Option<i64> = None;
     if !hosted {
         let Some(_member) = session else {
-            return Err(AppError::NotFound("no such persona here".into()));
+            return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-5", "no such persona here")));
         };
         let now = crate::clock::now_ms();
         let row = foreign_fetch_row(&state, &root_hex).await?;
@@ -1036,9 +1034,7 @@ pub async fn id_profile(
             None => {
                 synced_ms = Some(now); // this request IS the sync; saying so beats saying nothing
                 if !fetch_foreign(&state, &root_hex, &via).await {
-                    return Err(AppError::NotFound(
-                        "not carried here, and none of the address's computers answered".into(),
-                    ));
+                    return Err(AppError::NotFound(crate::msg!("idface.not-carried-here-and-none", "not carried here, and none of the address's computers answered")));
                 }
             }
             // Something held: answer NOW and revalidate behind it. A visit is the demand

@@ -51,16 +51,16 @@ impl FromRequestParts<AppState> for Session {
 
         let jar = CookieJar::from_request_parts(parts, &state)
             .await
-            .map_err(|_| AppError::Unauthorized("no cookies".into()))?;
+            .map_err(|_| AppError::Unauthorized(crate::msg!("auth.extractor.no-cookies", "no cookies")))?;
 
         let token = jar
             .get(&session_cookie_name(state.config.port))
             .map(|c| c.value().to_string())
-            .ok_or_else(|| AppError::Unauthorized("not logged in".into()))?;
+            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.not-logged-in", "not logged in")))?;
 
         let account = account_for_token(&state.node_db, &token)
             .await?
-            .ok_or_else(|| AppError::Unauthorized("session invalid or expired".into()))?;
+            .ok_or_else(|| AppError::Unauthorized(crate::msg!("auth.extractor.session-invalid-or-expired", "session invalid or expired")))?;
 
         // The presence signal: an authenticated request is a human at the keyboard, and the
         // follow-refresh sweep spends its budget on present humans first.
@@ -113,7 +113,7 @@ impl FromRequestParts<AppState> for NodeAdminSession {
                 account: session.account,
             })
         } else {
-            Err(AppError::Forbidden("node_admin required".into()))
+            Err(AppError::Forbidden(crate::msg!("auth.extractor.nodeadmin-required", "node_admin required")))
         }
     }
 }
@@ -140,7 +140,7 @@ impl FromRequestParts<AppState> for AdminSession {
                 account: session.account,
             })
         } else {
-            Err(AppError::Forbidden("admin required".into()))
+            Err(AppError::Forbidden(crate::msg!("auth.extractor.admin-required", "admin required")))
         }
     }
 }

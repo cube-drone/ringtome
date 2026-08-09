@@ -24,6 +24,7 @@ import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { appTypeOf, bucketsForApp, DEFAULT_STYLE } from './pure/apps.js';
 import { Icons } from './icons.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -129,7 +130,7 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
             });
             onSwitch(name); // it exists empty right away; the roster row follows via the stream
         } catch (e) {
-            alert(`couldn't create it: ${e.message}`);
+            alert(t('buckets.couldnt-create-it', "couldn't create it: {message}", { message: e.message }));
         }
     };
 
@@ -160,7 +161,7 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
             });
             onSwitch(app.style); // land back on the shelf's home notebook
         } catch (e) {
-            alert(`couldn't delete it: ${e.message}`);
+            alert(t('buckets.couldnt-delete-it', "couldn't delete it: {message}", { message: e.message }));
         }
     };
 
@@ -203,7 +204,7 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
                 )}
                 ${!isHome &&
                 html`<button class="bucket-menu-item bucket-menu-delete" onClick=${destroy}>
-                    Delete this ${app.bucketNoun}…
+                    ${t('buckets.delete-this', 'Delete this {bucketNoun}…', { bucketNoun: app.bucketNoun })}
                 </button>`}
             </div>`}
         </span>

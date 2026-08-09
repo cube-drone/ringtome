@@ -14,6 +14,7 @@ import htm from 'htm';
 import { usePrefMap, flagsOf, setPref, setFlag, widthKey, widthPrefix, tuckKey, tuckPrefix }
     from './mirror/prefs.js';
 import { Icons } from './icons.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -83,7 +84,7 @@ export function useColWidths(root, appId, cols, mins = {}) {
     };
     const resizer = (col) => html`<div
         class="col-resizer"
-        title="drag to resize"
+        title=${t('panes.drag-to-resize', 'drag to resize')}
         onPointerDown=${startResize(col)}
     ></div>`;
     const colStyle = cols

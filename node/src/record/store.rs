@@ -92,7 +92,7 @@ pub struct PublicView {
 /// the per-identity database, assembled once.
 pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result<Store, AppError> {
     let root = crate::pubkey::decode(root_hex)
-        .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?;
+        .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey", "bad root pubkey")))?;
     let signer =
         crate::identity::load_signing_key(&state.node_db, &state.keystore, account_id, root_hex)
             .await?;
@@ -117,7 +117,7 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
 /// 404 when the node doesn't agent it.
 pub async fn read_public(state: &AppState, root_hex: &str) -> Result<PublicView, AppError> {
     if !crate::identity::is_agented(&state.node_db, root_hex).await? {
-        return Err(AppError::NotFound("identity not found".into()));
+        return Err(AppError::NotFound(crate::msg!("record.store.identity-not-found", "identity not found")));
     }
     let db = state
         .user_dbs
@@ -245,10 +245,11 @@ impl Profile<'_> {
     /// Set one profile field (LWW). Fields are a closed schema: unknown names are rejected.
     pub async fn set(&self, field: &str, value: &str) -> Result<SignedEntry, AppError> {
         if !PROFILE_FIELDS.contains(&field) {
-            return Err(AppError::BadRequest(format!(
-                "unknown profile field {:?} (allowed: {})",
-                field,
-                PROFILE_FIELDS.join(", ")
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.unknown-profile-field-allowed",
+                "unknown profile field {field} (allowed: {allowed})",
+                field = format!("{field:?}"),
+                allowed = PROFILE_FIELDS.join(", "),
             )));
         }
         imaol::set_profile_field(&self.store.db, &self.store.authorship.signer, field, value).await
@@ -377,9 +378,10 @@ impl Devices<'_> {
     /// Label a key (LWW per key; renaming is just writing again).
     pub async fn set_name(&self, leaf: &[u8; 32], name: &str) -> Result<SignedEntry, AppError> {
         if name.len() > Self::MAX_NAME_BYTES {
-            return Err(AppError::BadRequest(format!(
-                "device names are capped at {} bytes - this is a nickname, not a description",
-                Self::MAX_NAME_BYTES
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.device-names-are-capped-at",
+                "device names are capped at {limit} bytes - this is a nickname, not a description",
+                limit = Self::MAX_NAME_BYTES,
             )));
         }
         self.store
@@ -755,20 +757,15 @@ impl Documents<'_> {
         let doc = view
             .docs
             .get(doc_id)
-            .ok_or_else(|| AppError::NotFound("no such document".into()))?;
+            .ok_or_else(|| AppError::NotFound(crate::msg!("record.store.no-such-document", "no such document")))?;
         if doc.diverged() {
-            return Err(AppError::BadRequest(
-                "this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict"
-                    .into(),
-            ));
+            return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict")));
         }
         let resolved = self.resolved(doc).await?;
         let body = match body_override {
             Some(prepared) => prepared,
             None => resolved.body.ok_or_else(|| {
-                AppError::BadRequest(
-                    "this note's words haven't arrived on this computer yet".into(),
-                )
+                AppError::BadRequest(crate::msg!("record.store.this-notes-words-havent-arrived", "this note's words haven't arrived on this computer yet"))
             })?,
         };
         let format = doc
@@ -779,9 +776,7 @@ impl Documents<'_> {
             format,
             crate::record::documents::Format::Plaintext | crate::record::documents::Format::Marquee
         ) {
-            return Err(AppError::BadRequest(
-                "media publishes by its own door, not this one".into(),
-            ));
+            return Err(AppError::BadRequest(crate::msg!("record.store.media-publishes-by-its-own", "media publishes by its own door, not this one")));
         }
 
         // Already published? Then this is a new version of that post, not a new post.
@@ -845,24 +840,20 @@ impl Documents<'_> {
         let doc = view
             .docs
             .get(media_doc)
-            .ok_or_else(|| AppError::BadRequest("an embedded media document is missing".into()))?;
+            .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.an-embedded-media-document-is", "an embedded media document is missing")))?;
         let head = doc
             .display_head()
-            .ok_or_else(|| AppError::BadRequest("embedded media has no readable head".into()))?;
+            .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.embedded-media-has-no-readable", "embedded media has no readable head")))?;
         let format = crate::record::documents::Format::from_wire(head.header.format);
         match format {
             crate::record::documents::Format::Avif
             | crate::record::documents::Format::Apng
             | crate::record::documents::Format::OggOpus => {}
             crate::record::documents::Format::WebmAv1 => {
-                return Err(AppError::BadRequest(
-                    "video can't be baked into a post yet - image and audio only for now".into(),
-                ));
+                return Err(AppError::BadRequest(crate::msg!("record.store.video-cant-be-baked-into", "video can't be baked into a post yet - image and audio only for now")));
             }
             _ => {
-                return Err(AppError::BadRequest(
-                    "an embedded target is not a media document".into(),
-                ));
+                return Err(AppError::BadRequest(crate::msg!("record.store.an-embedded-target-is-not", "an embedded target is not a media document")));
             }
         }
         // Already baked by an earlier post? The same twin serves every embed of it.
@@ -877,7 +868,7 @@ impl Documents<'_> {
             return Ok((existing, format));
         }
         let body = self.body(head).await?.ok_or_else(|| {
-            AppError::BadRequest("this media's bytes haven't arrived on this computer yet".into())
+            AppError::BadRequest(crate::msg!("record.store.this-medias-bytes-havent-arrived", "this media's bytes haven't arrived on this computer yet"))
         })?;
         let thumb_avif = match head.header.thumb_hash {
             Some(h) => self.blob(h).await?,
@@ -1019,10 +1010,11 @@ impl Annotations<'_> {
         value: &str,
     ) -> Result<SignedEntry, AppError> {
         if value.len() > Self::MAX_VALUE_BYTES {
-            return Err(AppError::BadRequest(format!(
-                "annotation value exceeds {} bytes: past that, a description is becoming \
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.annotation-value-exceeds-bytes-past",
+                "annotation value exceeds {limit} bytes: past that, a description is becoming \
                  another document - write one and reference it",
-                Self::MAX_VALUE_BYTES
+                limit = Self::MAX_VALUE_BYTES,
             )));
         }
         self.store
@@ -1244,12 +1236,13 @@ impl Buckets<'_> {
     fn clean(bucket: &str) -> Result<String, AppError> {
         let name = bucket.trim().to_string();
         if name.is_empty() {
-            return Err(AppError::BadRequest("bucket name is empty".into()));
+            return Err(AppError::BadRequest(crate::msg!("record.store.bucket-name-is-empty", "bucket name is empty")));
         }
         if name.len() > Self::MAX_NAME_BYTES {
-            return Err(AppError::BadRequest(format!(
-                "bucket name exceeds {} bytes",
-                Self::MAX_NAME_BYTES
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.bucket-name-exceeds-bytes",
+                "bucket name exceeds {limit} bytes",
+                limit = Self::MAX_NAME_BYTES,
             )));
         }
         Ok(name)
@@ -1262,9 +1255,10 @@ impl Buckets<'_> {
         let name = Self::clean(bucket)?;
         let app = app.trim().to_string();
         if app.len() > Self::MAX_NAME_BYTES {
-            return Err(AppError::BadRequest(format!(
-                "app-type exceeds {} bytes",
-                Self::MAX_NAME_BYTES
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.app-type-exceeds-bytes",
+                "app-type exceeds {limit} bytes",
+                limit = Self::MAX_NAME_BYTES,
             )));
         }
         self.store
@@ -1652,11 +1646,8 @@ impl Taxonomies<'_> {
             && Self::is_on_roster(&view, doc_id)
             && Self::reaches(&view, &self.store.root, doc_id, taxonomy_id)
         {
-            return Err(AppError::BadRequest(
-                "placing this list here would create a cycle: the destination is already \
-                 inside it (directly or through nested lists)"
-                    .into(),
-            ));
+            return Err(AppError::BadRequest(crate::msg!("record.store.placing-this-list-here-would", "placing this list here would create a cycle: the destination is already \
+                 inside it (directly or through nested lists)")));
         }
 
         let element = member_element(root, doc_id);

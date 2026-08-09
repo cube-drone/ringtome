@@ -456,9 +456,9 @@ pub async fn retitle(
     let doc = view
         .docs
         .get(&doc_id)
-        .ok_or_else(|| AppError::NotFound("no such document".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("record.documents.no-such-document", "no such document")))?;
     let head = doc.display_head().ok_or_else(|| {
-        AppError::NotFound("the document has no version yet (still processing?)".into())
+        AppError::NotFound(crate::msg!("record.documents.the-document-has-no-version", "the document has no version yet (still processing?)"))
     })?;
     // The retitle no-op bounce: same name, nothing diverged to settle - the chain doesn't grow.
     if head.header.title == title && doc.logical_heads.len() == 1 {

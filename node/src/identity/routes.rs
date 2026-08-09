@@ -373,7 +373,7 @@ async fn rebuild_handler(
 ) -> Result<Json<RebuildResponse>, AppError> {
     if !state.config.local_test {
         // Uniform 404: on a production node this endpoint does not exist.
-        return Err(AppError::NotFound("not found".into()));
+        return Err(AppError::NotFound(crate::msg!("identity.routes.not-found", "not found")));
     }
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let db = state
@@ -639,9 +639,7 @@ async fn revoke_key_handler(
         "retirement" => ringtome_proto::Disposition::Retirement,
         "repudiation" => ringtome_proto::Disposition::Repudiation,
         other => {
-            return Err(AppError::BadRequest(format!(
-                "unknown disposition {other:?} (retirement | repudiation)"
-            )));
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-disposition-other-retirement-repudiation", "unknown disposition {other:?} (retirement | repudiation)", other = other)));
         }
     };
     let cut = match (req.cut.as_deref(), disposition) {
@@ -649,14 +647,10 @@ async fn revoke_key_handler(
         (Some("genesis"), ringtome_proto::Disposition::Repudiation) => super::Cut::Genesis,
         (Some("genesis"), ringtome_proto::Disposition::Retirement) => {
             // A retirement IS the honoring of history - "it was never me" contradicts it.
-            return Err(AppError::BadRequest(
-                "cut \"genesis\" only applies to repudiation".into(),
-            ));
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.cut-genesis-only-applies-to", "cut \"genesis\" only applies to repudiation")));
         }
         (Some(other), _) => {
-            return Err(AppError::BadRequest(format!(
-                "unknown cut {other:?} (now | genesis)"
-            )));
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-cut-other-now-genesis", "unknown cut {other:?} (now | genesis)", other = other)));
         }
     };
     let entry_hash =
@@ -750,7 +744,7 @@ async fn peers_handler(
     // transport keys that serving records publish anyway. A root we don't host has no
     // honest answer here.
     if !super::is_hosted(&state.node_db, &root).await? {
-        return Err(AppError::NotFound("this node doesn't host that persona".into()));
+        return Err(AppError::NotFound(crate::msg!("identity.routes.this-node-doesnt-host-that", "this node doesn't host that persona")));
     }
     let peers = crate::net::sync::liveliest_peers(&state.node_db, &root, 16).await?;
     Ok(Json(PeersResponse { peers }))
@@ -918,7 +912,7 @@ fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
     hex::decode(s)
         .ok()
         .and_then(|b| <[u8; N]>::try_from(b).ok())
-        .ok_or_else(|| AppError::BadRequest(format!("bad {what} (expected {} hex chars)", N * 2)))
+        .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-what-expected-hex-chars", "bad {what} (expected {chars} hex chars)", what = what, chars = N * 2)))
 }
 
 /// Parse the wire `format` string ("plaintext" | "marquee"), defaulting to plaintext when absent.
@@ -926,7 +920,7 @@ fn parse_format(s: &Option<String>) -> Result<crate::record::documents::Format, 
     match s {
         None => Ok(crate::record::documents::Format::Plaintext),
         Some(s) => crate::record::documents::Format::parse(s).ok_or_else(|| {
-            AppError::BadRequest(format!("unknown format {s:?} (plaintext | marquee)"))
+            AppError::BadRequest(crate::msg!("identity.routes.unknown-format-s-plaintext-marquee", "unknown format {s:?} (plaintext | marquee)", s = s))
         }),
     }
 }
@@ -1164,20 +1158,20 @@ async fn docs_create_video_handler(
     while let Some(field) = parts
         .next_field()
         .await
-        .map_err(|e| AppError::BadRequest(format!("bad multipart body: {e}")))?
+        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-body-e", "bad multipart body: {e}", e = e)))?
     {
         let name = field.name().unwrap_or("").to_string();
         let bytes = field
             .bytes()
             .await
-            .map_err(|e| AppError::BadRequest(format!("bad multipart part {name:?}: {e}")))?;
+            .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-part-name-e", "bad multipart part {name:?}: {e}", name = name, e = e)))?;
         match name.as_str() {
             "video" => video = Some(bytes),
             "audio" => audio = Some(bytes),
             _ => {} // unknown parts are ignored, not fatal
         }
     }
-    let video = video.ok_or_else(|| AppError::BadRequest("missing `video` part".into()))?;
+    let video = video.ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.missing-video-part", "missing `video` part")))?;
     let doc_id = crate::record::documents::new_doc_id();
     let job_id = state
         .ingest
@@ -1225,15 +1219,15 @@ async fn set_avatar_handler(
     while let Some(field) = parts
         .next_field()
         .await
-        .map_err(|e| AppError::BadRequest(format!("bad multipart body: {e}")))?
+        .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-body-e-2", "bad multipart body: {e}", e = e)))?
     {
         if field.name().unwrap_or("") == "image" {
             image = Some(field.bytes().await.map_err(|e| {
-                AppError::BadRequest(format!("bad multipart part `image`: {e}"))
+                AppError::BadRequest(crate::msg!("identity.routes.bad-multipart-part-image-e", "bad multipart part `image`: {e}", e = e))
             })?);
         }
     }
-    let image = image.ok_or_else(|| AppError::BadRequest("missing `image` part".into()))?;
+    let image = image.ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.missing-image-part", "missing `image` part")))?;
 
     // The same laundering every upload gets - decode, re-encode, never trust the bytes.
     let bytes = image.to_vec();
@@ -1242,14 +1236,12 @@ async fn set_avatar_handler(
     })
     .await
     .map_err(|e| AppError::Internal(anyhow::anyhow!("avatar crush task: {e}")))?
-    .map_err(|e| AppError::BadRequest(format!("that doesn't work as an avatar: {e}")))?;
+    .map_err(|e| AppError::BadRequest(crate::msg!("identity.routes.that-doesnt-work-as-an", "that doesn't work as an avatar: {e}", e = e)))?;
     if !matches!(
         ingested.format,
         crate::record::documents::Format::Avif | crate::record::documents::Format::Apng
     ) {
-        return Err(AppError::BadRequest(
-            "an avatar should be a picture - a still image or a small animation".into(),
-        ));
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.an-avatar-should-be-a", "an avatar should be a picture - a still image or a small animation")));
     }
 
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
@@ -1401,13 +1393,13 @@ async fn docs_body_impl(
 
     let head = doc
         .display_head()
-        .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-readable-head", "document has no readable head")))?;
     let format = crate::record::documents::Format::from_wire(head.header.format);
     let bytes = data
         .documents()
         .body(head)
         .await?
-        .ok_or_else(|| AppError::NotFound("body not on this node yet".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.body-not-on-this-node", "body not on this node yet")))?;
     Ok((
         [
             (CONTENT_TYPE, format.mime()),
@@ -1430,12 +1422,22 @@ async fn version_less_body_status(
         Some((status, _)) if status == "pending" || status == "processing" => {
             Ok((StatusCode::ACCEPTED, "still processing").into_response())
         }
-        Some((status, error)) if status == "failed" => Err(AppError::Unprocessable(
-            error.unwrap_or_else(|| "upload could not be processed".into()),
-        )),
+        Some((status, error)) if status == "failed" => Err(AppError::Unprocessable(match error {
+            // The job's own tombstone is data, not copy - it stays verbatim inside a frame that
+            // CAN be translated, rather than being a sentence this codebase chose.
+            Some(reason) => crate::msg!(
+                "identity.routes.upload-could-not-be-processed-reason",
+                "upload could not be processed: {reason}",
+                reason = reason,
+            ),
+            None => crate::msg!(
+                "identity.routes.upload-could-not-be-processed",
+                "upload could not be processed"
+            ),
+        })),
         // A 'done' job always has its version (so it's in the view above, not here); anything else,
         // or no job at all, is genuinely not found.
-        _ => Err(AppError::NotFound("document not found".into())),
+        _ => Err(AppError::NotFound(crate::msg!("identity.routes.document-not-found", "document not found"))),
     }
 }
 
@@ -1453,19 +1455,19 @@ async fn docs_thumb_handler(
     let doc = view
         .docs
         .get(&doc_id)
-        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-2", "document not found")))?;
     let head = doc
         .display_head()
-        .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-readable-head-2", "document has no readable head")))?;
     let thumb_hash = head
         .header
         .thumb_hash
-        .ok_or_else(|| AppError::NotFound("document has no thumbnail".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-thumbnail", "document has no thumbnail")))?;
     let bytes = data
         .documents()
         .blob(thumb_hash)
         .await?
-        .ok_or_else(|| AppError::NotFound("thumbnail not on this node yet".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.thumbnail-not-on-this-node", "thumbnail not on this node yet")))?;
     Ok((
         [
             (CONTENT_TYPE, crate::record::documents::Format::Avif.mime()),
@@ -1495,19 +1497,19 @@ async fn docs_preview_handler(
     let doc = view
         .docs
         .get(&doc_id)
-        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-3", "document not found")))?;
     let head = doc
         .display_head()
-        .ok_or_else(|| AppError::NotFound("document has no readable head".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-readable-head-3", "document has no readable head")))?;
     let preview_hash = head
         .header
         .preview_hash
-        .ok_or_else(|| AppError::NotFound("document has no preview clip".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-has-no-preview-clip", "document has no preview clip")))?;
     let bytes = data
         .documents()
         .blob(preview_hash)
         .await?
-        .ok_or_else(|| AppError::NotFound("preview not on this node yet".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.preview-not-on-this-node", "preview not on this node yet")))?;
     Ok((
         [
             (
@@ -1734,7 +1736,7 @@ async fn docs_get_handler(
     let doc = view
         .docs
         .get(&doc_id)
-        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-4", "document not found")))?;
 
     // Media facts for the display head. Its presence also decides body inlining: a media body is
     // opaque bytes served via `/body`, never UTF-8-mangled into this JSON (a webp is not a string).
@@ -1911,9 +1913,7 @@ async fn docs_by_tag_handler(
         None | Some("modified") => Order::Modified,
         Some("created") => Order::Created,
         Some(other) => {
-            return Err(AppError::BadRequest(format!(
-                "unknown order {other:?} (modified | created)"
-            )));
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-order-other-modified-created", "unknown order {other:?} (modified | created)", other = other)));
         }
     };
     let data = store::open(&state, &session.account.id, &root).await?;
@@ -2055,9 +2055,7 @@ async fn docs_by_bucket_handler(
         None | Some("modified") => false,
         Some("created") => true,
         Some(other) => {
-            return Err(AppError::BadRequest(format!(
-                "unknown order {other:?} (modified | created)"
-            )));
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.unknown-order-other-modified-created-2", "unknown order {other:?} (modified | created)", other = other)));
         }
     };
     let data = store::open(&state, &session.account.id, &root).await?;
@@ -2170,7 +2168,7 @@ async fn taxonomy_get_handler(
     let taxonomy_id = hex_fixed::<16>(&taxonomy_id, "taxonomy id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let own_root = crate::pubkey::decode(&root)
-        .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?;
+        .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey", "bad root pubkey")))?;
 
     let tree = data.taxonomies().tree(&taxonomy_id).await?;
 
@@ -2268,9 +2266,9 @@ async fn taxonomy_member_put_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let member_root = match &req.member_root {
         Some(hex) => crate::pubkey::decode(hex)
-            .ok_or_else(|| AppError::BadRequest("bad member root pubkey".into()))?,
+            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-member-root-pubkey", "bad member root pubkey")))?,
         None => crate::pubkey::decode(&root)
-            .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?,
+            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey-2", "bad root pubkey")))?,
     };
     let data = store::open(&state, &session.account.id, &root).await?;
     let signed = data
@@ -2300,9 +2298,9 @@ async fn taxonomy_member_delete_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let member_root = match &query.member_root {
         Some(hex) => crate::pubkey::decode(hex)
-            .ok_or_else(|| AppError::BadRequest("bad member root pubkey".into()))?,
+            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-member-root-pubkey-2", "bad member root pubkey")))?,
         None => crate::pubkey::decode(&root)
-            .ok_or_else(|| AppError::BadRequest("bad root pubkey".into()))?,
+            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.bad-root-pubkey-3", "bad root pubkey")))?,
     };
     let data = store::open(&state, &session.account.id, &root).await?;
     let signed = data
@@ -2382,7 +2380,7 @@ async fn docs_debug_handler(
     let doc = view
         .docs
         .get(&doc_id)
-        .ok_or_else(|| AppError::NotFound("document not found".into()))?;
+        .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.document-not-found-5", "document not found")))?;
     let names = data.devices().all().await.unwrap_or_default();
 
     let mut versions = Vec::new();

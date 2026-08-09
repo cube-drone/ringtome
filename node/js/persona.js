@@ -17,6 +17,7 @@ import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.j
 import { personaHue } from './pure/person.js';
 import { AddressRow, PersonBanner } from './person.js';
 import { Icons } from './icons.js';
+import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -304,22 +305,19 @@ export const NullState = ({ persona }) => {
     };
     return html`
         <div class="null-state">
-            <p class="null-title">Nobody lives here yet.</p>
+            <p class="null-title">${t('persona.nobody-lives-here-yet', 'Nobody lives here yet.')}</p>
             <p class="null-sub">
-                A persona is who you are around here - your name, your pages, your stuff.
-                You can have more than one, later.
+                ${t('persona.a-persona-is-who-you', 'A persona is who you are around here - your name, your pages, your stuff. You can have more than one, later.')}
             </p>
             ${persona.error && html`<p class="form-error">${persona.error}</p>`}
             <button class="welcome-go" disabled=${busy} onClick=${run(persona.create)}>
-                ${busy ? '…' : 'create a persona'}
+                ${busy ? '…' : t('persona.create-a-persona', 'create a persona')}
             </button>
             <p class="null-sub">
-                Every computer you bring the persona to
-                fully syncs your persona's stuff everywhere. This computer will be you, too.
-                That's what happens when you...
+                ${t('persona.every-computer-you-bring-the', "Every computer you bring the persona to fully syncs your persona's stuff everywhere. This computer will be you, too. That's what happens when you...")}
             </p>
             <button class="skip-link" disabled=${busy} onClick=${run(persona.startJoin)}>
-                bring your persona from another computer.
+                ${t('persona.bring-your-persona-from-another', 'bring your persona from another computer.')}
             </button>
         </div>
     `;
@@ -351,33 +349,29 @@ export const JoinFlow = ({ persona }) => {
 
     return html`
         <div class="ceremony">
-            <p class="null-title">Bring your persona here.</p>
+            <p class="null-title">${t('persona.bring-your-persona-here', 'Bring your persona here.')}</p>
             <p class="null-sub">
-                On a computer that is already you: open <strong>your computers</strong>,
-                choose <strong>invite another computer</strong>, and give it this code:
+                ${t('persona.on-a-computer-that-is', 'On a computer that is already you: open')} <strong>${t('persona.your-computers', 'your computers')}</strong>${t('persona.choose', ', choose')} <strong>${t('persona.invite-another-computer', 'invite another computer')}</strong>${t('persona.and-give-it-this-code', ', and give it this code:')}
             </p>
             <code class="spare-key">${persona.join.requestCode}</code>
             <p class="null-sub">
-                <span class="waiting-dot"></span> Waiting - when the other computer accepts,
-                your persona walks in here on its own. If it can't reach this computer, it
-                will hand you an invite code instead; paste that below. Keep both computers
-                awake either way.
+                <span class="waiting-dot"></span> ${t('persona.waiting---when-the-other', "Waiting - when the other computer accepts, your persona walks in here on its own. If it can't reach this computer, it will hand you an invite code instead; paste that below. Keep both computers awake either way.")}
             </p>
             <form class="welcome-form" onSubmit=${finish}>
                 <textarea
                     class="spare-paste"
                     rows="4"
-                    placeholder="invite code (only needed if it doesn't arrive on its own)"
+                    placeholder=${t('persona.invite-code-only-needed-if', "invite code (only needed if it doesn't arrive on its own)")}
                     value=${grantCode}
                     onInput=${(e) => setGrantCode(e.currentTarget.value)}
                     required
                 ></textarea>
                 ${error && html`<p class="form-error">${error}</p>`}
                 <button class="welcome-go" type="submit" disabled=${busy}>
-                    ${busy ? 'bringing your things across…' : 'become me here'}
+                    ${busy ? t('persona.bringing-your-things-across', 'bringing your things across…') : t('persona.become-me-here', 'become me here')}
                 </button>
                 <button type="button" class="skip-link" onClick=${persona.cancelJoin}>
-                    never mind
+                    ${t('persona.never-mind', 'never mind')}
                 </button>
             </form>
         </div>
@@ -409,23 +403,22 @@ export const SpareKeyCeremony = ({ persona }) => {
 
     return html`
         <div class="ceremony">
-            <p class="null-title">This is your spare key.</p>
+            <p class="null-title">${t('persona.this-is-your-spare-key', 'This is your spare key.')}</p>
             <p class="null-sub">
-                If you ever lose every computer that knows you, this - and only this - brings
-                you back. We don't keep a copy. <strong>We can never show it again.</strong>
+                ${t('persona.if-you-ever-lose-every', "If you ever lose every computer that knows you, this - and only this - brings you back. We don't keep a copy.")} <strong>${t('persona.we-can-never-show-it', 'We can never show it again.')}</strong>
             </p>
             <code class="spare-key">${secret}</code>
-            <button class="ceremony-download" onClick=${download}>download it</button>
+            <button class="ceremony-download" onClick=${download}>${t('persona.download-it', 'download it')}</button>
             <label class="ceremony-confirm">
                 <input
                     type="checkbox"
                     checked=${saved}
                     onInput=${(e) => setSaved(e.currentTarget.checked)}
                 />
-                I put my spare key somewhere safe
+                ${t('persona.i-put-my-spare-key', 'I put my spare key somewhere safe')}
             </label>
             <button class="welcome-go" disabled=${!saved} onClick=${persona.ceremonyDone}>
-                okay, I'm ready
+                ${t('persona.okay-im-ready', "okay, I'm ready")}
             </button>
         </div>
     `;
@@ -457,10 +450,9 @@ export const NamePicker = ({ persona, account }) => {
 
     return html`
         <div class="ceremony">
-            <p class="null-title">What should people call you?</p>
+            <p class="null-title">${t('persona.what-should-people-call-you', 'What should people call you?')}</p>
             <p class="null-sub">
-                This is the name people see next to your stuff. It's yours to change
-                whenever - it doesn't have to match your sign-in.
+                ${t('persona.this-is-the-name-people', "This is the name people see next to your stuff. It's yours to change whenever - it doesn't have to match your sign-in.")}
             </p>
             <form class="welcome-form" onSubmit=${submit}>
                 <input
@@ -475,18 +467,18 @@ export const NamePicker = ({ persona, account }) => {
                     <span class="profile-count profile-count-over">
                         ${profileChars(name)}/${PROFILE_LIMITS.name}
                     </span>
-                    ${' '}- a name this long won't fit
+                    ${' '}${t('persona.--a-name-this-long', "- a name this long won't fit")}
                 </p>`}
                 ${error && html`<p class="form-error">${error}</p>`}
                 <button class="welcome-go" type="submit" disabled=${busy || over}>
-                    ${busy ? '…' : 'that’s me'}
+                    ${busy ? '…' : t('persona.thats-me', 'that’s me')}
                 </button>
                 <button
                     type="button"
                     class="skip-link"
                     disabled=${busy}
                     onClick=${() => persona.setDisplayName('')}
-                >maybe later</button>
+                >${t('persona.maybe-later', 'maybe later')}</button>
             </form>
         </div>
     `;
@@ -523,28 +515,28 @@ export const PersonaHome = ({ persona, session }) => {
                 anyone else's (js/person.js). The live name below still feeds the shell's
                 badge; the banner reads the same mirror. */ ''}
             <${PersonBanner} root=${current.root} current=${current} />
-            ${!name && html`<p class="id-quiet">persona ${shortcode(current.root)}</p>`}
+            ${!name && html`<p class="id-quiet">${t('persona.persona', 'persona {p0}', { p0: shortcode(current.root) })}</p>`}
             <${AddressRow} root=${current.root} />
             <nav class="persona-menu">
                 <a class="persona-menu-item" href="/home/persona/profile">
                     <span class="persona-menu-icon"><${Icons.profile} /></span>
                     <span class="persona-menu-label">
-                        <strong>profile</strong>
-                        <small>your name and how you appear</small>
+                        <strong>${t('persona.profile', 'profile')}</strong>
+                        <small>${t('persona.your-name-and-how-you', 'your name and how you appear')}</small>
                     </span>
                 </a>
                 <a class="persona-menu-item" href="/home/persona/computers">
                     <span class="persona-menu-icon"><${Icons.computers} /></span>
                     <span class="persona-menu-label">
-                        <strong>your computers</strong>
-                        <small>the machines that carry this persona</small>
+                        <strong>${t('persona.your-computers-2', 'your computers')}</strong>
+                        <small>${t('persona.the-machines-that-carry-this', 'the machines that carry this persona')}</small>
                     </span>
                 </a>
                 <button class="persona-menu-item persona-menu-danger" onClick=${logout}>
                     <span class="persona-menu-icon"><${Icons.logout} /></span>
                     <span class="persona-menu-label">
-                        <strong>log out</strong>
-                        <small>forget this browser and head out</small>
+                        <strong>${t('persona.log-out', 'log out')}</strong>
+                        <small>${t('persona.forget-this-browser-and-head', 'forget this browser and head out')}</small>
                     </span>
                 </button>
             </nav>
@@ -621,7 +613,7 @@ export const Profile = ({ current }) => {
         try {
             if (name.dirty) await name.commit();
             if (bio.dirty) await bio.commit();
-            setFlash('saved');
+            setFlash(t('persona.saved', 'saved'));
             setTimeout(() => setFlash((f) => (f === 'saved' ? null : f)), 1800);
         } catch (e) {
             setFlash(e.message || 'that save did not take - try again');
@@ -655,42 +647,42 @@ export const Profile = ({ current }) => {
     return html`
         <div class="persona-page">
             <div class="persona-page-head">
-                <h1 class="persona-page-title">profile</h1>
+                <h1 class="persona-page-title">${t('persona.profile-2', 'profile')}</h1>
             </div>
             <div class="profile-avatar-row">
                 ${avatarDoc
                     ? html`<img
                           class="profile-avatar"
                           src="/id/${root}/docs/${avatarDoc}/thumb"
-                          alt="your avatar"
+                          alt=${t('persona.your-avatar', 'your avatar')}
                       />`
                     : html`<span
                           class="profile-avatar profile-avatar-empty"
                           style="background: hsl(${personaHue(root)}, 60%, 55%)"
                       ></span>`}
                 <label class="profile-avatar-pick">
-                    ${avatarBusy ? 'working on it…' : avatarDoc ? 'change your picture' : 'add a picture'}
+                    ${avatarBusy ? t('persona.working-on-it', 'working on it…') : avatarDoc ? t('persona.change-your-picture', 'change your picture') : t('persona.add-a-picture', 'add a picture')}
                     <input type="file" accept="image/*" onChange=${pickAvatar} disabled=${avatarBusy} />
                 </label>
             </div>
             ${avatarErr && html`<p class="form-error">${avatarErr}</p>`}
             <label class="profile-field">
-                <${FieldLabel} label="name" field=${name} />
+                <${FieldLabel} label=${t('persona.name', 'name')} field=${name} />
                 <input
                     class="name-input"
                     value=${name.draft}
                     onInput=${(e) => name.setDraft(e.currentTarget.value)}
-                    placeholder="what people call you here"
+                    placeholder=${t('persona.what-people-call-you-here', 'what people call you here')}
                 />
             </label>
             <label class="profile-field">
-                <${FieldLabel} label="bio" field=${bio} />
+                <${FieldLabel} label=${t('persona.bio', 'bio')} field=${bio} />
                 <textarea
                     class="profile-bio"
                     value=${bio.draft}
                     onInput=${(e) => bio.setDraft(e.currentTarget.value)}
                     rows="12"
-                    placeholder="a line or two about you (optional)"
+                    placeholder=${t('persona.a-line-or-two-about', 'a line or two about you (optional)')}
                 ></textarea>
             </label>
             <div class="profile-save-row">
@@ -698,9 +690,9 @@ export const Profile = ({ current }) => {
                     class="profile-save"
                     disabled=${!dirty || over || busy}
                     onClick=${save}
-                >Save</button>
+                >${t('persona.save', 'Save')}</button>
                 <span class=${flash === 'saved' ? 'profile-flash' : 'profile-flash profile-flash-err'}>
-                    ${flash === 'saved' ? 'saved - on all your computers in a moment' : flash}
+                    ${flash === 'saved' ? t('persona.saved---on-all-your', 'saved - on all your computers in a moment') : flash}
                 </span>
             </div>
         </div>
