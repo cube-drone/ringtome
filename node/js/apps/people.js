@@ -48,7 +48,7 @@ export const PeopleLookup = ({ query, onQuery }) => {
                 placeholder=${t('apps.people.filter-or-paste-an-address', 'filter, or paste an address…')}
                 title=${bad
                     ? t('apps.people.that-doesnt-look-like-a', "that doesn't look like a persona's address - it should have two words and a key, like sway-broke-AwTy…")
-                    : t('apps.people.type-to-narrow-the-shelf', 'type to narrow the shelf; paste an address and look up to go there')}
+                    : t('apps.people.type-to-narrow-the-shelf', 'search or paste an address')}
                 value=${query || ''}
                 onInput=${(e) => {
                     onQuery(e.currentTarget.value);

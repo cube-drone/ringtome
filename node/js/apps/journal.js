@@ -151,7 +151,7 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
                 <${StatusDot} status=${s.status} />
                 <button
                     class="journal-seal"
-                    title=${t('apps.journal.seal-lock-this-entry-unlocking', 'Seal — lock this entry (unlocking takes 15 seconds)')}
+                    title=${t('apps.journal.seal-lock-this-entry-unlocking', 'Seal this entry (unlocking takes 15 seconds)')}
                     onClick=${async () => {
                         await s.save(); // flush pending edits so the locked view reads them
                         onSeal();
@@ -159,7 +159,7 @@ const JournalEditor = ({ root, docId, bucket, onSeal, dateMs, tags, actions, met
                 ><${Icons.key} /></button>
                 <button
                     class="journal-delete"
-                    title=${t('apps.journal.delete-removes-this-entry-its', 'Delete — removes this entry (its history is kept)')}
+                    title=${t('apps.journal.delete-removes-this-entry-its', 'Delete')}
                     onClick=${s.remove}
                 ><${Icons.trash} /></button>
             </div>

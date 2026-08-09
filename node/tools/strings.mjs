@@ -925,13 +925,25 @@ async function check() {
     const entries = collect();
     const problems = [];
 
-    const existing = fs.existsSync(EN_FILE) ? fs.readFileSync(EN_FILE, 'utf8') : '';
-    if (existing !== renderEnglish(entries, await loadEnglish())) {
-        problems.push(
-            'locales/en.js is out of step with the source: it is missing keys, holding retired ones,\n' +
-                '  or grouped against code that has moved. Run `just strings` and read the diff - the new\n' +
-                '  entries are the copy this change adds, which is exactly what wants reviewing.',
-        );
+    const onDisk = fs.existsSync(EN_FILE) ? fs.readFileSync(EN_FILE, 'utf8') : '';
+    const catalogNow = await loadEnglish();
+    if (onDisk !== renderEnglish(entries, catalogNow)) {
+        // Say WHICH of the three it is. Lumping them together sends someone hunting for a missing
+        // key when all they did was type "double quotes" where the generator writes 'single' -
+        // this file is meant to be edited by hand, so its cop has to tell an edit from a gap.
+        const inSource = new Set(entries.map((e) => e.key));
+        const inCatalog = new Set(Object.keys(catalogNow));
+        const missing = [...inSource].filter((k) => !inCatalog.has(k));
+        const orphaned = [...inCatalog].filter((k) => !inSource.has(k));
+        const some = (keys) => keys.slice(0, 5).join(', ') + (keys.length > 5 ? ', …' : '');
+        const detail = [];
+        if (missing.length) detail.push(`  ${missing.length} phrase(s) in the source have no entry: ${some(missing)}`);
+        if (orphaned.length) detail.push(`  ${orphaned.length} entr(ies) are no longer in the source: ${some(orphaned)}`);
+        if (!detail.length) {
+            detail.push('  Every key matches - only the formatting differs (quoting, order, or grouping');
+            detail.push('  against code that has moved). Your wording is safe; this just normalizes it.');
+        }
+        problems.push(`locales/en.js is out of step with the source.\n${detail.join('\n')}\n  Run \`just strings\` and read the diff.`);
     }
 
     // The catalog outranks the seeds, so a disagreement means the code is claiming to say something
