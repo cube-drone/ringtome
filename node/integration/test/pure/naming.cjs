@@ -85,34 +85,34 @@ describe('small rules', () => {
     });
 
     it('picks the bucket a path is built under: the view, then the doc s own, then the default', () => {
-        assert.equal(bucketNameFor({ buckets: ['recipes', 'x'] }, 'x'), 'x');
-        assert.equal(bucketNameFor({ buckets: ['recipes'] }, 'not-mine'), 'recipes');
+        assert.equal(bucketNameFor({ buckets: ['journal', 'x'] }, 'x'), 'x');
+        assert.equal(bucketNameFor({ buckets: ['journal'] }, 'not-mine'), 'journal');
         assert.equal(bucketNameFor({ buckets: [] }, undefined), 'default');
         assert.equal(bucketNameFor(null, undefined), 'default');
     });
 
     it('an EMPTY bucket list defers to the view: the filing write may not have echoed yet', () => {
-        // "+ new recipe" is create-then-file; the mirror can stream the row between the two.
+        // "+ new entry" is create-then-file; the mirror can stream the row between the two.
         // Preferring the view over the default is what keeps the re-dress from teleporting a
-        // fresh recipe into TurboNotes (field-found 2026-08-01). The truly-unbucketed case is
+        // fresh entry into TurboNotes (field-found 2026-08-01). The truly-unbucketed case is
         // covered above: it is only ever VIEWED from the default home, where bucket='default'.
-        assert.equal(bucketNameFor({ buckets: [] }, 'recipes'), 'recipes');
-        assert.equal(bucketNameFor(null, 'recipes'), 'recipes');
+        assert.equal(bucketNameFor({ buckets: [] }, 'journal'), 'journal');
+        assert.equal(bucketNameFor(null, 'journal'), 'journal');
     });
 });
 
 describe('bucketFor', () => {
     it('resolves an app id to that app s home bucket', () => {
-        assert.deepEqual(bucketFor('recipes', []).name, 'recipes');
+        assert.deepEqual(bucketFor('journal', []).name, 'journal');
         assert.equal(bucketFor('notes', []).name, 'default');
         assert.equal(bucketFor('notes', []).app.id, 'notes');
     });
 
     it('resolves a slugified roster name, and carries its app type', () => {
-        const roster = [{ name: "Grandma's Recipes", app: 'recipes' }];
-        const found = bucketFor('grandma-s-recipes', roster);
-        assert.equal(found.name, "Grandma's Recipes");
-        assert.equal(found.app.id, 'recipes');
+        const roster = [{ name: "Grandma's Diary", app: 'journal' }];
+        const found = bucketFor('grandma-s-diary', roster);
+        assert.equal(found.name, "Grandma's Diary");
+        assert.equal(found.app.id, 'journal');
     });
 
     it('is null for a segment that names nothing', () => {
@@ -121,14 +121,14 @@ describe('bucketFor', () => {
     });
 
     it('breaks a slug tie on the lowest name, whatever order the roster arrives in', () => {
-        const a = { name: 'My Book', app: 'wiki' };
-        const b = { name: 'my-book', app: 'wiki' };
+        const a = { name: 'My Book', app: 'journal' };
+        const b = { name: 'my-book', app: 'journal' };
         assert.equal(bucketFor('my-book', [a, b]).name, bucketFor('my-book', [b, a]).name);
     });
 });
 
 describe('matchSlugPath', () => {
-    const roster = [{ name: 'Cook Book', app: 'recipes' }];
+    const roster = [{ name: 'Cook Book', app: 'journal' }];
     const docs = [doc(1, 'Soup', ['Cook Book']), doc(2, 'Bread', ['Cook Book'])];
 
     it('needs at least a bucket and a tail', () => {
@@ -147,7 +147,7 @@ describe('matchSlugPath', () => {
     });
 
     it('reports the app that opens the bucket, not the bucket', () => {
-        assert.equal(matchSlugPath(['cook-book', 'soup'], { roster, docs }).appId, 'recipes');
+        assert.equal(matchSlugPath(['cook-book', 'soup'], { roster, docs }).appId, 'journal');
     });
 
     it('is null when the title matches nothing in that bucket', () => {
@@ -225,7 +225,7 @@ describe('buildSlugPath', () => {
     });
 
     it('wears a slugified name for a user bucket', () => {
-        const roster = [{ name: 'Cook Book', app: 'recipes' }];
+        const roster = [{ name: 'Cook Book', app: 'journal' }];
         const d = doc(1, 'Soup', ['Cook Book']);
         assert.equal(buildSlugPath(d, { roster, docs: [d], bucket: 'Cook Book' }),
             '/home/cook-book/soup');
@@ -297,7 +297,7 @@ describe('build -> match round trip', () => {
     function world(rand) {
         const userBucket = rand() < 0.5;
         const bucketName = userBucket ? 'Cook Book' : 'default';
-        const roster = userBucket ? [{ name: bucketName, app: 'recipes' }] : [];
+        const roster = userBucket ? [{ name: bucketName, app: 'journal' }] : [];
         const count = 2 + Math.floor(rand() * 5);
         const docs = [];
         for (let i = 0; i < count; i++) {

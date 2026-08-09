@@ -9,9 +9,7 @@ import {
     Funnel,
     Path,
     NotePencil,
-    CookingPot,
     PenNib,
-    Books,
     PushPin,
     CaretLeft,
     X,
@@ -73,9 +71,7 @@ export const Icons = {
     // apps (the console tiles + each app's own header)
     persona: UserCircle,
     notes: NotePencil,
-    recipes: CookingPot,
     journal: PenNib,
-    wiki: Books,
     // actions and chrome
     pin: PushPin,
     back: CaretLeft,
@@ -106,7 +102,7 @@ export const Icons = {
     fontTypewriter: Keyboard,
     fontHand: PenNib,
     fontLegible: TextAa,
-    // the wiki tree (sections are taxonomies, pages are documents)
+    // the document tree (sections are taxonomies, pages are documents) - TurboNotes' right column
     page: FileText,
     pageNew: FilePlus,
     section: FolderSimple,

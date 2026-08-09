@@ -8,8 +8,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ## Near-Term Goals
 
-### Accessibility
-* Localization
+### Localization
+* An in-ui way to cheat your presented language, for testing
+ * just fully do french and spanish or something
 
 ### Private Notes
 

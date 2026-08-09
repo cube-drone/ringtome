@@ -2,11 +2,12 @@
 // a console with good games, not an app-builder). Each app carries a `style` - its app-type.
 //
 // The bucket <-> app-type mapping is mostly implicit: a bucket whose NAME is an app-type simply
-// IS that type (the `recipes` bucket is a recipes bucket, no mapping needed), so every app has
-// an eponymous bucket we can just assume exists - open the recipes app and you're working in
-// the `recipes` bucket. The registry (`name -> app`, on the server) is only consulted for
-// USER-named buckets like `grandmas-recipes`. Anything we can't resolve falls back to `default`
-// (Notes), so an unknown style never strands you.
+// IS that type (the `journal` bucket is a journal bucket, no mapping needed), so every app has
+// an eponymous bucket we can just assume exists - open the journal app and you're working in
+// the `journal` bucket. The registry (`name -> app`, on the server) is only consulted for
+// USER-named buckets like `dream-diary`. Anything we can't resolve falls back to `default`
+// (TurboNotes), so an unknown style never strands you - which is also what retires an app
+// gracefully: the buckets of a style nobody serves anymore simply open in TurboNotes.
 //
 // The registry imports NOTHING. An app's `icon` is a role name that icons.js resolves at the two
 // render sites (`iconFor`), not a component - a table of app metadata and the rules over it has no
@@ -35,10 +36,10 @@ export const APPS = [
         lookup: true,
     },
     // The app's two nouns, both in the user's words rather than ours. `bucketNoun` is what ONE
-    // bucket is called, Capitalised because it lands in titles and prompts ("New Recipe Book",
+    // bucket is called, Capitalised because it lands in titles and prompts ("New TurboNotes",
     // "Delete this Journal…"); `itemNoun` is what one THING INSIDE a bucket is called, lowercase
-    // because it lands mid-sentence ("+ new recipe", "a new page in this section"). A recipe book
-    // holds recipes, a wikibook holds pages, and neither of them holds "items".
+    // because it lands mid-sentence ("+ new note", "a new page in this section"). A journal holds
+    // entries and a notebook holds notes; neither of them holds "items".
     {
         id: 'journal',
         name: 'Journal',
@@ -53,42 +54,6 @@ export const APPS = [
         journal: true,
     },
     {
-        id: 'recipes',
-        name: 'Recipes',
-        icon: 'recipes',
-        style: 'recipes',
-        live: true,
-        bucketNoun: 'Recipe Book',
-        itemNoun: 'recipe',
-        // A recipe book: just the interactive editor, tags and title, and a tag cloud beside
-        // the list. No dates, no descriptions, no format-juggling.
-        features: {
-            modes: ['interactive'],
-            format: false,
-            date: false,
-            description: false,
-            tagColumn: true,
-        },
-    },
-    {
-        id: 'wiki',
-        name: 'Wikibook',
-        icon: 'wiki',
-        style: 'wiki',
-        live: true,
-        bucketNoun: 'Wikibook',
-        itemNoun: 'page',
-        // A knowledge base: pages in a TREE. Its own component (WikiApp) - the tree is a root
-        // taxonomy (titled `wiki:<bucket>`), sections are child taxonomies, pages are document
-        // leaves. Composes the shared Editor for the page surface. `features.tree` marks it
-        // tree-having for the shared surfaces (uploads file into the tree root). The label is
-        // "Wikibook" but the id, style, and bucket are all `wiki`: only the display name changed.
-        wiki: true,
-        // No pin: pinning floats a document in a LIST, and the wiki has no list - its order
-        // is the tree's. A button that does nothing is worse than no button.
-        features: { tree: true, pin: false },
-    },
-    {
         id: 'notes',
         name: 'TurboNotes',
         icon: 'notes',
@@ -96,10 +61,17 @@ export const APPS = [
         live: true,
         bucketNoun: 'TurboNotes',
         itemNoun: 'note',
-        // The everything-app, embraced at last (and renamed to match its ambition): the recipe
-        // app's tag column on the left, the wikibook's tree on the right, the list between -
-        // each column tuckable, so it's only as monstrous as you choose to make it.
+        // The everything-app, and now the ONLY notebook app. Recipes and Wikibook lived here
+        // until 2026-08-08, and the cut is the point: each was this surface with one column
+        // taken away - Recipes was the tag column plus the list, Wikibook was the list plus
+        // the tree - so shipping them separately bought two app tiles and two vocabularies for
+        // no capability. What made the single "complicated notes app" safe to embrace was the
+        // tucking: `startsTucked` opens on the plain list, and the tag column and the tree are
+        // rails until someone wants them. It is only as monstrous as you choose to make it.
         features: { tagColumn: true, tree: true },
+        // Columns tucked until this device says otherwise (panes.js `useColTucks`). The list is
+        // the app; the other two are the powers it can grow.
+        startsTucked: ['tags', 'tree'],
     },
     {
         id: 'feed',

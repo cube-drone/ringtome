@@ -3511,3 +3511,36 @@ format question, not a wrapping one, and not taken here.
 
 Gates: full `just ci` green — 560 passing, 1 pending. That is the whole bar: `.github/workflows/
 ci.yml` runs the recipe verbatim.
+
+## 2026-08-08 — going public with nowhere to publish
+
+`POST /serve` returned a 500 on any node with no directory configured — which is `RINGTOME_DISCOVERY`
+unset, the DEFAULT, and therefore every offline and LAN-only node. Found by pointing `just test-data`
+at a lone `just start`: every `go-public` action failed, and the arithmetic said so plainly — the
+action carries weight 4 of 145, so its 2.76% share matched the observed failure count almost exactly.
+Not intermittent at all; a rarely-drawn action failing every time.
+
+The shape of it: `mark_served` writes consent with `record_served`, then publishes. `Directory::Off`
+returns `Err("discovery is off")` from `publish_serving`, and `mark_served` was the ONE caller out of
+four that mapped that to `AppError::Internal` instead of tolerating it — creation and adoption both
+use `publish_best_effort` ("a dark directory must not fail a ceremony"), and the republish pass logs
+a warn. So the consent had already committed when the 500 went out: the node believed the identity
+was served and the reader was told the act had failed, and nothing ever reconciled them. That split
+brain, not the status code, is what made it worth fixing rather than reclassifying — a truthful 4xx
+would have left the same disagreement in place. `mark_served` now publishes best-effort; the
+republish loop carries the record out the moment a directory exists.
+
+Nothing user-facing was actually broken today: the write path never touches the directory (`state.
+directory` appears outside serving.rs only in `net::sync`, and only to resolve), persona creation
+already tolerated the dark, and the UI has no caller for `/serve` at all — every one is a test or the
+generator. It was a latent bug waiting for the "go public" control to be wired up.
+
+Why nothing caught it: all three rig nodes boot on `local:` discovery and `mainline-smoke` uses the
+real DHT, so `/serve` had only ever been exercised somewhere it could succeed. The rig now boots a
+FOURTH node — delta, on 5284, deliberately without `RINGTOME_DISCOVERY` — and `darkdirectory.cjs`
+pins the whole posture there: a persona is created, serving succeeds and is idempotent, `served_at_ms`
+is actually written (read from the table, not inferred from the 200 — the same success-that-kept-
+nothing would otherwise pass), and posts still write and publish. A default configuration that no
+test ever booted is a gap the suite could not see, and now it has a permanent home.
+
+Gates: full `just ci` green — 565 passing, 1 pending.

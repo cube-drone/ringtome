@@ -14,6 +14,9 @@ const HOST = process.env.RINGTOME_TEST_HOST || "localhost:5281";
 const HOST_B = process.env.RINGTOME_TEST_HOST_B || null;
 // A third, for daisy-chain tests (adopt B from A, then C from B).
 const HOST_C = process.env.RINGTOME_TEST_HOST_C || null;
+// A fourth, booted with NO discovery configured at all - the state a shipped node defaults to,
+// and the one the other three (all on `local:`) can never reproduce.
+const HOST_DARK = process.env.RINGTOME_TEST_HOST_DARK || null;
 
 function makeFetch(host = HOST) {
     const jar = new CookieJar();
@@ -52,4 +55,4 @@ async function sql(query, host = HOST) {
     return resp.json();
 }
 
-module.exports = { makeFetch, sql, HOST, HOST_B, HOST_C };
+module.exports = { makeFetch, sql, HOST, HOST_B, HOST_C, HOST_DARK };

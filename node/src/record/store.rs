@@ -1186,9 +1186,9 @@ impl Annotations<'_> {
 // cloud it filters. A bucket is keyed by its name, exactly as a tag is its string.
 //
 // Beside membership sits a tiny REGISTRY: a single LWW register mapping bucket name -> app-type
-// (`grandmas-recipes` -> `recipes`, `very-personal-private` -> `journal`). It does two small
-// jobs and no more: it says which application should open a bucket (so a wiki never opens in the
-// recipe app), and it lets an empty bucket exist in the window between "created" and "earned its
+// (`dream-diary` -> `journal`, `scratch` -> `default`). It does two small
+// jobs and no more: it says which application should open a bucket (so a journal never opens in
+// the feed), and it lets an empty bucket exist in the window between "created" and "earned its
 // first document". Not a Taxonomy (no ordering, no tree) and not a document (no versioning) -
 // just a name->value register, the lightest thing that carries the mapping.
 

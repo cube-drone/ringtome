@@ -260,8 +260,9 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
         : [];
 
     // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
-    // widths.
-    const { tucked, toggleTuck } = useColTucks(root, app.id);
+    // widths. `startsTucked` is the app's own opening posture (TurboNotes begins as a plain list,
+    // its tag column and tree waiting as rails); a stored preference always wins over it.
+    const { tucked, toggleTuck } = useColTucks(root, app.id, app.startsTucked);
 
     // The tree's depth-first doc order (the "book order"), reported by the tree pane.
     const [treeOrder, setTreeOrder] = useState(null);

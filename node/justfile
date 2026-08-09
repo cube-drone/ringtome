@@ -11,6 +11,10 @@ workspace := justfile_directory() / ".."
 port := env_var_or_default("RINGTOME_PORT", "5281")
 port_b := env_var_or_default("RINGTOME_PORT_B", "5282")
 port_c := env_var_or_default("RINGTOME_PORT_C", "5283")
+# The dark node: no RINGTOME_DISCOVERY at all, which is the DEFAULT a shipped node boots with.
+# Every other rig node runs `local:` discovery, so nothing exercised the dark path until a
+# 500 on /serve turned up in test-data (2026-08-08).
+port_d := env_var_or_default("RINGTOME_PORT_D", "5284")
 test_data := "./data/test"
 
 # When two copies of this repo run on one machine, every server port conflicts unless one twin
@@ -462,18 +466,20 @@ clean: kill
     done
     echo "gone: every persona, key and chain the dev nodes held. The next boot starts empty."
 
-# Boot THREE throwaway nodes (sync tests need a peer; daisy-chain tests need a chain), wait for
-# health, run the JS integration suite, tear all down. Single-node-only tests are unaffected;
+# Boot FOUR throwaway nodes - three on local discovery (sync needs a peer; daisy-chain needs a
+# chain) plus one in the DARK, with no directory at all, which is what a shipped node defaults to.
+# Wait for health, run the JS integration suite, tear all down. Single-node-only tests are unaffected;
 # multi-node tests skip themselves if RINGTOME_TEST_HOST_B / _C are absent.
 integration: build kill
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
-    rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-c" "{{test_data}}-dht"
+    rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-c" "{{test_data}}-d" "{{test_data}}-dht"
     # The twin-checkout offset (port_offset) applied to every bound port here.
     pa=$(( {{port}} + {{port_offset}} ))
     pb=$(( {{port_b}} + {{port_offset}} ))
     pc=$(( {{port_c}} + {{port_offset}} ))
+    pd=$(( {{port_d}} + {{port_offset}} ))
     # Fast eager-push debounce so eagersync.cjs observes propagation quickly; the anti-entropy
     # interval deliberately stays at its 5-minute default so the eager path is what gets tested.
     # The peer-derive beat keeps its recovery pace on purpose - its lag behind a revocation is
@@ -494,20 +500,27 @@ integration: build kill
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_NODE_NAME=charlie \
         ./target/debug/ringtome > /tmp/ringtome-integration-c.log 2>&1 &
     NODE_C_PID=$!
+    # Deliberately WITHOUT RINGTOME_DISCOVERY: a node in the dark, like every default boot.
+    RINGTOME_PORT=$pd RINGTOME_DATA_DIRECTORY="{{test_data}}-d" RINGTOME_LOCAL_TEST=1 \
+        RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
+        RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_NODE_NAME=delta \
+        ./target/debug/ringtome > /tmp/ringtome-integration-d.log 2>&1 &
+    NODE_D_PID=$!
     cleanup() {
         if command -v taskkill >/dev/null 2>&1; then
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_B_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_C_PID" 2>/dev/null || true
+            MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_D_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
         else
-            kill "$NODE_PID" "$NODE_B_PID" "$NODE_C_PID" 2>/dev/null || true
+            kill "$NODE_PID" "$NODE_B_PID" "$NODE_C_PID" "$NODE_D_PID" 2>/dev/null || true
         fi
     }
     trap cleanup EXIT
 
     # Wait up to ~10s for each node to answer /health.
-    for p in $pa $pb $pc; do
+    for p in $pa $pb $pc $pd; do
         for i in $(seq 1 50); do
             if curl -sf "http://127.0.0.1:$p/health" >/dev/null 2>&1; then
                 break
@@ -515,7 +528,7 @@ integration: build kill
             sleep 0.2
             if [[ $i -eq 50 ]]; then
                 echo "node on :$p did not become healthy; logs:" >&2
-                cat /tmp/ringtome-integration.log /tmp/ringtome-integration-b.log /tmp/ringtome-integration-c.log >&2
+                cat /tmp/ringtome-integration.log /tmp/ringtome-integration-b.log /tmp/ringtome-integration-c.log /tmp/ringtome-integration-d.log >&2
                 exit 1
             fi
         done
@@ -523,7 +536,7 @@ integration: build kill
 
     cd "{{justfile_directory()}}/integration"
     RINGTOME_TEST_HOST="127.0.0.1:$pa" RINGTOME_TEST_HOST_B="127.0.0.1:$pb" \
-        RINGTOME_TEST_HOST_C="127.0.0.1:$pc" \
+        RINGTOME_TEST_HOST_C="127.0.0.1:$pc" RINGTOME_TEST_HOST_DARK="127.0.0.1:$pd" \
         RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" \
         RINGTOME_TEST_DATA_DIR="{{workspace}}/{{test_data}}" npm test
 

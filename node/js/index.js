@@ -27,7 +27,6 @@ import {
 import { Computers } from './computers.js';
 import { DocsApp } from './apps/notes.js';
 import { JournalApp } from './apps/journal.js';
-import { WikiApp } from './apps/wiki.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
 import { PersonDemo } from './persondemo.js';
@@ -150,17 +149,6 @@ const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
             key=${app.id}
             current=${current}
             searchQuery=${searchQuery}
-            bucket=${bucket}
-        />`;
-    }
-    if (app.wiki) {
-        return html`<${WikiApp}
-            key=${app.id}
-            app=${app}
-            current=${current}
-            docId=${view.docId}
-            searchQuery=${searchQuery}
-            searchKind=${searchKind}
             bucket=${bucket}
         />`;
     }

@@ -78,8 +78,8 @@ for (let i = 0; i < 3; i++) {
     console.log('dial:', dial().textContent.trim(), '->', JSON.stringify(titles()), 'tree:', JSON.stringify(tree()));
 }
 
-// --- The everything-view: file the image into a recipes-typed bucket, then browse /home/all.
-await s.fetch(`/api/identity/${root}/buckets`, { method: 'POST', headers: J, body: JSON.stringify({ name: 'shots', app: 'recipes' }) });
+// --- The everything-view: file the image into a journal-typed bucket, then browse /home/all.
+await s.fetch(`/api/identity/${root}/buckets`, { method: 'POST', headers: J, body: JSON.stringify({ name: 'shots', app: 'journal' }) });
 await s.fetch(`/api/identity/${root}/docs/${queued.doc_id}/buckets/shots`, { method: 'PUT', headers: J });
 click(dom.window, [...doc.querySelectorAll('.quickbar-hex')].find((b) => b.title === 'All'));
 await waitFor(doc, () => dom.window.location.pathname === '/home/all' && doc.querySelectorAll('.note-row').length >= 2, 'the everything-view');
@@ -98,7 +98,7 @@ click(dom.window, [...doc.querySelectorAll('.note-row')].find((r) => r.textConte
 await sleep(1500);
 console.log('selected in /all, url:', dom.window.location.pathname);
 
-// Follow me home: the image lives in a recipes-typed bucket, so home is the Recipes app.
+// Follow me home: the image lives in a journal-typed bucket, so home is the Journal app.
 click(dom.window, doc.querySelector('.note-row.selected .note-row-home') || doc.querySelector('.note-row-home'));
 await sleep(1500);
 console.log('after follow-me-home, url:', dom.window.location.pathname);

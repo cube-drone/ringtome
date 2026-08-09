@@ -19,7 +19,16 @@ use crate::error::AppError;
 use crate::pubkey;
 use crate::AppState;
 
-/// Mark an identity as served - the publication act - and publish its record immediately.
+/// Mark an identity as served - the publication act - and try to publish its record at once.
+///
+/// The consent is the durable half and it is written before anything is announced; the announcing
+/// is BEST-EFFORT, the same posture creation and adoption already take. It has to be: with no
+/// directory configured (`RINGTOME_DISCOVERY` unset - the default, and so every offline and
+/// LAN-only node) `publish_record` returns an error, and this used to hand the caller a 500
+/// *after* `record_served` had already committed. The node believed the identity was served, the
+/// reader was told the act had failed, and the two never reconciled - a split brain produced by
+/// the one call site out of four that did not tolerate a dark directory. The republish loop
+/// carries the record out the moment a directory exists.
 pub async fn mark_served(
     state: &AppState,
     account_id: &Uuid,
@@ -27,7 +36,8 @@ pub async fn mark_served(
 ) -> Result<(), AppError> {
     super::require_owned(&state.node_db, account_id, root_hex).await?;
     super::record_served(&state.node_db, root_hex).await?;
-    publish_record(state, root_hex).await
+    publish_best_effort(state, root_hex).await;
+    Ok(())
 }
 
 /// Publish (or refresh) this node's serving record for an identity. Called at mark time and by

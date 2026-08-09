@@ -12,20 +12,20 @@ before(async () => {
 
 const id = (n) => String(n).padStart(2, '0').repeat(16);
 const doc = (n, over = {}) => ({
-    doc_id: id(n), title: `doc ${n}`, buckets: ['recipes'], updated_ms: 1000 * n, ...over,
+    doc_id: id(n), title: `doc ${n}`, buckets: ['journal'], updated_ms: 1000 * n, ...over,
 });
-const recipes = () => appForStyle('recipes');
+const journal = () => appForStyle('journal');
 const ids = (list) => list.map((d) => d.doc_id.slice(0, 2));
 
 describe('orderDocs', () => {
     it('shows only what this app s notebook holds', () => {
         const docs = [doc(1), doc(2, { buckets: ['other'] }), doc(3)];
-        assert.deepEqual(ids(orderDocs(docs, { app: recipes(), bucket: 'recipes' })), ['03', '01']);
+        assert.deepEqual(ids(orderDocs(docs, { app: journal(), bucket: 'journal' })), ['03', '01']);
     });
 
     it('treats a null hits as NO FILTER and an empty set as NO RESULTS', () => {
         const docs = [doc(1), doc(2)];
-        const opts = { app: recipes(), bucket: 'recipes' };
+        const opts = { app: journal(), bucket: 'journal' };
         assert.equal(orderDocs(docs, { ...opts, hits: null }).length, 2);
         assert.equal(orderDocs(docs, { ...opts, hits: new Set() }).length, 0);
         assert.equal(orderDocs(docs, opts).length, 2); // absent behaves like null
@@ -37,7 +37,7 @@ describe('orderDocs', () => {
             doc(2, { tags: ['quick'] }),
             doc(3, { tags: [] }),
         ];
-        const opts = { app: recipes(), bucket: 'recipes' };
+        const opts = { app: journal(), bucket: 'journal' };
         assert.deepEqual(ids(orderDocs(docs, { ...opts, tags: ['quick'] })), ['02', '01']);
         assert.deepEqual(ids(orderDocs(docs, { ...opts, tags: ['quick', 'vegan'] })), ['01']);
         assert.deepEqual(ids(orderDocs(docs, { ...opts, tags: ['nope'] })), []);
@@ -50,7 +50,7 @@ describe('orderDocs', () => {
             doc(3, { buckets: ['other'], tags: ['x'] }),
         ];
         const out = orderDocs(docs, {
-            app: recipes(), bucket: 'recipes', hits: new Set([id(1), id(3)]), tags: ['x'],
+            app: journal(), bucket: 'journal', hits: new Set([id(1), id(3)]), tags: ['x'],
         });
         assert.deepEqual(ids(out), ['01']); // 2 fails search, 3 fails scope
     });
@@ -62,11 +62,11 @@ describe('orderDocs', () => {
 
     it('the kind dial: docs vs media, and unknown kinds mean everything', () => {
         const mixed = [doc(1), doc(2, { media: { has_thumb: true } }), doc(3)];
-        assert.deepEqual(ids(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'docs' })), ['03', '01']);
-        assert.deepEqual(ids(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'media' })), ['02']);
-        assert.equal(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'all' }).length, 3);
-        assert.equal(orderDocs(mixed, { app: recipes(), bucket: 'recipes' }).length, 3, 'absent = all');
-        assert.equal(orderDocs(mixed, { app: recipes(), bucket: 'recipes', kind: 'someday' }).length, 3,
+        assert.deepEqual(ids(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'docs' })), ['03', '01']);
+        assert.deepEqual(ids(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'media' })), ['02']);
+        assert.equal(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'all' }).length, 3);
+        assert.equal(orderDocs(mixed, { app: journal(), bucket: 'journal' }).length, 3, 'absent = all');
+        assert.equal(orderDocs(mixed, { app: journal(), bucket: 'journal', kind: 'someday' }).length, 3,
             'an unknown kind never empties the list');
     });
 

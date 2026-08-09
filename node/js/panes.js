@@ -40,8 +40,18 @@ export const Rail = ({ icon, label, onClick }) => html`<button
 
 /// Which of an app's columns are tucked away (minimized to a rail), and the toggle. The main
 /// surface can't tuck; everything to its left can.
-export function useColTucks(root, appId) {
-    const tucked = flagsOf(usePrefMap(root, tuckPrefix(appId)));
+///
+/// `startsTucked` names the columns that are away until this device says otherwise - how
+/// TurboNotes opens on a plain list with its tag column and tree as rails, rather than greeting a
+/// newcomer with four columns at once. It is a DEFAULT, not a rule: `setFlag` writes '0' when a
+/// column is opened, so a stored preference always outranks it, and the absence of a stored key is
+/// what "never touched this" looks like. (Hence the raw pref map here rather than `flagsOf` alone:
+/// that helper collapses '0' and never-set into the same nothing, and they are different.)
+export function useColTucks(root, appId, startsTucked = []) {
+    const stored = usePrefMap(root, tuckPrefix(appId));
+    const tucked = flagsOf(stored);
+    const known = new Set([...(stored || new Map())].map(([col]) => col));
+    for (const col of startsTucked) if (!known.has(col)) tucked.add(col);
     return {
         tucked,
         toggleTuck: (col) => setFlag(root, tuckKey(appId, col), !tucked.has(col)),

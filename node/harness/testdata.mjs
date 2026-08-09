@@ -42,7 +42,7 @@ const PASSWORD = 'test';
 /// The document apps' STYLES - what a bucket's `app` field is matched against. Kept as a
 /// literal rather than derived from js/pure/apps.js so this harness stays free of the UI's
 /// module graph; if the app registry gains a style, add it here and the generator seeds it.
-const BUCKET_STYLES = ['default', 'journal', 'recipes', 'wiki'];
+const BUCKET_STYLES = ['default', 'journal'];
 
 const ACTIONS = [
     {
