@@ -41,11 +41,18 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Inbox
 
-A place to store messages for an individual user.
+Design settled 2026-08-09 - PROJECT_PLAN's *Arrival and Attention* (extended): evidence-carrying
+envelopes, per-kind floors with a pre-Trust fallback classifier, tiered count-bounded inbox chains,
+one-door delivery, the transport tier, the resting-zero proof-of-work dial. Build work, roughly in
+dependency order:
 
-* someone annotated your post
-* someone followed you
-* Encrypted peer-to-peer messaging?
+* Envelope format: embedded claimed entry + root-to-leaf authorization path, verified offline
+* The gate at transcription: cheapest-first checks, degenerate pre-Trust classifier, collapse by
+  (sender, kind), two-tier quota
+* Tiered inbox chains: (device key × tier), count-bounded retention, read-time merge
+* Notice kinds: followed you, commented on / tagged / rebroadcast your post; first-contact greeting
+* The stamp slot: reject-with-price + retry-with-stamp, wired and tested, priced at zero
+* Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately)
 
 ### Friends & Groups
 

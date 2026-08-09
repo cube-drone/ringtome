@@ -2767,7 +2767,7 @@ account demanded it... remediation is severing the demand edge and talking to th
 node's fetch bookkeeping is keyed by root alone, with no demander and no reference count. The subscription table
 below is where that debt gets paid.)*
 
-### Arrival and Attention: The Inbox and the Feed (settled 2026-08-03)
+### Arrival and Attention: The Inbox and the Feed (settled 2026-08-03; extended 2026-08-09)
 
 Two things must be materialized *for a reader across many writers*, and they are the same problem wearing
 different clothes: what **arrived** (the inbox) and what is **worth attention** (the feed). Both are fan-in over
@@ -2775,43 +2775,219 @@ hundreds of identities; neither may be computed at render time.
 
 **Ringtome already has two delivery models, and the distinction is the design.** You **pull** from people you
 have chosen - a DM is two chains interleaved at read time, a follow syncs their chains to you. Things **arrive**
-only from people whose chains you have no reason to be syncing. So:
+only from people whose chains you have no reason to be syncing. The routing rule, stated once: **where a
+follow-edge exists, evidence travels by pull and opinions are derived locally; where none exists, evidence
+travels by envelope and is transcribed under quota.**
 
-**The inbox is a doorbell, not a mailbox.** It holds follow receipts, group invites, first-contact requests, and
-your own nodes' system events - and the moment you accept someone, the relationship converts to pull and the
-inbox's job is over. That scoping does most of the anti-flood work before any policy is written, because a notice
-need carry no content: if you never answer the door, you never fetch a byte of theirs.
+#### The follow-edge rule: zero rows by pull
 
-- **Strangers cannot write your chains.** Single-writer is foundational, so the flow is: they *deliver* to one of
-  your nodes; that node applies **The Inbound Gate**; and if it passes, **your node transcribes** - appending a
-  notice to your inbox chain, encrypted under your epoch key, signed by its own leaf. Every node of yours can
-  both accept and transcribe. The gate therefore runs at **transcription, not delivery**: a non-member relay may
-  hold a sealed envelope while you are offline, but nothing enters your chain until a node of yours judges it.
-- **Transcribe the sender's signed envelope verbatim** (inside the encryption), so your *other* nodes verify the
-  sender themselves rather than trusting whichever node answered the door. The notice's id is that envelope's
-  hash, which makes transcription idempotent: a sender who delivers to all three of your nodes to amplify
-  produces one row.
-- **A notice is self-describing** - sender root, kind, time, and a hard-capped greeting (big enough for "it's
-  Dave from the conference", too small to be a payload channel). Rendering an inbox of a thousand notices
-  therefore touches nothing but your own chain. And the sender's *name and picture* are not fetched at all,
-  because an unadmitted stranger renders as **derived identity only** - identicon and speakable words, computed
-  from the root: the anti-harassment rule and the fan-out rule turn out to be the same rule. Claimed identity
-  costs a sync; you pay it only for people you have answered.
-- **Seen and deleted are LWW facts on the same chain**, so read-on-the-phone is read-on-the-laptop, with no
+If someone follows you, your interaction with them is complete the moment it lands on your own public chain -
+their node is already syncing you, and their fold derives "she replied" as a feed row. **A follow-edge therefore
+produces no inbox row, ever**: an envelope from a sender the recipient already syncs would be a duplicate surface
+for a fact the pull path owns. What the derived path's freshness rides on is the *recipient's* interest dial - a
+reply to a drowsy follower surfaces whenever their node next syncs - and the fix is not an envelope but a
+**content-free sync offer** ("I have new entries for you"), which open sync initiation already licenses. At most
+a poke, never a knock.
+
+#### The inbox: a doorbell and a peephole
+
+The inbox holds what strangers cause: follow receipts, comment/tag/rebroadcast notices, group invites,
+first-contact requests, and your own nodes' system events. The doorbell framing survives with one extension: it
+is not only *first* contact. A stranger you never admit may legitimately occupy a follow row, a comment row, a
+tag row and a rebroadcast row at once - ongoing awareness of someone obligates nothing. The graduation ladder has
+three rungs, each optional, none obligating the next: **discovery** (their notice lands), **watch** (a quiet
+follow at low eagerness converts them from delivered to derived - costs them nothing, grants them nothing), and
+**trust** (a deliberate later act). The inbox only has to be good at the first rung, which is what licenses
+everything ephemeral about it.
+
+Strangers still cannot write your chains - single-writer is foundational. They *deliver* to one of your nodes;
+that node applies **The Inbound Gate**; and if it passes, **your node transcribes** - appending a notice to one
+of its inbox chains, encrypted under your epoch key, signed by its own leaf. The gate runs at **transcription,
+not delivery**. Transcription copies the sender's signed envelope verbatim inside the encryption, so your *other*
+nodes verify the sender themselves rather than trusting whichever node answered the door; the notice's id is the
+envelope's hash, making transcription idempotent. An unadmitted stranger renders as **derived identity only** -
+identicon and speakable words, computed from the root; their name and picture are never fetched, because claimed
+identity costs a sync and you pay it only for people you have answered. The attack surface, named precisely:
+strangers cannot write your record, but they can *induce your node to write it* - so every mechanism below exists
+to bound the blast radius of a gate mistake to a few kilobytes of junk that ages out of a bounded pool.
+
+#### Envelopes carry evidence, not claims
+
+A notice from a stranger must verify **offline, from the envelope alone, with zero fetches** - the moment
+verification costs a sync, "broadcast implausible claims to force a malicious sync" becomes the attack. Two
+existing commitments make this cheap:
+
+- **The authorization path embeds.** Key-tree entries are self-authenticating, so the envelope carries the chain
+  of authorization entries from the sender's root to its signing leaf - a handful of small signed statements,
+  verifiable from the root pubkey alone. The root pubkey *is* the sender's identity (the identicon derives from
+  it). No fetch.
+- **The claimed entry embeds, and is tiny by construction.** A follow, comment, tag or rebroadcast *is* a signed
+  entry on the sender's own public chains; the header/blob split keeps it to a header plus hashes, and the
+  subject of the claim is your own post, which you already hold. The gate verifies a stranger's claim with a few
+  signature checks on bytes it was already handed.
+
+**First-contact is the only bare-claim kind** - inherently unverifiable, hence the hard-capped greeting (big
+enough for "it's Dave from the conference", too small to be a payload channel) and the smallest quota pool. The
+honest residuals of offline verification: **revocation** (the embedded path cannot prove the leaf wasn't revoked
+yesterday; "verifiable-modulo-revocation" is accepted for a notification, and the truth surfaces if you ever
+answer the door) and **publication** (the sender may have signed the entry and never served it - but that entry
+occupies `(chain, seq)`, so their real chain must eventually carry a different entry there, and every recipient
+then holds portable fork proof: minting fake claims means handing out time bombs against your own standing). The
+publication deterrent works only on identities with standing to lose - which is exactly the population the floor
+admits. The floor handles nobodies; equivocation handles somebodies; neither has to cover the other's tier.
+
+*(Rejected: accept-then-randomly-audit with node blacklisting. Auditing is itself a forced sync - the attack it
+was meant to close - and blame lands on the wrong noun: claims are authored by identities but presented by nodes,
+and a relay holding a sealed envelope is an honest post office. Refuse-before-signing wants a deterministic gate:
+the envelope verifies or it dies at the edge.)*
+
+#### The gate: per-kind floors and the pre-Trust fallback
+
+Checks run cheapest-first: **floor and mute** (a local lookup on the claimed root), **size cap**, **signature
+verification** of the embedded evidence, **quota**, then transcription. A below-floor stranger costs a hash-table
+probe.
+
+The floor is per-notice-kind, and the load-bearing fact behind it: identities are free but *paths* are not -
+membership arrives through invites and vouches, so every genuine person has flow in the graph by construction,
+and downstream features inherit Trust's Sybil hardening rather than each rebuilding their own (The Inbound Gate;
+the layer boundary). **Content-bearing kinds - follow, comment, tag, rebroadcast - require nonzero flow**: a
+cryptographically genuine rebroadcast from a pathless identity is socially worthless, and refusing it is correct
+product behaviour before it is defence. **First-contact is the one kind open to the pathless.**
+
+**Until Trust ships, the gate runs a degenerate classifier** - explicit or mutual edge ⇒ trusted tier; anyone
+else ⇒ stranger tier; muted ⇒ refused - so the inbox does not wait on the flow computation (Sequencing: the
+graph grows before the features arrive). Trust later replaces the classifier *function* only; the chain layout,
+envelope format and gate position are final now.
+
+**Blocks.** A block is an LWW fact on your private chain, so it syncs to every node of yours and every door
+enforces it at transcription. "Never again" is as strong as identity continuity: a determined party can mint a
+fresh identity, which lands pathless, below every floor, at the price of their standing. The honesty clause
+survives unchanged: this gate is anti-spam, never anti-harassment - an admitted sender's capped content can still
+be cruel, and mute plus report remain the answer.
+
+#### Tiered inbox chains, count-bounded
+
+The 2026-08-03 design gave the inbox its own chain so junk is never welded to what you keep. That argument now
+recurses: **inbox chains are plural - (device key × tier)** - so the stranger tier and the trusted tier get their
+own retention and sync depth as per-chain policy instead of per-row bookkeeping.
+
+- **The stranger tier is a quota class on a chain, never a node-local buffer.** The decisive argument: **the
+  device you read on is the least reachable device you own.** A stranger can only deliver to your publicly
+  addressable nodes; your phone is asleep behind NAT. A node-local buffer strands notices on the machine you
+  never look at; a chain row rides your own sync from your public face to your pocket. The rule in one sentence:
+  **anything shown to the user exists as a chain row; anything node-local is in-flight** (pre-gate staging, relay
+  holdings, retry queues - plumbing, never product).
+- **Retention is count-based** - each transcribing key holds roughly the last 1-2K entries of its own inbox
+  chains and prunes beneath - because "last N entries" is clock-free where "last 7 days" is not (No Clocks!).
+  Mechanically this is the `[floor..head]` suffix machinery with a local policy for the floor, and it is a
+  **named exception to "an identity's own nodes hold its own chains whole"**: nobody plays deep archive for inbox
+  chains, which is a feature twice over - ephemerality is the semantics, and a pruned prefix cannot leak or need
+  a retraction story. Most eviction is aging off the floor (no entry written); a tombstone is paid only to delete
+  something recent, and then ages out itself.
+- **One row per (sender, kind)**: collapse means a flapping stranger occupies one row per kind, never the buffer,
+  and envelope-hash idempotency means a sender who knocks on all three of your doors produces one row. Stranger
+  quota is enforced per transcribing node; two of your nodes transcribing while partitioned can briefly overshoot
+  the shared pool, which reconciles at merge and is accepted.
+- **Seen and deleted are LWW facts on the same chains**, so read-on-the-phone is read-on-the-laptop, with no
   conflict possible.
-- **The inbox gets its own service chain**, not a collection on `general-private`: it is the one store you will
-  want to prune, and welding junk to the things you keep forever is how retention becomes impossible.
-- **Not being overrun, in four layers**: the Inbound Gate (floor plus not-muted); **collapse by (sender, kind)**,
-  so a follow notice from one root is one row however many times they flap; a **two-tier quota** where strangers
-  share a small pool with ring-buffer eviction while trusted senders have their own - so a flood can only evict
-  *other strangers*, never your friends; and **refuse before signing**, because a chain append is permanent and
-  garbage must die at the network edge.
-- **Honest costs**: every admitted notice is permanent chain growth and a tombstone is another entry (hence the
-  separate, prunable chain); transcription needs a node of yours reachable, or a relay holding a sealed envelope
-  until one is; and the gate is anti-spam, never anti-harassment - an admitted stranger's capped note can still
-  be cruel, and mute plus report remain the answer.
+- **Graduation never migrates rows.** A promoted sender's new notices file into the better chain; old rows age
+  out where they landed; the read-time merge across tiers makes the seam invisible. One door, one envelope
+  format, one code path - trust buys a bigger quota, a lower floor and a faster transport lane, never a different
+  mechanism.
 
-**The feed is fanned out, not fetched.** The naive read is not "three hundred queries" but **three hundred
+*(Rejected: per-calendar-day inbox chains with a 7-day sync horizon. The discriminator is a clock fact - which
+day owns an entry under skew? - and any peer rule about it consults a clock at admission, which No Clocks!
+forbids; the suffix machinery already provides "sync only recent", and lazy backfill already provides "recovery
+mode", hash-committed; and the day seams either lose the welded past or rebuild one chain with anchors and
+ceremony. The rule extracted: **chain discriminators are identity-shaped - per-counterparty, per-service - never
+time-shaped**; how much to sync and how much to keep is the floor's job.)*
+
+#### Delivery: one door, then your own sync
+
+The sender's job is to reach **one** node of yours, ever. Fan-out across your devices is your persona's own chain
+sync, never the sender's problem - the sender neither knows nor should know your device roster. The failure
+condition is therefore only "zero nodes of mine were reachable at delivery time," and it is softer than it
+sounds, in three stacking layers:
+
+1. **The underlying fact is durable; only the prompting is at risk.** Every content-bearing notice points at a
+   signed entry on the sender's own public chains. A missed notice loses the alert, never the event.
+2. **Sender-side retry with backoff** covers most of the rest - the envelope is a few KB and the sender's node is
+   long-lived relative to the event. A notice that cannot land within its own relevance window expiring quietly
+   is *correct* behaviour for a store whose charter is "recent, relevant, forgettable."
+3. **Sealed-envelope relays close the gap** - and the cozy candidate is **your friends' always-on nodes as your
+   answering service**: a relay holds a few KB sealed to your epoch key (learning only that something was left)
+   and hands it over when your phone appears. It rides existing trust rather than new infrastructure, and it
+   composes with the transport tier below - a friend's node has maximal standing to accept deliveries aimed at
+   you.
+
+Beneath all three, the honest backstop: a persona with zero durable nodes has degraded availability for
+*everything* - its own posts unserved, its DMs undeliverable - which is Hosting's subject. Notices get no special
+machinery beyond the above.
+
+#### The transport tier: standing before the gate
+
+The gate defends the chains; the node also defends *itself*, at connection admission, and the right currency is
+the same one - graph position, which an attacker cannot forge, where IP addresses are free. **The node maintains
+a materialized graph of public edges** (vouches, serving-follows) - a disposable view over data already on hand:
+its own personas' public-follows chains, plus the counterparty's signed serving records from discovery. It prices
+connections by **shared standing**: how many of *our* users' outbound public edges point at personas *you*
+verifiably host. Four constraints, each load-bearing:
+
+- **Public edges only - structurally, not modestly.** A rate limit is observable behaviour; if quiet follows or
+  private trust edges fed the tier, how fast your node answers mine would disclose them - a timing side channel
+  against the exact relationships the quiet follow exists to conceal. (This is also why it does not collide with
+  "the node routes; the user ranks," below: that refusal was about assembling *private* ranking facts; these
+  inputs are public by definition and the output is coarse.) Quantize to a few tiers, so treatment reveals "some
+  standing / none," nothing finer.
+- **Relief, never penalty.** The zero-shared-edge lane is the baseline every stranger gets - sluggish but
+  genuinely usable - and edges buy relief upward. If zero-edge meant unreachable, we would have built big-server
+  gravity: users learn a well-connected node is the price of reachability and migrate to hubs - the federation
+  pathology the Vision indicts. The saving detail: legitimate zero-edge traffic is tiny (a few envelopes, ever),
+  so a handful of envelopes per hour is unnoticeable to a human and ruinous to a flood. Humane at human scale,
+  hostile at machine scale.
+- **Count only edges our side authored, with diminishing returns per local persona.** Outbound edges are our
+  users' own signing acts; inbound edges are attacker-mintable for free. Shared standing behaves like flow, not a
+  sum - one careless local user who follows fifty hostile personas moves the needle once, not fifty times.
+- **Every input is a signed artifact; the tier is mechanical.** Serving records prove hosting; vouch entries
+  prove edges. No node reputation, no node blacklists, no statistical scoring of peer behaviour - the graph
+  answers "how much standing does this connection arrive with," and everything punitive stays at the envelope
+  layer, where the evidence is.
+
+**Zero shared edges is the *normal* condition for legitimate first contact** - Dave-from-the-conference is on his
+cousin's Raspberry Pi with no edge overlap at all. The slow lane covers him, and the **friend token is the
+fast-pass at this layer too**, vouching the *connection* as it vouches the notice - the human-scale bypass at
+both layers, so "how does anyone new reach anyone" never depends on proof-of-work. Honesty ledger: tiered
+treatment leaks aggregate colocation ("this node's users share edges with that node's") - marginal, since the
+inputs are public and crawlable, but it belongs beside Hosting's timing-correlation caveats.
+
+#### The proof-of-work dial (resting position: zero)
+
+An optional stamp on the zero-standing lane - specified from birth, priced at zero until a flood exists. What v1
+ships is the *slot*: a stamp field on the envelope, a **reject-with-current-price** message, and the sender-side
+retry-with-stamp path, all exercised in tests while the number is zero everywhere. A dial nobody has wired up is
+a document, not a dial.
+
+- **Price discovery is a challenge, not a posted rate**: unstamped envelope arrives → if the dial is above zero,
+  rejection carries the current requirement → sender stamps and retries.
+- **Zero is an attractor.** The raising signal is mechanical and pool-local (stranger-tier eviction churn, queue
+  depth, gate-rejection rate), and the dial **decays back to zero on its own** - a ratchet only humans turn down
+  becomes a permanent tax within a year. Stress is measurable per pool, so the dial scopes per-node *and*
+  per-persona: the briefly-famous case prices one persona's stranger lane without taxing strangers knocking for
+  anyone else on the node.
+- **Only the zero-standing lane ever sees a price.** Shared edges and friend tokens never pay.
+- **The honest cost, named: during an active flood, Dave pays too** - within the zero-standing lane the attacker
+  and the legitimate stranger are indistinguishable; that is what a flood *is*. Acceptable because attack windows
+  are temporary and decay ends them; Dave sends *one* envelope (seconds of a phone's time, once); and the token
+  bypasses the priced lane entirely. Per-message cost times volume is the whole trick - the one place
+  proof-of-work's economics favour the defender.
+- **Why not a small always-on price:** it sits on the wrong side of that asymmetry. Trivial for a GPU cluster (so
+  it deters no real flood), it taxes every honest phone forever (proof-of-work is *regressive*: it prices out
+  phones before datacenters), and it destroys the dial's information value - under resting-zero, a nonzero price
+  *is* the observable signal that a node is under attack.
+
+#### The feed is fanned out, not fetched
+
+The naive read is not "three hundred queries" but **three hundred
 files** - the per-user database manager caps open handles, so a fan-in read thrashes the cache opening and
 closing encrypted files to build one screen. The answer is this codebase's own idiom one level up (`doc_heads`,
 `doc_search`): the fold writes a memo, and reads never fold.

@@ -3678,3 +3678,41 @@ shrunk. Both read through a `dialValue` helper that checks nullish before coerci
 Gates: `just ci` green. Not verified in a browser — the vectors pin the arithmetic and the
 compiled CSS carries both knobs, but whether 0.8125 and 238px read as "quieter" or as "broken" is
 a judgement only eyes can make. `POST_SCALE_MIN` and `POST_IMAGE_MIN` are the two levers.
+
+## 2026-08-09 — arrival and attention, extended: how strangers knock
+
+A design day, no code. The Arrival and Attention section (settled 2026-08-03) grew from a sketch of
+the inbox into the full mechanism for delivered events, working through the attack surface one
+adversary at a time. The routing rule that anchors it: where a follow-edge exists, evidence travels
+by pull and opinions are derived locally (zero inbox rows, at most a content-free sync offer);
+where none exists, evidence travels by envelope and is transcribed under quota.
+
+What got settled: **envelopes carry evidence, not claims** — the sender's signed entry plus its
+root-to-leaf authorization path embed in the envelope, so a stranger's rebroadcast/comment/tag/
+follow notice verifies offline with zero fetches, killing the forced-sync attack outright (the
+header/blob split and self-authenticating key-tree entries are what make it fit in kilobytes).
+**Per-kind floors** inherit Trust's Sybil hardening — content-bearing kinds require nonzero graph
+flow, first-contact is the one kind open to the pathless — with a named pre-Trust fallback
+classifier (explicit/mutual edge ⇒ trusted, else stranger, muted ⇒ refused) so the inbox doesn't
+wait on Advogato. **Tiered inbox chains**, (device key × tier), count-bounded at ~1–2K entries —
+a named exception to own-nodes-hold-chains-whole — with the one-sentence rule "anything shown to
+the user is a chain row; anything node-local is in-flight" (the decisive argument: the device you
+read on is the least reachable device you own). **One-door delivery**: sender retry plus friends'
+always-on nodes as sealed-envelope answering service. **The transport tier**: nodes price
+connection admission by shared standing over a materialized public-edge graph — public edges only
+(rate limits are observable; a timing side channel must never out a quiet follow), relief never
+penalty, outbound-edges-only with diminishing returns, all inputs signed. **The proof-of-work
+dial at resting position zero**: the stamp slot, reject-with-price, and retry path ship wired and
+tested with the number at zero everywhere; the dial rises only under measured pool-local stress
+and decays back on its own.
+
+Rejected along the way, with reasons recorded in the section: per-calendar-day inbox chains (a
+clock-fact discriminator; the extracted rule is that chain discriminators are identity-shaped,
+never time-shaped), accept-then-randomly-audit with node blacklisting (auditing is itself a forced
+sync, and blame lands on the wrong noun), node-local stranger buffers (strands notices on the
+public face, never the pocket), and an always-on PoW price (regressive, flood-ineffective, and it
+destroys the dial's signal value).
+
+NEXT_STEPS' Inbox section recast as build work in dependency order. Nothing scheduled — the
+design runs ahead of the ladder deliberately, so the envelope format and gate are already final
+when the graph features arrive.
