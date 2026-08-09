@@ -8,22 +8,52 @@ set windows-shell := ["bash", "-uc"]
 
 # Paths are relative to this justfile (the `node/` dir); step up for cargo commands.
 workspace := justfile_directory() / ".."
-port := env_var_or_default("RINGTOME_PORT", "5281")
-port_b := env_var_or_default("RINGTOME_PORT_B", "5282")
-port_c := env_var_or_default("RINGTOME_PORT_C", "5283")
-# The dark node: no RINGTOME_DISCOVERY at all, which is the DEFAULT a shipped node boots with.
-# Every other rig node runs `local:` discovery, so nothing exercised the dark path until a
-# 500 on /serve turned up in test-data (2026-08-08).
-port_d := env_var_or_default("RINGTOME_PORT_D", "5284")
 test_data := "./data/test"
 
-# When two copies of this repo run on one machine, every server port conflicts unless one twin
-# clears out. This checkout declares itself the "alt" twin - its path contains "ringtome-alt" -
-# so every port this justfile spawns a server on gets PORT+500: dev 5281.. -> 5781..,
-# scratch 5297.. -> 5797.., the test_integration rig and the test-data defaults follow. The
-# unmarked twin stays on the base ports. Relative invariants (dev's top < scratch's floor) hold
-# under the shift too.
-port_offset := `case "$PWD" in *ringtome-alt*) echo 500 ;; *) echo 0 ;; esac`
+# --- ports: one band per checkout, three lanes inside it -------------------------------------
+#
+# Nothing here talks to a backing service, so "can these two runs coexist?" is entirely a
+# question of which ports they bind. Two independences are wanted and this buys both:
+#
+#   * `just integration` / `just ci` must not disturb `just start*`. They used to share
+#     5281-5283, which is why integration had to kill the dev network first - the tests and the
+#     playground were fighting over the same three sockets. Now they are different lanes and
+#     neither has any reason to touch the other.
+#   * Two checkouts on one machine must not disturb each other. This replaces the old
+#     `*ringtome-alt* -> +500` special case, which handled exactly two copies and only if the
+#     second was named right.
+#
+# The band is derived from the checkout's own path, so it is stable across reboots and across
+# whichever directory you happen to invoke `just` from, and needs no state on disk. Different
+# checkout, different band, no coordination. Two checkouts CAN collide (64 slots, a hash); the
+# escape hatch is `RINGTOME_PORT_SLOT=<n>` in your shell. `just ports` prints the whole map.
+#
+# Layout inside a 32-port band, and the reason for each floor:
+#
+#   base+1  .. base+16   dev network   `just start`, `start-two/three`, `start-n` (N<=16)
+#   base+17 .. base+19   scratch       `just scratch` - throwaway probe nodes
+#   base+20              (firebreak)   deliberately unbound
+#   base+21 .. base+24   integration   `just integration` - alpha, bravo, charlie, delta
+#   base+25 .. base+31   spare
+#
+# NOTE: `{{ }}` is NOT interpolated inside backticks - a backtick would see the literal text and
+# silently hash a constant, giving every checkout the same band. `shell()` takes real arguments
+# and is the reason this works at all.
+port_slot := env_var_or_default("RINGTOME_PORT_SLOT", shell('printf %s "$1" | cksum | cut -d" " -f1', justfile_directory()))
+port_base := shell('echo $(( 5280 + ($1 % 64) * 32 ))', port_slot)
+
+# The dev network's first three nodes, named because the recipes reach for them by hand.
+port := shell('echo $(( $1 + 1 ))', port_base)
+port_b := shell('echo $(( $1 + 2 ))', port_base)
+port_c := shell('echo $(( $1 + 3 ))', port_base)
+
+# The integration rig's four. The fourth is the DARK node: no RINGTOME_DISCOVERY at all, which is
+# the default a shipped node boots with. Every other rig node runs `local:` discovery, so nothing
+# exercised the dark path until a 500 on /serve turned up in test-data (2026-08-08).
+int_a := shell('echo $(( $1 + 21 ))', port_base)
+int_b := shell('echo $(( $1 + 22 ))', port_base)
+int_c := shell('echo $(( $1 + 23 ))', port_base)
+int_d := shell('echo $(( $1 + 24 ))', port_base)
 
 # List available recipes.
 default:
@@ -75,7 +105,7 @@ test-unit:
 
 # Run the node in the foreground (Ctrl-C to stop). Uses the default data dir.
 run:
-    cd "{{workspace}}" && RINGTOME_PORT=$(( {{port}} + {{port_offset}} )) cargo run --bin ringtome
+    cd "{{workspace}}" && RINGTOME_PORT={{port}} cargo run --bin ringtome
 
 # Boot the server + UI watchers in one terminal. Ctrl-C tears everything down.
 start: ui-install
@@ -111,14 +141,17 @@ start: ui-install
     }
     trap cleanup EXIT
 
-    # Rust server (foreground — Ctrl-C lands here first), on the dev port plus the twin offset.
-    RINGTOME_PORT=$((5281 + {{port_offset}})) cargo run --bin ringtome
+    # Rust server (foreground — Ctrl-C lands here first), on this checkout's dev port.
+    echo "node A on http://localhost:{{port}}"
+    RINGTOME_PORT={{port}} cargo run --bin ringtome
 
-# Two dev nodes on one machine, one Ctrl-C: the adoption-ceremony playground. Node A on :5281
-# (default data dir, hostname name), node B on :5282 (./data-b, named "second-brain"), sharing
-# a local discovery folder so post-adoption background sync can find addresses. Create a
-# persona at :5281, register a fresh account at :5282, carry the codes between tabs. (On the
-# ringtome-alt twin checkout every port is +500 - see port_offset.)
+# Two dev nodes on one machine, one Ctrl-C: the adoption-ceremony playground. Node A on the dev
+# port (default data dir, hostname name), node B on the next one (./data-b, named
+# "second-brain"), sharing a local discovery folder so post-adoption background sync can find
+# addresses. Create a persona on A, register a fresh account on B, carry the codes between tabs.
+# Both recipes print their URLs; `just ports` shows this checkout's whole band.
+#
+# Two dev nodes, one Ctrl-C: the adoption-ceremony playground.
 start-two: ui-install
     #!/usr/bin/env bash
     set -uo pipefail
@@ -146,7 +179,7 @@ start-two: ui-install
     cargo build --bin ringtome
 
     # Node B in the background, logs to /tmp (its terminal noise would interleave with A's).
-    node_b_port=$((5282 + {{port_offset}}))
+    node_b_port={{port_b}}
     RINGTOME_PORT="$node_b_port" RINGTOME_DATA_DIRECTORY=./data-b RINGTOME_NODE_NAME=second-brain \
         RINGTOME_DISCOVERY=local:./data-dht \
         cargo run --bin ringtome > /tmp/ringtome-second-brain.log 2>&1 &
@@ -164,13 +197,16 @@ start-two: ui-install
 
     # Node A on the dev port (plus the twin offset) in the foreground — Ctrl-C lands here and
     # takes everything down.
-    RINGTOME_PORT=$((5281 + {{port_offset}})) RINGTOME_DISCOVERY=local:./data-dht cargo run --bin ringtome
+    echo "node A on http://localhost:{{port}}"
+    RINGTOME_PORT={{port}} RINGTOME_DISCOVERY=local:./data-dht cargo run --bin ringtome
 
-# Three dev nodes, one Ctrl-C: the daisy-chain playground. A on :5281 (hostname name),
-# B "second-brain" on :5282 (./data-b), C "third-brain" on :5283 (./data-c), shared local
+# Three dev nodes, one Ctrl-C: the daisy-chain playground. A on the dev port (hostname name),
+# B "second-brain" next (./data-b), C "third-brain" after that (./data-c), shared local
 # discovery. Found a persona on A, invite B from A, then invite C *from B* - the un-trimmed
 # junior grant: the chain of computers doesn't route through the founder. (On the ringtome-alt
-# twin checkout every port is +500 - see port_offset.)
+# Each prints its URL; `just ports` shows the band.)
+#
+# Three dev nodes, one Ctrl-C: the daisy-chain playground.
 start-three: ui-install
     #!/usr/bin/env bash
     set -uo pipefail
@@ -198,14 +234,14 @@ start-three: ui-install
     cargo build --bin ringtome
 
     # Node B in the background, logs to /tmp (its terminal noise would interleave with A's).
-    node_b_port=$((5282 + {{port_offset}}))
+    node_b_port={{port_b}}
     RINGTOME_PORT="$node_b_port" RINGTOME_DATA_DIRECTORY=./data-b RINGTOME_NODE_NAME=second-brain \
         RINGTOME_DISCOVERY=local:./data-dht \
         cargo run --bin ringtome > /tmp/ringtome-second-brain.log 2>&1 &
     NODE_B_PID=$!
     echo "node B (second-brain) on http://localhost:$node_b_port — logs: /tmp/ringtome-second-brain.log"
 
-    node_c_port=$((5283 + {{port_offset}}))
+    node_c_port={{port_c}}
     RINGTOME_PORT="$node_c_port" RINGTOME_DATA_DIRECTORY=./data-c RINGTOME_NODE_NAME=third-brain \
         RINGTOME_DISCOVERY=local:./data-dht \
         cargo run --bin ringtome > /tmp/ringtome-third-brain.log 2>&1 &
@@ -223,15 +259,17 @@ start-three: ui-install
 
     # Node A on the dev port (plus the twin offset) in the foreground — Ctrl-C lands here and
     # takes everything down.
-    RINGTOME_PORT=$((5281 + {{port_offset}})) RINGTOME_DISCOVERY=local:./data-dht cargo run --bin ringtome
+    echo "node A on http://localhost:{{port}}"
+    RINGTOME_PORT={{port}} RINGTOME_DISCOVERY=local:./data-dht cargo run --bin ringtome
 
-# Boot N dev nodes in one terminal, one Ctrl-C: the generalized playground. Node A on :5281
-# (default data dir, hostname name), then "node-2" on :5282 (./data-2), "node-3" on :5283
-# (./data-3), ... through node-N on :5280+N (./data-N) — N up to 16 keeps the top port at 5296,
-# below the scratch floor of 5297. All share a local discovery folder so post-adoption background
+# Boot N dev nodes in one terminal, one Ctrl-C: the generalized playground. Node A on the dev
+# port (default data dir, hostname name), then "node-2" (./data-2), "node-3" (./data-3), ...
+# through node-N on base+N (./data-N) — N is capped at 16 because the dev LANE is base+1..base+16,
+# and 17 would land on the scratch floor. All share a local discovery folder so post-adoption
 # sync can find addresses. N=1 is a bare `start`; the default N=3 is a `start-three`. Create a
-# persona at :5281, register fresh accounts at the others, carry the codes between tabs. (On the
-# ringtome-alt twin checkout every port is +500 - see port_offset.)
+# persona on A, register fresh accounts at the others, carry the codes between tabs.
+#
+# Boot N dev nodes (1-16) in one terminal, one Ctrl-C.
 start-n n="3": ui-install
     #!/usr/bin/env bash
     set -uo pipefail
@@ -273,7 +311,7 @@ start-n n="3": ui-install
     # Nodes 2..N in the background, logs to /tmp (their terminal noise would interleave with A's).
     node_pids=""
     for ((i = 2; i <= n; i++)); do
-        port=$((5280 + i + {{port_offset}}))
+        port=$(( {{port_base}} + i ))
         RINGTOME_PORT="$port" RINGTOME_DATA_DIRECTORY="./data-$i" RINGTOME_NODE_NAME="node-$i" \
             RINGTOME_DISCOVERY="$discovery" \
             cargo run --bin ringtome > "/tmp/ringtome-node-$i.log" 2>&1 &
@@ -292,7 +330,8 @@ start-n n="3": ui-install
 
     # Node A on the dev port (plus the twin offset) in the foreground — Ctrl-C lands here and
     # takes everything down.
-    RINGTOME_PORT=$((5281 + {{port_offset}})) RINGTOME_DISCOVERY="$discovery" cargo run --bin ringtome
+    echo "node A on http://localhost:{{port}}"
+    RINGTOME_PORT={{port}} RINGTOME_DISCOVERY="$discovery" cargo run --bin ringtome
 
 # --- ui -----------------------------------------------------------------------
 
@@ -362,34 +401,37 @@ test-data personas="15" actions="15" seed="":
     # otherwise the generator would reach into the OTHER checkout's network. An explicit
     # RINGTOME_TESTDATA_PORTS (e.g. scratch nodes) is always honored as given.
     if [ -z "${RINGTOME_TESTDATA_PORTS-}" ]; then
-        RINGTOME_TESTDATA_PORTS="$((5281 + {{port_offset}})),$((5282 + {{port_offset}})),$((5283 + {{port_offset}}))"
+        RINGTOME_TESTDATA_PORTS="{{port}},{{port_b}},{{port_c}}"
         export RINGTOME_TESTDATA_PORTS
     fi
     cd "{{justfile_directory()}}/harness" && node testdata.mjs {{personas}} {{actions}} {{seed}}
 
 # --- scratch nodes (agent/probe testing) ----------------------------------------------------
 # Throwaway nodes for harness probes and agent testing, kept STRUCTURALLY apart from the dev
-# network: they refuse the dev ports (5281-5296), live in /tmp, and are killed by PID file -
-# never by pattern - so no scratch cleanup can ever take down `just start*`. Born from the
-# 2026-08-05 incident where a broad pkill killed the running dev trio mid-test and a scratch
-# node then squatted 5281 impersonating it.
+# network: they live in their own lane (base+17..base+19) and in /tmp, and are killed by PID
+# file - never by pattern - so no scratch cleanup can ever take down `just start*`. Born from
+# the 2026-08-05 incident where a broad pkill killed the running dev trio mid-test and a scratch
+# node then squatted the dev port, impersonating it.
+#
+# The argument is an INDEX (1-3), not a port. It used to be a raw port with a hand-maintained
+# list of dev ports it refused; now the lane arithmetic makes an overlap unrepresentable, which
+# is the better version of the same guard.
 
-# Boot a throwaway node on a scratch port (5297-5299), wait for health, background it. The pid,
-# data dir, log and discovery folder are all keyed by the port the node actually BINDS, which
-# on the ringtome-alt twin is port+500 (see port_offset) - so the twins' scratch fixtures can
-# never collide (their pidfiles stay distinct even at the same nominal port).
-scratch port="5299":
+# Boot a throwaway node on scratch slot N (1-3), wait for health, background it. The pid, data
+# dir, log and discovery folder are all keyed by the port the node actually BINDS - and bands
+# differ per checkout, so two checkouts' scratch fixtures can never collide.
+#
+# Boot a throwaway probe node on this checkout's scratch slot N (1-3).
+scratch n="3":
     #!/usr/bin/env bash
     set -uo pipefail
-    case "{{port}}" in
-        5281|5282|5283|5284|5285|5286|5287|5288|5289|5290|5291|5292|5293|5294|5295|5296)
-            echo "port {{port}} belongs to the dev network (just start*) - scratch uses 5297-5299" >&2
-            exit 1;;
+    case "{{n}}" in
+        1|2|3) ;;
+        *) echo "scratch takes a slot index 1-3 (got '{{n}}'); the lane is 3 ports wide" >&2; exit 1;;
     esac
-    port=$(({{port}} + {{port_offset}}))
+    port=$(( {{port_base}} + 16 + {{n}} ))
     cd "{{workspace}}"
-    dht="/tmp/ringtome-scratch-dht"
-    [ "{{port_offset}}" -ne 0 ] && dht="${dht}{{port_offset}}"
+    dht="/tmp/ringtome-scratch-dht-{{port_base}}"
     dir="/tmp/ringtome-scratch-$port"
     pidfile="$dir.pid"
     if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
@@ -402,6 +444,7 @@ scratch port="5299":
     for i in $(seq 1 120); do
         if curl -s -o /dev/null -m 1 "http://localhost:$port/health"; then
             echo "scratch node on :$port (pid $(cat "$pidfile"), data $dir, log $dir.log)"
+            echo "  harness probes: export RINGTOME_SCRATCH_{{n}}=http://localhost:$port"
             exit 0
         fi
         sleep 1
@@ -409,12 +452,17 @@ scratch port="5299":
     echo "scratch node on :$port never became healthy - see $dir.log" >&2
     exit 1
 
-# Kill every scratch node - by recorded PID only, so a running dev network cannot be touched.
+# Kill this checkout's scratch nodes - by recorded PID only, so a running dev network cannot be
+# touched, and scoped to this band, so another checkout's probes cannot be either. (The glob used
+# to be every `ringtome-scratch-*.pid` on the machine, which was fine when one checkout existed.)
+#
+# Kill this checkout's scratch nodes, by recorded PID.
 scratch-kill:
     #!/usr/bin/env bash
     set -uo pipefail
     found=0
-    for pidfile in /tmp/ringtome-scratch-*.pid; do
+    for n in 1 2 3; do
+        pidfile="/tmp/ringtome-scratch-$(( {{port_base}} + 16 + n )).pid"
         [ -e "$pidfile" ] || continue
         found=1
         pid=$(cat "$pidfile")
@@ -427,14 +475,18 @@ scratch-kill:
         fi
         rm -f "$pidfile"
     done
-    rm -rf /tmp/ringtome-scratch-* 2>/dev/null || true
-    [ "$found" = 1 ] || echo "no scratch nodes recorded"
+    for n in 1 2 3; do rm -rf "/tmp/ringtome-scratch-$(( {{port_base}} + 16 + n ))"* 2>/dev/null || true; done
+    rm -rf "/tmp/ringtome-scratch-dht-{{port_base}}" 2>/dev/null || true
+    [ "$found" = 1 ] || echo "no scratch nodes recorded for this checkout"
 
-# MACHINE-WIDE BY DESIGN: takes down scratch nodes AND a running dev network alike (`just
-# integration` depends on it, so an integration run does too). Probe cleanup wants
-# `scratch-kill` instead, which cannot reach the dev network.
+# MACHINE-WIDE BY DESIGN, and now nothing depends on it: `just integration` used to, which is why
+# running the tests took the dev network down with them. It is a panic button for a wedged machine,
+# not part of any flow, and it reaches ACROSS CHECKOUTS - every other copy of this repo included.
 #
-# Kill EVERY running ringtome, dev network included (see above; scratch-kill is the scoped one).
+# Reach for a scoped one first: `scratch-kill` clears this checkout's probe nodes, and `just
+# integration` clears its own leftovers by PID file on the way in.
+#
+# Kill EVERY running ringtome on this machine, every checkout's included. A panic button.
 kill:
     -MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || pkill -f 'target/debug/ringtome' 2>/dev/null || true
 
@@ -455,6 +507,12 @@ kill:
 # node first, so nothing is holding a file open while it disappears.
 #
 # DESTROYS every dev persona, key and chain - the wipe a schema generation bump asks for.
+#
+# The one recipe that still depends on the machine-wide `kill`, and deliberately: it is deleting
+# the files out from under whatever is holding them open, and a foreground `just start` in another
+# terminal has no pidfile to shoot it by. It only removes THIS checkout's data directories, but it
+# will stop other checkouts' nodes on the way past. Ctrl-C your own playgrounds first if that
+# matters.
 clean: kill
     #!/usr/bin/env bash
     set -uo pipefail
@@ -470,16 +528,37 @@ clean: kill
 # chain) plus one in the DARK, with no directory at all, which is what a shipped node defaults to.
 # Wait for health, run the JS integration suite, tear all down. Single-node-only tests are unaffected;
 # multi-node tests skip themselves if RINGTOME_TEST_HOST_B / _C are absent.
-integration: build kill
+#
+# It does NOT depend on `kill` any more, and that is the point: the rig lives in its own lane
+# (base+21..base+24), so a `just start*` playground can be running the whole time and neither
+# notices the other. Previously the rig bound the dev ports, so the only way to guarantee they
+# were free was to shoot every ringtome on the machine - which took the dev network with it, and
+# any other checkout's too. Leftovers from a run that died before its trap are cleared by PID
+# file, scoped to this band.
+#
+# Boot this checkout's four rig nodes, run the JS integration suite, tear them down.
+integration: build
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
     rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-c" "{{test_data}}-d" "{{test_data}}-dht"
-    # The twin-checkout offset (port_offset) applied to every bound port here.
-    pa=$(( {{port}} + {{port_offset}} ))
-    pb=$(( {{port_b}} + {{port_offset}} ))
-    pc=$(( {{port_c}} + {{port_offset}} ))
-    pd=$(( {{port_d}} + {{port_offset}} ))
+    pa={{int_a}}
+    pb={{int_b}}
+    pc={{int_c}}
+    pd={{int_d}}
+    # A previous run that was SIGKILLed (or whose shell died) never ran its trap. Clear only what
+    # this band recorded - never by pattern, which is what made the old cleanup machine-wide.
+    for p in $pa $pb $pc $pd; do
+        stale="/tmp/ringtome-int-$p.pid"
+        [ -e "$stale" ] || continue
+        pid=$(cat "$stale")
+        if kill "$pid" 2>/dev/null; then
+            for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+            echo "cleared a stale integration node on :$p (pid $pid)"
+        fi
+        rm -f "$stale"
+    done
     # Fast eager-push debounce so eagersync.cjs observes propagation quickly; the anti-entropy
     # interval deliberately stays at its 5-minute default so the eager path is what gets tested.
     # The peer-derive beat keeps its recovery pace on purpose - its lag behind a revocation is
@@ -490,32 +569,37 @@ integration: build kill
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_NODE_NAME=alpha \
         ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
     NODE_PID=$!
+    echo $NODE_PID > "/tmp/ringtome-int-$pa.pid"
     RINGTOME_PORT=$pb RINGTOME_DATA_DIRECTORY="{{test_data}}-b" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_NODE_NAME=bravo \
         ./target/debug/ringtome > /tmp/ringtome-integration-b.log 2>&1 &
     NODE_B_PID=$!
+    echo $NODE_B_PID > "/tmp/ringtome-int-$pb.pid"
     RINGTOME_PORT=$pc RINGTOME_DATA_DIRECTORY="{{test_data}}-c" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_NODE_NAME=charlie \
         ./target/debug/ringtome > /tmp/ringtome-integration-c.log 2>&1 &
     NODE_C_PID=$!
+    echo $NODE_C_PID > "/tmp/ringtome-int-$pc.pid"
     # Deliberately WITHOUT RINGTOME_DISCOVERY: a node in the dark, like every default boot.
     RINGTOME_PORT=$pd RINGTOME_DATA_DIRECTORY="{{test_data}}-d" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_NODE_NAME=delta \
         ./target/debug/ringtome > /tmp/ringtome-integration-d.log 2>&1 &
     NODE_D_PID=$!
+    echo $NODE_D_PID > "/tmp/ringtome-int-$pd.pid"
     cleanup() {
         if command -v taskkill >/dev/null 2>&1; then
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_B_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_C_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_D_PID" 2>/dev/null || true
-            MSYS2_ARG_CONV_EXCL="*" taskkill -F -IM ringtome.exe 2>/dev/null || true
         else
             kill "$NODE_PID" "$NODE_B_PID" "$NODE_C_PID" "$NODE_D_PID" 2>/dev/null || true
         fi
+        rm -f "/tmp/ringtome-int-$pa.pid" "/tmp/ringtome-int-$pb.pid" \
+              "/tmp/ringtome-int-$pc.pid" "/tmp/ringtome-int-$pd.pid"
     }
     trap cleanup EXIT
 
@@ -555,7 +639,7 @@ mainline-smoke: build kill integration-install
     cd node/integration
     # --no-config: .mocharc.json's test/**/* spec glob merges with (rather than yields to) CLI
     # file args, which would run the whole suite against nodes this recipe never booted.
-    RINGTOME_TEST_MAINLINE=1 RINGTOME_PORT_OFFSET={{port_offset}} npx mocha --no-config test/mainline.cjs --timeout 900000
+    RINGTOME_TEST_MAINLINE=1 RINGTOME_PORT_BASE={{port_base}} npx mocha --no-config test/mainline.cjs --timeout 900000
 
 # --- strings ---------------------------------------------------------------
 
@@ -581,9 +665,31 @@ strings-check:
 strings-migrate:
     cd "{{workspace}}" && node node/tools/strings.mjs --migrate
 
+# --- ports -----------------------------------------------------------------
+
+# Print this checkout's port band and what lives in it. The first thing to run when something
+# says "address already in use", and the answer to "which localhost am I on today".
+#
+# Print this checkout's port band: which lane is which, and what to override.
+ports:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    echo "checkout     {{justfile_directory()}}"
+    echo "slot         $(( {{port_slot}} % 64 ))  (override: RINGTOME_PORT_SLOT=<0-63>)"
+    echo "band         {{port_base}}..$(( {{port_base}} + 31 ))"
+    echo ""
+    echo "dev          :{{port}}..$(( {{port_base}} + 16 ))   just start / start-two / start-three / start-n"
+    echo "scratch      :$(( {{port_base}} + 17 ))..$(( {{port_base}} + 19 ))   just scratch 1|2|3"
+    echo "integration  :{{int_a}}..{{int_d}}   just integration / just ci"
+    echo "spare        :$(( {{port_base}} + 25 ))..$(( {{port_base}} + 31 ))   mainline-smoke takes +25/+26"
+    echo ""
+    echo "dev and integration are different lanes: a playground can stay up through a full ci run."
+
 # --- everything ------------------------------------------------------------
 
 # Full local check: UI bundles + UI pure tests, then cargo check, clippy, Rust unit tests, and
 # the integration suite. `ui-check` runs FIRST because the Rust build embeds its output.
 # `strings-check` sits after it: a broken build is more urgent than an un-catalogued sentence.
+#
+# The whole gate: UI, strings, cargo check, clippy, Rust tests, integration. What CI runs.
 ci: ui-check strings-check check lint test-unit integration

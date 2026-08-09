@@ -40,10 +40,12 @@ const WORKSPACE = path.resolve(__dirname, "..", "..", "..");
 const BINARY = process.env.RINGTOME_TEST_BINARY
     || path.join(WORKSPACE, "target", "debug", process.platform === "win32" ? "ringtome.exe" : "ringtome");
 const DATA_ROOT = path.join(WORKSPACE, "data", "test-mainline");
-// `just mainline-smoke` passes the ringtome-alt twin offset through, so a parallel checkout's
-// smoke test can't steal these ports either; a bare run (offset unset) keeps the base ports.
-const PORT_A = 5293 + parseInt(process.env.RINGTOME_PORT_OFFSET || "0", 10);
-const PORT_B = 5294 + parseInt(process.env.RINGTOME_PORT_OFFSET || "0", 10);
+// The SPARE lane of this checkout's band (base+25/+26), so a smoke run cannot collide with the
+// dev network, the integration rig, or another checkout - see the port map at the top of
+// node/justfile, or run `just ports`.
+const PORT_BASE = parseInt(process.env.RINGTOME_PORT_BASE || "5280", 10);
+const PORT_A = PORT_BASE + 25;
+const PORT_B = PORT_BASE + 26;
 
 // Ceilings, not expectations: healthy runs clear each rung on the first poll (relay/DNS paths
 // are one round trip), so these budgets only matter when the relays are down and we're waiting

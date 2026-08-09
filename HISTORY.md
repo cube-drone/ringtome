@@ -3544,3 +3544,89 @@ nothing would otherwise pass), and posts still write and publish. A default conf
 test ever booted is a gap the suite could not see, and now it has a permanent home.
 
 Gates: full `just ci` green — 565 passing, 1 pending.
+
+## 2026-08-08 — one notebook app, and a lost & found
+
+Recipes and Wikibook are gone. The cut is the whole argument: each was TurboNotes with a column
+taken away — Recipes was the tag column plus the list, Wikibook was the list plus the tree — so
+shipping them separately bought two app tiles and two vocabularies for no capability anyone
+could name. What made the single "complicated notes app" safe to embrace was tucking: TurboNotes
+now carries `startsTucked: ['tags', 'tree']` and opens on a plain list, with the other two waiting
+as rails. It is only as monstrous as you choose to make it.
+
+`startsTucked` is a DEFAULT, not a rule, and the distinction is load-bearing: `setFlag` writes
+'0' when a column is opened, so "no stored preference at all" is a different state from "opened
+once", and only the first yields to the default. That is why `useColTucks` reads the raw pref map
+instead of `flagsOf`, which collapses both into the same nothing. `usePrefMap` returns `undefined`
+while loading, so the columns start tucked during load rather than flashing open.
+
+Retiring an app is a data question, not a code one: every dev node has `recipes` and `wiki`
+buckets in it. The fallback already handled that — an unresolvable style opens in TurboNotes — so
+the vector that pins it is the actual migration story, and it is the one to keep if the rest of
+`apps.cjs` ever gets rewritten: `appTypeOf('recipes') === DEFAULT_STYLE`, `homeAppFor({buckets:
+['wiki']}).id === 'notes'`. Nothing orphaned, no migration written.
+
+Then "All" became **Lost & Found**, which took three passes to name because the surface is doing
+two jobs and was being asked to imply a third. The first pitch was "Trash" — wrong, and the
+investigation is why: `restore()` exists in `record/store.rs` with a passing test, its only caller
+IS that test, there is no route and no UI, and nothing anywhere lists deleted documents. So a
+deleted document is unreachable in practice while its doc comment promises "reversible-by-design".
+There is no trash can to name. Then: it is not "all" either — it is every PRIVATE document, since
+public posts live on the feed. The name that survived describes what you come here to DO rather
+than what it holds, which is honest about the strays being a minority of the rows: the view
+already labels them "unfiled", so the app name never had to carry that meaning alone. The glyph
+is a lidded crate — the lost-property box, not a filing cabinet.
+
+And the name immediately broke the tile that had to draw it: "LOST & FOUN…", because the launcher
+cut every label at 11 characters. Type SHRINKS before it truncates now (`pure/tilelabel.js`) —
+eleven characters is the measured capacity at full size, past that the size falls in proportion so
+the word keeps occupying the same strip, and the cut only happens once the type hits a floor at
+about twenty characters. A persona named for a Russian novelist gets small; one named by a cat
+walking on the keyboard still gets cut off. The 11 is a CALIBRATION, not arithmetic — measured
+against the real hex in Radio Canada 800 uppercase — and the two vectors worth keeping are the
+invariants a threshold tweak could quietly break: monotonic (a longer name is never drawn larger)
+and never below the floor.
+
+Residual, and it bit twice in one day: app names and nouns live in `pure/apps.js`, which
+`strings-check` skips as "arithmetic and wire formats". Renaming a tile from "All" to "Lost &
+Found" is user-facing copy, and the voice cop reported `+0 new, -0 retired`. Third instance of the
+same family, after the `note=` component prop and the persisted ingest tombstone.
+
+## 2026-08-08 — a port band per checkout
+
+`just ci` no longer disturbs `just start`. It used to bind the same three ports, which is why
+integration began by shooting every ringtome on the machine — the tests and the playground were
+fighting over the same sockets, and the "fix" took the dev network down with them (and any other
+checkout's, and any other agent's).
+
+Nothing here talks to a backing service, so coexistence is entirely a question of who binds what.
+Each checkout now owns a 32-port band derived from its own path, split into lanes that cannot
+overlap: dev at `base+1..16`, scratch at `base+17..19`, a deliberately unbound firebreak, then
+integration at `base+21..24`. `just ports` prints the map, and every `start*` prints its URL,
+because the port is no longer memorable. This replaces the `*ringtome-alt* -> +500` special case,
+which handled exactly two copies and only if the second was named right.
+
+Verified the only way worth verifying: a node booted on the dev port, a full `just ci` run around
+it (578 passing, exit 0), and the same pid still listening afterwards.
+
+The trap that nearly shipped as a silent success: **`{{ }}` is not interpolated inside just's
+backticks.** The first cut hashed the literal text `{{justfile_directory()}}` — perfectly stable
+across invocation directories, and identical for every checkout, which is exactly the failure that
+looks like it works. `shell()` takes real arguments; that is the only reason this works, and it is
+written at the top of the justfile so nobody re-derives it. (`$PWD` is no good either: it is the
+INVOCATION directory, and on macOS `/tmp` and `/private/tmp` hash differently.)
+
+Consequences worth knowing. `just scratch` takes an INDEX now, not a port — it used to carry a
+hand-maintained list of dev ports it refused, and lane arithmetic makes the overlap
+unrepresentable instead, which is the better version of the same guard. `scratch-kill` is scoped
+to this band; it globbed every `ringtome-scratch-*.pid` on the machine, fine with one checkout and
+hostile with two. Integration writes pidfiles and sweeps its own band on the way in, so a run
+SIGKILLed before its trap is cleaned deterministically rather than by pattern. `mainline-smoke`
+moved to the spare lane, having sat inside the dev one. And the Windows cleanup lost its
+`taskkill -F -IM ringtome.exe`, which was machine-wide — precisely the coupling being removed.
+
+Still machine-wide, deliberately: `just kill` (a panic button that nothing depends on any more)
+and `just clean`, which needs it because it deletes files out from under whatever holds them open
+and a foreground `just start` has no pidfile to shoot it by. Left undone: about twenty harness
+probes still hardcode `localhost:5299`. They were already wrong on the alt twin for the same
+reason; `just scratch` now prints the export line they need.

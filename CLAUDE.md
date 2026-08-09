@@ -19,13 +19,26 @@
   and full `just ci` before anything lands near sync, storage, or the HTTP surface. A suite
   that is ALREADY red is a finding, not background noise: report it and settle it (fix, or
   Curtis explicitly defers it) before stacking new work on top; prove "unrelated to my
-  change" with a clean-tree rerun, never by vibes. Mind the dev-network rule below before
-  running `just integration`. **`just ci` IS the gate**: `.github/workflows/ci.yml` runs that
-  recipe verbatim and nothing else, so green locally is green on the action — there is no
-  second bar to reason about, and no "CI will probably be fine".
+  change" with a clean-tree rerun, never by vibes. **`just ci` IS the gate**:
+  `.github/workflows/ci.yml` runs that recipe verbatim and nothing else, so green locally is
+  green on the action — there is no second bar to reason about, and no "CI will probably be
+  fine". Run it freely: since 2026-08-08 it no longer disturbs a running dev network (below).
+- **`just ci` and `just integration` are safe beside a running dev network** (2026-08-08).
+  They used to bind the same ports `just start*` did, so integration began by killing every
+  ringtome on the machine — which is why this file used to demand a warning first. Now each
+  checkout owns a 32-port band, split into lanes that cannot overlap: dev (`base+1..16`),
+  scratch (`base+17..19`), integration (`base+21..24`). A playground stays up through a full
+  ci run; two checkouts run their own everything at once. **Ask `just ports`** — never assume
+  a number, because the band is derived from the checkout's path and this repo is no longer on
+  5281. Override with `RINGTOME_PORT_SLOT=<0-63>` if two checkouts ever hash to the same slot.
 - **Testing beside a running dev network** (2026-08-05, after a broad pkill killed it):
-  throwaway nodes come from `just scratch [5297-5299]` and die by `just scratch-kill` — PID-file
-  scoped, structurally unable to touch `just start*`'s ports or processes. Never bind 5281-5296
-  for testing; never pkill by pattern; point the generator at scratch nodes with
-  `RINGTOME_TESTDATA_PORTS=5298,5299`. `just kill` (and `just integration`, which depends on it)
-  is machine-wide BY DESIGN — warn before running either while the dev network is up.
+  throwaway nodes come from `just scratch 1|2|3` (an index into the scratch lane, not a port)
+  and die by `just scratch-kill` — PID-file scoped, and scoped to this checkout, so it can
+  touch neither `just start*` nor another checkout. Never bind a port by hand; never pkill by
+  pattern; point the generator at scratch nodes with `RINGTOME_TESTDATA_PORTS=<the ports
+  `just scratch` printed>`.
+- **The two recipes that are still machine-wide** — warn before running either while anything
+  is up, including in another checkout. `just kill` shoots every ringtome on the machine; it is
+  a panic button for a wedged box and nothing depends on it any more. `just clean` depends on
+  it AND destroys this checkout's data directories — personas, keys, chains — which is what a
+  schema generation bump asks for and nothing else.
