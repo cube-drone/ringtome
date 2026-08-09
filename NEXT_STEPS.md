@@ -10,7 +10,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Accessibility
 * Localization
-* Blind users
 
 ### Private Notes
 
@@ -116,3 +115,8 @@ Does a mutual follow+trust make a "friend"?
 * oh this one's hard as fuck
 * idk defer defer
 * does this connect to a federated node or fully run the protocol in rust?
+
+### Weird Ideas
+* Anki-Style Flashcards
+* Minesweeper
+* VN Engine

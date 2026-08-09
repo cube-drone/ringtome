@@ -41,7 +41,7 @@ import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
 import { slugify, HEX_ID } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
-import { t, setLocale, detectLocale } from './i18n.js';
+import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -51,8 +51,9 @@ const html = htm.bind(h);
 const NotFound = () => html`
     <div class="console">
         <p class="null-sub">
-            ${t('index.theres-nothing-at-this-address', "there's nothing at this address.")}
-            ${' '}<a href="/home">${t('index.back-to-your-applications', 'back to your applications')}</a>.
+            ${tNodes('index.theres-nothing-at-this-address', "there's nothing at this address. {home}.", {
+                home: html`<a href="/home">${t('index.back-to-your-applications', 'back to your applications')}</a>`,
+            })}
         </p>
     </div>
 `;

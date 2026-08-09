@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 402 phrases across 40 files.
+// 394 phrases across 40 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -121,9 +121,8 @@ export default {
     'computers.invite-another-computer': 'invite another computer',
     'computers.couldnt-reach-the-new-computer': "Couldn't reach the new computer directly - carry this invite back and paste it there. Keep this computer awake while it moves in.",
     'computers.invite-a-different-computer': 'invite a different computer',
-    'computers.on-the-new-computer-sign': 'On the new computer, sign in and choose',
+    'computers.on-the-new-computer-sign': 'On the new computer, sign in and choose {action} - it will give you a code to paste here.',
     'computers.bring-your-persona-from-another': 'bring your persona from another computer',
-    'computers.--it-will-give-you': '- it will give you a code to paste here.',
     'computers.paste-the-new-computers-code': "paste the new computer's code here",
     'computers.invite-this-computer-to-be': 'invite this computer to be you',
 
@@ -184,11 +183,10 @@ export default {
     'idpage.synced': 'synced {when}',
     'idpage.checking-for-anything-newer': 'checking for anything newer',
     'idpage.thats-not-an-address': "that's not an address",
-    'idpage.the-path-after': 'The path after',
-    'idpage.should-be-a-personas-address': "should be a persona's address - two words and a key, like",
+    'idpage.the-path-after-should-be': "The path after {path} should be a persona's address - two words and a key, like {example}",
     'idpage.this-address-arrived-mangled': 'this address arrived mangled',
     'idpage.the-words-on-this-address': "The words on this address don't match its key, so something got mixed up in transit.",
-    'idpage.did-you-mean': 'Did you mean',
+    'idpage.did-you-mean': 'Did you mean {suggestion}?',
     'idpage.looking-around': 'looking around…',
     'idpage.couldnt-reach-this-persona-just': "Couldn't reach this persona just now - it isn't carried on your node, and",
     'idpage.none-of-the-computers-its': 'none of the computers its address points at answered.',
@@ -196,7 +194,7 @@ export default {
     'idpage.reached-across-the-network--': 'reached across the network - not carried on this node',
 
     // --- node/js/index.js ---
-    'index.theres-nothing-at-this-address': "there's nothing at this address.",
+    'index.theres-nothing-at-this-address': "there's nothing at this address. {home}.",
     'index.back-to-your-applications': 'back to your applications',
     'index.more-search-options': 'more search options',
     'index.show': 'show',
@@ -246,18 +244,16 @@ export default {
     'persona.every-computer-you-bring-the': "Every computer you bring the persona to fully syncs your persona's stuff everywhere. This computer will be you, too. That's what happens when you...",
     'persona.bring-your-persona-from-another': 'bring your persona from another computer.',
     'persona.bring-your-persona-here': 'Bring your persona here.',
-    'persona.on-a-computer-that-is': 'On a computer that is already you: open',
+    'persona.on-a-computer-that-is': 'On a computer that is already you: open {computers}, choose {invite}, and give it this code:',
     'persona.your-computers': 'your computers',
-    'persona.choose': ', choose',
     'persona.invite-another-computer': 'invite another computer',
-    'persona.and-give-it-this-code': ', and give it this code:',
     'persona.waiting---when-the-other': "Waiting - when the other computer accepts, your persona walks in here on its own. If it can't reach this computer, it will hand you an invite code instead; paste that below. Keep both computers awake either way.",
     'persona.invite-code-only-needed-if': "invite code (only needed if it doesn't arrive on its own)",
     'persona.bringing-your-things-across': 'bringing your things across…',
     'persona.become-me-here': 'become me here',
     'persona.never-mind': 'never mind',
     'persona.this-is-your-spare-key': 'This is your spare key.',
-    'persona.if-you-ever-lose-every': "If you ever lose every computer that knows you, this - and only this - brings you back. We don't keep a copy.",
+    'persona.if-you-ever-lose-every': "If you ever lose every computer that knows you, this - and only this - brings you back. We don't keep a copy. {warning}",
     'persona.we-can-never-show-it': 'We can never show it again.',
     'persona.download-it': 'download it',
     'persona.i-put-my-spare-key': 'I put my spare key somewhere safe',
@@ -289,14 +285,10 @@ export default {
 
     // --- node/js/persondemo.js ---
     'persondemo.the-gallery-needs-a-persona': 'the gallery needs a persona',
-    'persondemo.visit-this-page-under-someones': "Visit this page under someone's address -",
-    'persondemo.every-person-shape-rendered-against': 'every Person shape, rendered against',
-    'persondemo.one-hook-feeds-them-all': '. One hook feeds them all (',
-    'persondemo.the-shapes-are-their-own': '); the shapes are their own components.',
+    'persondemo.visit-this-page-under-someones': "Visit this page under someone's address - {path}.",
+    'persondemo.every-person-shape-rendered-against': 'every Person shape, rendered against {person}. One hook feeds them all ({hook}); the shapes are their own components.',
     'persondemo.chip---mini': 'chip - mini',
-    'persondemo.so': 'So',
-    'persondemo.said-the-thing-about-the': 'said the thing about the boat, and then',
-    'persondemo.agreed-which-settled-it': 'agreed, which settled it.',
+    'persondemo.so': 'So {first} said the thing about the boat, and then {second} agreed, which settled it.',
     'persondemo.chip---small': 'chip - small',
     'persondemo.banner': 'banner',
     'persondemo.row': 'row',
@@ -390,7 +382,7 @@ export default {
     'identity.routes.an-avatar-should-be-a': 'an avatar should be a picture - a still image or a small animation',
     'identity.routes.document-has-no-readable-head': 'document has no readable head',
     'identity.routes.body-not-on-this-node': 'body not on this node yet',
-    'identity.routes.upload-could-not-be-processed-reason': 'upload could not be processed: {reason}',
+    'identity.routes.upload-tombstone': '{reason}',
     'identity.routes.upload-could-not-be-processed': 'upload could not be processed',
     'identity.routes.document-not-found': 'document not found',
     'identity.routes.document-not-found-2': 'document not found',

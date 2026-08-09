@@ -17,7 +17,7 @@ import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.j
 import { personaHue } from './pure/person.js';
 import { AddressRow, PersonBanner } from './person.js';
 import { Icons } from './icons.js';
-import { t } from './i18n.js';
+import { t, tNodes } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -351,7 +351,16 @@ export const JoinFlow = ({ persona }) => {
         <div class="ceremony">
             <p class="null-title">${t('persona.bring-your-persona-here', 'Bring your persona here.')}</p>
             <p class="null-sub">
-                ${t('persona.on-a-computer-that-is', 'On a computer that is already you: open')} <strong>${t('persona.your-computers', 'your computers')}</strong>${t('persona.choose', ', choose')} <strong>${t('persona.invite-another-computer', 'invite another computer')}</strong>${t('persona.and-give-it-this-code', ', and give it this code:')}
+                ${tNodes(
+                    'persona.on-a-computer-that-is',
+                    'On a computer that is already you: open {computers}, choose {invite}, and give it this code:',
+                    {
+                        computers: html`<strong>${t('persona.your-computers', 'your computers')}</strong>`,
+                        invite: html`<strong
+                            >${t('persona.invite-another-computer', 'invite another computer')}</strong
+                        >`,
+                    },
+                )}
             </p>
             <code class="spare-key">${persona.join.requestCode}</code>
             <p class="null-sub">
@@ -405,7 +414,15 @@ export const SpareKeyCeremony = ({ persona }) => {
         <div class="ceremony">
             <p class="null-title">${t('persona.this-is-your-spare-key', 'This is your spare key.')}</p>
             <p class="null-sub">
-                ${t('persona.if-you-ever-lose-every', "If you ever lose every computer that knows you, this - and only this - brings you back. We don't keep a copy.")} <strong>${t('persona.we-can-never-show-it', 'We can never show it again.')}</strong>
+                ${tNodes(
+                    'persona.if-you-ever-lose-every',
+                    "If you ever lose every computer that knows you, this - and only this - brings you back. We don't keep a copy. {warning}",
+                    {
+                        warning: html`<strong
+                            >${t('persona.we-can-never-show-it', 'We can never show it again.')}</strong
+                        >`,
+                    },
+                )}
             </p>
             <code class="spare-key">${secret}</code>
             <button class="ceremony-download" onClick=${download}>${t('persona.download-it', 'download it')}</button>

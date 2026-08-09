@@ -51,13 +51,22 @@ const CATALOGS = { en };
 let active = {};
 let activeTag = 'en';
 
-/// `{name}` holes filled from `params`. A hole with no matching param is left standing rather
-/// than blanked - a visible `{count}` in the UI is a bug report; a silent empty string is not.
-function fill(template, params) {
-    if (!params) return template;
-    return template.replace(/\{(\w+)\}/g, (whole, name) =>
-        Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : whole,
-    );
+/// A template cut at its `{name}` holes: literal runs and filled values, in order. A hole with no
+/// matching param is left standing rather than blanked - a visible `{count}` in the UI is a bug
+/// report; a silent empty string is not.
+///
+/// Both `t` and `tNodes` are built on this so the two can never disagree about what a hole is.
+function parts(template, params) {
+    const out = [];
+    let last = 0;
+    for (const m of template.matchAll(/\{(\w+)\}/g)) {
+        if (m.index > last) out.push(template.slice(last, m.index));
+        const named = params && Object.prototype.hasOwnProperty.call(params, m[1]);
+        out.push(named ? params[m[1]] : m[0]);
+        last = m.index + m[0].length;
+    }
+    if (last < template.length) out.push(template.slice(last));
+    return out;
 }
 
 /**
@@ -69,8 +78,35 @@ function fill(template, params) {
  * @param params  values for those holes
  */
 export function t(key, seed, params) {
-    const template = active[key] ?? seed;
-    return fill(template, params);
+    return parts(active[key] ?? seed, params).join('');
+}
+
+/**
+ * The same lookup, returning renderable PARTS instead of a string - so a param can be an element.
+ *
+ * This is what keeps a sentence whole when markup lands in the middle of it. Written as bare
+ * markup, `The path after <code>/id/</code> should be an address` is three messages, and no
+ * translator can reorder them because the element is nailed between them. Written as one message
+ * with `{path}` in it, the sentence survives and the element is just a value:
+ *
+ *     tNodes('idpage.path-after', 'The path after {path} should be an address',
+ *            { path: html`<code>/id/</code>` })
+ *
+ * Note what is NOT needed: markup inside the catalog. The `{name}` holes were always the seam;
+ * only `t`'s string return stood in the way. Keeping the catalog free of tags matters - markup in
+ * a translation file is how a translator breaks a build.
+ *
+ * Returns an array, which Preact renders as children. It is therefore NOT interchangeable with
+ * `t`: an attribute value or `new Error` needs a string, and this belongs only in element content.
+ *
+ * The limit worth knowing: when the element WRAPS words that themselves need translating, those
+ * words are their own message passed in as the param - `{ computers: html`<strong>${t('persona.
+ * your-computers', 'your computers')}</strong>` }`. Correct here, since it is a UI label that has
+ * to match the button it names, but it does mean a translator cannot inflect that phrase for its
+ * position in the sentence, and some languages want a different case or article there.
+ */
+export function tNodes(key, seed, params) {
+    return parts(active[key] ?? seed, params);
 }
 
 /// The best-matching catalog for a BCP-47 tag: exact match first, then the base language, then

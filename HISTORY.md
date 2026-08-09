@@ -3473,10 +3473,41 @@ taught, in the order it hurt:
 
 Ten server errors carried positional `{}` holes that no codemod can map to their arguments; those
 were converted by hand, so all 94 have named parameters and none is stuck half-translatable.
+
+One more round closed the fragments. Sentences interrupted by markup had each been catalogued in
+pieces — `", choose"` and `". One hook feeds them all ("` were real entries, connective tissue no
+translator could do anything with — and the ledger said the fix was rich text: element placeholders
+inside the catalog. Curtis pushed back: doesn't the `{name}` template already cover this? It does.
+The holes were always the seam; the only obstacle was that `fill` coerced its params with
+`String()`. Splitting the template into parts instead of replacing into a string lets a param BE an
+element, and Preact renders the array — so the catalog stays free of markup, which matters, because
+tags in a translation file are how a translator breaks a build. `tNodes` is that variant, separate
+from `t` because 57 attributes and `new Error` still need a string. Nine sentences merged, 9 keys
+retired.
+
+The merge taught the sharp edge of an authoritative catalog. Merging onto the OLD keys meant the
+catalog still held the old fragment, and since the catalog outranks the seed, `just strings`
+cheerfully rewrote `'Did you mean {suggestion}?'` back to `'Did you mean'` — dropping the hole, and
+the link with it, in silence. The tool now refuses: a seed carrying holes its catalog entry lacks
+is a SHAPE change, not drift, and gets named rather than overwritten. The catalog wins on wording,
+never on structure.
 `locales/` is exempt from the purity cop — generated word tables are data, and pure/ owes test
 vectors. Left on the ledger: sentences split by an inline element are catalogued as fragments,
 which reads fine in English and fights a translator (REFACTOR.md).
 
-Gates: `ui-check` (352 passing), `check`, `lint`, `test-unit` (321 passing), `strings-check` all
-green. `integration` not run — it is machine-wide by design and the dev network's state was
-unknown.
+The one thing that reached `integration` and not the unit gates: a mechanical migration quietly
+changed what a user reads. The failed-upload endpoint returns the ingest queue's tombstone, and
+the tombstone is already a whole sentence ("this isn't a kind of media Ringtome can store yet —
+…"). Wrapping it in `"upload could not be processed: {reason}"` looked like tidy framing and was a
+stutter in front of a sentence that explains itself — and it broke the endpoint's actual contract,
+that its message IS the queue's `error`, pinned by `docs.cjs`. It passes through verbatim again, as
+a message that is nothing but its hole. Worth remembering that a migration touching 400 sentences
+is a copy change wearing a refactor's clothes, and only a test that read the words caught it.
+
+That tombstone also marks the extractor's blind spot: it is prose written in `ingest.rs` and
+PERSISTED to the job row, so it never passes through an `AppError` and the cop cannot see it.
+Making stored prose translatable means storing a code and params instead of a sentence — a data
+format question, not a wrapping one, and not taken here.
+
+Gates: full `just ci` green — 560 passing, 1 pending. That is the whole bar: `.github/workflows/
+ci.yml` runs the recipe verbatim.

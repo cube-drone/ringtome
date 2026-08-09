@@ -9,7 +9,7 @@ import htm from 'htm';
 import { parseSpeakable } from './speakable.js';
 import { PERSON_SIZES } from './pure/person.js';
 import { usePerson, PersonChip, PersonBanner, PersonRow, PersonCard } from './person.js';
-import { t } from './i18n.js';
+import { t, tNodes } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -29,15 +29,25 @@ export const PersonDemo = ({ seg, current }) => {
     if (!root) {
         return html`<div class="persona-page">
             <h1 class="persona-page-title">${t('persondemo.the-gallery-needs-a-persona', 'the gallery needs a persona')}</h1>
-            <p>${t('persondemo.visit-this-page-under-someones', "Visit this page under someone's address -")} <code>/id/&lt;address&gt;/ui-demo</code>.</p>
+            <p>
+                ${tNodes('persondemo.visit-this-page-under-someones', "Visit this page under someone's address - {path}.", {
+                    path: html`<code>/id/&lt;address&gt;/ui-demo</code>`,
+                })}
+            </p>
         </div>`;
     }
 
     return html`
         <div class="persona-page person-demo">
             <p class="demo-lede">
-                ${t('persondemo.every-person-shape-rendered-against', 'every Person shape, rendered against')}
-                <strong>${person.primary || person.words}</strong>${t('persondemo.one-hook-feeds-them-all', '. One hook feeds them all (')}<code>usePerson</code>${t('persondemo.the-shapes-are-their-own', '); the shapes are their own components.')}
+                ${tNodes(
+                    'persondemo.every-person-shape-rendered-against',
+                    'every Person shape, rendered against {person}. One hook feeds them all ({hook}); the shapes are their own components.',
+                    {
+                        person: html`<strong>${person.primary || person.words}</strong>`,
+                        hook: html`<code>usePerson</code>`,
+                    },
+                )}
             </p>
 
             <${Sample}
@@ -45,8 +55,14 @@ export const PersonDemo = ({ seg, current }) => {
                 note="inline, sits in a line of prose. Point at it for the name; click for their page."
             >
                 <p class="demo-prose">
-                    ${t('persondemo.so', 'So')} <${PersonChip} root=${root} current=${current} size="mini" /> ${t('persondemo.said-the-thing-about-the', 'said the thing about the boat, and then')}
-                    <${PersonChip} root=${root} current=${current} size="mini" /> ${t('persondemo.agreed-which-settled-it', 'agreed, which settled it.')}
+                    ${tNodes(
+                        'persondemo.so',
+                        'So {first} said the thing about the boat, and then {second} agreed, which settled it.',
+                        {
+                            first: html`<${PersonChip} root=${root} current=${current} size="mini" />`,
+                            second: html`<${PersonChip} root=${root} current=${current} size="mini" />`,
+                        },
+                    )}
                 </p>
             <//>
 

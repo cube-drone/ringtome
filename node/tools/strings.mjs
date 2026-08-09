@@ -295,7 +295,7 @@ function conditionalStrings(exprSrc) {
  */
 function blankTCalls(expr) {
     let out = expr;
-    const pattern = /\bt\(/g;
+    const pattern = /\bt(?:Nodes)?\(/g;
     let m;
     while ((m = pattern.exec(out)) !== null) {
         let i = m.index + m[0].length;
@@ -583,13 +583,14 @@ function ensureImport(src, file) {
 
 // --- reading what is already behind `t` --------------------------------------------------------
 
-/// Every `t(key, english)` call in a source file. The scanner is literal-only on purpose: a key
+/// Every `t(key, seed)` / `tNodes(key, seed)` call in a source file. The scanner is literal-only
+/// on purpose: a key
 /// or an English default that is computed at runtime is not a string this tool can catalogue, and
 /// silently skipping one would be worse than never supporting it (STYLE.md: never assemble a name
 /// at runtime).
 function tCalls(src) {
     const out = [];
-    const pattern = /\bt\(\s*(['"`])/g;
+    const pattern = /\bt(?:Nodes)?\(\s*(['"`])/g;
     let m;
     while ((m = pattern.exec(src)) !== null) {
         let i = m.index + m[0].length - 1;
@@ -716,6 +717,9 @@ function rustMessages(src) {
     return out;
 }
 
+/// The `{name}` holes in a message.
+const holesOf = (text) => new Set([...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]));
+
 /// A Rust string literal for `text`. Only the two escapes a one-line message can contain: the
 /// English is whitespace-collapsed before it ever reaches here.
 function rustString(text) {
@@ -805,12 +809,31 @@ function renderEnglish(entries, existing) {
  */
 function syncSeeds(catalog) {
     let changed = 0;
+    const refused = [];
     const rewrite = (file, calls, quote) => {
         const full = path.join(WORKSPACE, file);
         const raw = fs.readFileSync(full, 'utf8');
-        const edits = calls(stripComments(raw))
-            .filter((c) => Object.prototype.hasOwnProperty.call(catalog, c.key) && catalog[c.key] !== c.english)
-            .map((c) => ({ start: c.seedStart, end: c.seedEnd, text: quote(catalog[c.key]) }));
+        const stripped = stripComments(raw);
+        const edits = [];
+        for (const c of calls(stripped)) {
+            if (!Object.prototype.hasOwnProperty.call(catalog, c.key)) continue;
+            if (catalog[c.key] === c.english) continue;
+            // A seed whose holes the catalog entry lacks is not drift, it is a SHAPE change:
+            // overwriting it would drop `{suggestion}` and the value it carried would silently
+            // stop rendering. Caught the hard way, by merging split sentences onto their old keys
+            // and watching the link vanish. The catalog wins on wording, never on structure.
+            const lost = [...holesOf(c.english)].filter((h) => !holesOf(catalog[c.key]).has(h));
+            if (lost.length) {
+                refused.push(
+                    `${file}:${lineAt(stripped, c.offset)}  ${c.key}\n` +
+                        `    seed:    ${JSON.stringify(c.english)}\n` +
+                        `    catalog: ${JSON.stringify(catalog[c.key])}\n` +
+                        `    the catalog entry has no ${lost.map((h) => `{${h}}`).join(', ')}`,
+                );
+                continue;
+            }
+            edits.push({ start: c.seedStart, end: c.seedEnd, text: quote(catalog[c.key]) });
+        }
         if (!edits.length) return;
         let out = raw;
         for (const e of edits.sort((a, b) => b.start - a.start)) {
@@ -821,6 +844,16 @@ function syncSeeds(catalog) {
     };
     for (const file of jsFiles()) rewrite(file, tCalls, jsString);
     for (const file of rustFiles()) rewrite(file, rustMessages, rustString);
+    if (refused.length) {
+        console.error(
+            `\nREFUSED to rewrite ${refused.length} seed(s) - the catalog entry would drop a hole:\n\n` +
+                refused.join('\n\n') +
+                '\n\n  Update the catalog entry to the new shape, or - if the message now means\n' +
+                '  something different - give the call site a NEW key and let the old one retire.\n' +
+                '  Everything else was synced.',
+        );
+        process.exitCode = 1;
+    }
     return changed;
 }
 

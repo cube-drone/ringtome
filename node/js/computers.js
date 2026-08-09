@@ -11,7 +11,7 @@ import { shortcode } from './persona.js';
 import { Modal } from './modal.js';
 import { Icons } from './icons.js';
 import { blastRadius } from './pure/removal.js';
-import { t } from './i18n.js';
+import { t, tNodes } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -254,8 +254,18 @@ export const Computers = ({ current }) => {
                       </button>`
                 : !delivered &&
                   html`<p class="null-sub">
-                          ${t('computers.on-the-new-computer-sign', 'On the new computer, sign in and choose')}
-                          ${' '}<strong>${t('computers.bring-your-persona-from-another', 'bring your persona from another computer')}</strong> ${t('computers.--it-will-give-you', '- it will give you a code to paste here.')}
+                          ${tNodes(
+                              'computers.on-the-new-computer-sign',
+                              'On the new computer, sign in and choose {action} - it will give you a code to paste here.',
+                              {
+                                  action: html`<strong
+                                      >${t(
+                                          'computers.bring-your-persona-from-another',
+                                          'bring your persona from another computer',
+                                      )}</strong
+                                  >`,
+                              },
+                          )}
                       </p>
                       <form class="welcome-form" onSubmit=${invite}>
                           <textarea

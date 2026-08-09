@@ -18,7 +18,7 @@ import { agoUnit } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { PersonCard } from './person.js';
 import { PublicPosts } from './posts.js';
-import { t } from './i18n.js';
+import { t, tNodes } from './i18n.js';
 
 const html = htm.bind(h);
 
@@ -124,7 +124,13 @@ export const IdPage = ({ seg, current, onTitle }) => {
     if (!parsed) {
         return html`<${Card}>
             <h1 class="persona-page-title">${t('idpage.thats-not-an-address', "that's not an address")}</h1>
-            <p>${t('idpage.the-path-after', 'The path after')} <code>/id/</code> ${t('idpage.should-be-a-personas-address', "should be a persona's address - two words and a key, like")} <code>sway-broke-AwTy…</code></p>
+            <p>
+                ${tNodes(
+                    'idpage.the-path-after-should-be',
+                    "The path after {path} should be a persona's address - two words and a key, like {example}",
+                    { path: html`<code>/id/</code>`, example: html`<code>sway-broke-AwTy…</code>` },
+                )}
+            </p>
         <//>`;
     }
 
@@ -133,8 +139,12 @@ export const IdPage = ({ seg, current, onTitle }) => {
         return html`<${Card}>
             <h1 class="persona-page-title">${t('idpage.this-address-arrived-mangled', 'this address arrived mangled')}</h1>
             <p>${t('idpage.the-words-on-this-address', "The words on this address don't match its key, so something got mixed up in transit.")}</p>
-            <p>${t('idpage.did-you-mean', 'Did you mean')}${' '}
-                <a href="/id/${parsed.expected}-${key}"><code>${parsed.expected}-${key.slice(0, 8)}…</code></a>?
+            <p>
+                ${tNodes('idpage.did-you-mean', 'Did you mean {suggestion}?', {
+                    suggestion: html`<a href="/id/${parsed.expected}-${key}"
+                        ><code>${parsed.expected}-${key.slice(0, 8)}…</code></a
+                    >`,
+                })}
             </p>
         <//>`;
     }

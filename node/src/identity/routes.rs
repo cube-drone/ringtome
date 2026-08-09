@@ -1423,13 +1423,14 @@ async fn version_less_body_status(
             Ok((StatusCode::ACCEPTED, "still processing").into_response())
         }
         Some((status, error)) if status == "failed" => Err(AppError::Unprocessable(match error {
-            // The job's own tombstone is data, not copy - it stays verbatim inside a frame that
-            // CAN be translated, rather than being a sentence this codebase chose.
-            Some(reason) => crate::msg!(
-                "identity.routes.upload-could-not-be-processed-reason",
-                "upload could not be processed: {reason}",
-                reason = reason,
-            ),
+            // The tombstone passes through VERBATIM - it is already a whole sentence written for
+            // the reader (ingest.rs), and this endpoint's contract is that its message IS the
+            // queue's `error`, pinned by integration/test/docs.cjs. Hence a message that is
+            // nothing but its hole: framing it ("upload could not be processed: {reason}") reads
+            // as a stutter in front of a sentence that already explains itself, and breaks that
+            // equality. The words themselves are not translatable from here; they are stored
+            // prose, and making stored prose translatable is a data-format question.
+            Some(reason) => crate::msg!("identity.routes.upload-tombstone", "{reason}", reason = reason),
             None => crate::msg!(
                 "identity.routes.upload-could-not-be-processed",
                 "upload could not be processed"
