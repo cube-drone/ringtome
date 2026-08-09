@@ -1039,16 +1039,24 @@
     cursor: pointer;
 }
 
+/* The card's OWN type size is the knob every metric below hangs off: `--post-scale` comes from
+   the reader's interest dial (pure/feed.js `postScale`, 0.75 to 1.0 across the five stops), and
+   everything inside this card is sized in `em` so one number scales the whole thing - padding,
+   title, date, the unseen dot - rather than only the words. Metrics OUTSIDE .feed-entry
+   (.feed-more, .feed-fresh-bar, the drafts stack) stay in rem: they are chrome, not a post, and
+   must not breathe with whoever posted last. */
 .feed-entry {
+    font-size: calc(1rem * var(--post-scale, 1));
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 0.7rem 1rem;
+    padding: 0.7em 1em;
 }
 
-/* Low interest: smaller and a little transparent - present, but quieter. */
+/* Low interest: a little transparent - present, but quieter. Its size used to be a 15% step
+   here, which made one cliff between "Low priority" and "Medium", left the top three stops
+   identical, and was invisible enough that nobody noticed it existed; the ramp owns size now. */
 .feed-entry-low {
-    font-size: 0.85em;
     opacity: 0.75;
 }
 
@@ -1059,32 +1067,53 @@
 }
 
 .feed-entry-high .feed-entry-title {
-    font-size: 1.15rem;
+    font-size: 1.15em;
 }
 
 .feed-entry-when {
     color: var(--faint);
-    font-size: 0.75rem;
+    font-size: 0.75em;
 }
 
 .feed-entry-new {
     display: inline-block;
-    width: 0.5rem;
-    height: 0.5rem;
+    width: 0.5em;
+    height: 0.5em;
     border-radius: 50%;
     background: var(--teal);
-    margin-left: 0.4rem;
+    margin-left: 0.4em;
 }
 
-/* The banner sits flush in the card; its own page-margins don't apply here. */
+/* The banner sits flush in the card; its own page-margins don't apply here.
+ *
+ * And it breathes with the card. PersonBanner is shared with the persona page, where its metrics
+ * are rem and should stay rem - so rather than convert the widget, its sizes are restated in `em`
+ * HERE, inside the one place a post's type size is not 1rem. Without this a low-interest post
+ * renders a full-size author over shrunken words, which reads as a layout bug rather than as
+ * quietness. The values mirror person.css (.person-banner gap, .person-hex-small, and the
+ * banner's own name size); if those change, these follow. */
 .feed-entry .person-banner {
     margin: 0;
+    gap: 0.7em;
+}
+
+.feed-entry .person-hex-small {
+    width: 2em;
+    height: 2.3em;
+}
+
+.feed-entry .person-banner .person-name-primary {
+    font-size: 1.3em;
+}
+
+.feed-entry .person-name-others {
+    font-size: 0.78em;
 }
 
 .feed-entry-title {
-    font-size: 1.05rem;
+    font-size: 1.05em;
     font-weight: 600;
-    margin: 0.3rem 0 0;
+    margin: 0.3em 0 0;
 }
 
 .feed-entry-title a {
@@ -1096,8 +1125,20 @@
     color: var(--teal);
 }
 
+/* Pictures answer to the interest dial too, and in PIXELS rather than em, so this and the card's
+   type scale stay independent - the card gets quieter, the picture gets smaller, by their own
+   amounts. `min()` keeps the existing `max-width: 100%` behaviour intact at narrow widths, and
+   capping height as well as width is what makes it a size cap rather than a width cap: a tall
+   image would otherwise keep its full height on a 50px column. Emoji are exempt - `.mq-emoji` is
+   a character wearing an image's clothes, and shrinking it would shrink the sentence. */
+.feed-entry-body :is(img, video):not(.mq-emoji) {
+    max-width: min(100%, var(--post-image-cap, 100%));
+    max-height: var(--post-image-cap, none);
+    height: auto;
+}
+
 .feed-entry-body {
-    margin-top: 0.4rem;
+    margin-top: 0.4em;
     line-height: 1.5;
     overflow-wrap: anywhere;
 }
@@ -1107,14 +1148,14 @@
     border: none;
     color: var(--sea);
     font: inherit;
-    font-size: 0.8rem;
-    padding: 0.2rem 0;
+    font-size: 0.8em;
+    padding: 0.2em 0;
     cursor: pointer;
 }
 
 .feed-entry-foot {
-    margin: 0.3rem 0 0;
-    font-size: 0.75rem;
+    margin: 0.3em 0 0;
+    font-size: 0.75em;
 }
 
 .feed-entry-foot a {

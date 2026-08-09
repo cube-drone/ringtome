@@ -120,12 +120,72 @@ export function postCursor(posts) {
 /// RENDERING only, deliberately: chronology is the feed's whole ordering (ranking is a research
 /// problem this draft does not attempt), and the dial's stops map to nothing subtler than
 /// "smaller and a little transparent" / "a touch more importance".
-export function emphasisOf(interest) {
+/// The dial as a number, or null for "no opinion".
+///
+/// The nullish check has to come FIRST: `Number(null)` and `Number('')` are both 0, so a guard
+/// that only asks `Number.isFinite` reads an unset dial as the BOTTOM of the scale - "Don't
+/// show" - rather than as silence. `emphasisOf` had that hole from the start and would have
+/// rendered a null dial as low emphasis (dimmed and truncated); found 2026-08-08 by a vector
+/// written for `postScale`, which had inherited the same shape.
+function dialValue(interest) {
+    if (interest === null || interest === undefined || interest === '') return null;
     const n = Number(interest);
-    if (!Number.isFinite(n)) return 'normal'; // your own posts, or a dial never set
+    return Number.isFinite(n) ? n : null;
+}
+
+export function emphasisOf(interest) {
+    const n = dialValue(interest);
+    if (n === null) return 'normal'; // your own posts, or a dial never set
     if (n <= 25) return 'low';
     if (n >= 75) return 'high';
     return 'normal';
+}
+
+/// The whole card's size, as a multiplier on the feed's base type - the quiet half of the
+/// interest dial. A reader's dials shape RENDERING only (fanout.rs says the same from the other
+/// side): a source you care less about takes less room on the page, never a different place in
+/// the order.
+///
+/// Twenty-five percent across the whole range, 6.25% per stop. It began at 10% and was raised
+/// on 2026-08-09 for the plainest possible reason: the thing it replaced was a 15% step on the
+/// `low` bucket, and Curtis had never noticed that either. A difference nobody can see is not a
+/// subtle difference, it is an absent one - so the range is now wide enough that a page of mixed
+/// interest reads as visibly uneven, which is the point.
+///
+/// A source with no dial set gets FULL size, not the middle: you have expressed no opinion, and
+/// the ramp is here to carry an opinion you did express. Same for your own posts.
+export const POST_SCALE_MIN = 0.75;
+
+export function postScale(interest) {
+    const n = dialValue(interest);
+    if (n === null) return 1;
+    const clamped = Math.max(0, Math.min(100, n));
+    return round(POST_SCALE_MIN + (1 - POST_SCALE_MIN) * (clamped / 100));
+}
+
+/// Four decimals, not three: the gap between stops is 0.0625, and three would round it to an
+/// uneven 0.063/0.062 alternation - real, if invisible, and enough to fail the evenness vector.
+const round = (n) => Math.round(n * 10000) / 10000;
+
+/// The widest an image may draw inside a post, in CSS pixels - the loud half of the same dial.
+///
+/// The ceiling is 800 because that is where the transcode already lands (media/image.rs,
+/// `MAIN_BOUND`), so top interest is deliberately a no-op: the cap only ever takes room away,
+/// never grants it. The floor is 50, which is a thumbnail - at "Don't show" you are told a
+/// picture is there without being shown it.
+///
+/// Sixteen-to-one across the range, against 1.33-to-1 for the type: images are the thing that
+/// actually costs a feed its shape, and a quarter-size card carrying a full-size photograph is
+/// still a full-size interruption. Same no-opinion rule as `postScale` - an unset dial caps at
+/// 800, which is to say not at all.
+export const POST_IMAGE_MAX = 800;
+export const POST_IMAGE_MIN = 50;
+
+export function postImageCap(interest) {
+    const n = dialValue(interest);
+    if (n === null) return POST_IMAGE_MAX;
+    const clamped = Math.max(0, Math.min(100, n));
+    return Math.round(POST_IMAGE_MIN + (POST_IMAGE_MAX - POST_IMAGE_MIN) * (clamped / 100));
 }
 
 /// Character budgets past which an item shows only its lead. Low-interest sources get cut

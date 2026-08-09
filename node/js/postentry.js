@@ -22,7 +22,15 @@ import { openMirror, useLive } from './mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { speakable } from './speakable.js';
-import { FEED_STYLE, publishedState, emphasisOf, leadOf } from './pure/feed.js';
+import {
+    FEED_STYLE,
+    publishedState,
+    emphasisOf,
+    leadOf,
+    postScale,
+    postImageCap,
+    POST_IMAGE_MAX,
+} from './pure/feed.js';
 import { appById, featuresOf } from './pure/apps.js';
 import { Editor } from './doc/editor.js';
 import { useDocDetail } from './doc/detail.js';
@@ -268,6 +276,12 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
     }, [item.seen, item.mine, item.author, item.doc_id]);
 
     const emphasis = item.mine ? 'normal' : emphasisOf(interest);
+    // The card's size rides one custom property; persona.css sizes the entry's every metric in
+    // `em` off it, so this scales the WHOLE post - padding, title, date, dot - not just the words.
+    const scale = item.mine ? 1 : postScale(interest);
+    // Images get their own dial, in px rather than em, so the two ramps do not compound: a
+    // low-interest card is both smaller AND holds a smaller picture, by separate amounts.
+    const imageCap = item.mine ? null : postImageCap(interest);
     // Spelled out rather than interpolated, so the dead-CSS convention can see each class.
     const entryClass =
         emphasis === 'low'
@@ -296,7 +310,16 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
     const shown = wholeThing ? shownBody : lead;
 
     return html`
-        <article class=${entryClass} ref=${itemRef}>
+        <article
+            class=${entryClass}
+            ref=${itemRef}
+            style=${[
+                scale === 1 ? '' : `--post-scale: ${scale}`,
+                imageCap === null || imageCap >= POST_IMAGE_MAX ? '' : `--post-image-cap: ${imageCap}px`,
+            ]
+                .filter(Boolean)
+                .join('; ') || undefined}
+        >
             ${editing && html`<${BakeModal} items=${editing.baking} />`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini hexagon made you

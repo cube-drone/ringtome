@@ -3630,3 +3630,51 @@ and `just clean`, which needs it because it deletes files out from under whateve
 and a foreground `just start` has no pidfile to shoot it by. Left undone: about twenty harness
 probes still hardcode `localhost:5299`. They were already wrong on the alt twin for the same
 reason; `just scratch` now prints the export line they need.
+
+## 2026-08-09 — the interest dial, made visible
+
+The reader's interest dial now shapes two things about a post: how much room the card takes
+(`postScale`, 1.0 down to 0.75 across the five stops) and how big a picture may draw inside it
+(`postImageCap`, 800px down to 50px). Order still never moves — chronology is the whole ordering,
+and the dials shape rendering only, which `fanout.rs` says from the server side too.
+
+Some of this already existed and that turned out to be the interesting part. `.feed-entry-low`
+carried `font-size: 0.85em` — a 15% cut — and Curtis had never noticed it. Two reasons, both
+worth keeping in mind next time a subtle visual signal doesn't land. It was a STEP, not a ramp:
+one cliff between "Low priority" and "Medium", with the top three stops rendering identically, so
+a feed of people you mostly like looked completely uniform. And it only shrank TEXT: padding,
+title, date and avatar were all in `rem` and stayed exactly where they were, so the card never
+actually got smaller — the words just got tighter inside an unchanged box.
+
+So the card's every metric moved to `em` and hangs off one custom property, `--post-scale`. That
+is what makes the number mean anything: 25% now shrinks the whole card, where 15% used to shrink
+part of it. The first cut of the ramp was 10%, raised to 25% for the plainest possible reason —
+the thing it replaced was 15% and was invisible, so a difference nobody can see is not a subtle
+difference, it is an absent one.
+
+The banner needed its own clause. `PersonBanner` is shared with the persona page and its metrics
+are rem, so a low-interest post would have rendered a full-size author over a shrunken body — a
+layout bug, not quietness. Its sizes are restated in `em` scoped inside `.feed-entry` rather than
+converting the shared widget, which has no business breathing on any other page.
+
+Images got a much steeper ramp than type — 16:1 against 1.33:1 — because they are what actually
+costs a feed its shape; a quarter-size card holding a full-size photograph is still a full-size
+interruption. The 800px ceiling is not a free choice: it is `MAIN_BOUND` in `media/image.rs`,
+where the transcode already lands, so top interest is deliberately a no-op and a larger number
+would be asking the browser to upscale something nobody stored. A vector pins the two together,
+since that coupling is invisible from either end. The cap is px while the card scale is em, so the
+two ramps stay independent instead of multiplying. Height is capped alongside width — `max-width`
+alone is a width cap, and a tall image would keep its full height in a 50px column — and
+`.mq-emoji` is exempt, being a character wearing an image's clothes.
+
+Both ramps give a dial you never set FULL size, rather than the middle: an unset dial is not
+"medium interest", it is silence, and a feed of strangers must not render uniformly shrunken.
+
+One real bug fell out. A vector written for `postScale` failed on `null`, because `Number(null)`
+and `Number('')` are both 0 — the BOTTOM of a 0-100 dial. `emphasisOf` had carried that hole since
+it was written and would have rendered a null dial as low emphasis: dimmed, truncated, and now
+shrunk. Both read through a `dialValue` helper that checks nullish before coercing.
+
+Gates: `just ci` green. Not verified in a browser — the vectors pin the arithmetic and the
+compiled CSS carries both knobs, but whether 0.8125 and 238px read as "quieter" or as "broken" is
+a judgement only eyes can make. `POST_SCALE_MIN` and `POST_IMAGE_MIN` are the two levers.

@@ -2,10 +2,12 @@
 const assert = require('node:assert');
 
 let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor,
-    emphasisOf, leadOf, mergeFeed, feedCursor;
+    emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
+    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN;
 before(async () => {
     ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts,
-        postCursor, emphasisOf, leadOf, mergeFeed, feedCursor } = await import(
+        postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
+        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN } = await import(
         '../../../js/pure/feed.js'
     ));
 });
@@ -233,5 +235,88 @@ describe('the feed page merge', () => {
             before_doc: 'y',
         });
         assert.equal(feedCursor([]), null);
+    });
+});
+
+// The quiet half of the interest dial: a source you care less about takes less ROOM, never a
+// different place in the order. The edges that matter are the two ends of the ramp, the
+// no-opinion case (which must not be the middle), and monotonicity - a tweak to the constants
+// could silently invert it, and nobody would notice from a screenshot.
+describe('postScale (how much room a post takes)', () => {
+    const STOPS = [0, 25, 50, 75, 100];
+
+    it('runs the full range across the dial, top stop at full size', () => {
+        assert.equal(postScale(100), 1);
+        assert.equal(postScale(0), POST_SCALE_MIN);
+    });
+
+    it('is a 25% spread, evenly spaced across the five stops', () => {
+        const scales = STOPS.map(postScale);
+        assert.deepEqual(scales, [0.75, 0.8125, 0.875, 0.9375, 1]);
+        const steps = scales.slice(1).map((v, i) => Math.round((v - scales[i]) * 10000) / 10000);
+        assert.deepEqual(steps, [0.0625, 0.0625, 0.0625, 0.0625], 'even, so no stop is a cliff');
+    });
+
+    it('gives NO opinion full size, rather than the middle', () => {
+        // An unset dial is not "medium interest" - the ramp carries an opinion you expressed,
+        // and a feed of strangers must not render uniformly shrunken.
+        for (const nothing of [undefined, null, '', NaN, 'wat']) {
+            assert.equal(postScale(nothing), 1, `${String(nothing)} should not shrink anything`);
+        }
+    });
+
+    it('is monotonic, and never escapes the range', () => {
+        let previous = 0;
+        for (let n = 0; n <= 100; n++) {
+            const scale = postScale(n);
+            assert.ok(scale >= previous, `interest ${n} went backwards`);
+            assert.ok(scale >= POST_SCALE_MIN && scale <= 1, `interest ${n} left the range`);
+            previous = scale;
+        }
+    });
+
+    it('clamps a value from outside the dial', () => {
+        assert.equal(postScale(-40), POST_SCALE_MIN);
+        assert.equal(postScale(9000), 1);
+    });
+});
+
+// The loud half of the dial. Its ceiling is not a free choice: 800 is where media/image.rs's
+// transcode already lands, so top interest must be a no-op - a cap that GRANTED size would be
+// asking the browser to upscale a picture nobody stored.
+describe('postImageCap (how big a picture may draw)', () => {
+    const STOPS = [0, 25, 50, 75, 100];
+
+    it('runs from a thumbnail to the transcode bound', () => {
+        assert.equal(postImageCap(0), POST_IMAGE_MIN);
+        assert.equal(postImageCap(100), POST_IMAGE_MAX);
+        assert.equal(POST_IMAGE_MAX, 800, 'media/image.rs MAIN_BOUND - change both together');
+    });
+
+    it('slides evenly across the stops', () => {
+        assert.deepEqual(STOPS.map(postImageCap), [50, 238, 425, 613, 800]);
+    });
+
+    it('never asks the browser to upscale past what was stored', () => {
+        for (let n = 0; n <= 100; n++) {
+            assert.ok(postImageCap(n) <= POST_IMAGE_MAX, `interest ${n} exceeded the transcode bound`);
+        }
+    });
+
+    it('gives NO opinion the full bound, and clamps outside the dial', () => {
+        for (const nothing of [undefined, null, '', NaN, 'wat']) {
+            assert.equal(postImageCap(nothing), POST_IMAGE_MAX);
+        }
+        assert.equal(postImageCap(-40), POST_IMAGE_MIN);
+        assert.equal(postImageCap(9000), POST_IMAGE_MAX);
+    });
+
+    it('is monotonic', () => {
+        let previous = 0;
+        for (let n = 0; n <= 100; n++) {
+            const cap = postImageCap(n);
+            assert.ok(cap >= previous, `interest ${n} went backwards`);
+            previous = cap;
+        }
     });
 });
