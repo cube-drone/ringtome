@@ -120,9 +120,9 @@ pub struct Envelope {
     pub evidence: Option<Vec<u8>>,
     /// A first-contact greeting - the one unverifiable field, hence the cap.
     pub greeting: Option<String>,
-    /// Proof-of-work stamp. The slot exists from birth and is empty at rest: the dial's
-    /// resting position is zero, and a price is only ever quoted by a node under flood
-    /// (PROJECT_PLAN, The proof-of-work dial).
+    /// Proof-of-work stamp ([`crate::pow`]). Present whenever the sender believes the door
+    /// charges anything, absent when it believes the price is zero - which is a configuration
+    /// an operator may choose, so the field stays optional.
     pub stamp: Option<Vec<u8>>,
 }
 
@@ -180,6 +180,21 @@ impl Envelope {
             w.bytes(stamp);
         }
         w.into_bytes()
+    }
+
+    /// This envelope's proof-of-work challenge: its own body with the stamp field absent.
+    ///
+    /// The only correct way to build one, and it exists so that no caller has to remember to
+    /// strip the field. Getting this wrong in one direction (hashing the stamped body) makes
+    /// every stamp unverifiable; getting it wrong in the other (hashing less than the whole
+    /// body) makes a stamp transferable to a different recipient, which is the property the
+    /// binding is here to deny.
+    pub fn challenge(&self) -> [u8; 32] {
+        let unstamped = Self {
+            stamp: None,
+            ..self.clone()
+        };
+        crate::pow::challenge(&unstamped.encode_body())
     }
 
     fn decode_body(bytes: &[u8]) -> Result<Self, ProtoError> {
@@ -527,6 +542,7 @@ pub mod refusal {
 /// | 1   | Accepted | -                             |
 /// | 2   | Refused  | uint reason ([`refusal`])     |
 /// | 3   | Busy     | -                             |
+/// | 4   | NeedsStamp | uint required leading zero bits |
 ///
 /// **Accepted means "dealt with", not "shown to a human"** - a notice the recipient discarded
 /// because they already follow the sender (the follow-edge rule: evidence they already pull
@@ -547,12 +563,24 @@ pub enum DeliverMessage {
     /// carrying no detail on purpose, because an internal failure is not the sender's to debug
     /// and its shape is not theirs to learn.
     Busy,
+    /// The offer arrived without a stamp, or with one too cheap for this door's current price.
+    /// The answer carries the price so the sender can pay it and come back - **price discovery
+    /// is a challenge, not a posted rate** (PROJECT_PLAN, The proof-of-work dial): nothing has
+    /// to publish a number that changes, and a sender never has to guess.
+    ///
+    /// Not a refusal. A refusal says "not from you" and is retired forever; this says "not yet,
+    /// and here is exactly what it costs", which is a door held open. It is also the one answer
+    /// that tells a sender something true about the *recipient's* situation - a nonzero price
+    /// is the observable signal that a node is under load - which is affordable precisely
+    /// because it says nothing about what the recipient thinks of the sender.
+    NeedsStamp(u32),
 }
 
 const TAG_OFFER: u64 = 0;
 const TAG_ACCEPTED: u64 = 1;
 const TAG_REFUSED: u64 = 2;
 const TAG_BUSY: u64 = 3;
+const TAG_NEEDS_STAMP: u64 = 4;
 
 impl DeliverMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -575,6 +603,11 @@ impl DeliverMessage {
             Self::Busy => {
                 w.array(1);
                 w.uint(TAG_BUSY);
+            }
+            Self::NeedsStamp(bits) => {
+                w.array(2);
+                w.uint(TAG_NEEDS_STAMP);
+                w.uint(u64::from(*bits));
             }
         }
         w.into_bytes()
@@ -600,6 +633,12 @@ impl DeliverMessage {
                 )
             }
             (TAG_BUSY, 1) => Self::Busy,
+            (TAG_NEEDS_STAMP, 2) => {
+                let raw = r.uint()?;
+                Self::NeedsStamp(
+                    u32::try_from(raw).map_err(|_| ProtoError::BadEntry("price out of range"))?,
+                )
+            }
             _ => return Err(ProtoError::BadEntry("unknown delivery message")),
         };
         r.finish()?;
@@ -825,6 +864,8 @@ mod tests {
             DeliverMessage::Accepted,
             DeliverMessage::Refused(refusal::GATE),
             DeliverMessage::Busy,
+            DeliverMessage::NeedsStamp(crate::pow::DEFAULT_BITS),
+            DeliverMessage::NeedsStamp(0),
         ] {
             assert_eq!(DeliverMessage::decode(&message.encode()).unwrap(), message);
         }

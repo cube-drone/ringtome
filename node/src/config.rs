@@ -74,6 +74,29 @@ pub struct Config {
     /// debounce (~10s) is what batches a typing burst into one save, so this stays short.
     /// Override with `RINGTOME_SYNC_DEBOUNCE_MS`.
     pub sync_debounce_ms: i64,
+    /// What this node's delivery door charges a stranger to knock, in leading zero bits
+    /// (`ringtome_proto::pow`). Override with `RINGTOME_POW_REQUESTED_BITS`; zero turns the
+    /// price off entirely.
+    ///
+    /// **Fixed at boot, never adjusted at runtime.** There is no flood detector and no dial:
+    /// the price is what the operator set, and it stays there. The number exists so that it can
+    /// be *re-set* - a default calibrated to tens of milliseconds on 2026 hardware is a
+    /// rounding error on 2035 hardware, and an operator should be able to keep it honest
+    /// without waiting for a release.
+    ///
+    /// An operator who sets this above what other nodes will pay has not raised a drawbridge -
+    /// they have obliquely closed their own inbox to strangers, which is a legitimate thing to
+    /// want and an illegitimate thing to do by accident. Hence the log line at boot.
+    pub pow_requested_bits: u32,
+    /// The most this node will spend to deliver one notice, in the same units. Override with
+    /// `RINGTOME_POW_WILLING_BITS`.
+    ///
+    /// Separate from the price we *charge* because they answer different questions, and the gap
+    /// between them is what stops a hostile door from farming our CPU: failing to deliver a
+    /// notice is nearly free (the statement is already published; the subject learns it the
+    /// moment they ever sync us), so this is a judgment about what the message is worth, not
+    /// about what we are capable of.
+    pub pow_willing_bits: u32,
     /// How many per-user databases stay open at once (the handle cache's size). A miss is a
     /// PER-FILE act - key unseal, decrypt, migration check, journal attach - so the cache is
     /// what keeps a node with many personas from paying it constantly; a node holding more
@@ -193,6 +216,18 @@ impl Config {
             .unwrap_or(128)
             .max(8);
 
+        // The delivery price, both halves. Read here rather than at the door so that "what does
+        // this node charge" is answerable by reading one struct, and so a bad value fails at
+        // boot instead of on the first stranger's knock.
+        let bits = |name: &str| {
+            env::var(name)
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(ringtome_proto::pow::DEFAULT_BITS)
+        };
+        let pow_requested_bits = bits("RINGTOME_POW_REQUESTED_BITS");
+        let pow_willing_bits = bits("RINGTOME_POW_WILLING_BITS");
+
         let sync_debounce_ms = env::var("RINGTOME_SYNC_DEBOUNCE_MS")
             .ok()
             .and_then(|s| s.parse::<i64>().ok())
@@ -252,6 +287,8 @@ impl Config {
             max_document_bytes,
             max_open_databases,
             sync_debounce_ms,
+            pow_requested_bits,
+            pow_willing_bits,
             resync_interval_secs,
             unfurl_rate_per_min,
             node_name,

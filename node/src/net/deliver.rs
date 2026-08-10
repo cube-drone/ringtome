@@ -56,6 +56,9 @@ pub enum Outcome {
     /// Nobody usable answered - no door opened, or every door that did said `Busy`. The only
     /// outcome worth trying again later, and the outbox's ladder is what tries.
     Unreachable,
+    /// A door quoted a price this envelope has not paid. Not a failure: the sender re-stamps at
+    /// the quoted difficulty and knocks again (`outbox::sweep`).
+    NeedsStamp(u32),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -131,6 +134,22 @@ async fn judge(state: &AppState, bytes: &[u8]) -> DeliverMessage {
         }
     }
 
+    // The price, checked BEFORE the signatures and deliberately so: verifying a stamp is one
+    // blake3 over a re-encoded body (~0.3us measured), where verifying the claim below is three
+    // ed25519 verifications. Under the flood this exists for, an unstamped envelope should cost
+    // this node the cheapest thing that can refuse it - and the ordering is the difference
+    // between a door that gets tired and one that does not.
+    let required = state.config.pow_requested_bits;
+    if ringtome_proto::pow::verify(
+        &signed.envelope().challenge(),
+        signed.envelope().stamp.as_deref().unwrap_or_default(),
+        required,
+    )
+    .is_err()
+    {
+        return DeliverMessage::NeedsStamp(required);
+    }
+
     // The claim: signature, delegation from the claimed root, and evidence that names this
     // recipient. A few ed25519 verifications over bytes already in hand.
     let claim = match ringtome_proto::deliver::verify_claim(&signed) {
@@ -194,6 +213,7 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
             // arrive here; both mean the notice is still waiting, which is what the outbox
             // needs to hear.
             DeliverMessage::Busy | DeliverMessage::Offer(_) => Outcome::Unreachable,
+            DeliverMessage::NeedsStamp(bits) => Outcome::NeedsStamp(bits),
         };
     }
     for candidate in candidates(state, recipient_root).await {
@@ -251,6 +271,7 @@ async fn knock(state: &AppState, endpoint_id: &str, envelope: &[u8]) -> Result<O
         // A door that admitted its own failure is worth exactly as much as a door that did not
         // open: the notice is undelivered and the attempt is worth making again.
         Some(DeliverMessage::Busy) => Ok(Outcome::Unreachable),
+        Some(DeliverMessage::NeedsStamp(bits)) => Ok(Outcome::NeedsStamp(bits)),
         other => Err(anyhow!("unexpected answer to a delivery: {other:?}")),
     }
 }

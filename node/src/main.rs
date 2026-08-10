@@ -233,6 +233,26 @@ async fn main() -> anyhow::Result<()> {
         "starting ringtome node"
     );
 
+    // The delivery price, said out loud at boot. Both halves, because the failure they cause is
+    // silent: charge more than other nodes pay and strangers stop reaching you; offer less than
+    // other nodes charge and your notices stop landing. Neither raises an error anywhere - the
+    // symptom is an inbox that is quietly emptier than it should be - so the numbers belong in
+    // the log where an operator can find them without reading the source.
+    tracing::info!(
+        requested_bits = config.pow_requested_bits,
+        willing_bits = config.pow_willing_bits,
+        "delivery proof-of-work price (fixed at boot; no runtime adjustment)"
+    );
+    if config.pow_willing_bits < config.pow_requested_bits {
+        tracing::warn!(
+            requested_bits = config.pow_requested_bits,
+            willing_bits = config.pow_willing_bits,
+            "this node charges strangers more than it is willing to pay itself - deliberate \
+             asymmetry is legitimate, but a node like this one could not deliver to a node \
+             like this one"
+        );
+    }
+
     std::fs::create_dir_all(&config.data_directory)?;
 
     // The keystore comes first: the databases need it for their at-rest encryption keys.

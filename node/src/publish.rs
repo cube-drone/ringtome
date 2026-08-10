@@ -96,7 +96,13 @@ pub async fn reconcile(
         // guesses either misses people silently or interrogates strangers about their follow
         // lists (see the outbox's module doc). Best-effort - a statement that fails to queue
         // is still published, and the subject still learns it if they ever sync us.
-        match edges.seal_notice(&subject, &evidence).await {
+        // Stamp at OUR configured price, which is a guess about theirs. Right whenever both
+        // operators left the default alone, and when it is wrong the door quotes the real number
+        // and we pay that instead - one extra round trip, not a failure.
+        match edges
+            .seal_notice(&subject, &evidence, state.config.pow_requested_bits)
+            .await
+        {
             Ok(envelope) => {
                 if let Err(e) =
                     crate::outbox::queue(&state.node_db, root_hex, subject_hex, &envelope).await

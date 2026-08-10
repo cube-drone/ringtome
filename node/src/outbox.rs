@@ -19,6 +19,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use ringtome_proto::deliver::{notice_kind, Envelope, SignedEnvelope};
+use ringtome_proto::pow;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Payload, SignedEntry, SigningKey};
 
@@ -64,9 +65,10 @@ pub async fn seal_notice(
     root: &[u8; 32],
     recipient_root: &[u8; 32],
     evidence: &SignedEntry,
+    price_bits: u32,
 ) -> Result<SignedEnvelope> {
     let signer_pub = signer.verifying_key().to_bytes();
-    let envelope = Envelope {
+    let mut envelope = Envelope {
         sender_root: *root,
         signer: signer_pub,
         recipient_root: *recipient_root,
@@ -74,11 +76,29 @@ pub async fn seal_notice(
         auth_path: auth_path(db, root, &signer_pub).await?,
         evidence: Some(evidence.bytes().to_vec()),
         greeting: None,
-        // The dial rests at zero and a price is only ever quoted by a node under flood; when
-        // reject-with-price exists, this is the slot the retry fills in.
         stamp: None,
     };
+    // **Stamp, then sign, in that order.** The challenge is the body with the stamp field
+    // absent, and the signature covers the body with it present - so the work binds every
+    // other field (recipient included, which is what makes a stamp untransferable) and the
+    // signature then binds the work. Reversing these two lines produces envelopes that
+    // verify as signatures and fail as stamps, which is a confusing way to lose every notice.
+    if price_bits > 0 {
+        envelope.stamp = Some(solve_blocking(envelope.challenge(), price_bits).await?);
+    }
     SignedEnvelope::create(&envelope, signer).map_err(|e| anyhow!("sealing a notice: {e}"))
+}
+
+/// Pay the price off the reactor.
+///
+/// [`pow::solve`] is a tight CPU loop for tens of milliseconds by design. Awaiting it inline
+/// would park every other task on this thread for the duration - and the whole point of a price
+/// this small is that it runs on the ordinary path, every time, not in some rare corner where a
+/// stall would go unnoticed.
+async fn solve_blocking(challenge: [u8; 32], bits: u32) -> Result<Vec<u8>> {
+    tokio::task::spawn_blocking(move || pow::solve(&challenge, bits))
+        .await
+        .context("joining the stamp solver")
 }
 
 /// The `authorize` entries from `root` down to `leaf`, root first. Empty when the root signs
@@ -163,6 +183,73 @@ pub async fn queue(
     Ok(())
 }
 
+/// Does this envelope already carry a stamp that clears `bits`? Cheap - one hash - and the
+/// difference between answering a re-quote and being farmed by one.
+fn already_paid(envelope: &[u8], bits: u32) -> bool {
+    let Ok(signed) = SignedEnvelope::decode(envelope) else {
+        return false;
+    };
+    let plain = signed.envelope();
+    pow::verify(
+        &plain.challenge(),
+        plain.stamp.as_deref().unwrap_or_default(),
+        bits,
+    )
+    .is_ok()
+}
+
+/// Re-stamp a queued envelope at a newly quoted price and re-sign it.
+///
+/// Works from the stored bytes alone rather than from the persona's store: everything the
+/// envelope needs is already inside it, and `Envelope::challenge` strips whatever stamp is
+/// there before hashing, so a re-stamp of an already-stamped envelope is the same operation as
+/// a first stamp. The only thing that must be fetched is the signing leaf - and it must be the
+/// same leaf the envelope names, which `SignedEnvelope::create` enforces rather than trusts.
+async fn restamp(state: &AppState, envelope: &[u8], bits: u32) -> Result<Vec<u8>> {
+    // The one place a price arrives from OUTSIDE this node, so the one place willingness has to
+    // be checked. A door asking more than we think a notice is worth gets a shrug, not our CPU.
+    let willing = state.config.pow_willing_bits;
+    if bits > willing {
+        return Err(anyhow!(
+            "a door wants {bits} bits; this node pays at most {willing}"
+        ));
+    }
+    let signed = SignedEnvelope::decode(envelope).map_err(|e| anyhow!("{e}"))?;
+    let mut plain = signed.envelope().clone();
+    let sender_hex = hex::encode(plain.sender_root);
+    let leaf = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, &sender_hex)
+        .await
+        .map_err(|e| anyhow!("{e}"))?
+        .ok_or_else(|| anyhow!("this node no longer holds a leaf for {sender_hex}"))?;
+    plain.stamp = Some(solve_blocking(plain.challenge(), bits).await?);
+    Ok(SignedEnvelope::create(&plain, &leaf)
+        .map_err(|e| anyhow!("re-sealing a stamped notice: {e}"))?
+        .bytes()
+        .to_vec())
+}
+
+/// Swap in a re-stamped envelope, advancing the try count. Deliberately NOT `queue`, which
+/// resets the ladder to zero: paying a price is a retry, not a fresh knock, and a door that
+/// quotes a new price on every attempt must not be able to hold a sender in a loop that never
+/// ages out.
+async fn replace_envelope(
+    node_db: &Db,
+    sender_root: &str,
+    recipient_root: &str,
+    kind: &str,
+    envelope: &[u8],
+) -> Result<()> {
+    node_db
+        .execute(
+            "UPDATE outbound_notices SET envelope = ?4, last_tried_ms = ?5, tries = tries + 1
+             WHERE sender_root = ?1 AND recipient_root = ?2 AND kind = ?3",
+            (sender_root, recipient_root, kind, envelope, now_ms()),
+        )
+        .await
+        .context("replacing a queued notice with its stamped form")?;
+    Ok(())
+}
+
 async fn retire(node_db: &Db, sender_root: &str, recipient_root: &str, kind: &str) -> Result<()> {
     node_db
         .execute(
@@ -235,6 +322,49 @@ pub async fn sweep(state: AppState) -> Result<()> {
             }
             crate::net::deliver::Outcome::Unreachable => {
                 mark_tried(&state.node_db, &sender, &recipient, &kind).await?;
+            }
+            crate::net::deliver::Outcome::NeedsStamp(bits) if already_paid(&envelope, bits) => {
+                // **The door is lying.** We hold a stamp that clears the price it just quoted,
+                // so solving again would produce the identical nonce (the challenge is the same
+                // body, and `solve` is deterministic) and be rejected the identical way. A door
+                // that can make a sender re-grind on demand is a CPU amplifier pointed at
+                // everyone who follows it; refusing to pay twice for the same quote is what
+                // takes that away, and it costs an honest door nothing because an honest door
+                // does not do this.
+                //
+                // Treated as unreachable rather than refused: a buggy door should not be able
+                // to destroy a notice permanently, and the backoff ladder plus the three-day
+                // expiry already bound how long we keep asking. The point is that we stop
+                // paying, not that we stop trying.
+                tracing::warn!(
+                    sender = %sender, recipient = %recipient, bits,
+                    "a door re-quoted a price this envelope already pays - not grinding again"
+                );
+                mark_tried(&state.node_db, &sender, &recipient, &kind).await?;
+            }
+            crate::net::deliver::Outcome::NeedsStamp(bits) => {
+                // Price discovery, completed: the door quoted, we pay. The re-stamped envelope
+                // replaces the queued one so the work is not repeated on every sweep, and the
+                // try count advances so a door that keeps raising its price meets the backoff
+                // ladder rather than an infinite grind.
+                match restamp(&state, &envelope, bits).await {
+                    Ok(paid) => {
+                        tracing::info!(
+                            sender = %sender, recipient = %recipient, bits,
+                            "a door quoted a price; re-stamped and requeued"
+                        );
+                        replace_envelope(&state.node_db, &sender, &recipient, &kind, &paid).await?;
+                    }
+                    Err(e) => {
+                        // Above the ceiling, or a leaf we can no longer load. Either way this
+                        // node cannot pay, and pretending otherwise burns CPU forever.
+                        tracing::warn!(
+                            sender = %sender, recipient = %recipient, bits, error = ?e,
+                            "cannot pay a quoted price - retiring the knock"
+                        );
+                        retire(&state.node_db, &sender, &recipient, &kind).await?;
+                    }
+                }
             }
         }
     }

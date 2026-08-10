@@ -2951,9 +2951,15 @@ probe.
 The floor is per-notice-kind, and the load-bearing fact behind it: identities are free but *paths* are not -
 membership arrives through invites and vouches, so every genuine person has flow in the graph by construction,
 and downstream features inherit Trust's Sybil hardening rather than each rebuilding their own (The Inbound Gate;
-the layer boundary). **Content-bearing kinds - follow, comment, tag, rebroadcast - require nonzero flow**: a
-cryptographically genuine rebroadcast from a pathless identity is socially worthless, and refusing it is correct
-product behaviour before it is defence. **First-contact is the one kind open to the pathless.**
+the layer boundary). **Content-bearing kinds - follow, comment, tag, rebroadcast - are ranked by flow**: a
+cryptographically genuine rebroadcast from a pathless identity is socially worthless, and treating it as such is
+correct product behaviour before it is defence.
+
+*(Corrected 2026-08-10: an earlier draft of this paragraph said pathless senders were **refused**, which the
+tiered-inbox design of 2026-08-03 superseded and never implemented. Falling through "is this sender known to
+me?" is what the stranger tier is FOR - the pathless land in a bounded pool that a flood can only spend against
+itself, rather than at a closed door. Refusal at the gate remains reserved for a block, and even that is
+answered silently.)*
 
 **Until Trust ships, the gate runs a degenerate classifier** - explicit or mutual edge ⇒ trusted tier; anyone
 else ⇒ stranger tier; muted ⇒ dropped in silence (below) - so the inbox does not wait on the flow computation (Sequencing: the
@@ -3095,30 +3101,43 @@ both layers, so "how does anyone new reach anyone" never depends on proof-of-wor
 treatment leaks aggregate colocation ("this node's users share edges with that node's") - marginal, since the
 inputs are public and crawlable, but it belongs beside Hosting's timing-correlation caveats.
 
-#### The proof-of-work dial (resting position: zero)
+#### The proof-of-work stamp (a fixed, configured price)
 
-An optional stamp on the zero-standing lane - specified from birth, priced at zero until a flood exists. What v1
-ships is the *slot*: a stamp field on the envelope, a **reject-with-current-price** message, and the sender-side
-retry-with-stamp path, all exercised in tests while the number is zero everywhere. A dial nobody has wired up is
-a document, not a dial.
+Every zero-standing envelope carries a stamp: hashcash over the envelope's own body, difficulty in
+leading zero bits. **The price is operator configuration, fixed at boot, and never adjusted at
+runtime** - `RINGTOME_POW_REQUESTED_BITS` (what this node's door charges) and
+`RINGTOME_POW_WILLING_BITS` (the most it will spend to deliver one notice). Shipped 2026-08-10 at
+a default of 19 bits: 32ms release, 40ms debug, measured on an M1, against 0.28us to verify.
 
-- **Price discovery is a challenge, not a posted rate**: unstamped envelope arrives → if the dial is above zero,
-  rejection carries the current requirement → sender stamps and retries.
-- **Zero is an attractor.** The raising signal is mechanical and pool-local (stranger-tier eviction churn, queue
-  depth, gate-rejection rate), and the dial **decays back to zero on its own** - a ratchet only humans turn down
-  becomes a permanent tax within a year. Stress is measurable per pool, so the dial scopes per-node *and*
-  per-persona: the briefly-famous case prices one persona's stranger lane without taxing strangers knocking for
-  anyone else on the node.
+- **What it buys, stated without inflation: it turns a zero-second attack into a twenty-second
+  attack.** 512 fresh identities filling a stranger ring pay about twenty seconds in total. That
+  is a mild inconvenience and nothing more, and it is the whole claim. What actually bounds that
+  attack is the ring (a flood can only evict other strangers, never your friends); the stamp adds
+  a floor under the cost of *being* the flood, and makes the price a number that exists.
+- **Cheap verification is the load-bearing property**, and it is why this is hashcash rather than
+  a memory-hard function. Argon2 and its relatives cost the verifier what they cost the solver,
+  which under a flood hands the attacker a CPU amplifier pointed at the node being flooded. The
+  stamp is therefore checked *before* the envelope's signatures: one hash to refuse, rather than
+  three ed25519 verifications.
+- **Why configurable at all, given it never moves:** a price calibrated to tens of milliseconds on
+  2026 hardware is a rounding error on 2035 hardware. The knob exists so an operator can keep the
+  number honest without waiting for a release - not so it can respond to traffic.
+- **There is no dynamic pricing, no flood detector, and no decay** (cut 2026-08-10, before any of
+  it was built). The dial was going to raise a price under measured stress and decay back down;
+  the argument that killed it is that a price high enough to deter a real flood is also high
+  enough that honest phones stop paying it, at which point the only senders still willing are the
+  attackers - **an oblique refusal that costs the refuser nothing and the honest stranger
+  everything.** Refusing outright would be more honest and cheaper for both sides. What survives
+  is the small fixed price, where nobody has to decide anything.
+- **Price discovery survives, because two nodes can be configured differently.** An under-stamped
+  envelope gets `NeedsStamp(bits)` - not a refusal, which is retired forever, but a door held open
+  - and the sender pays it if it is within their willingness. A sender never re-grinds for a price
+  its current stamp already clears, which is what stops a hostile door from farming CPU out of
+  everyone who follows it.
+- **A node that charges more than others will pay has closed its own inbox to strangers**, not
+  raised a drawbridge. That is a legitimate thing to want and a bad thing to do by accident, so
+  both numbers are logged at boot and a node charging more than it pays warns about itself.
 - **Only the zero-standing lane ever sees a price.** Shared edges and friend tokens never pay.
-- **The honest cost, named: during an active flood, Dave pays too** - within the zero-standing lane the attacker
-  and the legitimate stranger are indistinguishable; that is what a flood *is*. Acceptable because attack windows
-  are temporary and decay ends them; Dave sends *one* envelope (seconds of a phone's time, once); and the token
-  bypasses the priced lane entirely. Per-message cost times volume is the whole trick - the one place
-  proof-of-work's economics favour the defender.
-- **Why not a small always-on price:** it sits on the wrong side of that asymmetry. Trivial for a GPU cluster (so
-  it deters no real flood), it taxes every honest phone forever (proof-of-work is *regressive*: it prices out
-  phones before datacenters), and it destroys the dial's information value - under resting-zero, a nonzero price
-  *is* the observable signal that a node is under attack.
 
 #### The feed is fanned out, not fetched
 

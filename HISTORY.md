@@ -4339,3 +4339,72 @@ first and last `settle` in the same test always guarded correctly (`t.length >= 
 Recorded honestly: the failure never reproduced on this machine, so the diagnosis rests on the
 mechanism being readable in the code rather than on a red-to-green demonstration. The action is
 the verification, and the test change is what makes its next answer unambiguous.
+
+
+## 2026-08-10 — the door starts charging, and the dial is cut before it exists
+
+Curtis: "there's a gaping proof-of-work-sized hole in our inbox implementation... it's still
+completely trivial to have a box spin up 512 completely fresh identities and stuff a person's
+inbox ring, yeah?" Yes, and cheaply: no rate limit on the delivery ALPN (by design - it is the one
+channel that assumes no prior relationship), no stamp, and `classify()` sending every fresh
+identity to the stranger tier. One keygen, three signatures, a QUIC dial, about a kilobyte.
+
+Two things were already true. The **ring bounds the damage**: a flood fills the stranger tier and
+evicts other strangers, and cannot touch the trusted tier, because they are different chains. And
+the **stamp slot has existed since the envelope was designed**, empty, waiting.
+
+The argument that had to be settled first was one I had written into the plan myself - a bullet
+titled "Why not a small always-on price". Curtis drew the distinction it was missing: that argues
+against a *significant* baseline pretending to be a defence, and says nothing about a trivial one
+whose job is to make the machinery real. **A dial you have never turned is not a dial you can turn
+confidently at 3am.**
+
+What shipped: BLAKE3 hashcash, difficulty in leading zero bits, the challenge being the envelope's
+own body with the stamp stripped - so a solved stamp is worth nothing on any other envelope, to any
+other recipient, for any other kind. Calibrated rather than guessed: **19 bits, 32ms release and
+40ms debug** on an M1, against **0.28us to verify**. That asymmetry is why hashcash and not Argon2:
+memory-hard functions cost the verifier what they cost the solver, which under a flood is a CPU
+amplifier aimed at the node being flooded. The stamp check therefore runs *before* the signature
+checks - one hash to refuse, rather than three ed25519 verifications.
+
+**Then Curtis took the dial away, and was right to.** The question that did it: does the sender
+just pay whatever it is quoted? A malicious node could post engagement-bait, quote an enormous
+price, and farm CPU out of everyone who followed it. Two holes fell out. The sweep re-solved on
+*every* quote, so a door that simply always answers `NeedsStamp` could make a sender grind once per
+retry for three days - fixed by refusing to re-grind for a price the envelope's existing stamp
+already clears (the door is lying; `solve` is deterministic, so a second grind returns the
+identical nonce). And the protocol ceiling was doing two jobs: "no door may demand more than this"
+and "this message is not worth more than that to me" are different questions, and only the second
+belongs to the sender.
+
+Then he followed it down: **a price high enough to deter a real flood is also high enough that
+honest phones stop paying it, at which point the only senders still willing are the attackers.**
+That is an oblique refusal which costs the refuser nothing and the honest stranger everything -
+worse than simply saying no. So the dial went before any of it was built: no flood detector, no
+stress signal, no decay. What is left is a small fixed price, `RINGTOME_POW_REQUESTED_BITS` and
+`RINGTOME_POW_WILLING_BITS` as boot config, and no runtime adjustment anywhere. The protocol
+ceiling went with it - a ceiling only ever bounded how far a *dynamic* price could climb, and the
+sender's own willingness is the whole answer without help from the protocol.
+
+The knob exists for one reason and the comment says so: a price calibrated to tens of milliseconds
+on 2026 hardware is a rounding error on 2035 hardware, and an operator should be able to keep it
+honest without waiting for a release. Both numbers are logged at boot, and a node charging more
+than it will pay warns about itself, because the failure either way is silent - an inbox quietly
+emptier than it should be.
+
+**The honest ledger, unchanged by any of it: this turns a zero-second attack into a twenty-second
+attack.** A mild inconvenience, and that is the whole claim. What bounds the flood is still the
+ring; what would actually close it is the flow floor, which needs Trust.
+
+Process, because two of these nearly landed silently. The first `just ci` returned **101, not 0** -
+a clippy `assertions_on_constants` error - while the task summary reported the wrapper's exit
+rather than the recipe's; a later run reported 0 for a `just` that never ran at all, started from
+the wrong directory. Only the recipe's own exit code is worth believing. Clippy was also right on
+substance: the invariant it objected to belongs in a `const _: () = assert!(...)`, where there is
+no moment at which it could be false.
+
+And an error of mine that was load-bearing: the ceiling was documented at "about 17 seconds" by
+extrapolation. Measured, **1.7s** - off by ten. Three asserted-then-corrected measurements in one
+day (an overnight CPU average that was really a sleeping laptop, a post-wake spike reported as
+steady state, and this) is a pattern rather than three slips. Measure before asserting; one window
+is a story, not a number.

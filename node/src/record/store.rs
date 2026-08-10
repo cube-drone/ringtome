@@ -309,10 +309,13 @@ impl PublicEdges<'_> {
     /// Seal the envelope that announces one just-published statement to its subject - the
     /// delivered path's outbound artifact (`outbox`). Lives here because sealing needs the
     /// persona's signing leaf, which never leaves the store.
+    /// `price_bits` is what the sender believes this door costs - its own configured price
+    /// for a first attempt, or whatever a `NeedsStamp` answer quoted for a retry.
     pub async fn seal_notice(
         &self,
         subject: &[u8; 32],
         evidence: &SignedEntry,
+        price_bits: u32,
     ) -> Result<ringtome_proto::deliver::SignedEnvelope, AppError> {
         crate::outbox::seal_notice(
             &self.store.db,
@@ -320,6 +323,7 @@ impl PublicEdges<'_> {
             &self.store.root,
             subject,
             evidence,
+            price_bits,
         )
         .await
         .map_err(AppError::Internal)
