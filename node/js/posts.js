@@ -59,15 +59,13 @@ export const PublicPosts = ({ root, posts, more, current }) => {
 
     if (!list.length) return null; // nothing said in public yet - say nothing about it
 
-    // The profile's post rows, dressed as the shared entry's item shape. Seen is a feed
-    // concept (the arrival journal's dot); on a person's page every post is simply shown.
+    // The profile's post rows, dressed as the shared entry's item shape.
     const items = list.map((p) => ({
         author: root,
         doc_id: p.doc_id,
         title: p.title,
         format: p.format,
         published_ms: p.published_ms,
-        seen: true,
         mine,
     }));
 

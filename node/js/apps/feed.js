@@ -166,7 +166,6 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
     const [items, setItems] = useState([]);
     const [more, setMore] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [unseenOnly, setUnseenOnly] = useState(false);
     // Arrivals detected but NOT shown: things popping into a list you are reading is
     // infuriating, so updates wait in a reserved bar until asked for. The bar's space is
     // always held (fixed height), so its appearance never moves your read position either.
@@ -256,25 +255,10 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [more, loading, items]);
 
-    const markSeen = async (item) => {
-        setItems((have) =>
-            have.map((i) => (i.doc_id === item.doc_id && i.author === item.author ? { ...i, seen: true } : i))
-        );
-        try {
-            await api(
-                `/api/identity/${root}/private/kv/feed_seen/${item.doc_id}`,
-                { method: 'PUT', body: JSON.stringify({ value: '1' }) }
-            );
-        } catch {
-            // An unmarked seen re-marks on the next look; never worth an error surface.
-        }
-    };
-
     const interestOf = (author) => {
         const row = (contacts || []).find((c) => c.root === author);
         return row && row.facts ? row.facts.interest : undefined;
     };
-    const visible = unseenOnly ? items.filter((i) => !i.seen) : items;
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
@@ -284,33 +268,25 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
                     ${pending.length === 1 ? t('apps.feed.1-update', '1 update') : `${pending.length} updates`} ${t('apps.feed.refresh', '· refresh')}
                 </button>`}
             </div>
+            ${/* No unread filter, and no unread anything (2026-08-09): a feed is a river you
+                dip into, not an inbox to empty. The fresh-updates bar above is the one "what
+                arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''}
             <div class="feed-stream-head">
                 <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
-                <label class="feed-unseen-toggle">
-                    <input
-                        type="checkbox"
-                        checked=${unseenOnly}
-                        onChange=${(e) => setUnseenOnly(e.currentTarget.checked)}
-                    />
-                    ${t('apps.feed.only-whats-new-to-you', "only what's new to you")}
-                </label>
             </div>
-            ${visible.map(
+            ${items.map(
                 (item) => html`<${PostEntry}
                     key=${`${item.author}:${item.doc_id}`}
                     item=${item}
                     interest=${interestOf(item.author)}
                     current=${current}
-                    onSeen=${markSeen}
                     editing=${item.mine ? editingFor(item.doc_id) : null}
                 />`
             )}
-            ${visible.length === 0 &&
+            ${items.length === 0 &&
             !loading &&
             html`<p class="null-sub">
-                ${unseenOnly
-                    ? t('apps.feed.nothing-new---you-have', 'nothing new - you have seen it all.')
-                    : t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
+                ${t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
             </p>`}
             ${more &&
             html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(feedCursor(items))}>
@@ -441,7 +417,6 @@ export const FeedApp = ({ current }) => {
                 published_ms: Date.now(),
                 updated_ms: Date.now(),
                 arrived_ms: Date.now(),
-                seen: true,
                 mine: true,
             });
             // Said in public: seal it, so editing again costs the unlock.

@@ -1033,16 +1033,6 @@
     font-weight: 600;
 }
 
-.feed-unseen-toggle {
-    margin-left: auto;
-    color: var(--muted);
-    font-size: 0.78rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    cursor: pointer;
-}
-
 /* The card's OWN type size is the knob every metric below hangs off: `--post-scale` comes from
    the reader's interest dial (pure/feed.js `postScale`, 0.75 to 1.0 across the five stops), and
    everything inside this card is sized in `em` so one number scales the whole thing - padding,
@@ -1077,15 +1067,6 @@
 .feed-entry-when {
     color: var(--faint);
     font-size: 0.75em;
-}
-
-.feed-entry-new {
-    display: inline-block;
-    width: 0.5em;
-    height: 0.5em;
-    border-radius: 50%;
-    background: var(--teal);
-    margin-left: 0.4em;
 }
 
 /* The banner sits flush in the card; its own page-margins don't apply here.

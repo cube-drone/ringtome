@@ -2939,7 +2939,9 @@ own retention and sync depth as per-chain policy instead of per-row bookkeeping.
   quota is enforced per transcribing node; two of your nodes transcribing while partitioned can briefly overshoot
   the shared pool, which reconciles at merge and is accepted.
 - **Seen and deleted are LWW facts on the same chains**, so read-on-the-phone is read-on-the-laptop, with no
-  conflict possible.
+  conflict possible. A notice list is one of the two places read state earns its keep (the bell is the other) -
+  but it inherits the bell's rule, settled 2026-08-09 in One Cursor: **moved by a deliberate act, never by
+  automatic observation**, and preferring a watermark to per-row marks wherever the ordering is by arrival.
 - **Graduation never migrates rows.** A promoted sender's new notices file into the better chain; old rows age
   out where they landed; the read-time merge across tiers makes the seam invisible. One door, one envelope
   format, one code path - trust buys a bigger quota, a lower floor and a faster transport lane, never a different
@@ -3057,10 +3059,33 @@ closing encrypted files to build one screen. The answer is this codebase's own i
   a later pass builds the sorted index (the opinion). This is what makes policy changes free: unfollowing,
   blocking, or turning an interest dial is a **re-index, never a retraction**, and the index is disposable like
   everything else derived.
-- **Two cursors, not one.** *Delivered* - how far fan-out has processed into a view - is node-local pipeline
-  bookkeeping, disposable, rebuildable. *Seen* - what the human actually looked at - is a user fact that must sync
-  across their devices, and belongs on their private chain with the inbox's. Conflating them means either read
-  state does not travel, or rebuilding a view marks everything unread.
+- **One cursor** (amended 2026-08-09; this bullet used to read *Two cursors, not one*). *Delivered* - how far
+  fan-out has processed into a view - is node-local pipeline bookkeeping, disposable, rebuildable, and it is the
+  only cursor the feed has. **The feed has no read state at all**: no unread count, no dot, no "only what's new".
+  The distinction the old bullet drew (delivered is node-local; seen is a user fact that must travel) is still
+  correct wherever read state exists - it is why the bell's watermark lives on the private chain - but the feed
+  no longer has any, for two reasons that arrived together:
+  - **Cost, and its shape.** A per-document mark is unbounded growth proportional to everything you ever read,
+    on an append-only chain. Worse was the trigger: marks fired from an IntersectionObserver on scroll, so
+    passive reading wrote one signed, encrypted, fsynced private-chain entry per post that crossed the viewport
+    and pushed it to every device you own - making *reading* the highest write-rate act in the application, in
+    a codebase whose own rule is "one private record per deliberate click, unlike keystrokes."
+  - **Product, which is the reason it does not come back cheaper.** An unread badge is a debt the application
+    invents on the reader's behalf and then asks them to pay down - the engagement machinery the Vision indicts,
+    arriving as a convenience. A cozy feed is a river you dip into, not an inbox to empty.
+
+  The cheap middle ground was examined and declined on its own merits: a single watermark (what the bell uses)
+  costs one register, but the bell sorts by *arrival* (`received_at_ms` - local, honest, monotonic) while the
+  feed sorts by *claimed* `published_ms`. A watermark over claimed time breaks under ordinary clock skew - a
+  backdated post lands below the line and never reads as new - so "above the watermark" and "top of the feed"
+  would silently disagree. Where a feed-side "since I last looked" is wanted, `arrived_ms` is already on every
+  row and a device-local mark costs no chain and no sync.
+
+- **Where read state does survive, it is bounded and deliberate.** The bell (Notifications) keeps ONE watermark
+  register per persona, arrival-stamped, moved only by a human pressing "mark all read". **Automatic
+  observation is ruled out** - no observer, no scroll-marking, nothing that writes a chain entry because the
+  user's eyes passed over something. A notification list genuinely needs new-versus-old (that is most of what a
+  bell is for); a chronological feed does not.
 - **The interest dial is a sync-cadence dial.** The knob that already reads "don't show / low / medium / high /
   top priority" is just as naturally *how eagerly this identity syncs* - a rate limiter with a humane interface
   already attached, turning three hundred follows into a dozen eager and the rest drowsy. **Backfill is the burst

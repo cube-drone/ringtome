@@ -534,9 +534,6 @@ struct FeedItem {
     published_ms: i64,
     updated_ms: i64,
     arrived_ms: i64,
-    /// Has THIS reader seen it - their own private-chain fact, joined here so the page
-    /// arrives ready ("Two cursors": this is the seen cursor, and it travels with them).
-    seen: bool,
     /// The reader wrote this one themselves.
     mine: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -547,19 +544,25 @@ struct FeedItem {
 
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly
 /// chronological, dressed with everything a row needs to render: byline from the cache (never
-/// a database per face), seen-state from the reader's own private chain, `mine` for the
-/// reader's own posts (which appear like anyone else's - they follow themselves by hosting).
+/// a database per face) and `mine` for the reader's own posts (which appear like anyone
+/// else's - they follow themselves by hosting).
 ///
 /// What is deliberately NOT here: ranking. How a good feed orders is a research problem this
 /// draft does not attempt; the interest dials shape RENDERING only, client-side, off the
 /// reader's own mirror.
+///
+/// Also deliberately not here, as of 2026-08-09: **read state**. A feed has no unread count,
+/// no dot, and no "only what's new" - see PROJECT_PLAN, One Cursor. The bell keeps its
+/// watermark; a chronological river does not get a chore attached.
 async fn feed_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
     axum::extract::Query(q): axum::extract::Query<FeedQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let data = store::open(&state, &session.account.id, &root).await?;
+    // Ownership is the only reason to open the reader's own store here (the feed itself is a
+    // node.db memo), and `store::open` is that check.
+    let _owned = store::open(&state, &session.account.id, &root).await?;
     let before = match (q.before_ms, q.before_doc) {
         (Some(ms), Some(doc)) => Some((ms, doc)),
         _ => None,
@@ -570,12 +573,6 @@ async fn feed_handler(
         .map_err(AppError::Internal)?;
     let more = rows.len() as i64 > page;
     rows.truncate(page as usize);
-
-    // The reader's seen-marks: their own `feed_seen` registers (a mark is a PUT to the
-    // existing private KV surface; nothing feed-specific writes).
-    let (seen_rows, _) = data.private_registers("feed_seen").all().await?;
-    let seen: std::collections::HashSet<String> =
-        seen_rows.into_iter().map(|r| r.key).collect();
 
     let authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &authors)
@@ -588,8 +585,6 @@ async fn feed_handler(
             let mine = r.author_root == root;
             let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
             FeedItem {
-                // Your own words arrive pre-seen: you were there when you wrote them.
-                seen: mine || seen.contains(&r.doc_id),
                 mine,
                 author_name: byline.name,
                 author_avatar: byline.avatar,

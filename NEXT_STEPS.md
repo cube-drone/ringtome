@@ -39,8 +39,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")
 
-### Seen
-* Notifications & Feed seen need to work more reliably, use less private chain space.
 
 ### Inbox
 

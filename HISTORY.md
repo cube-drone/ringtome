@@ -3903,3 +3903,48 @@ Gates: full `just ci` green. Also, while in the panel: the block button got room
 (a larger tap target than the glance pills it borrowed its metrics from, plus daylight above
 it - a destructive control should not sit flush against the dial you were adjusting), and
 `just ui-build` reran so the compiled bundle actually carries it.
+
+## 2026-08-09 — the feed stops keeping score
+
+Curtis, on feed read-state: "I don't want that feature to exist at all." Cut in full - no
+unread dot, no "only what's new" toggle, no `feed_seen` registers, no `seen` field on a feed
+row. 136 lines deleted against 71 added, most of the additions being the argument.
+
+One correction to the premise on the way in, which did not save the feature: the marks were
+on the PRIVATE chain, not the public one, so nobody else ever saw them. The growth complaint
+survived that untouched (permanent, append-only, one register per document ever read), and
+the real indictment turned out to be the TRIGGER rather than the total: marks fired from an
+IntersectionObserver at a 0.6 threshold, so *scrolling* wrote one signed, encrypted,
+epoch-sealed, fsynced private-chain entry per post that crossed the viewport, then pushed it
+to every device the reader owns. Reading was the highest write-rate act in the application -
+in a codebase whose contact ledger already says "one private record per deliberate click,
+unlike keystrokes." Seen marks were keystrokes in a click's clothing.
+
+The product argument is what makes the deletion permanent rather than an optimization: an
+unread badge is a debt the application invents for you and then asks you to pay down, which
+is the engagement machinery the Vision indicts, arriving through the side door as a
+convenience. A cozy feed is a river you dip into, not an inbox to empty.
+
+The cheap middle ground was examined and declined on a technical merit, not just taste: one
+watermark register (what the bell uses) would have cost nothing to store, but the bell orders
+by ARRIVAL (`received_at_ms` - local, monotonic, honest) while the feed orders by CLAIMED
+`published_ms`. A watermark over claimed time breaks under ordinary clock skew - a backdated
+post lands below the line and never reads as new - so "above the watermark" and "top of the
+feed" would silently disagree. Where a since-I-last-looked hint is ever wanted, `arrived_ms`
+is already on every row and a device-local mark costs no chain and no sync.
+
+What survives, and the rule that came with it: the bell keeps ONE watermark register per
+persona, and **automatic observation is ruled out for good** - it moves when a human presses
+"mark all read", never because eyes passed over something. Curtis's line: notifications
+benefit from seen much more than a feed does, and a button keeps the structure bounded. The
+future inbox inherits the same rule (recorded in Arrival and Attention), since a notice list
+is the other place read state genuinely earns its keep.
+
+PROJECT_PLAN's *Two cursors, not one* is now *One cursor* - delivered, node-local,
+disposable - with both reasons and the declined middle ground written into it, so the next
+person to think "the feed should show what's new" finds the argument instead of the absence.
+NEXT_STEPS' "Seen" item ("needs to work more reliably, use less private chain space") is
+struck: answered by deletion.
+
+Gates: full `just ci` green. The feedstream probe's last act was rewritten from driving the
+unseen toggle to asserting the read-state chrome is gone.

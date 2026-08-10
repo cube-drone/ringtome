@@ -46,7 +46,6 @@ console.log('RESULT low-interest long entry is cut:',
     !quietEntry?.textContent.includes('endless detail') ,
     '| offers the whole thing:', !!quietEntry?.querySelector('.feed-entry-more'));
 console.log('RESULT titles are links:', !!loudEntry?.querySelector('.feed-entry-title a')?.href);
-console.log('RESULT unseen dots:', doc.querySelectorAll('.feed-entry-new').length);
 // Expand the cut one - re-queried fresh before and after the click.
 doc.querySelectorAll('.feed-entry').forEach((e) => {
     if (e.textContent.includes('Long and quiet')) {
@@ -70,23 +69,16 @@ const all2 = [...doc2.querySelectorAll('.feed-entry')];
 console.log('RESULT my own post in my feed:', all2.some((e) => e.textContent.includes('Mine own')),
     '| newest first:', all2[0]?.textContent.includes('Mine own'));
 
-// The unseen toggle: mark one item seen by hand (the instrument has no IntersectionObserver,
-// which is the designed degradation), flip the toggle, and the seen one - plus my own,
-// pre-seen - should leave the room.
-const feedPage = await (await s.fetch(`/api/identity/${me}/feed`)).json();
-const loudItem = feedPage.items.find((i) => i.title === 'Loud and important');
-await s.fetch(`/api/identity/${me}/private/kv/feed_seen/${loudItem.doc_id}`, {
-    method: 'PUT', headers: J, body: JSON.stringify({ value: '1' }) });
+// Read state is gone entirely (2026-08-09, PROJECT_PLAN One Cursor): no dots, no toggle, no
+// per-post chain writes. What the feed still owes is that every arrival is simply THERE, so
+// the last check is that a reload shows the whole river rather than a filtered slice.
 const dom3 = await s.boot('/home/feed');
 const doc3 = dom3.window.document;
 for (let t = 0; t < 240 && doc3.querySelectorAll('.feed-entry').length < 3; t++) await sleep(50);
-doc3.querySelector('.feed-unseen-toggle input').dispatchEvent(
-    new dom3.window.Event('change', { bubbles: true }));
-// jsdom checkboxes need the click to flip checked; do it properly:
-doc3.querySelector('.feed-unseen-toggle input').click();
 await sleep(400);
-const left = [...doc3.querySelectorAll('.feed-entry')].map((e) =>
+const shown = [...doc3.querySelectorAll('.feed-entry')].map((e) =>
     e.querySelector('.feed-entry-title')?.textContent);
-console.log('RESULT unseen-only shows:', JSON.stringify(left),
-    '(the seen and the mine are gone)');
+console.log('RESULT the whole river, unfiltered:', JSON.stringify(shown));
+console.log('RESULT no read-state chrome:',
+    doc3.querySelectorAll('.feed-entry-new, .feed-unseen-toggle').length === 0);
 process.exit(0);

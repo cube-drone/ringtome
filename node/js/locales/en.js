@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 421 phrases across 41 files.
+// 418 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -21,8 +21,6 @@ export default {
     'apps.feed.1-update': '1 update',
     'apps.feed.refresh': '· refresh',
     'apps.feed.the-feed': 'the feed',
-    'apps.feed.only-whats-new-to-you': "only what's new to you",
-    'apps.feed.nothing-new---you-have': 'nothing new - you have seen it all.',
     'apps.feed.nothing-here-yet---follow': 'nothing here yet - follow someone, or write something on the left.',
     'apps.feed.reading-further-back': 'reading further back…',
     'apps.feed.couldnt-reach-further-back--': "couldn't reach further back - try again",
@@ -338,7 +336,6 @@ export default {
     'postentry.ready': 'ready',
     'postentry.failed': 'failed',
     'postentry.failed-2': 'failed',
-    'postentry.you-havent-seen-this-yet': "you haven't seen this yet",
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.edit': 'edit',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",

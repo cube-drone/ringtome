@@ -228,13 +228,13 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 
 /**
  * One post, as the feed and the persona page both show it: banner, date, the words (cut to
- * their lead by the reader's interest), the unseen dot - and, when `editing` is present, the
+ * their lead by the reader's interest) - and, when `editing` is present, the
  * unlock-then-edit-in-place ceremony.
  *
- * `item`: { author, doc_id (PUBLIC), title, format, published_ms, seen, mine,
+ * `item`: { author, doc_id (PUBLIC), title, format, published_ms, mine,
  *           author_name?, author_avatar? }
  */
-export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
+export const PostEntry = ({ item, current, interest, editing }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);
     const [open, setOpen] = useState(false);
@@ -254,26 +254,13 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
         };
     }, [item.author, item.doc_id]);
 
-    // Seen, once, when actually looked at. jsdom has no IntersectionObserver; there the item
-    // simply never auto-marks, which is the honest degradation (the probe marks by hand).
-    useEffect(() => {
-        if (item.seen || item.mine || !onSeen || typeof IntersectionObserver === 'undefined')
-            return;
-        const el = itemRef.current;
-        if (!el) return;
-        const io = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((e) => e.isIntersecting)) {
-                    io.disconnect();
-                    onSeen(item);
-                }
-            },
-            { threshold: 0.6 }
-        );
-        io.observe(el);
-        return () => io.disconnect();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [item.seen, item.mine, item.author, item.doc_id]);
+    // (A feed post used to mark itself SEEN here, via an IntersectionObserver that fired on
+    // scroll. Removed 2026-08-09 with the whole read-state feature - PROJECT_PLAN, One Cursor.
+    // Two reasons worth keeping: passive scrolling was writing one signed, encrypted,
+    // fsynced private-chain entry per post that crossed the viewport, which made reading the
+    // highest write-rate act in the application; and an unread dot is a debt the app invents
+    // for you, which is the engagement machinery the Vision indicts. Automatic observation is
+    // ruled out for good - the bell's watermark moves only when a human presses a button.)
 
     const emphasis = item.mine ? 'normal' : emphasisOf(interest);
     // The card's size rides one custom property; persona.css sizes the entry's every metric in
@@ -323,8 +310,7 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
             ${editing && html`<${BakeModal} items=${editing.baking} />`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini hexagon made you
-                hover. The when, the unseen dot, and - for your own posts - the unlock ride
-                its actions slot. */ ''}
+                hover. The when and - for your own posts - the unlock ride its actions slot. */ ''}
             <${PersonBanner}
                 root=${item.author}
                 current=${current}
@@ -336,8 +322,6 @@ export const PostEntry = ({ item, current, interest, onSeen, editing }) => {
                     via: [],
                 }}
                 actions=${html`<span class="feed-entry-when">${when}</span>
-                    ${!item.seen &&
-                    html`<span class="feed-entry-new" title=${t('postentry.you-havent-seen-this-yet', "you haven't seen this yet")}></span>`}
                     ${editing &&
                     !open &&
                     (editing.locked

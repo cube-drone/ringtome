@@ -297,24 +297,15 @@ describe("the feed endpoint", () => {
         const item = page.items.find((i) => i.author === voiceRoot);
         assert.equal(item.title, "Heard");
         assert.equal(item.author_name, "A Voice", "byline from the cache, no db per face");
-        assert.equal(item.seen, false, "not seen until I say so");
         assert.equal(item.mine, false);
+        assert.equal(
+            item.seen,
+            undefined,
+            "a feed row carries NO read state (One Cursor, 2026-08-09)"
+        );
     });
 
-    it("marks seen through the ordinary private KV - and it sticks", async () => {
-        const first = await (await me(`api/identity/${myRoot}/feed`)).json();
-        const item = first.items.find((i) => i.author === voiceRoot);
-        const put = await me(`api/identity/${myRoot}/private/kv/feed_seen/${item.doc_id}`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "1" }),
-        });
-        assert.equal(put.status, 200, await put.text());
-        const again = await (await me(`api/identity/${myRoot}/feed`)).json();
-        const seen = again.items.find((i) => i.doc_id === item.doc_id);
-        assert.equal(seen.seen, true, "a seen mark is a private-chain fact, and it travels");
-    });
-
-    it("my own posts appear, mine and pre-seen - I was there when I wrote them", async () => {
+    it("my own posts appear, marked mine", async () => {
         const d = await (
             await me(`api/identity/${myRoot}/docs`, {
                 method: "POST",
@@ -328,7 +319,6 @@ describe("the feed endpoint", () => {
         });
         assert.ok(item, "my own post landed in my own feed");
         assert.equal(item.mine, true);
-        assert.equal(item.seen, true);
     });
 
     it("pages further back with the keyset cursor - the branch no test had walked", async () => {
