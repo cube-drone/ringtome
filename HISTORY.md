@@ -3801,3 +3801,41 @@ opens the author's user DB once per frontier move (fine at dev scale; the memo i
 answer exists if it thrashes); the endpoint has no paging (the memo collapses per author, so
 the page is the social circle); and the seen watermark is all-or-nothing until a kind needs
 per-row granularity.
+
+## 2026-08-09 — the mint learns not to shout in an echo chamber
+
+Curtis noticed `just test-data` had slowed and brought a before/after: 62s on two nodes, 160s
+on three. The comparison had a confound (2 vs 3 nodes, 6 vs 9 personas, every persona on
+every node - a bigger mesh does more sync per action regardless), so the answer was a
+controlled A/B: a git worktree at the pre-rung commit with its own path-derived port band,
+three fresh scratch nodes per leg, same seed, same machine. Verdict: pre-rung 144s, rung
+**201s** - the rung really did cost ~40% on this workload - and the mechanism was sitting in
+`chain_heads`: **9 personas had published 315 statements across 19 device keys**. The
+sibling-mint race, live: a dial syncs to a persona's other nodes ahead of the authoring
+node's statement, each sibling's post-ingest reconcile sees desired ≠ published and honestly
+mints a duplicate - one consent flip became up to three statements, each an fsync and an
+eager push that triggered ingest and folds on two more nodes. The rung's own HISTORY entry
+had called racing duplicates "harmless"; harmless to CORRECTNESS was true, and the wrong
+question.
+
+Two fixes, neither touching convergence:
+
+- **The post-ingest path stopped minting** (`subscriptions::Minting`, `Allowed` vs
+  `MemoOnly`): publication needs no sibling-speed reaction - the authoring node mints on its
+  own write, the statement rides the same sync as the dial, and the backstop sweep still
+  converges the one real gap (an authoring device that dies between the dial and the mint).
+  The routing-memo work on ingest is unchanged; only the pen is withheld.
+- **The notification fold gained a cheap gate** (`frontier::has_service_chain`): one node.db
+  probe on the chain_heads PK answers "this author has published no edges" before paying for
+  an encrypted user-database open - the hook fires on every public frontier move, and most
+  authors will never publish an edge toward anyone you host.
+
+Re-run, same seed: **151s**, and the chains say why - 9 publishing keys for 9 personas
+(exactly one each, was 19), 302 statements (all legitimate re-publications, zero duplicates),
+notification rows unchanged (48/43/48 vs 48/44/48). The remaining ~7s over the pre-rung
+baseline is the feature's honest price: ~300 real statements minted, synced, and folded.
+
+Gates: full `just ci` green. The lesson worth the ink: "idempotent under races" and "cheap
+under races" are different claims, and a mesh where every persona lives on every node is a
+race generator - measure the write amplification of any reconcile that can run on more than
+one node per fact.

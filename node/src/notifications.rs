@@ -45,6 +45,18 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
 }
 
 async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
+    // The cheap gate first: most authors have published no edges, and this hook fires on
+    // every public frontier move - so ask the chain_heads memo (one node.db probe) before
+    // paying for a user-database open.
+    if !crate::net::frontier::has_service_chain(
+        &state.node_db,
+        author_root,
+        ringtome_proto::registry::service::FOLLOWS_PUBLIC,
+    )
+    .await?
+    {
+        return Ok(());
+    }
     // One database open, the fold edge's allowance (the same shape as fanout::journal_for).
     let Some(db) = state
         .user_dbs

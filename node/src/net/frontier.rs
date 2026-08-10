@@ -86,6 +86,22 @@ pub async fn note_head(
     Ok(())
 }
 
+/// Does this persona have ANY chain on the given service, per the memo? A node.db probe on
+/// the chain_heads primary key - what lets a fold hook that fires on every frontier move
+/// answer "nothing to fold here" without opening the author's encrypted database
+/// (notifications::refresh_from is the consumer; measured 2026-08-09 beside the minting
+/// amplifier).
+pub async fn has_service_chain(node_db: &Db, root_hex: &str, service: u32) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM chain_heads WHERE root_pubkey = ?1 AND service = ?2 LIMIT 1",
+            (root_hex, service as i64),
+        )
+        .await
+        .context("probing for a service chain")?;
+    Ok(row.is_some())
+}
+
 /// Forget a chain the gate evicted - its rows are gone, so its tip is a lie.
 pub async fn forget_chain(
     node_db: &Db,

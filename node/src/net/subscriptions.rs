@@ -103,6 +103,24 @@ fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
     }
 }
 
+/// Whether this refresh pass may mint public-edge statements (publish::reconcile).
+///
+/// The split exists because minting on the post-INGEST path is an amplifier, measured
+/// 2026-08-09 (testdata, 3 nodes, seed 424242: 315 statements across 19 device keys for 9
+/// personas, +40% wall time): a dial can sync to a persona's sibling nodes ahead of the
+/// authoring node's statement, and each sibling's reconcile then honestly re-mints it - one
+/// consent flip became up to three statements, each an fsync and an eager push through the
+/// mesh. Publication needs no sibling-speed reaction: the authoring node mints on its own
+/// write, the statement rides the same sync as the dial, and the backstop sweep still
+/// converges the one real gap (an authoring device that died between the dial and the mint).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Minting {
+    /// A local write or the backstop sweep: reconcile publications.
+    Allowed,
+    /// The post-ingest hook: memo only - the statement is the authoring node's to mint.
+    MemoOnly,
+}
+
 /// Rebuild one persona's rows from their own ledger.
 ///
 /// A whole-persona rewrite rather than a delta - the alternative is tracking which ledger
@@ -111,7 +129,12 @@ fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
 /// pattern), and the removal half is the stamp sweep below, never a list. Rows for contacts
 /// whose last dial went back to nothing are deleted, because a subscription nobody holds
 /// must not keep routing.
-pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) -> Result<()> {
+pub async fn refresh(
+    state: &AppState,
+    root_hex: &str,
+    account_id: &uuid::Uuid,
+    minting: Minting,
+) -> Result<()> {
     let store = crate::record::store::open(state, account_id, root_hex)
         .await
         .map_err(|e| anyhow::anyhow!("opening {root_hex} to read its ledger: {e}"))?;
@@ -224,13 +247,16 @@ pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) 
     // Publication rides the same pass: this is the one place the whole ledger is read with the
     // store open, so consent flips and dial turns mint their public-edge statements here
     // (publish.rs). Locally-authored statements never take the sync gate, so the notification
-    // fold is rung by hand for the same-node-subject case.
-    match crate::publish::reconcile(&store, &contacts).await {
-        Ok(changed) if !changed.is_empty() => {
-            crate::notifications::refresh_from(state, root_hex).await;
+    // fold is rung by hand for the same-node-subject case. Post-ingest passes are memo-only -
+    // see `Minting` for the measured reason.
+    if minting == Minting::Allowed {
+        match crate::publish::reconcile(&store, &contacts).await {
+            Ok(changed) if !changed.is_empty() => {
+                crate::notifications::refresh_from(state, root_hex).await;
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!(root = %root_hex, error = ?e, "public-edge reconcile failed"),
         }
-        Ok(_) => {}
-        Err(e) => tracing::warn!(root = %root_hex, error = ?e, "public-edge reconcile failed"),
     }
     Ok(())
 }
@@ -312,7 +338,7 @@ pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
         } else if let Some(mt) = state.user_dbs.db_mtime_ms(&root) {
             state.sweep_marks.record("subscriptions", &root, mt);
         }
-        if let Err(e) = refresh(&state, &root, &account).await {
+        if let Err(e) = refresh(&state, &root, &account, Minting::Allowed).await {
             tracing::warn!(root = %root, error = ?e, "subscription refresh failed");
         }
     }
@@ -333,7 +359,7 @@ pub async fn refresh_root(state: &AppState, root_hex: &str) {
         if let Some(mt) = state.user_dbs.db_mtime_ms(&root) {
             state.sweep_marks.record("subscriptions", &root, mt);
         }
-        if let Err(e) = refresh(state, &root, &account).await {
+        if let Err(e) = refresh(state, &root, &account, Minting::MemoOnly).await {
             tracing::debug!(root = %root, error = ?e, "post-ingest subscription refresh failed");
         }
     }
