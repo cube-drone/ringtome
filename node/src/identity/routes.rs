@@ -45,6 +45,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/peers", get(peers_handler))
         .route("/api/identity/{root}/docs/{doc_id}/publish", post(publish_handler))
         .route(
+            "/api/identity/{root}/rebroadcasts",
+            get(rebroadcasts_handler).post(rebroadcast_handler),
+        )
+        .route(
             "/api/identity/{root}/avatar",
             post(set_avatar_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
         )
@@ -895,6 +899,86 @@ async fn publish_handler(
         )
             .into_response()),
     }
+}
+
+#[derive(serde::Deserialize)]
+struct RebroadcastRequest {
+    /// Root pubkey of the document's author, hex. Never the sharer - that is `{root}`.
+    author: String,
+    /// Which document of theirs, hex (16 bytes).
+    doc_id: String,
+    /// The version being endorsed, hex (32 bytes). Omit to WITHDRAW a share.
+    #[serde(default)]
+    version: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct RebroadcastItem {
+    author: String,
+    doc_id: String,
+    /// Absent on a withdrawn share, which is why the list can be read as "what I share now".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version_seen: Option<String>,
+    shared_at_ms: i64,
+}
+
+/// POST `/api/identity/{root}/rebroadcasts` - share one of someone else's documents, or
+/// withdraw a share by omitting `version`.
+///
+/// The pointer is all this writes. Pinning the author's replica so this node can actually SERVE
+/// what it points at is the other half of the feature and is not here yet - so today a share is
+/// a durable, syncing statement that readers cannot yet resolve to content unless they hold the
+/// author's chain themselves.
+async fn rebroadcast_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<RebroadcastRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let author = hex_fixed::<32>(&req.author, "author root")?;
+    let doc_id = hex_fixed::<16>(&req.doc_id, "doc id")?;
+    let version = match req.version.as_deref() {
+        Some(v) => Some(hex_fixed::<32>(v, "version hash")?),
+        None => None,
+    };
+    if author == hex_fixed::<32>(&root, "root")? {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.rebroadcast-is-for-other-peoples-documents",
+            "a persona rebroadcasts other people's documents; publish your own"
+        )));
+    }
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let entry = data.rebroadcasts().share(&author, &doc_id, version).await?;
+    Ok(Json(serde_json::json!({
+        "entry_hash": hex::encode(entry.hash()),
+        "retracted": version.is_none(),
+    })))
+}
+
+/// GET `/api/identity/{root}/rebroadcasts` - what this persona currently shares.
+///
+/// Withdrawn pointers are filtered here rather than returned with a flag: the fold keeps them as
+/// LWW tombstones because it must, and that is a storage concern no reader should inherit.
+async fn rebroadcasts_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let items: Vec<RebroadcastItem> = data
+        .rebroadcasts()
+        .all()
+        .await?
+        .into_iter()
+        .filter(|r| !r.is_retracted())
+        .map(|r| RebroadcastItem {
+            author: r.author_root,
+            doc_id: hex::encode(r.doc_id),
+            version_seen: r.version_seen.map(hex::encode),
+            shared_at_ms: r.received_at_ms,
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items })))
 }
 
 #[derive(serde::Serialize)]

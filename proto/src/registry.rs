@@ -41,6 +41,17 @@ pub mod service {
     /// The inbox, stranger tier: notices from senders with no edge to the recipient. Bounded,
     /// prunable, and the only tier a flood can ever evict from.
     pub const INBOX_STRANGER: u32 = 9;
+    /// Rebroadcasts: signed pointers at other people's documents (PROJECT_PLAN, Rebroadcast:
+    /// Pointer Plus Pinned Replica), LWW per `(author, doc_id)`.
+    ///
+    /// **Its own chain rather than an entry type on `posts`**, for two reasons that both bite.
+    /// A view watermark is per `(author, service)`, so two folds sharing a service fight over
+    /// one cursor. And the separation is the *feature*: a reader's rebroadcast band is a
+    /// different dial from their interest band, so "I want your recommendations but not your
+    /// musings" has to be expressible - and with two chains it eventually becomes expressible
+    /// at the sync layer too, where the posts are never fetched at all rather than fetched and
+    /// hidden.
+    pub const REBROADCASTS: u32 = 10;
     /// Private facts *about* documents (PROJECT_PLAN, Annotations): per-doc human assertions
     /// (`description`, `artist`, ...) as LWW registers, tags as LWW set-elements, everything
     /// about one document grouped in its `annot:<root>/<doc_id>` collection. Its own chain,
@@ -60,6 +71,7 @@ pub mod service {
             FOLLOWS_PUBLIC => "follows-public",
             INBOX_TRUSTED => "inbox-trusted",
             INBOX_STRANGER => "inbox-stranger",
+            REBROADCASTS => "rebroadcasts",
             GENERAL_PRIVATE => "general-private",
             DOCUMENTS_PRIVATE => "documents-private",
             DOC_META_PRIVATE => "doc-meta-private",
@@ -96,6 +108,10 @@ pub mod entry_type {
     /// [`crate::deliver::SignedEnvelope`] **verbatim** - so the recipient's other nodes verify
     /// the sender themselves instead of trusting whichever node answered the door.
     pub const INBOX_NOTICE: u32 = 9;
+    /// A signed pointer at someone else's document ([`Rebroadcast`]) - the durable half of a
+    /// share. The content itself is never copied here; the rebroadcaster's node pins a replica
+    /// of the author's own signed entry and body instead.
+    pub const REBROADCAST: u32 = 10;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -106,6 +122,7 @@ pub mod entry_type {
             KEY_EPOCH => "key-epoch",
             PRIVATE_RECORD => "private-record",
             DOC_HEADER => "doc-header",
+            REBROADCAST => "rebroadcast",
             PUBLIC_EDGE => "public-edge",
             INBOX_NOTICE => "inbox-notice",
             _ => "unknown-type",
@@ -896,9 +913,125 @@ impl PublicEdge {
     }
 }
 
+/// Payload of a `rebroadcast` entry: a signed pointer at someone else's document
+/// (PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica). **The content is never here.** The
+/// rebroadcaster's node pins a replica of the author's own signed entry and body, exact bytes,
+/// signature intact - so the original stays self-authenticating, no hop can launder provenance,
+/// and the author's later retraction still reaches every copy.
+///
+/// LWW per `(author, doc_id)`: re-sharing a document you already shared updates the pointer
+/// rather than stacking another one, and a pointer with **no version is the retraction** - the
+/// same shape as [`PublicEdge`], for the same reason (LWW needs a write; silence cannot un-say).
+///
+/// `version` is the version hash the rebroadcaster **saw when they shared**. Readers are shown
+/// the author's *current* head, because edits belong to the author - but recording what was
+/// endorsed is what lets a reader be told "edited since rebroadcast", which is the whole answer
+/// to the rug-pull (share something benign, author rewrites it into something vile, your
+/// endorsement now fronts words you never read).
+///
+/// Encoding: integer-keyed map `{0: bstr(32) author, 1: bstr(16) doc_id, 2?: bstr(32) version}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rebroadcast {
+    /// Root pubkey of the document's author - never the rebroadcaster, who is the entry's own
+    /// chain author.
+    pub author: [u8; 32],
+    /// Which document of theirs.
+    pub doc_id: [u8; 16],
+    /// The version hash seen at the moment of sharing. `None` retracts.
+    pub version: Option<[u8; 32]>,
+}
+
+impl Rebroadcast {
+    /// Is this the retraction rather than a share?
+    pub fn is_retraction(&self) -> bool {
+        self.version.is_none()
+    }
+
+    pub fn encode(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.map(2 + u64::from(self.version.is_some()));
+        w.uint(0);
+        w.bytes(&self.author);
+        w.uint(1);
+        w.bytes(&self.doc_id);
+        if let Some(version) = &self.version {
+            w.uint(2);
+            w.bytes(version);
+        }
+        w.into_bytes()
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let mut map = r.int_map()?;
+        let mut author: Option<[u8; 32]> = None;
+        let mut doc_id: Option<[u8; 16]> = None;
+        let mut version: Option<[u8; 32]> = None;
+        while let Some(key) = map.next_key()? {
+            match key {
+                0 => author = Some(map.bytes_fixed::<32>()?),
+                1 => doc_id = Some(map.bytes_fixed::<16>()?),
+                2 => version = Some(map.bytes_fixed::<32>()?),
+                _ => map.skip_value()?,
+            }
+        }
+        r.finish()?;
+        Ok(Self {
+            author: author.ok_or(ProtoError::BadEntry("rebroadcast missing author"))?,
+            doc_id: doc_id.ok_or(ProtoError::BadEntry("rebroadcast missing doc id"))?,
+            version,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rebroadcast_round_trips_and_retracts() {
+        let share = Rebroadcast {
+            author: [7u8; 32],
+            doc_id: [9u8; 16],
+            version: Some([11u8; 32]),
+        };
+        assert_eq!(Rebroadcast::decode(&share.encode()).unwrap(), share);
+        assert!(!share.is_retraction());
+
+        let withdrawn = Rebroadcast {
+            version: None,
+            ..share
+        };
+        assert_eq!(Rebroadcast::decode(&withdrawn.encode()).unwrap(), withdrawn);
+        assert!(withdrawn.is_retraction());
+    }
+
+    /// The pointer names the ORIGINAL author, and the entry's chain names the rebroadcaster.
+    /// Nothing in the payload can claim authorship of the content - which is what keeps a
+    /// rebroadcast from being a copy wearing a citation.
+    #[test]
+    fn a_rebroadcast_cannot_claim_the_content() {
+        let bytes = Rebroadcast {
+            author: [1u8; 32],
+            doc_id: [2u8; 16],
+            version: Some([3u8; 32]),
+        }
+        .encode();
+        // Every field is a reference; there is no body, title, or text slot to smuggle one in.
+        assert!(bytes.len() < 128, "a pointer is small by construction");
+    }
+
+    #[test]
+    fn a_rebroadcast_missing_its_subject_is_rejected() {
+        let mut w = Writer::new();
+        w.map(1);
+        w.uint(0);
+        w.bytes(&[4u8; 32]);
+        assert!(
+            Rebroadcast::decode(&w.into_bytes()).is_err(),
+            "a pointer at no document is not a pointer"
+        );
+    }
 
     #[test]
     fn public_edge_round_trips() {

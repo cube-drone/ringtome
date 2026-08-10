@@ -307,21 +307,40 @@ pub async fn follows(
     Ok(row.is_some())
 }
 
-/// Every followed foreign persona, with who follows it and how eagerly - the follow-refresh
-/// sweep's worklist (idface::refresh_followed_pass). Eagerness > 0 is the feed criterion,
-/// same as followers_of: the dial's bottom stop means "don't show", and it also means
-/// "don't spend wake-up syncs on them".
+/// Every foreign persona this node SYNCS, with who wants it and how eagerly - the
+/// follow-refresh sweep's worklist (idface::refresh_followed_pass).
+///
+/// **Two dials open this door, not one** (2026-08-10). Interest means "I want your posts";
+/// rebroadcast interest means "I want the things you share". Either is a reason to hold your
+/// chains, and rebroadcast-only is a legitimate relationship - "I don't care what you think,
+/// but you find good links" is a real way people follow people. A reader with only a
+/// rebroadcast band still needs your chains synced, so the SYNC criterion is the union.
+///
+/// The eagerness returned is the stronger of the two, because it is a scheduling weight ("how
+/// often do we wake for them") and the answer to that is however badly this node wants either
+/// stream.
+///
+/// What the two dials do NOT share is the **feed** decision. `followers_of` stays keyed on
+/// interest alone, and journaling shared documents will get its own worklist keyed on
+/// rebroadcast alone - so a reader with only a rebroadcast band receives the shares and not the
+/// posts. Deciding at journaling time rather than at render time is the same rule
+/// `excise_unfollowed` enforces from the other end ("the feed is the reader's room", and "don't
+/// show" applies retroactively): a row nobody will ever be shown is never written, and there is
+/// no filter to forget at one of the read sites.
 pub async fn followed_foreign(node_db: &crate::db::Db) -> Result<Vec<(String, String, i64)>> {
     let rows: Vec<(String, String, i64)> = node_db
         .fetch_all(
-            "SELECT foreign_root, local_root, eagerness FROM subscriptions
-             WHERE eagerness IS NOT NULL AND eagerness > 0",
+            "SELECT foreign_root, local_root, MAX(COALESCE(eagerness, 0), COALESCE(rebroadcast, 0))
+             FROM subscriptions
+             WHERE (eagerness IS NOT NULL AND eagerness > 0)
+                OR (rebroadcast IS NOT NULL AND rebroadcast > 0)",
             (),
         )
         .await
-        .context("listing followed foreign personas")?;
+        .context("listing synced foreign personas")?;
     Ok(rows)
 }
+
 
 /// One pass. `who` is the identity a write nudge named - a contact dial is a private-chain
 /// write like any other, so turning one wakes this with that persona's name on it. `None` (a

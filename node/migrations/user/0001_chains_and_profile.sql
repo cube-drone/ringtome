@@ -191,6 +191,25 @@ CREATE TABLE published_edges (
     PRIMARY KEY (subject_root)
 );
 
+-- Rebroadcasts this persona has published: signed pointers at other people's documents,
+-- folded from their own rebroadcast chains (imaol::catch_up_rebroadcasts - the fold writes the
+-- memo, reads never fold). PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica.
+--
+-- LWW per (author_root, doc_id). A row with version_seen NULL is a folded RETRACTION, kept as
+-- the tombstone that stops a resurrected older pointer from winning - the published_edges shape
+-- exactly, for the same reason. The CONTENT is not here and never will be: this table holds
+-- references, and the author's own entry and body live where they always did.
+CREATE TABLE rebroadcasts (
+    author_root    TEXT    NOT NULL,  -- the ORIGINAL author, never the rebroadcaster
+    doc_id         BLOB    NOT NULL,
+    version_seen   BLOB,              -- the version endorsed; NULL folds a retraction
+    timestamp_ms   INTEGER NOT NULL,  -- LWW stamp of the winning pointer
+    seq            INTEGER NOT NULL,
+    entry_hash     BLOB    NOT NULL,
+    received_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (author_root, doc_id)
+);
+
 -- The inbox: notices delivered by strangers, folded from the two inbox tier chains
 -- (PROJECT_PLAN, Arrival and Attention - the DELIVERED path; the derived path is node.db's
 -- `notifications` and never touches this).

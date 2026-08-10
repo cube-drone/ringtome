@@ -70,6 +70,11 @@ pub fn service_allows_suffix(svc: u32) -> bool {
     svc == service::INBOX_TRUSTED || svc == service::INBOX_STRANGER
 }
 
+// `service::REBROADCASTS` is deliberately in NEITHER list above: it is public (a rebroadcast is
+// a public act - the whole point is that other people see what you shared) and it is whole, not
+// suffixed (the pointers are small, and a reader who holds only the tail of your shares would
+// silently mis-fold a retraction whose original share fell off the front).
+
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer
 /// has proven membership.
 ///

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 420 phrases across 41 files.
+// 421 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -397,6 +397,7 @@ export default {
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
+    'identity.routes.rebroadcast-is-for-other-peoples-documents': "a persona rebroadcasts other people's documents; publish your own",
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',

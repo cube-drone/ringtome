@@ -242,6 +242,34 @@ pub async fn publish_public_edge(
     .await
 }
 
+/// Share (or withdraw) one document of someone else's: a signed pointer on this persona's own
+/// rebroadcast chain (PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica).
+///
+/// `version` is the head the sharer saw; `None` withdraws. Nothing about the document's content
+/// is copied - and there is nowhere here to put it if a caller wanted to, which is deliberate.
+pub async fn publish_rebroadcast(
+    db: &Db,
+    key: &SigningKey,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+    version: Option<[u8; 32]>,
+) -> Result<SignedEntry, AppError> {
+    let payload = ringtome_proto::Rebroadcast {
+        author: *author,
+        doc_id: *doc_id,
+        version,
+    }
+    .encode();
+    append(
+        db,
+        key,
+        service::REBROADCASTS,
+        entry_type::REBROADCAST,
+        Payload::Inline(payload),
+    )
+    .await
+}
+
 /// One subject's published relationship, as folded from the chains. Empty (both bands absent)
 /// means the newest statement was a retraction - readers treat it as "nothing published".
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -378,6 +406,134 @@ async fn catch_up_published_edges(db: &Db) -> Result<(), AppError> {
     }
     for (author_hex, seq) in advance {
         advance_watermark(db, &author_hex, service::FOLLOWS_PUBLIC, seq).await?;
+    }
+    Ok(())
+}
+
+/// One rebroadcast as a reader sees it: a pointer, plus what it endorsed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RebroadcastRow {
+    /// The ORIGINAL author's root, hex. Never the rebroadcaster - that is the chain's author.
+    pub author_root: String,
+    pub doc_id: [u8; 16],
+    /// The version endorsed at share time. `None` is a folded retraction: the pointer was
+    /// withdrawn, and the row survives only as the LWW tombstone.
+    pub version_seen: Option<[u8; 32]>,
+    pub received_at_ms: i64,
+}
+
+impl RebroadcastRow {
+    /// A withdrawn share. Readers show nothing for these; the row exists so a resurrected older
+    /// pointer cannot win the LWW comparison.
+    pub fn is_retracted(&self) -> bool {
+        self.version_seen.is_none()
+    }
+}
+
+/// Everything this persona has rebroadcast: the latest pointer per `(author, doc_id)` across
+/// every key's rebroadcast chain, LWW on the standard stamp.
+///
+/// Memo-backed from birth rather than after the fact - the full-chain audit's rule applied
+/// before it could be broken, since a prolific rebroadcaster's chain grows without bound and
+/// this read sits behind the feed.
+pub async fn rebroadcasts(db: &Db) -> Result<Vec<RebroadcastRow>, AppError> {
+    catch_up_rebroadcasts(db).await?;
+    type Row = (String, Vec<u8>, Option<Vec<u8>>, i64);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT author_root, doc_id, version_seen, received_at_ms FROM rebroadcasts
+             ORDER BY received_at_ms DESC",
+            (),
+        )
+        .await
+        .context("reading the rebroadcasts view")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(author_root, doc_id, version_seen, received_at_ms)| {
+            Some(RebroadcastRow {
+                author_root,
+                doc_id: doc_id.try_into().ok()?,
+                version_seen: match version_seen {
+                    None => None,
+                    Some(v) => Some(v.try_into().ok()?),
+                },
+                received_at_ms,
+            })
+        })
+        .collect())
+}
+
+/// Fold new `rebroadcast` entries into the view. Keyless (the chain is public), so garbage is
+/// skipped and nothing ever stalls a watermark - the `catch_up_published_edges` discipline, for
+/// the same reason: chain admission is signatures and hashes only, and a payload this fold
+/// cannot read must never wedge it.
+///
+/// A retraction folds to a row with `version_seen` NULL rather than a delete, so a resurrected
+/// older pointer cannot win by arriving late.
+async fn catch_up_rebroadcasts(db: &Db) -> Result<(), AppError> {
+    type Row = (String, Vec<u8>, i64, i64);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT e.author_pubkey, e.bytes, e.received_at_ms, e.seq
+             FROM entries e
+             LEFT JOIN view_watermarks w
+               ON w.author_pubkey = e.author_pubkey AND w.service = e.service
+             WHERE e.service = ?1 AND e.entry_type = ?2
+               AND e.seq > COALESCE(w.folded_seq, -1)
+             ORDER BY e.author_pubkey, e.seq",
+            (
+                i64::from(service::REBROADCASTS),
+                i64::from(entry_type::REBROADCAST),
+            ),
+        )
+        .await
+        .context("reading rebroadcast entries past the watermark")
+        .map_err(AppError::Internal)?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let mut advance: BTreeMap<String, u64> = BTreeMap::new();
+    for (author_hex, bytes, received_at_ms, seq) in rows {
+        advance.insert(author_hex, seq as u64);
+        let Ok(signed) = SignedEntry::decode(&bytes) else {
+            continue;
+        };
+        let Payload::Inline(payload) = &signed.entry().payload else {
+            continue;
+        };
+        let Ok(pointer) = ringtome_proto::Rebroadcast::decode(payload) else {
+            continue;
+        };
+        db.execute(
+            "INSERT INTO rebroadcasts
+               (author_root, doc_id, version_seen, timestamp_ms, seq, entry_hash, received_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(author_root, doc_id) DO UPDATE SET
+               version_seen = excluded.version_seen,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash,
+               received_at_ms = excluded.received_at_ms
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (rebroadcasts.timestamp_ms, rebroadcasts.seq, rebroadcasts.entry_hash)",
+            (
+                hex::encode(pointer.author),
+                pointer.doc_id.as_slice(),
+                pointer.version.as_ref().map(|v| v.as_slice()),
+                signed.entry().timestamp_ms,
+                signed.entry().seq as i64,
+                signed.hash().as_slice(),
+                received_at_ms,
+            ),
+        )
+        .await
+        .context("folding a rebroadcast")
+        .map_err(AppError::Internal)?;
+    }
+    for (author_hex, seq) in advance {
+        advance_watermark(db, &author_hex, service::REBROADCASTS, seq).await?;
     }
     Ok(())
 }
@@ -546,6 +702,7 @@ fn every_service() -> std::collections::BTreeSet<u32> {
         service::DOC_META_PRIVATE,
         service::INBOX_TRUSTED,
         service::INBOX_STRANGER,
+        service::REBROADCASTS,
     ]
     .into_iter()
     .collect()
@@ -608,6 +765,13 @@ async fn drop_views_fed_by(
         crate::inbox::clear_view(db).await?;
         dropped.insert(service::INBOX_TRUSTED);
         dropped.insert(service::INBOX_STRANGER);
+    }
+    if touches(service::REBROADCASTS) {
+        db.execute("DELETE FROM rebroadcasts", ())
+            .await
+            .context("clearing the rebroadcasts view")
+            .map_err(AppError::Internal)?;
+        dropped.insert(service::REBROADCASTS);
     }
 
     // Exactly the lanes whose rows were just destroyed - so each refolds, and lanes nobody
@@ -1617,6 +1781,67 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(next.entry().seq, 3, "no re-genesis, ever");
+    }
+
+    #[tokio::test]
+    async fn rebroadcasts_fold_latest_per_document_and_keep_the_tombstone() {
+        let db = test_db().await;
+        let key = test_key();
+        let alice = [5u8; 32];
+        let doc = [1u8; 16];
+        let other = [2u8; 16];
+
+        publish_rebroadcast(&db, &key, &alice, &doc, Some([9u8; 32]))
+            .await
+            .unwrap();
+        publish_rebroadcast(&db, &key, &alice, &other, Some([8u8; 32]))
+            .await
+            .unwrap();
+        // The same document again, endorsing a newer version: an update, never a second row.
+        publish_rebroadcast(&db, &key, &alice, &doc, Some([7u8; 32]))
+            .await
+            .unwrap();
+
+        let rows = rebroadcasts(&db).await.unwrap();
+        assert_eq!(rows.len(), 2, "LWW per (author, doc_id) - shares do not stack");
+        let doc_row = rows.iter().find(|r| r.doc_id == doc).unwrap();
+        assert_eq!(
+            doc_row.version_seen,
+            Some([7u8; 32]),
+            "the newest pointer is the share"
+        );
+        assert_eq!(doc_row.author_root, hex::encode(alice));
+        assert!(!doc_row.is_retracted());
+
+        // Withdrawing keeps the row as a tombstone: a delete would let a resurrected older
+        // pointer win the next time the fold saw it.
+        publish_rebroadcast(&db, &key, &alice, &doc, None)
+            .await
+            .unwrap();
+        let rows = rebroadcasts(&db).await.unwrap();
+        let doc_row = rows.iter().find(|r| r.doc_id == doc).unwrap();
+        assert!(doc_row.is_retracted(), "a withdrawn share renders as nothing");
+        assert!(
+            rows.iter().any(|r| r.doc_id == other && !r.is_retracted()),
+            "withdrawing one share does not touch another"
+        );
+    }
+
+    /// The property the whole design rests on: a rebroadcast entry carries no content. If a
+    /// pointer could ever grow a body, author control would end at the first share.
+    #[tokio::test]
+    async fn a_rebroadcast_entry_carries_no_content() {
+        let db = test_db().await;
+        let key = test_key();
+        let entry = publish_rebroadcast(&db, &key, &[5u8; 32], &[1u8; 16], Some([9u8; 32]))
+            .await
+            .unwrap();
+        assert!(
+            entry.bytes().len() < 400,
+            "a pointer entry is small by construction; {} bytes suggests something got copied \
+             into it",
+            entry.bytes().len()
+        );
     }
 
     #[tokio::test]

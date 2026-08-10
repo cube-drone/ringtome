@@ -179,6 +179,12 @@ impl Store {
         PublicEdges { store: self }
     }
 
+    /// What this persona has shared of other people's: pointers on the rebroadcast chain
+    /// (PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica).
+    pub fn rebroadcasts(&self) -> Rebroadcasts<'_> {
+        Rebroadcasts { store: self }
+    }
+
     /// Notices delivered by people this persona does not sync (`crate::inbox`).
     pub fn inbox(&self) -> Inbox<'_> {
         Inbox { store: self }
@@ -275,6 +281,37 @@ impl Profile<'_> {
 
 // ---------------------------------------------------------------------------------------------
 // LWW per subject, public: the published relationships (the follows-public chain).
+
+/// The rebroadcast door: pointers at other people's documents, never copies of them.
+pub struct Rebroadcasts<'s> {
+    store: &'s Store,
+}
+
+impl Rebroadcasts<'_> {
+    /// Share one document of `author`'s, endorsing the version at `version`. Passing `None`
+    /// withdraws a share - LWW per (author, doc_id), so this overwrites rather than stacks.
+    pub async fn share(
+        &self,
+        author: &[u8; 32],
+        doc_id: &[u8; 16],
+        version: Option<[u8; 32]>,
+    ) -> Result<SignedEntry, AppError> {
+        imaol::publish_rebroadcast(
+            &self.store.db,
+            &self.store.authorship.signer,
+            author,
+            doc_id,
+            version,
+        )
+        .await
+    }
+
+    /// Everything this persona currently shares, newest arrival first. Retracted pointers are
+    /// included as tombstones - callers that render must skip `is_retracted`.
+    pub async fn all(&self) -> Result<Vec<imaol::RebroadcastRow>, AppError> {
+        imaol::rebroadcasts(&self.store.db).await
+    }
+}
 
 pub struct PublicEdges<'s> {
     store: &'s Store,
