@@ -14,6 +14,12 @@
 //! indistinguishable from holding nothing); the adoption protocol's spoken `ok:false` ack is
 //! the sanctioned pattern, and this follows it with a typed [`refusal`] code.
 //!
+//! **The exception is a block** (2026-08-10). Words beat resets because a refusal tells the
+//! sender about *themselves* - too little standing, too much traffic - which they are entitled
+//! to know. A block is a fact about the *recipient*, and answering honestly would make the door
+//! an oracle for it. So a blocked sender is told "accepted" and retries nothing, which is the
+//! same silence they would get from a node that is merely offline. See [`wire_answer`].
+//!
 //! ## One door
 //!
 //! The sender's job is to reach **one** node of the recipient's, ever. Fan-out across the
@@ -131,18 +137,28 @@ async fn judge(state: &AppState, bytes: &[u8]) -> DeliverMessage {
     };
 
     match crate::inbox::accept(state, &recipient, &signed, &claim).await {
-        // Discarding is a success: the recipient already pulls this sender, so the notice was
-        // redundant and the sender has nothing to retry.
-        Ok(crate::inbox::Verdict::Transcribed | crate::inbox::Verdict::AlreadyPulled) => {
-            DeliverMessage::Accepted
-        }
-        Ok(crate::inbox::Verdict::Refused) => DeliverMessage::Refused(refusal::GATE),
+        Ok(verdict) => wire_answer(verdict),
         Err(e) => {
             // Our fault, not theirs. Say "gate" rather than leaking an internal failure, and
             // log the reason where an operator can see it.
             tracing::warn!(error = ?e, recipient = %recipient, "transcription failed");
             DeliverMessage::Refused(refusal::GATE)
         }
+    }
+}
+
+/// What the sender is told, given what the gate actually did.
+///
+/// **Every verdict answers "accepted", and that is the point.** Two of the three did not
+/// transcribe, but neither non-transcription may be visible: `AlreadyPulled` is genuinely done
+/// (a truthful refusal would provoke a pointless retry for a notice the pull path already
+/// carries), and `Blocked` must be indistinguishable from acceptance or the answer becomes a
+/// block oracle - one envelope, one probe, and the sender knows. See [`crate::inbox::Verdict`]
+/// for why the coarse `refusal::GATE` code stopped covering for it.
+fn wire_answer(verdict: crate::inbox::Verdict) -> DeliverMessage {
+    use crate::inbox::Verdict;
+    match verdict {
+        Verdict::Transcribed | Verdict::AlreadyPulled | Verdict::Blocked => DeliverMessage::Accepted,
     }
 }
 
@@ -217,5 +233,37 @@ async fn knock(state: &AppState, endpoint_id: &str, envelope: &[u8]) -> Result<O
         Some(DeliverMessage::Accepted) => Ok(Outcome::Accepted),
         Some(DeliverMessage::Refused(reason)) => Ok(Outcome::Refused(reason)),
         other => Err(anyhow!("unexpected answer to a delivery: {other:?}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::inbox::Verdict;
+
+    /// The anti-oracle invariant, stated as an equality rather than a mapping: whatever the
+    /// gate decided, the sender must not be able to tell the cases apart. Written this way on
+    /// purpose - asserting "Blocked maps to Accepted" would only restate the match arm, while
+    /// this fails for any future verdict that leaks, including ones nobody has added yet.
+    #[test]
+    fn the_gate_never_tells_a_sender_which_verdict_they_got() {
+        let transcribed = wire_answer(Verdict::Transcribed);
+        for verdict in [Verdict::AlreadyPulled, Verdict::Blocked] {
+            assert_eq!(
+                wire_answer(verdict),
+                transcribed,
+                "{verdict:?} is distinguishable from acceptance on the wire"
+            );
+        }
+    }
+
+    /// A block must not be visible even by its retry shape: `Accepted` means done, so the
+    /// sender stops. Anything that maps to `Refused` would also stop them, but tells them why.
+    #[test]
+    fn a_blocked_sender_is_told_the_word_accepted() {
+        assert!(matches!(
+            wire_answer(Verdict::Blocked),
+            DeliverMessage::Accepted
+        ));
     }
 }

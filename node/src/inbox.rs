@@ -81,17 +81,29 @@ impl Tier {
     }
 }
 
-/// What the gate did with an envelope. Note that **discarding is a success**: a notice from
-/// someone the recipient already syncs is redundant by the follow-edge rule, and the sender's
-/// job is done - telling them "refused" would be a lie that provokes a pointless retry.
+/// What the gate did with an envelope. **All three are answered "accepted" on the wire**, and
+/// the two that are not transcriptions are answered that way for different reasons: a notice
+/// from someone the recipient already syncs is redundant by the follow-edge rule, so the
+/// sender's job really is done; a notice from someone they blocked is dropped, and saying so
+/// would answer a question the sender is not entitled to ask.
+///
+/// There is no visible refusal left in the gate (2026-08-10). The coarse `refusal::GATE` code
+/// exists so that below-floor, muted and over-quota are indistinguishable - but the ring buffer
+/// retired the quota check, the pre-Trust classifier refuses nobody, and that left `blocked` as
+/// the code's only producer. A one-member ambiguity set is an oracle: send one envelope, read
+/// the answer, learn whether you are blocked. Below-floor refusal comes back when Trust ships,
+/// and *that* one is spoken aloud - it reports the sender's own standing, not a fact about the
+/// recipient.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
     /// Written to an inbox chain (or already there - transcription is idempotent).
     Transcribed,
     /// Correctly dropped: the recipient already pulls this sender's chains.
     AlreadyPulled,
-    /// The gate said no. Deliberately one verdict for blocked and over-quota alike.
-    Refused,
+    /// Dropped because the recipient blocked this sender. The one place the gate lies, and the
+    /// one place where doctrine's "words beat resets" costs more than it buys (PROJECT_PLAN,
+    /// The Inbound Gate: Blocks).
+    Blocked,
 }
 
 /// One notice, as a reader sees it.
@@ -129,8 +141,8 @@ const INTEREST: &str = "interest";
 ///    (pure CPU, no IO, and the caller has already applied the size cap at decode);
 /// 4. open the persona's credentials - which transcription needs anyway, so a passing notice
 ///    pays nothing extra and only a blocked sender wastes the open;
-/// 5. blocked? refuse;
-/// 6. classify the tier and, for a stranger who has no row yet, check the pool;
+/// 5. blocked? drop it - and answer "accepted" anyway ([`Verdict::Blocked`]);
+/// 6. classify the tier;
 /// 7. transcribe.
 pub async fn accept(
     state: &AppState,
@@ -169,7 +181,7 @@ pub async fn accept(
     // answers them together.
     let facts = contact_facts(&db, &keys, &sender_hex).await?;
     if facts_say_blocked(&facts) {
-        return Ok(Verdict::Refused);
+        return Ok(Verdict::Blocked);
     }
     let tier = classify(&facts);
 

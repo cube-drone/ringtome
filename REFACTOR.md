@@ -9,6 +9,26 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
+### The delivery door answers its own failures as the sender's (2026-08-10)
+
+`net::deliver::judge` maps a transcription `Err` - our keystore open failed, our database was
+busy - to `Refused(GATE)`, and the sender's outbox correctly retires a refusal forever. So a
+transient fault on the recipient's node silently destroys a notice that nobody refused. The
+right answer is the one that already exists for this: `Unreachable`, which is the only outcome
+the outbox retries. There is no wire word for it (the sender infers it from silence), so the
+fix is either to drop the connection without answering or to add a `Busy` message - the first
+is smaller and honest, the second is kinder to an operator reading logs.
+
+Left open rather than folded into the block-oracle fix (same file, same day) because it is a
+durability question, not a disclosure one, and it wants its own decision about the wire.
+
+**Residual on the same surface, deliberately unfixed: the door has a timing side channel.** A
+blocked sender is now told `Accepted`, but the blocked path returns after the epoch unseal
+while the accepted path also appends an entry and folds it - so a sender who times the answer
+can distinguish them. Much weaker than the one-bit oracle that was closed (it needs repeated
+probes and a quiet network) and not worth a constant-time door yet, but it is the reason the
+block-oracle fix is "no cheap signal" rather than "no signal".
+
 ### The idle-node CPU is still unexplained (2026-08-10)
 
 Three dev nodes, idle, 30-58% CPU each, for hours. This provoked the full-chain audit and

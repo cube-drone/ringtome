@@ -4191,3 +4191,43 @@ cause - the databases are 6 MB with a 909 KB largest file, and no `GROUP BY` at 
 costs a third of a core. The profile that named it was a wall-clock sampler, which cannot tell
 computing from waiting on a mutex. An empty node on the current binary idles at 0.3%, so the
 cost is per-persona and there is a floor to bisect from; REFACTOR carries it as open.
+
+## 2026-08-10 — the door stops confirming blocks
+
+A question about the inbox tiers ("when someone is blocked, they can't even post in the
+stranger tier?") turned up a property nobody meant to ship. Blocked was refused correctly, at
+check (5), before classification — a blocked sender has never been able to take a stranger slot.
+But the *answer* went back as `refusal::GATE`, and by 2026-08-10 that code had run out of
+company.
+
+`GATE` is coarse on purpose. Doctrine's line is that refusal leaks exactly one bit — "they are
+not accepting this from you" — with below-floor, muted and over-quota sharing one code, because
+distinguishing them turns a refusal into an oracle. The defence works while the set has
+members. It stopped having them: **the ring buffer deliberately retired the quota check** (a
+new notice always lands; the oldest stranger ages off the floor), and the pre-Trust classifier
+refuses nobody, so `blocked` was alone under the code. One envelope, one probe, and a sender
+knew. The two fixes that made the inbox better each removed one of the block's neighbours, and
+nothing in the code could notice.
+
+**A block is now answered `Accepted`.** `Verdict::Refused` became `Verdict::Blocked`, and every
+verdict the gate can reach maps to the same wire answer — the sender is told the same thing
+whether they were transcribed, dropped as already-pulled, or blocked. They retry nothing, which
+is what they would also do against a node that was merely offline.
+
+The doctrine took the amendment rather than an exception. *Words beat resets* is right because
+a refusal tells a sender about **themselves** — too little standing, too much traffic — which
+they can act on and are entitled to know. Whether you blocked them is a fact about **you**. The
+distinction pays for the one place in this system where a node answers falsely, and it buys the
+property the block was actually for: not "you cannot reach me", which invites evasion, but *no
+signal at all*. The visible refusals that arrive with Trust report the sender's own standing
+and stay spoken aloud.
+
+The cop is written as an equality, not a mapping: `wire_answer(Blocked) == wire_answer(
+Transcribed)`. Asserting "blocked maps to accepted" would only restate the match arm, and would
+still pass for a fourth verdict added later that leaks.
+
+Two stale comments went with it, both drift from the ring-buffer change: `accept`'s check-order
+list still described a pool check whose own body says, twelve lines down, that it deliberately
+does not do that, and `Verdict` still called itself "one verdict for blocked and over-quota
+alike" after over-quota stopped existing. Small, but they were the exact comments a reader would
+have trusted to conclude the oracle was covered.

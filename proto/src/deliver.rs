@@ -484,10 +484,18 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
 ///
 /// The gate's refusal is deliberately coarse. Doctrine (The Inbound Gate): refusal is visible
 /// to the sender and leaks exactly one bit - "they are not accepting this from you" - and says
-/// nothing about the floor's value or the graph behind it. So below-floor and muted share one
-/// code, on purpose: distinguishing them would turn a refusal into an oracle.
+/// nothing about the floor's value or the graph behind it. So every reason the gate might have
+/// shares one code, on purpose: distinguishing them would turn a refusal into an oracle.
+///
+/// **Coarseness was not enough for a block** (2026-08-10). Sharing a code only hides a reason
+/// while it has company, and the ring buffer retired the quota check while the floor is still
+/// the degenerate pre-Trust classifier - which left `blocked` alone under [`GATE`], where one
+/// probe would read it. A block is now answered [`super::DeliverMessage::Accepted`] instead, so
+/// it is invisible rather than merely unlabelled; the codes below carry only facts about the
+/// *sender* or about *this node*, never about the recipient's opinion of them.
 pub mod refusal {
-    /// The gate said no: below the floor, muted, or over quota - indistinguishable by design.
+    /// The gate said no - below the floor, over quota, or this node could not transcribe -
+    /// indistinguishable by design. Never a block: see the module note.
     pub const GATE: u32 = 0;
     /// The bytes were not a well-formed, correctly-signed envelope with checkable evidence.
     pub const MALFORMED: u32 = 1;
