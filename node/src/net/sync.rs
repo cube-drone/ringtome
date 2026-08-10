@@ -72,36 +72,32 @@ pub fn service_allows_suffix(svc: u32) -> bool {
 
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer
 /// has proven membership.
+///
+/// **Served from the chain-heads memo** (2026-08-10). This used to `GROUP BY` the whole entries
+/// table with a correlated subquery per group, on a table that grows with the identity's entire
+/// history - and it is one of the hottest reads in the node: both sides of every sync exchange,
+/// the live-cache stream stamp, and `resync::eager_root`, whose tick is one SECOND. Profiling an
+/// idle dev network put 399 of 400 samples inside exactly this query. The memo answers the same
+/// question by primary-key prefix, is fed by every writer at the moment it holds the fact, and
+/// is verified against the log once per persona per process at database open; `frontier::
+/// memo_chains` carries the full "lags but never leads" argument. The scan survives as the
+/// fallback for handles with no memo attached - bare test databases, and `node.db` itself.
 pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Frontier>> {
-    // The head's HASH rides along with its seq: a range says how far a chain goes, the anchor
-    // says which chain it is. The correlated subquery rather than a bare column beside MAX() -
-    // that shortcut is a SQLite dialect nicety, and this is protocol input.
-    let rows: Vec<(String, i64, i64, i64, Vec<u8>)> = db
-        .fetch_all(
-            "SELECT e.author_pubkey, e.service, MIN(e.seq), MAX(e.seq),
-                    (SELECT entry_hash FROM entries
-                      WHERE author_pubkey = e.author_pubkey AND service = e.service
-                      ORDER BY seq DESC LIMIT 1)
-             FROM entries e
-             GROUP BY e.author_pubkey, e.service",
-            (),
-        )
-        .await
-        .context("reading local frontiers")?;
+    let rows: Vec<(String, u32, u64, u64, [u8; 32])> = match (db.memo(), db.root()) {
+        (Some(memo), Some(root)) => crate::net::frontier::memo_chains(memo, root).await?,
+        _ => chain_ranges(db).await?,
+    };
 
     rows.into_iter()
-        .filter(|(_, svc, _, _, _)| include_private || !is_private_service(*svc as u32))
+        .filter(|(_, svc, _, _, _)| include_private || !is_private_service(*svc))
         .map(|(author_hex, svc, floor, head, head_hash)| {
             let author = pubkey::decode(&author_hex)
-                .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
-            let head_hash: [u8; 32] = head_hash
-                .try_into()
-                .map_err(|_| anyhow!("corrupt entry_hash at chain head"))?;
+                .ok_or_else(|| anyhow!("corrupt author pubkey in a chain record"))?;
             Ok(Frontier {
                 author,
-                service: svc as u32,
-                floor: floor as u64,
-                head: head as u64,
+                service: svc,
+                floor,
+                head,
                 head_hash,
             })
         })
@@ -2736,6 +2732,41 @@ mod tests {
             .map(|n| k_inbox.append(entry_type::INBOX_NOTICE, vec![0xcc, n]))
             .collect();
         (root_chain.pk(), authorize, entries)
+    }
+
+    #[tokio::test]
+    async fn memo_served_frontiers_match_the_scan_they_replaced() {
+        // The swap's whole correctness claim, pinned: what the memo puts on the wire is what
+        // the full-table scan would have said. Any drift between the two - a writer that
+        // forgets to note a head, an eviction that leaves a phantom row - shows up here.
+        let node_db = crate::db::test_node_db().await;
+        let (root_pk, authorize, entries) = inbox_scenario(4);
+        let root = hex::encode(root_pk);
+        let user_db = crate::db::test_user_db()
+            .await
+            .with_memo(std::sync::Arc::new(node_db.clone()))
+            .with_root(root.clone());
+        let raw: Vec<Vec<u8>> = [vec![authorize], entries]
+            .concat()
+            .iter()
+            .map(|e| e.bytes().to_vec())
+            .collect();
+        let outcome = ingest_batch(&user_db, root_pk, raw, true).await.unwrap();
+        assert_eq!(outcome.rejected, 0, "the fixture's own chains are admissible");
+
+        let scanned = chain_ranges(&user_db).await.unwrap();
+        let memoed = crate::net::frontier::memo_chains(&node_db, &root).await.unwrap();
+        let key = |v: &Vec<(String, u32, u64, u64, [u8; 32])>| {
+            let mut out = v.clone();
+            out.sort_by_key(|row| (row.0.clone(), row.1));
+            out
+        };
+        assert!(!memoed.is_empty(), "the memo learned about the ingested chains");
+        assert_eq!(
+            key(&memoed),
+            key(&scanned),
+            "the memo and the log agree on every chain, floor, head and hash"
+        );
     }
 
     #[tokio::test]

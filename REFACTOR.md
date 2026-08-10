@@ -9,21 +9,24 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
-### `sync::local_frontiers` is a full-table GROUP BY inside the one-second eager tick (2026-08-09)
+### The full-chain audit's remaining items (2026-08-10)
 
-Found while attributing idle dev-node CPU to the `published_edges` fold — which turned out to
-be the WRONG suspect. A `sample` of a busy dev node caught the actual burst: 399 of 400
-samples inside `resync::eager_pass → eager_root → local_frontiers → fetch_all`, meaning one
-`SELECT author_pubkey, service, MIN(seq), MAX(seq) … GROUP BY` over the whole entries table
-occupied the entire three-second window. That query runs per persona inside the eager-sync
-machinery, whose tick is one second — and on databases fattened by test-data runs, the scan
-takes longer than the tick that schedules it. The three idle dev nodes sitting at 23–34% CPU
-are (at least in the caught sample) this, not the edge fold.
+`sync::local_frontiers` is done (see HISTORY). The rest of the audit, in the order I would
+take them:
 
-Caveats, honestly: one sample, one node, the pre-checkpoint binary, testdata-sized databases.
-Attribute properly before building — but the shape is already suspicious on paper: frontiers
-are recomputed from the full log on an edge that fires constantly, while `chain_heads` (the
-node.db memo fed at every append and ingest) exists precisely to answer head questions without
-opening the log. Candidate fixes, in rising order of effort: serve `local_frontiers` from the
-memo (it must then be trusted for floors too, which retention already made reconcile-healed);
-or keep the scan but hoist it out of the per-peer path so one recompute serves a whole pass.
+1. **`documents::materialize` on the save path.** Reads every row of `doc_versions` — one per
+   doc-header entry ever written, across all documents — and threads every document's DAG in
+   memory, on `save_version` and `retitle`. Every save re-materializes your whole edit
+   history. Needs design thought, not a swap: the callers want a *document's* DAG, and
+   `doc_heads` memoizes only the resolved head.
+2. **`imaol::rebuild_views` is reachable from ingest** (`sync::ingest_batch`, when eviction
+   happened) — a peer can trigger a whole-log replay, decoded and re-validated, into memory.
+3. **`imaol::list_entries` is an unbounded HTTP response** (`/api/identity/{root}/entries`) —
+   wants the keyset paging `entries_page` already has.
+4. **`sync::missing_plan`'s `SELECT DISTINCT author_pubkey, service FROM entries`** — full
+   scan per sync exchange, answering a question `chain_heads` also holds.
+5. **`imaol::all_entry_bytes`** — whole log into memory for journal backfill at open; fine as
+   a one-time recovery path, worth streaming if journals get large.
+6. **`imaol::entries_of_type` is a footgun**: no watermark, no bound. Every caller today is an
+   identity chain (exempt), but it reads as general-purpose, and the next content-chain caller
+   gets a full replay for free.

@@ -164,15 +164,21 @@ pub async fn reconcile_from_entries(state: &AppState, root_hex: &str) -> Result<
         .held(root_hex)
         .await
         .with_context(|| format!("opening {root_hex} to reconcile its memo"))?;
+    reconcile_rows(&state.node_db, &db, root_hex).await
+}
+
+/// The reconciler's core, taking both databases rather than reaching for one - so the
+/// database-open path can run it before anyone reads the memo, without an `AppState` it does
+/// not have.
+pub async fn reconcile_rows(node_db: &Db, user_db: &Db, root_hex: &str) -> Result<()> {
     // Through the owner's door: `entries` belongs to imaol + the sync gate, so the range
     // read lives there (sync::chain_ranges) and this module keeps only its own table's SQL.
-    let rows = crate::net::sync::chain_ranges(&db).await?;
+    let rows = crate::net::sync::chain_ranges(user_db).await?;
     let now = now_ms();
     let mut keep: Vec<String> = Vec::new();
     for (author_hex, svc, floor, head, hash) in rows {
         keep.push(format!("'{author_hex}:{svc}'"));
-        state
-            .node_db
+        node_db
             .execute(
                 "INSERT INTO chain_heads
                    (root_pubkey, author_pubkey, service, floor_seq, head_seq, head_hash, updated_at_ms)
@@ -196,8 +202,7 @@ pub async fn reconcile_from_entries(state: &AppState, root_hex: &str) -> Result<
             .context("reconciling a chain head")?;
     }
     // Chains that vanished from entries (eviction, genesis cut) leave the memo too.
-    state
-        .node_db
+    node_db
         .execute(
             &format!(
                 "DELETE FROM chain_heads WHERE root_pubkey = ?1
@@ -209,6 +214,39 @@ pub async fn reconcile_from_entries(state: &AppState, root_hex: &str) -> Result<
         .await
         .context("clearing vanished chains from the memo")?;
     Ok(())
+}
+
+/// Every chain this persona holds, from the MEMO: `(author_hex, service, floor, head, hash)`.
+///
+/// This is what `sync::local_frontiers` puts on the wire, so the trust argument matters and is
+/// worth stating. The memo can lag but never lead: `note_head` runs *after* the row lands and
+/// is monotone on seq, so a memo head is always ≤ the stored head - and under-reporting is the
+/// safe direction (a peer re-offers what we already have and the gate deduplicates), where
+/// over-reporting would mean claiming history we lack and never being sent it again. The one
+/// way the memo could lead - a database that lost entries while node.db kept its rows - is
+/// closed by reconciling against the log once per persona per process, at database open
+/// (`db::UserDbManager::open`), before anything can read this.
+pub async fn memo_chains(
+    node_db: &Db,
+    root_hex: &str,
+) -> Result<Vec<(String, u32, u64, u64, [u8; 32])>> {
+    type Row = (String, i64, i64, i64, Vec<u8>);
+    let rows: Vec<Row> = node_db
+        .fetch_all(
+            "SELECT author_pubkey, service, floor_seq, head_seq, head_hash FROM chain_heads
+             WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("reading chain heads from the memo")?;
+    rows.into_iter()
+        .map(|(author_hex, svc, floor, head, hash)| {
+            let hash: [u8; 32] = hash
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("corrupt head_hash in the chain-heads memo"))?;
+            Ok((author_hex, svc as u32, floor as u64, head as u64, hash))
+        })
+        .collect()
 }
 
 /// The fingerprint of one service's chains, from that service's anchors.

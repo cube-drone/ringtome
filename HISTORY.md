@@ -4182,3 +4182,41 @@ whose holders prune (signature-checked standalone head, ordinary chaining after)
 that prunes then rebuilds.
 
 Gates: full `just ci` green, 598 passing, exit code read before any pipe.
+
+## 2026-08-10 — frontiers stop reading the log
+
+Curtis asked for an audit: every place that walks a full chain from genesis, identity chains
+exempted, on the stated grounds that our YAGNI instincts do not hold here - the target is tens
+of thousands of entries from the outset. Twelve sites; the list lives in REFACTOR. This is the
+first one fixed, and it is the one the profiler had already caught.
+
+`sync::local_frontiers` was a `GROUP BY` over the entire entries table with a correlated
+subquery per group, and it is one of the hottest reads in the node: both sides of every sync
+exchange, the live-cache stream stamp, and `resync::eager_root`, whose tick is one SECOND. It
+now reads `chain_heads` by primary-key prefix.
+
+**The correctness argument, because this goes on the wire.** Over-reporting is the fatal
+direction: claim a head you do not hold and the peer never offers it again - silent, permanent
+loss. Under-reporting is free (the peer re-offers, the gate deduplicates). The memo can only
+lag: `note_head` runs *after* the row lands, in both write paths, and is monotone on seq;
+eviction calls `forget_chain`; retention prunes below the floor and leaves the head. The one
+way it could lead - a database that lost entries while node.db kept its rows - is closed by
+reconciling the memo against the log **once per persona per process at database open**, beside
+the journal's torn-tail validation, for the same reason: open is where a file's invariants get
+established once instead of re-checked forever. So the scan did not vanish; it moved from
+per-second to per-process. A test pins the claim directly - ingest a fixture, then assert
+`memo_chains` and `chain_ranges` return identical rows: every chain, floor, head and hash.
+
+**The measurement, and it did not move.** test-data, same seed, same rig: 178s against 174s -
+no improvement, arguably worse, and within the noise of a single run either way. Reported as
+found. The benchmark cannot see this fix, and it is worth saying why: scratch nodes start
+empty, so the scan it removes was cheap there, while wall time is dominated by 2700 sequential
+HTTP actions rather than background CPU - and the change ADDS one scan per persona per process
+at open, which a benchmark full of fresh database opens is unusually good at noticing. The
+workload that produced the 399-of-400 profile was a dev network carrying a day of accumulated
+data against a one-second tick, which is not what test-data simulates.
+
+So the justification here is the asymptote and the profile, not this number. The decisive test
+is cheap and belongs to whoever next restarts that dev network on this binary: if idle CPU
+drops from 23-34% per node, the profile was right; if it does not, the profile named the wrong
+frame and the audit's remaining entries are where to look next.

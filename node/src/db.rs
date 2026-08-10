@@ -406,7 +406,7 @@ impl Db {
     }
 
     /// This handle with the node-level database attached (see the `memo` field).
-    fn with_memo(self, node_db: std::sync::Arc<Db>) -> Db {
+    pub(crate) fn with_memo(self, node_db: std::sync::Arc<Db>) -> Db {
         Db {
             memo: Some(node_db),
             ..self
@@ -414,7 +414,7 @@ impl Db {
     }
 
     /// This handle (and every clone made from it) knowing whose it is.
-    fn with_root(self, root_hex: String) -> Db {
+    pub(crate) fn with_root(self, root_hex: String) -> Db {
         Db {
             root: Some(root_hex),
             ..self
@@ -873,6 +873,24 @@ impl UserDbManager {
             .with_write_nudge(self.write_nudge.clone());
         if let Some(node_db) = self.node_db.get() {
             db = db.with_memo(node_db.clone());
+            // Reconcile the chain-heads memo against this log, once per persona per process.
+            // The memo is what `sync::local_frontiers` now puts on the WIRE, and a memo that
+            // led the log would claim history we lack and never be sent it again. Writers keep
+            // it monotone-after-insert (so it can only lag), and this closes the one way it
+            // could lead: a database that lost entries while node.db kept its rows. Sits with
+            // the journal's torn-tail validation for the same reason - open is where a file's
+            // invariants get established, once, rather than re-checked on every read.
+            if first_look {
+                if let Err(e) =
+                    crate::net::frontier::reconcile_rows(node_db, &db, root_pubkey).await
+                {
+                    tracing::warn!(
+                        root = %root_pubkey,
+                        error = ?e,
+                        "could not reconcile the chain-heads memo at open (the sweep retries)"
+                    );
+                }
+            }
         }
 
         self.handles
