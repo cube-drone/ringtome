@@ -34,5 +34,6 @@
 @import "./doc/editor.css";   /* the editing surfaces and their mode tabs */
 @import "./apps/journal.css"; /* the day book (and its flattening of the shared editor) */
 @import "./person.css";       /* the Person widget family: one persona at four sizes */
+@import "./apps/notifications.css"; /* the bell: derived events from people you follow */
 @import "./modal.css";        /* the house modal */
 @import "./doc/upload.css";   /* the upload flow inside it */

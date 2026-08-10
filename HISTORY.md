@@ -3752,3 +3752,52 @@ ledger's selects, glance bars and feed scaling all render from the same pure fun
 vectors pin, but whether the five worded stops read well in the dropdown is a judgement for
 eyes. Residual: existing dev databases hold numeric dial values, which now read as unset —
 re-dial or regenerate test data (`harness/testdata.mjs` now writes bands).
+
+## 2026-08-09 — the follows-public chain speaks, and the bell rings
+
+Same day, second act: the publication rung built end to end on the banded ledger. The
+follows-public chain — a reserved service id with zero writers since the registry was born —
+got its first citizen: **`public-edge` (entry type 8)**, `{subject, trust?, interest?}` with
+band words validated strictly at the codec (a fold that can't decode skips; admission is
+signatures and hashes only, so strictness can't poison a chain). Two new conformance vectors
+(statement + retraction), additively re-blessed. `inspect` prints it.
+
+**The mint is a reconcile, not an event handler** (`publish.rs`): desired (every contact whose
+ledger says `edges_public: yes`, carrying the bands as set) versus published
+(`imaol::published_edges`, an LWW-per-subject fold over the persona's follows-public chains),
+appending statements only for the difference. Consent granted publishes, a dial turned while
+consented re-publishes, consent withdrawn mints the empty statement — LWW needs a write to
+override, so silence cannot un-publish. It rides `subscriptions::refresh` (the one place the
+whole ledger is already read with the store open) and is idempotent across devices: each
+compares against the merged fold, so racing devices write agreeing statements, not duplicates.
+
+**Notifications are the derived path made real** (PROJECT_PLAN, Arrival and Attention: the
+follow-edge rule). A `notifications` memo in node.db (schema generation 11 — `just clean`),
+one row per (reader, author, kind), folded on the frontier edge beside `fanout::
+after_public_move` and rung by hand after a local mint (locally-authored entries never take
+the sync gate — learned by reading, not by debugging, for once). The fold routes only to
+hosted personas who FOLLOW the author — the boundary the integration test pins with a
+bystander: a consented edge toward a non-follower mints fine and notifies nobody, because
+reaching someone who doesn't follow you is the inbox path's job. A retraction DELETES the
+row; stale flattery is not a notification. Stamps are the winning entry's `received_at_ms`,
+so re-folding is a no-op instead of a resurrection.
+
+**The bell**: a Notifications app (Phosphor `Bell`) on the console, reading
+`GET /api/identity/{root}/notifications` — rows dressed with bylines from the cache and
+seen-state from a single `notifications_seen/watermark` register on the reader's own private
+chain ("mark all read" is one write that reaches every device by sync). Copy composes
+client-side from kind + bands through `t()` — the row carries machine facts, the client makes
+words, and the vouch reading is reserved for the max band because that stop IS the vouch.
+
+The conventions cop earned its keep twice: it demanded the `notifications` table name an
+owner, and it caught the new per-edge `user_dbs.get` call site and made the "once per edge,
+never per persona" argument be written down in the expected-counts table.
+
+Gates: full `just ci` green, including a new `notifications.cjs` integration suite driving
+the whole pipeline over real HTTP (consent → statement → fold → endpoint → watermark).
+Browser judgement still owed: the bell app renders from the same components the suite's
+pure functions pin, but nobody has looked at it. Residuals, named: the notification fold
+opens the author's user DB once per frontier move (fine at dev scale; the memo idiom's
+answer exists if it thrashes); the endpoint has no paging (the memo collapses per author, so
+the page is the social circle); and the seen watermark is all-or-nothing until a kind needs
+per-row granularity.

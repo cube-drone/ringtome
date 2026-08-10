@@ -101,6 +101,17 @@ export const APPS = [
         },
     },
     {
+        id: 'notifications',
+        name: 'Notifications',
+        icon: 'notifications',
+        live: true,
+        // The derived-events surface (PROJECT_PLAN, Arrival and Attention: the follow-edge
+        // rule): things people you follow did that point at you, folded locally from chains
+        // this node already syncs - today, published relationship edges. Not a documents app
+        // and not the inbox: strangers' knocks are the future envelope path, not this list.
+        itemNoun: 'notification',
+    },
+    {
         id: 'lost-found',
         name: 'Lost & Found',
         icon: 'lostFound',

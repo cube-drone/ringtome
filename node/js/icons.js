@@ -63,6 +63,7 @@ import {
     Globe,
     LockSimple,
     Megaphone,
+    Bell,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -131,6 +132,7 @@ export const Icons = {
     lostFound: Archive,
     people: UsersThree,
     feed: Megaphone,
+    notifications: Bell,
     // the People table's vocabulary: signal bars for the graded dials, and the rest
     signal0: CellSignalNone,
     signal1: CellSignalLow,

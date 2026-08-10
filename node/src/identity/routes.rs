@@ -54,6 +54,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/nodes", post(authorize_node_handler))
         .route("/api/identity/{root}/sync", post(sync_handler))
         .route("/api/identity/{root}/feed", get(feed_handler))
+        .route(
+            "/api/identity/{root}/notifications",
+            get(notifications_handler),
+        )
         .route("/api/identity/{root}/serve", post(serve_handler))
         .route(
             "/api/identity/{root}/keys/{target}/revoke",
@@ -600,6 +604,74 @@ async fn feed_handler(
         })
         .collect();
     Ok(Json(serde_json::json!({ "items": items, "more": more })))
+}
+
+/// One page of notifications, dressed like feed rows: byline from the cache, seen-state from
+/// the reader's own private chain. The page is small by construction - the memo collapses per
+/// (author, kind), so its size is the reader's social circle, not their history.
+const NOTIFICATIONS_PAGE: u32 = 100;
+
+#[derive(Serialize)]
+struct NotificationItem {
+    author: String,
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    interest: Option<String>,
+    updated_ms: i64,
+    /// Above or below the reader's seen-watermark - their private-chain fact, so read-on-the-
+    /// phone is read-on-the-laptop.
+    seen: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_avatar: Option<String>,
+}
+
+/// GET `/api/identity/{root}/notifications` - the reader's notification memo, newest first.
+/// Seen-state is a single watermark register (`notifications_seen/watermark`, a PUT to the
+/// existing private KV surface): rows newer than it are unseen, and "mark read" is one write
+/// that travels to every device. Per-row seen granularity waits for a kind that needs it.
+async fn notifications_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let rows = crate::notifications::page(&state.node_db, &root, NOTIFICATIONS_PAGE)
+        .await
+        .map_err(AppError::Internal)?;
+
+    let (regs, _) = data.private_registers("notifications_seen").all().await?;
+    let watermark: i64 = regs
+        .iter()
+        .find(|r| r.key == "watermark")
+        .and_then(|r| r.value.parse().ok())
+        .unwrap_or(0);
+
+    let authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &authors)
+        .await
+        .map_err(AppError::Internal)?;
+
+    let items: Vec<NotificationItem> = rows
+        .into_iter()
+        .map(|r| {
+            let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
+            NotificationItem {
+                seen: r.updated_ms <= watermark,
+                author_name: byline.name,
+                author_avatar: byline.avatar,
+                author: r.author_root,
+                kind: r.kind,
+                trust: r.trust,
+                interest: r.interest,
+                updated_ms: r.updated_ms,
+            }
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items, "watermark": watermark })))
 }
 
 /// Mark this identity as served by this node and publish its serving record. This is the

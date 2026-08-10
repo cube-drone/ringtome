@@ -457,6 +457,7 @@ pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
             Ok(true) => {
                 tracing::info!(root = %root, "public frontier moved");
                 crate::fanout::after_public_move(&state, &root).await;
+                crate::notifications::refresh_from(&state, &root).await;
             }
             Ok(false) => {}
             Err(e) => tracing::warn!(root = %root, error = ?e, "frontier refresh failed"),

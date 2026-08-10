@@ -1,0 +1,150 @@
+// Notifications: the derived-events surface (PROJECT_PLAN, Arrival and Attention - the
+// follow-edge rule's derived side). Every row is a fact folded from chains this node already
+// syncs because you follow their author - today, one kind: someone you follow published
+// their relationship with you (a public-edge statement). Strangers cannot appear here by
+// construction; reaching someone who doesn't follow you is the future inbox path, gates and
+// all, not this list.
+//
+// The rows come from the node's notifications memo over HTTP (the memo collapses one row per
+// (author, kind), so this list is your social circle, not your history). Seen-state is a
+// single watermark on YOUR private chain - "mark all read" is one write that reaches your
+// other computers by sync, per "seen is a user fact that travels".
+import { h } from 'preact';
+import { useEffect, useState } from 'preact/hooks';
+import htm from 'htm';
+
+import { api } from '../net.js';
+import { t } from '../i18n.js';
+import { Icons } from '../icons.js';
+import { PersonChip, SignalCell } from '../person.js';
+import { TRUST_STOPS, INTEREST_STOPS } from '../pure/contact.js';
+import { agoUnit } from '../pure/ago.js';
+
+const html = htm.bind(h);
+
+/// The row's words, from what the statement actually publishes. The vouch reading is reserved
+/// for the max band because that stop IS the vouch (The Vouch Dissolved into the Ledger).
+const sentence = (r) => {
+    const follows = !!r.interest;
+    const vouches = r.trust === 'max';
+    if (follows && vouches)
+        return t(
+            'apps.notifications.follows-you-publicly-and-vouches',
+            'follows you publicly, and vouches for you - they say you two have met'
+        );
+    if (follows && r.trust)
+        return t(
+            'apps.notifications.follows-you-publicly-and-publishes',
+            'follows you publicly, and publishes their trust in you'
+        );
+    if (follows) return t('apps.notifications.follows-you-publicly', 'follows you, publicly');
+    if (vouches)
+        return t(
+            'apps.notifications.vouches-for-you-publicly',
+            'vouches for you, publicly - they say you two have met'
+        );
+    return t('apps.notifications.publishes-their-trust-in', 'publishes their trust in you');
+};
+
+const whenWords = (ms) => {
+    const ago = agoUnit(ms, Date.now());
+    return ago
+        ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit)
+        : t('apps.notifications.just-now', 'just now');
+};
+
+export const NotificationsApp = ({ current }) => {
+    const root = current && current.root;
+    const [page, setPage] = useState(null); // { items, watermark } - null until first load
+
+    const load = () => {
+        if (!root) return;
+        api(`/api/identity/${root}/notifications`)
+            .then(setPage)
+            .catch(() => {}); // a failed poll keeps the last page; the next one retries
+    };
+    useEffect(load, [root]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        const interval = setInterval(load, 30_000);
+        window.addEventListener('focus', load);
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('focus', load);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root]);
+
+    const items = (page && page.items) || [];
+    const unseen = items.filter((i) => !i.seen).length;
+
+    // The watermark is the newest row's stamp: everything on screen becomes seen, and rows
+    // arriving later sit above it. One private register - it syncs to your other computers.
+    const markAllRead = async () => {
+        const top = Math.max(0, ...items.map((i) => i.updated_ms));
+        try {
+            await api(`/api/identity/${root}/private/kv/notifications_seen/watermark`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: String(top) }),
+            });
+        } catch {
+            return; // the button stays; the next click retries
+        }
+        setPage((p) => p && { ...p, items: p.items.map((i) => ({ ...i, seen: true })) });
+    };
+
+    return html`
+        <div class="notif-app">
+            ${unseen > 0 &&
+            html`<div class="notif-bar">
+                <button class="notif-mark-read" onClick=${markAllRead}>
+                    ${t('apps.notifications.mark-all-read', 'mark all read')}
+                </button>
+            </div>`}
+            ${page && items.length === 0
+                ? html`<p class="notif-empty">
+                      <${Icons.notifications} />
+                      ${t(
+                          'apps.notifications.nothing-yet-when-someone-you',
+                          'nothing yet - when someone you follow makes their relationship with you public, it lands here'
+                      )}
+                  </p>`
+                : html`<div class="notif-list">
+                      ${items.map(
+                          (r) => html`
+                              <div
+                                  class=${r.seen ? 'notif-row' : 'notif-row notif-unseen'}
+                                  key=${`${r.author}:${r.kind}`}
+                              >
+                                  <${PersonChip}
+                                      root=${r.author}
+                                      current=${current}
+                                      profile=${{
+                                          fields: [
+                                              r.author_name && { field: 'name', value: r.author_name },
+                                              r.author_avatar && { field: 'avatar', value: r.author_avatar },
+                                          ].filter(Boolean),
+                                          via: [],
+                                      }}
+                                  />
+                                  <span class="notif-text">${sentence(r)}</span>
+                                  <span class="notif-cells">
+                                      ${r.trust &&
+                                      html`<${SignalCell} stops=${TRUST_STOPS} value=${r.trust} what="trust" />`}
+                                      ${r.interest &&
+                                      html`<${SignalCell} stops=${INTEREST_STOPS} value=${r.interest} what="interest" />`}
+                                  </span>
+                                  <span class="notif-when" title=${new Date(r.updated_ms).toLocaleString()}>
+                                      ${whenWords(r.updated_ms)}
+                                      ${!r.seen &&
+                                      html`<span
+                                          class="notif-new"
+                                          title=${t('apps.notifications.you-havent-seen-this-yet', "you haven't seen this yet")}
+                                      ></span>`}
+                                  </span>
+                              </div>
+                          `
+                      )}
+                  </div>`}
+        </div>
+    `;
+};

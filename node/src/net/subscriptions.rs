@@ -142,15 +142,15 @@ pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) 
     let now = now_ms();
     let mut edges: Vec<(String, Edge)> = Vec::new();
     let mut eager_now: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for (foreign_root, facts) in contacts {
-        let edge = edge_of(&facts);
+    for (foreign_root, facts) in &contacts {
+        let edge = edge_of(facts);
         if edge.is_empty() {
             continue;
         }
         if edge.eagerness.is_some_and(|e| e > 0) {
             eager_now.insert(foreign_root.clone());
         }
-        edges.push((foreign_root, edge));
+        edges.push((foreign_root.clone(), edge));
     }
     for chunk in edges.chunks(SUBSCRIPTION_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
@@ -220,6 +220,18 @@ pub async fn refresh(state: &AppState, root_hex: &str, account_id: &uuid::Uuid) 
     for author in eager_now.iter().filter(|a| !eager_before.contains(*a)) {
         crate::fanout::backfill_follow(state, root_hex, author).await;
     }
+
+    // Publication rides the same pass: this is the one place the whole ledger is read with the
+    // store open, so consent flips and dial turns mint their public-edge statements here
+    // (publish.rs). Locally-authored statements never take the sync gate, so the notification
+    // fold is rung by hand for the same-node-subject case.
+    match crate::publish::reconcile(&store, &contacts).await {
+        Ok(changed) if !changed.is_empty() => {
+            crate::notifications::refresh_from(state, root_hex).await;
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(root = %root_hex, error = ?e, "public-edge reconcile failed"),
+    }
     Ok(())
 }
 
@@ -236,6 +248,25 @@ pub async fn followers_of(node_db: &crate::db::Db, foreign_root: &str) -> Result
         .await
         .context("reading a persona's local followers")?;
     Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
+/// Does `local_root` follow `foreign_root` for feed purposes? The same criterion as
+/// `followers_of`, asked pointwise - the notifications fold's routing check.
+pub async fn follows(
+    node_db: &crate::db::Db,
+    local_root: &str,
+    foreign_root: &str,
+) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM subscriptions
+             WHERE local_root = ?1 AND foreign_root = ?2
+               AND eagerness IS NOT NULL AND eagerness > 0",
+            (local_root, foreign_root),
+        )
+        .await
+        .context("checking a follow edge")?;
+    Ok(row.is_some())
 }
 
 /// Every followed foreign persona, with who follows it and how eagerly - the follow-refresh

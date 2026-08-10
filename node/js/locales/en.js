@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 394 phrases across 40 files.
+// 403 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -56,6 +56,17 @@ export default {
     'apps.notes.two-versions': 'two versions',
     'apps.notes.tags': 'tags',
     'apps.notes.no-tags-yet': 'no tags yet',
+
+    // --- node/js/apps/notifications.js ---
+    'apps.notifications.follows-you-publicly-and-vouches': 'follows you publicly, and vouches for you - they say you two have met',
+    'apps.notifications.follows-you-publicly-and-publishes': 'follows you publicly, and publishes their trust in you',
+    'apps.notifications.follows-you-publicly': 'follows you, publicly',
+    'apps.notifications.vouches-for-you-publicly': 'vouches for you, publicly - they say you two have met',
+    'apps.notifications.publishes-their-trust-in': 'publishes their trust in you',
+    'apps.notifications.just-now': 'just now',
+    'apps.notifications.mark-all-read': 'mark all read',
+    'apps.notifications.nothing-yet-when-someone-you': 'nothing yet - when someone you follow makes their relationship with you public, it lands here',
+    'apps.notifications.you-havent-seen-this-yet': "you haven't seen this yet",
 
     // --- node/js/apps/people.js ---
     'apps.people.filter-or-paste-an-address': 'filter, or paste an address…',

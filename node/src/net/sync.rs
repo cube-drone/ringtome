@@ -1241,7 +1241,10 @@ pub async fn sync_with_peer(
     // they spoke. A claim that delivered nothing and still differs is the only fault - and it
     // is the one that must not be chased again until it moves.
     match crate::net::frontier::refresh(state, root_hex).await {
-        Ok(true) => crate::fanout::after_public_move(state, root_hex).await,
+        Ok(true) => {
+            crate::fanout::after_public_move(state, root_hex).await;
+            crate::notifications::refresh_from(state, root_hex).await;
+        }
         Ok(false) => {}
         Err(e) => tracing::debug!(error = ?e, "post-exchange frontier refresh failed"),
     }
@@ -1403,7 +1406,10 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     // moment we KNOW something arrived, so ask directly.
     if received > 0 {
         match crate::net::frontier::refresh(&state, &root_hex).await {
-            Ok(true) => crate::fanout::after_public_move(&state, &root_hex).await,
+            Ok(true) => {
+                crate::fanout::after_public_move(&state, &root_hex).await;
+                crate::notifications::refresh_from(&state, &root_hex).await;
+            }
             Ok(false) => {}
             Err(e) => tracing::debug!(error = ?e, "post-ingest frontier refresh failed"),
         }

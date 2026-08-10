@@ -34,6 +34,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("subscriptions", vec!["net/subscriptions.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
         ("feed_journal", vec!["fanout.rs"]),
+        ("notifications", vec!["notifications.rs"]),
         ("missing_bodies", vec!["net/bodies.rs"]),
         ("persona_profiles", vec!["profiles.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
@@ -137,6 +138,7 @@ fn user_db_opens_are_deliberate() {
         ("idface.rs", 5),          // + stored_tree_leaves: ONE mirror per revalidation
         ("ingest.rs", 1),
         ("profiles.rs", 1),        // refresh: ONE persona per claim-change edge
+        ("notifications.rs", 1),   // refresh_from: ONE author per frontier-move edge
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute
         ("net/resync.rs", 1),
         ("net/sync.rs", 3),        // + derive_peers_for: ONE persona's crown per derive edge

@@ -1,0 +1,83 @@
+/* Notifications: one row per (person, kind) - a chip, a sentence, the published bands, a
+ * time. Deliberately quiet chrome: the list is small by construction (it collapses per
+ * person), so it needs no columns, no paging, no search. */
+
+.notif-app {
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.notif-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.5rem;
+}
+
+.notif-mark-read {
+    font: inherit;
+    font-size: 0.85em;
+    color: var(--ink-soft);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+}
+
+.notif-mark-read:hover {
+    color: var(--ink);
+    border-color: var(--border-strong);
+}
+
+.notif-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.notif-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.4rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.notif-unseen {
+    background: var(--surface);
+}
+
+.notif-text {
+    flex: 1;
+    color: var(--ink);
+}
+
+.notif-cells {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.notif-when {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--muted);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
+/* The unseen dot - same signal as the feed's, its own class (this list is not a feed). */
+.notif-new {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--teal);
+}
+
+.notif-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--muted);
+    padding: 2rem 0.5rem;
+}

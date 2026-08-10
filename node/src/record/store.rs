@@ -172,6 +172,13 @@ impl Store {
         Ok(out)
     }
 
+    /// The published relationships: `public-edge` statements on the follows-public chain,
+    /// minted from the ledger's `edges_public` consent (publish.rs holds the judgment; this is
+    /// the door).
+    pub fn public_edges(&self) -> PublicEdges<'_> {
+        PublicEdges { store: self }
+    }
+
     /// The store's database handle, for publication machinery that reads public heads
     /// (record::bake) - public-lane reads only through this door.
     pub fn db(&self) -> &Db {
@@ -258,6 +265,40 @@ impl Profile<'_> {
     /// The materialized profile, merged across all the identity's nodes.
     pub async fn all(&self) -> Result<Vec<imaol::ProfileField>, AppError> {
         imaol::get_profile(&self.store.db).await
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// LWW per subject, public: the published relationships (the follows-public chain).
+
+pub struct PublicEdges<'s> {
+    store: &'s Store,
+}
+
+impl PublicEdges<'_> {
+    /// State one relationship's published bands (no bands = the retraction). The judgment of
+    /// when to write lives in publish.rs; callers here are stating, not deciding.
+    pub async fn publish(
+        &self,
+        subject: &[u8; 32],
+        trust: Option<String>,
+        interest: Option<String>,
+    ) -> Result<SignedEntry, AppError> {
+        imaol::publish_public_edge(
+            &self.store.db,
+            &self.store.authorship.signer,
+            subject,
+            trust,
+            interest,
+        )
+        .await
+    }
+
+    /// The published relationships as folded from the chains, latest per subject.
+    pub async fn published(
+        &self,
+    ) -> Result<std::collections::BTreeMap<String, imaol::PublishedRow>, AppError> {
+        imaol::published_edges(&self.store.db).await
     }
 }
 

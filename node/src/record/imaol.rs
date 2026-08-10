@@ -13,8 +13,10 @@ use crate::pubkey;
 use anyhow::{anyhow, Context};
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{
-    ChainId, Entry, Payload, ProfileSet, SignedEntry, SigningKey, ENTRY_VERSION, ZERO_HASH,
+    ChainId, Entry, Payload, ProfileSet, PublicEdge, SignedEntry, SigningKey, ENTRY_VERSION,
+    ZERO_HASH,
 };
+use std::collections::BTreeMap;
 
 /// The stored head of one chain: highest seq, that entry's hash, and its claimed timestamp.
 async fn chain_head(
@@ -183,6 +185,108 @@ pub async fn set_profile_field(
     .await?;
     apply_profile_set(db, &signed).await?;
     Ok(signed)
+}
+
+/// Publish one relationship's consented bands about a subject: append a `public-edge` entry to
+/// this key's follows-public chain. LWW per subject makes the newest statement the published
+/// relationship; a statement with no bands is the retraction. WHEN to publish or retract is
+/// publish.rs's judgment - this is only the pen.
+pub async fn publish_public_edge(
+    db: &Db,
+    key: &SigningKey,
+    subject: &[u8; 32],
+    trust: Option<String>,
+    interest: Option<String>,
+) -> Result<SignedEntry, AppError> {
+    let payload = PublicEdge {
+        subject: *subject,
+        trust,
+        interest,
+    }
+    .encode()
+    .map_err(|e| AppError::Internal(anyhow!("encoding public-edge: {e}")))?;
+    append(
+        db,
+        key,
+        service::FOLLOWS_PUBLIC,
+        entry_type::PUBLIC_EDGE,
+        Payload::Inline(payload),
+    )
+    .await
+}
+
+/// One subject's published relationship, as folded from the chains. Empty (both bands absent)
+/// means the newest statement was a retraction - readers treat it as "nothing published".
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PublishedEdge {
+    pub trust: Option<String>,
+    pub interest: Option<String>,
+}
+
+impl PublishedEdge {
+    pub fn is_empty(&self) -> bool {
+        self.trust.is_none() && self.interest.is_none()
+    }
+}
+
+/// A folded statement with this replica's arrival stamp for the winning entry - local, unsigned,
+/// never synced (Displayed Time vs. Claimed Time's receipt bound). The notifications memo orders
+/// by it because arrival here is what "new" honestly means on this node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedRow {
+    pub edge: PublishedEdge,
+    pub received_at_ms: i64,
+}
+
+/// The published relationships, folded: the latest `public-edge` per subject across every key's
+/// follows-public chain in this database, LWW on `(timestamp_ms, seq, entry_hash)` (The Ordering
+/// Contract's standard tuple). Computed at read rather than materialized: these chains are tiny
+/// (one entry per published relationship change), and the query seeks via
+/// `entries_by_service_type`. Undecodable payloads are skipped, never fatal - the fold enforces
+/// nothing, because chain admission is signatures and hashes only, and a future band word must
+/// not wedge anything.
+pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, AppError> {
+    let rows: Vec<(Vec<u8>, i64)> = db
+        .fetch_all(
+            "SELECT bytes, received_at_ms FROM entries WHERE service = ?1 AND entry_type = ?2",
+            (
+                i64::from(service::FOLLOWS_PUBLIC),
+                i64::from(entry_type::PUBLIC_EDGE),
+            ),
+        )
+        .await
+        .context("reading public-edge entries")
+        .map_err(AppError::Internal)?;
+
+    // winner per subject: (timestamp_ms, seq, hash) tuple beside the folded row.
+    let mut latest: BTreeMap<String, ((i64, u64, [u8; 32]), PublishedRow)> = BTreeMap::new();
+    for (bytes, received_at_ms) in rows {
+        let Ok(signed) = SignedEntry::decode(&bytes) else {
+            continue;
+        };
+        let Payload::Inline(payload) = &signed.entry().payload else {
+            continue;
+        };
+        let Ok(edge) = PublicEdge::decode(payload) else {
+            continue;
+        };
+        let stamp = (signed.entry().timestamp_ms, signed.entry().seq, *signed.hash());
+        let folded = PublishedRow {
+            edge: PublishedEdge {
+                trust: edge.trust,
+                interest: edge.interest,
+            },
+            received_at_ms,
+        };
+        let subject_hex = hex::encode(edge.subject);
+        match latest.get(&subject_hex) {
+            Some((held, _)) if *held >= stamp => {}
+            _ => {
+                latest.insert(subject_hex, (stamp, folded));
+            }
+        }
+    }
+    Ok(latest.into_iter().map(|(s, (_, r))| (s, r)).collect())
 }
 
 /// Fold one `profile-set` entry into the view. Last-writer-wins on the tuple
@@ -670,6 +774,35 @@ mod tests {
         // Same-chain writes tie-break on seq, so the rename wins even if both landed in the same
         // clock millisecond (which, at test speed, they usually do).
         assert_eq!(profile[0].value, "Hat Fan");
+    }
+
+    #[tokio::test]
+    async fn published_edges_fold_latest_per_subject_and_honor_retraction() {
+        let db = test_db().await;
+        let key = test_key();
+        let alice = [5u8; 32];
+        let bob = [6u8; 32];
+
+        publish_public_edge(&db, &key, &alice, Some("high".into()), Some("medium".into()))
+            .await
+            .unwrap();
+        publish_public_edge(&db, &key, &bob, None, Some("low".into()))
+            .await
+            .unwrap();
+        // Alice again: the newer statement IS the published relationship.
+        publish_public_edge(&db, &key, &alice, Some("max".into()), Some("max".into()))
+            .await
+            .unwrap();
+        // Bob retracted: folds to an empty edge, which readers treat as nothing published.
+        publish_public_edge(&db, &key, &bob, None, None).await.unwrap();
+
+        let published = published_edges(&db).await.unwrap();
+        assert_eq!(published.len(), 2);
+        let a = &published[&hex::encode(alice)];
+        assert_eq!(a.edge.trust.as_deref(), Some("max"));
+        assert_eq!(a.edge.interest.as_deref(), Some("max"));
+        assert!(a.received_at_ms > 0, "the fold carries this replica's arrival stamp");
+        assert!(published[&hex::encode(bob)].edge.is_empty(), "a retraction folds to empty");
     }
 
     #[tokio::test]

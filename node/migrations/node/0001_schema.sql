@@ -221,6 +221,27 @@ CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
 CREATE INDEX feed_journal_by_author ON feed_journal (author_root, doc_id);
 
 -- ---------------------------------------------------------------------------------------------
+-- The notifications memo: derived events worth telling a local persona about, folded from
+-- chains this node already syncs (PROJECT_PLAN, Arrival and Attention: the follow-edge rule's
+-- derived side - never the envelope/inbox path, which is delivered and lives on chains).
+--
+-- One row per (reader, author, kind) - collapse by (sender, kind) is doctrine, so an author
+-- re-publishing their edge updates a row rather than stacking rows. `public-edge` rows carry
+-- the published bands verbatim; a retraction DELETES the row (stale flattery is not a
+-- notification). DELIVERED, not SEEN, same as feed_journal: disposable, rebuildable from the
+-- held chains x subscriptions; the seen watermark is the reader's own private-chain fact.
+CREATE TABLE notifications (
+    reader_root TEXT    NOT NULL,  -- the persona on this node being notified
+    author_root TEXT    NOT NULL,  -- who did the thing
+    kind        TEXT    NOT NULL,  -- 'public-edge' (future kinds get their own words)
+    trust       TEXT,              -- the published trust band, as published
+    interest    TEXT,              -- the published interest band, as published
+    updated_ms  INTEGER NOT NULL,  -- when the winning statement reached THIS node
+    PRIMARY KEY (reader_root, author_root, kind)
+);
+CREATE INDEX notifications_by_reader ON notifications (reader_root, updated_ms);
+
+-- ---------------------------------------------------------------------------------------------
 -- The media bake registry: external media a publication pulled INTO the network, one row per
 -- (persona, source URL). Publication's copy-don't-flip crossing extends to what a post embeds:
 -- a public post may not depend on a private blob (unreadable to strangers) or a foreign server

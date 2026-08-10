@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{
     Anchor, Authorize, ChainId, Disposition, Entry, KeyEpoch, Payload, PrivateKind, PrivatePlain,
-    PrivateRecord, ProfileSet, Revoke, SignedEntry, ENTRY_VERSION, ZERO_HASH,
+    PrivateRecord, ProfileSet, PublicEdge, Revoke, SignedEntry, ENTRY_VERSION, ZERO_HASH,
 };
 
 const VECTORS_PATH: &str = concat!(
@@ -268,6 +268,45 @@ fn build_vectors() -> VectorFile {
         ZERO_HASH,
         1_700_000_420_000,
         Payload::Inline(pr),
+    );
+
+    // Vector 9: the follows-public chain's genesis - a public-edge statement publishing both
+    // bands about one subject (the consented relationship, whole).
+    let subject = SigningKey::from_bytes(&[10u8; 32]).verifying_key().to_bytes();
+    let pe = PublicEdge {
+        subject,
+        trust: Some("max".into()),
+        interest: Some("high".into()),
+    }
+    .encode()
+    .unwrap();
+    let f0 = make(
+        "public-edge genesis (both bands)",
+        entry_type::PUBLIC_EDGE,
+        service::FOLLOWS_PUBLIC,
+        0,
+        ZERO_HASH,
+        1_700_000_480_000,
+        Payload::Inline(pe),
+    );
+
+    // Vector 10: the retraction - same subject, no bands. LWW per subject makes this the
+    // published relationship now: nothing.
+    let pe_retract = PublicEdge {
+        subject,
+        trust: None,
+        interest: None,
+    }
+    .encode()
+    .unwrap();
+    let _f1 = make(
+        "public-edge chained (retraction)",
+        entry_type::PUBLIC_EDGE,
+        service::FOLLOWS_PUBLIC,
+        1,
+        *f0.hash(),
+        1_700_000_540_000,
+        Payload::Inline(pe_retract),
     );
 
     VectorFile {

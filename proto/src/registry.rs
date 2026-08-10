@@ -20,7 +20,9 @@ pub mod service {
     /// (Reserved for the public-document model that supersedes it; see PROJECT_PLAN.) Today an
     /// append-only public log - not yet a live consumer.
     pub const POSTS: u32 = 3;
-    /// Serving-follows and vouch publications - the follows you advertise.
+    /// The published relationships: `public-edge` statements minted from the ledger's
+    /// `edges_public` consent (PROJECT_PLAN, Edge-Endpoint Visibility: the Publish tier), LWW
+    /// per subject. Serving-follow statements land here too when fronting's ceremony exists.
     pub const FOLLOWS_PUBLIC: u32 = 4;
     /// The **general** private store: small member-only LWW facts (contact names, quiet follows,
     /// trust edges, settings), multiplexed by `collection`. Domain-less by design - features
@@ -76,6 +78,9 @@ pub mod entry_type {
     /// as `private-record`, under its own AAD; inner: [`DocHeaderPlain`]). The entry's own hash
     /// is the version's identity; the body lives in the file layer.
     pub const DOC_HEADER: u32 = 7;
+    /// The published form of one relationship ([`PublicEdge`]): the bands its author consented
+    /// to share about one subject. The follows-public chain's first citizen.
+    pub const PUBLIC_EDGE: u32 = 8;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -86,6 +91,7 @@ pub mod entry_type {
             KEY_EPOCH => "key-epoch",
             PRIVATE_RECORD => "private-record",
             DOC_HEADER => "doc-header",
+            PUBLIC_EDGE => "public-edge",
             _ => "unknown-type",
         }
     }
@@ -795,9 +801,128 @@ impl ProfileSet {
     }
 }
 
+/// Payload of a `public-edge` entry: the published form of one relationship - the bands its
+/// author consented to share about one subject (PROJECT_PLAN: The Vouch Dissolved into the
+/// Ledger; Edge-Endpoint Visibility, the Publish tier). Publication is per-subject LWW across
+/// the author's follows-public chains: the latest statement about a subject IS the published
+/// relationship, and a statement with no bands is the retraction - nothing published any more.
+/// Both cross-key ordering and the retraction-as-a-write shape are The Ordering Contract's
+/// standard LWW, nothing bespoke.
+///
+/// Encoding: integer-keyed map `{0: bstr(32) subject, 1?: text trust, 2?: text interest}`.
+/// Band values are the five words of the shared ladder (PROJECT_PLAN, Bands Not Numbers) -
+/// text rather than ordinals, so the wire is self-describing and `inspect` reads naturally.
+/// Absent means "no opinion published"; `"none"` is an opinion. Unknown band words are
+/// rejected at decode - the fold layer treats an undecodable payload as skippable, so
+/// strictness here cannot poison chain admission (validation is signatures and hashes only).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicEdge {
+    pub subject: [u8; 32],
+    pub trust: Option<String>,
+    pub interest: Option<String>,
+}
+
+impl PublicEdge {
+    /// The five bands, weakest first - the one ladder every dial climbs (mirrors
+    /// `node/js/pure/contact.js::BANDS`).
+    pub const BANDS: [&'static str; 5] = ["none", "low", "medium", "high", "max"];
+
+    fn check_band(value: &Option<String>, which: &'static str) -> Result<(), ProtoError> {
+        match value {
+            None => Ok(()),
+            Some(b) if Self::BANDS.contains(&b.as_str()) => Ok(()),
+            Some(_) => Err(ProtoError::BadEntry(which)),
+        }
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        Self::check_band(&self.trust, "public-edge trust is not a band")?;
+        Self::check_band(&self.interest, "public-edge interest is not a band")?;
+        let fields = 1 + u64::from(self.trust.is_some()) + u64::from(self.interest.is_some());
+        let mut w = Writer::new();
+        w.map(fields);
+        w.uint(0);
+        w.bytes(&self.subject);
+        if let Some(trust) = &self.trust {
+            w.uint(1);
+            w.text(trust);
+        }
+        if let Some(interest) = &self.interest {
+            w.uint(2);
+            w.text(interest);
+        }
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let mut map = r.int_map()?;
+        let mut subject: Option<[u8; 32]> = None;
+        let mut trust: Option<String> = None;
+        let mut interest: Option<String> = None;
+        while let Some(key) = map.next_key()? {
+            match key {
+                0 => subject = Some(map.bytes_fixed::<32>()?),
+                1 => trust = Some(map.text()?.to_string()),
+                2 => interest = Some(map.text()?.to_string()),
+                _ => map.skip_value()?,
+            }
+        }
+        r.finish()?;
+        let out = Self {
+            subject: subject.ok_or(ProtoError::BadEntry("public-edge missing subject"))?,
+            trust,
+            interest,
+        };
+        Self::check_band(&out.trust, "public-edge trust is not a band")?;
+        Self::check_band(&out.interest, "public-edge interest is not a band")?;
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_edge_round_trips() {
+        let full = PublicEdge {
+            subject: [3u8; 32],
+            trust: Some("max".into()),
+            interest: Some("high".into()),
+        };
+        assert_eq!(PublicEdge::decode(&full.encode().unwrap()).unwrap(), full);
+
+        // The retraction: subject alone, nothing published. Legal and byte-minimal.
+        let retraction = PublicEdge {
+            subject: [3u8; 32],
+            trust: None,
+            interest: None,
+        };
+        assert_eq!(
+            PublicEdge::decode(&retraction.encode().unwrap()).unwrap(),
+            retraction
+        );
+    }
+
+    #[test]
+    fn public_edge_rejects_non_bands() {
+        let bad = PublicEdge {
+            subject: [3u8; 32],
+            trust: Some("95".into()), // the retired numeric scale is not a band
+            interest: None,
+        };
+        assert!(bad.encode().is_err());
+
+        // And strictness holds on the read side too, against hand-rolled bytes.
+        let mut w = Writer::new();
+        w.map(2);
+        w.uint(0);
+        w.bytes(&[3u8; 32]);
+        w.uint(2);
+        w.text("quite a lot");
+        assert!(PublicEdge::decode(&w.into_bytes()).is_err());
+    }
 
     #[test]
     fn profile_set_round_trips() {

@@ -6,7 +6,7 @@
 
 use anyhow::{bail, Context, Result};
 use ringtome_proto::registry::{entry_type, service};
-use ringtome_proto::{Authorize, Payload, ProfileSet, Revoke, SignedEntry};
+use ringtome_proto::{Authorize, Payload, ProfileSet, PublicEdge, Revoke, SignedEntry};
 
 pub fn run(arg: &str) -> Result<()> {
     let bytes = load_bytes(arg)?;
@@ -41,6 +41,17 @@ pub fn run(arg: &str) -> Result<()> {
                     Ok(ps) => println!("             profile-set {:?} = {:?}", ps.field, ps.value),
                     Err(err) => {
                         println!("             (profile-set payload fails to decode: {err})")
+                    }
+                },
+                entry_type::PUBLIC_EDGE => match PublicEdge::decode(b) {
+                    Ok(pe) => println!(
+                        "             public-edge subject {} trust {:?} interest {:?}",
+                        hex::encode(pe.subject),
+                        pe.trust,
+                        pe.interest
+                    ),
+                    Err(err) => {
+                        println!("             (public-edge payload fails to decode: {err})")
                     }
                 },
                 entry_type::AUTHORIZE => match Authorize::decode(b) {
