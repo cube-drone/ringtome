@@ -16,8 +16,7 @@ import htm from 'htm';
 import { api } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
-import { PersonChip, SignalCell } from '../person.js';
-import { TRUST_STOPS, INTEREST_STOPS } from '../pure/contact.js';
+import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
 import { agoUnit } from '../pure/ago.js';
 
 const html = htm.bind(h);
@@ -63,7 +62,7 @@ export const NotificationsApp = ({ current }) => {
             .then(setPage)
             .catch(() => {}); // a failed poll keeps the last page; the next one retries
     };
-    useEffect(load, [root]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(load, [root]);
     useEffect(() => {
         const interval = setInterval(load, 30_000);
         window.addEventListener('focus', load);
@@ -129,9 +128,17 @@ export const NotificationsApp = ({ current }) => {
                                   <span class="notif-text">${sentence(r)}</span>
                                   <span class="notif-cells">
                                       ${r.trust &&
-                                      html`<${SignalCell} stops=${TRUST_STOPS} value=${r.trust} what="trust" />`}
+                                      html`<${SignalCell}
+                                          stops=${trustStops()}
+                                          value=${r.trust}
+                                          label=${t('apps.notifications.dial-trust', 'trust')}
+                                      />`}
                                       ${r.interest &&
-                                      html`<${SignalCell} stops=${INTEREST_STOPS} value=${r.interest} what="interest" />`}
+                                      html`<${SignalCell}
+                                          stops=${interestStops()}
+                                          value=${r.interest}
+                                          label=${t('apps.notifications.dial-interest', 'interest')}
+                                      />`}
                                   </span>
                                   <span class="notif-when" title=${new Date(r.updated_ms).toLocaleString()}>
                                       ${whenWords(r.updated_ms)}

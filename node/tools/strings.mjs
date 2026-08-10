@@ -36,7 +36,7 @@ const EN_FILE = path.join(JS_DIR, 'locales', 'en.js');
 
 /// Attributes whose value a person actually reads. `class`/`href`/`key` are deliberately absent:
 /// collecting them would bury the script in machine noise.
-const HUMAN_ATTRS = new Set(['title', 'placeholder', 'aria-label', 'alt', 'label']);
+const HUMAN_ATTRS = new Set(['title', 'placeholder', 'aria-label', 'alt', 'label', 'hint']);
 
 /// Functions whose argument is displayed to the user as-is. A new sink added here is how a new
 /// kind of message becomes visible to the tool.

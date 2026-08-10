@@ -30,8 +30,6 @@ import { identiconUri } from './pure/identicon.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import {
-    TRUST_STOPS,
-    INTEREST_STOPS,
     contactCollection,
     bandOf,
 } from './pure/contact.js';
@@ -331,6 +329,30 @@ export const AddressRow = ({ root, via, hosted }) => {
 // ---------------------------------------------------------------------------------------------
 // The relationship panel - what YOU privately record about another persona.
 
+/// The worded scale, in the reader's language: each dial's five stops, one label per band,
+/// through the catalog. Functions rather than tables so a locale switch re-reads them. The
+/// VALUES are pure/contact.js's BANDS - the ladder the tests pin - while the words are the
+/// catalog's to own (a pure module can't call `t()` and is invisible to the strings scanner,
+/// which is how the whole scale sat unlocalizable until 2026-08-09).
+export const trustStops = () => [
+    { value: 'none', label: t('person.trust-none', 'Never heard of them') },
+    { value: 'low', label: t('person.trust-low', 'Not very confident') },
+    { value: 'medium', label: t('person.trust-medium', 'Pretty confident') },
+    { value: 'high', label: t('person.trust-high', 'Very confident') },
+    {
+        value: 'max',
+        label: t('person.trust-max', "I've met them in person"),
+    },
+];
+
+export const interestStops = () => [
+    { value: 'none', label: t('person.interest-none', "Don't show") },
+    { value: 'low', label: t('person.interest-low', 'Low priority') },
+    { value: 'medium', label: t('person.interest-medium', 'Medium priority') },
+    { value: 'high', label: t('person.interest-high', 'High priority') },
+    { value: 'max', label: t('person.interest-max', 'Top priority') },
+];
+
 /// A stop's words, for the tooltips: what the icon would say if it could talk. An unset (or
 /// unreadable) dial wears the bottom stop's words, matching the zero bars it shows.
 export const stopLabel = (stops, value) =>
@@ -343,21 +365,23 @@ export const stopLabel = (stops, value) =>
 const SIG_ICONS = [Icons.signal0, Icons.signal1, Icons.signal2, Icons.signal3, Icons.signal4];
 const SIG_CLASSES = ['sig-0', 'sig-1', 'sig-2', 'sig-3', 'sig-4'];
 
-export const SignalCell = ({ stops, value, what }) => {
+export const SignalCell = ({ stops, value, label }) => {
     const level = signalLevel(value);
     const Icon = SIG_ICONS[level];
-    return html`<span class="person-cell ${SIG_CLASSES[level]}" title="${what}: ${stopLabel(stops, value)}">
+    return html`<span class="person-cell ${SIG_CLASSES[level]}" title="${label}: ${stopLabel(stops, value)}">
         <${Icon} weight="bold" />
     </span>`;
 };
 
 /// One dial as a PAIR: the column's own icon saying which dial this is, then its level in
 /// signal bars. The kind stays neutral (it's a label); the bars carry the colour, so a
-/// glance reads "what, and how much" without a legend.
-const GlancePair = ({ kind, stops, value, what }) => {
+/// glance reads "what, and how much" without a legend. The naming-a-dial prop is `label` on
+/// purpose: that word is in the strings scanner's HUMAN_ATTRS, so a bare-English caller gets
+/// flagged instead of quietly shipping untranslated.
+const GlancePair = ({ kind, stops, value, label }) => {
     const level = signalLevel(value);
     const Bars = SIG_ICONS[level];
-    return html`<span class="glance-pair" title="${what}: ${stopLabel(stops, value)}">
+    return html`<span class="glance-pair" title="${label}: ${stopLabel(stops, value)}">
         <${kind} />
         <span class="glance-bars ${SIG_CLASSES[level]}"><${Bars} weight="bold" /></span>
     </span>`;
@@ -376,18 +400,23 @@ export const RelationshipGlance = ({ facts }) => {
         return html`<span class="ledger-glance ledger-glance-empty">${t('person.nothing-recorded-yet', 'nothing recorded yet')}</span>`;
     }
     return html`<span class="ledger-glance">
-        <${GlancePair} kind=${Icons.colTrust} stops=${TRUST_STOPS} value=${facts.trust} what="trust" />
+        <${GlancePair}
+            kind=${Icons.colTrust}
+            stops=${trustStops()}
+            value=${facts.trust}
+            label=${t('person.dial-trust', 'trust')}
+        />
         <${GlancePair}
             kind=${Icons.colInterest}
-            stops=${INTEREST_STOPS}
+            stops=${interestStops()}
             value=${facts.interest}
-            what="interest"
+            label=${t('person.dial-interest', 'interest')}
         />
         <${GlancePair}
             kind=${Icons.colRebroadcast}
-            stops=${INTEREST_STOPS}
+            stops=${interestStops()}
             value=${facts.interest_rebroadcasts}
-            what="rebroadcasts"
+            label=${t('person.dial-rebroadcasts', 'rebroadcasts')}
         />
     </span>`;
 };
@@ -483,7 +512,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             </summary>
             ${blocked &&
             html`<p class="ledger-note">
-                ${t('person.blocked---nothing-of-theirs', 'blocked - nothing of theirs will be shown to you, and nothing of theirs gets through to you.')}
+                ${t('person.blocked---nothing-of-theirs', 'blocked')}
             </p>`}
             <label class="ledger-dial">
                 <span class="ledger-label">
@@ -502,22 +531,22 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             </label>
             <${Dial}
                 label=${t('person.trust', 'trust')}
-                hint="not how much you like them - whether you believe they're real"
-                stops=${TRUST_STOPS}
+                hint=${t('person.trust-hint', "not how much you like them - whether you believe they're real")}
+                stops=${trustStops()}
                 value=${facts.trust}
                 onPick=${(v) => put('trust', v)}
             />
             <${Dial}
                 label=${t('person.interest', 'interest')}
-                hint="how much of theirs you want to see"
-                stops=${INTEREST_STOPS}
+                hint=${t('person.interest-hint', 'how much of theirs you want to see')}
+                stops=${interestStops()}
                 value=${facts.interest}
                 onPick=${(v) => put('interest', v)}
             />
             <${Dial}
                 label=${t('person.their-rebroadcasts', 'their rebroadcasts')}
-                hint="things they pass along from others"
-                stops=${INTEREST_STOPS}
+                hint=${t('person.rebroadcasts-hint', 'things they pass along from others')}
+                stops=${interestStops()}
                 value=${facts.interest_rebroadcasts}
                 onPick=${(v) => put('interest_rebroadcasts', v)}
             />

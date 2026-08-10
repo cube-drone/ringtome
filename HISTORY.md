@@ -3839,3 +3839,26 @@ Gates: full `just ci` green. The lesson worth the ink: "idempotent under races" 
 under races" are different claims, and a mesh where every persona lives on every node is a
 race generator - measure the write amplification of any reconcile that can run on more than
 one node per fact.
+
+## 2026-08-09 — the worded scale learns other languages exist
+
+Curtis noticed the relationship panel's words weren't in the English catalog. Three escape
+routes, each its own hole: the whole worded scale ("Never heard of them" through "I've met
+them in person") lived in `pure/contact.js`, which the strings scanner SKIPS and which can't
+call `t()` - so the most human copy in the panel was structurally unlocalizable; the dial
+hints were `hint=` props, an attribute the scanner didn't treat as human copy; and the
+tooltip nouns rode a `what=` prop it had no reason to look at.
+
+The fix follows the pure boundary rather than fighting it: `pure/contact.js` keeps only the
+BANDS values (the ladder the tests pin - "max", "high", plain English words as VALUES, which
+is fine, they're wire vocabulary, not prose), while the human words moved to `person.js` as
+`trustStops()`/`interestStops()` - functions, so a locale switch re-reads them - with every
+label through the catalog. The hints went through `t()`, and the scanner's holes closed
+structurally: `hint` joined HUMAN_ATTRS, and SignalCell/GlancePair's `what` prop was renamed
+`label` - a word already in HUMAN_ATTRS - so a future bare-English caller of either gets
+flagged by `just strings-check` instead of quietly shipping untranslated. en.js gained 18
+phrases and is now the authoritative home of the worded scale, ready for the French/Spanish
+pass NEXT_STEPS just took on.
+
+Gates: `just strings-check` + `just ui-check` green (the pure suite dropped one test - the
+label pins left the pure boundary with the labels; the catalog gate pins the words now).

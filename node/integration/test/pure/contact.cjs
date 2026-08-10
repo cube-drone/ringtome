@@ -1,10 +1,13 @@
 // The contact ledger's dials - the five bands are Curtis's spec verbatim (2026-08-09,
-// Bands Not Numbers), pinned: the same ladder for every dial in every system.
+// Bands Not Numbers), pinned: the same ladder for every dial in every system. The human
+// WORDS for each stop deliberately live elsewhere (js/person.js `trustStops`/`interestStops`,
+// through the catalog) - a pure module can't call t(), so prose kept here would be English
+// forever, and the strings gate is what pins the words now.
 const assert = require('node:assert');
 
-let BANDS, TRUST_STOPS, INTEREST_STOPS, contactCollection, bandOf, bandOrdinal;
+let BANDS, contactCollection, bandOf, bandOrdinal;
 before(async () => {
-    ({ BANDS, TRUST_STOPS, INTEREST_STOPS, contactCollection, bandOf, bandOrdinal } = await import(
+    ({ BANDS, contactCollection, bandOf, bandOrdinal } = await import(
         '../../../js/pure/contact.js'
     ));
 });
@@ -12,19 +15,6 @@ before(async () => {
 describe('the contact dials', () => {
     it('pins the ladder: none/low/medium/high/max, in that order', () => {
         assert.deepEqual(BANDS, ['none', 'low', 'medium', 'high', 'max']);
-    });
-
-    it('both dials climb the same ladder, wearing their own words', () => {
-        assert.deepEqual(TRUST_STOPS.map((s) => s.value), BANDS);
-        assert.deepEqual(INTEREST_STOPS.map((s) => s.value), BANDS);
-        assert.ok(TRUST_STOPS.every((s) => s.label.length > 0));
-        assert.equal(TRUST_STOPS[0].label, 'Never heard of them');
-        assert.equal(
-            TRUST_STOPS[4].label,
-            "I've met them in person - they aren't being impersonated",
-            'the max stop IS the vouch'
-        );
-        assert.equal(INTEREST_STOPS[0].label, "Don't show");
     });
 
     it('names the private-KV collection per contact', () => {

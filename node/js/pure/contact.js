@@ -14,23 +14,13 @@
 
 /// The five bands, weakest first. The order IS the meaning: renderers and the node's routing
 /// memo compare bands by ordinal (index), so this array is the one place the ladder lives.
+///
+/// Values only, deliberately: the human words for each stop live with the UI (js/person.js,
+/// `trustStops`/`interestStops`) where they can go through `t()` - a pure module is invisible
+/// to the localization scanner and cannot call the catalog, so any prose kept here would be
+/// English forever (found 2026-08-09, when the whole worded scale turned out to be exactly
+/// that).
 export const BANDS = ['none', 'low', 'medium', 'high', 'max'];
-
-export const TRUST_STOPS = [
-    { value: 'none', label: 'Never heard of them' },
-    { value: 'low', label: 'Not very confident' },
-    { value: 'medium', label: 'Pretty confident' },
-    { value: 'high', label: 'Very confident' },
-    { value: 'max', label: "I've met them in person - they aren't being impersonated" },
-];
-
-export const INTEREST_STOPS = [
-    { value: 'none', label: "Don't show" },
-    { value: 'low', label: 'Low priority' },
-    { value: 'medium', label: 'Medium priority' },
-    { value: 'high', label: 'High priority' },
-    { value: 'max', label: 'Top priority' },
-];
 
 /// The private-KV collection carrying everything I record about one contact. Keys inside:
 /// `trust`, `interest`, `interest_rebroadcasts`, `edges_public`, `blocked`, `nickname`.

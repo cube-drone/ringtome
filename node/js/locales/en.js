@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 403 phrases across 41 files.
+// 421 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -66,6 +66,8 @@ export default {
     'apps.notifications.just-now': 'just now',
     'apps.notifications.mark-all-read': 'mark all read',
     'apps.notifications.nothing-yet-when-someone-you': 'nothing yet - when someone you follow makes their relationship with you public, it lands here',
+    'apps.notifications.dial-trust': 'trust',
+    'apps.notifications.dial-interest': 'interest',
     'apps.notifications.you-havent-seen-this-yet': "you haven't seen this yet",
 
     // --- node/js/apps/people.js ---
@@ -231,16 +233,32 @@ export default {
     'person.see-this-personas-page': "see this persona's page",
     'person.copied': 'copied!',
     'person.copy': 'copy',
+    'person.trust-none': 'Never heard of them',
+    'person.trust-low': 'Not very confident',
+    'person.trust-medium': 'Pretty confident',
+    'person.trust-high': 'Very confident',
+    'person.trust-max': "I've met them in person",
+    'person.interest-none': "Don't show",
+    'person.interest-low': 'Low priority',
+    'person.interest-medium': 'Medium priority',
+    'person.interest-high': 'High priority',
+    'person.interest-max': 'Top priority',
     'person.blocked': 'blocked',
     'person.nothing-recorded-yet': 'nothing recorded yet',
+    'person.dial-trust': 'trust',
+    'person.dial-interest': 'interest',
+    'person.dial-rebroadcasts': 'rebroadcasts',
     'person.your-relationship': 'your relationship',
-    'person.blocked---nothing-of-theirs': 'blocked - nothing of theirs will be shown to you, and nothing of theirs gets through to you.',
+    'person.blocked---nothing-of-theirs': 'blocked',
     'person.your-nickname-for-them': 'your nickname for them',
     'person.only-you-ever-see-this': "only you ever see this - it's how they'll appear in your People",
     'person.a-name-of-your-choosing': 'a name of your choosing',
     'person.trust': 'trust',
+    'person.trust-hint': "not how much you like them - whether you believe they're real",
     'person.interest': 'interest',
+    'person.interest-hint': 'how much of theirs you want to see',
     'person.their-rebroadcasts': 'their rebroadcasts',
+    'person.rebroadcasts-hint': 'things they pass along from others',
     'person.who-can-see-this-relationship': 'who can see this relationship',
     'person.sharing-how-you-hold-people': 'sharing how you hold people - your trust and interest - helps the network grow, but gives up some of your privacy!',
     'person.private---just-my-computers': 'private - just my computers',
