@@ -48,6 +48,7 @@ format and its offline verification, the `ringtome/deliver/0` ALPN, the gate at 
 both tiered inbox chains, the outbox with its backoff ladder, and the bell showing delivered
 beside derived. What is left:
 
+* **Unclear if PoW is really part of this**: PoW that's not part of the chain (even as a tiny work factor) might as well not exist. Maybe that's better?
 * **More notice kinds**: commented on / tagged / rebroadcast your post - each needs its own
   evidence rule in `deliver::verify_claim`; and first-contact, the one bare-claim kind, which
   needs the capped greeting surfaced and its own smaller pool.
