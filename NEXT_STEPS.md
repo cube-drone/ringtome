@@ -34,7 +34,14 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets
 * Make a whole bucket public in one fell swoop.
-* Rebroadcast: explicity share this post on my network, share this user to my network
+* **Rebroadcast — the current arc.** Design settled 2026-08-10 (PROJECT_PLAN, *Rebroadcast:
+  Pointer Plus Pinned Replica*): a signed pointer on your chain + a pinned replica your node
+  serves, never a copy; retraction rides the retract_vanished machinery one hop out; hash-seen
+  recorded, head rendered, drift badged; hollow, not auto-retract. First cut is plain
+  rebroadcast of a post - replies (rebroadcast + comment, parent-plus-root pinning leaning)
+  come after, and "share this user to my network" after that. To discover during the build:
+  the refresh cadence and the pin subscription class (syncing a suffix of an author you don't
+  follow).
 * Save to bucket
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")
@@ -48,12 +55,9 @@ format and its offline verification, the `ringtome/deliver/0` ALPN, the gate at 
 both tiered inbox chains, the outbox with its backoff ladder, and the bell showing delivered
 beside derived. What is left:
 
-* **Unclear if PoW is really part of this**: PoW that's not part of the chain (even as a tiny work factor) might as well not exist. Maybe that's better?
 * **More notice kinds**: commented on / tagged / rebroadcast your post - each needs its own
   evidence rule in `deliver::verify_claim`; and first-contact, the one bare-claim kind, which
   needs the capped greeting surfaced and its own smaller pool.
-* **The stamp slot**: reject-with-price + retry-with-stamp. The envelope field exists and is
-  always empty; the protocol half is unwritten, deliberately, until a flood exists.
 * **Sealed-envelope relays**: a friend's always-on node holding a notice for a phone that is
   never awake. Needs the envelope sealed to the recipient's epoch key, which direct delivery
   does not (iroh QUIC already encrypts point to point).

@@ -3196,6 +3196,82 @@ closing encrypted files to build one screen. The answer is this codebase's own i
   it do, so a persona's nodes keep each other current without anyone shipping an opinion. Evidence crosses wires;
   opinions stay home. It is "The Browser Is a View" promoted one level: the node is a view too.
 
+### Rebroadcast: Pointer Plus Pinned Replica (settled 2026-08-10)
+
+How you share someone else's post through your network. The tension the design has to hold: copying content whole
+into your own chain is the easy replication model and it destroys the original author's ability to delete or edit
+that content, *ever*; a bare reference preserves author control and makes every share only as durable as the
+author's own nodes. The balance point is the one the system already struck for feeds - the author's shelf is
+authoritative, everything downstream is a disposable copy that honors it - proven end-to-end by the repudiation
+work (a device's disowned posts swept from a follower's journal and its bodies un-served, on nodes the author
+never touched). *A delivery memo cannot launder disproven content* generalizes one hop out.
+
+**A rebroadcast is a signed pointer on your chain plus a pinned replica your node serves. Never a copy into your
+chain.**
+
+- **The pointer is the social act**: `(author_root, doc_id, version_hash_seen)`, authored on the rebroadcaster's
+  own chain. Permanent the way your words are permanent; retractable the way published edges are retractable - a
+  later entry withdraws it, because LWW needs a write and silence cannot un-say.
+- **The replica is the virality**: the author's original signed entry and body, exact bytes, their signature
+  intact - so it stays self-authenticating and no hop can launder provenance. The rebroadcaster's node serves it
+  to their followers. Every rebroadcast adds a serving node, so **popularity = replication = availability** -
+  replication tracks heat, which is the p2p virality model working with the grain.
+- **Author control rides the retraction machinery that already exists.** The replica is keyed to the author's
+  chain state: the rebroadcaster's node holds a suffix of the author's POSTS chain (shallow sync exists for
+  exactly this) and refreshes it. Author retracts → replica drops on the next refresh, the `retract_vanished`
+  edge one hop out. The pointer survives but hollows - renders as "retracted by its author."
+
+**Silence preserves, speech deletes.** An author who merely goes offline cannot retract, so their content survives
+through the replicas - the availability that full-copy wanted. An author who actively retracts is honored by every
+honest node on the refresh cadence. Full-copy trades the second away to get the first; pointer-plus-replica keeps
+both, and edits keep working too, which full-copy kills outright.
+
+The two honest bounds on "author control," owned rather than pretended away:
+
+- **Eventually-consistent, never instant.** Retraction propagates on the refresh cadence; that cadence IS the
+  author-control dial. The number, and the subscription class that implements pinning (an author I rebroadcast but
+  do not follow still needs their suffix refreshed), are left to be discovered during the build.
+- **Unenforceable against adversaries** - already conceded above ("public content served to even one follower can
+  be rebroadcast to the open web the instant they choose"). The design question was never whether deletion can be
+  guaranteed; it is whether the protocol's own machinery helps or hinders, and pointer-plus-replica means the
+  protocol never hands out permanence for free.
+
+**Doctrine fit, for free**: a rebroadcast IS the accountable-user demand signal that *Pull, Not Push* requires
+before a node fronts content, so bounded operator liability holds - you chose to carry it. And the per-contact
+rebroadcast band already exists in the edge model as the consumption dial ("how much of X's rebroadcasting do I
+want in my feed").
+
+**Edits, and the rug-pull** (you rebroadcast a benign post; the author edits it into something vile; your
+endorsement now fronts words you never saw): the pointer records the version hash *seen* - nearly free, and it is
+evidence of what was endorsed - while readers are shown the author's **current head**, because edits are theirs,
+with a badge when head ≠ seen ("edited since rebroadcast"). The version DAG makes all of it available.
+
+**Hollow, not auto-retract**: when the author deletes, the rebroadcaster's pointer entry stands and renders
+hollow. Software must not retract your chain entry because someone else deleted theirs - that is someone else
+authoring your chain by proxy.
+
+#### Replies are rebroadcast plus a comment (second cut, deliberately after)
+
+A public reply carries the soft promise of rebroadcasting the thing it responds to - without it, "well,
+@rando, I disagree" is context-free noise to everyone but the two of you. So structurally a reply is a quote:
+**rebroadcast + your own comment doc, linked.** Your words are yours forever; the context is a replica that honors
+its author's control. If they delete the post you were dunking on, your reply stands over "in reply to a retracted
+post" - the hollow rendering composes, no new case. The socially correct outcome falls out: your words were always
+yours to keep, theirs never were.
+
+What a deep reply pins is **open, leaning parent-plus-root**: the immediate parent (what your comment is
+unintelligible without) and the thread's root, so readers can walk the tree up one hop or jump to the top. Never
+the whole ancestor path - a transitive promise would make a depth-N leaf owe N replicas, the deepest repliers
+paying the most to say the least. Bounded pinning keeps every reply O(1) regardless of depth, context degrades hop
+by hop with node death rather than all at once, and each parent's own legibility was its author's promise, already
+kept.
+
+Deferred with it, named so they are not forgotten: **assembly** (nobody's chain holds "all replies to P" - it is a
+fold/memo problem fed by sync plus the comment notice-kind, and a thousand-reply tree is precisely a read whose
+cost grows with history, so it arrives with a cursor or it does not ship) and **scale** (a hot root is pinned by
+every direct replier; its retraction propagates to all of them on the cadence). None of it changes the rebroadcast
+design above, which is why **plain, unadorned rebroadcast ships first** - the vanilla feature, the first cut.
+
 ---
 
 ## Iroh Protocol Mapping
