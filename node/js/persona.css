@@ -590,6 +590,9 @@
     font-size: 0.8rem;
 }
 
+/* The one destructive control in the panel, so it gets room on both counts: a larger tap
+   target than the glance pills it borrowed its metrics from, and daylight above it - a
+   button that shuts someone out should not sit flush against the dial you were adjusting. */
 .ledger-block {
     align-self: flex-start;
     background: var(--surface);
@@ -598,7 +601,8 @@
     color: var(--coral);
     font: inherit;
     font-size: 0.78rem;
-    padding: 0.25rem 0.7rem;
+    padding: 0.4rem 0.9rem;
+    margin-top: 0.4rem;
     cursor: pointer;
 }
 

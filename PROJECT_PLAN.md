@@ -863,14 +863,32 @@ Fully public follow graphs are how "Person X follows Guy We All Hate" happens; f
 follow me back?" - a thing people legitimately want - impossible. The resolution is a principle every future
 relationship edge will face:
 
-**An edge is visible to its endpoints by default, invisible to everyone else, and any wider publication is a
-separate, explicit act.** The controversy was never the endpoints knowing; it was third parties enumerating.
+**An edge is visible to its endpoints, and its wider publication is a per-contact switch that rests OPEN.**
+
+*(Amended 2026-08-09. This line used to read "invisible to everyone else, and any wider publication is a
+separate, explicit act" - opt-in publication - and the reversal is deliberate, Curtis's call, so the reasoning
+should be legible to whoever finds it surprising. The graph is the substrate every Tier-5 feature reads: the flow
+computation, the inbound floor, the transport tier. A graph assembled from opt-in edges is not a smaller version
+of the real graph, it is a differently-shaped one - biased toward the few users who go looking for a privacy
+control and flip it the friendly way - and a Sybil computation over that is worse than no computation. Set
+against that: the enumeration harm the old default guarded is real but bounded here, because what publishes is
+the edge you deliberately dialed, never the mere fact that you looked at someone (silence stays silent - a
+contact with no bands set publishes nothing, which is what keeps browsing private), and every published edge is
+one write away from retraction. The switch did not weaken; it inverted. What IS honestly surrendered: the quiet
+follow is no longer the resting state, so a user who wants one must take an action, and users who take no
+actions are exactly the ones defaults are for. The mitigation is placement, not machinery - the visibility
+question now leads the relationship panel instead of trailing its dials, so the answer is in front of you before
+the dials that feed it.)*
+
+The controversy was never the endpoints knowing; it was third parties enumerating - and that is still what the
+tiers below are shaped around.
 
 Mechanically, a follow has **three disclosure tiers**, chosen per-follow (amended 2026-08-09: publication was
 added as the third tier, and it covers the whole relationship, not the follow alone):
 
 - **Quiet** - the follow lives on your private chain (synced only among your own nodes); you fetch their public
   content and tell no one. (The private-chain mechanism carrying it is implemented; the follow type itself is 4S.)
+  Since 2026-08-09 this tier is **chosen, not inherited**: `edges_public: no` on that contact.
 - **Tell them** - additionally, a signed "I follow you" statement is delivered **to the target's nodes only**,
   who store the receipt on their own private chain. This is the member-proof pattern generalized: *prove you are
   the subject of a datum, receive the datum.* Nobody can ask "who does A follow?" or "does A follow X?"; only
@@ -881,8 +899,8 @@ added as the third tier, and it covers the whole relationship, not the follow al
   other inbound act; without that it is an unbounded write anyone can mint identities to spam. Mechanically the
   receipt is a notice their node hands to one of yours, which transcribes it (Data Layer, Arrival and Attention) -
   the sender never writes your chains, because nobody but you ever can.
-- **Publish** (settled 2026-08-09) - the wider publication the principle above always reserved as "a separate,
-  explicit act," made concrete: **one consent dial per contact (`edges_public`) publishes the relationship whole**
+- **Publish** (settled 2026-08-09; **the default tier**, same day) - **one visibility dial per contact
+  (`edges_public`, resting open) publishes the relationship whole**
   - the trust band and the interest band together, as signed statements on the author's public chain, LWW per
   subject, retractable by writing the withdrawal. One toggle rather than per-edge consents, for simplicity: the
   user is deciding "may the network see how I hold this person," and splitting that question per-dial buys
@@ -1096,16 +1114,18 @@ the same opinion, free to drift from the first ("dial says none, vouch says met-
 The concept dissolves, the same move as the roster-is-the-ACL: examined, and found to be machinery that already
 exists. What "vouch" decomposes into:
 
-- **A vouch is a positive trust edge its author chose to publish.** Trust edges are private (your ledger, your
-  chain, your lens); the network-wide graph other people's flow computations walk needs edges that were SHARED,
-  and that is the ledger's `edges_public` consent dial - one consent covering the relationship whole, trust band
-  and interest band together (Edge-Endpoint Visibility, the Publish tier). Copy, Don't Flip applies as
-  everywhere: the flag is consent, never publication - the publication machinery mints **signed public edge
-  statements** (new artifacts on a public chain, LWW per subject, retractable) from the consented ledger. Tier
-  5's "vouch payload" survives as exactly this minted form, carrying nothing the ledger doesn't already hold.
+- **A vouch is a positive trust edge its author did not keep quiet.** Your ledger is yours (your chain, your
+  lens); the network-wide graph other people's flow computations walk needs edges that were SHARED, and that is
+  the ledger's `edges_public` dial - one switch covering the relationship whole, trust band and interest band
+  together, **resting open** since 2026-08-09 (Edge-Endpoint Visibility, the Publish tier - where the reversal
+  from opt-in is argued). Copy, Don't Flip is untouched by the inversion: the flag is *visibility*, never
+  publication itself - the machinery still mints **signed public edge statements** (new artifacts on a public
+  chain, LWW per subject, retractable) from the ledger, and withholding retracts by writing, never by deleting.
+  Tier 5's "vouch payload" survives as exactly this minted form, carrying nothing the ledger doesn't already
+  hold.
 - **The mint publishes the bands as set.** The old "mint rounds to a tier" hedge is dissolved by Bands, Not
   Numbers: the ledger holds a band, the statement carries that band, and there is no finer value to protect. A
-  consented edge is one its author already agreed may be known; a coarsened public copy of it protected no one
+  published edge is one its author left visible; a coarsened public copy of it protected no one
   and was a second value free to drift from the first.
 - **The Sybil math is untouched.** The flow engine splits each participant's fixed budget across their published
   edges; your own private edges are your lens's axioms and need no defense against yourself. Budget was always

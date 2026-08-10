@@ -97,10 +97,11 @@ const ACTIONS = [
             await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/trust`, {
                 value: stop,
             });
-            if (rng() < 0.4) {
-                // Some relationships are published - the consent that feeds the node's standing table.
+            if (rng() < 0.3) {
+                // Some relationships are kept quiet - publication is the resting state, so
+                // the interesting exercise is the withholding path, not the consenting one.
                 await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/edges_public`, {
-                    value: 'yes',
+                    value: 'no',
                 });
             }
         },

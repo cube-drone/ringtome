@@ -4,9 +4,10 @@
 
     The line this table walks is the point of most of these assertions. Routing facts (interest,
     rebroadcast) belong at node level by doctrine - "the node routes; the user ranks". A trust
-    value is here only where its author set `edges_public`, because a private assessment must not
-    have publicly measurable effects: acting on a quiet edge would let a stranger detect it by
-    measuring how well this node treats them.
+    value is here only where its author has not WITHHELD it (`edges_public: no` - publication is
+    the resting state since 2026-08-09), because a withheld assessment must not have publicly
+    measurable effects: acting on a quiet edge would let a stranger detect it by measuring how
+    well this node treats them.
 */
 const assert = require("node:assert");
 const { sql } = require("./fetch.cjs");
@@ -68,35 +69,34 @@ describe("the subscription memo", () => {
         assert.equal(rows[0].eagerness, 3, "and the first one is still there");
     });
 
-    it("WITHHOLDS a quiet trust edge - the whole reason trust is allowed here at all", async () => {
+    it("carries a trust edge by default - publication is the resting state", async () => {
         await dial("trust", "max");
-        await new Promise((r) => setTimeout(r, 3000));
-        const rows = await rowsFor(root);
-        assert.equal(
-            rows[0].trust,
-            null,
-            "an unconsented assessment never leaves the persona's own database"
-        );
-    });
-
-    it("carries it once its author consents", async () => {
-        await dial("edges_public", "yes");
         const rows = await settle(async () => {
             const got = await rowsFor(root);
             return got[0] && got[0].trust !== null ? got : null;
         });
-        assert.ok(rows, "consent is what makes it the node's business");
+        assert.ok(rows, "an unset visibility register publishes (settled 2026-08-09)");
         assert.equal(rows[0].trust, 4, "the band as set, ordinal on the ladder");
     });
 
-    it("withdraws it the moment consent is withdrawn", async () => {
+    it("WITHHOLDS it the moment its author says no - the reason trust is allowed here at all", async () => {
         await dial("edges_public", "no");
         const rows = await settle(async () => {
             const got = await rowsFor(root);
             return got[0] && got[0].trust === null ? got : null;
         });
-        assert.ok(rows, "un-consenting takes the value back out");
+        assert.ok(rows, "a withheld assessment never leaves the persona's own database");
         assert.equal(rows[0].eagerness, 3, "and leaves the routing facts alone");
+    });
+
+    it("carries it again when the author changes their mind back", async () => {
+        await dial("edges_public", "yes");
+        const rows = await settle(async () => {
+            const got = await rowsFor(root);
+            return got[0] && got[0].trust !== null ? got : null;
+        });
+        assert.ok(rows, "the switch works in both directions");
+        assert.equal(rows[0].trust, 4);
     });
 
     /*

@@ -1,9 +1,10 @@
 /*
-    The publication rung, end to end on one node: a contact ledger with `edges_public` consent
-    mints a signed public-edge statement onto the author's follows-public chain
-    (publish::reconcile), the notification fold routes it to the local personas that follow
-    the author (notifications::refresh_from), and the endpoint serves it dressed with
-    seen-state from the reader's own private chain.
+    The publication rung, end to end on one node: dialing a contact mints a signed public-edge
+    statement onto the author's follows-public chain (publish::reconcile - publication is the
+    resting state, so the dial IS the act and `edges_public: no` is what withholds), the
+    notification fold routes it to the local personas that follow the author
+    (notifications::refresh_from), and the endpoint serves it dressed with seen-state from the
+    reader's own private chain.
 
     Everything below is the DERIVED path (PROJECT_PLAN, Arrival and Attention: the follow-edge
     rule): the reader follows the author, which is why the author's chains are here to fold.
@@ -54,14 +55,17 @@ const notificationRows = async (readerHex) => {
 };
 
 describe("edge publication and its notification", () => {
-    it("consent mints the statement and the follower is notified", async () => {
+    it("dialing a relationship mints the statement and the follower is notified", async () => {
+        // No `edges_public` write anywhere here: publication is the resting state, so the
+        // dials themselves are the publishing act (settled 2026-08-09).
         await dial(author, authorRoot, readerRoot, "trust", "max");
         await dial(author, authorRoot, readerRoot, "interest", "medium");
-        await dial(author, authorRoot, readerRoot, "edges_public", "yes");
 
         const rows = await settle(async () => {
             const got = await notificationRows(readerRoot);
-            return got.length ? got : null;
+            return got.length && got[0].trust === "max" && got[0].interest === "medium"
+                ? got
+                : null;
         });
         assert.ok(rows, "the published edge became a notification row");
         assert.equal(rows.length, 1, "collapse by (sender, kind): one row per author");
@@ -101,9 +105,8 @@ describe("edge publication and its notification", () => {
         assert.equal(after.watermark, item.updated_ms);
     });
 
-    it("a consented edge toward a NON-follower notifies nobody - the derived path's boundary", async () => {
+    it("a published edge toward a NON-follower notifies nobody - the derived path's boundary", async () => {
         await dial(author, authorRoot, bystanderRoot, "trust", "max");
-        await dial(author, authorRoot, bystanderRoot, "edges_public", "yes");
 
         // The statement mints regardless (publication is the author's act; who reads it is
         // not the mint's business) - proven by the follower case above. What must NOT happen
@@ -116,7 +119,7 @@ describe("edge publication and its notification", () => {
         );
     });
 
-    it("withdrawing consent retracts the statement and the notification with it", async () => {
+    it("going private retracts the statement and the notification with it", async () => {
         await dial(author, authorRoot, readerRoot, "edges_public", "no");
         const gone = await settle(async () => {
             const got = await notificationRows(readerRoot);

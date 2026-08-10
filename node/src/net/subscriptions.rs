@@ -95,7 +95,10 @@ fn band_ordinal(value: &str) -> Option<i64> {
 /// disclosure - the gate matters for what leaves the persona's database as a TRUST fact.
 fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
     let band = |k: &str| facts.get(k).and_then(|v| band_ordinal(v));
-    let consented = matches!(facts.get(EDGES_PUBLIC).map(String::as_str), Some("yes"));
+    // PUBLIC is the resting state (2026-08-09): only an explicit "no" withholds. The gate is
+    // still a gate - it just defaults open, because a trust graph nobody opts into never
+    // grows (PROJECT_PLAN, Edge-Endpoint Visibility).
+    let consented = facts.get(EDGES_PUBLIC).map(String::as_str) != Some("no");
     Edge {
         eagerness: band(INTEREST),
         rebroadcast: band(REBROADCAST),
@@ -385,24 +388,22 @@ mod tests {
     }
 
     #[test]
-    fn withholds_trust_without_consent() {
-        // The whole justification for trust being in a node-level table at all.
-        let e = edge_of(&facts(&[("trust", "max")]));
-        assert_eq!(e.trust, None, "a quiet assessment never leaves its own database");
-        let still = edge_of(&facts(&[("trust", "max"), ("edges_public", "no")]));
-        assert_eq!(still.trust, None, "and an explicit refusal is still a refusal");
+    fn withholds_trust_the_author_kept_quiet() {
+        // The whole justification for trust being in a node-level table at all - now keyed on
+        // the one word that withholds, since publication is the resting state (2026-08-09).
+        let e = edge_of(&facts(&[("trust", "max"), ("edges_public", "no")]));
+        assert_eq!(e.trust, None, "a withheld assessment never leaves its own database");
     }
 
     #[test]
-    fn carries_trust_the_author_published() {
-        // 'yes' because that is what the ledger UI writes - the previous gate matched
-        // "true"/"1", which no writer ever produced, so UI-granted consent silently never
-        // reached this table (found 2026-08-09 in the banding pass; nothing read the column
-        // yet, so the drift cost nothing but was exactly the second-copy disease).
-        let e = edge_of(&facts(&[("trust", "max"), ("edges_public", "yes")]));
-        assert_eq!(e.trust, Some(4), "consent is what makes it the node's business");
-        let mid = edge_of(&facts(&[("trust", "medium"), ("edges_public", "yes")]));
-        assert_eq!(mid.trust, Some(2));
+    fn carries_trust_by_default() {
+        // Silence publishes. ('yes' is the word the ledger UI writes when it writes one at
+        // all - the pre-banding gate matched "true"/"1", which no writer ever produced, so
+        // UI-granted consent silently never reached this table; found 2026-08-09.)
+        let quiet = edge_of(&facts(&[("trust", "max")]));
+        assert_eq!(quiet.trust, Some(4), "an unset visibility register publishes");
+        let spoken = edge_of(&facts(&[("trust", "medium"), ("edges_public", "yes")]));
+        assert_eq!(spoken.trust, Some(2));
     }
 
     #[test]

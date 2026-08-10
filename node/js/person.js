@@ -499,7 +499,11 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
     };
 
     const blocked = facts.blocked === 'yes';
-    const edgesPublic = facts.edges_public === 'yes';
+    // PUBLIC is the resting state (settled 2026-08-09): only an explicit "no" keeps a
+    // relationship quiet, so an unset register publishes. See PROJECT_PLAN, Edge-Endpoint
+    // Visibility - the trust graph the features will read cannot grow out of a default
+    // nobody changes, and the panel asks the question first rather than burying it.
+    const edgesPublic = facts.edges_public !== 'no';
 
     // A disclosure, not a permanent wall of controls: closed, it SAYS the relationship in the
     // shelf's own icons; open, it lets you change it. `<details>` rather than hand-rolled
@@ -514,6 +518,24 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             html`<p class="ledger-note">
                 ${t('person.blocked---nothing-of-theirs', 'blocked')}
             </p>`}
+            ${/* Visibility leads (2026-08-09): every dial below it is a thing that may be
+                published, so the question of who sees them is not a footnote to that list -
+                it is the frame around it. Public is the resting state; this is where you
+                take it back. */ ''}
+            <label class="ledger-dial">
+                <span class="ledger-label">
+                    ${t('person.who-can-see-this-relationship', 'who can see this relationship')}
+                    <small>${t('person.sharing-how-you-hold-people', 'sharing how you hold people - your trust and interest - helps the network grow, but gives up some of your privacy!')}</small>
+                </span>
+                <select
+                    class="ledger-select"
+                    value=${edgesPublic ? 'yes' : 'no'}
+                    onChange=${(e) => put('edges_public', e.currentTarget.value)}
+                >
+                    <option value="yes">${t('person.public---shared-with-the', 'public - shared with the network')}</option>
+                    <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
+                </select>
+            </label>
             <label class="ledger-dial">
                 <span class="ledger-label">
                     ${t('person.your-nickname-for-them', 'your nickname for them')}
@@ -550,20 +572,6 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 value=${facts.interest_rebroadcasts}
                 onPick=${(v) => put('interest_rebroadcasts', v)}
             />
-            <label class="ledger-dial">
-                <span class="ledger-label">
-                    ${t('person.who-can-see-this-relationship', 'who can see this relationship')}
-                    <small>${t('person.sharing-how-you-hold-people', 'sharing how you hold people - your trust and interest - helps the network grow, but gives up some of your privacy!')}</small>
-                </span>
-                <select
-                    class="ledger-select"
-                    value=${edgesPublic ? 'yes' : 'no'}
-                    onChange=${(e) => put('edges_public', e.currentTarget.value)}
-                >
-                    <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
-                    <option value="yes">${t('person.public---shared-with-the', 'public - shared with the network')}</option>
-                </select>
-            </label>
             ${/* The block lives INSIDE: a button in the summary would toggle the disclosure
                 instead of blocking anyone, and blocking is an edit like the rest. */ ''}
             <button

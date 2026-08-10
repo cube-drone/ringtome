@@ -39,11 +39,16 @@ fn band(facts: &BTreeMap<String, String>, key: &str) -> Option<String> {
         .cloned()
 }
 
-/// What one contact's ledger wants published: the bands, if consented and any are set. A
-/// consented ledger with no dials set desires nothing - same as no consent - so flipping
-/// consent before ever touching a dial publishes no empty statement.
+/// What one contact's ledger wants published: the bands, unless withheld, if any are set. A
+/// ledger with no dials set desires nothing, so a contact you have merely looked at publishes
+/// no empty statement - what makes public-by-default safe is that silence stays silent.
+///
+/// Publication is the resting state (2026-08-09): only an explicit `edges_public: no` keeps a
+/// relationship quiet. The dial is now a withholding switch rather than a consent switch -
+/// same register, same Copy-Don't-Flip mint, inverted default (PROJECT_PLAN, Edge-Endpoint
+/// Visibility).
 fn desired_of(facts: &BTreeMap<String, String>) -> Option<PublishedEdge> {
-    if facts.get(EDGES_PUBLIC).map(String::as_str) != Some("yes") {
+    if facts.get(EDGES_PUBLIC).map(String::as_str) == Some("no") {
         return None;
     }
     let edge = PublishedEdge {
@@ -117,40 +122,41 @@ mod tests {
     }
 
     #[test]
-    fn consent_gates_desire() {
-        assert_eq!(
-            desired_of(&facts(&[("trust", "max"), ("interest", "high")])),
-            None,
-            "no consent, nothing desired"
-        );
-        assert_eq!(
-            desired_of(&facts(&[("trust", "max"), ("edges_public", "no")])),
-            None,
-            "an explicit refusal is still a refusal"
-        );
-        let d = desired_of(&facts(&[
-            ("trust", "max"),
-            ("interest", "high"),
-            ("edges_public", "yes"),
-        ]))
-        .unwrap();
+    fn publication_is_the_resting_state() {
+        // An unset visibility register publishes: dialing a relationship is the act, and the
+        // switch below is how you take it back.
+        let d = desired_of(&facts(&[("trust", "max"), ("interest", "high")])).unwrap();
         assert_eq!(d.trust.as_deref(), Some("max"));
         assert_eq!(d.interest.as_deref(), Some("high"));
+        assert_eq!(
+            desired_of(&facts(&[("trust", "max"), ("interest", "high"), ("edges_public", "yes")])),
+            Some(d),
+            "an explicit yes says exactly what silence already said"
+        );
     }
 
     #[test]
-    fn consent_with_nothing_to_say_desires_nothing() {
-        assert_eq!(desired_of(&facts(&[("edges_public", "yes")])), None);
-        // The retired numeric scale is not a band and must never be signed onto a chain.
+    fn an_explicit_no_withholds() {
         assert_eq!(
-            desired_of(&facts(&[("trust", "95"), ("edges_public", "yes")])),
-            None
+            desired_of(&facts(&[("trust", "max"), ("edges_public", "no")])),
+            None,
+            "the one word that keeps a relationship quiet"
         );
+    }
+
+    #[test]
+    fn nothing_to_say_desires_nothing() {
+        // What makes public-by-default safe: a contact you have merely looked at - or named -
+        // publishes no empty statement.
+        assert_eq!(desired_of(&facts(&[])), None);
+        assert_eq!(desired_of(&facts(&[("nickname", "Bee")])), None);
+        // The retired numeric scale is not a band and must never be signed onto a chain.
+        assert_eq!(desired_of(&facts(&[("trust", "95")])), None);
     }
 
     #[test]
     fn one_band_is_enough_to_publish() {
-        let d = desired_of(&facts(&[("interest", "low"), ("edges_public", "yes")])).unwrap();
+        let d = desired_of(&facts(&[("interest", "low")])).unwrap();
         assert_eq!(d.trust, None);
         assert_eq!(d.interest.as_deref(), Some("low"));
     }

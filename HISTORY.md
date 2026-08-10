@@ -3862,3 +3862,44 @@ pass NEXT_STEPS just took on.
 
 Gates: `just strings-check` + `just ui-check` green (the pure suite dropped one test - the
 label pins left the pure boundary with the labels; the catalog gate pins the words now).
+
+## 2026-08-09 — publication moves to the resting state
+
+Curtis's call, and a genuine reversal of a written principle rather than a default tweak, so
+it is recorded as one. Edge-Endpoint Visibility said "an edge is visible to its endpoints by
+default, invisible to everyone else, and any wider publication is a separate, explicit act."
+It now says the wider publication is a per-contact switch that **rests open**: only an
+explicit `edges_public: no` keeps a relationship quiet. The visibility question also moved to
+the TOP of the relationship panel, above the dials that feed it - the mitigation for a
+default-open switch is placement, not machinery, and a question answered before the dials are
+touched is a different thing from a footnote under them.
+
+The argument, written into the plan where the surprise will be: the graph is the substrate
+every Tier-5 feature reads (flow computation, inbound floor, transport tier), and a graph
+assembled from opt-in edges is not a smaller version of the real one - it is biased toward
+the users who go looking for a privacy control and flip it the friendly way, and a Sybil
+computation over that is worse than none. What keeps it honest is that **silence stays
+silent**: a contact with no bands set publishes nothing, so browsing, naming, and merely
+looking at someone remain private; only the edge you deliberately dialed travels. What is
+surrendered, plainly: the quiet follow is no longer inherited, and users who take no actions
+are exactly the ones defaults are for.
+
+Mechanically it is one inverted comparison in two gates (`subscriptions::edge_of`,
+`publish::desired_of`) - `!= Some("no")` where it read `== Some("yes")`. Copy-Don't-Flip is
+untouched: the flag is visibility, the mint still writes a statement, and withholding still
+retracts by writing. The tests inverted with it, and read better for it - the integration
+suite's publication case no longer writes a consent register at all, because dialing IS the
+act now.
+
+The cost, measured rather than assumed (same seed and shape as the amplifier fix's 151s
+baseline): **176s, +17%**, with public-edge statements up from 302 to **448** on 9 chains -
+no duplicates, just more real publication, because ~20% of generated actions now publish
+where ~4% used to. That is the feature doing what was asked rather than a regression, but it
+is the second time this rung has moved the test-data number, and the standing note applies:
+publication volume is now a function of how many relationships exist, so the next scale
+question is the mint's fsync cadence, not its correctness.
+
+Gates: full `just ci` green. Also, while in the panel: the block button got room to breathe
+(a larger tap target than the glance pills it borrowed its metrics from, plus daylight above
+it - a destructive control should not sit flush against the dial you were adjusting), and
+`just ui-build` reran so the compiled bundle actually carries it.
