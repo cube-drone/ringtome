@@ -4231,3 +4231,37 @@ list still described a pool check whose own body says, twelve lines down, that i
 does not do that, and `Verdict` still called itself "one verdict for blocked and over-quota
 alike" after over-quota stopped existing. Small, but they were the exact comments a reader would
 have trusted to conclude the oracle was covered.
+
+## 2026-08-10 — the door learns to say "not you, me"
+
+The block-oracle fix left the delivery door with two answers and three things to say. `Accepted`
+meant the sender's business was concluded; `Refused` meant a fact about the sender or their
+envelope that they could act on; and a node whose keystore was briefly locked, or whose database
+was busy, had to pick one. It picked `Refused(GATE)` — and a refusal is retired by the sender's
+outbox forever, correctly, because retrying a refusal is what a spammer does. So *our* transient
+fault silently destroyed a notice that nobody had refused, and the sender was told it was their
+own fault.
+
+`DeliverMessage::Busy` is the third answer: the 500 to the other two's 200 and 4xx. It carries no
+detail, deliberately — an internal failure is not the sender's to debug and its shape is not
+theirs to learn — and it maps to `Outcome::Unreachable`, which is the one outcome the outbox
+retries rather than retires. The backoff ladder and the expiry that already existed for a
+recipient whose phone is asleep now cover a recipient whose node is having a bad minute, which is
+the same situation from the sender's side and always was.
+
+One behaviour changed beyond the mapping: **a busy door no longer ends the attempt.** The dial
+ladder used to return on any answer, so one unlucky machine consumed the whole try. Busy is a
+door that did not work, so the loop continues to the next candidate — the sender needs *a* node
+of the recipient's, not that one — and only falls out as `Unreachable` when every door is busy or
+silent.
+
+That left `refusal::GATE` with no producer at all: the quota check is gone (the ring buffer),
+the pre-Trust classifier refuses nobody, blocks answer `Accepted`, and now internal faults answer
+`Busy`. It is kept, documented as unproduced, because below-floor refusal returns with Trust and
+that one is a genuine spoken refusal. The useful invariant meanwhile: **the door's only refusals
+are `MALFORMED` and `NOT_SERVED`** — one a fact about the envelope, one a fact about this node,
+neither a fact about what the recipient thinks of you.
+
+The new cop is small and pins the mistake that would be invisible: `Busy` and `Accepted` are both
+fieldless, separated on the wire only by a tag, and confusing them turns "try again" into "your
+job is done" — a notice lost with nothing logged anywhere.

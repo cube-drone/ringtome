@@ -494,8 +494,15 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
 /// it is invisible rather than merely unlabelled; the codes below carry only facts about the
 /// *sender* or about *this node*, never about the recipient's opinion of them.
 pub mod refusal {
-    /// The gate said no - below the floor, over quota, or this node could not transcribe -
-    /// indistinguishable by design. Never a block: see the module note.
+    /// The gate said no - below the floor, over quota - indistinguishable by design.
+    ///
+    /// **Nothing emits this today** (2026-08-10), and that is the honest state rather than an
+    /// oversight: the quota check is gone (the ring buffer), the pre-Trust classifier refuses
+    /// nobody, a block answers `Accepted`, and this node's own failures answer
+    /// [`super::DeliverMessage::Busy`]. It is kept because below-floor refusal returns with
+    /// Trust and *is* a spoken refusal - a fact about the sender's standing, which they may
+    /// act on. Until then the door's only refusals are `MALFORMED` and `NOT_SERVED`, both
+    /// facts about the envelope or about this node, never about what the recipient thinks.
     pub const GATE: u32 = 0;
     /// The bytes were not a well-formed, correctly-signed envelope with checkable evidence.
     pub const MALFORMED: u32 = 1;
@@ -519,20 +526,33 @@ pub mod refusal {
 /// | 0   | Offer    | bstr signed-envelope bytes    |
 /// | 1   | Accepted | -                             |
 /// | 2   | Refused  | uint reason ([`refusal`])     |
+/// | 3   | Busy     | -                             |
 ///
 /// **Accepted means "dealt with", not "shown to a human"** - a notice the recipient discarded
 /// because they already follow the sender (the follow-edge rule: evidence they already pull
 /// needs no envelope) is accepted, because the sender's job is done and retrying is pointless.
+///
+/// **The three answers say three different things about whose problem it is**, which is the
+/// whole reason [`Busy`](Self::Busy) exists: `Accepted` is the sender's business concluded,
+/// `Refused` is a fact about the sender or the envelope that they can act on, and `Busy` is
+/// this node admitting *its own* failure - the 500 to the other two's 200 and 4xx. Before it
+/// existed, a node whose keystore was briefly locked answered `Refused`, and a refusal is
+/// retired forever: our fault, their notice destroyed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeliverMessage {
     Offer(Vec<u8>),
     Accepted,
     Refused(u32),
+    /// This node could not judge the offer for reasons of its own. Try again in a bit - and
+    /// carrying no detail on purpose, because an internal failure is not the sender's to debug
+    /// and its shape is not theirs to learn.
+    Busy,
 }
 
 const TAG_OFFER: u64 = 0;
 const TAG_ACCEPTED: u64 = 1;
 const TAG_REFUSED: u64 = 2;
+const TAG_BUSY: u64 = 3;
 
 impl DeliverMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -551,6 +571,10 @@ impl DeliverMessage {
                 w.array(2);
                 w.uint(TAG_REFUSED);
                 w.uint(u64::from(*reason));
+            }
+            Self::Busy => {
+                w.array(1);
+                w.uint(TAG_BUSY);
             }
         }
         w.into_bytes()
@@ -575,6 +599,7 @@ impl DeliverMessage {
                     u32::try_from(raw).map_err(|_| ProtoError::BadEntry("reason out of range"))?,
                 )
             }
+            (TAG_BUSY, 1) => Self::Busy,
             _ => return Err(ProtoError::BadEntry("unknown delivery message")),
         };
         r.finish()?;
@@ -799,9 +824,21 @@ mod tests {
             DeliverMessage::Offer(vec![1, 2, 3]),
             DeliverMessage::Accepted,
             DeliverMessage::Refused(refusal::GATE),
+            DeliverMessage::Busy,
         ] {
             assert_eq!(DeliverMessage::decode(&message.encode()).unwrap(), message);
         }
+    }
+
+    /// `Busy` and `Accepted` are both fieldless, so the only thing separating them on the wire
+    /// is the tag - and confusing them would turn "try again" into "your job is done", which
+    /// loses the notice silently. Cheap to pin, and the mistake it catches is invisible.
+    #[test]
+    fn busy_is_not_accepted_on_the_wire() {
+        assert_ne!(
+            DeliverMessage::Busy.encode(),
+            DeliverMessage::Accepted.encode()
+        );
     }
 
     #[test]

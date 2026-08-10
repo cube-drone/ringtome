@@ -1159,7 +1159,12 @@ Four properties, each a decision rather than an accident:
   it will be believed.
 - **Refusal is visible to the sender, and that leaks exactly one bit.** A silent drop is the worst failure mode in
   messaging, so we take the bit: "they are not accepting messages from you" confirms the sender sits below the
-  floor, and says nothing about its value or the graph behind it.
+  floor, and says nothing about its value or the graph behind it. **Two answers are carved out of this**
+  (2026-08-10, see *A block is the one refusal that is not spoken*): a block answers "accepted", because whether
+  you blocked someone is a fact about *you* rather than about them; and a node that simply could not judge the
+  offer answers **"busy"** rather than any refusal, because the sender retires a refusal forever and our locked
+  keystore is not their bad behaviour. The rule the three answers follow: a refusal may only ever report a fact
+  about the sender or their envelope.
 - **There is no sender-side preflight.** The floor is computed in the *recipient's* graph and deliberately
   unknowable to the sender (Privacy of the graph, below), so no client can grey the button out ahead of time. The
   compose surface always works; the refusal arrives from the network.
