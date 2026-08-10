@@ -9,15 +9,24 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
-### The full-chain audit's remaining items (2026-08-10)
+### The idle-node CPU is still unexplained (2026-08-10)
 
-Five done (see HISTORY): `sync::local_frontiers`, `documents::materialize` on the save path,
-the ingest path's whole-log rebuild, the unbounded `/entries` response, and `missing_plan`'s
-chain enumeration. What is left is the tail, and neither item is urgent:
+Three dev nodes, idle, 30-58% CPU each, for hours. This provoked the full-chain audit and
+**survived it**: the audit's suspect (`local_frontiers` scanning the log) cannot be the cause,
+because the databases involved are 6 MB total with a 909 KB largest file, and a `GROUP BY` at
+that size does not cost a third of a core however often it runs. The one profile that named it
+was a wall-clock sampler, which cannot tell computing from waiting on a mutex.
 
-1. **`imaol::all_entry_bytes`** — whole log into memory for journal backfill at open; fine as
-   a one-time recovery path, worth streaming if journals get large.
-2. **`imaol::entries_of_type` is a footgun**: no watermark, no bound. Every caller today is an
-   identity chain (exempt), but it reads as general-purpose, and the next content-chain caller
-   gets a full replay for free. Cheapest fix is a rename or a doc that says "identity chains
-   only"; the real one is a bounded variant.
+The useful measurement made while writing this up: **an empty node on the current binary idles
+at 0.3%.** So the cost is per-persona, not structural (networking, discovery, the runtime), and
+there is a clean floor to bisect from — add one persona, then one background loop at a time,
+and watch where 0.3% becomes 30%. The one-second `resync::EAGER_TICK` is the obvious first
+suspect by frequency alone, but *what* it does per persona per tick is the open question, and
+page-level AEGIS decryption on every query is a candidate nobody has ruled in or out.
+
+Wants a CPU-time profiler rather than `sample`.
+
+The full-chain audit of 2026-08-10 is closed — all seven items, see HISTORY. The rule it left
+behind, for anything new that touches the log: **a read whose cost grows with an identity's
+history needs a watermark, a cursor, or a named reason it is bounded.** `imaol` now enforces
+the third case rather than trusting it (`service_reads_whole`).

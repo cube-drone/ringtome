@@ -828,13 +828,27 @@ impl UserDbManager {
         // miss - to answer `is_empty()` in the common case where the journal and the database
         // are both populated and there is nothing to do (measured 2026-08-08).
         if journal_empty {
-            let existing = crate::record::imaol::all_entry_bytes(&db)
+            // Streamed in pages rather than read whole: this walks an identity's entire log,
+            // and its only job is to hand each frame to a file - holding all of it in memory
+            // first was spending RAM proportional to history on a recovery path.
+            let mut cursor: Option<crate::record::imaol::EntryCursor> = None;
+            loop {
+                let (batch, next) = crate::record::imaol::entry_bytes_page(
+                    &db,
+                    crate::record::imaol::BACKFILL_BATCH,
+                    cursor.as_ref(),
+                )
                 .await
                 .with_context(|| format!("reading entries for journal init of {root_pubkey}"))?;
-            if !existing.is_empty() {
-                journal
-                    .append_all(&existing)
-                    .with_context(|| format!("backfilling journal for {root_pubkey}"))?;
+                if !batch.is_empty() {
+                    journal
+                        .append_all(&batch)
+                        .with_context(|| format!("backfilling journal for {root_pubkey}"))?;
+                }
+                match next {
+                    Some(at) => cursor = Some(at),
+                    None => break,
+                }
             }
         } else if crate::record::imaol::entries_are_empty(&db)
             .await

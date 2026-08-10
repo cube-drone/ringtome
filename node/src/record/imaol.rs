@@ -748,11 +748,33 @@ pub async fn load_key_tree(db: &Db, root_hex: &str) -> Result<ringtome_proto::Cr
 /// Every stored entry of one `(service, entry_type)`, decoded, in `(author, seq)` order - the
 /// read path for chain-scanning consumers (the private-chain machinery reads `key-epoch`,
 /// `authorize`, and `private-record` entries through this).
+/// Services whose whole chain may be read at once, because ceremony bounds them.
+///
+/// This is a gate, not a hint: `entries_of_type` has no watermark and no limit, so calling it
+/// on a content chain is a full replay with no tell. Every caller today is one of these two,
+/// and the list is the reason that stays true - a service earns a whole-chain read by being
+/// named here, never by default (the `record::private::aad_for_service` discipline).
+///
+/// - **identity-public**: tiny and security-critical by design, and the authority context has
+///   to be read whole to be trusted at all (`Crown::build` linearizes from genesis).
+/// - **profile-public**: a handful of `profile-set` entries - name, bio, avatar. Bounded by
+///   the persona's OWN ceremony rather than by anything a peer can inflate, which is what
+///   makes the eviction refold safe to do eagerly.
+fn service_reads_whole(service_id: u32) -> bool {
+    service_id == service::IDENTITY_PUBLIC || service_id == service::PROFILE_PUBLIC
+}
+
 pub async fn entries_of_type(
     db: &Db,
     service_id: u32,
     type_id: u32,
 ) -> Result<Vec<SignedEntry>, AppError> {
+    if !service_reads_whole(service_id) {
+        return Err(AppError::Internal(anyhow!(
+            "service {service_id} is not read whole - it has no bound, and a content chain \
+             read this way is a silent full replay (record::imaol::service_reads_whole)"
+        )));
+    }
     let rows: Vec<(Vec<u8>,)> = db
         .fetch_all(
             "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
@@ -971,25 +993,68 @@ pub async fn entries_are_empty(db: &Db) -> Result<bool, AppError> {
     Ok(row.is_none())
 }
 
-/// Every stored entry's exact envelope bytes, ordered by `(author, service, seq)` - the
-/// deterministic order journal backfill writes frames in (replay revalidates regardless).
+/// How many entries the journal backfill carries in memory at once.
+pub const BACKFILL_BATCH: u32 = 256;
+
+/// One page of stored envelope bytes in `(author, service, seq)` order - the primary key, so
+/// the walk is an index seek - plus the cursor to continue from, or `None` at the end.
+///
+/// Paged since 2026-08-10 (the full-chain audit). Its caller is journal backfill, which runs
+/// when a database is opened beside an empty journal; the whole-log version held every entry
+/// an identity had ever written in memory at once, which is a strange amount of RAM to spend
+/// on a recovery path that only ever streams its input straight back out to a file.
+///
 /// Ephemeral chains are excluded: "the journal never holds inbox cargo" has to be true on
-/// every path, and the backfill (a lost-journal recovery flow) is the one that would
-/// otherwise quietly re-import it.
-pub async fn all_entry_bytes(db: &Db) -> Result<Vec<Vec<u8>>, AppError> {
-    let rows: Vec<(i64, Vec<u8>)> = db
-        .fetch_all(
-            "SELECT service, bytes FROM entries ORDER BY author_pubkey, service, seq",
-            (),
-        )
-        .await
-        .context("reading entry bytes")
-        .map_err(AppError::Internal)?;
-    Ok(rows
-        .into_iter()
-        .filter(|(svc, _)| !crate::net::sync::service_allows_suffix(*svc as u32))
-        .map(|(_, bytes)| bytes)
-        .collect())
+/// every path, and the backfill is the one that would otherwise quietly re-import it.
+pub async fn entry_bytes_page(
+    db: &Db,
+    limit: u32,
+    after: Option<&EntryCursor>,
+) -> Result<(Vec<Vec<u8>>, Option<EntryCursor>), AppError> {
+    type Row = (String, i64, i64, Vec<u8>);
+    let rows: Vec<Row> = match after {
+        Some(cursor) => {
+            db.fetch_all(
+                "SELECT author_pubkey, service, seq, bytes FROM entries
+                 WHERE (author_pubkey, service, seq) > (?1, ?2, ?3)
+                 ORDER BY author_pubkey, service, seq LIMIT ?4",
+                (
+                    cursor.author.as_str(),
+                    i64::from(cursor.service),
+                    cursor.seq as i64,
+                    i64::from(limit),
+                ),
+            )
+            .await
+        }
+        None => {
+            db.fetch_all(
+                "SELECT author_pubkey, service, seq, bytes FROM entries
+                 ORDER BY author_pubkey, service, seq LIMIT ?1",
+                (i64::from(limit),),
+            )
+            .await
+        }
+    }
+    .context("reading a page of entry bytes")
+    .map_err(AppError::Internal)?;
+
+    // The cursor advances by the last row READ, not the last row kept - filtering ephemeral
+    // chains out of the payload must not make the walk step over them and loop forever.
+    let next = (rows.len() as u32 == limit)
+        .then(|| rows.last().map(|(author, svc, seq, _)| EntryCursor {
+            author: author.clone(),
+            service: *svc as u32,
+            seq: *seq as u64,
+        }))
+        .flatten();
+    Ok((
+        rows.into_iter()
+            .filter(|(_, svc, _, _)| !crate::net::sync::service_allows_suffix(*svc as u32))
+            .map(|(_, _, _, bytes)| bytes)
+            .collect(),
+        next,
+    ))
 }
 
 /// Row shape of the raw-log query:
@@ -1187,6 +1252,68 @@ mod tests {
         assert_eq!(third.len(), 2);
         assert_eq!(third[&hex::encode(alice)].edge.trust.as_deref(), Some("max"));
         assert_eq!(third[&hex::encode(bob)].edge.interest.as_deref(), Some("low"));
+    }
+
+    #[tokio::test]
+    async fn a_whole_chain_read_is_refused_on_unbounded_services() {
+        // The cop, planted and watched go red (STYLE: a cop that cannot fail is decoration).
+        // `entries_of_type` has no watermark and no limit; on a content chain that is a full
+        // replay with no tell, so the services it may be used on are named rather than assumed.
+        let db = test_db().await;
+        for allowed in [service::IDENTITY_PUBLIC, service::PROFILE_PUBLIC] {
+            assert!(
+                entries_of_type(&db, allowed, entry_type::PROFILE_SET).await.is_ok(),
+                "ceremony-bounded chains still read whole"
+            );
+        }
+        for refused in [
+            service::POSTS,
+            service::DOCUMENTS_PRIVATE,
+            service::GENERAL_PRIVATE,
+            service::INBOX_STRANGER,
+        ] {
+            assert!(
+                entries_of_type(&db, refused, entry_type::DOC_HEADER).await.is_err(),
+                "service {refused} grows without bound and must not be read whole"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_journal_backfill_streams_the_whole_log_in_pages() {
+        // Bounded memory on the recovery path: the walk must still visit every durable entry
+        // exactly once, and must NOT step over the ephemeral rows it filters out (a cursor
+        // advanced by rows kept rather than rows read would loop on an inbox-heavy log).
+        let db = test_db().await;
+        let key = test_key();
+        for i in 0..5 {
+            set_profile_field(&db, &key, "name", &format!("n{i}")).await.unwrap();
+            append(
+                &db,
+                &key,
+                service::INBOX_STRANGER,
+                entry_type::INBOX_NOTICE,
+                Payload::Inline(vec![i as u8]),
+            )
+            .await
+            .unwrap();
+        }
+
+        let mut streamed: Vec<Vec<u8>> = Vec::new();
+        let mut cursor: Option<EntryCursor> = None;
+        for _ in 0..20 {
+            let (batch, next) = entry_bytes_page(&db, 2, cursor.as_ref()).await.unwrap();
+            streamed.extend(batch);
+            match next {
+                Some(at) => cursor = Some(at),
+                None => break,
+            }
+        }
+        assert_eq!(
+            streamed.len(),
+            5,
+            "every durable entry, exactly once - and no inbox cargo, which the journal never holds"
+        );
     }
 
     #[tokio::test]

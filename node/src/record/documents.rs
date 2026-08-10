@@ -4452,7 +4452,10 @@ mod tests {
 
         // Deliver the writer's header entries into the reader's log (what sync sends), leaving
         // the body blob behind in the writer's store - exactly the headers-ahead-of-bodies gap.
-        let raw = crate::record::imaol::all_entry_bytes(&writer).await.unwrap();
+        let (raw, _) =
+            crate::record::imaol::entry_bytes_page(&writer, crate::record::imaol::BACKFILL_BATCH, None)
+                .await
+                .unwrap();
         let root = key.verifying_key().to_bytes();
         crate::net::sync::ingest_batch(&reader, root, raw, true)
             .await

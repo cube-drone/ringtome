@@ -400,10 +400,29 @@ test-data personas="15" actions="15" seed="":
     # Default to the dev network, shifted with the twin like the recipes that spawn the nodes -
     # otherwise the generator would reach into the OTHER checkout's network. An explicit
     # RINGTOME_TESTDATA_PORTS (e.g. scratch nodes) is always honored as given.
+    # Which nodes to drive: whatever is ACTUALLY ALIVE in this checkout's dev lane, discovered
+    # by asking. This used to name the first three ports outright, which was true when `just
+    # start` and `just start-two`/`start-three` were the only ways to boot a network - and
+    # quietly wrong from the moment `start-n` arrived, because `just start-n 6` then got a
+    # generator that could only see half of it. A probe cannot drift the way a baked list does.
     if [ -z "${RINGTOME_TESTDATA_PORTS-}" ]; then
-        RINGTOME_TESTDATA_PORTS="{{port}},{{port_b}},{{port_c}}"
+        live=""
+        for ((i = 1; i <= 16; i++)); do
+            p=$(( {{port_base}} + i ))
+            if curl -sf -m 1 "http://127.0.0.1:$p/health" >/dev/null 2>&1; then
+                live="${live:+$live,}$p"
+            fi
+        done
+        if [ -z "$live" ]; then
+            echo "test-data: nothing answering on this checkout's dev lane (ports $(( {{port_base}} + 1 ))-$(( {{port_base}} + 16 )))." >&2
+            echo "  start a network first: 'just start', or 'just start-n N' for N nodes." >&2
+            echo "  (throwaway nodes instead? 'just scratch 1|2|3', then set RINGTOME_TESTDATA_PORTS)" >&2
+            exit 1
+        fi
+        RINGTOME_TESTDATA_PORTS="$live"
         export RINGTOME_TESTDATA_PORTS
     fi
+    echo "test-data: driving dev nodes $RINGTOME_TESTDATA_PORTS"
     cd "{{justfile_directory()}}/harness" && node testdata.mjs {{personas}} {{actions}} {{seed}}
 
 # --- scratch nodes (agent/probe testing) ----------------------------------------------------
