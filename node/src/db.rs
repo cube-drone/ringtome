@@ -41,7 +41,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
 const NODE_SCHEMA_GENERATION: i64 = 12; // 12: outbound_notices - the delivered path (2026-08-09)
-const USER_SCHEMA_GENERATION: i64 = 9; // 9: inbox_notices carries its chain author - retention (2026-08-09)
+const USER_SCHEMA_GENERATION: i64 = 10; // 10: published_edges memo - the fold stops replaying (2026-08-09)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);

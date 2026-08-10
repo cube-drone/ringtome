@@ -43,6 +43,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("entries", vec!["record/imaol.rs", "net/sync.rs"]),
         ("equivocations", vec!["net/sync.rs"]),
         ("profile_view", vec!["record/imaol.rs"]),
+        ("published_edges", vec!["record/imaol.rs"]),
         // persisted materialized views: each fold's SQL lives with the code
         // that owns the decrypted domain; the shared watermark bookkeeping lives in imaol.
         ("doc_versions", vec!["record/documents.rs"]),

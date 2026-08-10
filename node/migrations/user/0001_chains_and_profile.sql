@@ -174,6 +174,23 @@ CREATE TABLE private_set_elements (
     PRIMARY KEY (service, collection, element)
 );
 
+-- The published relationships, materialized: latest public-edge per subject across all the
+-- persona's device chains (imaol::catch_up_published_edges - the fold writes the memo, reads
+-- never fold). A row with both bands NULL is a folded RETRACTION, kept as the LWW tombstone
+-- that stops a resurrected older statement from winning; readers treat it as "nothing
+-- published". Consumers: publish::reconcile (desired-vs-published) and the notifications
+-- fold; both used to replay the whole chain per call.
+CREATE TABLE published_edges (
+    subject_root   TEXT    NOT NULL,
+    trust          TEXT,
+    interest       TEXT,
+    timestamp_ms   INTEGER NOT NULL,  -- LWW stamp of the winning statement
+    seq            INTEGER NOT NULL,
+    entry_hash     BLOB    NOT NULL,
+    received_at_ms INTEGER NOT NULL,  -- this replica's arrival stamp (the bell orders by it)
+    PRIMARY KEY (subject_root)
+);
+
 -- The inbox: notices delivered by strangers, folded from the two inbox tier chains
 -- (PROJECT_PLAN, Arrival and Attention - the DELIVERED path; the derived path is node.db's
 -- `notifications` and never touches this).

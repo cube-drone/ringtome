@@ -270,29 +270,74 @@ pub struct PublishedRow {
     pub received_at_ms: i64,
 }
 
-/// The published relationships, folded: the latest `public-edge` per subject across every key's
-/// follows-public chain in this database, LWW on `(timestamp_ms, seq, entry_hash)` (The Ordering
-/// Contract's standard tuple). Computed at read rather than materialized: these chains are tiny
-/// (one entry per published relationship change), and the query seeks via
-/// `entries_by_service_type`. Undecodable payloads are skipped, never fatal - the fold enforces
-/// nothing, because chain admission is signatures and hashes only, and a future band word must
-/// not wedge anything.
+/// The published relationships: the latest `public-edge` per subject across every key's
+/// follows-public chain in this database, LWW on the standard stamp.
+///
+/// Memo-backed (2026-08-09, replacing a full-chain replay per call): the fold below advances
+/// by watermark and writes the `published_edges` view, and this read never folds more than
+/// what arrived since it last looked. The replay version was fine while "these chains are
+/// tiny" was true, and public-by-default repealed that premise the same day it was written -
+/// every dial turn while visible appends a statement, the fold's cost was O(publication
+/// history) forever, and it sat on two hot paths (publish::reconcile per ledger refresh,
+/// notifications::refresh_from per frontier move). The Data Layer's own rule, applied at
+/// last: the fold writes a memo, and reads never fold.
 pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, AppError> {
-    let rows: Vec<(Vec<u8>, i64)> = db
+    catch_up_published_edges(db).await?;
+    type Row = (String, Option<String>, Option<String>, i64);
+    let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT bytes, received_at_ms FROM entries WHERE service = ?1 AND entry_type = ?2",
+            "SELECT subject_root, trust, interest, received_at_ms FROM published_edges",
+            (),
+        )
+        .await
+        .context("reading the published-edges view")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .map(|(subject, trust, interest, received_at_ms)| {
+            (
+                subject,
+                PublishedRow {
+                    edge: PublishedEdge { trust, interest },
+                    received_at_ms,
+                },
+            )
+        })
+        .collect())
+}
+
+/// Fold new `public-edge` entries into the view. Keyless (the chain is public), so garbage is
+/// skipped and nothing ever stalls a watermark - the fold enforces nothing, because chain
+/// admission is signatures and hashes only, and a future band word must not wedge anything.
+/// Retractions fold to a row with both bands NULL rather than a delete: the row is the LWW
+/// tombstone that keeps a resurrected older statement from winning, and readers already treat
+/// an empty edge as "nothing published".
+async fn catch_up_published_edges(db: &Db) -> Result<(), AppError> {
+    type Row = (String, Vec<u8>, i64, i64);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT e.author_pubkey, e.bytes, e.received_at_ms, e.seq
+             FROM entries e
+             LEFT JOIN view_watermarks w
+               ON w.author_pubkey = e.author_pubkey AND w.service = e.service
+             WHERE e.service = ?1 AND e.entry_type = ?2
+               AND e.seq > COALESCE(w.folded_seq, -1)
+             ORDER BY e.author_pubkey, e.seq",
             (
                 i64::from(service::FOLLOWS_PUBLIC),
                 i64::from(entry_type::PUBLIC_EDGE),
             ),
         )
         .await
-        .context("reading public-edge entries")
+        .context("reading public-edge entries past the watermark")
         .map_err(AppError::Internal)?;
+    if rows.is_empty() {
+        return Ok(());
+    }
 
-    // winner per subject: the LWW stamp beside the folded row.
-    let mut latest: BTreeMap<String, (Stamp, PublishedRow)> = BTreeMap::new();
-    for (bytes, received_at_ms) in rows {
+    let mut advance: BTreeMap<String, u64> = BTreeMap::new();
+    for (author_hex, bytes, received_at_ms, seq) in rows {
+        advance.insert(author_hex, seq as u64);
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;
         };
@@ -302,23 +347,39 @@ pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, 
         let Ok(edge) = PublicEdge::decode(payload) else {
             continue;
         };
-        let stamp = (signed.entry().timestamp_ms, signed.entry().seq, *signed.hash());
-        let folded = PublishedRow {
-            edge: PublishedEdge {
-                trust: edge.trust,
-                interest: edge.interest,
-            },
-            received_at_ms,
-        };
-        let subject_hex = hex::encode(edge.subject);
-        match latest.get(&subject_hex) {
-            Some((held, _)) if *held >= stamp => {}
-            _ => {
-                latest.insert(subject_hex, (stamp, folded));
-            }
-        }
+        // The apply_profile_set discipline: compare-and-write is one atomic statement, so
+        // concurrent catch-ups and rebuild replays interleave benignly.
+        db.execute(
+            "INSERT INTO published_edges
+               (subject_root, trust, interest, timestamp_ms, seq, entry_hash, received_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(subject_root) DO UPDATE SET
+               trust = excluded.trust,
+               interest = excluded.interest,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash,
+               received_at_ms = excluded.received_at_ms
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (published_edges.timestamp_ms, published_edges.seq, published_edges.entry_hash)",
+            (
+                hex::encode(edge.subject),
+                edge.trust.as_deref(),
+                edge.interest.as_deref(),
+                signed.entry().timestamp_ms,
+                signed.entry().seq as i64,
+                signed.hash().as_slice(),
+                received_at_ms,
+            ),
+        )
+        .await
+        .context("folding a published edge")
+        .map_err(AppError::Internal)?;
     }
-    Ok(latest.into_iter().map(|(s, (_, r))| (s, r)).collect())
+    for (author_hex, seq) in advance {
+        advance_watermark(db, &author_hex, service::FOLLOWS_PUBLIC, seq).await?;
+    }
+    Ok(())
 }
 
 /// Drop one chain's rows below `floor_seq` - the retention primitive (PROJECT_PLAN, Tiered
@@ -479,6 +540,10 @@ pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
         .await
         .context("clearing profile view")
         .map_err(AppError::Internal)?;
+    db.execute("DELETE FROM published_edges", ())
+        .await
+        .context("clearing the published-edges view")
+        .map_err(AppError::Internal)?;
     db.execute("DELETE FROM view_watermarks", ())
         .await
         .context("clearing view watermarks")
@@ -509,8 +574,21 @@ pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
         } else {
             None
         };
-        ringtome_proto::validate_next(prev_link, &signed)
-            .map_err(|e| AppError::Internal(anyhow!("stored chain fails validation: {e}")))?;
+        // A chain STARTING above zero is legal exactly where holders prune by policy: the
+        // suffix's first entry is validated standalone (signature; its prev_hash is the
+        // commitment to the destroyed prefix), and the walk chains forward from it as normal.
+        // Everywhere else, a missing genesis is the corruption this replay exists to catch.
+        let suffix_start = prev_link.is_none()
+            && signed.entry().seq > 0
+            && crate::net::sync::service_allows_suffix(signed.entry().chain.service);
+        if suffix_start {
+            signed
+                .verify()
+                .map_err(|e| AppError::Internal(anyhow!("stored suffix head fails: {e}")))?;
+        } else {
+            ringtome_proto::validate_next(prev_link, &signed)
+                .map_err(|e| AppError::Internal(anyhow!("stored chain fails validation: {e}")))?;
+        }
 
         if signed.entry().chain.service == service::PROFILE_PUBLIC
             && signed.entry().entry_type == entry_type::PROFILE_SET
@@ -922,6 +1000,70 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(next.entry().seq, 6, "seq continues from the surviving head");
+    }
+
+    #[tokio::test]
+    async fn the_published_edges_memo_folds_incrementally_and_idempotently() {
+        let db = test_db().await;
+        let key = test_key();
+        let alice = [5u8; 32];
+
+        publish_public_edge(&db, &key, &alice, Some("high".into()), None).await.unwrap();
+        let first = published_edges(&db).await.unwrap();
+        assert_eq!(first[&hex::encode(alice)].edge.trust.as_deref(), Some("high"));
+
+        // A second read folds nothing (the watermark holds) and answers the same.
+        let second = published_edges(&db).await.unwrap();
+        assert_eq!(first, second, "a read past the watermark is a no-op");
+
+        // New statements past the watermark fold in; old rows stand.
+        let bob = [6u8; 32];
+        publish_public_edge(&db, &key, &bob, None, Some("low".into())).await.unwrap();
+        publish_public_edge(&db, &key, &alice, Some("max".into()), Some("max".into())).await.unwrap();
+        let third = published_edges(&db).await.unwrap();
+        assert_eq!(third.len(), 2);
+        assert_eq!(third[&hex::encode(alice)].edge.trust.as_deref(), Some("max"));
+        assert_eq!(third[&hex::encode(bob)].edge.interest.as_deref(), Some("low"));
+    }
+
+    #[tokio::test]
+    async fn the_memo_survives_a_rebuild() {
+        // rebuild_views drops the memo; the next read refolds it whole from the log.
+        let db = test_db().await;
+        let key = test_key();
+        let alice = [5u8; 32];
+        publish_public_edge(&db, &key, &alice, Some("medium".into()), None).await.unwrap();
+        let before = published_edges(&db).await.unwrap();
+
+        rebuild_views(&db).await.unwrap();
+        let after = published_edges(&db).await.unwrap();
+        assert_eq!(before, after, "the memo is a cache, and the log is the truth");
+    }
+
+    #[tokio::test]
+    async fn rebuild_tolerates_a_pruned_inbox_chain() {
+        // The latent trap retention left behind: replay validates every chain from genesis,
+        // and a pruned inbox chain legitimately starts above zero. Found while memoizing;
+        // without the suffix arm in rebuild_views, this test dies with "genesis entry must
+        // have seq 0" on the first eviction that triggers a rebuild against a pruned db.
+        let db = test_db().await;
+        let key = test_key();
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        for i in 0..5 {
+            append(
+                &db,
+                &key,
+                service::INBOX_STRANGER,
+                entry_type::INBOX_NOTICE,
+                Payload::Inline(vec![i as u8]),
+            )
+            .await
+            .unwrap();
+        }
+        prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, 3).await.unwrap();
+
+        let replayed = rebuild_views(&db).await.unwrap();
+        assert!(replayed >= 2, "the pruned chain's suffix replays instead of erroring");
     }
 
     #[tokio::test]

@@ -4145,3 +4145,40 @@ database - the checkpoint holds hashes and sequence numbers, nothing about who k
 Gates: full `just ci` green, exit code read before any pipe. The test that is the whole
 point: write three notices, open a fresh database against the same checkpoint file, append -
 and watch it continue at seq 3 linking the exact old head, no fork anywhere.
+
+## 2026-08-09 — the edge fold gets its memo, and the real CPU thief gets caught
+
+Two findings for the price of one fix.
+
+**The fix, as ledgered**: `imaol::published_edges` replayed every public-edge entry ever
+written, on every call, on two hot paths - fine when "these chains are tiny" was true,
+repealed the same day by public-by-default, whose every dial turn appends a statement
+forever. It is now memo-backed: a `published_edges` view per persona (user schema gen 10),
+folded incrementally past a watermark with the `apply_profile_set` stamp-compare upsert,
+retractions kept as both-bands-NULL rows because the tombstone is what stops a resurrected
+older statement from winning. `rebuild_views` clears it; the read refolds it whole; the
+public-facing signature is unchanged so neither consumer moved. The Data Layer's own rule,
+applied at last: the fold writes a memo, and reads never fold.
+
+**The attribution, corrected in public**: before building, a `sample` of a busy dev node -
+step zero, per the ledger entry's own advice - caught the idle-CPU burst red-handed, and it
+was NOT this fold. 399 of 400 samples sat inside `resync::eager_pass → local_frontiers`: a
+full-table GROUP BY over the entries log, per persona, inside the ONE-SECOND eager tick, on
+databases fat enough that the scan outlasts the tick scheduling it. That finding replaced
+this one on the REFACTOR ledger, with its caveats named (one sample, one node, the older
+binary, testdata-sized data) and the candidate fix sketched (serve frontiers from the
+chain_heads memo, which exists precisely to answer head questions without opening the log).
+
+**The measurement, honest**: test-data, three scratch nodes, seed 424242 - 174s against the
+176s baseline. No wall-time change at current scale, exactly as the corrected attribution
+predicts; this fix's justification is the unbounded asymptote and the doctrine, not a
+benchmark. The benchmark's job was keeping the claim honest, and it did.
+
+A bonus bug the memo work flushed out: `rebuild_views` validated every chain from genesis,
+and a PRUNED inbox chain legitimately starts above zero - so the first forgery eviction to
+trigger a rebuild against a pruned database would have died on "genesis entry must have seq
+0". Retention left that trap; the replay now takes the suffix arm for exactly the services
+whose holders prune (signature-checked standalone head, ordinary chaining after), with a test
+that prunes then rebuilds.
+
+Gates: full `just ci` green, 598 passing, exit code read before any pipe.

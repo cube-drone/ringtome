@@ -9,21 +9,21 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
-### `imaol::published_edges` is an un-memoized full fold on a hot path (2026-08-09)
+### `sync::local_frontiers` is a full-table GROUP BY inside the one-second eager tick (2026-08-09)
 
-It reads and decodes **every** `public-edge` entry the persona has ever written, folds them
-LWW per subject, and returns the lot. That was fine when almost nothing was published; since
-publication became the resting state (Edge-Endpoint Visibility, same day) every relationship
-has a statement, so the fold is O(all your relationships) — and it runs on hot paths:
-`publish::reconcile` calls it on every subscriptions refresh, and `notifications::refresh_from`
-calls it on every public frontier move.
+Found while attributing idle dev-node CPU to the `published_edges` fold — which turned out to
+be the WRONG suspect. A `sample` of a busy dev node caught the actual burst: 399 of 400
+samples inside `resync::eager_pass → eager_root → local_frontiers → fetch_all`, meaning one
+`SELECT author_pubkey, service, MIN(seq), MAX(seq) … GROUP BY` over the whole entries table
+occupied the entire three-second window. That query runs per persona inside the eager-sync
+machinery, whose tick is one second — and on databases fattened by test-data runs, the scan
+takes longer than the tick that schedules it. The three idle dev nodes sitting at 23–34% CPU
+are (at least in the caught sample) this, not the edge fold.
 
-Measured symptom, not yet attributed with certainty: an idle three-node dev network sitting at
-23–34% CPU per node. A `sample` caught every thread parked, so it is bursty rather than a spin —
-consistent with a periodic O(n) fold rather than a runaway loop.
-
-This is the fan-in-at-read-time mistake the Data Layer names, and the codebase already has the
-answer twice (`doc_heads`, `feed_journal`): the fold writes a memo and reads never fold. The
-fix is a materialized `published_edges` view in the persona's own database keyed by subject,
-advanced by a watermark like every other fold, with `reconcile` and the notification pass
-reading rows instead of replaying the chain. Do it before the edge count gets interesting.
+Caveats, honestly: one sample, one node, the pre-checkpoint binary, testdata-sized databases.
+Attribute properly before building — but the shape is already suspicious on paper: frontiers
+are recomputed from the full log on an edge that fires constantly, while `chain_heads` (the
+node.db memo fed at every append and ingest) exists precisely to answer head questions without
+opening the log. Candidate fixes, in rising order of effort: serve `local_frontiers` from the
+memo (it must then be trusted for floors too, which retention already made reconcile-healed);
+or keep the scan but hoist it out of the per-peer path so one recompute serves a whole pass.
