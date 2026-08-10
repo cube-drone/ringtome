@@ -315,6 +315,22 @@ async fn retract_vanished(state: &AppState, author_root: &str) -> Result<u64> {
     else {
         return Ok(0); // nothing of theirs held: nothing to reconcile against
     };
+    // **Serialized against eviction, because this is the one reader that DESTROYS state based
+    // on what it sees.** `drop_views_fed_by` clears the document views and their watermarks in
+    // separate statements, and `Db::execute` takes `stmt_lock` per statement - so between the
+    // two there is a real window where `doc_heads` is empty while the POSTS watermark still
+    // says "already folded". `public_doc_ids` catches up before reading, which heals every
+    // other reader, but a catch-up finds nothing past an un-cleared watermark: inside that
+    // window the shelf reads as legitimately EMPTY. Any other reader shrugs and renders an
+    // empty page for a millisecond. This one concludes every journaled document has vanished
+    // and deletes the lot - including an honest post whose row nothing will ever rewrite,
+    // because the journal is only written forward on a public move that has already happened.
+    //
+    // The eviction path runs under this same gate (`net::sync::ingest_batch` holds it across
+    // `refold_after_eviction`), so taking it here is what makes "the views are settled" true
+    // rather than likely. No deadlock: `lock_ingest` is acquired in exactly one other place,
+    // and `after_public_move` is never called from inside it.
+    let _gate = db.lock_ingest().await;
     let alive = crate::record::documents::public_doc_ids(&db).await?;
     let stale: Vec<String> = journaled
         .into_iter()

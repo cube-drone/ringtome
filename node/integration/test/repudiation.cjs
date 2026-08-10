@@ -421,20 +421,28 @@ const listIds = async (fetch, root) =>
 
         // Alice's own node first: eviction refolds the views, and the retraction must sweep
         // the journal on the same edge.
+        // Wait for the SETTLED state, not merely for the doomed title to be absent. Eviction
+        // clears the document views whole-table and lets the watermarks refold them, so there
+        // is a window where this query legitimately returns nothing at all - and `[]` is
+        // truthy in JS, so a callback that returns `t` the moment "doomed" is missing latches
+        // onto that window and reports an empty feed as the final answer. That window is
+        // shorter than one 250ms poll on a fast machine and reliably sampled on a slow one,
+        // which is precisely how this passed locally and failed twice on the CI runner.
         assert.deepEqual(
             await settle(async () => {
                 const t = await feedTitles(root);
-                return t.includes("doomed-post") ? null : t;
+                return !t.includes("doomed-post") && t.includes("honest-post") ? t : null;
             }),
             ["honest-post"],
-            "the disowned post left Alice's own feed; the honest one stands"
+            "the disowned post left Alice's own feed; the honest one stands (null here means \
+the honest post never came back, which is the collateral-damage bug, not the poll race)"
         );
 
         // Then the follower's node, which hears by push (Bob asked A once; A remembers).
         assert.deepEqual(
             await settle(async () => {
                 const t = await feedTitles(bobRoot, HOST_C);
-                return t.includes("doomed-post") ? null : t;
+                return !t.includes("doomed-post") && t.includes("honest-post") ? t : null;
             }),
             ["honest-post"],
             "the follower's journal retracted it too - a delivery memo cannot launder disproven content"

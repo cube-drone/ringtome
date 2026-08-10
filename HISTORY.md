@@ -4265,3 +4265,77 @@ neither a fact about what the recipient thinks of you.
 The new cop is small and pins the mistake that would be invisible: `Busy` and `Accepted` are both
 fieldless, separated on the wire only by a tag, and confusing them turns "try again" into "your
 job is done" — a notice lost with nothing logged anywhere.
+
+## 2026-08-10 — one fact, one row: the bell stops saying it twice
+
+Curtis found "User A follows you (stranger)" and "User A follows you" sitting in the bell as two
+rows, and diagnosed it correctly from the symptom alone: A knocked while he did not follow them,
+the envelope was transcribed, he followed them back, and the fold then derived its own row from
+the very chain the envelope had been quoting. Two machines, each behaving correctly, describing
+one event.
+
+The gate enforces "a follow-edge produces no inbox row, ever" at transcription, which is the only
+moment it *can* - but the relationship outlives the moment, and nothing retired the row that was
+already correct when it was written. The handler's own doc claimed the transition already worked
+("answering the door converts them to the derived path"): true of future notices, and nobody had
+noticed it was false of the notice that prompted the answer.
+
+`undelivered_twice` drops a delivered row when the derived list already holds the same
+`(author, kind)`. The derived one wins on the merits rather than by ordering: folded from the
+author's own chain under the sync gate rather than transcribed from a stranger's envelope,
+current where the envelope is a snapshot of whatever was claimed at knock time, and carrying the
+byline that answering the door is what buys. Suppression at read time rather than eviction,
+because the inbox is a memo of chains that get refolded - a deleted row would come back on the
+next rebuild, and the rule survives every rebuild by not being stored.
+
+The cop that matters here is the third one, not the two obvious ones. The dedup matches on a
+string that two modules declare independently - `notifications::KIND_PUBLIC_EDGE` and
+`deliver::notice_kind::name(PUBLIC_EDGE)` - and if those ever drift the failure is not a crash or
+a red test but this exact bug, quietly back in the bell. So a test pins them equal, and says why.
+
+Two residuals, both recorded rather than fixed. The suppressed notice keeps its slot in the
+stranger tier's 512 until it ages off the floor - real, since that pool is the flood surface, but
+a chain entry cannot be surgically removed and the ring already has an answer. And the dedup sees
+one page of each list, so a delivered row whose derived twin sits beyond a hundred rows survives;
+at that depth the reader has scrolled far past the point where either row is news.
+
+## 2026-08-10 — the sweep learns to wait for the shelf
+
+`a repudiated device's posts are retracted from feeds` went red twice on the GitHub runner while
+`just ci` stayed green locally, reporting an empty feed where one honest post should have stood.
+Green-here/red-there is usually a scheduling difference, and it was — but the scheduling
+difference exposed a real bug, not a flaky assertion.
+
+`drop_views_fed_by` clears the document views and then, in a separate loop, clears their
+watermarks. `Db::execute` takes `stmt_lock` per statement, so those are separate acquisitions
+with a gap between them, and inside the gap `doc_heads` is empty while the POSTS watermark still
+says "already folded". Every reader catches up before reading and every catch-up writes rows
+before advancing watermarks — the fold ordering was never the problem — but a catch-up finds
+nothing past an un-cleared watermark. So inside that window the shelf reads as legitimately
+**empty**.
+
+For every reader but one, that is a blank page for a millisecond. `retract_vanished` reads the
+shelf to decide which journaled documents have vanished, concludes that all of them have, and
+deletes them — permanently, because `feed_journal` is only ever written forward on a public move
+that has already happened. The honest post is collateral, and nothing rewrites its row.
+
+The fix is that `retract_vanished` now holds the author's ingest gate across the read and the
+delete. Eviction already runs under that gate (`ingest_batch` holds it across
+`refold_after_eviction`), so taking it here makes "the views are settled" true rather than
+likely; `lock_ingest` is acquired in exactly one other place and `after_public_move` is never
+called from inside it, so there is nothing to deadlock against. The rule worth keeping, because
+it generalizes past this function: **the danger was never reading a transient view, it was
+writing a deletion based on one.** A reader that only renders can be wrong for a millisecond; a
+reader that destroys durable state cannot.
+
+The test had its own, independent defect, and it is the reason two CI runs produced an ambiguous
+message. `return t.includes("doomed-post") ? null : t` hands `settle` an empty array the moment
+the feed is cleared — and `[]` is truthy — so the poll latched onto the transient and reported it
+as the final answer. Both middle assertions now wait for *doomed absent AND honest present*, so a
+future failure means "the honest post never came back" instead of "we sampled mid-refold". The
+first and last `settle` in the same test always guarded correctly (`t.length >= 2`,
+`t.includes(...)`); these two were the only unguarded ones in the suite.
+
+Recorded honestly: the failure never reproduced on this machine, so the diagnosis rests on the
+mechanism being readable in the code rather than on a red-to-green demonstration. The action is
+the verification, and the test change is what makes its next answer unambiguous.
