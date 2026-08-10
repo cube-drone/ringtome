@@ -4039,3 +4039,56 @@ behind it; relays and the transport tier are designed and unbuilt; and nobody ha
 bell in a browser. One efficiency finding logged separately: `published_edges` is an
 un-memoized full fold that decodes every public-edge entry, now on hot paths, which is the
 fan-in-at-read-time mistake `feed_journal` exists to avoid.
+
+## 2026-08-09 — the ring turns: chain floors as policy
+
+The retention residual, closed the same evening, because it was the load-bearing one: a
+stranger pool that refuses when full is a door a flood can shut *and leave shut* - the
+opposite of the design, where a flood can only ever rotate other strangers out.
+
+The insight that shaped the build: **retention is an admission feature wearing a deletion
+feature's clothes.** Deleting rows below a floor is twenty lines; the hard part is that a peer
+who pruned now honestly OFFERS a chain that starts above zero, and every replica's gate would
+reject it entry by entry - `validate_next(None, e)` demands genesis. A fresh device adopted
+after pruning would hold an inbox that could never arrive. So the work split three ways:
+
+- **The prune primitive** (`imaol::prune_chain_below`), with one structural invariant: **the
+  head always survives**, clamp regardless of what the caller asked, because an emptied chain
+  would re-genesis at seq 0 and equivocate with its own history on every peer still holding
+  the old one. The unit test asks to prune 9,999 entries of a 3-entry chain and checks the
+  next append continues at seq 3.
+- **Suffix admission** (`sync::service_allows_suffix`), the one change to the gate - and the
+  scope IS the security argument, written at the predicate: exactly the two inbox services,
+  because identity chains must linearize from genesis (a truncated lineage is the forgery the
+  usurper stamp catches) and ordinary content chains still promise their prefix is committed
+  to. An inbox chain promises neither: its prefix is deliberately destroyed, its writers are
+  the persona's own member-proven nodes, and the worst a gap can hide is a notice nobody
+  kept. On those chains a gap adopts forward - verify the entry stands alone, discard any
+  stale held prefix so holdings stay a contiguous range, chain onward. Everything else about
+  admission is unchanged, and the pre-existing gate-under-attack suite still passes untouched.
+- **The ring itself** (`inbox::enforce_retention`): after every fold, each tier chain trims to
+  its depth (2048 trusted / 512 stranger; `RINGTOME_TEST_INBOX_KEEP` shrinks both under
+  local-test, because eviction at production depth would need thousands of transcriptions to
+  observe once) and the view rows whose entries aged off go with it - the view gained an
+  `author_pubkey` column (user schema gen 9) so eviction can find them. Refuse-when-full is
+  deleted; the gate always transcribes, and the floor is what pays.
+
+What did NOT need building, and why it was checked rather than assumed: the wire already
+carries `[floor..head]` (designed into sync v1 for exactly this day), the pager already
+advances "by the seq actually read", and the journal's `⊇` invariant means pruning cannot
+break recovery - replay resurrects, the policy pass re-prunes, idempotently. The chain_heads
+floor memo is deliberately not raised at prune time: `local_frontiers` reads the entries
+table directly so the wire is never wrong, and the frontier sweep's reconcile heals the memo
+on its own beat.
+
+The honest cost the build surfaced, now on the REFACTOR ledger: **the journal keeps its dead
+frames.** Retention bounds what a node serves and holds live, not what it has ever written
+down - one frame per notice ever accepted stays on the transcribing node's disk until journal
+compaction exists, and compaction is its own careful project because the journal is the
+recovery root.
+
+Gates: full `just ci` green, 598 passing, exit code read before any pipe. The two tests that
+matter: seven strangers through a keep-of-four pool - the oldest three evaporate, the newest
+stands, the trusted friend's row never moves; and adopt-after-prune - a persona with an
+already-pruned inbox grows a second device, which must admit the suffix or show an empty bell
+forever, and doesn't.

@@ -86,6 +86,11 @@ pub async fn note_head(
     Ok(())
 }
 
+// (There is deliberately no `raise_floor` on the memo: retention prunes with only the user db
+// in hand, and `reconcile_from_entries` already recomputes floors from what is stored - the
+// memo heals on the sweep's beat, and the wire is never wrong because `local_frontiers` reads
+// the entries table directly.)
+
 /// Does this persona have ANY chain on the given service, per the memo? A node.db probe on
 /// the chain_heads primary key - what lets a fold hook that fires on every frontier move
 /// answer "nothing to fold here" without opening the author's encrypted database

@@ -294,6 +294,78 @@ pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, 
     Ok(latest.into_iter().map(|(s, (_, r))| (s, r)).collect())
 }
 
+/// Drop one chain's rows below `floor_seq` - the retention primitive (PROJECT_PLAN, Tiered
+/// inbox chains: "most eviction is aging off the floor"). Returns how many rows left.
+///
+/// **The head must survive, structurally.** If a chain's newest entry were ever pruned, the
+/// next `append` would find no head and mint a genesis at seq 0 - a fork with this chain's own
+/// history, which every peer still holding it would (correctly) condemn as equivocation. So
+/// the floor is clamped to the stored head: a caller asking to prune everything keeps exactly
+/// the head, and a chain with no rows is untouchable. The journal deliberately keeps its dead
+/// frames (`journal ⊇ database` is the recovery invariant); replay may resurrect pruned rows,
+/// and the retention pass simply prunes them again - policy is idempotent where history is not.
+pub async fn prune_chain_below(
+    db: &Db,
+    author_hex: &str,
+    service_id: u32,
+    floor_seq: u64,
+) -> Result<u64, AppError> {
+    let Some((head_seq, _, _)) = chain_head(db, author_hex, service_id).await? else {
+        return Ok(0); // no rows, nothing to prune - and nothing to protect
+    };
+    let floor = floor_seq.min(head_seq);
+    let pruned = db
+        .execute(
+            "DELETE FROM entries
+             WHERE author_pubkey = ?1 AND service = ?2 AND seq < ?3",
+            (author_hex, i64::from(service_id), floor as i64),
+        )
+        .await
+        .context("pruning a chain prefix")
+        .map_err(AppError::Internal)?;
+    Ok(pruned)
+}
+
+/// How many rows one chain holds. A test instrument (production retention reads
+/// [`chain_spans`], one query for the whole service).
+#[cfg(test)]
+pub(crate) async fn chain_len(
+    db: &Db,
+    author_hex: &str,
+    service_id: u32,
+) -> Result<u64, AppError> {
+    let row: Option<(i64,)> = db
+        .fetch_optional(
+            "SELECT COUNT(*) FROM entries WHERE author_pubkey = ?1 AND service = ?2",
+            (author_hex, i64::from(service_id)),
+        )
+        .await
+        .context("measuring a chain")
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(n,)| n as u64).unwrap_or(0))
+}
+
+/// Every chain on one service: author, head seq, and held row count - the retention pass's
+/// worklist, one indexed GROUP BY instead of a query per author.
+pub async fn chain_spans(
+    db: &Db,
+    service_id: u32,
+) -> Result<Vec<(String, u64, u64)>, AppError> {
+    let rows: Vec<(String, i64, i64)> = db
+        .fetch_all(
+            "SELECT author_pubkey, MAX(seq), COUNT(*) FROM entries
+             WHERE service = ?1 GROUP BY author_pubkey",
+            (i64::from(service_id),),
+        )
+        .await
+        .context("surveying a service's chains")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .map(|(author, head, len)| (author, head as u64, len as u64))
+        .collect())
+}
+
 /// Fold one `profile-set` entry into the view. Last-writer-wins on the tuple
 /// `(timestamp_ms, seq, entry_hash)`: claimed timestamps order cross-key writes (cosmetic stakes,
 /// convergence is what matters), seq breaks same-chain timestamp ties in true authoring order,
@@ -779,6 +851,76 @@ mod tests {
         // Same-chain writes tie-break on seq, so the rename wins even if both landed in the same
         // clock millisecond (which, at test speed, they usually do).
         assert_eq!(profile[0].value, "Hat Fan");
+    }
+
+    #[tokio::test]
+    async fn pruning_drops_the_prefix_and_appends_continue_unbroken() {
+        let db = test_db().await;
+        let key = test_key();
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        for i in 0..6 {
+            append(
+                &db,
+                &key,
+                service::INBOX_STRANGER,
+                entry_type::INBOX_NOTICE,
+                Payload::Inline(vec![i as u8]),
+            )
+            .await
+            .unwrap();
+        }
+
+        let pruned = prune_chain_below(&db, &author_hex, service::INBOX_STRANGER, 4)
+            .await
+            .unwrap();
+        assert_eq!(pruned, 4);
+        assert_eq!(chain_len(&db, &author_hex, service::INBOX_STRANGER).await.unwrap(), 2);
+
+        // The chain keeps working: the head survived, so the next append links to it rather
+        // than minting a fork at genesis.
+        let next = append(
+            &db,
+            &key,
+            service::INBOX_STRANGER,
+            entry_type::INBOX_NOTICE,
+            Payload::Inline(vec![9]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(next.entry().seq, 6, "seq continues from the surviving head");
+    }
+
+    #[tokio::test]
+    async fn pruning_can_never_take_the_head() {
+        // The invariant the whole feature hangs on: an emptied chain would re-genesis at seq 0
+        // and equivocate with its own history on every peer still holding it.
+        let db = test_db().await;
+        let key = test_key();
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        for i in 0..3 {
+            append(
+                &db,
+                &key,
+                service::INBOX_TRUSTED,
+                entry_type::INBOX_NOTICE,
+                Payload::Inline(vec![i as u8]),
+            )
+            .await
+            .unwrap();
+        }
+        // Ask for far more than exists: the floor clamps to the head.
+        prune_chain_below(&db, &author_hex, service::INBOX_TRUSTED, 9_999).await.unwrap();
+        assert_eq!(chain_len(&db, &author_hex, service::INBOX_TRUSTED).await.unwrap(), 1);
+        let next = append(
+            &db,
+            &key,
+            service::INBOX_TRUSTED,
+            entry_type::INBOX_NOTICE,
+            Payload::Inline(vec![7]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(next.entry().seq, 3, "no re-genesis, ever");
     }
 
     #[tokio::test]

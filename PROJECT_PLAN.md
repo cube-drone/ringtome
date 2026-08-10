@@ -2934,6 +2934,18 @@ own retention and sync depth as per-chain policy instead of per-row bookkeeping.
   chains, which is a feature twice over - ephemerality is the semantics, and a pruned prefix cannot leak or need
   a retraction story. Most eviction is aging off the floor (no entry written); a tombstone is paid only to delete
   something recent, and then ages out itself.
+
+  *(Built 2026-08-09, with the load-bearing piece being ADMISSION rather than deletion: a peer that pruned
+  honestly offers a chain starting above zero, and the gate must take it. Suffix admission is scoped to exactly
+  the inbox services (`sync::service_allows_suffix`) - identity chains still linearize from genesis, everything
+  else still demands continuity - and the narrowness is the security argument, since the suffix door on an
+  ordinary chain would let a sender make history vanish. Depths are 2048 trusted / 512 stranger. Two honest
+  deviations from this bullet as written: the prune keeps AT LEAST the head even when the depth says otherwise,
+  because an emptied chain would re-genesis at seq 0 and equivocate with its own history on every peer still
+  holding it; and the recent-delete tombstone does not exist because per-notice deletion doesn't yet. One cost
+  discovered in the build: the journal keeps its dead frames (`journal ⊇ database` is the recovery invariant),
+  so pruning bounds the database and the sync, not the transcribing node's disk - journal compaction is its own
+  future work, on the REFACTOR ledger.)*
 - **One row per (sender, kind)**: collapse means a flapping stranger occupies one row per kind, never the buffer,
   and envelope-hash idempotency means a sender who knocks on all three of your doors produces one row. Stranger
   quota is enforced per transcribing node; two of your nodes transcribing while partitioned can briefly overshoot

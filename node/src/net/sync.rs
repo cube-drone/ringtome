@@ -55,6 +55,21 @@ pub fn is_private_service(svc: u32) -> bool {
         || svc == service::INBOX_STRANGER
 }
 
+/// Services whose chains may be admitted as a SUFFIX - starting above seq 0, or jumping past a
+/// gap - because their holders prune by policy (PROJECT_PLAN, Tiered inbox chains: retention is
+/// count-based, and "nobody plays deep archive for inbox chains").
+///
+/// The list is exactly the inbox tiers, and the narrowness is the security argument. Identity
+/// chains are authority and MUST linearize from genesis (a truncated lineage is the forgery the
+/// usurper stamp exists to catch); content chains generally still promise "the prefix you are
+/// missing exists and is committed to" (Shallow Sync's lazy backfill). An inbox chain promises
+/// neither: its prefix is *deliberately destroyed*, the entries are the persona's own nodes
+/// talking to each other behind the member-proof gate, and the worst a gap can hide is a
+/// notice nobody kept. Widening this list is a design act, not a convenience.
+pub fn service_allows_suffix(svc: u32) -> bool {
+    svc == service::INBOX_TRUSTED || svc == service::INBOX_STRANGER
+}
+
 /// This identity's held ranges, one per stored chain. Private chains appear only when the peer
 /// has proven membership.
 pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Frontier>> {
@@ -616,7 +631,44 @@ pub(crate) async fn ingest_batch(
                             received += 1;
                             prev = Some(e);
                         }
-                        Err(_) => rejected += 1,
+                        Err(_) => {
+                            // The one failure that is not a failure: a GAP on a chain whose
+                            // holders prune by policy. A peer that retained [floor..head]
+                            // cannot offer the prefix we lack - it destroyed it, as designed -
+                            // so on the inbox services we ADOPT the suffix: verify the entry
+                            // stands on its own, discard whatever stale prefix we hold (we
+                            // were never going to keep it either), and chain forward from
+                            // there. Everything else about the entry was already vetted (the
+                            // signer is Active in the tree; the signature is checked here).
+                            // Any other failure shape - bad signature, wrong chain, a link
+                            // mismatch at the height we hold - stays a rejection.
+                            let gap = match &prev {
+                                Some(p) => e.entry().seq > p.entry().seq + 1,
+                                None => e.entry().seq > 0,
+                            };
+                            if gap && service_allows_suffix(svc) && e.verify().is_ok() {
+                                // Contiguity is an invariant of the holdings, not just the
+                                // wire: drop the stale prefix so [floor..head] stays a range
+                                // rather than a range with a hole the pager would mis-serve.
+                                db.execute(
+                                    "DELETE FROM entries
+                                     WHERE author_pubkey = ?1 AND service = ?2 AND seq < ?3",
+                                    (
+                                        hex::encode(author).as_str(),
+                                        i64::from(svc),
+                                        e.entry().seq as i64,
+                                    ),
+                                )
+                                .await
+                                .context("discarding a stale prefix under an adopted suffix")?;
+                                store_entry(db, &e).await?;
+                                apply_content_views(db, &e).await?;
+                                received += 1;
+                                prev = Some(e);
+                            } else {
+                                rejected += 1;
+                            }
+                        }
                     }
                 }
             }
@@ -2646,5 +2698,146 @@ mod tests {
                 ("newborn".to_string(),),
             ]
         );
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Suffix admission: the retention feature's one change to the gate. An inbox chain's
+    // holders prune by policy, so a peer may honestly offer [floor..head] with floor > 0 -
+    // and the gate must take it, for exactly those services and no others.
+
+    /// A member-proven ingest: inbox chains are private, so the unproven path never sees them.
+    async fn ingest_proven(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
+        let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
+        let outcome = ingest_batch(db, root, raw, true).await.unwrap();
+        (outcome.received, outcome.rejected)
+    }
+
+    /// Root authorizes K; K writes `len` inbox-notice entries on the stranger tier. Returns
+    /// the authorize entry (the authority context) and K's full chain.
+    fn inbox_scenario(len: u8) -> ([u8; 32], SignedEntry, Vec<SignedEntry>) {
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut k_inbox = Chain::new(2, service::INBOX_STRANGER);
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: k_inbox.pk(),
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let entries: Vec<SignedEntry> = (0..len)
+            .map(|n| k_inbox.append(entry_type::INBOX_NOTICE, vec![0xcc, n]))
+            .collect();
+        (root_chain.pk(), authorize, entries)
+    }
+
+    #[tokio::test]
+    async fn a_pruned_inbox_chain_is_admitted_from_its_floor() {
+        // The adopt-after-prune shape: a fresh node holds nothing, and the peer's chain
+        // starts at seq 3 because everything below aged off the floor.
+        let db = test_db().await;
+        let (root, authorize, entries) = inbox_scenario(6);
+        let (received, rejected) = ingest_proven(
+            &db,
+            root,
+            &[vec![authorize], entries[3..].to_vec()].concat(),
+        )
+        .await;
+        assert_eq!(rejected, 0, "a suffix on an inbox chain is not a defect");
+        assert_eq!(received, 4, "the authorize plus the three held entries");
+        let held = stored_chain(&db, &entries[3].entry().chain.author, service::INBOX_STRANGER)
+            .await
+            .unwrap();
+        assert_eq!(held.first().unwrap().entry().seq, 3, "held from the peer's floor");
+        assert_eq!(held.last().unwrap().entry().seq, 5);
+    }
+
+    #[tokio::test]
+    async fn a_gap_jump_discards_the_stale_prefix() {
+        // We hold [0..1]; the peer pruned to [4..5]. Adoption takes their suffix and drops
+        // ours - holdings stay a contiguous range, never a range with a hole.
+        let db = test_db().await;
+        let (root, authorize, entries) = inbox_scenario(6);
+        let author = entries[0].entry().chain.author;
+        ingest_proven(&db, root, &[vec![authorize], entries[..2].to_vec()].concat()).await;
+
+        let (received, rejected) = ingest_proven(&db, root, &entries[4..]).await;
+        assert_eq!((received, rejected), (2, 0));
+        let held = stored_chain(&db, &author, service::INBOX_STRANGER).await.unwrap();
+        assert_eq!(
+            held.iter().map(|e| e.entry().seq).collect::<Vec<_>>(),
+            vec![4, 5],
+            "the stale prefix is gone; what remains is contiguous"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_gap_on_an_ordinary_chain_is_still_a_defect() {
+        // The scope IS the security: posts (and everything else) still demand continuity, so
+        // a sender cannot use the suffix door to make history vanish from a chain whose
+        // holders never prune.
+        let db = test_db().await;
+        let s = scenario();
+        let (_, rejected) = ingest(
+            &db,
+            s.root,
+            &[vec![s.authorize.clone()], s.honest[2..].to_vec()].concat(),
+        )
+        .await;
+        assert_eq!(rejected, 1, "a posts chain starting at seq 2 is refused");
+        assert!(
+            stored_chain(&db, &s.k, service::POSTS).await.unwrap().is_empty(),
+            "nothing of the gapped chain was stored"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_interior_gap_within_one_batch_is_adopted_forward() {
+        // [0..1] then [4..5] arriving in ONE batch: the walk stores 0-1, hits the gap, adopts
+        // forward, and the final holding is the newest contiguous run. (The just-stored 0-1
+        // are the "stale prefix" the adoption discards - odd-looking, but it is exactly what
+        // retention would have done moments later.)
+        let db = test_db().await;
+        let (root, authorize, entries) = inbox_scenario(6);
+        let author = entries[0].entry().chain.author;
+        let batch = [
+            vec![authorize],
+            entries[..2].to_vec(),
+            entries[4..].to_vec(),
+        ]
+        .concat();
+        let (received, rejected) = ingest_proven(&db, root, &batch).await;
+        assert_eq!(rejected, 0);
+        assert_eq!(received, 5, "authorize + two early + two adopted");
+        let held = stored_chain(&db, &author, service::INBOX_STRANGER).await.unwrap();
+        assert_eq!(
+            held.iter().map(|e| e.entry().seq).collect::<Vec<_>>(),
+            vec![4, 5]
+        );
+    }
+
+    #[tokio::test]
+    async fn suffix_admission_still_demands_a_valid_signature_and_an_active_key() {
+        let db = test_db().await;
+        let (root, authorize, entries) = inbox_scenario(6);
+        // Tamper with the suffix's first entry: flip a payload byte inside the envelope.
+        let mut bytes = entries[3].bytes().to_vec();
+        let i = bytes.len() - 70; // inside the body, ahead of the signature
+        bytes[i] ^= 0xFF;
+        let mut raw: Vec<Vec<u8>> = vec![authorize.bytes().to_vec()];
+        raw.push(bytes);
+        let outcome = ingest_batch(&db, root, raw, true).await.unwrap();
+        assert_eq!(outcome.received, 1, "only the authorize landed");
+        assert_eq!(outcome.rejected, 1, "a tampered suffix head is refused");
+
+        // And a key the tree never authorized gets nowhere, gap or not.
+        let mut stranger_chain = Chain::new(9, service::INBOX_STRANGER);
+        let orphan: Vec<SignedEntry> = (0..2u8)
+            .map(|n| stranger_chain.append(entry_type::INBOX_NOTICE, vec![n]))
+            .collect();
+        let (received, rejected) = ingest_proven(&db, root, &orphan[1..]).await;
+        assert_eq!((received, rejected), (0, 1), "unknown keys stay unknown");
     }
 }

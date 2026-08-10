@@ -192,6 +192,8 @@ CREATE TABLE inbox_notices (
     sender_root   TEXT    NOT NULL,
     kind          TEXT    NOT NULL,
     service       INTEGER NOT NULL,  -- which tier chain the winning notice landed on
+    author_pubkey TEXT    NOT NULL,  -- which device chain it landed on: how retention finds
+                                     -- the rows whose entries just aged off that chain's floor
     envelope      BLOB    NOT NULL,  -- the delivered envelope, verbatim, re-verifiable
     trust         TEXT,              -- the published bands the evidence carried
     interest      TEXT,

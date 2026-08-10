@@ -187,6 +187,126 @@ describe("an undeliverable notice waits", function () {
     });
 });
 
+/*
+    The ring. The integration rig boots every node with RINGTOME_TEST_INBOX_KEEP=4, because
+    the real depths (512/2048) are correct for the world and untestable in a suite - eviction
+    at production depth would need thousands of transcriptions to observe once.
+*/
+describe("the stranger pool is a ring, and friends are not in it", function () {
+    this.timeout(180000);
+
+    it("a flood of strangers evicts only the oldest strangers", async () => {
+        const host = await makeUserFetch({ prefix: "ringhost" });
+        const hostRoot = (await (await host("api/identity", { method: "POST" })).json())
+            .root_pubkey;
+
+        // One TRUSTED sender: the host records a trust band for them (no interest - an
+        // interest band would make them a follow, and their notice would be discarded as
+        // already-pulled rather than filed in the trusted tier).
+        const friend = await makeUserFetch({ prefix: "ringfriend" });
+        const friendRoot = (await (await friend("api/identity", { method: "POST" })).json())
+            .root_pubkey;
+        await dial(host, hostRoot, friendRoot, "trust", "high");
+        await dial(friend, friendRoot, hostRoot, "interest", "high");
+        const friendRow = await settle(async () => {
+            const items = await bell(host, hostRoot);
+            return items.find((i) => i.author === friendRoot) || null;
+        });
+        assert.ok(friendRow, "the friend's notice landed, in the trusted tier");
+
+        // Now seven strangers, one after another - the pool holds four.
+        const strangers = [];
+        for (let n = 0; n < 7; n++) {
+            const s = await makeUserFetch({ prefix: `ringstranger${n}` });
+            const root = (await (await s("api/identity", { method: "POST" })).json()).root_pubkey;
+            strangers.push(root);
+            await dial(s, root, hostRoot, "interest", "medium");
+            // Wait for THIS notice to land before sending the next: the test is about the
+            // ring turning, not about racing seven eager sweeps.
+            const landed = await settle(async () => {
+                const items = await bell(host, hostRoot);
+                return items.some((i) => i.author === root) ? true : null;
+            });
+            assert.ok(landed, `stranger ${n} was transcribed`);
+        }
+
+        const items = await bell(host, hostRoot);
+        const strangerRows = items.filter((i) => strangers.includes(i.author));
+        assert.ok(
+            strangerRows.length <= 4,
+            `the pool holds its depth (saw ${strangerRows.length} stranger rows)`
+        );
+        assert.ok(
+            strangerRows.some((i) => i.author === strangers[6]),
+            "the newest stranger is present - the ring admits, it never shuts"
+        );
+        assert.ok(
+            !strangerRows.some((i) => i.author === strangers[0]),
+            "the oldest stranger aged off the floor"
+        );
+        assert.ok(
+            items.some((i) => i.author === friendRoot),
+            "and the flood never touched the friend - the tiers are different chains"
+        );
+    });
+});
+
+(HOST_B ? describe : describe.skip)("a pruned inbox survives adoption", function () {
+    this.timeout(180000);
+
+    it("a fresh device admits the suffix a pruned chain honestly offers", async () => {
+        // The failure this feature must not ship with: node A prunes the inbox chain to its
+        // floor; the persona is then adopted onto fresh node B; B receives a chain starting
+        // above seq 0. Without suffix admission B rejects every entry and the bell on the
+        // new device is empty forever.
+        const onA = await makeUserFetch({ prefix: "prunedhost" });
+        const root = (await (await onA("api/identity", { method: "POST" })).json()).root_pubkey;
+
+        // Six strangers through the ring (keep=4): guarantees the chain is genuinely pruned,
+        // not merely full.
+        const strangers = [];
+        for (let n = 0; n < 6; n++) {
+            const s = await makeUserFetch({ prefix: `prunestranger${n}` });
+            const sRoot = (await (await s("api/identity", { method: "POST" })).json())
+                .root_pubkey;
+            strangers.push(sRoot);
+            await dial(s, sRoot, root, "interest", "low");
+            const landed = await settle(async () => {
+                const items = await bell(onA, root);
+                return items.some((i) => i.author === sRoot) ? true : null;
+            });
+            assert.ok(landed, `stranger ${n} was transcribed`);
+        }
+
+        // The adoption ceremony: the persona grows a second device on node B.
+        const onB = await makeUserFetch({ prefix: "pruneddevice", host: HOST_B });
+        const request = await (await onB("api/identity/adopt/begin", { method: "POST" })).json();
+        const grant = await (
+            await onA(`api/identity/${root}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        const done = await onB("api/identity/adopt/complete", {
+            method: "POST",
+            body: JSON.stringify({ code: grant.code }),
+        });
+        assert.equal(done.status, 200, await done.text());
+
+        // The new device must see the surviving notices - which requires its gate to have
+        // admitted an inbox chain that starts at the floor A pruned to.
+        const seen = await settle(async () => {
+            const items = await bell(onB, root);
+            return items.some((i) => i.author === strangers[5]) ? items : null;
+        }, 120);
+        assert.ok(seen, "the pruned chain crossed to the new device as a suffix");
+        assert.ok(
+            !seen.some((i) => i.author === strangers[0]),
+            "and what aged off the floor stayed gone - pruning is not a per-device opinion"
+        );
+    });
+});
+
 describe("the follow-edge rule, from the delivered side", function () {
     this.timeout(120000);
 

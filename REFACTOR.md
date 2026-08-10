@@ -9,6 +9,21 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
+### The journal keeps every pruned inbox frame forever (2026-08-09)
+
+Inbox retention prunes the `entries` table and everything downstream — the database, the
+sync, the view — but the per-identity journal deliberately never deletes (`journal ⊇ database`
+is the recovery invariant, and replay re-runs the gate). So a transcribing node's disk still
+accretes one dead frame per notice ever accepted, ciphertext and all. Retention therefore
+bounds what a node *serves and holds live*, not what it has *ever written down*.
+
+Fine at present volumes; wrong at flood volumes, where the journal becomes the one unbounded
+artifact a stranger can still grow. The fix is journal compaction — rewrite the file keeping
+only frames whose entries survive, atomically, with the torn-tail rule intact — which is its
+own careful project because the journal is the recovery root: get compaction wrong and
+"database is derived state" stops being true. Pair it with the snapshot work if possible;
+both are "replace a prefix with something smaller" with the same failure modes.
+
 ### `imaol::published_edges` is an un-memoized full fold on a hot path (2026-08-09)
 
 It reads and decodes **every** `public-edge` entry the persona has ever written, folds them

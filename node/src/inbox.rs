@@ -34,12 +34,34 @@ use crate::error::AppError;
 use crate::record::private::{self, EpochKeys, Opened};
 use crate::AppState;
 
-/// How many stranger-tier notices one persona will hold before the door shuts.
+/// How many entries each tier chain keeps - the ring buffer, realized as a chain floor
+/// (PROJECT_PLAN, Tiered inbox chains: "retention is count-based... most eviction is aging off
+/// the floor"). Clock-free on purpose: "last N entries" survives every skewed clock that
+/// "last 7 days" does not.
 ///
-/// The pool is sized in ROWS, and rows collapse per (sender, kind), so this is really "how many
-/// distinct strangers may be waiting" - a number that should comfortably exceed any real
-/// person's unanswered-doorbell count and stay far below what a flood wants.
-pub const STRANGER_POOL_CAP: i64 = 256;
+/// The trusted tier keeps more because it holds people you asked to hear from; the stranger
+/// tier IS the flood surface, so its depth is the pool a flood competes for - and the only
+/// thing a flood can ever evict is other strangers, because the tiers are different chains.
+pub const TRUSTED_KEEP: u64 = 2048;
+pub const STRANGER_KEEP: u64 = 512;
+
+/// The keep depth for one tier, with a test override: real depths make eviction untestable
+/// (nobody transcribes two thousand notices in a suite), so under RINGTOME_LOCAL_TEST the
+/// integration harness may shrink both tiers with RINGTOME_TEST_INBOX_KEEP.
+fn keep_depth(service_id: u32) -> u64 {
+    if std::env::var("RINGTOME_LOCAL_TEST").is_ok() {
+        if let Some(n) = std::env::var("RINGTOME_TEST_INBOX_KEEP")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            return n.max(1); // the head must survive; a zero-depth chain is a re-genesis bomb
+        }
+    }
+    match service_id {
+        service::INBOX_STRANGER => STRANGER_KEEP,
+        _ => TRUSTED_KEEP,
+    }
+}
 
 /// Which chain a notice lands on. The pre-Trust classifier (PROJECT_PLAN, the degenerate
 /// classifier): a recorded relationship earns the trusted tier, everyone else waits in the
@@ -164,19 +186,11 @@ pub async fn accept(
     // The pool bounds how many DISTINCT strangers may be waiting, so a sender who already has
     // a row is updating it rather than taking a new slot, and a full pool must not freeze the
     // news they already sent.
-    if tier == Tier::Stranger && held.is_none() && stranger_rows(&db).await? >= STRANGER_POOL_CAP
-    {
-        // Refuse before signing: a chain append is permanent, and garbage must die at the
-        // network edge. (The doctrine's ring-buffer eviction - newest wins, oldest stranger
-        // leaves - needs chain pruning, which does not exist yet; see the residual noted in
-        // HISTORY. Until then a full pool is a closed door rather than a rotating one.)
-        tracing::info!(
-            recipient = %recipient_root,
-            sender = %sender_hex,
-            "stranger inbox pool is full; refusing a notice"
-        );
-        return Ok(Verdict::Refused);
-    }
+    // No fullness check, deliberately (since retention shipped): the stranger tier is a RING.
+    // A new notice always lands, and what pays for it is the oldest stranger aging off the
+    // chain floor in the retention pass below - which is the doctrine's quota ("a flood can
+    // only evict other strangers, never your friends") realized structurally, because the
+    // tiers are separate chains and the flood's writes land on only one of them.
 
     // (7) Transcribe: the envelope verbatim, sealed under the persona's epoch key, signed by
     // this node's own leaf. The sender never writes the chain - nobody but the persona can.
@@ -244,15 +258,42 @@ async fn held_envelope(db: &Db, sender_hex: &str, kind: &str) -> Result<Option<V
     Ok(row.map(|(bytes,)| bytes))
 }
 
-async fn stranger_rows(db: &Db) -> Result<i64> {
-    let row: Option<(i64,)> = db
-        .fetch_optional(
-            "SELECT COUNT(*) FROM inbox_notices WHERE service = ?1",
-            (i64::from(service::INBOX_STRANGER),),
-        )
-        .await
-        .context("counting the stranger pool")?;
-    Ok(row.map(|(n,)| n).unwrap_or(0))
+/// The ring's turn: trim every inbox chain to its tier's depth, and take the view rows whose
+/// entries just aged off with it. Runs after every fold, so the bound is enforced at the same
+/// cadence the data moves.
+///
+/// The chain_heads floor memo is deliberately NOT raised here - this function has only the
+/// user db in hand, and the frontier sweep's `reconcile_from_entries` recomputes floors from
+/// what is actually stored, so the memo heals on its own beat. What peers see meanwhile is
+/// `local_frontiers`, which reads the entries table directly and is correct immediately.
+async fn enforce_retention(db: &Db) -> Result<()> {
+    for service_id in [service::INBOX_TRUSTED, service::INBOX_STRANGER] {
+        let keep = keep_depth(service_id);
+        for (author_hex, head_seq, len) in crate::record::imaol::chain_spans(db, service_id)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+        {
+            if len <= keep {
+                continue;
+            }
+            // Heads are dense from wherever the floor sits, so "keep the newest K" is a seq
+            // arithmetic, not a scan. +1 because the floor is the oldest KEPT seq.
+            let floor = head_seq.saturating_sub(keep) + 1;
+            crate::record::imaol::prune_chain_below(db, &author_hex, service_id, floor)
+                .await
+                .map_err(|e| anyhow!("{e}"))?;
+            // The view rows those entries produced go with them: a notice whose chain entry
+            // is gone would otherwise be immortal, and eviction is the entire point.
+            db.execute(
+                "DELETE FROM inbox_notices
+                 WHERE author_pubkey = ?1 AND service = ?2 AND seq < ?3",
+                (author_hex.as_str(), i64::from(service_id), floor as i64),
+            )
+            .await
+            .context("evicting notices below the floor")?;
+        }
+    }
+    Ok(())
 }
 
 /// Fold both inbox chains into the view: decrypt each notice, **re-verify it from scratch**,
@@ -293,6 +334,9 @@ pub(crate) async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<()> {
                 .map_err(|e| anyhow!("{e}"))?;
         }
     }
+    // The fold grew the chains; the ring turns. Same pass so the bound is never more than one
+    // fold stale, and so both doors (accept and page) pay it without knowing about it.
+    enforce_retention(db).await?;
     Ok(())
 }
 
@@ -328,10 +372,12 @@ async fn fold_notice(
 
     db.execute(
         "INSERT INTO inbox_notices
-           (sender_root, kind, service, envelope, trust, interest, timestamp_ms, seq, entry_hash)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+           (sender_root, kind, service, author_pubkey, envelope, trust, interest,
+            timestamp_ms, seq, entry_hash)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(sender_root, kind) DO UPDATE SET
            service = excluded.service,
+           author_pubkey = excluded.author_pubkey,
            envelope = excluded.envelope,
            trust = excluded.trust,
            interest = excluded.interest,
@@ -344,6 +390,7 @@ async fn fold_notice(
             hex::encode(claim.sender_root),
             notice_kind::name(claim.kind),
             i64::from(service_id),
+            hex::encode(signed.entry().chain.author),
             envelope_bytes.as_slice(),
             claim.trust.as_deref(),
             claim.interest.as_deref(),

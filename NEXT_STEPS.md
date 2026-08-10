@@ -48,10 +48,6 @@ format and its offline verification, the `ringtome/deliver/0` ALPN, the gate at 
 both tiered inbox chains, the outbox with its backoff ladder, and the bell showing delivered
 beside derived. What is left:
 
-* **Count-bounded retention.** The tier chains exist but nothing prunes them: the stranger pool
-  refuses when full instead of ring-buffering, because moving a chain floor as *policy* (rather
-  than as "the oldest row we happen to hold") is machinery nobody has built. Wants the same
-  suffix work as Shallow Sync and probably Snapshots.
 * **More notice kinds**: commented on / tagged / rebroadcast your post - each needs its own
   evidence rule in `deliver::verify_claim`; and first-contact, the one bare-claim kind, which
   needs the capped greeting surfaced and its own smaller pool.
