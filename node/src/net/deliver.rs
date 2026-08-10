@@ -14,6 +14,16 @@
 //! indistinguishable from holding nothing); the adoption protocol's spoken `ok:false` ack is
 //! the sanctioned pattern, and this follows it with a typed [`refusal`] code.
 //!
+//! **The exception is a block** (2026-08-10). Words beat resets because a refusal tells the
+//! sender about *themselves* - too little standing, too much traffic - which they are entitled
+//! to know. A block is a fact about the *recipient*, and answering honestly would make the door
+//! an oracle for it. So a blocked sender is told "accepted" and retries nothing, which is the
+//! same silence they would get from a node that is merely offline. See [`wire_answer`].
+//!
+//! And the door speaks about **itself** too: a node that cannot judge an offer for reasons of
+//! its own answers `Busy` rather than a refusal, because the sender's outbox retires a refusal
+//! forever and our locked keystore is not their bad behaviour.
+//!
 //! ## One door
 //!
 //! The sender's job is to reach **one** node of the recipient's, ever. Fan-out across the
@@ -43,7 +53,8 @@ pub enum Outcome {
     Accepted,
     /// A node of theirs refused it. Also done: retrying a refusal is what a spammer does.
     Refused(u32),
-    /// Nobody answered. The only outcome worth trying again later.
+    /// Nobody usable answered - no door opened, or every door that did said `Busy`. The only
+    /// outcome worth trying again later, and the outbox's ladder is what tries.
     Unreachable,
 }
 
@@ -131,18 +142,30 @@ async fn judge(state: &AppState, bytes: &[u8]) -> DeliverMessage {
     };
 
     match crate::inbox::accept(state, &recipient, &signed, &claim).await {
-        // Discarding is a success: the recipient already pulls this sender, so the notice was
-        // redundant and the sender has nothing to retry.
-        Ok(crate::inbox::Verdict::Transcribed | crate::inbox::Verdict::AlreadyPulled) => {
-            DeliverMessage::Accepted
-        }
-        Ok(crate::inbox::Verdict::Refused) => DeliverMessage::Refused(refusal::GATE),
+        Ok(verdict) => wire_answer(verdict),
         Err(e) => {
-            // Our fault, not theirs. Say "gate" rather than leaking an internal failure, and
-            // log the reason where an operator can see it.
+            // Our fault, not theirs - so `Busy`, never a refusal. A refusal is retired forever
+            // by the sender's outbox (correctly: retrying a refusal is what a spammer does),
+            // which meant a briefly-locked keystore here used to destroy a notice nobody had
+            // refused. The detail goes to the operator's log; the sender gets "try again".
             tracing::warn!(error = ?e, recipient = %recipient, "transcription failed");
-            DeliverMessage::Refused(refusal::GATE)
+            DeliverMessage::Busy
         }
+    }
+}
+
+/// What the sender is told, given what the gate actually did.
+///
+/// **Every verdict answers "accepted", and that is the point.** Two of the three did not
+/// transcribe, but neither non-transcription may be visible: `AlreadyPulled` is genuinely done
+/// (a truthful refusal would provoke a pointless retry for a notice the pull path already
+/// carries), and `Blocked` must be indistinguishable from acceptance or the answer becomes a
+/// block oracle - one envelope, one probe, and the sender knows. See [`crate::inbox::Verdict`]
+/// for why the coarse `refusal::GATE` code stopped covering for it.
+fn wire_answer(verdict: crate::inbox::Verdict) -> DeliverMessage {
+    use crate::inbox::Verdict;
+    match verdict {
+        Verdict::Transcribed | Verdict::AlreadyPulled | Verdict::Blocked => DeliverMessage::Accepted,
     }
 }
 
@@ -167,12 +190,21 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
         return match judge(state, envelope).await {
             DeliverMessage::Accepted => Outcome::Accepted,
             DeliverMessage::Refused(reason) => Outcome::Refused(reason),
-            _ => Outcome::Unreachable,
+            // Our own gate said Busy about our own node. `Offer` is not an answer and cannot
+            // arrive here; both mean the notice is still waiting, which is what the outbox
+            // needs to hear.
+            DeliverMessage::Busy | DeliverMessage::Offer(_) => Outcome::Unreachable,
         };
     }
     for candidate in candidates(state, recipient_root).await {
         let endpoint_id = crate::idface::leaf_via_to_endpoint(state, recipient_root, &candidate).await;
         match tokio::time::timeout(DELIVER_TIMEOUT, knock(state, &endpoint_id, envelope)).await {
+            // A busy door is a door that did not work, so the ladder continues rather than
+            // spending the whole attempt on one unlucky machine - the sender needs *a* node of
+            // theirs, not this one. Every candidate busy falls out of the loop as Unreachable.
+            Ok(Ok(Outcome::Unreachable)) => {
+                tracing::debug!(candidate = %endpoint_id, "delivery door was busy");
+            }
             Ok(Ok(outcome)) => return outcome,
             Ok(Err(e)) => {
                 tracing::debug!(candidate = %endpoint_id, error = ?e, "delivery attempt failed");
@@ -216,6 +248,41 @@ async fn knock(state: &AppState, endpoint_id: &str, envelope: &[u8]) -> Result<O
     match answer {
         Some(DeliverMessage::Accepted) => Ok(Outcome::Accepted),
         Some(DeliverMessage::Refused(reason)) => Ok(Outcome::Refused(reason)),
+        // A door that admitted its own failure is worth exactly as much as a door that did not
+        // open: the notice is undelivered and the attempt is worth making again.
+        Some(DeliverMessage::Busy) => Ok(Outcome::Unreachable),
         other => Err(anyhow!("unexpected answer to a delivery: {other:?}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::inbox::Verdict;
+
+    /// The anti-oracle invariant, stated as an equality rather than a mapping: whatever the
+    /// gate decided, the sender must not be able to tell the cases apart. Written this way on
+    /// purpose - asserting "Blocked maps to Accepted" would only restate the match arm, while
+    /// this fails for any future verdict that leaks, including ones nobody has added yet.
+    #[test]
+    fn the_gate_never_tells_a_sender_which_verdict_they_got() {
+        let transcribed = wire_answer(Verdict::Transcribed);
+        for verdict in [Verdict::AlreadyPulled, Verdict::Blocked] {
+            assert_eq!(
+                wire_answer(verdict),
+                transcribed,
+                "{verdict:?} is distinguishable from acceptance on the wire"
+            );
+        }
+    }
+
+    /// A block must not be visible even by its retry shape: `Accepted` means done, so the
+    /// sender stops. Anything that maps to `Refused` would also stop them, but tells them why.
+    #[test]
+    fn a_blocked_sender_is_told_the_word_accepted() {
+        assert!(matches!(
+            wire_answer(Verdict::Blocked),
+            DeliverMessage::Accepted
+        ));
     }
 }

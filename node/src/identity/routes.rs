@@ -682,7 +682,8 @@ struct NotificationItem {
 /// identity costs a sync and you pay it only for people you have answered. That is one rule
 /// serving two purposes: it bounds fan-out, and it stops a stranger putting a chosen name and
 /// picture in front of you. Answering the door (following them) converts them to the derived
-/// path, and the byline arrives with the relationship.
+/// path, and the byline arrives with the relationship - including for a notice that arrived
+/// *before* you answered, which [`undelivered_twice`] is what makes true.
 ///
 /// Seen-state is a single watermark register (`notifications_seen/watermark`, a PUT to the
 /// existing private KV surface): rows newer than it are unseen, and "mark read" is one write
@@ -727,6 +728,8 @@ async fn notifications_handler(
             }
         })
         .collect();
+    // `items` is exactly the derived rows at this point, which is what the dedup keys off.
+    let delivered = undelivered_twice(&items, delivered);
     items.extend(delivered.into_iter().map(|n| NotificationItem {
         seen: n.timestamp_ms <= watermark,
         stranger: true,
@@ -742,6 +745,36 @@ async fn notifications_handler(
     items.truncate(NOTIFICATIONS_PAGE as usize);
 
     Ok(Json(serde_json::json!({ "items": items, "watermark": watermark })))
+}
+
+/// The follow-edge rule, applied after the fact: **where the derived path already carries a
+/// fact, the delivered copy of it is not shown.**
+///
+/// The gate enforces "a follow-edge produces no inbox row, ever" at transcription, which is the
+/// only moment it can - but the relationship outlives the moment. A stranger knocks, their
+/// notice is transcribed correctly, and then you follow them back; now you sync the very chain
+/// the envelope was quoting, the fold derives its own row, and the reader sees the same event
+/// twice - once with a byline and once as "(stranger)". That is not two facts.
+///
+/// The derived row wins, and not by coincidence of ordering: it is folded from the author's own
+/// chain under the sync gate rather than transcribed from a stranger's envelope, it is current
+/// where the envelope is a snapshot of whatever they claimed when they knocked, and it carries
+/// the byline that answering the door is what buys.
+///
+/// `seen` is a single time watermark rather than per-row state, so dropping a row cannot strand
+/// an unread marker (Seen-state, on the handler).
+fn undelivered_twice(
+    derived: &[NotificationItem],
+    delivered: Vec<crate::inbox::Notice>,
+) -> Vec<crate::inbox::Notice> {
+    let known: std::collections::HashSet<(&str, &str)> = derived
+        .iter()
+        .map(|i| (i.author.as_str(), i.kind.as_str()))
+        .collect();
+    delivered
+        .into_iter()
+        .filter(|n| !known.contains(&(n.sender_root.as_str(), n.kind.as_str())))
+        .collect()
 }
 
 /// Mark this identity as served by this node and publish its serving record. This is the
@@ -3205,6 +3238,73 @@ mod media_info_tests {
         assert!(
             !m.has_preview,
             "APNG animates itself; no separate preview clip"
+        );
+    }
+}
+
+#[cfg(test)]
+mod notification_dedup_tests {
+    use super::*;
+
+    fn derived(author: &str, kind: &str) -> NotificationItem {
+        NotificationItem {
+            author: author.to_string(),
+            kind: kind.to_string(),
+            trust: None,
+            interest: None,
+            updated_ms: 1,
+            seen: false,
+            stranger: false,
+            author_name: None,
+            author_avatar: None,
+        }
+    }
+
+    fn arrived(sender: &str, kind: &str) -> crate::inbox::Notice {
+        crate::inbox::Notice {
+            sender_root: sender.to_string(),
+            kind: kind.to_string(),
+            trust: None,
+            interest: None,
+            timestamp_ms: 1,
+            service: ringtome_proto::registry::service::INBOX_STRANGER,
+        }
+    }
+
+    #[test]
+    fn a_fact_the_fold_already_derived_is_not_shown_twice() {
+        let derived_rows = vec![derived("aaa", "public-edge")];
+        let kept = undelivered_twice(&derived_rows, vec![arrived("aaa", "public-edge")]);
+        assert!(kept.is_empty(), "the same fact from both paths renders once");
+    }
+
+    #[test]
+    fn dedup_is_per_fact_not_per_person() {
+        let derived_rows = vec![derived("aaa", "public-edge")];
+        let kept = undelivered_twice(
+            &derived_rows,
+            vec![arrived("aaa", "some-other-kind"), arrived("bbb", "public-edge")],
+        );
+        assert_eq!(
+            kept.len(),
+            2,
+            "a different kind from the same sender, and the same kind from a different sender, \
+             are both facts the fold did not derive"
+        );
+    }
+
+    /// The dedup above matches on a string that two modules declare independently - the fold's
+    /// own constant and the wire kind's name. They agree today, and if they ever stop the
+    /// symptom is not a crash but the exact bug this fixes, quietly back. So: pin them equal.
+    #[test]
+    fn both_paths_spell_the_same_fact_the_same_way() {
+        assert_eq!(
+            crate::notifications::KIND_PUBLIC_EDGE,
+            ringtome_proto::deliver::notice_kind::name(
+                ringtome_proto::deliver::notice_kind::PUBLIC_EDGE
+            ),
+            "the derived fold and the delivered envelope must name this fact identically, \
+             or the notification dedup silently stops matching"
         );
     }
 }

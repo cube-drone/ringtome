@@ -11,7 +11,10 @@
       - the envelope reaches the recipient's node, passes the gate, and lands as a notice;
       - the bell shows it as a STRANGER row, with no byline (an unadmitted stranger renders
         from their root alone - claimed identity costs a sync);
-      - a blocked sender is refused before anything is signed;
+      - a blocked sender's notice is dropped before anything is signed, and they are told
+        "accepted" anyway (2026-08-10: a spoken refusal would be a block oracle - the wire
+        answer itself is pinned in `net::deliver::wire_answer`, since from out here a block is
+        deliberately indistinguishable from acceptance);
       - and the follow-edge rule holds from the other side: a sender the recipient already
         pulls produces no inbox row at all.
 */
@@ -117,7 +120,7 @@ const bell = async (fetcher, root) =>
     });
 });
 
-(HOST_B ? describe : describe.skip)("the gate refuses what it should", function () {
+(HOST_B ? describe : describe.skip)("the gate drops what it should", function () {
     this.timeout(120000);
 
     let host, hostRoot, blocked, blockedRoot;
@@ -138,9 +141,9 @@ const bell = async (fetcher, root) =>
         await dial(host, hostRoot, blockedRoot, "blocked", "yes");
     });
 
-    it("a blocked sender's notice is refused before anything is signed", async () => {
+    it("a blocked sender's notice is dropped, and they are told nothing about it", async () => {
         await dial(blocked, blockedRoot, hostRoot, "interest", "max");
-        // Give the eager delivery a real chance to have happened and been refused.
+        // Give the eager delivery a real chance to have happened and been dropped.
         await new Promise((r) => setTimeout(r, 6000));
         const items = await bell(host, hostRoot);
         assert.equal(
@@ -148,8 +151,10 @@ const bell = async (fetcher, root) =>
             0,
             "a block is enforced at transcription, on every door"
         );
-        // And the sender stops asking: a refusal is an answer, so the knock is retired rather
-        // than climbing the backoff ladder forever.
+        // And the sender stops asking: "accepted" is an answer, so the knock is retired rather
+        // than climbing the backoff ladder forever. Note that this assertion passes identically
+        // for a transcribed notice - which is the property, not a weakness of the test. What
+        // separates the two cases is the bell row above, visible only to the recipient.
         const done = await settle(async () => {
             const { rows } = await sqlOn(
                 `SELECT COUNT(*) AS n FROM outbound_notices WHERE sender_root = '${blockedRoot}'`,
@@ -157,7 +162,7 @@ const bell = async (fetcher, root) =>
             );
             return rows[0] && rows[0].n === 0 ? true : null;
         });
-        assert.ok(done, "a refused knock is retired, never retried");
+        assert.ok(done, "an answered knock is retired, never retried");
     });
 });
 

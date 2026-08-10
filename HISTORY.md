@@ -4191,3 +4191,151 @@ cause - the databases are 6 MB with a 909 KB largest file, and no `GROUP BY` at 
 costs a third of a core. The profile that named it was a wall-clock sampler, which cannot tell
 computing from waiting on a mutex. An empty node on the current binary idles at 0.3%, so the
 cost is per-persona and there is a floor to bisect from; REFACTOR carries it as open.
+
+## 2026-08-10 — the door stops confirming blocks
+
+A question about the inbox tiers ("when someone is blocked, they can't even post in the
+stranger tier?") turned up a property nobody meant to ship. Blocked was refused correctly, at
+check (5), before classification — a blocked sender has never been able to take a stranger slot.
+But the *answer* went back as `refusal::GATE`, and by 2026-08-10 that code had run out of
+company.
+
+`GATE` is coarse on purpose. Doctrine's line is that refusal leaks exactly one bit — "they are
+not accepting this from you" — with below-floor, muted and over-quota sharing one code, because
+distinguishing them turns a refusal into an oracle. The defence works while the set has
+members. It stopped having them: **the ring buffer deliberately retired the quota check** (a
+new notice always lands; the oldest stranger ages off the floor), and the pre-Trust classifier
+refuses nobody, so `blocked` was alone under the code. One envelope, one probe, and a sender
+knew. The two fixes that made the inbox better each removed one of the block's neighbours, and
+nothing in the code could notice.
+
+**A block is now answered `Accepted`.** `Verdict::Refused` became `Verdict::Blocked`, and every
+verdict the gate can reach maps to the same wire answer — the sender is told the same thing
+whether they were transcribed, dropped as already-pulled, or blocked. They retry nothing, which
+is what they would also do against a node that was merely offline.
+
+The doctrine took the amendment rather than an exception. *Words beat resets* is right because
+a refusal tells a sender about **themselves** — too little standing, too much traffic — which
+they can act on and are entitled to know. Whether you blocked them is a fact about **you**. The
+distinction pays for the one place in this system where a node answers falsely, and it buys the
+property the block was actually for: not "you cannot reach me", which invites evasion, but *no
+signal at all*. The visible refusals that arrive with Trust report the sender's own standing
+and stay spoken aloud.
+
+The cop is written as an equality, not a mapping: `wire_answer(Blocked) == wire_answer(
+Transcribed)`. Asserting "blocked maps to accepted" would only restate the match arm, and would
+still pass for a fourth verdict added later that leaks.
+
+Two stale comments went with it, both drift from the ring-buffer change: `accept`'s check-order
+list still described a pool check whose own body says, twelve lines down, that it deliberately
+does not do that, and `Verdict` still called itself "one verdict for blocked and over-quota
+alike" after over-quota stopped existing. Small, but they were the exact comments a reader would
+have trusted to conclude the oracle was covered.
+
+## 2026-08-10 — the door learns to say "not you, me"
+
+The block-oracle fix left the delivery door with two answers and three things to say. `Accepted`
+meant the sender's business was concluded; `Refused` meant a fact about the sender or their
+envelope that they could act on; and a node whose keystore was briefly locked, or whose database
+was busy, had to pick one. It picked `Refused(GATE)` — and a refusal is retired by the sender's
+outbox forever, correctly, because retrying a refusal is what a spammer does. So *our* transient
+fault silently destroyed a notice that nobody had refused, and the sender was told it was their
+own fault.
+
+`DeliverMessage::Busy` is the third answer: the 500 to the other two's 200 and 4xx. It carries no
+detail, deliberately — an internal failure is not the sender's to debug and its shape is not
+theirs to learn — and it maps to `Outcome::Unreachable`, which is the one outcome the outbox
+retries rather than retires. The backoff ladder and the expiry that already existed for a
+recipient whose phone is asleep now cover a recipient whose node is having a bad minute, which is
+the same situation from the sender's side and always was.
+
+One behaviour changed beyond the mapping: **a busy door no longer ends the attempt.** The dial
+ladder used to return on any answer, so one unlucky machine consumed the whole try. Busy is a
+door that did not work, so the loop continues to the next candidate — the sender needs *a* node
+of the recipient's, not that one — and only falls out as `Unreachable` when every door is busy or
+silent.
+
+That left `refusal::GATE` with no producer at all: the quota check is gone (the ring buffer),
+the pre-Trust classifier refuses nobody, blocks answer `Accepted`, and now internal faults answer
+`Busy`. It is kept, documented as unproduced, because below-floor refusal returns with Trust and
+that one is a genuine spoken refusal. The useful invariant meanwhile: **the door's only refusals
+are `MALFORMED` and `NOT_SERVED`** — one a fact about the envelope, one a fact about this node,
+neither a fact about what the recipient thinks of you.
+
+The new cop is small and pins the mistake that would be invisible: `Busy` and `Accepted` are both
+fieldless, separated on the wire only by a tag, and confusing them turns "try again" into "your
+job is done" — a notice lost with nothing logged anywhere.
+
+## 2026-08-10 — one fact, one row: the bell stops saying it twice
+
+Curtis found "User A follows you (stranger)" and "User A follows you" sitting in the bell as two
+rows, and diagnosed it correctly from the symptom alone: A knocked while he did not follow them,
+the envelope was transcribed, he followed them back, and the fold then derived its own row from
+the very chain the envelope had been quoting. Two machines, each behaving correctly, describing
+one event.
+
+The gate enforces "a follow-edge produces no inbox row, ever" at transcription, which is the only
+moment it *can* - but the relationship outlives the moment, and nothing retired the row that was
+already correct when it was written. The handler's own doc claimed the transition already worked
+("answering the door converts them to the derived path"): true of future notices, and nobody had
+noticed it was false of the notice that prompted the answer.
+
+`undelivered_twice` drops a delivered row when the derived list already holds the same
+`(author, kind)`. The derived one wins on the merits rather than by ordering: folded from the
+author's own chain under the sync gate rather than transcribed from a stranger's envelope,
+current where the envelope is a snapshot of whatever was claimed at knock time, and carrying the
+byline that answering the door is what buys. Suppression at read time rather than eviction,
+because the inbox is a memo of chains that get refolded - a deleted row would come back on the
+next rebuild, and the rule survives every rebuild by not being stored.
+
+The cop that matters here is the third one, not the two obvious ones. The dedup matches on a
+string that two modules declare independently - `notifications::KIND_PUBLIC_EDGE` and
+`deliver::notice_kind::name(PUBLIC_EDGE)` - and if those ever drift the failure is not a crash or
+a red test but this exact bug, quietly back in the bell. So a test pins them equal, and says why.
+
+Two residuals, both recorded rather than fixed. The suppressed notice keeps its slot in the
+stranger tier's 512 until it ages off the floor - real, since that pool is the flood surface, but
+a chain entry cannot be surgically removed and the ring already has an answer. And the dedup sees
+one page of each list, so a delivered row whose derived twin sits beyond a hundred rows survives;
+at that depth the reader has scrolled far past the point where either row is news.
+
+## 2026-08-10 — the sweep learns to wait for the shelf
+
+`a repudiated device's posts are retracted from feeds` went red twice on the GitHub runner while
+`just ci` stayed green locally, reporting an empty feed where one honest post should have stood.
+Green-here/red-there is usually a scheduling difference, and it was — but the scheduling
+difference exposed a real bug, not a flaky assertion.
+
+`drop_views_fed_by` clears the document views and then, in a separate loop, clears their
+watermarks. `Db::execute` takes `stmt_lock` per statement, so those are separate acquisitions
+with a gap between them, and inside the gap `doc_heads` is empty while the POSTS watermark still
+says "already folded". Every reader catches up before reading and every catch-up writes rows
+before advancing watermarks — the fold ordering was never the problem — but a catch-up finds
+nothing past an un-cleared watermark. So inside that window the shelf reads as legitimately
+**empty**.
+
+For every reader but one, that is a blank page for a millisecond. `retract_vanished` reads the
+shelf to decide which journaled documents have vanished, concludes that all of them have, and
+deletes them — permanently, because `feed_journal` is only ever written forward on a public move
+that has already happened. The honest post is collateral, and nothing rewrites its row.
+
+The fix is that `retract_vanished` now holds the author's ingest gate across the read and the
+delete. Eviction already runs under that gate (`ingest_batch` holds it across
+`refold_after_eviction`), so taking it here makes "the views are settled" true rather than
+likely; `lock_ingest` is acquired in exactly one other place and `after_public_move` is never
+called from inside it, so there is nothing to deadlock against. The rule worth keeping, because
+it generalizes past this function: **the danger was never reading a transient view, it was
+writing a deletion based on one.** A reader that only renders can be wrong for a millisecond; a
+reader that destroys durable state cannot.
+
+The test had its own, independent defect, and it is the reason two CI runs produced an ambiguous
+message. `return t.includes("doomed-post") ? null : t` hands `settle` an empty array the moment
+the feed is cleared — and `[]` is truthy — so the poll latched onto the transient and reported it
+as the final answer. Both middle assertions now wait for *doomed absent AND honest present*, so a
+future failure means "the honest post never came back" instead of "we sampled mid-refold". The
+first and last `settle` in the same test always guarded correctly (`t.length >= 2`,
+`t.includes(...)`); these two were the only unguarded ones in the suite.
+
+Recorded honestly: the failure never reproduced on this machine, so the diagnosis rests on the
+mechanism being readable in the code rather than on a red-to-green demonstration. The action is
+the verification, and the test change is what makes its next answer unambiguous.

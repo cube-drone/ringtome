@@ -9,6 +9,30 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
+### A suppressed inbox notice still holds its ring slot (2026-08-10)
+
+`undelivered_twice` hides a delivered notice once the fold derives the same fact, but the chain
+entry behind it stays until it ages off the stranger tier's floor - so a row nobody will ever
+see occupies one of 512 slots in the pool that IS the flood surface. Not fixable by deleting:
+a chain entry cannot be surgically removed (only pruned below a floor), and the view row would
+return on the next rebuild anyway, which is exactly why the rule lives at read time. The real
+fix, if this ever bites, is for the fold to skip notices whose sender the reader now follows -
+rebuild-stable, and it reclaims the slot at the next retention pass rather than immediately.
+
+Small companion: the dedup compares one page of each list (100), so a delivered row whose
+derived twin sits beyond that page survives. At that depth neither row is news.
+
+### The delivery door has a timing side channel (2026-08-10)
+
+A blocked sender is told `Accepted`, but the blocked path returns right after the epoch unseal
+while an accepted path also appends an entry and folds it - so a sender who times the answer
+can still separate the two. Much weaker than the one-bit oracle that was closed the same day
+(it needs repeated probes and a quiet network, and the fold's cost varies for honest reasons),
+and a constant-time door is not worth building yet. Recorded because it is the reason the
+block-oracle fix should be described as *no cheap signal* rather than *no signal* - if that
+distinction ever stops being good enough, the fix is to pad the blocked path to the shape of a
+transcription, not to answer differently.
+
 ### The idle-node CPU is still unexplained (2026-08-10)
 
 Three dev nodes, idle, 30-58% CPU each, for hours. This provoked the full-chain audit and

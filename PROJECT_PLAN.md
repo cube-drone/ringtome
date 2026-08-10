@@ -1159,7 +1159,12 @@ Four properties, each a decision rather than an accident:
   it will be believed.
 - **Refusal is visible to the sender, and that leaks exactly one bit.** A silent drop is the worst failure mode in
   messaging, so we take the bit: "they are not accepting messages from you" confirms the sender sits below the
-  floor, and says nothing about its value or the graph behind it.
+  floor, and says nothing about its value or the graph behind it. **Two answers are carved out of this**
+  (2026-08-10, see *A block is the one refusal that is not spoken*): a block answers "accepted", because whether
+  you blocked someone is a fact about *you* rather than about them; and a node that simply could not judge the
+  offer answers **"busy"** rather than any refusal, because the sender retires a refusal forever and our locked
+  keystore is not their bad behaviour. The rule the three answers follow: a refusal may only ever report a fact
+  about the sender or their envelope.
 - **There is no sender-side preflight.** The floor is computed in the *recipient's* graph and deliberately
   unknowable to the sender (Privacy of the graph, below), so no client can grey the button out ahead of time. The
   compose surface always works; the refusal arrives from the network.
@@ -2951,7 +2956,7 @@ cryptographically genuine rebroadcast from a pathless identity is socially worth
 product behaviour before it is defence. **First-contact is the one kind open to the pathless.**
 
 **Until Trust ships, the gate runs a degenerate classifier** - explicit or mutual edge ⇒ trusted tier; anyone
-else ⇒ stranger tier; muted ⇒ refused - so the inbox does not wait on the flow computation (Sequencing: the
+else ⇒ stranger tier; muted ⇒ dropped in silence (below) - so the inbox does not wait on the flow computation (Sequencing: the
 graph grows before the features arrive). Trust later replaces the classifier *function* only; the chain layout,
 envelope format and gate position are final now.
 
@@ -2960,6 +2965,17 @@ enforces it at transcription. "Never again" is as strong as identity continuity:
 fresh identity, which lands pathless, below every floor, at the price of their standing. The honesty clause
 survives unchanged: this gate is anti-spam, never anti-harassment - an admitted sender's capped content can still
 be cruel, and mute plus report remain the answer.
+
+**A block is the one refusal that is not spoken** (amended 2026-08-10). *Words beat resets* holds because a
+refusal tells the sender about **themselves** - too little standing, too much traffic - which they are entitled
+to know, and which they can act on. Whether you blocked them is a fact about **you**, and a door that answers it
+honestly is a block oracle: one envelope, one probe, an answer. Coarseness was the original defence - below-floor,
+muted and over-quota share one code - but that only hides a reason while it keeps company, and it stopped: the
+ring buffer retired the quota check, and the degenerate classifier refuses nobody, leaving `blocked` alone under
+the code. **So a blocked sender is told "accepted" and retries nothing** - the same nothing they would see from a
+node that was merely offline. This is the single place in the system where a node answers a question falsely, and
+it buys the property the block was for: not "you cannot reach me", which invites evasion, but *no signal at all*.
+The visible refusals that return with Trust report the sender's own standing, and stay spoken aloud.
 
 #### Tiered inbox chains, count-bounded
 
