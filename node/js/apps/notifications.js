@@ -112,8 +112,16 @@ export const NotificationsApp = ({ current }) => {
                           (r) => html`
                               <div
                                   class=${r.seen ? 'notif-row' : 'notif-row notif-unseen'}
-                                  key=${`${r.author}:${r.kind}`}
+                                  key=${`${r.stranger ? 'x' : 'd'}:${r.author}:${r.kind}`}
                               >
+                                  ${/* Passing a profile - even an EMPTY one, which is what a
+                                      stranger's row carries - is what stops usePerson fetching
+                                      their page. That is the rule, not an optimisation: an
+                                      unadmitted stranger renders as derived identity only
+                                      (identicon + speakable words), because claimed identity
+                                      costs a sync and you pay it only for people you have
+                                      answered. Follow them and they become a derived row with
+                                      a byline. */ ''}
                                   <${PersonChip}
                                       root=${r.author}
                                       current=${current}
@@ -125,7 +133,14 @@ export const NotificationsApp = ({ current }) => {
                                           via: [],
                                       }}
                                   />
-                                  <span class="notif-text">${sentence(r)}</span>
+                                  <span class="notif-text">
+                                      ${sentence(r)}
+                                      ${r.stranger &&
+                                      html`<span
+                                          class="notif-stranger"
+                                          title=${t('apps.notifications.you-dont-follow-them-so', "you don't follow them, so this arrived at your door - their name and picture stay unfetched until you answer")}
+                                      >${t('apps.notifications.a-stranger', 'a stranger')}</span>`}
+                                  </span>
                                   <span class="notif-cells">
                                       ${r.trust &&
                                       html`<${SignalCell}

@@ -179,6 +179,11 @@ impl Store {
         PublicEdges { store: self }
     }
 
+    /// Notices delivered by people this persona does not sync (`crate::inbox`).
+    pub fn inbox(&self) -> Inbox<'_> {
+        Inbox { store: self }
+    }
+
     /// The store's database handle, for publication machinery that reads public heads
     /// (record::bake) - public-lane reads only through this door.
     pub fn db(&self) -> &Db {
@@ -299,6 +304,39 @@ impl PublicEdges<'_> {
         &self,
     ) -> Result<std::collections::BTreeMap<String, imaol::PublishedRow>, AppError> {
         imaol::published_edges(&self.store.db).await
+    }
+
+    /// Seal the envelope that announces one just-published statement to its subject - the
+    /// delivered path's outbound artifact (`outbox`). Lives here because sealing needs the
+    /// persona's signing leaf, which never leaves the store.
+    pub async fn seal_notice(
+        &self,
+        subject: &[u8; 32],
+        evidence: &SignedEntry,
+    ) -> Result<ringtome_proto::deliver::SignedEnvelope, AppError> {
+        crate::outbox::seal_notice(
+            &self.store.db,
+            &self.store.authorship.signer,
+            &self.store.root,
+            subject,
+            evidence,
+        )
+        .await
+        .map_err(AppError::Internal)
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The inbox: what arrived from people this persona does not pull.
+
+pub struct Inbox<'s> {
+    store: &'s Store,
+}
+
+impl Inbox<'_> {
+    /// The delivered notices, newest first. Folds on read, like every private view.
+    pub async fn page(&self, limit: u32) -> Result<Vec<crate::inbox::Notice>, AppError> {
+        crate::inbox::page(&self.store.db, &self.store.authorship.epoch_keys, limit).await
     }
 }
 

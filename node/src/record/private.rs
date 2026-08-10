@@ -56,6 +56,13 @@ const DOC_AAD: &[u8] = b"ringtome-v0/doc-header";
 /// refusing a ciphertext transplanted from one chain to the other.
 const DOC_META_AAD: &[u8] = b"ringtome-v0/doc-meta-record";
 
+/// AAD for transcribed inbox notices. One domain for both tiers on purpose: the tier is a
+/// property of which CHAIN a notice sits on (retention and sync depth), never of the
+/// ciphertext, and a notice promoted between tiers would otherwise have to be re-encrypted to
+/// move. Distinct from every other domain, so a notice ciphertext cannot be transplanted onto
+/// a contact register's chain or the reverse.
+const NOTICE_AAD: &[u8] = b"ringtome-v0/inbox-notice";
+
 /// The AAD for one service's private-record ciphertexts. Unknown service = error: a service
 /// earns private records by being named here, never by default.
 fn aad_for_service(service_id: u32) -> Result<&'static [u8], AppError> {
@@ -67,6 +74,7 @@ fn aad_for_service(service_id: u32) -> Result<&'static [u8], AppError> {
         ))),
     }
 }
+
 
 // ---------------------------------------------------------------------------------------------
 // Encryption keypairs in the keystore
@@ -413,6 +421,44 @@ pub(crate) fn open_record(
     open_with(record, keys, aad, |p| PrivatePlain::decode(p).ok())
 }
 
+/// Encrypt one delivered envelope for transcription onto an inbox chain.
+///
+/// The plaintext is the sender's envelope bytes **verbatim** - not a re-encoding, not a
+/// summary. That is the whole point of transcription: the recipient's other nodes decrypt
+/// these bytes and run the same offline verification the transcribing node ran, so a notice is
+/// believed because it checks out, never because one of your machines said so.
+pub fn encrypt_notice(
+    epoch: u64,
+    epoch_key: &[u8; 32],
+    envelope_bytes: &[u8],
+) -> Result<PrivateRecord, AppError> {
+    let mut nonce = [0u8; 24];
+    {
+        use rand::RngCore;
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+    }
+    let ciphertext = cipher(epoch_key)
+        .encrypt(
+            XNonce::from_slice(&nonce),
+            chacha20poly1305::aead::Payload {
+                msg: envelope_bytes,
+                aad: NOTICE_AAD,
+            },
+        )
+        .map_err(|e| AppError::Internal(anyhow!("encrypting inbox notice: {e}")))?;
+    Ok(PrivateRecord {
+        epoch,
+        nonce,
+        ciphertext,
+    })
+}
+
+/// Open one transcribed notice, yielding the sender's envelope bytes as they were delivered.
+/// Structural decoding happens in the fold, which re-verifies rather than trusting.
+pub(crate) fn open_notice(record: &PrivateRecord, keys: &EpochKeys) -> Opened<Vec<u8>> {
+    open_with(record, keys, NOTICE_AAD, |p| Some(p.to_vec()))
+}
+
 /// Open one doc header (its own AAD domain - see [`encrypt_doc_header`]).
 pub(crate) fn open_doc_header(
     record: &PrivateRecord,
@@ -559,8 +605,9 @@ pub async fn write_record(
 // ---------------------------------------------------------------------------------------------
 // The persisted view (the fold rules live in the module doc above)
 
-/// LWW stamp, same total order the profile view uses: claimed timestamp, then seq, then hash.
-type Stamp = (i64, u64, [u8; 32]);
+/// LWW stamp, same total order the profile view uses - defined once in `imaol`, which owns
+/// The Ordering Contract.
+use crate::record::imaol::Stamp;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RegisterValue {

@@ -33,6 +33,14 @@ pub mod service {
     /// bodies live in the file layer. Its own chain so save cadence never interleaves with the
     /// small-fact traffic on `general-private`.
     pub const DOCUMENTS_PRIVATE: u32 = 6;
+    /// The inbox, trusted tier: notices transcribed from senders the recipient has an edge to.
+    /// Two tiers rather than one because retention and sync depth are **per-chain** policy -
+    /// the stranger tier is meant to be small and forgettable, and welding it to the tier you
+    /// keep is how retention becomes impossible (PROJECT_PLAN, Tiered inbox chains).
+    pub const INBOX_TRUSTED: u32 = 8;
+    /// The inbox, stranger tier: notices from senders with no edge to the recipient. Bounded,
+    /// prunable, and the only tier a flood can ever evict from.
+    pub const INBOX_STRANGER: u32 = 9;
     /// Private facts *about* documents (PROJECT_PLAN, Annotations): per-doc human assertions
     /// (`description`, `artist`, ...) as LWW registers, tags as LWW set-elements, everything
     /// about one document grouped in its `annot:<root>/<doc_id>` collection. Its own chain,
@@ -50,6 +58,8 @@ pub mod service {
             PROFILE_PUBLIC => "profile-public",
             POSTS => "posts",
             FOLLOWS_PUBLIC => "follows-public",
+            INBOX_TRUSTED => "inbox-trusted",
+            INBOX_STRANGER => "inbox-stranger",
             GENERAL_PRIVATE => "general-private",
             DOCUMENTS_PRIVATE => "documents-private",
             DOC_META_PRIVATE => "doc-meta-private",
@@ -81,6 +91,11 @@ pub mod entry_type {
     /// The published form of one relationship ([`PublicEdge`]): the bands its author consented
     /// to share about one subject. The follows-public chain's first citizen.
     pub const PUBLIC_EDGE: u32 = 8;
+    /// A transcribed notice on an inbox chain: the same `{epoch, nonce, ciphertext}` envelope
+    /// as `private-record`, under its own AAD, whose plaintext is a delivered
+    /// [`crate::deliver::SignedEnvelope`] **verbatim** - so the recipient's other nodes verify
+    /// the sender themselves instead of trusting whichever node answered the door.
+    pub const INBOX_NOTICE: u32 = 9;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -92,6 +107,7 @@ pub mod entry_type {
             PRIVATE_RECORD => "private-record",
             DOC_HEADER => "doc-header",
             PUBLIC_EDGE => "public-edge",
+            INBOX_NOTICE => "inbox-notice",
             _ => "unknown-type",
         }
     }

@@ -174,6 +174,34 @@ CREATE TABLE private_set_elements (
     PRIMARY KEY (service, collection, element)
 );
 
+-- The inbox: notices delivered by strangers, folded from the two inbox tier chains
+-- (PROJECT_PLAN, Arrival and Attention - the DELIVERED path; the derived path is node.db's
+-- `notifications` and never touches this).
+--
+-- **Collapse is the primary key.** One row per (sender, kind) - a flapping stranger occupies
+-- one row however many times they knock, and a sender who knocks on all three of your nodes
+-- produces one row because every node transcribes the same envelope hash. The key deliberately
+-- does NOT include `service`: the tiers are two chains but one list, so a sender promoted from
+-- stranger to trusted collapses onto their existing row instead of appearing twice ("the
+-- read-time merge across tiers makes the seam invisible"). `service` rides as a column so
+-- retention can still count what sits in the stranger pool.
+--
+-- `envelope` is the sender's bytes verbatim: this table is a VIEW, and the chain entry it was
+-- folded from is the truth. Dropping the table costs one refold.
+CREATE TABLE inbox_notices (
+    sender_root   TEXT    NOT NULL,
+    kind          TEXT    NOT NULL,
+    service       INTEGER NOT NULL,  -- which tier chain the winning notice landed on
+    envelope      BLOB    NOT NULL,  -- the delivered envelope, verbatim, re-verifiable
+    trust         TEXT,              -- the published bands the evidence carried
+    interest      TEXT,
+    timestamp_ms  INTEGER NOT NULL,  -- LWW stamp: the transcribing node's claimed time
+    seq           INTEGER NOT NULL,
+    entry_hash    BLOB    NOT NULL,
+    PRIMARY KEY (sender_root, kind)
+);
+CREATE INDEX inbox_notices_by_time ON inbox_notices (timestamp_ms DESC);
+
 -- How far each (author, service) chain has been folded into the views above. A watermark never
 -- advances past an entry the folder could not decrypt (record::private, the stall rule), so a
 -- later read - after adoption resealing delivers the missing epoch key - retries from there.

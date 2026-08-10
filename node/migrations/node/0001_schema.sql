@@ -242,6 +242,26 @@ CREATE TABLE notifications (
 CREATE INDEX notifications_by_reader ON notifications (reader_root, updated_ms);
 
 -- ---------------------------------------------------------------------------------------------
+-- The outbox: envelopes this node owes to strangers (PROJECT_PLAN, Arrival and Attention -
+-- the DELIVERED path, sender side).
+--
+-- A row means "a persona here published an edge naming somebody who may not be syncing us, and
+-- nobody has taken the news yet". One row per (sender, recipient, kind) - a re-published edge
+-- replaces what was waiting, because only the newest statement is worth delivering. Retirement
+-- is on ANY answer: accepted or refused both end the matter, and only silence earns another
+-- rung on the backoff ladder.
+CREATE TABLE outbound_notices (
+    sender_root    TEXT    NOT NULL,  -- the local persona whose statement this announces
+    recipient_root TEXT    NOT NULL,  -- the subject, who may be anywhere or nowhere
+    kind           TEXT    NOT NULL,
+    envelope       BLOB    NOT NULL,  -- the signed envelope, ready to hand over as-is
+    first_noted_ms INTEGER NOT NULL,  -- when it was queued (news has a shelf life)
+    last_tried_ms  INTEGER NOT NULL,  -- 0 = never tried, which is always due
+    tries          INTEGER NOT NULL,
+    PRIMARY KEY (sender_root, recipient_root, kind)
+);
+
+-- ---------------------------------------------------------------------------------------------
 -- The media bake registry: external media a publication pulled INTO the network, one row per
 -- (persona, source URL). Publication's copy-don't-flip crossing extends to what a post embeds:
 -- a public post may not depend on a private blob (unreadable to strangers) or a foreign server

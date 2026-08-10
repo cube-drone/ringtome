@@ -52,6 +52,17 @@
     color: var(--ink);
 }
 
+/* The stranger marker: says why there is no name here, quietly. */
+.notif-stranger {
+    margin-left: 0.4em;
+    padding: 0.05em 0.4em;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.75em;
+    white-space: nowrap;
+}
+
 .notif-cells {
     display: flex;
     gap: 0.35rem;

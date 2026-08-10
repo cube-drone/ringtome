@@ -157,7 +157,9 @@ async fn delete_row(node_db: &Db, reader_root: &str, author_root: &str) -> Resul
 /// One reader's notifications, newest first. Small and bounded on purpose: the memo collapses
 /// per (author, kind), so the row count is the reader's social circle, not their history.
 pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<NotificationRow>> {
-    let rows: Vec<(String, String, Option<String>, Option<String>, i64)> = node_db
+    /// `(author_root, kind, trust, interest, updated_ms)`, as the row comes back.
+    type Row = (String, String, Option<String>, Option<String>, i64);
+    let rows: Vec<Row> = node_db
         .fetch_all(
             "SELECT author_root, kind, trust, interest, updated_ms FROM notifications
              WHERE reader_root = ?1 ORDER BY updated_ms DESC LIMIT ?2",

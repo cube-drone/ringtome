@@ -618,13 +618,32 @@ struct NotificationItem {
     /// Above or below the reader's seen-watermark - their private-chain fact, so read-on-the-
     /// phone is read-on-the-laptop.
     seen: bool,
+    /// This one ARRIVED (an envelope from someone the reader does not sync) rather than being
+    /// derived from chains the reader already pulls. The client renders a stranger from their
+    /// root alone - see the byline note on the handler.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    stranger: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     author_avatar: Option<String>,
 }
 
-/// GET `/api/identity/{root}/notifications` - the reader's notification memo, newest first.
+/// GET `/api/identity/{root}/notifications` - one list, two sources.
+///
+/// **Derived** rows come from the node's `notifications` memo: things people the reader
+/// already syncs did, folded locally. **Delivered** rows come from the reader's own inbox
+/// chains: envelopes handed to one of their nodes by someone they do *not* sync. The reader
+/// should not have to care which path a fact took, so both render in one stream ordered by
+/// time (PROJECT_PLAN, Arrival and Attention).
+///
+/// **Delivered rows get no byline, deliberately.** An unadmitted stranger renders as derived
+/// identity only - identicon and speakable words computed from their root - because claimed
+/// identity costs a sync and you pay it only for people you have answered. That is one rule
+/// serving two purposes: it bounds fan-out, and it stops a stranger putting a chosen name and
+/// picture in front of you. Answering the door (following them) converts them to the derived
+/// path, and the byline arrives with the relationship.
+///
 /// Seen-state is a single watermark register (`notifications_seen/watermark`, a PUT to the
 /// existing private KV surface): rows newer than it are unseen, and "mark read" is one write
 /// that travels to every device. Per-row seen granularity waits for a kind that needs it.
@@ -634,9 +653,10 @@ async fn notifications_handler(
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let rows = crate::notifications::page(&state.node_db, &root, NOTIFICATIONS_PAGE)
+    let derived = crate::notifications::page(&state.node_db, &root, NOTIFICATIONS_PAGE)
         .await
         .map_err(AppError::Internal)?;
+    let delivered = data.inbox().page(NOTIFICATIONS_PAGE).await?;
 
     let (regs, _) = data.private_registers("notifications_seen").all().await?;
     let watermark: i64 = regs
@@ -645,17 +665,18 @@ async fn notifications_handler(
         .and_then(|r| r.value.parse().ok())
         .unwrap_or(0);
 
-    let authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
+    let authors: Vec<String> = derived.iter().map(|r| r.author_root.clone()).collect();
     let bylines = crate::profiles::bylines(&state.node_db, &authors)
         .await
         .map_err(AppError::Internal)?;
 
-    let items: Vec<NotificationItem> = rows
+    let mut items: Vec<NotificationItem> = derived
         .into_iter()
         .map(|r| {
             let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
             NotificationItem {
                 seen: r.updated_ms <= watermark,
+                stranger: false,
                 author_name: byline.name,
                 author_avatar: byline.avatar,
                 author: r.author_root,
@@ -666,6 +687,20 @@ async fn notifications_handler(
             }
         })
         .collect();
+    items.extend(delivered.into_iter().map(|n| NotificationItem {
+        seen: n.timestamp_ms <= watermark,
+        stranger: true,
+        author_name: None,
+        author_avatar: None,
+        author: n.sender_root,
+        kind: n.kind,
+        trust: n.trust,
+        interest: n.interest,
+        updated_ms: n.timestamp_ms,
+    }));
+    items.sort_by_key(|i| std::cmp::Reverse(i.updated_ms));
+    items.truncate(NOTIFICATIONS_PAGE as usize);
+
     Ok(Json(serde_json::json!({ "items": items, "watermark": watermark })))
 }
 
@@ -2642,7 +2677,18 @@ async fn stream_stamp(db: &crate::db::Db, view_epoch: u64) -> Result<StreamStamp
             service::PROFILE_PUBLIC => &[0],
             service::POSTS | service::DOCUMENTS_PRIVATE => &[1],
             service::DOC_META_PRIVATE => &[1, 2],
-            service::GENERAL_PRIVATE | service::FOLLOWS_PUBLIC => &[3],
+            service::GENERAL_PRIVATE => &[3],
+            // A published edge moves no group. It is an ECHO of a ledger write that already
+            // fired its own contacts update, and nothing the stream ships is derived from it -
+            // so counting it would emit a second update carrying an empty delta. (It shared
+            // the contacts group until 2026-08-09, harmlessly, because the follows-public
+            // chain had no writers; public-by-default gave it some and the spurious update
+            // appeared immediately, as a live-cache test failure.)
+            service::FOLLOWS_PUBLIC => &[],
+            // Inbox notices likewise: the bell polls its own endpoint, and no streamed view
+            // reads them. Named explicitly so they do not fall to the catch-all below and
+            // spuriously invalidate documents and the profile on every delivery.
+            service::INBOX_TRUSTED | service::INBOX_STRANGER => &[],
             _ => &[0, 1, 2, 3],
         };
         for &i in touched {

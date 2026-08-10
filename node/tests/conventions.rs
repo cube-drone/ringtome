@@ -35,6 +35,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("identity_demand", vec!["net/demand.rs"]),
         ("feed_journal", vec!["fanout.rs"]),
         ("notifications", vec!["notifications.rs"]),
+        ("outbound_notices", vec!["outbox.rs"]),
         ("missing_bodies", vec!["net/bodies.rs"]),
         ("persona_profiles", vec!["profiles.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
@@ -47,6 +48,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("doc_versions", vec!["record/documents.rs"]),
         ("doc_heads", vec!["record/documents.rs"]),
         ("doc_search", vec!["record/documents.rs"]),
+        ("inbox_notices", vec!["inbox.rs"]),
         ("private_registers", vec!["record/private.rs"]),
         ("private_set_elements", vec!["record/private.rs"]),
         ("view_watermarks", vec!["record/imaol.rs"]),
@@ -139,6 +141,7 @@ fn user_db_opens_are_deliberate() {
         ("ingest.rs", 1),
         ("profiles.rs", 1),        // refresh: ONE persona per claim-change edge
         ("notifications.rs", 1),   // refresh_from: ONE author per frontier-move edge
+        ("inbox.rs", 1),           // accept: ONE recipient per delivered envelope
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute
         ("net/resync.rs", 1),
         ("net/sync.rs", 3),        // + derive_peers_for: ONE persona's crown per derive edge

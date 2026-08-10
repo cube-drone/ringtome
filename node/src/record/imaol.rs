@@ -229,6 +229,11 @@ impl PublishedEdge {
     }
 }
 
+/// The LWW stamp every fold in this codebase orders by: claimed timestamp, then seq, then
+/// entry hash - the total order The Ordering Contract specifies, spelled once here because
+/// `imaol` is where that contract lives (`record::private` and the folds below all use it).
+pub(crate) type Stamp = (i64, u64, [u8; 32]);
+
 /// A folded statement with this replica's arrival stamp for the winning entry - local, unsigned,
 /// never synced (Displayed Time vs. Claimed Time's receipt bound). The notifications memo orders
 /// by it because arrival here is what "new" honestly means on this node.
@@ -258,8 +263,8 @@ pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, 
         .context("reading public-edge entries")
         .map_err(AppError::Internal)?;
 
-    // winner per subject: (timestamp_ms, seq, hash) tuple beside the folded row.
-    let mut latest: BTreeMap<String, ((i64, u64, [u8; 32]), PublishedRow)> = BTreeMap::new();
+    // winner per subject: the LWW stamp beside the folded row.
+    let mut latest: BTreeMap<String, (Stamp, PublishedRow)> = BTreeMap::new();
     for (bytes, received_at_ms) in rows {
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;

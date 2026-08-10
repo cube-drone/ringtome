@@ -62,7 +62,9 @@ fn desired_of(facts: &BTreeMap<String, String>) -> Option<PublishedEdge> {
 /// consent wants published and what the fold says is published. Returns the roots whose
 /// statements changed (the notification fold's worklist for locally-hosted subjects).
 pub async fn reconcile(
+    state: &crate::AppState,
     store: &Store,
+    root_hex: &str,
     contacts: &[(String, BTreeMap<String, String>)],
 ) -> Result<Vec<String>> {
     let edges = store.public_edges();
@@ -84,10 +86,26 @@ pub async fn reconcile(
         if published.get(subject_hex).map(|r| &r.edge) == Some(&desired) {
             continue;
         }
-        edges
+        let evidence = edges
             .publish(&subject, desired.trust.clone(), desired.interest.clone())
             .await
             .map_err(|e| anyhow::anyhow!("publishing edge for {subject_hex}: {e}"))?;
+
+        // Queue the knock. ALWAYS, even though most subjects will turn out to already sync us
+        // and discard it: whether they do is a fact only their node holds, and a sender that
+        // guesses either misses people silently or interrogates strangers about their follow
+        // lists (see the outbox's module doc). Best-effort - a statement that fails to queue
+        // is still published, and the subject still learns it if they ever sync us.
+        match edges.seal_notice(&subject, &evidence).await {
+            Ok(envelope) => {
+                if let Err(e) =
+                    crate::outbox::queue(&state.node_db, root_hex, subject_hex, &envelope).await
+                {
+                    tracing::warn!(subject = %subject_hex, error = ?e, "could not queue a notice");
+                }
+            }
+            Err(e) => tracing::warn!(subject = %subject_hex, error = ?e, "could not seal a notice"),
+        }
         changed.push(subject_hex.clone());
     }
 

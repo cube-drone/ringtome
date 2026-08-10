@@ -40,8 +40,8 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 11; // 11: the notifications memo (2026-08-09)
-const USER_SCHEMA_GENERATION: i64 = 7; // 7: entries_by_service_type - the fold path's index (2026-08-08)
+const NODE_SCHEMA_GENERATION: i64 = 12; // 12: outbound_notices - the delivered path (2026-08-09)
+const USER_SCHEMA_GENERATION: i64 = 8; // 8: inbox_notices - the delivered path's view (2026-08-09)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);

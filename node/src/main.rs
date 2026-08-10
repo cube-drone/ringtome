@@ -19,6 +19,7 @@ mod error;
 mod fanout;
 mod files;
 mod identity;
+mod inbox;
 mod ingest;
 mod inspect;
 mod keystore;
@@ -27,6 +28,7 @@ mod media;
 mod message;
 mod net;
 mod notifications;
+mod outbox;
 mod profiles;
 mod pubkey;
 mod publish;
@@ -374,6 +376,10 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(300)
     };
     loops::periodic("missing-bodies", body_beat, state.clone(), net::bodies::sweep);
+    // The outbox rounds (outbox::sweep): envelopes owed to strangers who were not reachable
+    // when their news was minted. Shares the body sweep's beat and its backoff discipline -
+    // both are "keep knocking, politely, at machines that are mostly asleep".
+    loops::periodic("outbound-notices", body_beat, state.clone(), outbox::sweep);
     // The peer-set derive sweep (net::sync::derive_peers): every hosted identity's peer list,
     // re-derived from Active crown leaves x live serving records. The event edges (adoption,
     // member-proven dials) keep it fresh; the beat heals dead-introducer partitions and

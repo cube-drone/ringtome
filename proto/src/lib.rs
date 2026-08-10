@@ -17,6 +17,7 @@ pub mod directory;
 mod entry;
 mod error;
 pub mod crown;
+pub mod deliver;
 pub mod registry;
 pub mod sync;
 
@@ -32,6 +33,7 @@ pub use registry::{
     PrivateRecord, ProfileSet, PublicEdge,
     Revoke,
 };
+pub use deliver::{DeliverMessage, Envelope, SignedEnvelope};
 pub use sync::MemberProof;
 
 // Re-export the key types the public API takes, so consumers use the exact same ed25519-dalek

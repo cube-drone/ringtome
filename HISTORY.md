@@ -3948,3 +3948,94 @@ struck: answered by deletion.
 
 Gates: full `just ci` green. The feedstream probe's last act was rewritten from driving the
 unseen toggle to asserting the read-state chrome is gone.
+
+## 2026-08-09 — the door: a stranger's follow arrives in an envelope
+
+The delivered half of Arrival and Attention, built. Until today every notification came from
+the DERIVED path - fold a chain you already sync - which by construction cannot carry the one
+event people most want: *someone you don't follow followed you*. There is no edge, so there is
+no sync, so there is nothing to fold. That fact has to be carried to your door.
+
+**The wire** (`proto/src/deliver.rs`, its own `ringtome/deliver/0` ALPN because sync's own rule
+is that a different table of messages is a different protocol). A `SignedEnvelope` mirrors
+`SignedEntry` exactly - `[body, sig]`, signature over `DOMAIN_ENVELOPE ‖ body`, slice-never-
+re-serialize - and carries **evidence, not claims**: the authorization path from the sender's
+root to the leaf that signed, plus the sender's own signed `public-edge` entry naming the
+recipient as subject. Three messages: Offer, Accepted, Refused(reason). Refusal is spoken
+aloud, per doctrine ("a silent drop is the worst failure mode in messaging") and per the adopt
+protocol's precedent that words beat resets; below-floor and muted deliberately share one code
+so a refusal is not an oracle.
+
+**The design collided with reality once, usefully.** Doctrine said the envelope carries "the
+chain of authorization entries from root to leaf". `Crown::build` cannot consume that: it
+linearizes each key's whole identity-public chain from genesis, which is what lets it enforce
+usurper stamps and revocation ceilings - and shipping that means every intermediate key's
+key-epoch entries, kilobytes for a mature persona, against an envelope budget of 4 KiB (the
+number is not free: a notice is stored verbatim inside one private record, whose ciphertext
+caps at 6 KiB). So `verify_claim` asks the smaller question it actually needs - *may this leaf
+speak for this root?* - and answers it with a signature chain, each rung signed by the key the
+previous rung authorized. Forging it needs the root key, at which point you ARE the identity.
+What that gives up is written into the function: revocation (already accepted doctrine,
+"verifiable-modulo-revocation") and seniority (a notice grants nothing, so rank decides
+nothing). Twelve adversarial tests hold the line - wrong root, truncated path, broken middle
+link, evidence signed by another key, an edge about somebody else, a retraction, a profile-set
+smuggled in as evidence, a public-edge smuggled into the path.
+
+**The door** (`inbox.rs`). Two chains, `inbox-trusted` and `inbox-stranger`, so retention is
+per-chain policy rather than per-row bookkeeping - both registered as private services, which
+is the one line that stops an inbox syncing to strangers. The gate's order departs from the
+written one and says why: doctrine puts mute first assuming it is a local lookup, but `blocked`
+lives in the epoch-encrypted ledger and is deliberately never projected into node.db ("a block
+stays home"), so it costs a keystore open and an epoch unseal. The order keeps the principle -
+never pay for a check until the cheaper ones pass - by asking node.db questions first (do we
+serve this persona; **does the recipient already pull this sender**, which is the follow-edge
+rule enforced where only the recipient can know it), then pure-CPU verification, and only then
+the credentials that transcription needs anyway. The envelope is stored verbatim so the
+recipient's OTHER nodes re-run the same verification rather than trusting whichever node
+answered.
+
+**The knock** (`outbox.rs`, `net/deliver.rs`). Always queue, let the recipient decide: whether
+someone syncs you is a fact only their node holds, and a sender that guesses either misses
+people silently or interrogates strangers about their follow lists. Durable ledger, 30s-doubling
+backoff to an hour, expiry at three days, retire on ANY answer - a refusal is an answer, and
+retrying one is what a spammer does. Eager first attempt with the sweep as backstop, the same
+shape as every other push here. Housemates short-circuit to an in-process judgment rather than
+dialing ourselves.
+
+**The bell shows both.** One list, ordered by time, derived and delivered together - the reader
+should not care which path a fact took. Delivered rows get **no byline**: an unadmitted
+stranger renders from their root alone, identicon and speakable words, because claimed identity
+costs a sync and you pay it only for people you have answered. The client half of that is
+load-bearing and easy to lose - passing an empty `profile` prop is what stops `usePerson`
+fetching their page - so it is commented at the call site.
+
+### Two failures, and a process failure worth more than either
+
+`just ci` came back red, which is how a **process** bug surfaced: every run this session was
+shaped `just ci 2>&1 | tail -N`, and bash reports the *pipeline's* status, so I had been
+reading `tail`'s exit code and calling it green. A stash-and-rerun proved HEAD was already
+failing `just lint` on two `clippy::type_complexity` errors from earlier today's work, both
+committed on a green I never actually checked. Runs now capture `$?` into an echo before any
+pipe. The LWW stamp tuple had also quietly become two definitions (`private.rs` had one,
+`imaol` spelled it inline); it now lives once in `imaol`, which owns The Ordering Contract.
+
+The livecache failure was a real regression from **public-by-default**, already committed:
+`FOLLOWS_PUBLIC` shared the stream's contacts group, harmless while nothing wrote that chain,
+but now every dial mints an edge that bumps the contacts stamp and fires a second update
+carrying an empty delta. Published edges now move no group - they are an echo of a ledger write
+that already fired its own update - and the inbox services get an explicit no-group arm so they
+do not fall to the catch-all and spuriously invalidate documents and the profile on every
+delivery.
+
+The inbox failure was my test racing itself: delivery is eager, so a queued row lives for
+milliseconds and asserting on it is a flaky test of nothing. Replaced with the stable case - a
+knock at a door nobody serves stays queued with its try count advanced - which actually
+exercises the backoff.
+
+Gates: full `just ci` green, 596 passing, exit code verified. Residuals, named: the stranger
+pool **refuses when full instead of ring-buffering**, because moving a chain floor as policy is
+machinery nobody has built (NEXT_STEPS carries it); the stamp slot is a field with no protocol
+behind it; relays and the transport tier are designed and unbuilt; and nobody has looked at the
+bell in a browser. One efficiency finding logged separately: `published_edges` is an
+un-memoized full fold that decodes every public-edge entry, now on hot paths, which is the
+fan-in-at-read-time mistake `feed_journal` exists to avoid.

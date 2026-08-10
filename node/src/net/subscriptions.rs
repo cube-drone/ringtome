@@ -253,9 +253,18 @@ pub async fn refresh(
     // fold is rung by hand for the same-node-subject case. Post-ingest passes are memo-only -
     // see `Minting` for the measured reason.
     if minting == Minting::Allowed {
-        match crate::publish::reconcile(&store, &contacts).await {
+        match crate::publish::reconcile(state, &store, root_hex, &contacts).await {
             Ok(changed) if !changed.is_empty() => {
                 crate::notifications::refresh_from(state, root_hex).await;
+                // Knock now rather than at the next backstop beat. Same shape as every other
+                // push here (eager edge, periodic sweep behind it): the sweep exists for the
+                // doors that were shut, not as the normal path to an open one.
+                let state = state.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = crate::outbox::sweep(state).await {
+                        tracing::debug!(error = ?e, "eager notice delivery failed");
+                    }
+                });
             }
             Ok(_) => {}
             Err(e) => tracing::warn!(root = %root_hex, error = ?e, "public-edge reconcile failed"),

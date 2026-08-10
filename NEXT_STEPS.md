@@ -42,17 +42,25 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Inbox
 
-Design settled 2026-08-09 - PROJECT_PLAN's *Arrival and Attention* (extended): evidence-carrying
-envelopes, per-kind floors with a pre-Trust fallback classifier, tiered count-bounded inbox chains,
-one-door delivery, the transport tier, the resting-zero proof-of-work dial. Build work, roughly in
-dependency order:
+Design settled 2026-08-09 - PROJECT_PLAN's *Arrival and Attention* (extended). The first kind
+("someone you don't follow published an edge naming you") shipped the same day: the envelope
+format and its offline verification, the `ringtome/deliver/0` ALPN, the gate at transcription,
+both tiered inbox chains, the outbox with its backoff ladder, and the bell showing delivered
+beside derived. What is left:
 
-* Envelope format: embedded claimed entry + root-to-leaf authorization path, verified offline
-* The gate at transcription: cheapest-first checks, degenerate pre-Trust classifier, collapse by
-  (sender, kind), two-tier quota
-* Tiered inbox chains: (device key × tier), count-bounded retention, read-time merge
-* Notice kinds: followed you, commented on / tagged / rebroadcast your post; first-contact greeting
-* The stamp slot: reject-with-price + retry-with-stamp, wired and tested, priced at zero
+* **Count-bounded retention.** The tier chains exist but nothing prunes them: the stranger pool
+  refuses when full instead of ring-buffering, because moving a chain floor as *policy* (rather
+  than as "the oldest row we happen to hold") is machinery nobody has built. Wants the same
+  suffix work as Shallow Sync and probably Snapshots.
+* **More notice kinds**: commented on / tagged / rebroadcast your post - each needs its own
+  evidence rule in `deliver::verify_claim`; and first-contact, the one bare-claim kind, which
+  needs the capped greeting surfaced and its own smaller pool.
+* **The stamp slot**: reject-with-price + retry-with-stamp. The envelope field exists and is
+  always empty; the protocol half is unwritten, deliberately, until a flood exists.
+* **Sealed-envelope relays**: a friend's always-on node holding a notice for a phone that is
+  never awake. Needs the envelope sealed to the recipient's epoch key, which direct delivery
+  does not (iroh QUIC already encrypts point to point).
+* **The transport tier**: pricing connection admission by shared public-edge standing.
 * Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately)
 
 ### Friends & Groups

@@ -317,7 +317,11 @@ const FOREIGN_REVALIDATE_MS: i64 = 30 * 1000;
 /// authenticated by the leaf's own signature, with the root binding checked so a leaf via
 /// for the WRONG identity can't redirect a fetch. Anything else returns the key unchanged,
 /// to be dialed as the endpoint id it presumably is.
-async fn leaf_via_to_endpoint(state: &AppState, root_hex: &str, key_hex: &str) -> String {
+pub(crate) async fn leaf_via_to_endpoint(
+    state: &AppState,
+    root_hex: &str,
+    key_hex: &str,
+) -> String {
     let Some(leaf) = crate::pubkey::decode(key_hex) else {
         return key_hex.to_string();
     };
@@ -694,7 +698,7 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
 /// 2026-08-08 in the node log: `generated new database encryption key` for a stranger root,
 /// thirteen milliseconds before `background revalidation reached nobody`. A precondition a
 /// caller cannot satisfy belongs in the callee (STYLE: structural, not disciplinary).
-async fn stored_tree_leaves(state: &AppState, root_hex: &str) -> Vec<String> {
+pub(crate) async fn stored_tree_leaves(state: &AppState, root_hex: &str) -> Vec<String> {
     let result: anyhow::Result<Vec<String>> = async {
         let Some(db) = state.user_dbs.get(root_hex).await? else {
             return Ok(Vec::new()); // hold nothing of them, so we know none of their leaves
