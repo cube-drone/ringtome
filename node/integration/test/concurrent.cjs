@@ -59,8 +59,8 @@ describe("concurrent authorship", () => {
     });
 
     it("keeps the chain a chain - one entry per seq, no gaps", async () => {
-        const entries = await (await owner(`api/identity/${root}/entries`)).json();
-        const list = Array.isArray(entries) ? entries : entries.entries || [];
+        const entries = await (await owner(`api/identity/${root}/entries?limit=500`)).json();
+        const list = entries.items;
         const bySeq = new Map();
         for (const e of list) {
             const key = `${e.service}:${e.seq}`;

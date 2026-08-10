@@ -688,6 +688,9 @@ pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
 
 #[derive(Debug, serde::Serialize)]
 pub struct StoredEntry {
+    /// Which device chain wrote it. Free attribution the old whole-log dump never carried,
+    /// and the paging cursor needs it anyway - chains are per key, keys are per device.
+    pub author: String,
     pub service: u32,
     pub seq: u64,
     pub entry_type: u32,
@@ -970,33 +973,90 @@ pub async fn all_entry_bytes(db: &Db) -> Result<Vec<Vec<u8>>, AppError> {
 }
 
 /// Row shape of the raw-log query:
-/// (service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes).
-type EntryRow = (i64, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
+/// (author_pubkey, service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes).
+type EntryRow = (String, i64, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
 
 /// The raw log, hex-encoded - the debug/inspect surface (pipe an entry into `ringtome inspect`).
-pub async fn list_entries(db: &Db) -> Result<Vec<StoredEntry>, AppError> {
-    let rows: Vec<EntryRow> = db
-        .fetch_all(
-            "SELECT service, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes
-         FROM entries ORDER BY service, seq",
-            (),
-        )
-        .await
-        .context("listing entries")
-        .map_err(AppError::Internal)?;
+/// Where a page of the raw log stopped: the `entries` primary key, which is also the order
+/// this pages in - so the walk is an index seek with no sort, and the cursor is unique by
+/// construction (two devices can share a `(service, seq)`; they cannot share this).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EntryCursor {
+    pub author: String,
+    pub service: u32,
+    pub seq: u64,
+}
 
-    Ok(rows
-        .into_iter()
-        .map(|(svc, seq, ty, ts, received, hash, bytes)| StoredEntry {
-            service: svc as u32,
-            seq: seq as u64,
-            entry_type: ty as u32,
-            timestamp_ms: ts,
-            received_at_ms: received,
-            hash_hex: hex::encode(hash),
-            bytes_hex: hex::encode(bytes),
-        })
-        .collect())
+/// Default and ceiling for one page of raw entries. Small, because each row carries the
+/// entry's whole envelope as hex - the point of this surface is to read bytes, and a hundred
+/// of them is already a big response.
+pub const ENTRIES_PAGE: u32 = 100;
+pub const ENTRIES_PAGE_MAX: u32 = 500;
+
+/// One page of the raw log, in primary-key order, plus one lookahead row so the caller can
+/// say whether more exists.
+///
+/// Paged since 2026-08-10 (the full-chain audit): this used to return the ENTIRE log, hex
+/// envelopes and all, out of an HTTP handler - fine at demo scale, ruinous at the tens of
+/// thousands of entries this system is built for. It is deliberately explicit about
+/// truncation rather than silently capped: an inspection surface that shows the first hundred
+/// of fifty thousand and says nothing is worse than one that refuses.
+pub async fn list_entries(
+    db: &Db,
+    limit: u32,
+    after: Option<&EntryCursor>,
+) -> Result<(Vec<StoredEntry>, bool), AppError> {
+    let want = limit.clamp(1, ENTRIES_PAGE_MAX);
+    let fetch = i64::from(want) + 1; // the lookahead
+    let rows: Vec<EntryRow> = match after {
+        Some(cursor) => {
+            db.fetch_all(
+                "SELECT author_pubkey, service, seq, entry_type, timestamp_ms, received_at_ms,
+                        entry_hash, bytes
+                 FROM entries
+                 WHERE (author_pubkey, service, seq) > (?1, ?2, ?3)
+                 ORDER BY author_pubkey, service, seq LIMIT ?4",
+                (
+                    cursor.author.as_str(),
+                    i64::from(cursor.service),
+                    cursor.seq as i64,
+                    fetch,
+                ),
+            )
+            .await
+        }
+        None => {
+            db.fetch_all(
+                "SELECT author_pubkey, service, seq, entry_type, timestamp_ms, received_at_ms,
+                        entry_hash, bytes
+                 FROM entries ORDER BY author_pubkey, service, seq LIMIT ?1",
+                (fetch,),
+            )
+            .await
+        }
+    }
+    .context("listing entries")
+    .map_err(AppError::Internal)?;
+
+    let more = rows.len() as u32 > want;
+    Ok((
+        rows.into_iter()
+            .take(want as usize)
+            .map(
+                |(author, svc, seq, ty, ts, received, hash, bytes)| StoredEntry {
+                    author,
+                    service: svc as u32,
+                    seq: seq as u64,
+                    entry_type: ty as u32,
+                    timestamp_ms: ts,
+                    received_at_ms: received,
+                    hash_hex: hex::encode(hash),
+                    bytes_hex: hex::encode(bytes),
+                },
+            )
+            .collect(),
+        more,
+    ))
 }
 
 #[cfg(test)]
@@ -1107,6 +1167,51 @@ mod tests {
         assert_eq!(third.len(), 2);
         assert_eq!(third[&hex::encode(alice)].edge.trust.as_deref(), Some("max"));
         assert_eq!(third[&hex::encode(bob)].edge.interest.as_deref(), Some("low"));
+    }
+
+    #[tokio::test]
+    async fn the_raw_log_pages_completely_and_says_when_it_stops() {
+        // Two devices so the cursor's uniqueness is actually exercised: `(service, seq)` alone
+        // collides across authors, and a cursor that collides either skips rows or loops.
+        let db = test_db().await;
+        let phone = SigningKey::from_bytes(&[3u8; 32]);
+        let laptop = SigningKey::from_bytes(&[4u8; 32]);
+        for i in 0..4 {
+            set_profile_field(&db, &phone, "name", &format!("phone {i}")).await.unwrap();
+            set_profile_field(&db, &laptop, "bio", &format!("laptop {i}")).await.unwrap();
+        }
+
+        let (whole, more) = list_entries(&db, ENTRIES_PAGE_MAX, None).await.unwrap();
+        assert_eq!(whole.len(), 8);
+        assert!(!more, "a page that holds everything says so");
+
+        // Walk it three at a time and reassemble.
+        let mut walked: Vec<StoredEntry> = Vec::new();
+        let mut cursor: Option<EntryCursor> = None;
+        for _ in 0..10 {
+            let (page, more) = list_entries(&db, 3, cursor.as_ref()).await.unwrap();
+            assert!(page.len() <= 3, "the limit is a limit");
+            let step = page.last().map(|last| EntryCursor {
+                author: last.author.clone(),
+                service: last.service,
+                seq: last.seq,
+            });
+            walked.extend(page);
+            match (more, step) {
+                (true, Some(next)) => cursor = Some(next),
+                _ => break,
+            }
+        }
+        assert_eq!(
+            walked.iter().map(|e| &e.hash_hex).collect::<Vec<_>>(),
+            whole.iter().map(|e| &e.hash_hex).collect::<Vec<_>>(),
+            "paging visits every entry exactly once, in the same order"
+        );
+        assert_eq!(
+            walked.iter().map(|e| &e.author).collect::<std::collections::BTreeSet<_>>().len(),
+            2,
+            "and both devices' chains are in there"
+        );
     }
 
     #[tokio::test]
@@ -1399,7 +1504,7 @@ mod tests {
             .unwrap();
         let after = crate::clock::now_ms();
 
-        let entries = list_entries(&db).await.unwrap();
+        let (entries, _) = list_entries(&db, ENTRIES_PAGE, None).await.unwrap();
         assert!(
             (before..=after).contains(&entries[0].received_at_ms),
             "received_at_ms is this replica's own storage moment"

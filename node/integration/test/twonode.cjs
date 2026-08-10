@@ -79,7 +79,7 @@ async function profileValue(fetch, root, field) {
         // --- Act 4: the kill-A property, by construction: B holds a full, independent copy
         // (identity genesis + its own chains + everything synced from A). If A vanished now, B
         // has all of it locally.
-        const entriesB = await (await aliceOnB(`api/identity/${root}/entries`)).json();
+        const entriesB = (await (await aliceOnB(`api/identity/${root}/entries?limit=500`)).json()).items;
         assert.ok(
             entriesB.filter((e) => e.service === 0).length >= 1,
             "B holds the identity chain"

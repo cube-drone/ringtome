@@ -93,7 +93,7 @@ describe("profile chains", function () {
         await setField(user, root, "bio", "b");
         await setField(user, root, "name", "c");
 
-        const entries = await (await user(`api/identity/${root}/entries`)).json();
+        const entries = (await (await user(`api/identity/${root}/entries?limit=500`)).json()).items;
         // 6 entries: the identity chain's genesis (recovery-key authorization) and epoch-0
         // key-epoch (both service 0), the founding device name (service 5), plus the three
         // profile-sets (service 2).

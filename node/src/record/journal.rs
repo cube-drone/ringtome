@@ -405,8 +405,8 @@ mod tests {
         assert_eq!((accepted, rejected), (3, 0));
 
         // The entries tables match: same count, same per-chain heads.
-        let before = imaol::list_entries(&db).await.unwrap();
-        let after = imaol::list_entries(&fresh).await.unwrap();
+        let (before, _) = imaol::list_entries(&db, imaol::ENTRIES_PAGE_MAX, None).await.unwrap();
+        let (after, _) = imaol::list_entries(&fresh, imaol::ENTRIES_PAGE_MAX, None).await.unwrap();
         assert_eq!(before.len(), after.len());
         let author_hex = hex::encode(root);
         let mut heads_before = imaol::chain_heads_for_author(&db, &author_hex)

@@ -108,13 +108,13 @@ describe("publication", () => {
     });
 
     it("says nothing new when nothing changed - the chain does not grow", async () => {
-        const before = await (await owner(`api/identity/${root}/entries`)).json();
-        const count = (e) => (Array.isArray(e) ? e.length : (e.entries || []).length);
+        const before = await (await owner(`api/identity/${root}/entries?limit=500`)).json();
+        const count = (e) => e.items.length;
         const resp = await owner(`api/identity/${root}/docs/${noteId}/publish`, { method: "POST" });
         const text = await resp.text();
         assert.equal(resp.status, 200, text);
         assert.equal(JSON.parse(text).post_id, postId, "still the same post");
-        const after = await (await owner(`api/identity/${root}/entries`)).json();
+        const after = await (await owner(`api/identity/${root}/entries?limit=500`)).json();
         assert.equal(count(after), count(before), "a re-post of identical words writes nothing");
     });
 

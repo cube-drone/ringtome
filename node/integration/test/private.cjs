@@ -52,7 +52,7 @@ describe("private chains: the encrypted KV + set store", function () {
 
         // The one that matters: the plaintext never touches the stored log. Every private
         // record is ciphertext under the epoch key.
-        const entries = await (await user(`api/identity/${root}/entries`)).json();
+        const entries = (await (await user(`api/identity/${root}/entries?limit=500`)).json()).items;
         const privateEntries = entries.filter((e) => e.service === GENERAL_PRIVATE_SERVICE);
         assert.ok(privateEntries.length >= 2, "private records landed on the private chain");
         const plaintextHex = Buffer.from(secretValue, "utf8").toString("hex");
@@ -170,9 +170,9 @@ describe("private chains: the encrypted KV + set store", function () {
             );
 
             // Stronger than "can't decrypt": the post-rotation ciphertext never even reached B.
-            const entriesB = await (await aliceOnB(`api/identity/${root}/entries`)).json();
+            const entriesB = (await (await aliceOnB(`api/identity/${root}/entries?limit=500`)).json()).items;
             const privateOnB = entriesB.filter((e) => e.service === GENERAL_PRIVATE_SERVICE);
-            const privateOnA = (await (await alice(`api/identity/${root}/entries`)).json())
+            const privateOnA = (await (await alice(`api/identity/${root}/entries?limit=500`)).json()).items
                 .filter((e) => e.service === GENERAL_PRIVATE_SERVICE);
             assert.equal(
                 privateOnB.length,

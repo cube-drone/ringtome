@@ -4304,3 +4304,28 @@ leaves an untouched lane's view standing; a follows-lane eviction drops its view
 read refolds it from the reset watermark.
 
 Gates: full `just ci` green, 278 node unit tests, exit code read before any pipe.
+
+## 2026-08-10 — the raw log stops being one response
+
+The audit's fourth, and the smallest: `/api/identity/{root}/entries` handed back every entry a
+persona had ever written, hex envelopes included. A fine demo surface, a bad promise at the
+scale this system targets - and the thing an operator reaches for precisely when something has
+gone wrong and the log is large.
+
+It pages now, and **explicitly**: `{ items, more, next }`. The temptation was a silent cap - keep
+the array shape, add a limit, break nothing - and that is the trap the doctrine names ("no
+silent caps"). An inspection tool that shows the first hundred of fifty thousand and says
+nothing is how someone spends an afternoon debugging the wrong thing. So callers were changed
+instead; there are ten, all in the integration suite, and none in the UI.
+
+The cursor is the `entries` PRIMARY KEY - `(author_pubkey, service, seq)` - which makes the walk
+an index-ordered seek with no sort, and makes the cursor unique by construction. That last part
+is not decoration: `(service, seq)` collides across devices, and a colliding cursor either skips
+rows or loops forever. The test pages a two-device log three at a time and asserts the walk
+reassembles the whole log exactly once, in the same order, with both devices present.
+
+`StoredEntry` gained `author` while it was being touched - the cursor needs it, and a raw-log
+view that could not say WHICH device wrote a row was quietly missing the most useful column on a
+multi-device persona.
+
+Gates: full `just ci` green, exit code read before any pipe.

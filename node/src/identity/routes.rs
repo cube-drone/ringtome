@@ -389,19 +389,59 @@ async fn rebuild_handler(
     Ok(Json(RebuildResponse { entries_replayed }))
 }
 
+#[derive(serde::Deserialize)]
+struct EntriesQuery {
+    /// Resume after this row - the previous page's `next`, spelled out as three params so the
+    /// surface stays curl-able.
+    after_author: Option<String>,
+    after_service: Option<u32>,
+    after_seq: Option<u64>,
+    limit: Option<u32>,
+}
+
 /// The raw entry log, hex-encoded - the debug surface (`ringtome inspect` eats the hex).
+///
+/// PAGED, and explicitly so: `more` says whether the log continues and `next` is the cursor to
+/// continue from. It used to hand back every entry a persona had ever written, envelopes
+/// included, which is a fine demo and a bad promise at the scale this system targets. Truncating
+/// silently would be worse than either - an inspection tool that lies by omission is how you
+/// spend an afternoon debugging the wrong thing.
 async fn entries_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
-) -> Result<Json<Vec<imaol::StoredEntry>>, AppError> {
+    axum::extract::Query(q): axum::extract::Query<EntriesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let db = state
         .user_dbs
         .held(&root)
         .await
         .map_err(AppError::Internal)?;
-    Ok(Json(imaol::list_entries(&db).await?))
+    let after = match (q.after_author, q.after_service, q.after_seq) {
+        (Some(author), Some(service), Some(seq)) => Some(imaol::EntryCursor {
+            author,
+            service,
+            seq,
+        }),
+        _ => None,
+    };
+    let (items, more) = imaol::list_entries(
+        &db,
+        q.limit.unwrap_or(imaol::ENTRIES_PAGE),
+        after.as_ref(),
+    )
+    .await?;
+    let next = items.last().map(|e| imaol::EntryCursor {
+        author: e.author.clone(),
+        service: e.service,
+        seq: e.seq,
+    });
+    Ok(Json(serde_json::json!({
+        "items": items,
+        "more": more,
+        "next": if more { next } else { None },
+    })))
 }
 
 /// Adoption codes travel as opaque strings (JSON today, QR clothing in M4).

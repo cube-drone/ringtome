@@ -409,7 +409,7 @@ describe("versioned documents (notes)", function () {
         const secretBody = "operation hat convention is GO";
         await createDoc(user, root, secretTitle, secretBody);
 
-        const entries = await (await user(`api/identity/${root}/entries`)).json();
+        const entries = (await (await user(`api/identity/${root}/entries?limit=500`)).json()).items;
         const noteEntries = entries.filter((e) => e.service === DOCUMENTS_PRIVATE_SERVICE);
         assert.ok(noteEntries.length >= 1, "the doc header landed on the notes chain");
 
