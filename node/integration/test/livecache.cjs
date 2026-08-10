@@ -186,7 +186,7 @@ describe("the live cache stream", function () {
         const other = "ab".repeat(32);
         await authed(`api/identity/${root}/private/kv/contact:${other}/interest`, {
             method: "PUT",
-            body: JSON.stringify({ value: "50" }),
+            body: JSON.stringify({ value: "medium" }),
         });
 
         const stream = openStream(HOST, root, cookie);
@@ -201,14 +201,14 @@ describe("the live cache stream", function () {
         // Turn one dial: the update names the one changed row, not the roster.
         await authed(`api/identity/${root}/private/kv/contact:${other}/interest`, {
             method: "PUT",
-            body: JSON.stringify({ value: "80" }),
+            body: JSON.stringify({ value: "high" }),
         });
         const update = await stream.next();
         assert.equal(update.type, "update");
         assert.equal(update.contacts, undefined, "updates never re-ship the roster");
         assert.equal(update.contacts_changed.length, 1, "one row changed, one row shipped");
         assert.equal(update.contacts_changed[0].root, other);
-        assert.equal(update.contacts_changed[0].facts.interest, "80");
+        assert.equal(update.contacts_changed[0].facts.interest, "high");
         assert.equal(update.docs, undefined, "a dial turn is not a document change");
         stream.ws.close();
     });

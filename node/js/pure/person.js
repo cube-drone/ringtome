@@ -4,6 +4,8 @@
 // hexagons that will eventually stud posts and comments) goes through the same two answers,
 // so a persona is the same colour and the same name wherever they appear.
 
+import { bandOrdinal } from './contact.js';
+
 /// A deterministic hue from the root pubkey - the identicon's humble seed (the real
 /// root-derived identicon is its own future feature; a persona should never render as bare
 /// hex in the meantime). Stable everywhere: the static face computes the same number in Rust.
@@ -25,12 +27,9 @@ export function displayNames({ nickname, name, words }) {
 /// importing the DOM.
 export const PERSON_SIZES = ['mini', 'small'];
 
-/// A 0-100 dial squeezed onto the five signal bars (none/low/medium/high/full): quarters,
-/// rounded - so interest's stops land exactly (0/25/50/75/100 -> 0..4) and trust's six
-/// stops share honestly (0 and 5 both read "none"; 5 is barely-not-zero, and the tooltip
-/// still says the words). Garbage reads as none.
+/// A band dial on the five signal bars: the ordinal IS the level (none/low/medium/high/max
+/// -> 0..4 bars). Silence and garbage both show no bars - the bars answer "how much", and
+/// no opinion looks like none of it; the tooltip's words carry the difference.
 export function signalLevel(value) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(4, Math.round(n / 25)));
+    return bandOrdinal(value) ?? 0;
 }

@@ -185,11 +185,14 @@ describe('paging a public shelf', () => {
 
 // The feed's rendering dials: interest shapes SIZE and CUT, never order.
 describe('feed emphasis and truncation', () => {
-    it('maps the dial to three weights, with normal for the unset', () => {
-        assert.equal(emphasisOf(25), 'low');
-        assert.equal(emphasisOf(50), 'normal');
-        assert.equal(emphasisOf(75), 'high');
+    it('maps the bands to three weights, with normal for the unset', () => {
+        assert.equal(emphasisOf('none'), 'low');
+        assert.equal(emphasisOf('low'), 'low');
+        assert.equal(emphasisOf('medium'), 'normal');
+        assert.equal(emphasisOf('high'), 'high');
+        assert.equal(emphasisOf('max'), 'high');
         assert.equal(emphasisOf(undefined), 'normal', 'your own posts carry no dial');
+        assert.equal(emphasisOf('75'), 'normal', 'the retired numeric scale is silence, not a weight');
     });
 
     it('cuts a low-interest multi-paragraph item to its first paragraph', () => {
@@ -243,11 +246,11 @@ describe('the feed page merge', () => {
 // no-opinion case (which must not be the middle), and monotonicity - a tweak to the constants
 // could silently invert it, and nobody would notice from a screenshot.
 describe('postScale (how much room a post takes)', () => {
-    const STOPS = [0, 25, 50, 75, 100];
+    const STOPS = ['none', 'low', 'medium', 'high', 'max'];
 
     it('runs the full range across the dial, top stop at full size', () => {
-        assert.equal(postScale(100), 1);
-        assert.equal(postScale(0), POST_SCALE_MIN);
+        assert.equal(postScale('max'), 1);
+        assert.equal(postScale('none'), POST_SCALE_MIN);
     });
 
     it('is a 25% spread, evenly spaced across the five stops', () => {
@@ -259,25 +262,21 @@ describe('postScale (how much room a post takes)', () => {
 
     it('gives NO opinion full size, rather than the middle', () => {
         // An unset dial is not "medium interest" - the ramp carries an opinion you expressed,
-        // and a feed of strangers must not render uniformly shrunken.
-        for (const nothing of [undefined, null, '', NaN, 'wat']) {
+        // and a feed of strangers must not render uniformly shrunken. Everything that is not
+        // one of the five bands is no opinion, the retired numeric scale included.
+        for (const nothing of [undefined, null, '', NaN, 'wat', 75, '75', -40]) {
             assert.equal(postScale(nothing), 1, `${String(nothing)} should not shrink anything`);
         }
     });
 
-    it('is monotonic, and never escapes the range', () => {
+    it('climbs the ladder monotonically, inside the range', () => {
         let previous = 0;
-        for (let n = 0; n <= 100; n++) {
-            const scale = postScale(n);
-            assert.ok(scale >= previous, `interest ${n} went backwards`);
-            assert.ok(scale >= POST_SCALE_MIN && scale <= 1, `interest ${n} left the range`);
+        for (const band of STOPS) {
+            const scale = postScale(band);
+            assert.ok(scale > previous, `${band} did not climb`);
+            assert.ok(scale >= POST_SCALE_MIN && scale <= 1, `${band} left the range`);
             previous = scale;
         }
-    });
-
-    it('clamps a value from outside the dial', () => {
-        assert.equal(postScale(-40), POST_SCALE_MIN);
-        assert.equal(postScale(9000), 1);
     });
 });
 
@@ -285,11 +284,11 @@ describe('postScale (how much room a post takes)', () => {
 // transcode already lands, so top interest must be a no-op - a cap that GRANTED size would be
 // asking the browser to upscale a picture nobody stored.
 describe('postImageCap (how big a picture may draw)', () => {
-    const STOPS = [0, 25, 50, 75, 100];
+    const STOPS = ['none', 'low', 'medium', 'high', 'max'];
 
     it('runs from a thumbnail to the transcode bound', () => {
-        assert.equal(postImageCap(0), POST_IMAGE_MIN);
-        assert.equal(postImageCap(100), POST_IMAGE_MAX);
+        assert.equal(postImageCap('none'), POST_IMAGE_MIN);
+        assert.equal(postImageCap('max'), POST_IMAGE_MAX);
         assert.equal(POST_IMAGE_MAX, 800, 'media/image.rs MAIN_BOUND - change both together');
     });
 
@@ -298,24 +297,22 @@ describe('postImageCap (how big a picture may draw)', () => {
     });
 
     it('never asks the browser to upscale past what was stored', () => {
-        for (let n = 0; n <= 100; n++) {
-            assert.ok(postImageCap(n) <= POST_IMAGE_MAX, `interest ${n} exceeded the transcode bound`);
+        for (const band of STOPS) {
+            assert.ok(postImageCap(band) <= POST_IMAGE_MAX, `${band} exceeded the transcode bound`);
         }
     });
 
-    it('gives NO opinion the full bound, and clamps outside the dial', () => {
-        for (const nothing of [undefined, null, '', NaN, 'wat']) {
+    it('gives NO opinion the full bound - non-bands included', () => {
+        for (const nothing of [undefined, null, '', NaN, 'wat', 75, '75', -40]) {
             assert.equal(postImageCap(nothing), POST_IMAGE_MAX);
         }
-        assert.equal(postImageCap(-40), POST_IMAGE_MIN);
-        assert.equal(postImageCap(9000), POST_IMAGE_MAX);
     });
 
-    it('is monotonic', () => {
+    it('climbs the ladder monotonically', () => {
         let previous = 0;
-        for (let n = 0; n <= 100; n++) {
-            const cap = postImageCap(n);
-            assert.ok(cap >= previous, `interest ${n} went backwards`);
+        for (const band of STOPS) {
+            const cap = postImageCap(band);
+            assert.ok(cap > previous, `${band} did not climb`);
             previous = cap;
         }
     });

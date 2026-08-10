@@ -41,14 +41,16 @@ use std::collections::BTreeMap;
 use crate::clock::now_ms;
 use crate::AppState;
 
-/// One persona's edge to another, as this table records it.
+/// One persona's edge to another, as this table records it. Every value is a band ordinal
+/// on the five-step ladder - none=0, low=1, medium=2, high=3, max=4 (PROJECT_PLAN, Bands
+/// Not Numbers) - so `> 0` still reads "any rung above the bottom stop".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Edge {
     /// Interest: how eagerly to sync them (the dial is already a cadence dial by design).
     pub eagerness: Option<i64>,
     /// Interest in what they rebroadcast.
     pub rebroadcast: Option<i64>,
-    /// Their trust value - ONLY when the author consented to it being known.
+    /// Their trust band - ONLY when the author consented to it being known.
     pub trust: Option<i64>,
 }
 
@@ -67,18 +69,37 @@ const SUBSCRIPTION_CHUNK_ROWS: usize = 150;
 const INTEREST: &str = "interest";
 const REBROADCAST: &str = "interest_rebroadcasts";
 const TRUST: &str = "trust";
-const TRUST_PUBLIC: &str = "trust_public";
+const EDGES_PUBLIC: &str = "edges_public";
+
+/// A stored band as its ladder rung, mirroring `js/pure/contact.js::bandOrdinal`: the five
+/// words and nothing else. Silence and garbage are both `None`, never the bottom rung - the
+/// distinction the JS side learned the hard way 2026-08-08 (an unset dial is no opinion;
+/// "none" is one). Values from the retired numeric scale read as `None` too: pre-User-1, a
+/// dropped dev-data dial beats a shim carried forever.
+fn band_ordinal(value: &str) -> Option<i64> {
+    match value {
+        "none" => Some(0),
+        "low" => Some(1),
+        "medium" => Some(2),
+        "high" => Some(3),
+        "max" => Some(4),
+        _ => None,
+    }
+}
 
 /// One contact's facts, read as an edge. The consent check lives HERE and nowhere else: an
 /// unconsented trust value is not copied out of the persona's database at all, rather than
-/// copied and then filtered by whoever reads.
+/// copied and then filtered by whoever reads. `edges_public` is one consent for the
+/// relationship whole (Edge-Endpoint Visibility, the Publish tier); the routing dials were
+/// never gated on it, because the node routing by its own personas' interest is not a
+/// disclosure - the gate matters for what leaves the persona's database as a TRUST fact.
 fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
-    let num = |k: &str| facts.get(k).and_then(|v| v.parse::<i64>().ok());
-    let consented = matches!(facts.get(TRUST_PUBLIC).map(String::as_str), Some("true" | "1"));
+    let band = |k: &str| facts.get(k).and_then(|v| band_ordinal(v));
+    let consented = matches!(facts.get(EDGES_PUBLIC).map(String::as_str), Some("yes"));
     Edge {
-        eagerness: num(INTEREST),
-        rebroadcast: num(REBROADCAST),
-        trust: if consented { num(TRUST) } else { None },
+        eagerness: band(INTEREST),
+        rebroadcast: band(REBROADCAST),
+        trust: if consented { band(TRUST) } else { None },
     }
 }
 
@@ -300,42 +321,50 @@ mod tests {
 
     #[test]
     fn reads_the_routing_dials() {
-        let e = edge_of(&facts(&[("interest", "75"), ("interest_rebroadcasts", "25")]));
-        assert_eq!(e.eagerness, Some(75));
-        assert_eq!(e.rebroadcast, Some(25));
+        let e = edge_of(&facts(&[("interest", "high"), ("interest_rebroadcasts", "low")]));
+        assert_eq!(e.eagerness, Some(3));
+        assert_eq!(e.rebroadcast, Some(1));
         assert_eq!(e.trust, None);
     }
 
     #[test]
     fn withholds_trust_without_consent() {
         // The whole justification for trust being in a node-level table at all.
-        let e = edge_of(&facts(&[("trust", "95")]));
+        let e = edge_of(&facts(&[("trust", "max")]));
         assert_eq!(e.trust, None, "a quiet assessment never leaves its own database");
-        let still = edge_of(&facts(&[("trust", "95"), ("trust_public", "false")]));
+        let still = edge_of(&facts(&[("trust", "max"), ("edges_public", "no")]));
         assert_eq!(still.trust, None, "and an explicit refusal is still a refusal");
     }
 
     #[test]
     fn carries_trust_the_author_published() {
-        let e = edge_of(&facts(&[("trust", "95"), ("trust_public", "true")]));
-        assert_eq!(e.trust, Some(95), "consent is what makes it the node's business");
-        // The raw 0-100 travels, not a bucket: nothing consumes it yet, and a number can be
-        // bucketed later where a bucket can never be un-bucketed.
-        let mid = edge_of(&facts(&[("trust", "37"), ("trust_public", "true")]));
-        assert_eq!(mid.trust, Some(37));
+        // 'yes' because that is what the ledger UI writes - the previous gate matched
+        // "true"/"1", which no writer ever produced, so UI-granted consent silently never
+        // reached this table (found 2026-08-09 in the banding pass; nothing read the column
+        // yet, so the drift cost nothing but was exactly the second-copy disease).
+        let e = edge_of(&facts(&[("trust", "max"), ("edges_public", "yes")]));
+        assert_eq!(e.trust, Some(4), "consent is what makes it the node's business");
+        let mid = edge_of(&facts(&[("trust", "medium"), ("edges_public", "yes")]));
+        assert_eq!(mid.trust, Some(2));
     }
 
     #[test]
     fn an_edge_with_nothing_on_it_is_not_a_row() {
         assert!(edge_of(&facts(&[])).is_empty());
         assert!(edge_of(&facts(&[("nickname", "Bee")])).is_empty(), "a name is not an edge");
-        assert!(edge_of(&facts(&[("blocked", "true")])).is_empty(), "a block stays home");
-        assert!(!edge_of(&facts(&[("interest", "0")])).is_empty(), "zero is a choice, not absence");
+        assert!(edge_of(&facts(&[("blocked", "yes")])).is_empty(), "a block stays home");
+        assert!(
+            !edge_of(&facts(&[("interest", "none")])).is_empty(),
+            "the bottom band is a choice, not absence"
+        );
     }
 
     #[test]
     fn shrugs_at_values_it_cannot_read() {
-        let e = edge_of(&facts(&[("interest", "quite a lot"), ("trust_public", "true")]));
+        let e = edge_of(&facts(&[("interest", "quite a lot"), ("edges_public", "yes")]));
         assert_eq!(e.eagerness, None, "an unparseable dial is no dial, never a zero");
+        let legacy = edge_of(&facts(&[("interest", "75"), ("trust", "95")]));
+        assert_eq!(legacy.eagerness, None, "the retired numeric scale reads as silence");
+        assert_eq!(legacy.trust, None);
     }
 }

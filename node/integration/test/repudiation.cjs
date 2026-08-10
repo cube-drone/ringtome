@@ -373,7 +373,7 @@ const listIds = async (fetch, root) =>
         assert.equal(seen.status, 200, await seen.text());
         await bob(`api/identity/${bobRoot}/private/kv/contact:${root}/interest`, {
             method: "PUT",
-            body: JSON.stringify({ value: "75" }),
+            body: JSON.stringify({ value: "high" }),
         });
         assert.ok(
             await settle(async () => {

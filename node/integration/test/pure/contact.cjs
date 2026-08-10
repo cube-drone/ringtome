@@ -1,22 +1,29 @@
-// The contact ledger's dials - the stops are Curtis's spec verbatim (2026-08-02), pinned.
+// The contact ledger's dials - the five bands are Curtis's spec verbatim (2026-08-09,
+// Bands Not Numbers), pinned: the same ladder for every dial in every system.
 const assert = require('node:assert');
 
-let TRUST_STOPS, INTEREST_STOPS, contactCollection, nearestStop;
+let BANDS, TRUST_STOPS, INTEREST_STOPS, contactCollection, bandOf, bandOrdinal;
 before(async () => {
-    ({ TRUST_STOPS, INTEREST_STOPS, contactCollection, nearestStop } = await import(
+    ({ BANDS, TRUST_STOPS, INTEREST_STOPS, contactCollection, bandOf, bandOrdinal } = await import(
         '../../../js/pure/contact.js'
     ));
 });
 
 describe('the contact dials', () => {
-    it('pins the trust stops: 0/5/20/50/80/95', () => {
-        assert.deepEqual(TRUST_STOPS.map((s) => s.value), [0, 5, 20, 50, 80, 95]);
-        assert.ok(TRUST_STOPS.every((s) => s.label.length > 0 && s.value >= 0 && s.value <= 100));
-        assert.equal(TRUST_STOPS[0].label, 'Never heard of them');
+    it('pins the ladder: none/low/medium/high/max, in that order', () => {
+        assert.deepEqual(BANDS, ['none', 'low', 'medium', 'high', 'max']);
     });
 
-    it('pins the interest stops: 0/25/50/75/100, shared by rebroadcasts', () => {
-        assert.deepEqual(INTEREST_STOPS.map((s) => s.value), [0, 25, 50, 75, 100]);
+    it('both dials climb the same ladder, wearing their own words', () => {
+        assert.deepEqual(TRUST_STOPS.map((s) => s.value), BANDS);
+        assert.deepEqual(INTEREST_STOPS.map((s) => s.value), BANDS);
+        assert.ok(TRUST_STOPS.every((s) => s.label.length > 0));
+        assert.equal(TRUST_STOPS[0].label, 'Never heard of them');
+        assert.equal(
+            TRUST_STOPS[4].label,
+            "I've met them in person - they aren't being impersonated",
+            'the max stop IS the vouch'
+        );
         assert.equal(INTEREST_STOPS[0].label, "Don't show");
     });
 
@@ -24,11 +31,18 @@ describe('the contact dials', () => {
         assert.equal(contactCollection('ab'.repeat(32)), `contact:${'ab'.repeat(32)}`);
     });
 
-    it('snaps stored numbers to the nearest stop (a finer future never breaks the select)', () => {
-        assert.equal(nearestStop(TRUST_STOPS, '5'), 5, 'exact stops hold');
-        assert.equal(nearestStop(TRUST_STOPS, 60), 50);
-        assert.equal(nearestStop(TRUST_STOPS, 70), 80);
-        assert.equal(nearestStop(INTEREST_STOPS, 12.5), 25, 'ties round up');
-        assert.equal(nearestStop(TRUST_STOPS, 'garbage'), 0, 'unparseable falls to the floor');
+    it('reads bands strictly: silence and garbage are null, never the bottom band', () => {
+        assert.equal(bandOf('high'), 'high');
+        assert.equal(bandOf(null), null, 'unset is no opinion');
+        assert.equal(bandOf(''), null);
+        assert.equal(bandOf('garbage'), null);
+        assert.equal(bandOf('75'), null, 'the retired numeric scale reads as silence');
+        assert.equal(bandOf(75), null);
+    });
+
+    it('ordinals are the rungs, 0-4', () => {
+        assert.deepEqual(BANDS.map(bandOrdinal), [0, 1, 2, 3, 4]);
+        assert.equal(bandOrdinal(undefined), null);
+        assert.equal(bandOrdinal('nonsense'), null);
     });
 });

@@ -46,7 +46,7 @@ describe("fan-out: the arrival journal", () => {
     });
 
     it("a post lands in the journal of a local follower, unasked", async () => {
-        await follow(reader, readerRoot, authorRoot, 75);
+        await follow(reader, readerRoot, authorRoot, "high");
         // The follow must be in the subscription memo BEFORE the post, or the edge fires into
         // an empty follower list.
         const subscribed = await settle(async () => {
@@ -111,7 +111,7 @@ describe("fan-out: the arrival journal", () => {
         const shunner = await makeUserFetch({ prefix: "fanshun" });
         const shunRoot = (await (await shunner("api/identity", { method: "POST" })).json())
             .root_pubkey;
-        await follow(shunner, shunRoot, authorRoot, 0);
+        await follow(shunner, shunRoot, authorRoot, "none");
         await settle(async () => {
             const { rows } = await sql(
                 `SELECT 1 FROM subscriptions WHERE local_root = '${shunRoot}'`
@@ -142,7 +142,7 @@ describe("fan-out: the arrival journal", () => {
         const late = await makeUserFetch({ prefix: "fanlate" });
         const lateRoot = (await (await late("api/identity", { method: "POST" })).json())
             .root_pubkey;
-        await follow(late, lateRoot, authorRoot, 60);
+        await follow(late, lateRoot, authorRoot, "medium");
         const rows = await settle(async () => {
             const j = await journalOf(lateRoot);
             return j.length >= 2 ? j : null;
@@ -177,7 +177,7 @@ describe("fan-out: the arrival journal", () => {
             return j.some((r) => r.title === "Mine stays") ? true : null;
         });
 
-        await follow(reader, readerRoot, authorRoot, 0);
+        await follow(reader, readerRoot, authorRoot, "none");
         const after = await settle(async () => {
             const j = await journalOf(readerRoot);
             return j.some((r) => r.author_root === authorRoot) ? null : j;
@@ -189,7 +189,7 @@ describe("fan-out: the arrival journal", () => {
         );
 
         // And nothing was lost that anyone owns: a re-follow backfills them right back.
-        await follow(reader, readerRoot, authorRoot, 50);
+        await follow(reader, readerRoot, authorRoot, "medium");
         const back = await settle(async () => {
             const j = await journalOf(readerRoot);
             return j.some((r) => r.author_root === authorRoot) ? j : null;
@@ -219,7 +219,7 @@ describe("fan-out: the arrival journal", () => {
         const first = await fan(`api/id/${far}/profile?via=${viaA}`);
         assert.equal(first.status, 200, await first.text());
         // ...and follows them.
-        await follow(fan, fanRoot, far, 100);
+        await follow(fan, fanRoot, far, "max");
         const ready = await settle(async () => {
             const { rows } = await sql(
                 `SELECT 1 FROM subscriptions WHERE local_root = '${fanRoot}'
@@ -270,7 +270,7 @@ describe("the feed endpoint", () => {
         });
         me = await makeUserFetch({ prefix: "feedme" });
         myRoot = (await (await me("api/identity", { method: "POST" })).json()).root_pubkey;
-        await follow(me, myRoot, voiceRoot, 75);
+        await follow(me, myRoot, voiceRoot, "high");
         await settle(async () => {
             const { rows } = await sql(
                 `SELECT 1 FROM subscriptions WHERE local_root = '${myRoot}'`
@@ -416,7 +416,7 @@ describe("the feed endpoint", () => {
         const bob = await makeUserFetch({ prefix: "hopbob", host: HOST_C });
         const bobRoot = (await (await bob("api/identity", { method: "POST" })).json()).root_pubkey;
         assert.equal((await bob(`api/id/${root}/profile?via=${viaA1}`)).status, 200);
-        await follow(bob, bobRoot, root, 80);
+        await follow(bob, bobRoot, root, "high");
         assert.ok(
             await settle(async () => {
                 const { rows } = await sql(

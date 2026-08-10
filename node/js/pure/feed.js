@@ -7,6 +7,8 @@
 // gesture - the same seal pref Journal uses, never synced, because "I'm working on this
 // again" is a personal act, not a document fact).
 
+import { bandOrdinal } from './contact.js';
+
 /// Feed's home bucket. One notebook, deliberately: public posting has no buckets yet,
 /// because a bucket is a private annotation and a public post has nowhere to keep one.
 export const FEED_STYLE = 'feed';
@@ -120,24 +122,22 @@ export function postCursor(posts) {
 /// RENDERING only, deliberately: chronology is the feed's whole ordering (ranking is a research
 /// problem this draft does not attempt), and the dial's stops map to nothing subtler than
 /// "smaller and a little transparent" / "a touch more importance".
-/// The dial as a number, or null for "no opinion".
+/// The dial as its ladder rung (0-4), or null for "no opinion".
 ///
-/// The nullish check has to come FIRST: `Number(null)` and `Number('')` are both 0, so a guard
-/// that only asks `Number.isFinite` reads an unset dial as the BOTTOM of the scale - "Don't
-/// show" - rather than as silence. `emphasisOf` had that hole from the start and would have
-/// rendered a null dial as low emphasis (dimmed and truncated); found 2026-08-08 by a vector
-/// written for `postScale`, which had inherited the same shape.
+/// Silence and 'none' must stay distinct: an unset dial is no opinion, while 'none' is the
+/// bottom stop meaning "Don't show". When the dial was a number this distinction collapsed
+/// through `Number(null)` being 0, and `emphasisOf` rendered never-set dials as low emphasis
+/// (dimmed and truncated) until a vector caught it 2026-08-08; `bandOrdinal` keeps the two
+/// apart by construction (garbage and silence are both null, never 'none').
 function dialValue(interest) {
-    if (interest === null || interest === undefined || interest === '') return null;
-    const n = Number(interest);
-    return Number.isFinite(n) ? n : null;
+    return bandOrdinal(interest);
 }
 
 export function emphasisOf(interest) {
     const n = dialValue(interest);
     if (n === null) return 'normal'; // your own posts, or a dial never set
-    if (n <= 25) return 'low';
-    if (n >= 75) return 'high';
+    if (n <= 1) return 'low';
+    if (n >= 3) return 'high';
     return 'normal';
 }
 
@@ -159,8 +159,7 @@ export const POST_SCALE_MIN = 0.75;
 export function postScale(interest) {
     const n = dialValue(interest);
     if (n === null) return 1;
-    const clamped = Math.max(0, Math.min(100, n));
-    return round(POST_SCALE_MIN + (1 - POST_SCALE_MIN) * (clamped / 100));
+    return round(POST_SCALE_MIN + (1 - POST_SCALE_MIN) * (n / 4));
 }
 
 /// Four decimals, not three: the gap between stops is 0.0625, and three would round it to an
@@ -184,8 +183,7 @@ export const POST_IMAGE_MIN = 50;
 export function postImageCap(interest) {
     const n = dialValue(interest);
     if (n === null) return POST_IMAGE_MAX;
-    const clamped = Math.max(0, Math.min(100, n));
-    return Math.round(POST_IMAGE_MIN + (POST_IMAGE_MAX - POST_IMAGE_MIN) * (clamped / 100));
+    return Math.round(POST_IMAGE_MIN + (POST_IMAGE_MAX - POST_IMAGE_MIN) * (n / 4));
 }
 
 /// Character budgets past which an item shows only its lead. Low-interest sources get cut

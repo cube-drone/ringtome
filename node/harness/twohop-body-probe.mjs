@@ -30,7 +30,7 @@ const bobRoot = (await (await bob.fetch('/api/identity', { method: 'POST', heade
 const seen = await bob.fetch(`/api/id/${root}/profile?via=${viaA1}`);
 console.log('RESULT bob found alice via A1:', seen.status);
 await bob.fetch(`/api/identity/${bobRoot}/private/kv/contact:${root}/interest`, {
-    method: 'PUT', headers: J, body: JSON.stringify({ value: '80' }) });
+    method: 'PUT', headers: J, body: JSON.stringify({ value: 'high' }) });
 await settle(async () => {
     const f = await (await bob.fetch(`/api/identity/${bobRoot}/feed`)).json();
     return f.items !== undefined ? true : null;

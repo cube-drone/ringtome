@@ -866,7 +866,8 @@ relationship edge will face:
 **An edge is visible to its endpoints by default, invisible to everyone else, and any wider publication is a
 separate, explicit act.** The controversy was never the endpoints knowing; it was third parties enumerating.
 
-Mechanically, a follow has **three disclosure tiers**, chosen per-follow:
+Mechanically, a follow has **three disclosure tiers**, chosen per-follow (amended 2026-08-09: publication was
+added as the third tier, and it covers the whole relationship, not the follow alone):
 
 - **Quiet** - the follow lives on your private chain (synced only among your own nodes); you fetch their public
   content and tell no one. (The private-chain mechanism carrying it is implemented; the follow type itself is 4S.)
@@ -880,9 +881,22 @@ Mechanically, a follow has **three disclosure tiers**, chosen per-follow:
   other inbound act; without that it is an unbounded write anyone can mint identities to spam. Mechanically the
   receipt is a notice their node hands to one of yours, which transcribes it (Data Layer, Arrival and Attention) -
   the sender never writes your chains, because nobody but you ever can.
-- **Help host** - the serving-follow: necessarily public (fronting appears in pkarr records regardless), per the
-  Rehosting Policy above. The UI must keep this tier visibly distinct or users will leak interest they meant to
-  keep private.
+- **Publish** (settled 2026-08-09) - the wider publication the principle above always reserved as "a separate,
+  explicit act," made concrete: **one consent dial per contact (`edges_public`) publishes the relationship whole**
+  - the trust band and the interest band together, as signed statements on the author's public chain, LWW per
+  subject, retractable by writing the withdrawal. One toggle rather than per-edge consents, for simplicity: the
+  user is deciding "may the network see how I hold this person," and splitting that question per-dial buys
+  configuration surface, not privacy. The published form carries **the same bands the author set** - the earlier
+  rounded-tier hedge is dissolved along with the numbers themselves (see The Vouch, Dissolved; Bands, Not
+  Numbers) - because a consented edge is one its author has already agreed may be known, and publishing a
+  coarsened copy of a consented fact protected no one while creating a second value free to disagree with the
+  first.
+
+*(Speculative, demoted 2026-08-09: **Help host** - the serving-follow, necessarily public because fronting
+appears in pkarr records regardless, per the Rehosting Policy. It stops being a disclosure tier of the follow and
+becomes its own future act attached to fronting, designed when fronting's ceremony is; the one rule already
+settled - the UI must keep hosting visibly distinct from following, or users leak interest they meant to keep
+private - carries forward to that design.)*
 
 **Friendship forms at the second disclosed follow** - both parties hold receipts, and both UIs may show the badge
 to the two of them. A *publicly visible* friendship is the voluntary-linkage move (Running Multiple Identities):
@@ -1060,23 +1074,39 @@ Instead we use a **network-flow model** (the Advogato approach):
 Trust is a continuous number, but we also expose a simple **floor** for coarse gates ("below this, you cannot DM me or
 appear in my feed") so features do not each have to reason about flow.
 
-### The Vouch, Dissolved into the Ledger (settled 2026-08-02)
+### Bands, Not Numbers (settled 2026-08-09)
+
+The contact dials stopped being numbers. Every edge value in every system - the trust dial, the interest dial,
+rebroadcast interest, the stored registers, the node's routing memo, the published statements when they exist -
+is one of five bands: **none / low / medium / high / max**. The 0-100 integer scale is gone, and with it the
+machinery it kept demanding: nearest-stop snapping over values no UI could produce, a rounding step at the
+publication mint, "finer values a future flow engine might read." That last defense was the giveaway - the
+granularity's only argument was a consumer that might someday want it, which is the exact shape of speculation
+YAGNI exists to refuse. The stops were always the real interface: users pick worded stops, renderers map stops to
+a handful of emphasis levels, and the flow computation takes whatever weights the bands map to. Nothing consumed
+the numbers between the stops; now there is nothing between the stops. (The scale can still grow a stop someday -
+that is a vocabulary change, worn like any other pre-ship format change.)
+
+### The Vouch, Dissolved into the Ledger (settled 2026-08-02; amended 2026-08-09 - bands, one consent)
 
 The contact ledger (the id page's "your relationship" panel) holds one directed judgment per contact: the **trust
-edge** - a number on the worded scale whose top stop is "I've met them in person - they aren't being impersonated."
+edge** - a band on the worded scale whose top stop is "I've met them in person - they aren't being impersonated."
 That stop IS the statement the vouch was invented to carry, so a separate vouch object would be a second copy of
-the same opinion, free to drift from the first ("dial says 0, vouch says met-them" is a state with no meaning).
+the same opinion, free to drift from the first ("dial says none, vouch says met-them" is a state with no meaning).
 The concept dissolves, the same move as the roster-is-the-ACL: examined, and found to be machinery that already
 exists. What "vouch" decomposes into:
 
 - **A vouch is a positive trust edge its author chose to publish.** Trust edges are private (your ledger, your
   chain, your lens); the network-wide graph other people's flow computations walk needs edges that were SHARED,
-  and that is the ledger's `trust_public` consent dial. Copy, Don't Flip applies as everywhere: the flag is
-  consent, never publication - the publication machinery mints a **signed public trust statement** (a new
-  artifact on a public chain, retractable) from the consented edge. Tier 5's "vouch payload" survives as exactly
-  this minted form, carrying nothing the ledger doesn't already hold.
-- **The mint rounds.** The published form discloses a tier ("met in person", "confident"), never the raw integer -
-  Privacy of the Graph's rounded-scores worry, honored at the mint rather than retrofitted.
+  and that is the ledger's `edges_public` consent dial - one consent covering the relationship whole, trust band
+  and interest band together (Edge-Endpoint Visibility, the Publish tier). Copy, Don't Flip applies as
+  everywhere: the flag is consent, never publication - the publication machinery mints **signed public edge
+  statements** (new artifacts on a public chain, LWW per subject, retractable) from the consented ledger. Tier
+  5's "vouch payload" survives as exactly this minted form, carrying nothing the ledger doesn't already hold.
+- **The mint publishes the bands as set.** The old "mint rounds to a tier" hedge is dissolved by Bands, Not
+  Numbers: the ledger holds a band, the statement carries that band, and there is no finer value to protect. A
+  consented edge is one its author already agreed may be known; a coarsened public copy of it protected no one
+  and was a second value free to drift from the first.
 - **The Sybil math is untouched.** The flow engine splits each participant's fixed budget across their published
   edges; your own private edges are your lens's axioms and need no defense against yourself. Budget was always
   enforced by the computation, not by vouches being a countable separate species.

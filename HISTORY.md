@@ -3716,3 +3716,39 @@ destroys the dial's signal value).
 NEXT_STEPS' Inbox section recast as build work in dependency order. Nothing scheduled — the
 design runs ahead of the ladder deliberately, so the envelope format and gate are already final
 when the graph features arrive.
+
+## 2026-08-09 — bands, not numbers: the relationship ledger stops counting
+
+The first build step toward edge publication turned into a spring-cleaning of the thing being
+published. Curtis's call, two decisions: the 0-100 dial scale is gone — every edge value in
+every system is one of five bands, none/low/medium/high/max — and the per-edge publication
+consents collapse to one `edges_public` dial per contact ("may the network see how I hold this
+person"), covering trust and interest together. The "help host" disclosure tier is demoted to
+speculative, to be designed with fronting's ceremony. Doctrine updated in place: Edge-Endpoint
+Visibility gains the Publish tier, a new "Bands, Not Numbers" section records the repeal, and
+The Vouch Dissolved loses its "mint rounds to a tier" hedge — the ledger holds a band, the
+statement will carry that band, and there is no finer value left to protect.
+
+The numeric scale's only defense was "finer values a future flow engine might read" — a
+consumer that never existed, arguing for granularity nothing consumed. The stops were always
+the interface: `TRUST_STOPS`/`INTEREST_STOPS` now carry band values, `bandOf`/`bandOrdinal`
+(pure/contact.js) replace `nearestStop`, `signalLevel` reads the ordinal straight, and the
+feed's rendering ramps (`emphasisOf`, `postScale`, `postImageCap`) take a rung out of four
+instead of a percent — same outputs at every stop, pinned by the updated vectors. The
+2026-08-08 null-guard lesson is preserved structurally: silence and garbage read as null (no
+opinion), never as 'none' (an opinion), and the retired numeric values land on the silence
+side — pre-User-1, a dropped dev-data dial beats a shim carried forever.
+
+The subscriptions memo stores band ordinals 0-4 in its integer columns, so `eagerness > 0`
+keeps meaning "any rung above Don't show". One real bug fell out of the consent rename: the
+old gate matched `trust_public` = "true"/"1", but the ledger UI has only ever written "yes" —
+so UI-granted consent never actually reached the memo's trust column. Nothing read the column
+yet, so it cost nothing, but it was the second-copy disease verbatim: two vocabularies for one
+fact, drifted apart, one clause missing. The new gate matches the UI's word and the test that
+pins it says why.
+
+Gates: full `just ci` green (the memo is sync-adjacent). Not eyeballed in a browser: the
+ledger's selects, glance bars and feed scaling all render from the same pure functions the
+vectors pin, but whether the five worded stops read well in the dropdown is a judgement for
+eyes. Residual: existing dev databases hold numeric dial values, which now read as unset —
+re-dial or regenerate test data (`harness/testdata.mjs` now writes bands).

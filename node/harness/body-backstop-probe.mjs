@@ -29,7 +29,7 @@ await signUp(bob, 'grave-bob');
 const bobRoot = (await (await bob.fetch('/api/identity', { method: 'POST', headers: J })).json()).root_pubkey;
 await bob.fetch(`/api/id/${root}/profile?via=${viaA1}`);
 await bob.fetch(`/api/identity/${bobRoot}/private/kv/contact:${root}/interest`, {
-    method: 'PUT', headers: J, body: JSON.stringify({ value: '80' }) });
+    method: 'PUT', headers: J, body: JSON.stringify({ value: 'high' }) });
 await sleep(2500);
 
 const d = await (await a2.fetch(`/api/identity/${root}/docs`, { method: 'POST', headers: J,

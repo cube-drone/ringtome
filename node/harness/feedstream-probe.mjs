@@ -11,7 +11,7 @@ await s.fetch(`/api/identity/${loud}/profile`, { method: 'POST', headers: J,
 await s.fetch(`/api/identity/${quiet}/profile`, { method: 'POST', headers: J,
     body: JSON.stringify({ field: 'name', value: 'Quieter' }) });
 // I follow loud at high interest, quiet at low.
-for (const [them, level] of [[loud, 100], [quiet, 25]]) {
+for (const [them, level] of [[loud, 'max'], [quiet, 'low']]) {
     await s.fetch(`/api/identity/${me}/private/kv/contact:${them}/interest`, {
         method: 'PUT', headers: J, body: JSON.stringify({ value: String(level) }) });
 }

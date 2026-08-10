@@ -70,9 +70,9 @@ const ACTIONS = [
                 const via = await ctx.endpointOf(them.base);
                 await api(p, 'GET', `/api/id/${them.root}/profile?via=${via}`);
             }
-            const level = ctx.pick(rng, [25, 50, 75, 100]);
+            const level = ctx.pick(rng, ['low', 'medium', 'high', 'max']);
             await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/interest`, {
-                value: String(level),
+                value: level,
             });
         },
     },
@@ -93,14 +93,14 @@ const ACTIONS = [
         run: async (ctx, p, rng) => {
             const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root));
             if (!them) return;
-            const stop = ctx.pick(rng, [5, 20, 50, 80, 95]);
+            const stop = ctx.pick(rng, ['low', 'medium', 'high', 'max']);
             await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/trust`, {
-                value: String(stop),
+                value: stop,
             });
             if (rng() < 0.4) {
-                // Some trust is published - the consent that feeds the node's standing table.
-                await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/trust_public`, {
-                    value: 'true',
+                // Some relationships are published - the consent that feeds the node's standing table.
+                await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/edges_public`, {
+                    value: 'yes',
                 });
             }
         },

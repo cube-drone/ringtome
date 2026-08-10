@@ -33,7 +33,7 @@ const reader = await user('excise-reader');
 await post(author, 'Alpha'); await post(author, 'Beta');
 await sleep(1000);
 
-await dial(reader, author.root, 60);
+await dial(reader, author.root, 'medium');
 const filled = await settle(async () => {
     const t = await feedTitles(reader);
     return t.includes('Alpha') && t.includes('Beta') ? t : null;
@@ -42,14 +42,14 @@ console.log('RESULT backfill on follow :', JSON.stringify(filled));
 
 await post(reader, 'Mine stays');
 await settle(async () => (await feedTitles(reader)).includes('Mine stays') || null);
-await dial(reader, author.root, 0);
+await dial(reader, author.root, 'none');
 const excised = await settle(async () => {
     const t = await feedTitles(reader);
     return t.includes('Alpha') ? null : t;
 });
 console.log('RESULT after unfollow     :', JSON.stringify(excised));
 
-await dial(reader, author.root, 50);
+await dial(reader, author.root, 'medium');
 const back = await settle(async () => {
     const t = await feedTitles(reader);
     return t.includes('Alpha') ? t : null;

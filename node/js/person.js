@@ -33,7 +33,7 @@ import {
     TRUST_STOPS,
     INTEREST_STOPS,
     contactCollection,
-    nearestStop,
+    bandOf,
 } from './pure/contact.js';
 
 const html = htm.bind(h);
@@ -331,9 +331,10 @@ export const AddressRow = ({ root, via, hosted }) => {
 // ---------------------------------------------------------------------------------------------
 // The relationship panel - what YOU privately record about another persona.
 
-/// A stop's words, for the tooltips: what the icon would say if it could talk.
+/// A stop's words, for the tooltips: what the icon would say if it could talk. An unset (or
+/// unreadable) dial wears the bottom stop's words, matching the zero bars it shows.
 export const stopLabel = (stops, value) =>
-    stops.find((s) => s.value === nearestStop(stops, value)).label;
+    (stops.find((s) => s.value === bandOf(value)) || stops[0]).label;
 
 // The dial vocabulary, shared by every surface that shows a relationship (the People shelf's
 // columns and the card's closed summary): signal bars climbing a colour ramp, the words in
@@ -398,21 +399,23 @@ const Dial = ({ label, hint, stops, value, onPick }) => html`
         <span class="ledger-label">${label}${hint && html`<small>${hint}</small>`}</span>
         <select
             class="ledger-select"
-            value=${String(nearestStop(stops, value))}
+            value=${bandOf(value) || 'none'}
             onChange=${(e) => onPick(e.currentTarget.value)}
         >
-            ${stops.map((s) => html`<option key=${s.value} value=${String(s.value)}>${s.label}</option>`)}
+            ${stops.map((s) => html`<option key=${s.value} value=${s.value}>${s.label}</option>`)}
         </select>
     </label>
 `;
 
 // Trust (edge inputs to the trust layer, never the flow math itself), interest, rebroadcast
 // interest, a nickname, a block. Every fact is a private-chain LWW register on YOUR identity
-// (`contact:<their-root>`), synced to your own computers and nobody else's; the
-// trust-visibility dial marks consent to share the trust edge when the graph's publication
-// machinery exists (PROJECT_PLAN, The Vouch Dissolved into the Ledger - a vouch IS a
-// positive trust edge its author chose to publish). The block is likewise the RECORD of the
-// decision; the Inbound Gate learns to read it when inbound acts arrive.
+// (`contact:<their-root>`), synced to your own computers and nobody else's; the one
+// visibility dial (`edges_public`) marks consent to publish the relationship WHOLE - trust
+// band and interest band together - when the graph's publication machinery exists
+// (PROJECT_PLAN, Edge-Endpoint Visibility's Publish tier; The Vouch Dissolved into the
+// Ledger - a vouch IS a positive trust edge its author chose to publish). The block is
+// likewise the RECORD of the decision; the Inbound Gate learns to read it when inbound acts
+// arrive.
 export const ContactLedger = ({ myRoot, theirRoot }) => {
     // The mirror is the truth (The Browser Is a View - contact facts stream like docs do,
     // so a dial turned on another computer lands here live); a pending overlay covers the
@@ -467,7 +470,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
     };
 
     const blocked = facts.blocked === 'yes';
-    const trustPublic = facts.trust_public === 'yes';
+    const edgesPublic = facts.edges_public === 'yes';
 
     // A disclosure, not a permanent wall of controls: closed, it SAYS the relationship in the
     // shelf's own icons; open, it lets you change it. `<details>` rather than hand-rolled
@@ -504,20 +507,6 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 value=${facts.trust}
                 onPick=${(v) => put('trust', v)}
             />
-            <label class="ledger-dial">
-                <span class="ledger-label">
-                    ${t('person.who-can-see-my-trust', 'who can see my trust')}
-                    <small>${t('person.sharing-your-trust-information-helps', 'sharing your trust information helps the network grow, but gives up some of your privacy!')}</small>
-                </span>
-                <select
-                    class="ledger-select"
-                    value=${trustPublic ? 'yes' : 'no'}
-                    onChange=${(e) => put('trust_public', e.currentTarget.value)}
-                >
-                    <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
-                    <option value="yes">${t('person.public---shared-with-the', 'public - shared with the network')}</option>
-                </select>
-            </label>
             <${Dial}
                 label=${t('person.interest', 'interest')}
                 hint="how much of theirs you want to see"
@@ -532,6 +521,20 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 value=${facts.interest_rebroadcasts}
                 onPick=${(v) => put('interest_rebroadcasts', v)}
             />
+            <label class="ledger-dial">
+                <span class="ledger-label">
+                    ${t('person.who-can-see-this-relationship', 'who can see this relationship')}
+                    <small>${t('person.sharing-how-you-hold-people', 'sharing how you hold people - your trust and interest - helps the network grow, but gives up some of your privacy!')}</small>
+                </span>
+                <select
+                    class="ledger-select"
+                    value=${edgesPublic ? 'yes' : 'no'}
+                    onChange=${(e) => put('edges_public', e.currentTarget.value)}
+                >
+                    <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
+                    <option value="yes">${t('person.public---shared-with-the', 'public - shared with the network')}</option>
+                </select>
+            </label>
             ${/* The block lives INSIDE: a button in the summary would toggle the disclosure
                 instead of blocking anyone, and blocking is an edit like the rest. */ ''}
             <button

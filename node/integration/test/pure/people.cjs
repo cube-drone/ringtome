@@ -16,27 +16,27 @@ describe('the People shelf', () => {
     });
 
     it('orders by the chosen fact, descending', () => {
-        const rows = [row('bb', { trust: '20' }), row('aa', { trust: '80' }), row('cc', { trust: '50' })];
+        const rows = [row('bb', { trust: 'low' }), row('aa', { trust: 'high' }), row('cc', { trust: 'medium' })];
         assert.deepEqual(sortContacts(rows, 'trust').map((r) => r.root), ['aa', 'cc', 'bb']);
-        const byInterest = [row('aa', { interest: '25' }), row('bb', { interest: '100' })];
+        const byInterest = [row('aa', { interest: 'low' }), row('bb', { interest: 'max' })];
         assert.deepEqual(sortContacts(byInterest, 'interest').map((r) => r.root), ['bb', 'aa']);
     });
 
     it('missing or garbage facts score zero, and ties break by root - stable everywhere', () => {
-        const rows = [row('cc', {}), row('aa', { trust: 'what' }), row('bb', { trust: '0' })];
+        const rows = [row('cc', {}), row('aa', { trust: 'what' }), row('bb', { trust: 'none' })];
         assert.deepEqual(sortContacts(rows, 'trust').map((r) => r.root), ['aa', 'bb', 'cc']);
     });
 
     it('blocked personas sink to the bottom regardless of score - visible, never outranking', () => {
         const rows = [
-            row('aa', { trust: '95', blocked: 'yes' }),
-            row('bb', { trust: '5' }),
+            row('aa', { trust: 'max', blocked: 'yes' }),
+            row('bb', { trust: 'low' }),
         ];
         assert.deepEqual(sortContacts(rows, 'trust').map((r) => r.root), ['bb', 'aa']);
     });
 
     it('never mutates its input (the mirror hands out live arrays)', () => {
-        const rows = [row('bb', { trust: '1' }), row('aa', { trust: '2' })];
+        const rows = [row('bb', { trust: 'low' }), row('aa', { trust: 'medium' })];
         sortContacts(rows, 'trust');
         assert.deepEqual(rows.map((r) => r.root), ['bb', 'aa']);
     });

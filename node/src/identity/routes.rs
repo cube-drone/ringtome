@@ -2608,8 +2608,8 @@ struct ContactRow {
     /// Their avatar's public doc_id, same join, same honesty.
     #[serde(skip_serializing_if = "Option::is_none")]
     avatar: Option<String>,
-    /// The ledger's facts for them, as written (trust, trust_public, interest,
-    /// interest_rebroadcasts, blocked, nickname - and whatever future dials add).
+    /// The ledger's facts for them, as written (trust, interest, interest_rebroadcasts,
+    /// edges_public, blocked, nickname - and whatever future dials add).
     facts: std::collections::BTreeMap<String, String>,
 }
 

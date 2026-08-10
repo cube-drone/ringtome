@@ -5,6 +5,8 @@
 // them; the filter box narrows them; the slice keeps the DOM bounded however many thousands
 // the ledger holds. Values in, values out; the reactive plumbing lives in apps/people.js.
 
+import { bandOrdinal } from './contact.js';
+
 /// The two orderings the shelf offers. Both descend (most first); the tie-break is the root,
 /// so two same-scored contacts never shuffle between renders or devices.
 export const PEOPLE_SORTS = [
@@ -16,10 +18,7 @@ export const PEOPLE_SORTS = [
 /// regardless (a blocked contact is still YOURS to see and unblock - hidden would mean
 /// unfindable - but it never outranks the living relationships).
 export function sortContacts(rows, by) {
-    const score = (r) => {
-        const n = Number((r.facts || {})[by]);
-        return Number.isFinite(n) ? n : 0;
-    };
+    const score = (r) => bandOrdinal((r.facts || {})[by]) ?? 0;
     const blocked = (r) => ((r.facts || {}).blocked === 'yes' ? 1 : 0);
     return [...(rows || [])].sort(
         (a, b) => blocked(a) - blocked(b) || score(b) - score(a) || (a.root < b.root ? -1 : 1)

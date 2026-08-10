@@ -4,7 +4,7 @@
 
     The line this table walks is the point of most of these assertions. Routing facts (interest,
     rebroadcast) belong at node level by doctrine - "the node routes; the user ranks". A trust
-    value is here only where its author set `trust_public`, because a private assessment must not
+    value is here only where its author set `edges_public`, because a private assessment must not
     have publicly measurable effects: acting on a quiet edge would let a stranger detect it by
     measuring how well this node treats them.
 */
@@ -46,7 +46,7 @@ before(async () => {
 
 describe("the subscription memo", () => {
     it("records a follow as routing, without being asked", async () => {
-        const r = await dial("interest", 75);
+        const r = await dial("interest", "high");
         assert.equal(r.status, 200, await r.text());
         const rows = await settle(async () => {
             const got = await rowsFor(root);
@@ -54,22 +54,22 @@ describe("the subscription memo", () => {
         });
         assert.ok(rows, "the sweep found the new edge on its own");
         assert.equal(rows[0].foreign_root, THEM);
-        assert.equal(rows[0].eagerness, 75, "the interest dial IS the sync-cadence dial");
+        assert.equal(rows[0].eagerness, 3, "the interest dial IS the sync-cadence dial (band ordinal)");
         assert.equal(rows[0].trust, null);
     });
 
     it("carries rebroadcast interest alongside it", async () => {
-        await dial("interest_rebroadcasts", 25);
+        await dial("interest_rebroadcasts", "low");
         const rows = await settle(async () => {
             const got = await rowsFor(root);
-            return got[0] && got[0].rebroadcast === 25 ? got : null;
+            return got[0] && got[0].rebroadcast === 1 ? got : null;
         });
         assert.ok(rows, "the second routing dial lands too");
-        assert.equal(rows[0].eagerness, 75, "and the first one is still there");
+        assert.equal(rows[0].eagerness, 3, "and the first one is still there");
     });
 
     it("WITHHOLDS a quiet trust edge - the whole reason trust is allowed here at all", async () => {
-        await dial("trust", 95);
+        await dial("trust", "max");
         await new Promise((r) => setTimeout(r, 3000));
         const rows = await rowsFor(root);
         assert.equal(
@@ -80,23 +80,23 @@ describe("the subscription memo", () => {
     });
 
     it("carries it once its author consents", async () => {
-        await dial("trust_public", "true");
+        await dial("edges_public", "yes");
         const rows = await settle(async () => {
             const got = await rowsFor(root);
             return got[0] && got[0].trust !== null ? got : null;
         });
         assert.ok(rows, "consent is what makes it the node's business");
-        assert.equal(rows[0].trust, 95, "the raw value, not a bucket");
+        assert.equal(rows[0].trust, 4, "the band as set, ordinal on the ladder");
     });
 
     it("withdraws it the moment consent is withdrawn", async () => {
-        await dial("trust_public", "false");
+        await dial("edges_public", "no");
         const rows = await settle(async () => {
             const got = await rowsFor(root);
             return got[0] && got[0].trust === null ? got : null;
         });
         assert.ok(rows, "un-consenting takes the value back out");
-        assert.equal(rows[0].eagerness, 75, "and leaves the routing facts alone");
+        assert.equal(rows[0].eagerness, 3, "and leaves the routing facts alone");
     });
 
     /*
@@ -260,7 +260,7 @@ describe("the byline cache", () => {
         // the reader), so read one snapshot the way the browser does.
         await watcher(`api/identity/${watcherRoot}/private/kv/contact:${whoRoot}/interest`, {
             method: "PUT",
-            body: JSON.stringify({ value: "50" }),
+            body: JSON.stringify({ value: "medium" }),
         });
         const WebSocket = require("ws");
         const { HOST } = require("./fetch.cjs");
@@ -319,7 +319,7 @@ describe("the byline cache", () => {
         // Turn a dial on A...
         await onA(`api/identity/${shared}/private/kv/contact:${THEM}/interest`, {
             method: "PUT",
-            body: JSON.stringify({ value: "75" }),
+            body: JSON.stringify({ value: "high" }),
         });
 
         // ...and B's node-level memo must learn it from the exchange itself.
@@ -329,7 +329,7 @@ describe("the byline cache", () => {
                  WHERE local_root = '${shared}' AND foreign_root = '${THEM}'`,
                 HOST_B
             );
-            return rows.length && rows[0].eagerness === 75 ? rows : null;
+            return rows.length && rows[0].eagerness === 3 ? rows : null;
         }, 80);
         assert.ok(onBMemo, "the dial crossed devices into the memo, by event - not by backstop");
     });

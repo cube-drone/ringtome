@@ -4,45 +4,49 @@
 // nothing here pretends to be that math. Wording rule carried from doctrine: trust is
 // "do I believe they're real", never "do I like them" - Interest is the liking dial.
 //
-// The stops are labeled points on a 0-100 scale, not an enum: the stored value is the
-// NUMBER, so the scale can grow stops (or the flow engine can read finer values) without a
-// migration. The 95 stop IS the vouch (settled 2026-08-02 - PROJECT_PLAN, The Vouch
-// Dissolved into the Ledger): a vouch is a positive trust edge its author chose to publish,
-// so the publication machinery mints its public statement from this stop plus the
-// trust_public consent - no separate vouch record exists, here or anywhere.
+// A stored value is a BAND - one of five words, the same five for every dial and every
+// system an edge passes through (PROJECT_PLAN, Bands Not Numbers - settled 2026-08-09,
+// retiring the 0-100 scale whose in-between values nothing ever consumed). The max trust
+// stop IS the vouch (settled 2026-08-02 - PROJECT_PLAN, The Vouch Dissolved into the
+// Ledger): a vouch is a positive trust edge its author chose to publish, so the publication
+// machinery mints its public statement from this stop plus the `edges_public` consent - no
+// separate vouch record exists, here or anywhere.
+
+/// The five bands, weakest first. The order IS the meaning: renderers and the node's routing
+/// memo compare bands by ordinal (index), so this array is the one place the ladder lives.
+export const BANDS = ['none', 'low', 'medium', 'high', 'max'];
 
 export const TRUST_STOPS = [
-    { value: 0, label: 'Never heard of them' },
-    { value: 5, label: 'They might be who they say they are?' },
-    { value: 20, label: 'Not very confident' },
-    { value: 50, label: 'Pretty confident' },
-    { value: 80, label: 'Very confident' },
-    { value: 95, label: "I've met them in person - they aren't being impersonated" },
+    { value: 'none', label: 'Never heard of them' },
+    { value: 'low', label: 'Not very confident' },
+    { value: 'medium', label: 'Pretty confident' },
+    { value: 'high', label: 'Very confident' },
+    { value: 'max', label: "I've met them in person - they aren't being impersonated" },
 ];
 
 export const INTEREST_STOPS = [
-    { value: 0, label: "Don't show" },
-    { value: 25, label: 'Low priority' },
-    { value: 50, label: 'Medium priority' },
-    { value: 75, label: 'High priority' },
-    { value: 100, label: 'Top priority' },
+    { value: 'none', label: "Don't show" },
+    { value: 'low', label: 'Low priority' },
+    { value: 'medium', label: 'Medium priority' },
+    { value: 'high', label: 'High priority' },
+    { value: 'max', label: 'Top priority' },
 ];
 
 /// The private-KV collection carrying everything I record about one contact. Keys inside:
-/// `trust`, `trust_public`, `interest`, `interest_rebroadcasts`, `blocked`.
+/// `trust`, `interest`, `interest_rebroadcasts`, `edges_public`, `blocked`, `nickname`.
 export const contactCollection = (root) => `contact:${root}`;
 
-/// A stored value snapped to its nearest stop, for rendering a select over a number that
-/// may have been written by a finer-grained future (or a raw API call). Ties round up.
-export function nearestStop(stops, value) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return stops[0].value;
-    let best = stops[0];
-    for (const stop of stops) {
-        if (Math.abs(stop.value - n) < Math.abs(best.value - n) ||
-            (Math.abs(stop.value - n) === Math.abs(best.value - n) && stop.value > best.value)) {
-            best = stop;
-        }
-    }
-    return best.value;
+/// A stored value as a band, or null for "no opinion". Silence and garbage both land on
+/// null, never on 'none': an unset dial is the absence of an opinion, while 'none' is one -
+/// the same distinction whose collapse (Number(null) is 0) let emphasisOf render unset dials
+/// as "Don't show" until 2026-08-08. Values from the retired numeric scale also read as
+/// null: pre-User-1, a dropped dev-data dial beats a shim carried forever.
+export function bandOf(value) {
+    return BANDS.includes(value) ? value : null;
+}
+
+/// A band's rung on the five-step ladder (0-4), or null for no opinion.
+export function bandOrdinal(value) {
+    const band = bandOf(value);
+    return band === null ? null : BANDS.indexOf(band);
 }
