@@ -1089,9 +1089,14 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
         *e.hash(),
     );
     // Write-ahead: the journal frame lands (fsynced) before the row does, so journal ⊇ database
-    // survives a crash between the two (record::journal).
-    db.journal_append(e.bytes())
-        .context("journaling synced entry")?;
+    // survives a crash between the two (record::journal). Ephemeral chains skip it entirely -
+    // and unlike the local-append path, they need no checkpoint either: these are SIBLING
+    // chains we merely hold, we never append to them, so losing our copy risks no re-genesis;
+    // the sibling re-supplies its suffix on the next sync.
+    if !service_allows_suffix(e.entry().chain.service) {
+        db.journal_append(e.bytes())
+            .context("journaling synced entry")?;
+    }
     db.execute(
         "INSERT INTO entries
            (author_pubkey, service, seq, entry_hash, prev_hash, entry_type, timestamp_ms,

@@ -81,9 +81,24 @@ pub async fn append(
         }
     }
 
+    // Ephemeral services (the inbox tiers) take a different durability deal end to end: their
+    // cargo skips the journal, and the one fact that must survive a database catastrophe -
+    // where this chain ENDED - lives in the flat-file checkpoint instead (record::heads).
+    let ephemeral = crate::net::sync::service_allows_suffix(service_id);
+
     let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id).await? {
         Some((head_seq, head_hash, head_ts)) => (head_seq + 1, head_hash, head_ts),
-        None => (0, ZERO_HASH, 0),
+        // The database has no head. For a durable chain that means genesis; for an ephemeral
+        // one it might instead mean a REBUILT database (inbox chains were never journaled, so
+        // replay could not restore them) - and minting a genesis then would fork this chain
+        // against every sibling still holding the old one. The checkpoint remembers: continue
+        // from its head, producing a chain whose missing prefix is exactly the shape suffix
+        // admission already forgives. Claimed-time clamp restarts at 0, which the max(now)
+        // below handles like any cold chain.
+        None => match db.ephemeral_head(&author_hex, service_id).filter(|_| ephemeral) {
+            Some((ckpt_seq, ckpt_hash)) => (ckpt_seq + 1, ckpt_hash, 0),
+            None => (0, ZERO_HASH, 0),
+        },
     };
 
     let entry = Entry {
@@ -105,12 +120,24 @@ pub async fn append(
     let signed = SignedEntry::create(&entry, key)
         .map_err(|e| AppError::Internal(anyhow!("signing entry: {e}")))?;
 
-    // Write-ahead: the journal frame lands (fsynced) before the row does, so journal ⊇ database
-    // survives a crash between the two (record::journal). If the seq race below then loses, the
-    // loser's frame stays behind - a dead sibling replay's validation gate has to arbitrate.
-    db.journal_append(signed.bytes())
-        .context("journaling entry")
-        .map_err(AppError::Internal)?;
+    // Write-ahead, one of two ways. Durable chains: the journal frame lands (fsynced) before
+    // the row does, so journal ⊇ database survives a crash between the two (record::journal);
+    // if the seq race below then loses, the loser's frame stays behind - a dead sibling
+    // replay's validation gate has to arbitrate. Ephemeral chains: the CHECKPOINT lands first
+    // instead - same order, different artifact - and the crash between it and the insert
+    // leaves the file ahead by one, which is the phantom-gap shape suffix admission forgives
+    // (record::heads has the full asymmetry argument). The cargo itself is deliberately not
+    // journaled: notices are forgettable by charter, and journaling a flood's worth of them
+    // forever was the one unbounded artifact a stranger could still grow.
+    if ephemeral {
+        db.checkpoint_ephemeral_head(&author_hex, service_id, seq, signed.hash())
+            .context("checkpointing an ephemeral head")
+            .map_err(AppError::Internal)?;
+    } else {
+        db.journal_append(signed.bytes())
+            .context("journaling entry")
+            .map_err(AppError::Internal)?;
+    }
 
     // Two concurrent appends to one chain race to the same seq; the (author, service, seq)
     // primary key makes the loser fail loudly instead of forking the chain.
@@ -762,16 +789,23 @@ pub async fn entries_are_empty(db: &Db) -> Result<bool, AppError> {
 
 /// Every stored entry's exact envelope bytes, ordered by `(author, service, seq)` - the
 /// deterministic order journal backfill writes frames in (replay revalidates regardless).
+/// Ephemeral chains are excluded: "the journal never holds inbox cargo" has to be true on
+/// every path, and the backfill (a lost-journal recovery flow) is the one that would
+/// otherwise quietly re-import it.
 pub async fn all_entry_bytes(db: &Db) -> Result<Vec<Vec<u8>>, AppError> {
-    let rows: Vec<(Vec<u8>,)> = db
+    let rows: Vec<(i64, Vec<u8>)> = db
         .fetch_all(
-            "SELECT bytes FROM entries ORDER BY author_pubkey, service, seq",
+            "SELECT service, bytes FROM entries ORDER BY author_pubkey, service, seq",
             (),
         )
         .await
         .context("reading entry bytes")
         .map_err(AppError::Internal)?;
-    Ok(rows.into_iter().map(|(bytes,)| bytes).collect())
+    Ok(rows
+        .into_iter()
+        .filter(|(svc, _)| !crate::net::sync::service_allows_suffix(*svc as u32))
+        .map(|(_, bytes)| bytes)
+        .collect())
 }
 
 /// Row shape of the raw-log query:
@@ -888,6 +922,98 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(next.entry().seq, 6, "seq continues from the surviving head");
+    }
+
+    #[tokio::test]
+    async fn a_rebuilt_database_continues_an_ephemeral_chain_instead_of_forking_it() {
+        // The defused bomb. Inbox cargo is never journaled, so a database rebuild loses those
+        // chains - and a device that then minted a genesis would equivocate against its own
+        // siblings. The checkpoint file is what remembers; this test is the whole reason it
+        // exists.
+        let heads_path = std::env::temp_dir().join(format!(
+            "ringtome-imaol-heads-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&heads_path);
+        let heads = crate::record::heads::EphemeralHeads::open(&heads_path).unwrap();
+
+        let db = test_db().await.with_ephemeral_heads(heads.clone());
+        let key = test_key();
+        let author_hex = hex::encode(key.verifying_key().to_bytes());
+        let mut last_hash = [0u8; 32];
+        for i in 0..3 {
+            let signed = append(
+                &db,
+                &key,
+                service::INBOX_STRANGER,
+                entry_type::INBOX_NOTICE,
+                Payload::Inline(vec![i as u8]),
+            )
+            .await
+            .unwrap();
+            last_hash = *signed.hash();
+        }
+
+        // The catastrophe: a fresh database (the rebuild), same checkpoint file.
+        let rebuilt = test_db().await.with_ephemeral_heads(heads);
+        let continued = append(
+            &rebuilt,
+            &key,
+            service::INBOX_STRANGER,
+            entry_type::INBOX_NOTICE,
+            Payload::Inline(vec![9]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(continued.entry().seq, 3, "continues, never re-genesises");
+        assert_eq!(
+            continued.entry().prev_hash, last_hash,
+            "and links onto the exact head the old database held"
+        );
+        assert_eq!(
+            hex::encode(continued.entry().chain.author),
+            author_hex,
+            "same key, one chain, no fork anywhere"
+        );
+        let _ = std::fs::remove_file(&heads_path);
+    }
+
+    #[tokio::test]
+    async fn ephemeral_cargo_never_touches_the_journal() {
+        let dir = std::env::temp_dir().join(format!(
+            "ringtome-imaol-journal-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let journal_path = dir.join("test.jnl");
+        let journal = crate::record::journal::Journal::open(&journal_path).unwrap();
+        let db = crate::db::test_user_db_with_journal(journal).await;
+        let key = test_key();
+
+        let baseline = std::fs::metadata(&journal_path).unwrap().len();
+        append(
+            &db,
+            &key,
+            service::INBOX_TRUSTED,
+            entry_type::INBOX_NOTICE,
+            Payload::Inline(vec![1]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::metadata(&journal_path).unwrap().len(),
+            baseline,
+            "an inbox transcription writes no journal frame"
+        );
+
+        // And a durable chain still does - the exemption is the exception, not a regression.
+        set_profile_field(&db, &key, "name", "Journaled").await.unwrap();
+        assert!(
+            std::fs::metadata(&journal_path).unwrap().len() > baseline,
+            "durable writes keep their write-ahead frame"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

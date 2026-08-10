@@ -12,12 +12,23 @@
 //! confidentiality posture is the disk's - an accepted, named trade (the at-rest metadata of
 //! private activity).
 //!
-//! **The write-ahead invariant: journal ⊇ database, always.** Every accepted entry is framed
-//! and fsynced here *before* its row lands in the entries table (both insert sites:
-//! `imaol::append` and sync's store path). The journal never deletes: rows later evicted as
-//! proven forgeries stay behind as dead frames, and duplicate frames are possible - replay is
-//! safe against both because it is just the sync gate re-run (duplicate-skip, revocation
-//! ceilings, the lot).
+//! **The write-ahead invariant: journal ⊇ database - for durable services.** Every accepted
+//! entry is framed and fsynced here *before* its row lands in the entries table (both insert
+//! sites: `imaol::append` and sync's store path). The journal never deletes: rows later
+//! evicted as proven forgeries stay behind as dead frames, and duplicate frames are possible -
+//! replay is safe against both because it is just the sync gate re-run (duplicate-skip,
+//! revocation ceilings, the lot).
+//!
+//! **The one exception (2026-08-09): ephemeral services.** The inbox tiers
+//! (`sync::service_allows_suffix`) never write frames here, on any path - not append, not
+//! sync arrival, not backfill. Their cargo is forgettable by charter, their chains prune by
+//! policy, and journaling a stranger-flood's notices forever was the one unbounded artifact
+//! this file could still become. What must survive a database catastrophe for them is a
+//! single fact - where each locally-authored chain ENDED, so a rebuilt device continues
+//! instead of re-genesising into self-equivocation - and that lives in the flat-file
+//! checkpoint beside this one (`record::heads`), same trust class, no database in the loop.
+//! Consequence for replay: a rebuilt database comes back without inbox chains, correctly;
+//! the surviving suffix re-arrives from siblings by sync.
 //!
 //! **The torn-tail rule.** Append-only means corruption can only be a truncated final frame. On
 //! open, the file is scanned and cut back to the last complete frame boundary; appends then

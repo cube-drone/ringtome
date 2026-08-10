@@ -2942,10 +2942,19 @@ own retention and sync depth as per-chain policy instead of per-row bookkeeping.
   ordinary chain would let a sender make history vanish. Depths are 2048 trusted / 512 stranger. Two honest
   deviations from this bullet as written: the prune keeps AT LEAST the head even when the depth says otherwise,
   because an emptied chain would re-genesis at seq 0 and equivocate with its own history on every peer still
-  holding it; and the recent-delete tombstone does not exist because per-notice deletion doesn't yet. One cost
-  discovered in the build: the journal keeps its dead frames (`journal ⊇ database` is the recovery invariant),
-  so pruning bounds the database and the sync, not the transcribing node's disk - journal compaction is its own
-  future work, on the REFACTOR ledger.)*
+  holding it; and the recent-delete tombstone does not exist because per-notice deletion doesn't yet.
+
+  Amended the same evening: **inbox cargo skips the journal entirely** - Curtis's call, closing the cost the
+  first cut had ledgered (a stranger-flood's notices accreting as dead frames forever, on exactly the disk a
+  subpoena visits). The journal ⊇ database invariant now reads "for durable services", and the exception is
+  carried by a third artifact in the journal's own trust class - a flat-file **head checkpoint** per identity
+  (`record::heads`), eighty bytes per locally-authored inbox chain, write-ahead by atomic rename, no database
+  anywhere in the recovery loop (a first design leaned on the chain_heads memo and was rightly rejected: node.db
+  is the same beta engine the journal exists to distrust). The checkpoint's write order has a provable
+  asymmetry: under-recording would let a rebuilt device re-sign a held seq (equivocation - fatal), so the file
+  lands before the insert; over-recording, the crash-window case, produces a phantom gap - which on these
+  services is indistinguishable from pruning, and suffix admission forgives it. Rebuild semantics: inbox chains
+  do not replay; the device continues from the checkpoint, and the surviving suffix re-arrives from siblings.)*
 - **One row per (sender, kind)**: collapse means a flapping stranger occupies one row per kind, never the buffer,
   and envelope-hash idempotency means a sender who knocks on all three of your doors produces one row. Stranger
   quota is enforced per transcribing node; two of your nodes transcribing while partitioned can briefly overshoot

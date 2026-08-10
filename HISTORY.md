@@ -4092,3 +4092,56 @@ matter: seven strangers through a keep-of-four pool - the oldest three evaporate
 stands, the trusted friend's row never moves; and adopt-after-prune - a persona with an
 already-pruned inbox grows a second device, which must admit the suffix or show an empty bell
 forever, and doesn't.
+
+## 2026-08-09 — eighty bytes of insurance: inbox cargo leaves the journal
+
+Curtis: "can we simply not store an on-disk ledger for inbox chains? it's a kind of data that
+doesn't really need to survive catastrophe anyways." Yes - and the design conversation earned
+its keep twice on the way to the obvious-in-hindsight shape.
+
+First: the naive cut arms a bomb. Skip the journal and a database rebuild loses the inbox
+chains entirely; the device's next transcription would mint a fresh genesis at seq 0, and its
+own siblings - still holding the old entry 0 - now possess two signed entries at one
+position. Self-equivocation; the fork machinery would excommunicate a healthy device for
+running a routine rebuild. What must survive is not the cargo but one fact per
+locally-authored chain: **where it ended**.
+
+Second: the first proposal for carrying that fact - fall back to the `chain_heads` memo -
+was wrong, and Curtis caught why: the memo lives in node.db, which is the same beta database
+engine the journal exists to distrust. "Leaning on database data like that might scuttle the
+whole project." A recovery path that leans on the suspect is not a recovery path. The fix had
+to be journal-class: a flat file, no database anywhere in the loop.
+
+So: `record::heads` - one tiny JSON checkpoint per identity beside its journal, holding
+`(seq, hash)` per (author, service) for the ephemeral chains, rewritten whole by
+write-temp-fsync-rename, monotone (a replayed checkpoint can advance a head, never retreat
+it). Bounded forever at roughly eighty bytes per inbox chain this node writes - two per
+persona - where the journal alternative grew by a frame per notice, unbounded, on exactly the
+flood surface.
+
+The write-ahead order has a provable asymmetry that makes the whole thing simple:
+**under-recording is fatal** (a rebuilt device re-signs a seq its siblings hold -
+equivocation), so the checkpoint lands before the insert; **over-recording is harmless on
+these services specifically** - the crash between checkpoint and insert leaves the file ahead
+by one, a rebuilt device continues from the phantom position, and the resulting gap is
+indistinguishable from pruning, which suffix admission already forgives. The failure the
+ordering permits is the one the gate was built last hour to accept. The two features
+interlock; neither is this simple without the other.
+
+The sweep of paths, each closed: `imaol::append` checkpoints-instead-of-journals for
+ephemeral services and falls back to the checkpoint when the database has no head; sync's
+`store_entry` skips the journal for sibling inbox chains (no checkpoint needed - we never
+append to chains we merely hold, and the sibling re-supplies its suffix); journal BACKFILL
+(the lost-journal recovery flow) filters ephemeral entries so "the journal never holds inbox
+cargo" is true on every path, not just the common one; and the rebuild-by-replay flow now
+correctly resurrects everything durable and nothing ephemeral. The invariant's own module doc
+carries the exception loudly, since "journal ⊇ database, always" is quoted in several places
+and is now "for durable services".
+
+REFACTOR's journal-compaction entry: deleted, resolved by removing the need. The privacy
+claim sharpened with it: "a pruned prefix cannot leak" is now true of the disk, not just the
+database - the checkpoint holds hashes and sequence numbers, nothing about who knocked.
+
+Gates: full `just ci` green, exit code read before any pipe. The test that is the whole
+point: write three notices, open a fresh database against the same checkpoint file, append -
+and watch it continue at seq 3 linking the exact old head, no fork anywhere.

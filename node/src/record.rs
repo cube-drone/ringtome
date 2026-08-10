@@ -8,6 +8,7 @@
 
 pub mod bake;
 pub mod documents;
+pub mod heads;
 pub mod imaol;
 pub mod journal;
 pub mod private;

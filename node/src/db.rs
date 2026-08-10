@@ -152,6 +152,12 @@ pub struct Db {
     /// through [`UserDbManager`]. `None` for `node.db` (whose insurance is a later, different
     /// mechanism - sealed dumps) and for in-memory test databases.
     journal: Option<Journal>,
+    /// The ephemeral-chain head checkpoint, attached beside the journal for per-user
+    /// databases. Inbox cargo skips the journal (record::heads has the argument); this file is
+    /// the one fact of theirs that must survive a database catastrophe - the head positions of
+    /// the chains this node's leaf writes, so a rebuilt device continues instead of
+    /// re-genesising into self-equivocation.
+    ephemeral_heads: Option<crate::record::heads::EphemeralHeads>,
     /// The node-level database, attached to per-user handles opened through [`UserDbManager`]
     /// so the entry writers (append, ingest, eviction) can co-write the chain-heads memo at
     /// the moment they know the tip - the fact is in hand in plaintext exactly once, and
@@ -338,6 +344,38 @@ impl Db {
         }
     }
 
+    /// Checkpoint an ephemeral chain's head - the write-ahead half of the inbox durability
+    /// story (record::heads), called by `imaol::append` BEFORE the entry's insert. No-op for
+    /// databases without the file attached (the journal's own posture; test databases are
+    /// in-memory and their loss loses everything anyway).
+    pub fn checkpoint_ephemeral_head(
+        &self,
+        author_hex: &str,
+        service: u32,
+        seq: u64,
+        hash: &[u8; 32],
+    ) -> Result<()> {
+        match &self.ephemeral_heads {
+            Some(heads) => heads.record(author_hex, service, seq, hash),
+            None => Ok(()),
+        }
+    }
+
+    /// The checkpointed head of an ephemeral chain, if the file remembers one - what a rebuilt
+    /// database continues from when its inbox chains did not replay (they were never
+    /// journaled).
+    pub fn ephemeral_head(&self, author_hex: &str, service: u32) -> Option<(u64, [u8; 32])> {
+        self.ephemeral_heads.as_ref()?.head_of(author_hex, service)
+    }
+
+    /// This handle with the checkpoint attached (the manager's open, and tests).
+    pub(crate) fn with_ephemeral_heads(self, heads: crate::record::heads::EphemeralHeads) -> Db {
+        Db {
+            ephemeral_heads: Some(heads),
+            ..self
+        }
+    }
+
     /// Fire the write nudge: a locally-signed write just landed - wake the eager-sync loop and
     /// every open stream. `send` errors only when nobody is subscribed (ignored: the tick is
     /// the backstop). No-op for databases without the bus (node.db, tests) - and deliberately
@@ -481,6 +519,7 @@ fn connect(database: turso::Database) -> Result<Db> {
         append_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         memo: None,
         journal: None,
+        ephemeral_heads: None,
         root: None,
         write_nudge: None,
     })
@@ -696,6 +735,12 @@ impl UserDbManager {
         self.journals_directory.join(format!("{root_pubkey}.jnl"))
     }
 
+    /// The ephemeral-heads checkpoint lives beside the journal - same directory, same trust
+    /// class, same "flat file, no database in the loop" posture (record::heads).
+    fn heads_path_for(&self, root_pubkey: &str) -> PathBuf {
+        self.journals_directory.join(format!("{root_pubkey}.heads"))
+    }
+
     /// READ one persona's database - `None` when this node holds nothing of theirs.
     ///
     /// The `Option` is the whole point, and it is load-bearing rather than tidy. This used to
@@ -819,8 +864,11 @@ impl UserDbManager {
                 );
             }
         }
+        let heads = crate::record::heads::EphemeralHeads::open(&self.heads_path_for(root_pubkey))
+            .with_context(|| format!("opening the ephemeral-heads checkpoint for {root_pubkey}"))?;
         let mut db = db
             .with_journal(journal)
+            .with_ephemeral_heads(heads)
             .with_root(root_pubkey.to_string())
             .with_write_nudge(self.write_nudge.clone());
         if let Some(node_db) = self.node_db.get() {
