@@ -264,13 +264,35 @@ async fn missing_plan(
         .map(|f| ((f.author, f.service), (f.head, f.head_hash)))
         .collect();
 
-    let chains: Vec<(String, i64)> = db
-        .fetch_all(
-            "SELECT DISTINCT author_pubkey, service FROM entries ORDER BY service, author_pubkey",
-            (),
-        )
-        .await
-        .context("listing chains")?;
+    // Which chains do we hold? From the MEMO (2026-08-10, the full-chain audit) - this was a
+    // `SELECT DISTINCT author_pubkey, service FROM entries`, a full scan of the log per sync
+    // exchange to learn a list `chain_heads` already keeps.
+    //
+    // The trust argument is gentler here than the one `local_frontiers` carries, because this
+    // list decides what we SEND rather than what we claim to hold. A memo that named a chain
+    // we lack costs an empty page and nothing else; a memo that missed one delays that chain
+    // to the next exchange, and the memo is reconciled against the log at every database open
+    // and healed by the frontier sweep. Neither direction can lose history.
+    let mut chains: Vec<(String, i64)> = match (db.memo(), db.root()) {
+        (Some(memo), Some(root)) => crate::net::frontier::memo_chains(memo, root)
+            .await?
+            .into_iter()
+            .map(|(author_hex, svc, _, _, _)| (author_hex, i64::from(svc)))
+            .collect(),
+        _ => db
+            .fetch_all(
+                "SELECT DISTINCT author_pubkey, service FROM entries",
+                (),
+            )
+            .await
+            .context("listing chains")?,
+    };
+    // **Identity chains strictly first** - the module's own promise, and the reason this is
+    // sorted rather than taken in whatever order a table hands back: the authority context has
+    // to precede the content it validates, and IDENTITY_PUBLIC is service 0. The old query got
+    // this from an `ORDER BY service, author_pubkey`; losing it here would break the receiving
+    // gate in a way that only shows up on a first sync.
+    chains.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
 
     let mut plan = Vec::new();
     for (author_hex, svc) in chains {
@@ -2786,6 +2808,55 @@ mod tests {
             key(&memoed),
             key(&scanned),
             "the memo and the log agree on every chain, floor, head and hash"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_send_plan_matches_the_scan_and_leads_with_identity() {
+        // Two databases holding identical logs: one with the memo attached (the production
+        // shape, which `missing_plan` now reads) and one bare (which still scans). The plans
+        // must agree - and both must put the identity chain first, because the receiving gate
+        // validates content against an authority context it has to have already been sent.
+        let (root_pk, authorize, entries) = inbox_scenario(3);
+        let root = hex::encode(root_pk);
+        let raw: Vec<Vec<u8>> = [vec![authorize], entries]
+            .concat()
+            .iter()
+            .map(|e| e.bytes().to_vec())
+            .collect();
+
+        let node_db = crate::db::test_node_db().await;
+        let memoed = crate::db::test_user_db()
+            .await
+            .with_memo(std::sync::Arc::new(node_db.clone()))
+            .with_root(root.clone());
+        ingest_batch(&memoed, root_pk, raw.clone(), true).await.unwrap();
+
+        let bare = crate::db::test_user_db().await;
+        ingest_batch(&bare, root_pk, raw, true).await.unwrap();
+
+        let shape = |plan: &[ChainSend]| -> Vec<(String, u32, u64)> {
+            plan.iter()
+                .map(|c| (c.author_hex.clone(), c.service, c.from_seq))
+                .collect()
+        };
+        let from_memo = missing_plan(&memoed, &[], true).await.unwrap();
+        let from_scan = missing_plan(&bare, &[], true).await.unwrap();
+
+        assert!(!from_memo.is_empty(), "the memo knows which chains we hold");
+        assert_eq!(
+            shape(&from_memo),
+            shape(&from_scan),
+            "the memo plans exactly what the scan planned"
+        );
+        assert_eq!(
+            from_memo[0].service,
+            service::IDENTITY_PUBLIC,
+            "identity chains strictly first - the authority context precedes what it validates"
+        );
+        assert!(
+            from_memo.iter().any(|c| c.service == service::INBOX_STRANGER),
+            "and the content chain is in the plan too"
         );
     }
 

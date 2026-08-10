@@ -567,32 +567,52 @@ async fn drop_views_fed_by(
     services: &std::collections::BTreeSet<u32>,
 ) -> Result<(), AppError> {
     let touches = |s: u32| services.contains(&s);
+    // **A view and its watermarks are dropped together, over every service that feeds it.**
+    // Several views are fed by more than one lane - `doc_versions` by the public POSTS lane
+    // AND the private one, the private registers by general-private AND doc-meta - and their
+    // clears are whole-table. Clearing one of those while resetting only the evicted lane's
+    // watermark destroys the OTHER lane's rows and then never refolds them: its watermark
+    // still says "already folded", so the content is simply gone until a full rebuild.
+    //
+    // That is not hypothetical. It shipped in the first cut of this function on 2026-08-10,
+    // survived two green CI runs, and was caught by the repudiation-reaches-feeds test, where
+    // evicting a device's private chains wiped the public lane's `doc_heads` and the feed
+    // retraction then swept an honest post out of its author's own feed as collateral.
+    let mut dropped: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
 
     if touches(service::PROFILE_PUBLIC) {
         db.execute("DELETE FROM profile_view", ())
             .await
             .context("clearing profile view")
             .map_err(AppError::Internal)?;
+        dropped.insert(service::PROFILE_PUBLIC);
     }
     if touches(service::FOLLOWS_PUBLIC) {
         db.execute("DELETE FROM published_edges", ())
             .await
             .context("clearing the published-edges view")
             .map_err(AppError::Internal)?;
+        dropped.insert(service::FOLLOWS_PUBLIC);
     }
     if touches(service::POSTS) || touches(service::DOCUMENTS_PRIVATE) {
         crate::record::documents::clear_view(db).await?;
+        dropped.insert(service::POSTS);
+        dropped.insert(service::DOCUMENTS_PRIVATE);
     }
     if touches(service::GENERAL_PRIVATE) || touches(service::DOC_META_PRIVATE) {
         crate::record::private::clear_view(db).await?;
+        dropped.insert(service::GENERAL_PRIVATE);
+        dropped.insert(service::DOC_META_PRIVATE);
     }
     if touches(service::INBOX_TRUSTED) || touches(service::INBOX_STRANGER) {
         crate::inbox::clear_view(db).await?;
+        dropped.insert(service::INBOX_TRUSTED);
+        dropped.insert(service::INBOX_STRANGER);
     }
 
-    // Watermarks go per service, so an eviction on one lane does not force every other lane to
-    // refold from genesis.
-    for service_id in services {
+    // Exactly the lanes whose rows were just destroyed - so each refolds, and lanes nobody
+    // touched keep their progress instead of replaying from genesis.
+    for service_id in &dropped {
         db.execute(
             "DELETE FROM view_watermarks WHERE service = ?1",
             (i64::from(*service_id),),
@@ -1211,6 +1231,49 @@ mod tests {
             walked.iter().map(|e| &e.author).collect::<std::collections::BTreeSet<_>>().len(),
             2,
             "and both devices' chains are in there"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cleared_view_resets_every_lane_that_feeds_it() {
+        // The invariant a real bug taught us (see `drop_views_fed_by`): `doc_versions` is fed
+        // by BOTH document lanes and cleared whole, so dropping it for one lane must reset the
+        // other's watermark too - or that lane's rows are destroyed and never refold, and the
+        // feed retraction that follows sweeps honest posts out as collateral.
+        let db = test_db().await;
+        for svc in [
+            service::POSTS,
+            service::DOCUMENTS_PRIVATE,
+            service::GENERAL_PRIVATE,
+            service::DOC_META_PRIVATE,
+            service::INBOX_TRUSTED,
+            service::INBOX_STRANGER,
+            service::PROFILE_PUBLIC,
+        ] {
+            advance_watermark(&db, "aa", svc, 7).await.unwrap();
+        }
+
+        // Evict the PUBLIC document lane only.
+        drop_views_fed_by(&db, &[service::POSTS].into_iter().collect())
+            .await
+            .unwrap();
+
+        let left: Vec<(i64,)> = db
+            .fetch_all("SELECT service FROM view_watermarks ORDER BY service", ())
+            .await
+            .unwrap();
+        let left: Vec<u32> = left.into_iter().map(|(s,)| s as u32).collect();
+        assert!(
+            !left.contains(&service::POSTS) && !left.contains(&service::DOCUMENTS_PRIVATE),
+            "both lanes feeding doc_versions reset together, because the clear took both"
+        );
+        assert!(
+            left.contains(&service::GENERAL_PRIVATE)
+                && left.contains(&service::DOC_META_PRIVATE)
+                && left.contains(&service::INBOX_TRUSTED)
+                && left.contains(&service::INBOX_STRANGER)
+                && left.contains(&service::PROFILE_PUBLIC),
+            "and every view the eviction never touched keeps its progress: {left:?}"
         );
     }
 

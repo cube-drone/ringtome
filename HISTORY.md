@@ -4329,3 +4329,53 @@ view that could not say WHICH device wrote a row was quietly missing the most us
 multi-device persona.
 
 Gates: full `just ci` green, exit code read before any pipe.
+
+## 2026-08-10 — the send plan stops enumerating the log
+
+The audit's fifth, and the last cheap one. `sync::missing_plan` opened with
+`SELECT DISTINCT author_pubkey, service FROM entries` - a full scan of the log, on every sync
+exchange, to learn a list `chain_heads` already keeps. It reads from the memo now. (The
+targeted lookup further down the same function - our entry at the peer's claimed head, the
+equivocation check - was always a primary-key seek and is untouched.)
+
+The trust argument is gentler than the one `local_frontiers` carries, and worth writing down
+because the two look identical and are not: this list decides what we SEND, not what we claim
+to hold. A memo naming a chain we lack costs one empty page; a memo missing a chain delays it
+to the next exchange, against a memo that is reconciled against the log at every database open
+and healed by the frontier sweep. Neither direction can lose history - which is exactly why
+`local_frontiers` needed the open-time reconciliation and this did not.
+
+The trap in the swap was the ORDER BY. The old query said `ORDER BY service, author_pubkey`,
+which looks cosmetic and is not: the module promises **identity chains strictly first**, so the
+authority context reaches a peer before the content it validates, and IDENTITY_PUBLIC being
+service 0 is what made that ordering true. A memo read hands rows back in its own order. The
+sort is now explicit, with the reason beside it, and a test asserts the plan leads with the
+identity chain - a property whose loss would only surface on somebody's first sync.
+
+Pinned the same way as the other two swaps: two databases holding identical logs, one memoed
+and one bare, must produce the same plan.
+
+**And the run went red - on the PREVIOUS commit's bug, not this one.** Yesterday's
+eviction-scoping change (already merged, already twice-green) had a hole:
+`documents::clear_view` wipes `doc_versions`, `doc_heads` and `doc_search` for BOTH lanes -
+the public POSTS one and the private one - but the watermark reset only covered the evicted
+service. Evicting one lane therefore destroyed the other lane's rows while leaving its
+watermark saying "already folded", so that content never refolded, `public_docs` came back
+empty, and the feed retraction running on the same edge swept an honest post out of its own
+author's feed as collateral. Whether an eviction happened to touch both lanes was luck of the
+fixture, which is how it passed CI twice while being live.
+
+The invariant the code was missing, now written where it can be read:
+**a view and its watermarks are dropped together, over every service that feeds it.** Several
+views are multi-lane (`doc_versions` from both document lanes, the private registers from
+general-private and doc-meta) and every one of those clears is whole-table, so the reset has to
+cover exactly the ground the clear did. A unit test asserts it directly - evict POSTS alone,
+and both document lanes reset while every untouched lane keeps its progress - so the next
+regression fails in seconds rather than inside a three-node repudiation scenario.
+
+Worth noting which test caught it: `repudiation.cjs`'s "a repudiation reaches the feeds",
+whose comment is about `feed_journal` being a delivery memo that must not launder disproven
+content. Written for a different bug, and it caught this one because it is the only test that
+watches an eviction all the way through to what a human sees.
+
+Gates: full `just ci` green, 598 passing, exit code read before any pipe.

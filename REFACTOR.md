@@ -11,16 +11,13 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ### The full-chain audit's remaining items (2026-08-10)
 
-Four done (see HISTORY): `sync::local_frontiers`, `documents::materialize` on the save path,
-the ingest path's whole-log rebuild, and the unbounded `/entries` response. The rest, in the
-order I would take them:
+Five done (see HISTORY): `sync::local_frontiers`, `documents::materialize` on the save path,
+the ingest path's whole-log rebuild, the unbounded `/entries` response, and `missing_plan`'s
+chain enumeration. What is left is the tail, and neither item is urgent:
 
-1. **`sync::missing_plan`'s `SELECT DISTINCT author_pubkey, service FROM entries`** — full
-   scan per sync exchange, answering a question `chain_heads` also holds. The obvious swap,
-   but note the gate reads `entries` for a reason elsewhere in that function; do it with the
-   same "memo lags, never leads" argument `local_frontiers` now carries.
-2. **`imaol::all_entry_bytes`** — whole log into memory for journal backfill at open; fine as
+1. **`imaol::all_entry_bytes`** — whole log into memory for journal backfill at open; fine as
    a one-time recovery path, worth streaming if journals get large.
-3. **`imaol::entries_of_type` is a footgun**: no watermark, no bound. Every caller today is an
+2. **`imaol::entries_of_type` is a footgun**: no watermark, no bound. Every caller today is an
    identity chain (exempt), but it reads as general-purpose, and the next content-chain caller
-   gets a full replay for free.
+   gets a full replay for free. Cheapest fix is a rename or a doc that says "identity chains
+   only"; the real one is a bounded variant.
