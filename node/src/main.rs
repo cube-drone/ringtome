@@ -33,6 +33,7 @@ mod profiles;
 mod pubkey;
 mod publish;
 mod rate_limit;
+mod rebroadcast;
 mod record;
 mod request_context;
 mod seal;

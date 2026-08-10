@@ -185,6 +185,12 @@ impl Store {
         Rebroadcasts { store: self }
     }
 
+    /// Outbound notices: sealing an envelope that tells someone what this persona did about
+    /// them (`outbox`). Kind-agnostic - a follow and a share differ only in their evidence.
+    pub fn notices(&self) -> Notices<'_> {
+        Notices { store: self }
+    }
+
     /// Notices delivered by people this persona does not sync (`crate::inbox`).
     pub fn inbox(&self) -> Inbox<'_> {
         Inbox { store: self }
@@ -343,15 +349,27 @@ impl PublicEdges<'_> {
         imaol::published_edges(&self.store.db).await
     }
 
-    /// Seal the envelope that announces one just-published statement to its subject - the
-    /// delivered path's outbound artifact (`outbox`). Lives here because sealing needs the
-    /// persona's signing leaf, which never leaves the store.
-    /// `price_bits` is what the sender believes this door costs - its own configured price
-    /// for a first attempt, or whatever a `NeedsStamp` answer quoted for a retry.
-    pub async fn seal_notice(
+}
+
+/// Sealing outbound notices. Its own door rather than a method on the edges: a notice is the
+/// same envelope whatever it announces, and the only thing it needs from the store is the
+/// signing leaf, which never leaves.
+pub struct Notices<'s> {
+    store: &'s Store,
+}
+
+impl Notices<'_> {
+    /// Seal the envelope announcing `evidence` to `subject`.
+    ///
+    /// `kind` says what is being claimed and decides which evidence rule the recipient will
+    /// apply (`deliver::verify_claim`). `price_bits` is what the sender believes the recipient's
+    /// door costs - its own configured price for a first attempt, or whatever a `NeedsStamp`
+    /// answer quoted for a retry.
+    pub async fn seal(
         &self,
         subject: &[u8; 32],
         evidence: &SignedEntry,
+        kind: u32,
         price_bits: u32,
     ) -> Result<ringtome_proto::deliver::SignedEnvelope, AppError> {
         crate::outbox::seal_notice(
@@ -360,6 +378,7 @@ impl PublicEdges<'_> {
             &self.store.root,
             subject,
             evidence,
+            kind,
             price_bits,
         )
         .await

@@ -1346,6 +1346,7 @@ pub async fn sync_with_peer(
         Ok(true) => {
             crate::fanout::after_public_move(state, root_hex).await;
             crate::notifications::refresh_from(state, root_hex).await;
+            crate::rebroadcast::refresh_from(state, root_hex).await;
         }
         Ok(false) => {}
         Err(e) => tracing::debug!(error = ?e, "post-exchange frontier refresh failed"),
@@ -1511,6 +1512,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             Ok(true) => {
                 crate::fanout::after_public_move(&state, &root_hex).await;
                 crate::notifications::refresh_from(&state, &root_hex).await;
+                crate::rebroadcast::refresh_from(&state, &root_hex).await;
             }
             Ok(false) => {}
             Err(e) => tracing::debug!(error = ?e, "post-ingest frontier refresh failed"),

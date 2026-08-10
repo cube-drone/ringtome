@@ -457,6 +457,12 @@ pub async fn detach(node_db: &Db, account_id: &Uuid, root_hex: &str) -> Result<(
         .await
         .context("detaching identity")
         .map_err(AppError::Internal)?;
+    // Their shares stop obliging a node that no longer answers for them. Fronting someone
+    // else's identity is a demand signal from an accountable local persona (Pull, Not Push) -
+    // and the moment that persona leaves, the demand leaves with them.
+    if let Err(e) = crate::rebroadcast::forget_holder(node_db, root_hex).await {
+        tracing::warn!(root = %root_hex, error = ?e, "could not drop a departing persona's pins");
+    }
     tracing::info!(root = %root_hex, "detached persona from this node");
     Ok(())
 }

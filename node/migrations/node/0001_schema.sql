@@ -211,6 +211,10 @@ CREATE TABLE feed_journal (
     published_ms INTEGER NOT NULL,  -- when it was first said (genesis - the display date)
     updated_ms   INTEGER NOT NULL,  -- when it last changed (a re-publication moves only this)
     arrived_ms   INTEGER NOT NULL,  -- when it reached THIS node (set once, never rewritten)
+    via_root     TEXT,               -- who SHARED it into this feed, if it arrived by rebroadcast;
+                                     --   NULL means the reader follows author_root directly.
+                                     --   A direct arrival always clears this (it is the stronger
+                                     --   claim: you follow them, you are not being shown a share)
     PRIMARY KEY (reader_root, author_root, doc_id)
 );
 CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
@@ -219,6 +223,29 @@ CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
 -- is a full-table scan of every reader's rows. doc_id rides along so the DISTINCT doc_id
 -- listing never touches the table itself.
 CREATE INDEX feed_journal_by_author ON feed_journal (author_root, doc_id);
+
+-- Why this node fronts a foreign identity it was never asked to follow: one of its personas
+-- rebroadcast a document of theirs (PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica).
+--
+-- This IS the demand signal *Pull, Not Push* requires - "a node fronts an identity because
+-- someone accountable on that node asked for it, never because the identity requested it" - and
+-- a share is that ask, made by an accountable local persona. Bounded operator liability holds
+-- unchanged: the node carries what its own users chose to carry.
+--
+-- A memo like every other: folded from the sharer's own rebroadcast chain (rebroadcast::
+-- refresh_from), disposable, rebuildable. Its consumer is the sync worklist - a pinned author
+-- keeps being refreshed even after every contact dial pointing at them goes back to nothing,
+-- which is what makes "the author can still retract" true for a share that outlived a follow.
+CREATE TABLE rebroadcast_pins (
+    holder_root  TEXT    NOT NULL,  -- the local persona whose share obliges this node
+    author_root  TEXT    NOT NULL,  -- the identity being fronted
+    doc_id       TEXT    NOT NULL,  -- hex; the specific document shared
+    version_seen TEXT,              -- hex of the endorsed version, for the drift badge
+    updated_ms   INTEGER NOT NULL,
+    PRIMARY KEY (holder_root, author_root, doc_id)
+);
+-- The sync worklist asks "which authors must we keep refreshing", author-first.
+CREATE INDEX rebroadcast_pins_by_author ON rebroadcast_pins (author_root);
 
 -- ---------------------------------------------------------------------------------------------
 -- The notifications memo: derived events worth telling a local persona about, folded from

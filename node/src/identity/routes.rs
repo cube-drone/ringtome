@@ -949,6 +949,39 @@ async fn rebroadcast_handler(
     }
     let data = store::open(&state, &session.account.id, &root).await?;
     let entry = data.rebroadcasts().share(&author, &doc_id, version).await?;
+
+    // Tell the author, if there is anything to tell. A withdrawal is deliberately silent -
+    // "I stopped sharing your post" is an absence, and `verify_claim` refuses to carry it.
+    //
+    // Queued ALWAYS when it is a real share, exactly as the follow notice is: whether the
+    // author already syncs us is a fact only their node holds, and their gate discards a
+    // redundant notice and answers "accepted". A sender that guesses here either misses people
+    // silently or interrogates strangers about their follow lists.
+    if version.is_some() {
+        let author_hex = hex::encode(author);
+        match data
+            .notices()
+            .seal(
+                &author,
+                &entry,
+                ringtome_proto::deliver::notice_kind::REBROADCAST,
+                state.config.pow_requested_bits,
+            )
+            .await
+        {
+            Ok(envelope) => {
+                if let Err(e) =
+                    crate::outbox::queue(&state.node_db, &root, &author_hex, &envelope).await
+                {
+                    tracing::warn!(author = %author_hex, error = ?e, "could not queue a share notice");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(author = %author_hex, error = ?e, "could not seal a share notice")
+            }
+        }
+    }
+
     Ok(Json(serde_json::json!({
         "entry_hash": hex::encode(entry.hash()),
         "retracted": version.is_none(),

@@ -147,6 +147,11 @@ fn user_db_opens_are_deliberate() {
         ("net/resync.rs", 1),
         ("net/sync.rs", 3),        // + derive_peers_for: ONE persona's crown per derive edge
         ("record/bake.rs", 1),     // bake_one: ONE persona per external-media job, the ingest pattern
+        // One open per REBROADCAST frontier move, not per persona - and gated behind a
+        // node.db chain-heads probe first, so the overwhelming majority of moves (from the
+        // people who have never shared anything) never reach it. Same shape and same
+        // justification as notifications.rs above.
+        ("rebroadcast.rs", 1),
         ("record/documents.rs", 1),
         ("record/store.rs", 2),
         ("identity/adoption.rs", 2),

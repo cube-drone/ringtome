@@ -65,6 +65,7 @@ pub async fn seal_notice(
     root: &[u8; 32],
     recipient_root: &[u8; 32],
     evidence: &SignedEntry,
+    kind: u32,
     price_bits: u32,
 ) -> Result<SignedEnvelope> {
     let signer_pub = signer.verifying_key().to_bytes();
@@ -72,7 +73,7 @@ pub async fn seal_notice(
         sender_root: *root,
         signer: signer_pub,
         recipient_root: *recipient_root,
-        kind: notice_kind::PUBLIC_EDGE,
+        kind,
         auth_path: auth_path(db, root, &signer_pub).await?,
         evidence: Some(evidence.bytes().to_vec()),
         greeting: None,
@@ -173,7 +174,7 @@ pub async fn queue(
             (
                 sender_root,
                 recipient_root,
-                notice_kind::name(notice_kind::PUBLIC_EDGE),
+                notice_kind::name(envelope.envelope().kind),
                 envelope.bytes(),
                 now_ms(),
             ),

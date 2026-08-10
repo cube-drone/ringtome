@@ -84,10 +84,16 @@ pub mod notice_kind {
     /// reader should not care whether a fact arrived by pull or by envelope, so both paths
     /// produce the same row and the same sentence.
     pub const PUBLIC_EDGE: u32 = 1;
+    /// "I shared something of yours" - evidence is the sender's `rebroadcast` entry, whose
+    /// pointer names the recipient as the shared document's author. The other end of
+    /// PROJECT_PLAN's Rebroadcast: the share is a public act on the sharer's chain, and this is
+    /// how the person whose work was shared finds out when they do not follow the sharer.
+    pub const REBROADCAST: u32 = 2;
 
     pub fn name(id: u32) -> &'static str {
         match id {
             PUBLIC_EDGE => "public-edge",
+            REBROADCAST => "rebroadcast",
             _ => "unknown-kind",
         }
     }
@@ -376,6 +382,9 @@ pub struct VerifiedClaim {
     /// The published bands, for `PUBLIC_EDGE`: what the sender says about the recipient.
     pub trust: Option<String>,
     pub interest: Option<String>,
+    /// Which document of the recipient's was shared, for `REBROADCAST`. The recipient needs it
+    /// to say *which* post, and it is the sender's own signed claim rather than a hint.
+    pub doc_id: Option<[u8; 16]>,
 }
 
 /// Verify an envelope end to end, offline: the signature, the delegation from the claimed
@@ -456,7 +465,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
     }
     evidence.verify()?;
 
-    let (trust, interest) = match envelope.kind {
+    let (trust, interest, doc_id) = match envelope.kind {
         notice_kind::PUBLIC_EDGE => {
             if evidence.entry().chain.service != crate::registry::service::FOLLOWS_PUBLIC
                 || evidence.entry().entry_type != crate::registry::entry_type::PUBLIC_EDGE
@@ -479,7 +488,34 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                 // follow you" is an absence, not a notice.
                 return Err(ProtoError::BadEntry("the published edge is empty"));
             }
-            (edge.trust, edge.interest)
+            (edge.trust, edge.interest, None)
+        }
+        notice_kind::REBROADCAST => {
+            if evidence.entry().chain.service != crate::registry::service::REBROADCASTS
+                || evidence.entry().entry_type != crate::registry::entry_type::REBROADCAST
+            {
+                return Err(ProtoError::ChainViolation(
+                    "a rebroadcast notice needs a rebroadcast entry",
+                ));
+            }
+            let crate::Payload::Inline(payload) = &evidence.entry().payload else {
+                return Err(ProtoError::BadEntry("rebroadcast payload must be inline"));
+            };
+            let pointer = crate::Rebroadcast::decode(payload)?;
+            // The binding that makes this checkable rather than a bare assertion: the pointer
+            // must name the RECIPIENT as the shared document's author. Without it anyone could
+            // announce a share of anyone's work to anyone.
+            if pointer.author != envelope.recipient_root {
+                return Err(ProtoError::ChainViolation(
+                    "the rebroadcast is of somebody else's document",
+                ));
+            }
+            if pointer.is_retraction() {
+                // Un-sharing is correct to publish and never worth announcing - the same rule
+                // as an empty edge above. "I stopped sharing your post" is an absence.
+                return Err(ProtoError::BadEntry("the rebroadcast was withdrawn"));
+            }
+            (None, None, Some(pointer.doc_id))
         }
         _ => return Err(ProtoError::BadEntry("unknown notice kind")),
     };
@@ -492,6 +528,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
         evidence_hash: *evidence.hash(),
         trust,
         interest,
+        doc_id,
     })
 }
 
@@ -740,6 +777,145 @@ mod tests {
             stamp: None,
         };
         SignedEnvelope::create(&envelope, leaf).unwrap()
+    }
+
+    /// One `rebroadcast` entry: `signer` sharing `author`'s document.
+    fn rebroadcast_entry(
+        signer: &SigningKey,
+        author: [u8; 32],
+        doc_id: [u8; 16],
+        version: Option<[u8; 32]>,
+    ) -> SignedEntry {
+        let payload = crate::Rebroadcast {
+            author,
+            doc_id,
+            version,
+        }
+        .encode();
+        SignedEntry::create(
+            &Entry {
+                v: ENTRY_VERSION,
+                entry_type: entry_type::REBROADCAST,
+                chain: ChainId {
+                    author: pubkey(signer),
+                    service: service::REBROADCASTS,
+                },
+                seq: 0,
+                prev_hash: ZERO_HASH,
+                timestamp_ms: 1_700_000_060_000,
+                payload: Payload::Inline(payload),
+            },
+            signer,
+        )
+        .unwrap()
+    }
+
+    fn share_notice(
+        root: &SigningKey,
+        leaf: &SigningKey,
+        recipient: [u8; 32],
+        evidence: SignedEntry,
+    ) -> SignedEnvelope {
+        let envelope = Envelope {
+            sender_root: pubkey(root),
+            signer: pubkey(leaf),
+            recipient_root: recipient,
+            kind: notice_kind::REBROADCAST,
+            auth_path: vec![authorize(root, leaf, 0).bytes().to_vec()],
+            evidence: Some(evidence.bytes().to_vec()),
+            greeting: None,
+            stamp: None,
+        };
+        SignedEnvelope::create(&envelope, leaf).unwrap()
+    }
+
+    #[test]
+    fn a_share_notice_verifies_and_names_the_document() {
+        let (root, leaf) = (key(20), key(21));
+        let author = [42u8; 32];
+        let doc = [7u8; 16];
+        let notice = share_notice(
+            &root,
+            &leaf,
+            author,
+            rebroadcast_entry(&leaf, author, doc, Some([3u8; 32])),
+        );
+        let claim = verify_claim(&notice).unwrap();
+        assert_eq!(claim.kind, notice_kind::REBROADCAST);
+        assert_eq!(claim.doc_id, Some(doc), "the recipient learns WHICH post");
+        assert_eq!(claim.recipient_root, author);
+    }
+
+    /// The binding that makes this evidence rather than assertion. Without it, anyone could
+    /// announce a share of anyone's work to anyone - the envelope would be checkable and still
+    /// say nothing true about the recipient.
+    #[test]
+    fn a_share_of_someone_elses_document_cannot_be_announced_to_you() {
+        let (root, leaf) = (key(22), key(23));
+        let me = [42u8; 32];
+        let somebody_else = [43u8; 32];
+        let notice = share_notice(
+            &root,
+            &leaf,
+            me,
+            // Genuinely signed, genuinely a share - just not of anything of mine.
+            rebroadcast_entry(&leaf, somebody_else, [7u8; 16], Some([3u8; 32])),
+        );
+        assert!(
+            verify_claim(&notice).is_err(),
+            "a share of somebody else's document is not news for me"
+        );
+    }
+
+    /// "I stopped sharing your post" is an absence, not a notice - the same rule that refuses
+    /// to announce an emptied public edge.
+    #[test]
+    fn a_withdrawn_share_is_not_announceable() {
+        let (root, leaf) = (key(24), key(25));
+        let author = [42u8; 32];
+        let notice = share_notice(
+            &root,
+            &leaf,
+            author,
+            rebroadcast_entry(&leaf, author, [7u8; 16], None),
+        );
+        assert!(verify_claim(&notice).is_err());
+    }
+
+    /// Kind and evidence must agree: a follow's evidence cannot be passed off as a share.
+    #[test]
+    fn the_kind_must_match_the_evidence_it_carries() {
+        let (root, leaf) = (key(26), key(27));
+        let recipient = [42u8; 32];
+        let mut envelope = Envelope {
+            sender_root: pubkey(&root),
+            signer: pubkey(&leaf),
+            recipient_root: recipient,
+            kind: notice_kind::REBROADCAST,
+            auth_path: vec![authorize(&root, &leaf, 0).bytes().to_vec()],
+            evidence: Some(
+                public_edge(&leaf, recipient, Some("max"), None)
+                    .bytes()
+                    .to_vec(),
+            ),
+            greeting: None,
+            stamp: None,
+        };
+        let notice = SignedEnvelope::create(&envelope, &leaf).unwrap();
+        assert!(
+            verify_claim(&notice).is_err(),
+            "a public-edge entry does not prove a rebroadcast"
+        );
+
+        // And the reverse.
+        envelope.kind = notice_kind::PUBLIC_EDGE;
+        envelope.evidence = Some(
+            rebroadcast_entry(&leaf, recipient, [7u8; 16], Some([3u8; 32]))
+                .bytes()
+                .to_vec(),
+        );
+        let notice = SignedEnvelope::create(&envelope, &leaf).unwrap();
+        assert!(verify_claim(&notice).is_err());
     }
 
     fn follow_envelope(signer: &SigningKey) -> Envelope {

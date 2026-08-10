@@ -99,8 +99,14 @@ pub async fn reconcile(
         // Stamp at OUR configured price, which is a guess about theirs. Right whenever both
         // operators left the default alone, and when it is wrong the door quotes the real number
         // and we pay that instead - one extra round trip, not a failure.
-        match edges
-            .seal_notice(&subject, &evidence, state.config.pow_requested_bits)
+        match store
+            .notices()
+            .seal(
+                &subject,
+                &evidence,
+                ringtome_proto::deliver::notice_kind::PUBLIC_EDGE,
+                state.config.pow_requested_bits,
+            )
             .await
         {
             Ok(envelope) => {
