@@ -332,3 +332,17 @@ the feature waits).
   or a dedicated CBOR `NoteHeader` payload with binary fields and its own AAD? Leaning dedicated,
   since byte-level file encryption already exists for bodies. (Chunking is no longer a question -
   iroh-blobs handles it.)
+
+
+Already safe in PROJECT_PLAN (nothing to do): the header/DAG schema and the body_hash confirmability asterisk (p.2513–16), copy-don't-flip publication + "the draft is a note" (p.2530–34, 178–82), taxonomies-external + labels-vs-tags + (root, doc_id) refs (p.2536–2615), buckets-as-projects (p.194–204), display_date (p.1361), the unsynced indicator (p.1318, 2713), debounced saves/no-op-skip/keep-last-N machinery (p.2526–29), corpus-before-grammar (Open Questions). The "no markdown-lite" guard and the header-encoding open question are both moot — Marquee shipped and the CBOR header is canon.
+What would be lost — and where I'd put it:
+
+## What Would Be Lost
+1. ~~The conflict-presentation doctrine~~ — **canonized 2026-08-10** in PROJECT_PLAN, Versioned Documents ("A diverged document presents its conflict *in* the body"). Written to the code as it stands, which had outgrown this file in two places: two-head criss-cross now merges over git's recursive virtual base (only murkier shapes degrade), and Marquee conflicts render from merge *structure*, never by re-parsing marked text.
+2. ~~Media-retention consequence~~ — **canonized 2026-08-10** in PROJECT_PLAN, An Embed Is an Ingest (the epitaph rule and best-effort media rollback ride the amended provenance bullet; the dangling pointer is gone). The same amendment brought the section up to where the code had already moved on 2026-08-06: the bake happens at the publish crossing, not at authoring time; video refused with a tombstone; oversized foreign media is a failed bake, not a silent degrade-to-link; provenance = the draft body's URL + the bake registry + the media doc's title until the header grows a field.
+3. ~~The no-text-CRDT ruling~~ — **canonized 2026-08-10** as its own bullet in PROJECT_PLAN, Versioned Documents ("Real-time collaborative text is a non-goal"), with the door-left-open half cross-referenced to The Ordering Contract. The Taxonomies citation now points at Versioned Documents instead of this file.
+4. The search-index rule — doc_search is mentioned in passing twice, but the generalizable doctrine is only in NOTES_APP: an index is a plaintext derivative of encrypted bodies and must never live anywhere less protected. Plus its owed items (relevance ranking; federated pre-filter). → PROJECT_PLAN (one line, Substrate/views-persist) + NEXT_STEPS Private Notes
+5. The published_as annotation link — canon covers publication's shape but not the private back-link (annotation, never header — amended 2026-08-03) or "deleting either side leaves the other standing." → PROJECT_PLAN, Versioned Documents (one sentence)
+6. Open question: retention default keep-last-N (what's N? user-visible?) — unresolved, lives only in NOTES_APP. → NEXT_STEPS, folded into the existing "GC" bullet
+For REFACTOR.md: nothing. NOTES_APP records no live compromises.
+Also on deletion: six NOTES_APP pointers in PROJECT_PLAN (lines 180, 2322, 2442, 2516, 2540, 2568) and README's documents-list entry need fixing; HISTORY's mentions stay (it's a log). Drive-by I noticed: p.3900 points at "NEXT_STEPS, the recommended route," which no longer exists — worth fixing while I'm in there.

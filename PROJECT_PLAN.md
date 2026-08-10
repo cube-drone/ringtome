@@ -2301,42 +2301,63 @@ first and an aesthetic one second:
    become a community's aesthetic identity, so this could be wonderful - but it is a whole product in itself.
    Deferred indefinitely, and possibly forever if the widget vocabulary is good.
 
-### An Embed Is an Ingest (settled 2026-07-12)
+### An Embed Is an Ingest (settled 2026-07-12; amended 2026-08-06 - the bake moved to the crossing)
 
 The web conflates two gestures that want opposite treatment. **A link is the reader choosing to go somewhere; an
 embed is the author causing the reader's client to fetch.** Ringtome separates them, and treats the second as what
 it actually is: an upload.
 
 - **Links out are free** - no dial, no interstitial, no reveal button. The reader chose to follow it.
-- **Embeds are baked at authoring time.** The moment a draft says `![cat](https://example.org/cat.jpg)`, the node
-  fetches it, runs it through the crunch filter (see Fidelity Caps), stores the result as a blob, and rewrites the
-  target to that local blob. The author sees the crunched image immediately, in their own editor - which is also
-  the only humane place to show someone what the crunch did to their picture. **An embed is an ingest**: pasting an
-  image URL *is* an upload, and the UI should say so plainly, because the storage it consumes and the liability it
-  creates are both real.
-- **Past the size cap it isn't an embed, it's a link.** Ringtome declines to fetch-and-bake beyond a ceiling,
-  exactly as every forum since phpBB has declined oversized uploads. Point at a multi-gigabyte file all you like -
-  it will be a link, and the client will tell you it became one.
-- **The origin URL rides along as provenance, permanently.** Mandatory metadata on every baked embed, not a
-  right-click nicety. It is attribution (you have just copied someone's picture), it is the "go to original"
-  affordance, and - load-bearing - it is what makes the blob *droppable* later (NOTES_APP.md, Media Retention).
+- **A draft references; the crossing bakes.** An embed in a private draft is just a reference: an uploaded image
+  is already a local blob (crushed at upload, epoch-encrypted, embedded as its private-doc URL), and a foreign URL
+  stays foreign in the draft body, rendering live in the author's own browser - the author's fetch of the author's
+  own reference, and nothing stored. The ceremony happens at *publication*: the body is walked with the Marquee
+  reference parser (the AST, never a regex - the markup repo keeps adversarial examples precisely to punish
+  pattern-matching) and every media embed is baked across the membrane. A private media doc decrypts and re-mints
+  as its **public twin** (`published_as`, the same one door as text, one twin reused by every post that embeds
+  it). A foreign URL is downloaded (SSRF-guarded, hard size cap), crushed through the same pipeline uploads take
+  (see Fidelity Caps), and minted public in the background - publish answers "still baking" with per-item progress
+  until every embed can stand, and a failure is an honest tombstone the author retries or edits around. The
+  published body is **rewritten** to the twins; the private draft keeps its links untouched - the crossing mints,
+  never moves. **An embed is still an ingest**: pasting an image URL *is* an upload, deferred to the crossing -
+  the storage it consumes and the liability it creates are both real.
+- **Video is refused at the crossing, for now** (2026-08-06 scope line, both kinds - private twin and foreign
+  fetch - the tombstone naming it). Revisited when the preview/segment story is designed.
+- **Past the size cap it isn't an embed, it's a link** - but the crossing states this as a refusal, not a silent
+  rewrite: an oversized bake fails with its tombstone, and making it a link is the author's edit. Ringtome
+  declines to fetch-and-bake beyond a ceiling, exactly as every forum since phpBB has declined oversized uploads.
+- **The origin URL survives the bake as provenance, forever - as text, which is free.** The draft body keeps the
+  foreign URL for the draft's life (the reference IS the provenance); the node's bake registry holds (root, url,
+  verdict, when) as the durable record; the public artifact carries the source URL as the media doc's *title*
+  until the header grows a real field at the next deliberate wire break (DocHeaderPlain is fixed-arity CBOR). It
+  is attribution (you have just copied someone's picture), it is the "go to original" affordance, and -
+  load-bearing - it is what makes the blob *droppable* later: **the provenance URL is an epitaph, not a
+  fallback.** When retention drops a blob no live head references, the embed degrades to a placeholder naming
+  where it came from, with a link - rollback is exact for text and best-effort for media (**Immutable Chains ≠
+  Immutable Content**, Doctrine, one level down) - and the renderer must never quietly hotlink the origin instead:
+  that would resurrect every problem the bake exists to solve. The placeholder is what makes dropping the blob a
+  defensible act rather than a data-loss event.
 - **Rich players are the honest exception.** A YouTube or Spotify embed is not bytes we may have; it cannot be
   baked. Those stay live and third-party, and looking at one tells Google you looked. The onebox card is a
   click-to-play surface by construction, so nothing phones home until the reader presses play - privacy arriving as
   a side effect of good page-weight design, which is the only kind anyone leaves switched on.
-- **The bake happens twice.** In a draft the blob is epoch-encrypted; at publication it is re-encoded as a public
-  blob and signed, exactly as the prose is - **Copy, Don't Flip** (Doctrine), applied to pictures. Draft original
-  and published image are distinct blobs, independently droppable.
+- **The bake happens twice, for uploads.** A draft's uploaded image is epoch-encrypted; publication re-mints it as
+  a public blob and signs it, exactly as the prose is - **Copy, Don't Flip** (Doctrine), applied to pictures.
+  Draft original and published image are distinct blobs, independently droppable. (Foreign URLs bake once, at the
+  crossing - there is no draft blob to twin.)
 
-**What the bake buys** (none of it sold as privacy): no reader ever fetches a stranger's server, and it needs no
-setting because nobody opts out of *fast*; link rot can't break a published page; the scanning machinery can see the
-bytes; the crunch filter applies to *all* media, so **Everything Always Crunched** survives the open web. And
-recentralization closes on its own - to a network that ingests images on sight, an external host is a **clipboard,
-not a CDN**, so there is no `ringtome-imgur.com` to build.
+**What the bake buys** (none of it sold as privacy): no reader of a *published* page ever fetches a stranger's
+server, and it needs no setting because nobody opts out of *fast*; link rot can't break a published page; the
+scanning machinery can see the bytes; the crunch filter applies to *all* media, so **Everything Always Crunched**
+survives the open web. And recentralization closes on its own - to a network that ingests images on sight, an
+external host is a **clipboard, not a CDN**, so there is no `ringtome-imgur.com` to build.
 
-**The honest cost:** the operator now *hosts* what their user embedded, so a vile embed becomes their problem in a
-way a hotlink wasn't - the correct place for it to land (operator exposure is already bounded by their accountable
-users), but a real increase, and a bake is a copy, so provenance is the least we owe.
+**The honest costs, now two:** the operator still *hosts* what their user embedded, so a vile embed becomes their
+problem in a way a hotlink wasn't - the correct place for it to land (operator exposure is already bounded by
+their accountable users), but a real increase, and a bake is a copy, so provenance is the least we owe. And the
+authoring-time bake's best argument died with the move: the author no longer sees the crunched version of a
+*foreign* embed until after it is published (uploads were always crunched at upload, so their preview stays
+honest).
 
 *(This retired two earlier rules: embed-targets-unrepresentable-in-grammar, and a reader-facing proxy/direct/no-fetch
 dial. The dial defended a promise the doc declines to make - **Pseudonymity, Not Anonymity** (Doctrine) - and on a
@@ -2515,11 +2536,37 @@ a tileset, anything with rolling states.
   recoverable) to a key-holder guessing low-entropy content, an accepted asterisk on deletability
   (NOTES_APP).
 - **`parents` is a list from day one** - the git-commit model: zero at genesis, one for an ordinary
-  save, two-plus for a merge, so reconvergence needs no format change even before any merge UI
-  exists. Fast-forward when your parent is the current head; two saves sharing a parent are
+  save, two-plus for a merge, so reconvergence needs no format change. Fast-forward when your
+  parent is the current head; two saves sharing a parent are
   **detected divergence**, and the universal resolution is **keep-both-with-lineage** - never lose
   words. Auto-merge is a *per-format capability* layered on top (three-way merge for text; images
   simply keep both), never core machinery.
+- **A diverged document presents its conflict *in* the body; there is no merge UI, ever.** The
+  one hard requirement: no sequence of saves, syncs, tabs, or crashes may silently discard
+  written words (whole-note LWW is the stale-tab failure that eats an afternoon). Read-time,
+  never written: heads carrying no distinct words (identical twins, ancestor echoes) fold
+  deterministically, and a conflicted document's displayed body is the merge output with the
+  conflict inline - synthesized deterministically from chain data alone, so every device
+  derives the same tangle. Resolution is the user tidying the text and saving, which lists all
+  true heads as `parents` and heals the fork through the ordinary write. Merge is text's
+  per-format capability and format-agnostic in structure (Marquee source is still lines); only
+  the *presentation* forks: git-style marker blocks for plaintext, Marquee's shipped
+  `:::conflict`/`:::variant` vocabulary (device attribution is free - chains are per-device;
+  unknown vocabulary shrugs to a lossless full render). Three-plus heads over a single fork
+  point merge per-hunk too, one variant per distinct proposal; two-head criss-cross merges
+  over git's recursive virtual base (clean merges only, so one raced resolution doesn't
+  degrade every later fork); anything murkier - no shared fork point, a GC'd base body -
+  degrades to the whole-document conflict, lossless and conservative. Client obligations:
+  check the head before saving (rebase or fork knowingly, never blind-save); synthesized text
+  starts *clean*, not dirty (autosave never commits an untouched tangle); presentation is
+  built from merge structure, never by re-parsing marked text. Media never merges: keep-both,
+  bytes served separately.
+- **Real-time collaborative text is a non-goal (decided in the notes design).** A text CRDT's
+  op-log would become a wire format inside the conformance boundary - a giant cost with no named
+  consumer. The goal is asynchronous convergence-without-loss, and the DAG delivers it at
+  app-payload level with zero protocol changes. The door stays open exactly as The Ordering
+  Contract states it: richer merge rules arrive as new payload types on the same conflict-free
+  substrate, if a real collaborative feature ever names itself.
 - **`refs` is a derived index** - the file hashes and doc-ids the body references, extracted from
   the body at save time so GC-reachability and backlinks never require decrypting every body. The
   body stays the source of truth.
@@ -2565,10 +2612,9 @@ and Marquee's computed widgets all consume it.)
   item, and any whole-value shape turns that obvious union into a manufactured conflict - the
   tags argument, verbatim. Same-element position races resolve LWW: one position wins, nothing
   leaves the list, history stays on the chain. Concurrent same-spot inserts land adjacent in
-  tiebreak order - harmless for a curated list, which is exactly why NOTES_APP's no-text-CRDT
-  ruling doesn't apply here: interleaving destroys prose, not reading lists, and no op-log
-  wire format enters the conformance boundary (on the wire these are ordinary private
-  records). Existence is a roster fact (the `taxonomies` set): an empty list exists, deletion
+  tiebreak order - harmless for a curated list, which is exactly why the no-text-CRDT ruling
+  (Versioned Documents) doesn't apply here: interleaving destroys prose, not reading lists,
+  and on the wire these are ordinary private records. Existence is a roster fact (the `taxonomies` set): an empty list exists, deletion
   is one remove, re-creating an id resurrects its members. Taxonomy-level facts (title,
   `default_view`, description) are annotations on the taxonomy's own id. An album is a `tax:`
   collection, full stop - still never metadata on its tracks. Chronological streams are
