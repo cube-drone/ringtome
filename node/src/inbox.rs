@@ -404,6 +404,18 @@ async fn fold_notice(
     Ok(Folded::Done)
 }
 
+/// Drop the notices view. Called by the view-rebuild paths (`imaol::drop_views_fed_by`), which
+/// clear a view and let its watermark refold it - the notices come back from the chains that
+/// survived. Added 2026-08-10: this table was missing from `rebuild_views` when it was born,
+/// so a rebuild left notices whose entries had been evicted standing in the bell.
+pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
+    db.execute("DELETE FROM inbox_notices", ())
+        .await
+        .context("clearing the inbox view")
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
 /// The reader's notices, newest first. Catches up first: like every private view in this
 /// codebase, the fold happens on read, because sync ingest deliberately holds no epoch keys.
 pub async fn page(db: &Db, keys: &EpochKeys, limit: u32) -> Result<Vec<Notice>, AppError> {

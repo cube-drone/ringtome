@@ -535,21 +535,104 @@ pub async fn get_profile(db: &Db) -> Result<Vec<ProfileField>, AppError> {
 /// watermarks makes the next keyed read (`documents::materialize`, `private::materialize_service`)
 /// refold the whole log. Drop + replay still holds everywhere; the replay is just deferred to
 /// the first reader that can decrypt.
-pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
-    db.execute("DELETE FROM profile_view", ())
-        .await
-        .context("clearing profile view")
-        .map_err(AppError::Internal)?;
-    db.execute("DELETE FROM published_edges", ())
-        .await
-        .context("clearing the published-edges view")
-        .map_err(AppError::Internal)?;
-    db.execute("DELETE FROM view_watermarks", ())
+/// Every service that can feed a view - the argument that means "drop everything".
+fn every_service() -> std::collections::BTreeSet<u32> {
+    [
+        service::PROFILE_PUBLIC,
+        service::POSTS,
+        service::FOLLOWS_PUBLIC,
+        service::GENERAL_PRIVATE,
+        service::DOCUMENTS_PRIVATE,
+        service::DOC_META_PRIVATE,
+        service::INBOX_TRUSTED,
+        service::INBOX_STRANGER,
+    ]
+    .into_iter()
+    .collect()
+}
+
+/// Drop the materialized views that the given services feed, and the watermarks that would
+/// otherwise stop them refolding.
+///
+/// **Which service feeds which view** is the mapping that rots if it lives in anyone's head,
+/// so it lives here, once. A service absent from this match feeds no view table (the identity
+/// chains: the key tree is computed on demand, never stored).
+///
+/// Dropping is the whole job. Every view in this codebase refolds itself from a watermark on
+/// the next read that wants it (`documents::catch_up`, `private::catch_up`,
+/// `catch_up_published_edges`, `inbox::catch_up`) - the one exception is `profile_view`, whose
+/// fold happens inline at ingest and therefore has to be replayed by whoever cleared it.
+async fn drop_views_fed_by(
+    db: &Db,
+    services: &std::collections::BTreeSet<u32>,
+) -> Result<(), AppError> {
+    let touches = |s: u32| services.contains(&s);
+
+    if touches(service::PROFILE_PUBLIC) {
+        db.execute("DELETE FROM profile_view", ())
+            .await
+            .context("clearing profile view")
+            .map_err(AppError::Internal)?;
+    }
+    if touches(service::FOLLOWS_PUBLIC) {
+        db.execute("DELETE FROM published_edges", ())
+            .await
+            .context("clearing the published-edges view")
+            .map_err(AppError::Internal)?;
+    }
+    if touches(service::POSTS) || touches(service::DOCUMENTS_PRIVATE) {
+        crate::record::documents::clear_view(db).await?;
+    }
+    if touches(service::GENERAL_PRIVATE) || touches(service::DOC_META_PRIVATE) {
+        crate::record::private::clear_view(db).await?;
+    }
+    if touches(service::INBOX_TRUSTED) || touches(service::INBOX_STRANGER) {
+        crate::inbox::clear_view(db).await?;
+    }
+
+    // Watermarks go per service, so an eviction on one lane does not force every other lane to
+    // refold from genesis.
+    for service_id in services {
+        db.execute(
+            "DELETE FROM view_watermarks WHERE service = ?1",
+            (i64::from(*service_id),),
+        )
         .await
         .context("clearing view watermarks")
         .map_err(AppError::Internal)?;
-    crate::record::documents::clear_view(db).await?;
-    crate::record::private::clear_view(db).await?;
+    }
+    Ok(())
+}
+
+/// Views are stale because entries were EVICTED under them (a proven forgery, a revocation's
+/// anchored cut) - drop exactly the ones those chains fed, and restore the one view that
+/// cannot refold itself.
+///
+/// This is the ingest path's version of `rebuild_views`, and the difference is the point.
+/// `rebuild_views` re-decodes and re-VALIDATES every entry in the log - an ed25519 verification
+/// each - which is the right ritual for an operator asking "prove the views are caches", and
+/// exactly the wrong thing to hang off a peer-triggered edge: a stranger's revocation would
+/// buy a whole-log signature replay (found in the 2026-08-10 full-chain audit). The entries
+/// that survive were validated when they were admitted; nothing here needs to re-litigate them.
+///
+/// The profile replay is bounded by the persona's OWN profile history - a handful of entries,
+/// and nothing an attacker can inflate - which is why it is safe to do eagerly.
+pub(crate) async fn refold_after_eviction(
+    db: &Db,
+    services: &std::collections::BTreeSet<u32>,
+) -> Result<(), AppError> {
+    drop_views_fed_by(db, services).await?;
+    if !services.contains(&service::PROFILE_PUBLIC) {
+        return Ok(());
+    }
+    for signed in entries_of_type(db, service::PROFILE_PUBLIC, entry_type::PROFILE_SET).await? {
+        apply_profile_set(db, &signed).await?;
+    }
+    Ok(())
+}
+
+pub async fn rebuild_views(db: &Db) -> Result<u64, AppError> {
+    drop_views_fed_by(db, &every_service()).await?;
 
     let rows: Vec<(String, i64, Vec<u8>)> = db
         .fetch_all(
@@ -1024,6 +1107,56 @@ mod tests {
         assert_eq!(third.len(), 2);
         assert_eq!(third[&hex::encode(alice)].edge.trust.as_deref(), Some("max"));
         assert_eq!(third[&hex::encode(bob)].edge.interest.as_deref(), Some("low"));
+    }
+
+    #[tokio::test]
+    async fn an_eviction_drops_only_the_lanes_it_invalidated() {
+        // The ingest path's refold, pinned on both halves: the one view that cannot refold
+        // itself (profile) is replayed, and a lane the eviction never touched keeps its view
+        // instead of being made to rebuild from genesis.
+        let db = test_db().await;
+        let key = test_key();
+        let alice = [5u8; 32];
+
+        set_profile_field(&db, &key, "name", "Hats Ahoy").await.unwrap();
+        set_profile_field(&db, &key, "bio", "purveyor of hats").await.unwrap();
+        publish_public_edge(&db, &key, &alice, Some("high".into()), None).await.unwrap();
+        // Fold the edge into its view so there is something to preserve.
+        assert_eq!(published_edges(&db).await.unwrap().len(), 1);
+
+        // A profile-lane eviction: the profile view is rebuilt from the surviving entries...
+        refold_after_eviction(&db, &[service::PROFILE_PUBLIC].into_iter().collect())
+            .await
+            .unwrap();
+        let profile = get_profile(&db).await.unwrap();
+        assert_eq!(profile.len(), 2, "the profile view came back");
+        assert_eq!(profile[1].value, "Hats Ahoy");
+
+        // ...and the follows lane, which lost nothing, still holds its row WITHOUT refolding.
+        let held: Option<(i64,)> = db
+            .fetch_optional("SELECT COUNT(*) FROM published_edges", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            held.unwrap().0,
+            1,
+            "an unrelated lane's view is not collateral damage"
+        );
+
+        // And when the follows lane IS the evicted one, its view drops and refolds on read.
+        refold_after_eviction(&db, &[service::FOLLOWS_PUBLIC].into_iter().collect())
+            .await
+            .unwrap();
+        let after: Option<(i64,)> = db
+            .fetch_optional("SELECT COUNT(*) FROM published_edges", ())
+            .await
+            .unwrap();
+        assert_eq!(after.unwrap().0, 0, "dropped");
+        assert_eq!(
+            published_edges(&db).await.unwrap().len(),
+            1,
+            "and the watermark reset means the next read refolds it"
+        );
     }
 
     #[tokio::test]

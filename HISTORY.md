@@ -4262,3 +4262,45 @@ changing what a save is parented on. `materialize` stays: it is the honest whole
 and the tests and any genuine corpus reader still want it.
 
 Gates: full `just ci` green, exit code read before any pipe.
+
+## 2026-08-10 — a stranger's revocation stops buying a whole-log replay
+
+The audit's third entry, and the one with an adversarial flavour rather than a scaling one.
+
+When an ingest evicts rows - a proven forgery, or history beyond a revocation's anchored cut -
+the views those rows fed are stale, so `ingest_batch` called `rebuild_views`. That function
+clears every view and then walks the ENTIRE entries log, decoding and **re-validating** each
+entry: one ed25519 verification apiece. It is the right ritual for an operator asking "prove
+the views are caches, not truth" (it is the M1 exit demo, and the admin endpoint still runs
+it). It is exactly the wrong thing to hang off a peer-facing edge, where a stranger's
+revocation buys N signature verifications and a whole log in memory.
+
+Two things were wrong, and they came apart cleanly:
+
+**The re-validation was never the point.** Entries that survive eviction were validated when
+they were admitted; the rebuild re-litigates them only because the ritual's *purpose* is
+re-litigation. The ingest path only needs correct views. So `refold_after_eviction` drops the
+stale views and lets each refold itself from its watermark - which is how every encrypted view
+in this codebase has always worked ("the drop half": `documents::catch_up`,
+`private::catch_up`, `catch_up_published_edges`, `inbox::catch_up`). The single exception is
+`profile_view`, whose fold happens inline at ingest and so has no catch-up to lean on; it is
+replayed, bounded by the persona's own profile history - a handful of entries, and nothing an
+attacker can inflate.
+
+**The clearing was indiscriminate.** Evicting one forged posts chain cleared the private
+registers, the documents, the published edges - every view - so the next read of each refolded
+from genesis. The eviction paths now report which SERVICES lost rows, and the drop is scoped to
+the views those lanes feed. That mapping ("which service feeds which view") now lives in
+exactly one function with the comment it deserves, because it is precisely the sort of thing
+that rots in someone's head.
+
+A gap of my own turned up while writing it: `inbox_notices` was never cleared by
+`rebuild_views` at all - the table arrived on the 9th and was not wired into the rebuild - so a
+rebuild left notices standing whose entries had been evicted. `inbox::clear_view` closes it,
+and the mapping is now the one place that has to stay complete.
+
+Pinned by a test asserting both halves: a profile-lane eviction rebuilds the profile view AND
+leaves an untouched lane's view standing; a follows-lane eviction drops its view, and the next
+read refolds it from the reset watermark.
+
+Gates: full `just ci` green, 278 node unit tests, exit code read before any pipe.

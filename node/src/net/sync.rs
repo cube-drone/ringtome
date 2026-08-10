@@ -15,7 +15,7 @@
 //! everything downstream, so nothing gets a row without earning it (PROJECT_PLAN, Iroh Protocol
 //! Mapping: "gate here!").
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use anyhow::{anyhow, bail, Context, Result};
 use iroh::endpoint::{Connection, SendStream};
@@ -451,6 +451,10 @@ pub(crate) async fn ingest_batch(
     let mut rejected = 0u64;
     let mut received = 0u64;
     let mut evicted_rows = 0u64;
+    // Which SERVICES lost rows: the view-drop below is scoped to the lanes an eviction
+    // actually invalidated, so a forged posts chain no longer forces the private registers to
+    // refold from genesis.
+    let mut evicted_services: BTreeSet<u32> = BTreeSet::new();
     let mut ledger_moved = false;
 
     // Strict decode + signature check; split identity vs content.
@@ -485,7 +489,9 @@ pub(crate) async fn ingest_batch(
     // attacker raced its forged prefix in ahead of the revoke) or quarantine chains it never
     // anchored (a genesis-cut repudiation anchors nothing on purpose); sweep the store against
     // the resolved tree before deciding admissions.
-    evicted_rows += evict_disproven_chains(db, &tree).await?;
+    let (swept_rows, swept_services) = evict_disproven_chains(db, &tree).await?;
+    evicted_rows += swept_rows;
+    evicted_services.extend(swept_services);
 
     // Phase 3: identity entries, per author in seq order.
     identity_candidates.sort_by_key(|e| (e.entry().chain.author, e.entry().seq));
@@ -510,6 +516,9 @@ pub(crate) async fn ingest_batch(
             received += stored_now.len() as u64;
             rejected += refused;
             evicted_rows += evicted;
+            if evicted > 0 {
+                evicted_services.insert(service::IDENTITY_PUBLIC);
+            }
             continue;
         }
         match tree.status(&author) {
@@ -599,6 +608,9 @@ pub(crate) async fn ingest_batch(
             received += stored_now.len() as u64;
             rejected += refused;
             evicted_rows += evicted;
+            if evicted > 0 {
+                evicted_services.insert(svc);
+            }
             continue;
         }
         match tree.status(&author) {
@@ -674,12 +686,15 @@ pub(crate) async fn ingest_batch(
         }
     }
 
-    // Evicted rows may have been folded into materialized views before they were disproven;
-    // rebuild the views from the surviving log.
+    // Evicted rows may have been folded into materialized views before they were disproven -
+    // so drop the views those chains fed and let each refold itself. Deliberately NOT
+    // `rebuild_views`: that re-validates every entry in the log, which on this peer-facing
+    // edge would let a stranger's revocation buy a whole-log signature replay (the 2026-08-10
+    // full-chain audit). See `imaol::refold_after_eviction`.
     if evicted_rows > 0 {
-        crate::record::imaol::rebuild_views(db)
+        crate::record::imaol::refold_after_eviction(db, &evicted_services)
             .await
-            .map_err(|e| anyhow!("rebuilding views after forgery eviction: {e}"))?;
+            .map_err(|e| anyhow!("refolding views after forgery eviction: {e}"))?;
     }
 
     // Equivocation evidence is the quarantine's clock and the crown is its judge: the moment
@@ -805,8 +820,10 @@ async fn clear_adjudicated_equivocations(db: &Db, tree: &Crown) -> Result<()> {
 /// Incomplete-but-consistent stored prefixes are left alone - nothing is proven against them,
 /// they may yet complete honestly on a later sync, and the seal-or-nothing gate keeps them from
 /// being over-trusted meanwhile.
-async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
+async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<u32>)> {
     let mut evicted = 0u64;
+    // The lanes that lost rows, so the caller drops only the views they fed.
+    let mut services: BTreeSet<u32> = BTreeSet::new();
 
     // Sweep one: content chains of the quarantined that no revocation anchored. The gate
     // refuses these as arrivals ("revoked keys on chains the revocation never anchored"), so
@@ -840,6 +857,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
                 .await
                 .context("evicting a quarantined key's unanchored chain")?;
             evicted += rows_affected;
+            services.insert(svc);
             // The evicted chain's memo row is a lie now; the memo forgets with it.
             if let (Some(memo), Some(root)) = (db.memo(), db.root()) {
                 let _ = crate::net::frontier::forget_chain(memo, root, &author_hex, svc).await;
@@ -891,6 +909,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
                 .context("evicting rows beyond a revocation ceiling")?;
             if rows_affected > 0 {
                 evicted += rows_affected;
+                services.insert(*svc);
                 tracing::warn!(
                     author = %author_hex,
                     service = *svc,
@@ -912,6 +931,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
             .await
             .context("evicting disproven chain")?;
         evicted += rows_affected;
+        services.insert(*svc);
         tracing::warn!(
             author = %author_hex,
             service = *svc,
@@ -920,7 +940,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<u64> {
             "stored chain contradicts its revocation anchor; evicted proven-forged rows"
         );
     }
-    Ok(evicted)
+    Ok((evicted, services))
 }
 
 /// Seal-or-nothing admission for a chain under a revocation ceiling. Under-ceiling entries are
