@@ -371,8 +371,17 @@ pub async fn save_version(
         .current()
         .ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
 
-    let view = materialize(db, keys).await?;
-    let doc = view.docs.get(&save.doc_id);
+    // ONE document, not the corpus (2026-08-10). This used to `materialize` every version of
+    // every document and thread all of their DAGs to look at one - so saving a note paid for
+    // resolving the whole notebook, on the path a human is waiting on. `load_doc` reads the
+    // same rows through `doc_versions_by_doc` and runs the same resolver; the fold itself
+    // (`catch_up`) is watermarked and incremental either way.
+    catch_up(db, keys).await?;
+    let doc = load_doc(db, &save.doc_id).await?;
+    // An unknown document loads EMPTY rather than absent, which answers every lookup below
+    // exactly as the old `Option<&Doc>` did - a genesis save has no parent to bounce against
+    // and no history to reuse a blob from.
+    let doc = (!doc.versions.is_empty()).then_some(&doc);
 
     // The no-op bounce: an ordinary save whose fingerprint, title, AND format match its own
     // parent. Format participates because conversion (plaintext → marquee, same bytes) is a
@@ -452,11 +461,18 @@ pub async fn retitle(
     let (epoch, epoch_key) = keys
         .current()
         .ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
-    let view = materialize(db, keys).await?;
-    let doc = view
-        .docs
-        .get(&doc_id)
-        .ok_or_else(|| AppError::NotFound(crate::msg!("record.documents.no-such-document", "no such document")))?;
+    // One document's DAG, not the corpus's (see save_version's twin note). Retitle genuinely
+    // needs the threading: `doc_heads` memoizes the resolved head and how MANY logical heads
+    // there are, but the new version must parent on every logical head by hash, and only the
+    // resolver knows those.
+    catch_up(db, keys).await?;
+    let doc = load_doc(db, &doc_id).await?;
+    if doc.versions.is_empty() {
+        return Err(AppError::NotFound(crate::msg!(
+            "record.documents.no-such-document",
+            "no such document"
+        )));
+    }
     let head = doc.display_head().ok_or_else(|| {
         AppError::NotFound(crate::msg!("record.documents.the-document-has-no-version", "the document has no version yet (still processing?)"))
     })?;
@@ -1519,17 +1535,21 @@ pub async fn search_rows(
     }
 
     if !stale.is_empty() {
-        let view = materialize(db, keys).await?;
+        // Per STALE document rather than the whole corpus: the loop already pays a body
+        // decrypt per document (`resolve`), so the threading may as well be scoped the same
+        // way - and a re-index of two changed notes stops threading two thousand unchanged
+        // ones. `catch_up` ran above via the `doc_heads` read that produced `stale`.
         for (id, fp, title) in stale {
             let mut tokens = std::collections::BTreeSet::new();
             tokenize_into(&title, &mut tokens);
             if let Some(annot_text) = annots.get(&id) {
                 tokenize_into(annot_text, &mut tokens);
             }
-            if let Some(doc) = view.docs.get(&id) {
+            let doc = load_doc(db, &id).await?;
+            if !doc.versions.is_empty() {
                 // Empty device-name map: conflict labels' device names are presentation,
                 // not content - close enough for an index either way.
-                let resolved = resolve(files, keys, doc, &BTreeMap::new()).await?;
+                let resolved = resolve(files, keys, &doc, &BTreeMap::new()).await?;
                 if let Some(body) = &resolved.body {
                     tokenize_into(body, &mut tokens);
                 }
@@ -2368,6 +2388,64 @@ mod tests {
         assert_eq!(head.header.title, "shopping");
         let body = read_body(&files, &keys, head).await.unwrap();
         assert_eq!(body.unwrap(), b"eggs");
+    }
+
+    /// The swap's correctness claim, pinned (2026-08-10): reading ONE document must give the
+    /// same DAG the whole-corpus materializer would have handed back for it. Save and retitle
+    /// took the corpus path until this test existed to make the narrow path's equivalence
+    /// checkable, so any future divergence between the two resolvers fails here rather than
+    /// silently changing what a save is parented on.
+    #[tokio::test]
+    async fn one_document_loads_exactly_what_the_whole_view_would_hold() {
+        let db = test_db().await;
+        let key = signer(1);
+        let other = signer(2);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+
+        // Two documents, so "the corpus" is genuinely bigger than "this document" - and the
+        // one under test is diverged across two devices, which is where the resolver does its
+        // interesting work (twins, echoes, logical heads).
+        let quiet = new_doc_id();
+        save(&db, &key, &keys, &files, quiet, vec![], "quiet", b"unrelated").await;
+
+        let doc_id = new_doc_id();
+        let v1 = save(&db, &key, &keys, &files, doc_id, vec![], "t", b"one").await;
+        let a = save(&db, &key, &keys, &files, doc_id, vec![v1], "t", b"one two").await;
+        let b = save(&db, &other, &keys, &files, doc_id, vec![v1], "t", b"one three").await;
+
+        let view = materialize(&db, &keys).await.unwrap();
+        let from_view = view.docs.get(&doc_id).unwrap();
+        let alone = load_doc(&db, &doc_id).await.unwrap();
+
+        assert!(from_view.diverged(), "the fixture actually forks");
+        assert_eq!(alone.lane, from_view.lane);
+        assert_eq!(
+            alone.versions.keys().collect::<Vec<_>>(),
+            from_view.versions.keys().collect::<Vec<_>>(),
+            "same versions"
+        );
+        let mut mine = alone.heads.clone();
+        let mut theirs = from_view.heads.clone();
+        mine.sort();
+        theirs.sort();
+        assert_eq!(mine, theirs, "same DAG heads");
+        assert_eq!(
+            alone.logical_heads, from_view.logical_heads,
+            "same logical heads - what a retitle parents on"
+        );
+        assert_eq!(
+            alone.display_head().map(|v| v.hash),
+            from_view.display_head().map(|v| v.hash),
+            "same display head"
+        );
+        assert!(alone.heads.contains(&a) && alone.heads.contains(&b));
+
+        // And a document nobody has written loads EMPTY rather than erroring - the shape the
+        // genesis save relies on now that it no longer asks the corpus.
+        let unknown = load_doc(&db, &new_doc_id()).await.unwrap();
+        assert!(unknown.versions.is_empty());
+        assert!(unknown.display_head().is_none());
     }
 
     #[tokio::test]

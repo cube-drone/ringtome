@@ -4220,3 +4220,45 @@ So the justification here is the asymptote and the profile, not this number. The
 is cheap and belongs to whoever next restarts that dev network on this binary: if idle CPU
 drops from 23-34% per node, the profile was right; if it does not, the profile named the wrong
 frame and the audit's remaining entries are where to look next.
+
+## 2026-08-10 — saving one note stops resolving the whole notebook
+
+The audit's second entry, and it was smaller than advertised. I had told Curtis this one
+"needs design thought, not a swap" - wrong, and wrong because I had not read far enough.
+
+`documents::materialize` does three things: catch the fold up (incremental, watermarked -
+fine), rehydrate every version of every document, then **thread each document's DAG**. The
+threading is the expensive part and the reason the function exists: versions form a graph
+rather than a line, so it computes the true heads, then the read-time mop-up that decides
+which of them carry distinct words - collapsing identical twins, folding ancestor echoes, the
+latter walking maximal common ancestors per head pair. That judgment is what the UI shows as
+"this note diverged", and it is deterministic over chain data so every device agrees without
+writing anything down.
+
+All three production callers want ONE document: `save_version` (the parent, for the no-op
+bounce; that doc's versions, for blob reuse), `retitle` (its display head and logical heads),
+and `search_rows` (one doc per stale index row). So saving a single note threaded the entire
+corpus, on the path a human waits on.
+
+And the memo already existed, twice over: `doc_versions` carries `doc_versions_by_doc`, and
+`load_doc` - already used by `refresh_doc_heads` - reads one document's rows through it and
+runs the same resolver, its own doc comment promising "identical to `materialize`'s slice for
+that doc (same rows, same resolver)". The fix was to call it: `catch_up` explicitly (which
+`materialize` had been doing implicitly, and dropping it would have left saves reading a stale
+fold), then `load_doc`. The `Option<&Doc>` shape became "an unknown document loads empty",
+which answers every lookup the old code made exactly as before - a genesis save has no parent
+to bounce against and no history to reuse a blob from.
+
+`search_rows` changed shape slightly and for the better: it materialized once for all stale
+documents, and now loads per stale document inside a loop that was already paying a body
+decrypt each time round. A re-index of two changed notes stops threading two thousand
+unchanged ones.
+
+Pinned by a new test in the resolver's own suite, in the same discipline as the frontier
+swap's: build a corpus with an unrelated document plus a genuinely diverged one, then assert
+`load_doc` and `materialize` agree on versions, DAG heads, logical heads and display head -
+so any future drift between the narrow and wide resolvers fails a test instead of quietly
+changing what a save is parented on. `materialize` stays: it is the honest whole-view read,
+and the tests and any genuine corpus reader still want it.
+
+Gates: full `just ci` green, exit code read before any pipe.
