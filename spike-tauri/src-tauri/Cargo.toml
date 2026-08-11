@@ -1,0 +1,20 @@
+[package]
+name = "spike-tauri"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# ITS OWN WORKSPACE, deliberately. Without this table, cargo walks up to the root
+# Cargo.toml, finds a workspace that does not list this package, and errors out - and the
+# fix must never be "add it to the members", because then `cargo test` and `just ci` would
+# start building Tauri and its webview stack on every run. The spike is built by hand, from
+# this directory, and the repo's gates never see it.
+[workspace]
+
+[build-dependencies]
+tauri-build = "2"
+
+[dependencies]
+# Tauri only. The probe harness is pure frontend and needs no IPC, so no plugins, and the
+# static file server is hand-rolled in main.rs rather than pulling axum into a spike.
+tauri = "2"

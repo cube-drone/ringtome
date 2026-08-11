@@ -4879,3 +4879,172 @@ named in `Unplugged`'s doc and wants its own mode rather than a change to this o
 Also worth writing down: the gate stops the **transport**, not the directory. An unplugged node
 still resolves serving records and still knows where its peers live. A test that needs a node to
 *forget* its peers wants different scissors.
+
+## 2026-08-11 — three documents about what kind of application this is
+
+A conversation stretch, no code. It started as "how hard would it be to run the node behind a Godot
+game?" and ended up reopening the packaging decision, so it produced [GODOT.md](GODOT.md),
+[DESKTOP.md](DESKTOP.md) and [MOBILE.md](MOBILE.md) rather than a commit. **Nothing is decided:**
+PROJECT_PLAN's *Delivery and Packaging* is unamended and still canon, and each new document says at
+the top whether it proposes superseding a section or merely records why an idea keeps returning.
+Registered in README's document list, which is the map.
+
+Five findings did the work, and four of them are corrections to canon rather than new ideas.
+
+### The Godot cost estimate was right about the renderer and wrong about the editor
+
+*The Client Story*'s strike prices a game-engine client at "a renderer for a few dozen tags, not a
+browser." That is literally true, better than it knew: `record/bake.rs` already parses Marquee in
+Rust for the publication media pre-pass, so a gdext client links the same crate and gets the AST
+free — the *second* implementation of the grammar in the tree, not a third.
+
+The editor is where the estimate misses, in the cheap direction. The intuitive objection is that a
+rich-text surface on `TextEdit` is a doomed multi-month project, and `js/doc/livemarquee.js` says
+why that objection does not apply: the document never stops being plain Marquee source, styling is
+projected onto the text, and "the editor's save machinery sees exactly the same thing a textarea
+would: a string." There is no rich-text model in the system. Side-by-side (`js/doc/editor.js` names
+all four modes) is a renderer plus a code editor with highlighting, and `CodeEdit` ships the
+highlighter hook and the completion popup that `js/doc/completions.js` hand-rolls.
+
+Which relocates the cost rather than removing it: with no single hard component left, what remains
+is the long tail of ordinary data-bound screens. **Concentrated cost a solo project can beat with
+one good decision; diffuse cost can only be declined** — so the shape is a narrow additive surface,
+never a second complete client. The strike stands regardless, on its own terms.
+
+### The Tauri rebuttal answers a question nobody asked
+
+*Desktop mode: local server + system browser, NOT Tauri* rejects Tauri because "the app is already
+a full HTTP server, so Tauri's core value (bridging a webview to native Rust) is a bridge we do not
+need." Nobody picks a webview shell for the IPC bridge — they pick it for being an application:
+one signed binary, its own window and dock identity, a tray, an updater. The section answered "do we
+need IPC to Rust?" when the live question is "do we need to be an app?", and its own floor case
+(auto-open the system browser, no GUI at all) is exactly the config-page feel that prompted this.
+
+The skew argument in the same section survives and sharpens: "webview skew is a documented misery"
+has a specific address here, which is **IndexedDB-on-WebKit versus the Dexie mirror**. That makes
+it an argument for bundling Chromium rather than for shipping no shell.
+
+Corrected the same day, when the two shells were compared properly rather than one-sidedly: Tauri on
+Windows is Chromium (WebView2 is evergreen), so the exposure is macOS and Linux, not everywhere; and
+*"we develop against real browsers and that is what ships"* splits in half, because the node serves
+the UI over HTTP and so day-to-day development is Chrome-at-localhost under either shell. Tauri costs
+the second half of that sentence, not the first. DESKTOP now carries the full comparison, the
+three integration shapes (Electron-sidecar, Tauri-sidecar, Tauri-in-process), and the one experiment
+that decides between them — **does the Dexie mirror survive WKWebView and WebKitGTK?** It plans
+Electron regardless, on the strength of "when something breaks at 11pm, somebody has already hit it
+and written it down," with the cost of skipping that experiment recorded rather than hidden.
+
+### "No background sidecar on iOS, period" is about sidecars
+
+*Phones: deferred, by design* concludes a phone "was always going to be a remote client of
+always-on nodes, not a p2p citizen." The premise is true and the inference is not: in-process
+linking lets a phone run the whole iroh stack. The conclusion survives on **background execution**
+grounds instead, and the distinction is load-bearing, because "impossible" says be a terminal while
+"foreground-only" says be an intermittent peer — which the sync design already accommodates (boot
+catch-up, the gravedigger, the outbox rounds).
+
+There is no middle option, checked in the code: `record/imaol::append` signs on the node, and
+`tests/conventions.rs` nails the `entries` table to local authorship plus the sync gate. No
+"client signs, node relays" door exists, so a phone is a peer or a terminal and nothing between.
+
+### The arithmetic, and why the design survives it
+
+A phone node up 30 minutes a day is p ≈ 0.02, so instantaneous availability needs k ≈ 150 replicas.
+Hopeless on that metric — recorded so nobody rediscovers it. It is also the wrong metric: followed
+content reads from the reader's own mirror, so phone-as-peer degrades to **staleness, not
+unavailability**, and *Rebroadcast: Pointer Plus Pinned Replica* plus *silence preserves, speech
+deletes* carry the rest. What has no mirror to hide behind: first contact, delivery to strangers
+(whose own third mitigation assumes friends' always-on nodes), the `/id/` public web face, and push.
+
+The reframe that makes it survivable, and the reason DESKTOP matters strategically: **the always-on
+node does not have to be infrastructure anyone sets up — it can be the user's own desktop with
+autostart at login.** That is what could let the federated half of the design become opt-in, which
+*Always-on nodes are needed either way* currently rules out.
+
+### What Dexie buys a local client
+
+Of the five benefits *The Browser Is a View* claims, one is really reactivity rather than storage
+(one `liveQuery` call site in `js/mirror.js`), offline reads are near-worthless when the node is
+zero hops away, instant-boot is node-side snapshot cost misattributed to the client, multi-tab
+coherence dies in a single-window app, and only "near-zero growth in bespoke read endpoints"
+survives untouched — and that belongs to the stream protocol. Electron removes any pressure to act;
+MOBILE carries the pluggable-store proposal, where WKWebView is mandatory. **A memory-only mirror
+would discharge the "forget this browser" obligations by construction**, which is a privacy
+simplification rather than a regression.
+
+### Also found
+
+`NOTES_APP.md` was deleted in `4684ccd` ("kill notes app") but is still linked from README's
+document list and cross-referenced four times in PROJECT_PLAN as the discovery narrative. Its README
+entry already says the canonical statements graduated to the Data Layer, so the pointers are
+probably what should go — left alone pending Curtis, since editing canon's cross-references is a
+call for the person who owns the canon.
+
+No gates run: nothing outside `*.md` moved.
+
+## 2026-08-11 — spike-tauri: a harness for the two questions Tauri has to pass
+
+[DESKTOP.md](DESKTOP.md) names one experiment as the thing that decides Electron vs. Tauri, and
+Curtis named a second the document had missed. `spike-tauri/` is the harness for both:
+
+1. **Does the Dexie mirror work in a platform webview?** IndexedDB-on-WebKit is the highest-risk
+   component in the client, and `js/mirror.js` is the whole read path.
+2. **Can a platform webview run `video-ingest`'s browser-side encode?** The laundering premise -
+   hostile decode happens in the browser, the server only ever sees our-encoder bytes - is what
+   keeps the Rust video surface down to `rav1d` plus the `image` crate. It is also the question
+   with a real chance of being fatal, and DESKTOP.md had not considered it.
+
+### What it is
+
+A Tauri v2 app that needs no `tauri-cli`, no npm, and no bundler: plain ES modules, `cargo run`.
+`SPIKE_ORIGIN` switches the page between `http://127.0.0.1:<ephemeral>` (the shape where the node
+serves the UI) and `tauri://localhost` (DESKTOP's stable-origin trick) - **both must be run**, since
+storage is origin-partitioned and WebCodecs wants a secure context, so neither result implies the
+other. `src-tauri` is its own cargo workspace, so `just ci` never builds Tauri.
+
+The probes test the real thing rather than a model of it. `sync-vendor.sh` copies the **same Dexie
+build the client ships** and video-ingest's actual `src/`, recording both versions in
+`ui/vendor/VENDORED.json` so a result stays interpretable months later. The IndexedDB probe uses the
+schema copied verbatim from `openMirror()` and performs what the live cache performs - clear-and-
+replace per kind in one `rw` transaction across seven stores, then bulkPut/bulkDelete deltas, then
+`liveQuery`. The video probe runs `ingestVideo()` itself.
+
+### Three decisions worth keeping
+
+**Decode and encode are reported separately**, because the two video failure modes are not equally
+bad and one verdict would hide the difference: no AV1 *encode* is DEGRADED (the `frames` lane is the
+designed answer; the cost is ~1.6MB becoming ~58MB), while no *decode* or no `AudioEncoder` is
+BLOCKING (nothing can be laundered at all). On Linux the second is a live risk, because WebKitGTK's
+media stack is GStreamer and H.264 is whatever the distro installed.
+
+**A fixture failure is not an ingest failure.** The generate-a-clip button uses MediaRecorder, which
+is itself under test, so its failure is reported in those words - the trap being a probe that blames
+the pipeline for the harness.
+
+**Outputs leave through `POST /save/`, not a download.** Webview download support is uneven; a POST
+is not, and getting encoded bytes onto disk is what lets them be cross-checked against the Rust
+decoders.
+
+Every probe also checks its output **re-decodes**: a lane that succeeds while emitting something
+unreadable is a failure we would otherwise discover on the server.
+
+### Verified, and not
+
+Verified on macOS: `cargo check`, `clippy` clean, `cargo build`, and the app boots - the harness
+serves `index.html`, `probe.js`, and both vendored trees; path traversal is refused (404); the save
+endpoint writes. **No probe has been run on any engine**, so every cell of the results matrix in
+`spike-tauri/README.md` is empty, and the README says so rather than implying otherwise. Windows is
+expected easy and uninteresting (WebView2 is Chromium); the old-LTS Linux row is the one most likely
+to produce a bad answer and the one worth the most effort to obtain.
+
+Scope boundary written down rather than assumed: this harness does **not** answer DESKTOP's
+WebSocket-through-a-custom-scheme wrinkle, which is about the stream rather than storage or codecs.
+
+### Also found
+
+`sample_media/` is in README's workspace table but does not exist - the same class of stale map
+entry as `NOTES_APP.md`, and both are still Curtis's call. `spike-tauri/` was added to that table
+in this pass.
+
+Gates: nothing in the workspace moved, so `just ci` was not run. The spike builds only from inside
+`spike-tauri/src-tauri`, by design.

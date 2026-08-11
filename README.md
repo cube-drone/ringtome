@@ -40,6 +40,19 @@ federated, unapologetically Old Internet.
   the pragmatism rules; the patterns every new file is expected to hold.
 - [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
   a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
+- **The delivery-shape trio** — what kind of application this is, one document per candidate
+  surface. All three are explorations that **disagree with canon on purpose**: PROJECT_PLAN's
+  *Delivery and Packaging* is still the decided position, and each document states plainly whether
+  it proposes superseding a section or merely records why an idea keeps returning. Read them
+  together; they constrain each other.
+  - [`DESKTOP.md`](DESKTOP.md) — an Electron shell around the existing node binary, with the
+    rollout and the recurring signing costs. Proposes superseding *Desktop mode: local server and
+    system browser, NOT Tauri*.
+  - [`MOBILE.md`](MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
+    deliberately narrow UI. Corrects a factual premise in *Phones: deferred, by design* and
+    carries the availability arithmetic for a network with no always-on infrastructure.
+  - [`GODOT.md`](GODOT.md) — the game-engine client, still struck from the roadmap by *The Client
+    Story*, with the properly-costed argument for the day a gamey product layer asks for it.
 - [`API_OLD.md`](API_OLD.md) — salvage report on the prior codebase: patterns kept, patterns cut,
   cautionary tales.
 
@@ -92,6 +105,7 @@ PROJECT_PLAN section.
 | `node/integration/` | The JS integration suite: boots real nodes, drives real HTTP, proves multi-node scenarios (`just integration`). |
 | `spec/` | Test vectors ("this logical value MUST produce exactly these bytes"). Prose specs land here too, eventually. |
 | `video-ingest/` | Spike (kept deliberately): browser-side video normalization to safe intermediary formats — the reference implementation and input contract for the upload UI. See its README. |
+| `spike-tauri/` | Spike: does a Tauri webview support the two features the client cannot lose — the Dexie mirror and `video-ingest`'s browser-side encode? A probe harness that produces a fillable results matrix; its own cargo workspace, so `just ci` never builds it. See [`spike-tauri/README.md`](spike-tauri/README.md) and [`DESKTOP.md`](DESKTOP.md). |
 | `sample_media/` | Fixture media for exercising the ingest pipeline. |
 | `api_old/` | The previous-generation codebase. Reference only; see the autopsy ([`API_OLD.md`](API_OLD.md)). |
 
