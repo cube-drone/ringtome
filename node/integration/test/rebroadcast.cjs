@@ -14,19 +14,19 @@
     own node), so a reader syncing a foreign sharer's pointers journaled nothing at all. Same-node
     sharing worked, which is exactly the case a single-node test would have proven.
 
-    THE HEADLINE CASE IS PENDING, and finding out why was the point of writing this. C cannot
-    journal a row for a document she has no copy of: a feed row carries the title, format and
-    stamps, and those live in A's document, which C has never fetched. Nothing relays A's shelf
-    to C - sync is per identity, and C subscribes to B, not to A. So the cross-node share is
-    blocked on the FRAGMENT LEDGER (PROJECT_PLAN, What travels with a share): the document
-    fragment, cached with an origin, revalidated along the edge it arrived by.
+    The headline case was pending for a while, and why is worth keeping: C cannot journal a row
+    for a document she has no copy of, because a feed row carries the title and format and those
+    live in A's document. Nothing relays A's shelf to C - sync is per identity, and C subscribes
+    to B, not to A. C is supposed to get a FRAGMENT, not a subscription, because a chain pin that
+    propagated with viewing would degrade a dense network to every persona synced to every
+    computer.
 
-    That is a design answer, not a bug: the pin is deliberately the sharer's obligation and must
-    never propagate with viewing, or a dense network degrades to every persona synced to every
-    computer. C is supposed to get a FRAGMENT, not a subscription. It just is not built.
+    So the fragment ledger is what makes this pass: C asks B - the ORIGIN, the edge the pointer
+    arrived by - for exactly one document, verifies the author's signature and delegation path
+    offline, and holds it without ever syncing A.
 
-    When it is, the pending test below goes live and this file gains the node-death case - kill
-    A and B, assert C still serves - which is the whole acceptance test for that slice.
+    Still to come here: the node-death case (kill A and B, assert C still serves from its own
+    fragment), which is what turns "C can fetch it" into "the network keeps it alive".
 */
 const assert = require("node:assert");
 const dns = require("node:dns");
@@ -106,8 +106,11 @@ const base58 = async (host) => {
         const published = await alice(`api/identity/${aliceRoot}/docs/${doc.id}/publish`, {
             method: "POST",
         });
-        assert.equal(published.status, 200, await published.text());
-        post = doc.id;
+        // The PUBLIC document id, which is not the private one: publishing mints a new document
+        // on the public lane (`post_id`), and the private draft keeps its own id. Sharing the
+        // draft's id asks every origin for a document that exists on nobody's public shelf.
+        post = JSON.parse(await published.text()).post_id;
+        assert.ok(post, "publish returned a public post id");
 
         assert.ok(
             await settle(async () => {
@@ -131,9 +134,7 @@ const base58 = async (host) => {
         );
     });
 
-    // PENDING until the fragment ledger lands - see the header. The assertion is written out
-    // rather than described, so turning it on is deleting one line.
-    it.skip("a rebroadcast-only follower receives a post from an author they never followed", async () => {
+    it("a rebroadcast-only follower receives a post from an author they never followed", async () => {
         const row = await settle(async () => {
             const rows = await feedOf(cleoRoot, HOST_C);
             return rows.find((r) => r.title === "worth passing on") || null;

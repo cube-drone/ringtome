@@ -15,6 +15,7 @@
 pub mod adopt;
 pub mod bodies;
 pub mod deliver;
+pub mod fragment;
 pub mod demand;
 pub mod discovery;
 pub mod frontier;

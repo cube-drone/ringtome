@@ -1177,6 +1177,24 @@ pub const BACKFILL_BATCH: u32 = 256;
 ///
 /// Ephemeral chains are excluded: "the journal never holds inbox cargo" has to be true on
 /// every path, and the backfill is the one that would otherwise quietly re-import it.
+/// One stored entry by its hash - the identity every entry has, globally unique because the hash
+/// covers the chain id and seq (`entries_by_hash`).
+///
+/// Lives here because `entries` is this module's table (tests/conventions.rs). The fragment door
+/// needs it to hand over a document's header exactly as its author signed it.
+pub async fn entry_by_hash(db: &Db, hash: &[u8; 32]) -> Result<Option<SignedEntry>, AppError> {
+    let row: Option<(Vec<u8>,)> = db
+        .fetch_optional("SELECT bytes FROM entries WHERE entry_hash = ?1", (hash.to_vec(),))
+        .await
+        .context("reading an entry by hash")
+        .map_err(AppError::Internal)?;
+    row.map(|(bytes,)| {
+        SignedEntry::decode(&bytes)
+            .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))
+    })
+    .transpose()
+}
+
 pub async fn entry_bytes_page(
     db: &Db,
     limit: u32,

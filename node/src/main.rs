@@ -17,6 +17,7 @@ mod config;
 mod db;
 mod error;
 mod fanout;
+mod fragments;
 mod files;
 mod identity;
 mod inbox;

@@ -18,6 +18,7 @@ mod entry;
 mod error;
 pub mod crown;
 pub mod deliver;
+pub mod fragment;
 pub mod pow;
 pub mod registry;
 pub mod sync;

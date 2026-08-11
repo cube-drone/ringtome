@@ -4581,3 +4581,85 @@ The rule this leaves behind, for any scanner whose job is to find things: **a fi
 nothing is indistinguishable from nothing being there, so it needs a fixture that proves it can
 still find.** Every pattern in this file that matches source across a line break is now one
 rustfmt decision away from the same silence.
+
+## 2026-08-11 — the fragment ledger: a reader holds one document, not a subscription
+
+The last piece of the rebroadcast arc, and the one the design had been deferring since the
+pointer shipped. A reader following a sharer holds "B shared A's document D" and needs D's words.
+The obvious implementation - start syncing A - is the one thing the design forbids, and the
+reason is worth restating because it is what the whole slice is shaped around: **a chain pin must
+never propagate with viewing.** In a dense network everyone eventually sees everything once, so a
+subscription created by *looking* degrades to every public persona synced to every computer.
+
+So the reader gets a **fragment**: the author's exact signed entry plus its blobs, fetched from
+the ORIGIN that handed over the pointer, verified offline, and held with no sync edge to the
+author at all.
+
+### What shipped
+
+`proto::fragment` is a one-request/one-answer ALPN. Four message types where three would have
+compiled, and the fourth is the interesting one: **`Gone` and `Unknown` are different words.**
+*Gone* is a fact about the document - withdrawn, drop it. *Unknown* is a fact about the node -
+ask somebody else. Collapsing them would make a reader delete a live share every time it asked a
+node that simply did not carry it.
+
+`verify_fragment` checks the document id against the request, which is not ceremony: without it
+"fetch what B shared" becomes "fetch whatever B feels like", and a hostile origin could answer
+with a genuinely-signed document by the same author that is not the one the pointer endorsed.
+The delegation walk moved out of `deliver::verify_claim` into a shared `walk_auth_path` - both
+make the same offline claim about somebody else's key, and a second copy is a second place for
+the "is not a chain from the claimed root" check to go missing.
+
+The door **serves only what it already carries**, and never fetches on demand to satisfy a
+stranger - that would make any node a lever for pulling arbitrary content onto any other. It
+answers from its own copy of the author's chain first, then from its own fragment ledger, which
+is what lets a fragment relay one hop further and survive both the author and the sharer going
+dark.
+
+Bodies ride the existing lane: `bodies::want` is a new additive note, because `reconcile`
+replaces a set computed from held chains and a fragment's body has no such walk behind it. Without
+it a shared document's words would have depended on one fetch succeeding, with no retry, forever.
+
+### Four failed CI runs, and where the failures actually were
+
+Every one was in a **seam**, and none in the parts that looked hard. The verification, the
+framing, the `Gone`/`Unknown` design - all correct first time. What broke:
+
+1. **The conventions cop caught a layering violation**: a raw `SELECT ... FROM entries` written
+   into `record/documents.rs`, a table owned by `record/imaol.rs`. Fixed where it belonged
+   (`imaol::entry_by_hash`), not where it was convenient.
+2. **The candidate list was rebuilt from `stored_tree_leaves` alone** - the one address source
+   that carries no addressing information, so every dial failed with "No addressing information
+   available". `net::deliver::candidates` had solved this fifteen feet away, putting `fetched_via`
+   first. Now shared.
+3. **The sharer's own node dialled itself**, because it runs the same journaling path and the
+   origin is itself. `net::deliver` already had the housemate answer: do it in-process.
+4. **The test shared the wrong id.** A private `doc_id` rather than the public `post_id` that
+   publishing mints - so every origin was asked for a document that exists on nobody's public
+   shelf, and correctly answered `Unknown`. `repudiation.cjs` had the right idiom on line 399.
+
+The fourth one hid behind an instrumentation gap: `journalable` returned `None` on `Unknown`
+**silently**, so "every origin says it does not carry that" looked exactly like "the fold never
+ran". Adding three debug lines - does this identity have a share chain, how many readers and
+pointers, how much of the author's shelf do we hold - found it in one cycle after three cycles of
+reading code. Those lines stayed, and `Unknown`/`Gone` now log too.
+
+The lesson, recorded because it recurred all session: **when a distributed path fails twice,
+instrument it rather than re-read it.** Three of the four fixes were correct and insufficient,
+which is the signature of debugging by inspection on a path with real concurrency in it.
+
+### What it proves, and what it does not
+
+`integration/test/rebroadcast.cjs` now passes its headline case across three nodes in 259ms: Cleo
+follows only Bob, has never heard of Alice, syncs no chain of hers, and ends up with Alice's post
+in her feed - credited to Alice, bylined via Bob. No new sync edge anywhere.
+
+Not proven yet: that the network **keeps** it. The node-death case - kill A and B, assert C still
+serves from its own fragment - needs a self-hosting harness (the shared four nodes cannot be
+stopped mid-run without breaking every other spec; `mainline.cjs` shows the shape). That test is
+what turns "C can fetch it" into "the network keeps it alive", and it is the next thing to write.
+
+One residual, small but visible: a fragment has no folded chain stamps of its own, so its
+`published_ms` is the fetch moment. In a feed ordered by publication date a shared post will sort
+by when it arrived rather than when it was written, which is wrong and will want the author's
+claimed stamp carried in the fragment.

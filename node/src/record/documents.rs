@@ -1097,6 +1097,39 @@ pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, 
     Ok(changed)
 }
 
+/// One public document's header entry, as its author signed it.
+///
+/// The exact bytes, never re-encoded: a fragment travels as the author's own signature over the
+/// author's own bytes, and re-serializing would break the one property that makes a relay
+/// harmless (`net::fragment`).
+pub async fn public_header_entry(
+    db: &Db,
+    doc_id: &[u8; 16],
+) -> Result<Option<SignedEntry>, AppError> {
+    let Some(head) = public_head(db, doc_id).await? else {
+        return Ok(None);
+    };
+    crate::record::imaol::entry_by_hash(db, &head.head).await
+}
+
+/// The `authorize` entries proving `entry`'s signer speaks for `root`, root first.
+///
+/// The same walk `outbox::auth_path` assembles for a delivered notice, from the same identity
+/// chain - a fragment has to carry it for the same reason an envelope does: the recipient has
+/// no copy of this author's key tree and must verify from the bytes in hand.
+pub async fn auth_path_for(
+    db: &Db,
+    root_hex: &str,
+    entry: &SignedEntry,
+) -> Result<Vec<Vec<u8>>, AppError> {
+    let Some(root) = crate::pubkey::decode(root_hex) else {
+        return Ok(Vec::new());
+    };
+    crate::outbox::auth_path_from(db, &root, &entry.entry().chain.author)
+        .await
+        .map_err(AppError::Internal)
+}
+
 /// Withdraw one public document: append the tombstone to the persona's POSTS chain.
 ///
 /// Public, unlike `Documents::delete`, which writes an epoch-encrypted set-add on the doc-meta

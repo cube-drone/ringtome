@@ -51,6 +51,7 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str) -> Result<()> {
     {
         return Ok(());
     }
+    tracing::debug!(sharer = %sharer_root, "rebroadcast fold: this identity has a share chain");
     let Some(db) = state
         .user_dbs
         .get(sharer_root)

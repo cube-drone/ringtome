@@ -184,12 +184,13 @@ async fn shelf_page(state: &AppState, author_root: &str) -> Result<Vec<JournalRo
 }
 
 /// One post's journalable facts, computed once per move rather than once per (reader x post).
-struct JournalRow {
-    doc_id_hex: String,
-    title: String,
-    format: String,
-    published_ms: i64,
-    updated_ms: i64,
+#[derive(Clone)]
+pub(crate) struct JournalRow {
+    pub(crate) doc_id_hex: String,
+    pub(crate) title: String,
+    pub(crate) format: String,
+    pub(crate) published_ms: i64,
+    pub(crate) updated_ms: i64,
 }
 
 /// Write (reader x post) journal rows as chunked multi-row upserts: one statement - one round
@@ -377,12 +378,21 @@ pub async fn journal_shares_by(
 ) {
     let readers = match share_readers(state, sharer_root).await {
         Ok(r) if !r.is_empty() => r,
-        Ok(_) => return, // nobody here follows them for shares - the common case
+        Ok(_) => {
+            tracing::debug!(sharer = %sharer_root, "share fold: nobody here follows their shares");
+            return;
+        }
         Err(e) => {
             tracing::debug!(sharer = %sharer_root, error = ?e, "share readers lookup failed");
             return;
         }
     };
+    tracing::debug!(
+        sharer = %sharer_root,
+        readers = readers.len(),
+        pointers = pointers.len(),
+        "share fold: resolving shared documents"
+    );
 
     // Group by author so each author's shelf is opened once, however many of their documents
     // this sharer carries.
@@ -393,32 +403,38 @@ pub async fn journal_shares_by(
     }
 
     for (author_root, rows) in by_author {
-        let page = match shelf_page(state, author_root).await {
-            Ok(p) if !p.is_empty() => p,
-            // We hold nothing of this author yet. Correct and expected on a reader's node: the
-            // pointer says what was shared, and resolving it to content is the fragment
-            // ledger's job, which is not built. The row is simply not written until it can be.
-            Ok(_) => continue,
-            Err(e) => {
-                tracing::debug!(author = %author_root, error = ?e, "shelf read failed for a share");
+        // Our own copy of the author's shelf, when we have one - the case where we already
+        // follow them, or where one of our own personas shared them and the pin keeps them
+        // current. Empty is the NORMAL case on a reader's node, and the fragment path below is
+        // the whole point of this feature: a reader gets one document, never a subscription.
+        let page = shelf_page(state, author_root).await.unwrap_or_default();
+        tracing::debug!(
+            author = %author_root, held = page.len(), wanted = rows.len(),
+            "share fold: author shelf"
+        );
+
+        let mut wanted: Vec<JournalRow> = Vec::new();
+        for r in &rows {
+            let doc_hex = hex::encode(r.doc_id);
+            if let Some(held) = page.iter().find(|p| p.doc_id_hex == doc_hex) {
+                wanted.push(held.clone());
                 continue;
             }
-        };
-        let wanted: Vec<&JournalRow> = rows
-            .iter()
-            .filter_map(|r| {
-                let doc_hex = hex::encode(r.doc_id);
-                page.iter().find(|p| p.doc_id_hex == doc_hex)
-            })
-            .collect();
+            if let Some(row) =
+                crate::fragments::journalable(state, sharer_root, author_root, &r.doc_id).await
+            {
+                wanted.push(row);
+            }
+        }
         if wanted.is_empty() {
             continue;
         }
+        let refs: Vec<&JournalRow> = wanted.iter().collect();
         if let Err(e) = journal_rows(
             &state.node_db,
             author_root,
             &readers,
-            &wanted,
+            &refs,
             Some(sharer_root),
         )
         .await

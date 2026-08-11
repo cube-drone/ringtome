@@ -418,14 +418,28 @@ pub struct VerifiedClaim {
 ///
 /// The cost of being wrong is one row in a bounded, prunable list, which is the whole reason
 /// this trade is available here and nowhere else in the system.
-pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError> {
-    signed.verify()?;
-    let envelope = signed.envelope();
-
-    // The delegation walk. An empty path means the root signed for itself, which is legal and
-    // is what a brand-new persona's founding key does.
-    let mut speaks_for = envelope.sender_root;
-    for rung in &envelope.auth_path {
+/// Walk a chain of `authorize` entries from `root` down to `signer`, proving **the root key
+/// signed a statement delegating to a key that (transitively) delegated to this signer** - with
+/// no fetches, from the bytes in hand.
+///
+/// Shared by every offline claim this protocol makes about somebody else's key: a delivered
+/// notice ([`verify_claim`]) and a shared document ([`crate::fragment`]). One walk, because a
+/// second copy of it is a second place for the "is not a chain from the claimed root" check to
+/// go missing - and that check is the whole proof.
+///
+/// An empty path means the root signed for itself, which is legal and is what a brand-new
+/// persona's founding key does.
+///
+/// What it does NOT prove, stated where the walk is rather than at one call site: that the leaf
+/// was still authorized at the moment it signed. Revocation is not visible from a path, and
+/// every caller here has accepted that trade for its own reason.
+pub fn walk_auth_path(
+    root: [u8; 32],
+    auth_path: &[Vec<u8>],
+    signer: [u8; 32],
+) -> Result<(), ProtoError> {
+    let mut speaks_for = root;
+    for rung in auth_path {
         let entry = crate::SignedEntry::decode(rung)?;
         if entry.entry().chain.author != speaks_for {
             return Err(ProtoError::ChainViolation(
@@ -445,11 +459,19 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
         };
         speaks_for = crate::Authorize::decode(payload)?.child;
     }
-    if speaks_for != envelope.signer {
+    if speaks_for != signer {
         return Err(ProtoError::ChainViolation(
             "authorization path does not reach the signer",
         ));
     }
+    Ok(())
+}
+
+pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError> {
+    signed.verify()?;
+    let envelope = signed.envelope();
+
+    walk_auth_path(envelope.sender_root, &envelope.auth_path, envelope.signer)?;
 
     // The evidence: the sender's own signed entry, which must be theirs and must name the
     // recipient. Without this a notice is a bare assertion, and only first-contact gets to be

@@ -224,6 +224,41 @@ CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
 -- listing never touches the table itself.
 CREATE INDEX feed_journal_by_author ON feed_journal (author_root, doc_id);
 
+-- Documents this node holds WITHOUT holding their author: the fragment ledger (PROJECT_PLAN,
+-- What travels with a share).
+--
+-- A reader following a sharer gets pointers - "B shared A's document D" - and needs D's words
+-- without subscribing to A, because a chain pin must never propagate with viewing. So the node
+-- fetches the one document, from the ORIGIN that handed it the pointer, and remembers three
+-- things about it: what it is, who to ask again, and when it last checked.
+--
+-- `origin_root` is the revalidation edge and the reason retraction cascades: the author
+-- tombstones, the sharer's pin sees it, the sharer answers Gone, this row dies, and anyone who
+-- fetched from US hears the same on their next pass. Every edge in that tree already exists.
+--
+-- Disposable like every memo, with one wrinkle: it holds the author's exact signed entry, which
+-- is the only copy of that document on this node (its author's chain is not here). Losing the
+-- table loses nothing that cannot be re-fetched from the origin, and gains nothing by being
+-- kept if the pointer that wanted it is gone.
+CREATE TABLE fragments (
+    author_root   TEXT    NOT NULL,  -- whose document it is
+    doc_id        TEXT    NOT NULL,  -- hex
+    origin_root   TEXT    NOT NULL,  -- who handed us the pointer; who we revalidate against
+    version       TEXT    NOT NULL,  -- hex entry hash: the version's identity
+    entry         BLOB    NOT NULL,  -- the author's exact signed bytes, provenance intact
+    auth_path     BLOB    NOT NULL,  -- the delegation proof, travelling WITH the entry so this
+                                     --   node can relay a fragment it can no longer re-derive
+                                     --   (it does not hold the author's identity chain either)
+    title         TEXT    NOT NULL,  -- denormalized for journaling, like feed_journal's own
+    format        TEXT,
+    body_hash     BLOB    NOT NULL,  -- the blob the words live in (fetched separately)
+    fetched_ms    INTEGER NOT NULL,
+    checked_ms    INTEGER NOT NULL,  -- last successful revalidation against the origin
+    PRIMARY KEY (author_root, doc_id)
+);
+-- The revalidation sweep asks "what is due", oldest check first.
+CREATE INDEX fragments_by_checked ON fragments (checked_ms);
+
 -- Why this node fronts a foreign identity it was never asked to follow: one of its personas
 -- rebroadcast a document of theirs (PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica).
 --

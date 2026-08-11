@@ -60,6 +60,7 @@ pub async fn build_endpoint(
             crate::files::BLOB_ALPN.to_vec(),
             crate::net::adopt::ADOPT_ALPN.to_vec(),
             ringtome_proto::deliver::DELIVER_ALPN.to_vec(),
+            ringtome_proto::fragment::FRAGMENT_ALPN.to_vec(),
         ])
         .bind()
         .await
@@ -121,6 +122,10 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                         } else if conn.alpn() == ringtome_proto::deliver::DELIVER_ALPN {
                             if let Err(e) = crate::net::deliver::serve(conn, state).await {
                                 tracing::warn!(%remote, "delivery connection ended with error: {e:#}");
+                            }
+                        } else if conn.alpn() == ringtome_proto::fragment::FRAGMENT_ALPN {
+                            if let Err(e) = crate::net::fragment::serve(conn, state).await {
+                                tracing::warn!(%remote, "fragment connection ended with error: {e:#}");
                             }
                         } else if let Err(e) = crate::net::sync::serve(conn, state).await {
                             tracing::warn!(%remote, "sync connection ended with error: {e:#}");

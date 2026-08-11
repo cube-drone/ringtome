@@ -33,6 +33,29 @@ use crate::AppState;
 /// at whole), and the backoff ladder already paces how often a stubborn persona retries.
 const ASKER_CANDIDATE_CAP: i64 = 64;
 
+/// Note ONE blob as wanted, additively.
+///
+/// The counterpart to [`reconcile`], which replaces a whole persona's set from a body walk over
+/// chains this node holds. A fragment's body has no such walk behind it - the document's author
+/// is not synced here at all (`fragments`), so nothing would ever compute it into a missing set.
+/// Without this, a shared document's words would depend entirely on the one direct fetch at
+/// journal time succeeding, with no retry, forever.
+///
+/// Idempotent, and it never disturbs an existing row's backoff: re-noting a blob already wanted
+/// must not reset the ladder that is pacing it.
+pub async fn want(node_db: &Db, root_hex: &str, blob_hash: &[u8; 32]) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO missing_bodies (root_pubkey, blob_hash, first_noted_ms)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT (root_pubkey, blob_hash) DO NOTHING",
+            (root_hex, blob_hash.to_vec(), now_ms()),
+        )
+        .await
+        .context("noting a wanted body")?;
+    Ok(())
+}
+
 /// Replace one persona's ledger rows with the freshly computed missing set. Called by the
 /// body walk after every attempt, with whatever is STILL absent - so satisfied rows clear on
 /// arrival regardless of which path the bytes took, and rows whose documents vanished

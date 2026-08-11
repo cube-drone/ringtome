@@ -235,7 +235,14 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
     Outcome::Unreachable
 }
 
-async fn candidates(state: &AppState, recipient_root: &str) -> Vec<String> {
+/// Where to try reaching one identity, liveliest guess first: the endpoint that actually served
+/// us their content, then the root signing for itself, then their known device leaves.
+///
+/// Shared with `net::fragment` (2026-08-11): asking an origin for a document is the same
+/// addressing problem as knocking on a door, and the first version of the fragment fetch
+/// rebuilt it from `stored_tree_leaves` alone - which is the one source that carries no
+/// addressing information, so every dial failed with "No addressing information available".
+pub(crate) async fn candidates(state: &AppState, recipient_root: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut push = |key: String| {
         if !key.is_empty() && !out.contains(&key) && out.len() < CANDIDATE_CAP {

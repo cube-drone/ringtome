@@ -104,6 +104,14 @@ async fn solve_blocking(challenge: [u8; 32], bits: u32) -> Result<Vec<u8>> {
 
 /// The `authorize` entries from `root` down to `leaf`, root first. Empty when the root signs
 /// for itself, which is what a single-node persona's founding key does.
+pub(crate) async fn auth_path_from(
+    db: &Db,
+    root: &[u8; 32],
+    leaf: &[u8; 32],
+) -> Result<Vec<Vec<u8>>> {
+    auth_path(db, root, leaf).await
+}
+
 async fn auth_path(db: &Db, root: &[u8; 32], leaf: &[u8; 32]) -> Result<Vec<Vec<u8>>> {
     if root == leaf {
         return Ok(Vec::new());

@@ -34,22 +34,19 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets
 * Make a whole bucket public in one fell swoop.
-* **Rebroadcast — the current arc.** Design settled 2026-08-10 (PROJECT_PLAN, *Rebroadcast:
-  Pointer Plus Pinned Replica* + its two network subsections). Shipped so far: the pointer
-  chain and fold, the pin (a share holds its author in the sync worklist), and both notice
-  halves (delivered envelope kind + derived fold, keyed per document). Remaining, in the order
-  the design stacks:
-  * **Public tombstone on POSTS** - deletion today is a private doc-meta fact that propagates
-    to nobody; nothing downstream works until deletion is speech.
-  * **Per-post media budget at publish** (~10MB, one big file or many small ones) - what makes
-    a fragment bounded by construction; enforced in the bake/publish pre-pass, where the blob
-    sizes are already in hand.
-  * **The edit window** - fold rule, claimed-delta judged; freezes old content so fragments
-    never re-check it.
-  * **Delete memo + bloom summaries** - the one-bit-forever half, wrong in one direction only.
-  * **Fragment ledger + reader-side fetch** - cache-with-origin, revalidated along the arrival
-    edge (never the author; pins never propagate with viewing); feeds the existing body-walk.
-  * **Feed** - journal shared docs to rebroadcast-band followers; `via_root` is waiting.
+* **Rebroadcast — shipped end to end 2026-08-11** (PROJECT_PLAN, *Rebroadcast: Pointer Plus
+  Pinned Replica* and its two network subsections; HISTORY has the arc and the fragment slice).
+  Pointer, pin, both notice halves, public tombstone, media budget, feed with `via_root`, and
+  the fragment ledger. What is left:
+  * **The node-death test** - kill the author's and the sharer's nodes, assert a reader still
+    serves the share from its own fragment. Needs a self-hosting harness: the shared four nodes
+    cannot be stopped mid-run without breaking every other spec (`mainline.cjs` shows the shape
+    - spawn/waitHealthy/stopNode, pointed at local discovery rather than the real DHT).
+  * **A fragment carries no claimed stamp**, so its feed row sorts by when it arrived rather
+    than when it was written. Wants the author's `genesis_ms`/`head_ms` in the fragment.
+  * **The edit window** and **delete memo + bloom summaries** - the two trim slices that bound
+    what a node must remember forever. Designed, unbuilt.
+  * **UI**: nothing renders `via`/`via_name`, and there is no share button.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket
