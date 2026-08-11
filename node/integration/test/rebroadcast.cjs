@@ -76,7 +76,7 @@ const base58 = async (host) => {
 (HOST_B && HOST_C ? describe : describe.skip)("a share reaches past the author", function () {
     this.timeout(180000);
 
-    let alice, aliceRoot, bob, bobRoot, cleo, cleoRoot, post;
+    let alice, aliceRoot, bob, bobRoot, cleo, cleoRoot, post, draft, draftVersion;
 
     before(async function () {
         alice = await makeUserFetch({ prefix: "rbalice" });
@@ -103,6 +103,8 @@ const base58 = async (host) => {
 
         // Alice posts, and it reaches Bob.
         const doc = await createDoc(alice, aliceRoot, "worth passing on", "words from alice");
+        draft = doc.id;
+        draftVersion = doc.v;
         const published = await alice(`api/identity/${aliceRoot}/docs/${doc.id}/publish`, {
             method: "POST",
         });
@@ -163,6 +165,93 @@ const base58 = async (host) => {
             !rows.some((r) => r.title === "bobs own musings"),
             "a rebroadcast band is not a follow"
         );
+    });
+
+    it("an edit by the author reaches a reader who holds only a fragment", async () => {
+        // Cleo holds a FRAGMENT of Alice's post - she syncs nothing of Alice's. The only way an
+        // edit reaches her is the revalidation sweep asking Bob again, which is the whole point
+        // of the sweep existing.
+        const edited = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
+            method: "PUT",
+            body: JSON.stringify({
+                title: "worth passing on (revised)",
+                body: "words from alice, thought better of",
+                parents: [draftVersion],
+                format: "plaintext",
+            }),
+        });
+        assert.equal(edited.status, 200, await edited.text());
+        const republished = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, {
+            method: "POST",
+        });
+        // Read ONCE: a Response body is single-use, and passing `await res.text()` as an
+        // assertion message consumes it even when the assertion passes.
+        const republishedBody = await republished.text();
+        assert.equal(republished.status, 200, republishedBody);
+        // Re-publishing is a new VERSION of the same post, never a new post: the note remembers
+        // its twin through `published_as`, and `save_public_text` parents onto that head. If this
+        // ever mints a fresh id, every share of the old one points at a document its author no
+        // longer serves - which reads downstream as a DELETION, and silently un-shares the post
+        // for everyone the moment its author fixes a typo.
+        assert.equal(
+            JSON.parse(republishedBody).post_id,
+            post,
+            "a republish versions the post, it does not replace it"
+        );
+
+        const seen = await settle(async () => {
+            const rows = await feedOf(cleoRoot, HOST_C);
+            const row = rows.find((r) => r.doc_id === post);
+            return row && row.title.includes("revised") ? row : null;
+        }, 160);
+        assert.ok(seen, "the revised title reached a fragment holder");
+    });
+
+    it("deleting the DRAFT leaves the published post standing", async () => {
+        // A note and its post are two documents (Copy, Don't Flip). Housekeeping in your own
+        // drawer must not recall something you published - that is a separate, public act.
+        const deleted = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
+            method: "DELETE",
+        });
+        assert.equal(deleted.status, 200, await deleted.text());
+
+        await new Promise((r) => setTimeout(r, 4000));
+        const rows = await feedOf(cleoRoot, HOST_C);
+        assert.ok(
+            rows.some((r) => r.doc_id === post),
+            "the post is still on the network - only the draft went"
+        );
+    });
+
+    it("unpublishing reaches a reader who holds only a fragment", async () => {
+        // The cascade, end to end and across three nodes: Alice takes the POST down, it leaves
+        // her shelf, Bob's copy of her chain says so, Bob answers Gone, and Cleo - who has never
+        // synced Alice at all - drops both the fragment and the feed row that pointed at it.
+        const deleted = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+            method: "DELETE",
+        });
+        assert.equal(deleted.status, 200, await deleted.text());
+
+        const gone = await settle(async () => {
+            const rows = await feedOf(cleoRoot, HOST_C);
+            return rows.some((r) => r.doc_id === post) ? null : true;
+        }, 160);
+        assert.ok(gone, "the withdrawn post left a fragment holder's feed");
+
+        const { rows: frags } = await sql(
+            `SELECT doc_id FROM fragments WHERE author_root = '${aliceRoot}'`,
+            HOST_C
+        );
+        assert.equal(frags.length, 0, "and the copy of the words went with it");
+
+        // The memo that carries deletion PAST this hop: Cleo has forgotten the document and can
+        // still answer for it, which is what lets a reader whose origin is Cleo hear `Gone`
+        // rather than `Unknown` - and `Unknown` means keep.
+        const { rows: tombs } = await sql(
+            `SELECT doc_id FROM fragment_tombstones WHERE author_root = '${aliceRoot}'`,
+            HOST_C
+        );
+        assert.equal(tombs.length, 1, "the fact of the deletion outlives the words");
     });
 
     it("the author hears about it, across a graph they have no edge in", async () => {

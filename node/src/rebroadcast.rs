@@ -12,14 +12,20 @@
 //! as written, and bounded operator liability holds: the node carries what its own users chose to
 //! carry, and no more.
 //!
-//! ## What the pin is FOR, which is not what it looks like
+//! ## What the pin is FOR (corrected 2026-08-11)
 //!
-//! The obvious reading is "keep a copy so we can serve it", and that is half of it. The other
-//! half is the half that matters: **a pin is what keeps the author's retraction reachable.** A
-//! copy nobody refreshes is a copy that can never learn it was withdrawn - which is precisely the
-//! permanence full-copy rebroadcast would have handed out for free, arriving by the back door. So
-//! the pin's real job is to hold the author in the sync worklist, past the moment every contact
-//! dial pointing at them goes back to nothing, for as long as the share stands.
+//! It records that a persona here SHARES this document, so the node knows to keep a copy of it
+//! fresh. That is all. It used to do more, and the more was wrong: pins fed the subscription
+//! worklist, so every share pulled the author's entire chain. Ten thousand shares of one post
+//! meant ten thousand full subscriptions to its author, and - worse - it made the share graph a
+//! STAR, where every sharer went straight to the author and no node ever relayed. Deletion could
+//! then travel exactly two hops, `fragments::relayable` was unreachable, and a four-hop cascade
+//! was not constructible at all.
+//!
+//! Reachability never needed a subscription: asking the author whether one document still lives
+//! is a single round trip on the fragment ALPN. Revalidation now asks the author first and the
+//! sharer second (`net::fragment::revalidate`) - authority where it is reachable, resilience
+//! where it is not - and the tree the design always described is the one that runs.
 //!
 //! Retract the share and the pin goes with it, on the same fold.
 
@@ -143,23 +149,6 @@ async fn unpin(
     Ok(())
 }
 
-/// Every foreign identity this node must keep refreshing because one of its personas shares a
-/// document of theirs - the sync worklist's third source, beside interest and rebroadcast
-/// interest (`net::subscriptions::followed_foreign`).
-///
-/// Deliberately NOT deduplicated against the subscription dials here: the caller unions them,
-/// and a pinned author who is also followed simply appears once with the stronger eagerness.
-pub async fn pinned_authors(node_db: &Db) -> Result<Vec<(String, String)>> {
-    let rows: Vec<(String, String)> = node_db
-        .fetch_all(
-            "SELECT DISTINCT author_root, holder_root FROM rebroadcast_pins",
-            (),
-        )
-        .await
-        .context("listing pinned rebroadcast authors")?;
-    Ok(rows)
-}
-
 /// Drop every pin a persona holds - the counterpart to `excise_unfollowed`, for the case where
 /// the persona itself leaves this node. Their shares stop obliging a node that no longer
 /// answers for them.
@@ -191,71 +180,63 @@ mod tests {
         }
     }
 
-    /// **The property the whole pin exists for.** A share must keep its author in the sync
-    /// worklist on its own, without any contact dial - because a copy nobody refreshes is a
-    /// copy that can never learn it was retracted, which is exactly the permanence that
-    /// pointer-plus-replica refuses to hand out.
+    /// **The inverse of what this test used to say**, and the correction is the point. It once
+    /// asserted that a share alone puts the author in the sync worklist - which was true, and
+    /// wrong: it made every share a full chain subscription, so ten thousand shares of one post
+    /// meant ten thousand nodes pulling that author's entire history. Worse, it made the share
+    /// graph a star, where nobody ever relays, and deletion could travel exactly two hops.
+    ///
+    /// Sharing now obliges a COPY, not a subscription. Reachability comes from asking the author
+    /// one question on the fragment ALPN, which costs a round trip rather than a history.
     #[tokio::test]
-    async fn a_share_keeps_its_author_synced_with_no_dial_at_all() {
+    async fn a_share_does_not_subscribe_you_to_the_author() {
         let db = node_db().await;
         let alice = "a".repeat(64);
         let me = "b".repeat(64);
-
-        // No subscriptions row anywhere: nobody here follows Alice.
-        assert!(
-            crate::net::subscriptions::followed_foreign(&db)
-                .await
-                .unwrap()
-                .is_empty(),
-            "precondition: an unfollowed author is not synced"
-        );
 
         pin(&db, &me, &row(&alice, [1u8; 16], Some([9u8; 32])))
             .await
             .unwrap();
 
-        let synced = crate::net::subscriptions::followed_foreign(&db).await.unwrap();
-        assert_eq!(
-            synced,
-            vec![(alice.clone(), me.clone(), 1)],
-            "a share alone is reason enough to keep fetching them"
-        );
-
-        // Withdraw it, and the obligation goes with it - "speech deletes", from the other side.
-        unpin(&db, &me, &alice, &[1u8; 16]).await.unwrap();
         assert!(
             crate::net::subscriptions::followed_foreign(&db)
                 .await
                 .unwrap()
                 .is_empty(),
-            "un-sharing stops this node carrying them"
+            "a share must never become a chain subscription - that is the fan-out this whole \
+             design refuses, arriving through the door marked accountable"
         );
+
+        // But the node does record that it shares the document, because it owes a fresh copy.
+        let (pins,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ())
+            .await
+            .unwrap();
+        assert_eq!(pins, 1, "the obligation is to the DOCUMENT, and it is recorded");
     }
 
-    /// One pin per document, so sharing two of someone's posts does not enter them twice in the
-    /// worklist - and un-sharing one leaves the other's obligation standing.
+    /// Pins are per document, so sharing two posts by one author records two obligations and
+    /// un-sharing one leaves the other standing.
     #[tokio::test]
-    async fn pins_are_per_document_and_the_author_survives_until_the_last_one_goes() {
+    async fn pins_are_per_document() {
         let db = node_db().await;
         let alice = "a".repeat(64);
         let me = "b".repeat(64);
 
         pin(&db, &me, &row(&alice, [1u8; 16], Some([9u8; 32]))).await.unwrap();
         pin(&db, &me, &row(&alice, [2u8; 16], Some([8u8; 32]))).await.unwrap();
-        assert_eq!(
-            crate::net::subscriptions::followed_foreign(&db).await.unwrap().len(),
-            1,
-            "two shares of one author are one entry in the worklist"
-        );
+        let (n,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ())
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
 
         unpin(&db, &me, &alice, &[1u8; 16]).await.unwrap();
-        assert_eq!(
-            crate::net::subscriptions::followed_foreign(&db).await.unwrap().len(),
-            1,
-            "the other share still obliges us"
-        );
-        unpin(&db, &me, &alice, &[2u8; 16]).await.unwrap();
-        assert!(crate::net::subscriptions::followed_foreign(&db).await.unwrap().is_empty());
+        let (n,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM rebroadcast_pins", ())
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "the other share still obliges us");
     }
 
     /// A persona leaving takes its obligations with it.

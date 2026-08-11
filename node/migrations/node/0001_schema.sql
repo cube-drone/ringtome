@@ -259,6 +259,27 @@ CREATE TABLE fragments (
 -- The revalidation sweep asks "what is due", oldest check first.
 CREATE INDEX fragments_by_checked ON fragments (checked_ms);
 
+-- Documents this node has LEARNED are gone: the delete memo (PROJECT_PLAN, Retraction, edits,
+-- and what a node must remember forever).
+--
+-- The cascade's missing hop. A node that hears `Gone` drops the fragment - correctly - and in
+-- doing so destroys its own ability to say what happened, so the next node down the share tree
+-- asks it and gets `Unknown`, which means "keep". Deletion then propagates exactly two hops and
+-- stops. A tombstone here outlives the content it describes, so a node can forget the words and
+-- still answer for them, forever.
+--
+-- **Content-free, and that is what makes forever affordable**: an author root, a doc id, and
+-- when we heard. Forty-eight bytes per document ever deleted anywhere we cared about - the one
+-- fact that must stay answerable for all time, at the only size that makes "for all time" a
+-- sentence anyone can afford to mean. The delete-summary filters that eventually ship between
+-- nodes are a compression OF THIS TABLE, not a replacement for it.
+CREATE TABLE fragment_tombstones (
+    author_root TEXT    NOT NULL,
+    doc_id      TEXT    NOT NULL,
+    heard_ms    INTEGER NOT NULL,  -- when this node learned; never signed, never synced
+    PRIMARY KEY (author_root, doc_id)
+);
+
 -- Why this node fronts a foreign identity it was never asked to follow: one of its personas
 -- rebroadcast a document of theirs (PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica).
 --

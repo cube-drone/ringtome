@@ -1091,6 +1091,57 @@
 /* The share button wears the edit button's clothes: both are quiet actions in the banner's
  * actions slot, and a louder one would make passing something along feel like the point of
  * reading. Deliberately no count anywhere near it. */
+/* Taking a post down: quiet until asked, then explicit about what it costs. Styled apart from
+ * edit and share because it is the one action here that cannot be undone. */
+.feed-unpublish {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+    cursor: pointer;
+}
+
+.feed-unpublish:hover {
+    border-color: var(--warn, var(--border-strong));
+    color: var(--ink);
+}
+
+.feed-unpublish-ask {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    flex-wrap: wrap;
+}
+
+.feed-unpublish-warn {
+    color: var(--muted);
+    font-size: 0.7rem;
+    max-width: 26em;
+}
+
+.feed-unpublish-go,
+.feed-unpublish-no {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+    cursor: pointer;
+}
+
+.feed-unpublish-go {
+    border-color: var(--warn, var(--border-strong));
+    color: var(--ink);
+}
+
+.feed-unpublish-no {
+    color: var(--muted);
+}
+
 .feed-share {
     display: inline-flex;
     align-items: center;

@@ -402,6 +402,11 @@ async fn main() -> anyhow::Result<()> {
     // when their news was minted. Shares the body sweep's beat and its backoff discipline -
     // both are "keep knocking, politely, at machines that are mostly asleep".
     loops::periodic("outbound-notices", body_beat, state.clone(), outbox::sweep);
+    // Fragment revalidation (fragments::sweep): ask each origin whether the shared documents we
+    // hold are still what they serve. This is what carries a DELETION past the first hop - the
+    // author tombstones, the sharer's pin sees it, and a reader only ever learns by asking
+    // again. Shares the same beat and the same politeness discipline as the two above.
+    loops::periodic("fragment-revalidation", body_beat, state.clone(), fragments::sweep);
     // The peer-set derive sweep (net::sync::derive_peers): every hosted identity's peer list,
     // re-derived from Active crown leaves x live serving records. The event edges (adoption,
     // member-proven dials) keep it fresh; the beat heals dead-introducer partitions and

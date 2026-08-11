@@ -44,6 +44,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/keys", get(keys_handler))
         .route("/api/identity/{root}/peers", get(peers_handler))
         .route("/api/identity/{root}/docs/{doc_id}/publish", post(publish_handler))
+        .route("/api/identity/{root}/posts/{post_id}", delete(unpublish_handler))
         .route(
             "/api/identity/{root}/rebroadcasts",
             get(rebroadcasts_handler).post(rebroadcast_handler),
@@ -940,6 +941,45 @@ async fn publish_handler(
     }
 }
 
+/// DELETE `/api/identity/{root}/posts/{post_id}` - take a published post back off the network.
+///
+/// **The public counterpart to deleting a note, and deliberately its own gesture.** A note and
+/// its post are two documents (Copy, Don't Flip): publishing mints the post beside the note
+/// rather than flipping the note public, so removing one has no business removing the other.
+/// Deleting your draft is housekeeping in your own drawer and leaves the post standing; this is
+/// the act that changes what other people can see, and it takes the PUBLIC document's id because
+/// that is the thing it destroys.
+///
+/// What it mints is a content-free tombstone on the posts chain, which travels wherever the post
+/// travelled: off the author's shelf, out of every follower's journal on the next public move,
+/// and - for anyone holding only a fragment - `Gone` on their next revalidation, all the way
+/// down the share tree.
+///
+/// Idempotent: retracting an already-retracted post writes another tombstone saying the same
+/// thing, and the fold is LWW.
+async fn unpublish_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, post_id)): Path<(String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let post_id = hex_fixed::<16>(&post_id, "post id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    if !data.documents().is_public(&post_id).await? {
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.routes.that-post-isnt-on-your-shelf",
+            "that post isn't on your public shelf - it may already be taken down"
+        )));
+    }
+    let signed = data.documents().retract_public(&post_id).await?;
+    // The public lane moved: `retract_vanished` reconciles every reader's journal against the
+    // shelf this post has just left, and every fragment holder hears `Gone` when they next ask.
+    crate::fanout::after_public_move(&state, &root).await;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
 #[derive(serde::Deserialize)]
 struct RebroadcastRequest {
     /// Root pubkey of the document's author, hex. Never the sharer - that is `{root}`.
@@ -1396,17 +1436,17 @@ async fn docs_retitle_handler(
 /// its history - so this is reversible-by-design, not an erasure (Immutable Chains ≠ Immutable
 /// Content). Idempotent: deleting an already-deleted doc is a no-op re-add.
 ///
-/// **If the document was published, this ALSO withdraws it publicly** (2026-08-10): a
-/// content-free `post-retract` tombstone on the posts chain, which travels wherever the document
-/// travelled. Before that existed, deleting a published post was a private fact - it vanished
-/// from the author's own lists while every follower's feed and every rebroadcaster's replica
-/// went on serving it, forever, with no signal that could ever say otherwise.
+/// **It does NOT touch anything published** (settled 2026-08-11). A note and its post are two
+/// documents - publishing MINTS a public artifact beside the note rather than flipping the note
+/// public (Copy, Don't Flip), and the note only remembers which post is its own through the
+/// `published_as` annotation. Deleting the note is housekeeping in your own drawer; recalling
+/// something you published is a separate, public act with its own gesture
+/// (`unpublish_handler`), because it changes what other people can see.
 ///
-/// Both halves, deliberately, because they mean different things: the private one is "not in my
-/// lists", the public one is "gone from the network". A private-only document only ever gets the
-/// first, which is why the public half is conditional rather than unconditional - minting
-/// retractions for documents that were never public would put a permanent, network-visible
-/// tombstone on every private note anyone ever tidied away.
+/// The first cut of the tombstone work coupled them - delete the note, retract the post - and it
+/// was wrong twice: as doctrine, because a crossing of the membrane must be a deliberate act
+/// rather than a side effect; and in fact, because it asked `is_public` about the NOTE's id,
+/// which is never on the public shelf, so the retraction it promised never fired for anybody.
 async fn docs_delete_handler(
     session: Session,
     State(state): State<AppState>,
@@ -1414,15 +1454,7 @@ async fn docs_delete_handler(
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let was_public = data.documents().is_public(&doc_id).await?;
     let signed = data.documents().delete(&doc_id).await?;
-    if was_public {
-        data.documents().retract_public(&doc_id).await?;
-        // The public lane moved, so the fan-out edge runs: `retract_vanished` reconciles every
-        // reader's journal against the shelf this document has just left, and a rebroadcaster's
-        // pin sees the same absence on its next refresh.
-        crate::fanout::after_public_move(&state, &root).await;
-    }
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),

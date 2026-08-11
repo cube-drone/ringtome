@@ -97,8 +97,17 @@ async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> F
             return FragmentMessage::Unknown;
         }
     }
-    match crate::fragments::relayable(&state.node_db, &author_hex, doc_id).await {
-        Ok(Some((entry, auth_path))) => FragmentMessage::Have { entry, auth_path },
+    if let Ok(Some((entry, auth_path))) =
+        crate::fragments::relayable(&state.node_db, &author_hex, doc_id).await
+    {
+        return FragmentMessage::Have { entry, auth_path };
+    }
+    // Last, and the reason deletion reaches past two hops: we may have dropped this document
+    // without ever holding its author's chain, and the memo is all that is left. Checked AFTER
+    // the two "we have it" paths, so a re-published document (new id, but the same author
+    // deleting and reposting) is never shadowed by an old tombstone.
+    match crate::fragments::entombed(&state.node_db, &author_hex, doc_id).await {
+        Ok(true) => FragmentMessage::Gone,
         _ => FragmentMessage::Unknown,
     }
 }
@@ -155,6 +164,40 @@ pub enum Fetched {
 ///
 /// Tries the origin's known endpoints in turn and stops at the first that answers anything -
 /// including `Unknown`, which is an answer. Only silence moves on to the next.
+/// Ask the AUTHOR first, then whoever shared it.
+///
+/// **Star and tree, in that order** (settled 2026-08-11). The author's own node is the fastest
+/// and most authoritative answer there is - it knows immediately whether the document lives,
+/// what its current version is, and it costs one small round trip on this ALPN rather than a
+/// chain subscription. That was the piece the first design missed: reachability and syncing were
+/// conflated, so "I need to know if this is still alive" bought "I need their whole history".
+///
+/// When the author cannot be reached - offline, gone, or simply never discoverable from here -
+/// the origin answers instead. It holds the content, and having revalidated on its own schedule
+/// it eventually holds the knowledge of any edit or deletion too. That is the tree, and it is
+/// what makes a share survive its author going dark, what makes deletion travel to any depth,
+/// and what makes `relayable` and the tombstone load-bearing rather than decorative.
+///
+/// Authority where it is reachable, resilience where it is not.
+pub async fn revalidate(
+    state: &AppState,
+    origin_root: &str,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> Fetched {
+    let author_hex = hex::encode(author);
+    // The author is not asked about their own document through a relay: if we ARE the author's
+    // node, or we hold their chain, `answer_for` already knows and no dial happens.
+    match fetch(state, &author_hex, author, doc_id).await {
+        Fetched::Unknown => {}
+        answered => return answered,
+    }
+    if origin_root == author_hex {
+        return Fetched::Unknown;
+    }
+    fetch(state, origin_root, author, doc_id).await
+}
+
 pub async fn fetch(
     state: &AppState,
     origin_root: &str,

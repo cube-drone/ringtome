@@ -353,7 +353,7 @@ pub async fn follows(
 /// show" applies retroactively): a row nobody will ever be shown is never written, and there is
 /// no filter to forget at one of the read sites.
 pub async fn followed_foreign(node_db: &crate::db::Db) -> Result<Vec<(String, String, i64)>> {
-    let mut rows: Vec<(String, String, i64)> = node_db
+    let rows: Vec<(String, String, i64)> = node_db
         .fetch_all(
             "SELECT foreign_root, local_root, MAX(COALESCE(eagerness, 0), COALESCE(rebroadcast, 0))
              FROM subscriptions
@@ -364,25 +364,18 @@ pub async fn followed_foreign(node_db: &crate::db::Db) -> Result<Vec<(String, St
         .await
         .context("listing synced foreign personas")?;
 
-    // The third source, and the one that is not a dial at all: an author a local persona has
-    // REBROADCAST must keep being refreshed even after every dial pointing at them goes back to
-    // nothing (`rebroadcast::pinned_authors`). Otherwise a share outliving its follow becomes a
-    // copy that can never learn it was retracted - permanence handed out by the back door,
-    // which is the exact property pointer-plus-replica exists to deny.
+    // **Sharing does NOT subscribe you to the author** (corrected 2026-08-11). It used to: a
+    // share wrote a pin, and pins fed this list, so every sharer pulled the author's entire
+    // chain. Two things were wrong with that. Ten thousand shares of one post meant ten thousand
+    // full subscriptions to its author - the fan-out this design forbids, arriving through the
+    // door marked "accountable". And it made the share tree a STAR: every sharer went straight
+    // to the author, so no node ever relayed, `fragments::relayable` was unreachable, and
+    // deletion could not travel past two hops. The plan prescribed the star in one paragraph and
+    // reasoned about a tree eight lines later; the code faithfully built the star.
     //
-    // Weight 1 (the bottom rung, not zero): a pinned author is worth keeping current, but a
-    // share is not a subscription and must not out-shout one. A pinned author who is ALSO
-    // followed keeps their real eagerness, because the dedup below prefers the larger.
-    let pinned = crate::rebroadcast::pinned_authors(node_db).await?;
-    for (author, holder) in pinned {
-        match rows
-            .iter_mut()
-            .find(|(f, l, _)| *f == author && *l == holder)
-        {
-            Some(_) => {} // already wanted, at a weight the dial chose
-            None => rows.push((author, holder, 1)),
-        }
-    }
+    // A share now obliges a COPY, not a subscription (`fragments`), and revalidation asks the
+    // author first and the origin second - authority where it is reachable, resilience where it
+    // is not. Subscriptions are back to being one per person you actually follow.
     Ok(rows)
 }
 

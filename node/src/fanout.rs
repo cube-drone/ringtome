@@ -628,6 +628,49 @@ async fn retract_vanished(state: &AppState, author_root: &str) -> Result<u64> {
     Ok(stale.len() as u64)
 }
 
+/// Drop the journal rows a SHARED document put in people's feeds.
+///
+/// The `via_root IS NOT NULL` guard is the whole subtlety: a document can sit in one feed
+/// because a friend shared it and in another because that reader follows the author directly.
+/// Losing the fragment kills the first - it was the only copy of those words on this node - and
+/// must not touch the second, where the author's own chain is still here.
+///
+/// Lives in this module because `feed_journal` does (tests/conventions.rs). `fragments::forget`
+/// is the caller: it knows a copy is going, and this knows what that means for a feed.
+pub(crate) async fn excise_shared(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM feed_journal
+             WHERE author_root = ?1 AND doc_id = ?2 AND via_root IS NOT NULL",
+            (author_root, doc_id),
+        )
+        .await
+        .context("retracting a forgotten fragment from feeds")?;
+    Ok(())
+}
+
+/// An edited shared document's new title, into the rows that already point at it.
+pub(crate) async fn retitle_shared(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    doc_id: &str,
+    title: &str,
+) -> Result<()> {
+    node_db
+        .execute(
+            "UPDATE feed_journal SET title = ?3
+             WHERE author_root = ?1 AND doc_id = ?2 AND via_root IS NOT NULL",
+            (author_root, doc_id, title),
+        )
+        .await
+        .context("refreshing a shared document's title")?;
+    Ok(())
+}
+
 /// Unfollow (or block) excises: every journal row from an author this reader no longer
 /// eagerly follows is deleted, in the same breath that drops the subscription. "Don't show"
 /// means it retroactively too - the feed is the reader's room, and stopping listening to
@@ -785,6 +828,73 @@ mod tests {
             published_ms: 1_000,
             updated_ms,
         }
+    }
+
+    /// A fragment is the ONLY copy of that document on this node - the author's chain is not
+    /// here - so a journal row that outlived it would render a title with no words behind it,
+    /// forever. `retract_vanished` cannot reach this case: it reconciles against the author's
+    /// shelf, and a reader has no shelf to read.
+    #[tokio::test]
+    async fn excising_a_shared_document_leaves_the_rows_we_hold_ourselves() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let doc = "11".repeat(16);
+
+        // One shared row (via someone) and one direct row for the same author's other post.
+        db.execute(
+            "INSERT INTO feed_journal
+               (reader_root, author_root, doc_id, title, format, published_ms, updated_ms,
+                arrived_ms, via_root)
+             VALUES (?1, ?2, ?3, 'shared', 'plaintext', 1, 1, 1, ?4),
+                    (?1, ?2, 'other', 'mine', 'plaintext', 1, 1, 1, NULL)",
+            (
+                "cc".repeat(32),
+                author.as_str(),
+                doc.as_str(),
+                "bb".repeat(32),
+            ),
+        )
+        .await
+        .unwrap();
+
+        excise_shared(&db, &author, &doc).await.unwrap();
+
+        let rows: Vec<(String,)> = db
+            .fetch_all("SELECT title FROM feed_journal ORDER BY title", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.iter().map(|(t,)| t.as_str()).collect::<Vec<_>>(),
+            vec!["mine"],
+            "the shared row goes; a row we hold on our own account is untouched"
+        );
+    }
+
+    /// The `via_root IS NOT NULL` guard, from the other side. A document we hold BOTH ways -
+    /// shared to us and also followed directly - must not lose its direct row when the fragment
+    /// is dropped: we still have the author's chain, and the words are still there.
+    #[tokio::test]
+    async fn a_direct_row_survives_its_fragment_being_dropped() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let doc = "11".repeat(16);
+        db.execute(
+            "INSERT INTO feed_journal
+               (reader_root, author_root, doc_id, title, format, published_ms, updated_ms,
+                arrived_ms, via_root)
+             VALUES (?1, ?2, ?3, 'followed', 'plaintext', 1, 1, 1, NULL)",
+            ("cc".repeat(32), author.as_str(), doc.as_str()),
+        )
+        .await
+        .unwrap();
+
+        excise_shared(&db, &author, &doc).await.unwrap();
+
+        let (count,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "following them is a claim of our own");
     }
 
     /// The stamp that orders a share is the SHARE, not the writing. A three-year-old post passed

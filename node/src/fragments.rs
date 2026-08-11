@@ -83,6 +83,12 @@ pub async fn remember(
 }
 
 /// Drop one fragment: the author withdrew it, or nobody wants it any more.
+///
+/// **The feed rows go with it.** A fragment is the only copy of that document on this node - its
+/// author's chain is not here - so a journal row that outlived it would render a title with no
+/// words behind it forever, which is worse than the row simply being gone. This is the same rule
+/// `retract_vanished` applies to followed authors, applied where that sweep cannot reach: it
+/// reconciles against the author's shelf, and on a reader's node there is no shelf to read.
 pub async fn forget(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
     node_db
         .execute(
@@ -91,7 +97,42 @@ pub async fn forget(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()>
         )
         .await
         .context("forgetting a fragment")?;
+    crate::fanout::excise_shared(node_db, author_root, doc_id).await
+}
+
+/// Remember that a document is gone, having just dropped the copy of it.
+///
+/// **The hop the cascade was losing.** Dropping a fragment on `Gone` is right, and it destroys
+/// this node's own ability to say what happened: the next reader down the share tree asks, gets
+/// `Unknown` - "nothing learned, keep what you have" - and holds a deleted post forever.
+/// Deletion then travels exactly two hops from its author and stops.
+///
+/// So the content goes and the FACT stays. Forty-eight bytes, no title, no words, no reason -
+/// which is the only shape in which "forever" is a promise a node can keep.
+pub async fn entomb(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO fragment_tombstones (author_root, doc_id, heard_ms)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT (author_root, doc_id) DO NOTHING",
+            (author_root, doc_id, now_ms()),
+        )
+        .await
+        .context("recording that a document is gone")?;
     Ok(())
+}
+
+/// Do we know this document to be gone? The answer a node can still give after it has forgotten
+/// everything else about it.
+pub async fn entombed(node_db: &Db, author_root: &str, doc_id: &[u8; 16]) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM fragment_tombstones WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, hex::encode(doc_id)),
+        )
+        .await
+        .context("reading a fragment tombstone")?;
+    Ok(row.is_some())
 }
 
 /// One held fragment, if we have it.
@@ -250,6 +291,7 @@ pub async fn journalable(
                 author = %author_root, doc = %doc_hex,
                 "a shared document was withdrawn by its author"
             );
+            let _ = entomb(&state.node_db, author_root, &doc_hex).await;
             let _ = forget(&state.node_db, author_root, &doc_hex).await;
             None
         }
@@ -278,6 +320,148 @@ fn row_of(f: &Fragment, doc_hex: &str) -> crate::fanout::JournalRow {
         published_ms: now,
         updated_ms: now,
     }
+}
+
+
+/// How long a held fragment may go unconfirmed before we ask its origin again.
+///
+/// This is the **author-control dial**, and it is the honest cost of the whole design: a
+/// retraction takes one interval per hop of the share tree to reach the leaves (PROJECT_PLAN,
+/// What travels with a share). Shorter means deletion travels faster and idle nodes chatter
+/// more; longer means a withdrawn post lingers. Half an hour is a first guess, not a measured
+/// one - it wants revisiting once there is a network to measure.
+const REVALIDATE_AFTER_MS: i64 = 30 * 60 * 1000;
+
+/// The interval in force, with a test override. Real cadences make the cascade untestable -
+/// nobody waits half an hour per hop in a suite - so under `RINGTOME_LOCAL_TEST` the harness may
+/// shorten it with `RINGTOME_TEST_REVALIDATE_MS`, exactly as it shrinks the inbox tiers.
+fn revalidate_after_ms() -> i64 {
+    if std::env::var("RINGTOME_LOCAL_TEST").is_ok() {
+        if let Some(n) = std::env::var("RINGTOME_TEST_REVALIDATE_MS")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            return n.max(0);
+        }
+    }
+    REVALIDATE_AFTER_MS
+}
+
+/// Fragments revalidated per sweep. A politeness budget: each one is a dial to somebody else's
+/// node, and a reader holding a thousand shares must not wake up and knock a thousand times.
+const SWEEP_CAP: i64 = 16;
+
+/// Ask the origins again: is what we hold still what they serve?
+///
+/// **The piece that makes deletion travel past the first hop.** Everything else was already in
+/// place - the author's tombstone, the sharer's pin noticing it, the door answering `Gone` - and
+/// none of it reached a reader, because nothing ever asked a second time. A fragment fetched
+/// once was held forever, and `Gone` was unreachable code.
+///
+/// Revalidating against the ORIGIN rather than the author is what keeps this cheap: the origin
+/// is a node we already have a reason to talk to, so the cascade runs over edges that exist.
+/// The cost is per-hop staleness, which is the trade the design took deliberately.
+pub async fn sweep(state: crate::AppState) -> Result<()> {
+    // Jittered, because the author is asked FIRST and a viral post means every holder asking the
+    // same node. Without a spread, ten thousand readers knock on the same second, every interval,
+    // forever - a thundering herd this design would otherwise create on exactly the people whose
+    // work travelled furthest. The origin fallback sheds load when they stop answering; the
+    // jitter is what stops them being knocked over in the first place.
+    let spread = crate::clock::now_ms() % (revalidate_after_ms() / 4).max(1);
+    let due = crate::clock::now_ms() - revalidate_after_ms() - spread;
+    let rows: Vec<(String, String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT author_root, doc_id, origin_root FROM fragments
+             WHERE checked_ms <= ?1 ORDER BY checked_ms LIMIT ?2",
+            (due, SWEEP_CAP),
+        )
+        .await
+        .context("listing fragments due for revalidation")?;
+
+    if !rows.is_empty() {
+        tracing::debug!(due = rows.len(), "fragment sweep: revalidating");
+    }
+    for (author_hex, doc_hex, origin_root) in rows {
+        let (Some(author), Some(doc_id)) = (
+            crate::pubkey::decode(&author_hex),
+            hex::decode(&doc_hex)
+                .ok()
+                .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
+        ) else {
+            continue;
+        };
+        match crate::net::fragment::revalidate(&state, &origin_root, &author, &doc_id).await {
+            crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+                // Re-stored wholesale, so an EDIT lands the same way a first fetch did: new
+                // version, new title, new body hash. The feed row's title is refreshed from the
+                // same write, and the new body is noted as wanted - an edited post whose words
+                // have not arrived renders as "still arriving", which the feed already knows.
+                remember(
+                    &state.node_db,
+                    &origin_root,
+                    &author_hex,
+                    &verified,
+                    &entry,
+                    &auth_path,
+                )
+                .await?;
+                crate::fanout::retitle_shared(
+                    &state.node_db,
+                    &author_hex,
+                    &doc_hex,
+                    &verified.header.title,
+                )
+                .await?;
+                let _ = crate::net::bodies::want(
+                    &state.node_db,
+                    &author_hex,
+                    &verified.header.file_hash,
+                )
+                .await;
+            }
+            crate::net::fragment::Fetched::Gone => {
+                tracing::info!(
+                    author = %author_hex, doc = %doc_hex,
+                    "a shared document was withdrawn by its author - dropping the copy"
+                );
+                // The memo FIRST: a crash between these two leaves a tombstone and a stale
+                // fragment, which the next sweep resolves. The other order leaves a node that
+                // has forgotten both the words and the reason, and lies to everyone downstream.
+                entomb(&state.node_db, &author_hex, &doc_hex).await?;
+                forget(&state.node_db, &author_hex, &doc_hex).await?;
+            }
+            crate::net::fragment::Fetched::Unknown => {
+                tracing::debug!(
+                    author = %author_hex, origin = %origin_root, doc = %doc_hex,
+                    "fragment sweep: nobody could answer"
+                );
+                // Nothing learned about the DOCUMENT - only that this origin could not answer.
+                // Holding on is correct: "silence preserves, speech deletes", and an origin
+                // being asleep is silence. The stamp still moves so one unreachable origin does
+                // not sit at the head of the queue starving every other fragment.
+                touch(&state.node_db, &author_hex, &doc_hex).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Record that we asked, whatever the answer was.
+///
+/// `checked_ms` is "when we last ASKED", not "when we last succeeded". Those are different facts
+/// and the second is the more interesting one - it is what a "this share has not been confirmed
+/// in a week" badge would read - but nothing needs it yet, and one column that means one thing
+/// beats two where one is always guessed at. It wants its own column the day something asks.
+async fn touch(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
+    node_db
+        .execute(
+            "UPDATE fragments SET checked_ms = ?3 WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_id, crate::clock::now_ms()),
+        )
+        .await
+        .context("stamping a revalidation attempt")?;
+    Ok(())
 }
 
 #[cfg(test)]
