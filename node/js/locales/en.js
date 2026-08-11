@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 442 phrases across 41 files.
+// 443 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -528,6 +528,7 @@ export default {
     // --- node/src/test_endpoints.rs ---
     'test_endpoints.sql-error-e': 'sql error: {e}',
     'test_endpoints.sql-error-e-2': 'sql error: {e}',
+    'test.endpoints.unknown-revalidation-mode': 'unknown revalidation mode {other:?} (tree | fast | default)',
 
     // --- node/src/ui.rs ---
     'ui.not-a-font-file-filename': 'not a font file: {filename}',

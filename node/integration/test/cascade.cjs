@@ -7,11 +7,11 @@
                     the post onward.
         D (echo)   follows C for rebroadcasts.          holds only a FRAGMENT, origin C.
 
-    Every node here runs with RINGTOME_TEST_TREE_ONLY, which disables the author-first
-    revalidation lane. That is the point of this file: the fast lane works because it is simple,
-    and the TREE is the fallback that keeps a share alive and honest when the author is dark -
-    a fallback that is never exercised is a fallback that has rotted by the time it matters. So
-    these tests prove the hard path on purpose, hop by hop:
+    The same four shapes run TWICE, through both revalidation lanes (`/test/revalidation`
+    toggles the harness's boot default at runtime). Tree-only proves the fallback that keeps a
+    share alive and honest when the author is dark - a fallback never exercised has rotted by
+    the time it matters. Fast-lane proves production's shape, where readers ask the author
+    first. The asserted states are identical; who answered is what differs. Hop by hop:
 
         an EDIT   flows A -> B by chain sync, B -> C and C -> D by fragment revalidation;
         a DELETE  flows the same way, and C's hop is the load-bearing one: C drops the content
@@ -73,8 +73,24 @@ const dial = (fetcher, mine, theirs, key, value) =>
         body: JSON.stringify({ value }),
     });
 
+const { makeFetch } = require("./fetch.cjs");
+
+/// Point every revalidating node's lane the same way. Only C and D revalidate in this topology
+/// (B holds the author's chain and A is the author), but setting all four keeps the suite
+/// honest if the topology ever grows.
+async function setLane(mode) {
+    for (const host of [undefined, HOST_B, HOST_C, HOST_E]) {
+        const f = makeFetch(host);
+        const res = await f("test/revalidation", {
+            method: "POST",
+            body: JSON.stringify({ mode }),
+        });
+        assert.equal(res.status, 200, `setting revalidation mode on ${host || "A"}`);
+    }
+}
+
 (HOST_B && HOST_C && HOST_E ? describe : describe.skip)("the share tree, four hops deep", function () {
-    this.timeout(600000);
+    this.timeout(1200000);
 
     let alice, aliceRoot, bob, bobRoot, cleo, cleoRoot, dana, danaRoot;
 
@@ -180,9 +196,12 @@ const dial = (fetcher, mine, theirs, key, value) =>
         return version;
     }
 
-    it("an edit reaches the fourth hop", async () => {
-        const { post, draft, version } = await seed("edit-once");
-        await editAndRepublish(draft, version, "edit-once, revised");
+    /// The four shapes, shared verbatim between the two lanes: the asserted STATES are identical
+    /// - what differs is who answered, and each lane's describe pins that in its own before().
+    function scenarios(tag) {
+    it(`an edit reaches the fourth hop [${tag}]`, async () => {
+        const { post, draft, version } = await seed(`edit-once-${tag}`);
+        await editAndRepublish(draft, version, `edit-once-${tag}, revised`);
 
         const row = await settle(async () => {
             const rows = await feedOf(danaRoot, HOST_E);
@@ -194,9 +213,9 @@ const dial = (fetcher, mine, theirs, key, value) =>
         assert.equal(row.via_root, cleoRoot, "still bylined via Cleo");
     });
 
-    it("edits stack: the fourth hop converges on the newest", async () => {
-        const { post, draft, version } = await seed("edit-twice");
-        const v2 = await editAndRepublish(draft, version, "edit-twice, second thoughts");
+    it(`edits stack: the fourth hop converges on the newest [${tag}]`, async () => {
+        const { post, draft, version } = await seed(`edit-twice-${tag}`);
+        const v2 = await editAndRepublish(draft, version, `edit-twice-${tag}, second thoughts`);
         assert.ok(
             await settle(async () => {
                 const rows = await feedOf(danaRoot, HOST_E);
@@ -205,7 +224,7 @@ const dial = (fetcher, mine, theirs, key, value) =>
             }),
             "the first revision arrived before the second was made"
         );
-        await editAndRepublish(draft, v2, "edit-twice, final say");
+        await editAndRepublish(draft, v2, `edit-twice-${tag}, final say`);
 
         assert.ok(
             await settle(async () => {
@@ -217,8 +236,8 @@ const dial = (fetcher, mine, theirs, key, value) =>
         );
     });
 
-    it("a delete reaches the fourth hop, and the tombstone is what carries it", async () => {
-        const { post, draft } = await seed("doomed");
+    it(`a delete reaches the fourth hop, and the tombstone is what carries it [${tag}]`, async () => {
+        const { post, draft } = await seed(`doomed-${tag}`);
 
         // Deleting the DRAFT is housekeeping and must not travel: the post stands.
         const draftGone = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
@@ -267,9 +286,9 @@ const dial = (fetcher, mine, theirs, key, value) =>
         );
     });
 
-    it("an edit followed by a delete lands as deleted, everywhere", async () => {
-        const { post, draft, version } = await seed("edited-then-doomed");
-        await editAndRepublish(draft, version, "edited-then-doomed, revised");
+    it(`an edit followed by a delete lands as deleted, everywhere [${tag}]`, async () => {
+        const { post, draft, version } = await seed(`edited-then-doomed-${tag}`);
+        await editAndRepublish(draft, version, `edited-then-doomed-${tag}, revised`);
         assert.ok(
             await settle(async () => {
                 const rows = await feedOf(danaRoot, HOST_E);
@@ -293,5 +312,23 @@ const dial = (fetcher, mine, theirs, key, value) =>
             1,
             "the tombstone stands at the deepest hop"
         );
+    });
+    }
+
+    describe("through the tree alone (fast lane off)", function () {
+        // The fallback's lane, proven on purpose: a fallback never exercised has rotted by the
+        // time the author goes dark. Deletion here can only travel via C's tombstone - C never
+        // held Alice's chain, and D can only ever ask C.
+        before(() => setLane("tree"));
+        scenarios("tree");
+    });
+
+    describe("with the fast lane on (production's shape)", function () {
+        // The same four shapes, revalidating author-first. Same asserted states - Gone still
+        // entombs, edits still land - but the answers come from Alice directly, which is what
+        // every real reader does while the author is reachable.
+        before(() => setLane("fast"));
+        after(() => setLane("default"));
+        scenarios("fast");
     });
 });

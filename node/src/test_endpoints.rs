@@ -147,3 +147,32 @@ fn row_to_json(row: &turso::Row, column_names: &[String]) -> serde_json::Map<Str
     }
     obj
 }
+
+#[derive(Deserialize)]
+pub struct RevalidationModeRequest {
+    /// "tree" | "fast" | "default"
+    pub mode: String,
+}
+
+/// Override which lane fragment revalidation takes, for the duration of the process (or until
+/// set back to "default"). Exists so ONE booted harness can prove the same cascade through both
+/// lanes - the boot env can pin only one, and whichever it pins, the other rots unexercised.
+pub async fn revalidation_mode(
+    Json(req): Json<RevalidationModeRequest>,
+) -> Result<Json<Value>, AppError> {
+    let value = match req.mode.as_str() {
+        "tree" => 1,
+        "fast" => 2,
+        "default" => 0,
+        other => {
+            return Err(AppError::BadRequest(crate::msg!(
+                "test.endpoints.unknown-revalidation-mode",
+                "unknown revalidation mode {other:?} (tree | fast | default)",
+                other = other
+            )))
+        }
+    };
+    crate::net::fragment::REVALIDATION_MODE.store(value, std::sync::atomic::Ordering::Relaxed);
+    tracing::warn!(mode = %req.mode, "LOCAL_TEST revalidation mode override");
+    Ok(Json(serde_json::json!({ "mode": req.mode })))
+}

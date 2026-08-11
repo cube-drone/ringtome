@@ -509,6 +509,10 @@ async fn main() -> anyhow::Result<()> {
         app = app
             .route("/test/sql", axum::routing::post(test_endpoints::raw_sql))
             .route(
+                "/test/revalidation",
+                axum::routing::post(test_endpoints::revalidation_mode),
+            )
+            .route(
                 "/test/resolve-serving/{leaf}",
                 axum::routing::get(test_endpoints::resolve_serving),
             )

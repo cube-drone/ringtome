@@ -197,6 +197,30 @@ pub enum Fetched {
 /// and what makes `relayable` and the tombstone load-bearing rather than decorative.
 ///
 /// Authority where it is reachable, resilience where it is not.
+/// Which lane revalidation takes, test-overridable at runtime.
+///
+/// The fast lane (author first) is production's shape; the tree alone is the fallback's. Both
+/// must stay exercised, and they cannot be without a switch: with the author reachable every
+/// reader takes the shortcut and the relay path stays green without ever running - and with the
+/// boot env pinning tree-only, the shortcut is the path that rots instead. So the boot env sets
+/// the default (`RINGTOME_TEST_TREE_ONLY`, harness-wide) and a LOCAL_TEST endpoint
+/// (`/test/revalidation`) overrides it per node at runtime, which is what lets one suite run the
+/// same cascade through both lanes.
+///
+/// 0 = follow the boot env; 1 = force tree-only; 2 = force the fast lane.
+pub static REVALIDATION_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn tree_only() -> bool {
+    match REVALIDATION_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => true,
+        2 => false,
+        _ => {
+            std::env::var("RINGTOME_LOCAL_TEST").is_ok()
+                && std::env::var("RINGTOME_TEST_TREE_ONLY").is_ok()
+        }
+    }
+}
+
 pub async fn revalidate(
     state: &AppState,
     origin_root: &str,
@@ -204,14 +228,7 @@ pub async fn revalidate(
     doc_id: &[u8; 16],
 ) -> Fetched {
     let author_hex = hex::encode(author);
-    // The fast lane can be forced off under LOCAL_TEST, and the flag exists for exactly one
-    // reason: the tree is the fallback, and a fallback that is never exercised is a fallback
-    // that has rotted by the time it matters. With the author reachable, every reader would
-    // take the shortcut and the relay path would stay green without ever running - so the
-    // integration harness pins this on, and the whole cascade suite proves the TREE.
-    let tree_only = std::env::var("RINGTOME_LOCAL_TEST").is_ok()
-        && std::env::var("RINGTOME_TEST_TREE_ONLY").is_ok();
-    if !tree_only {
+    if !tree_only() {
         // The author is not asked about their own document through a relay: if we ARE the
         // author's node, or we hold their chain, `answer_for` already knows and no dial happens.
         match fetch(state, &author_hex, author, doc_id).await {
