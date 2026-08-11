@@ -114,8 +114,13 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     {
         readers.push(author_root.to_string());
     }
-    if readers.is_empty() {
-        return Ok(0); // nobody here follows them - the common case, and it costs one query
+    // **Not "nobody follows them" - "nobody here wants them at all".** A reader can hold no
+    // interest in this author whatsoever and still be owed their documents, because someone
+    // that reader DOES follow shared one. Returning early on direct followers alone would make
+    // sharing an unfollowed author's post journal to nobody, forever, which is most of what
+    // sharing is for.
+    if readers.is_empty() && !anyone_shares(state, author_root).await? {
+        return Ok(0); // the common case, and it costs one query per index
     }
     let page = shelf_page(state, author_root).await?;
     if page.is_empty() {
@@ -133,7 +138,13 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     if fresh.is_empty() {
         return Ok(0);
     }
-    journal_rows(&state.node_db, author_root, &readers, &fresh).await?;
+    if !readers.is_empty() {
+        journal_rows(&state.node_db, author_root, &readers, &fresh, None).await?;
+    }
+    // The same page, to the people who follow whoever shared these documents.
+    if let Err(e) = journal_shares_of(state, author_root, &fresh).await {
+        tracing::warn!(author = %author_root, error = ?e, "journaling shares of this author failed");
+    }
     // Advance only after the write landed: a failed write leaves the mark behind, and the
     // next move re-journals the same delta (idempotent) instead of skipping it forever.
     if let Some(newest) = page.iter().map(|r| r.updated_ms).max() {
@@ -186,11 +197,20 @@ struct JournalRow {
 /// the frontier sweep for the duration (this runs inline in it). arrived_ms survives the
 /// upsert: it answers "when did this reach me", and a re-publication changes what the post
 /// says, not when it arrived.
+/// `via_root` is who SHARED these documents into the readers' feeds, or `None` when the readers
+/// follow the author directly.
+///
+/// The upsert's rule for that column is the one judgment in here: **a direct arrival always
+/// clears it, and a share never overwrites a direct arrival.** Following someone is the stronger
+/// claim - if you follow the author, their post is theirs in your feed, not something a third
+/// party showed you - and the two paths race freely (the author moves; someone shares an old
+/// post), so which wins has to be a rule rather than an ordering.
 async fn journal_rows(
     node_db: &crate::db::Db,
     author_root: &str,
     readers: &[String],
     rows: &[&JournalRow],
+    via_root: Option<&str>,
 ) -> Result<()> {
     let now = now_ms();
     let pairs: Vec<(&String, &&JournalRow)> = readers
@@ -200,9 +220,9 @@ async fn journal_rows(
     for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 8;
+                let b = i * 9;
                 format!(
-                    "(?{},?{},?{},?{},?{},?{},?{},?{})",
+                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{})",
                     b + 1,
                     b + 2,
                     b + 3,
@@ -210,19 +230,25 @@ async fn journal_rows(
                     b + 5,
                     b + 6,
                     b + 7,
-                    b + 8
+                    b + 8,
+                    b + 9
                 )
             })
             .collect();
         let sql = format!(
             "INSERT INTO feed_journal
                (reader_root, author_root, doc_id, title, format,
-                published_ms, updated_ms, arrived_ms)
+                published_ms, updated_ms, arrived_ms, via_root)
              VALUES {}
              ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
                  title = excluded.title,
                  format = excluded.format,
-                 updated_ms = excluded.updated_ms",
+                 updated_ms = excluded.updated_ms,
+                 via_root = CASE
+                     WHEN excluded.via_root IS NULL THEN NULL
+                     WHEN feed_journal.via_root IS NULL THEN NULL
+                     ELSE excluded.via_root
+                 END",
             placeholders.join(",")
         );
         let params: Vec<turso::Value> = chunk
@@ -237,6 +263,10 @@ async fn journal_rows(
                     turso::Value::Integer(row.published_ms),
                     turso::Value::Integer(row.updated_ms),
                     turso::Value::Integer(now),
+                    match via_root {
+                        Some(v) => turso::Value::Text(v.to_string()),
+                        None => turso::Value::Null,
+                    },
                 ]
             })
             .collect();
@@ -246,6 +276,125 @@ async fn journal_rows(
             .context("journaling arrivals")?;
     }
     Ok(())
+}
+
+/// Does anyone on this node share a document of this author's? One indexed probe, asked only
+/// when no local reader follows them directly.
+async fn anyone_shares(state: &AppState, author_root: &str) -> Result<bool> {
+    let row: Option<(i64,)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT 1 FROM rebroadcast_pins WHERE author_root = ?1 LIMIT 1",
+            (author_root,),
+        )
+        .await
+        .context("checking whether anyone shares this author")?;
+    Ok(row.is_some())
+}
+
+/// The share side of a public move: when an author's documents change, the people who follow
+/// whoever SHARED those documents see the change too.
+///
+/// Rides inside `journal_for`, on the page it already read, for a reason the conventions cop
+/// cares about: the shared documents live in the AUTHOR's database, which is open at exactly
+/// this moment and would otherwise have to be reopened once per sharer. The reverse index -
+/// which of this author's documents are shared, and by whom - is `rebroadcast_pins`, which is
+/// node-level and needs no user database at all.
+///
+/// Readers come from the rebroadcast dial, never the interest dial: someone who follows the
+/// sharer for their writing does not thereby ask for their recommendations.
+async fn journal_shares_of(
+    state: &AppState,
+    author_root: &str,
+    fresh: &[&JournalRow],
+) -> Result<usize> {
+    let pins: Vec<(String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT DISTINCT holder_root, doc_id FROM rebroadcast_pins WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("reading who shares this author")?;
+    if pins.is_empty() {
+        return Ok(0); // nobody here shares them - the common case, one indexed query
+    }
+
+    let mut by_holder: std::collections::BTreeMap<String, Vec<&JournalRow>> = Default::default();
+    for (holder, doc_hex) in pins {
+        if let Some(row) = fresh.iter().find(|r| r.doc_id_hex == doc_hex) {
+            by_holder.entry(holder).or_default().push(row);
+        }
+    }
+
+    let mut written = 0usize;
+    for (holder, rows) in by_holder {
+        let readers = share_readers(state, &holder).await?;
+        if readers.is_empty() {
+            continue;
+        }
+        journal_rows(&state.node_db, author_root, &readers, &rows, Some(&holder)).await?;
+        written += readers.len();
+    }
+    Ok(written)
+}
+
+/// Who sees `sharer_root`'s shares: everyone dialled in for their rebroadcasts, plus the sharer
+/// themselves. Your own shares belong in your own feed for the same reason your own posts do -
+/// you put them there.
+async fn share_readers(state: &AppState, sharer_root: &str) -> Result<Vec<String>> {
+    let mut readers =
+        crate::net::subscriptions::rebroadcast_followers_of(&state.node_db, sharer_root).await?;
+    if crate::identity::is_agented(&state.node_db, sharer_root)
+        .await
+        .unwrap_or(false)
+        && !readers.iter().any(|r| r == sharer_root)
+    {
+        readers.push(sharer_root.to_string());
+    }
+    Ok(readers)
+}
+
+/// A new share's backfill: the shared document, journaled to the sharer's rebroadcast-followers
+/// NOW rather than whenever the original author next posts.
+///
+/// The exact shape of `backfill_follow`, and for the exact reason: without it the common gesture
+/// (share something, look at your feed) shows nothing, because the author may not move again for
+/// weeks. One user-database open, on a path a person just clicked - not a loop.
+///
+/// Infallible by design: the share itself is already signed and on the chain, so a journaling
+/// failure must not fail the request. The author's next public move journals it anyway.
+pub async fn backfill_share(
+    state: &AppState,
+    sharer_root: &str,
+    author_root: &str,
+    doc_id: &[u8; 16],
+) {
+    let attempt = async {
+        let readers = share_readers(state, sharer_root).await?;
+        if readers.is_empty() {
+            return Ok(0);
+        }
+        let page = shelf_page(state, author_root).await?;
+        let doc_hex = hex::encode(doc_id);
+        let Some(row) = page.iter().find(|r| r.doc_id_hex == doc_hex) else {
+            // The document is not on the author's shelf here - either we hold nothing of theirs
+            // yet (the pin was just written; sync has not run) or it is older than the page.
+            // Both heal on the author's next move, which is why this is not an error.
+            return Ok(0);
+        };
+        journal_rows(&state.node_db, author_root, &readers, &[row], Some(sharer_root)).await?;
+        Ok::<usize, anyhow::Error>(readers.len())
+    };
+    match attempt.await {
+        Ok(n) if n > 0 => {
+            tracing::info!(sharer = %sharer_root, author = %author_root, readers = n, "backfilled a share");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(sharer = %sharer_root, author = %author_root, error = ?e, "share backfill failed")
+        }
+    }
 }
 
 /// A new follow's backfill: the author's newest page, journaled to this one reader, NOW -
@@ -267,7 +416,7 @@ pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &
             return Ok(0);
         }
         let all: Vec<&JournalRow> = page.iter().collect();
-        journal_rows(&state.node_db, author_root, &just_them, &all).await?;
+        journal_rows(&state.node_db, author_root, &just_them, &all, None).await?;
         Ok::<usize, anyhow::Error>(1)
     };
     match attempt.await {
@@ -429,6 +578,9 @@ async fn push_to_askers(state: &AppState, root_hex: &str) {
 #[derive(Debug, Clone)]
 pub struct FeedRow {
     pub author_root: String,
+    /// Who shared this into the reader's feed, if it arrived by rebroadcast rather than by a
+    /// follow. `None` is the ordinary case and means "you follow this author".
+    pub via_root: Option<String>,
     pub doc_id: String,
     pub title: String,
     pub format: Option<String>,
@@ -451,7 +603,7 @@ pub async fn feed_page(
     before: Option<(i64, String)>,
     limit: i64,
 ) -> Result<Vec<FeedRow>> {
-    type Row = (String, String, String, Option<String>, i64, i64, i64);
+    type Row = (String, Option<String>, String, String, Option<String>, i64, i64, i64);
     // Text only, twice over: the shelf read upstream no longer journals media documents at
     // all (`public_docs` filters them - they're ingredients, not posts), and this clause
     // makes journals written BEFORE that filter harmless rather than a page of raw bytes
@@ -459,7 +611,7 @@ pub async fn feed_page(
     let rows: Vec<Row> = match before {
         None => node_db
             .fetch_all(
-                "SELECT author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
+                "SELECT author_root, via_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
@@ -471,7 +623,7 @@ pub async fn feed_page(
         // "bind index 5 out of bounds"... only on the cursor branch, which no test paged.
         Some((ms, doc)) => node_db
             .fetch_all(
-                "SELECT author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
+                "SELECT author_root, via_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
@@ -484,8 +636,9 @@ pub async fn feed_page(
     Ok(rows
         .into_iter()
         .map(
-            |(author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)| FeedRow {
+            |(author_root, via_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)| FeedRow {
                 author_root,
+                via_root,
                 doc_id,
                 title,
                 format,
@@ -511,6 +664,65 @@ mod tests {
         }
     }
 
+    /// The one judgment in the write path, and both directions of it. Following someone is the
+    /// stronger claim: their post is THEIRS in your feed, not something a third party showed
+    /// you. The two paths race freely - the author moves, someone shares an old post - so which
+    /// wins has to be a rule rather than an ordering.
+    #[tokio::test]
+    async fn a_direct_follow_outranks_a_share_whichever_lands_first() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let sharer = "bb".repeat(32);
+        let reader = vec!["cc".repeat(32)];
+        let posts = [post("0", "words", 1_000)];
+        let refs: Vec<&JournalRow> = posts.iter().collect();
+
+        let via = |db: &crate::db::Db| {
+            let db = db.clone();
+            async move {
+                let row: (Option<String>,) = db
+                    .fetch_one("SELECT via_root FROM feed_journal", ())
+                    .await
+                    .unwrap();
+                row.0
+            }
+        };
+
+        // Share first, then the direct arrival: the share's byline is cleared.
+        journal_rows(&db, &author, &reader, &refs, Some(&sharer)).await.unwrap();
+        assert_eq!(via(&db).await.as_deref(), Some(sharer.as_str()));
+        journal_rows(&db, &author, &reader, &refs, None).await.unwrap();
+        assert_eq!(via(&db).await, None, "a direct arrival clears the share byline");
+
+        // And the other order: a share must not overwrite a row that arrived directly.
+        journal_rows(&db, &author, &reader, &refs, Some(&sharer)).await.unwrap();
+        assert_eq!(
+            via(&db).await,
+            None,
+            "once you follow the author, a share does not relabel their post"
+        );
+    }
+
+    /// Two people sharing the same document is still one row per reader - the journal is keyed
+    /// per (reader, author, doc), and a post does not appear twice because it was popular.
+    #[tokio::test]
+    async fn a_document_shared_twice_is_still_one_row() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let reader = vec!["cc".repeat(32)];
+        let posts = [post("0", "words", 1_000)];
+        let refs: Vec<&JournalRow> = posts.iter().collect();
+
+        journal_rows(&db, &author, &reader, &refs, Some(&"b1".repeat(32))).await.unwrap();
+        journal_rows(&db, &author, &reader, &refs, Some(&"b2".repeat(32))).await.unwrap();
+
+        let (count,): (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "popularity does not duplicate a post in one feed");
+    }
+
     /// The load-bearing claim: turso executes a MULTI-ROW upsert - many VALUES groups, one
     /// ON CONFLICT with `excluded.` references - correctly across chunk boundaries. This is
     /// the statement shape the batching rests on, and the reason it gets a real database
@@ -526,7 +738,7 @@ mod tests {
         let refs: Vec<&JournalRow> = posts.iter().collect();
 
         // 3 readers x 40 posts = 120 pairs: two chunks, the second partial.
-        journal_rows(&db, &author, &readers, &refs).await.unwrap();
+        journal_rows(&db, &author, &readers, &refs, None).await.unwrap();
         let (count,): (i64,) = db
             .fetch_one("SELECT COUNT(*) FROM feed_journal", ())
             .await
@@ -540,7 +752,7 @@ mod tests {
             .unwrap();
         let edited = [post("0", "better words", 9_000)];
         let edited_refs: Vec<&JournalRow> = edited.iter().collect();
-        journal_rows(&db, &author, &readers, &edited_refs).await.unwrap();
+        journal_rows(&db, &author, &readers, &edited_refs, None).await.unwrap();
 
         let (count,): (i64,) = db
             .fetch_one("SELECT COUNT(*) FROM feed_journal", ())

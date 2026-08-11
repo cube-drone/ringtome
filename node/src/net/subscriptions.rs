@@ -288,6 +288,31 @@ pub async fn followers_of(node_db: &crate::db::Db, foreign_root: &str) -> Result
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
+/// Every reader on this node who wants `foreign_root`'s REBROADCASTS in their feed - the
+/// journaling worklist for shared documents, and the twin of [`followers_of`].
+///
+/// Separate from `followers_of` because the two dials answer different questions: interest is
+/// "show me what they write", rebroadcast interest is "show me what they recommend". A reader
+/// with one and not the other gets one and not the other, and the split is enforced HERE, at
+/// journaling time, rather than by a filter at render time - a row nobody will be shown is never
+/// written, which is the same rule `excise_unfollowed` enforces from the other end ("the feed is
+/// the reader's room"). A render-layer filter would have to be repeated at every read site and
+/// would be forgotten at one of them.
+pub async fn rebroadcast_followers_of(
+    node_db: &crate::db::Db,
+    foreign_root: &str,
+) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT local_root FROM subscriptions
+             WHERE foreign_root = ?1 AND rebroadcast IS NOT NULL AND rebroadcast > 0",
+            (foreign_root,),
+        )
+        .await
+        .context("reading a persona's local rebroadcast followers")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 /// Does `local_root` follow `foreign_root` for feed purposes? The same criterion as
 /// `followers_of`, asked pointwise - the notifications fold's routing check.
 pub async fn follows(

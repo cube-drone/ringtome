@@ -584,6 +584,13 @@ struct FeedItem {
     author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     author_avatar: Option<String>,
+    /// Who shared this into the feed, when it arrived by rebroadcast rather than by a follow.
+    /// Absent on the ordinary case, so a client that knows nothing about sharing renders every
+    /// row exactly as it did before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    via: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    via_name: Option<String>,
 }
 
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly
@@ -618,7 +625,10 @@ async fn feed_handler(
     let more = rows.len() as i64 > page;
     rows.truncate(page as usize);
 
-    let authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
+    // Bylines for authors AND sharers: "X shared Y's post" needs two names, and asking for
+    // them in one lookup beats a second round of database opens at render time.
+    let mut authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
+    authors.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     let bylines = crate::profiles::bylines(&state.node_db, &authors)
         .await
         .map_err(AppError::Internal)?;
@@ -628,6 +638,11 @@ async fn feed_handler(
         .map(|r| {
             let mine = r.author_root == root;
             let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
+            let via_name = r
+                .via_root
+                .as_ref()
+                .and_then(|v| bylines.get(v))
+                .and_then(|b| b.name.clone());
             FeedItem {
                 mine,
                 author_name: byline.name,
@@ -639,6 +654,8 @@ async fn feed_handler(
                 published_ms: r.published_ms,
                 updated_ms: r.updated_ms,
                 arrived_ms: r.arrived_ms,
+                via: r.via_root,
+                via_name,
             }
         })
         .collect();
@@ -989,6 +1006,12 @@ async fn rebroadcast_handler(
                 tracing::warn!(author = %author_hex, error = ?e, "could not seal a share notice")
             }
         }
+    }
+
+    // Journal it to the sharer's rebroadcast-followers now, rather than whenever the original
+    // author next posts - the `backfill_follow` gesture, for shares.
+    if version.is_some() {
+        crate::fanout::backfill_share(&state, &root, &hex::encode(author), &doc_id).await;
     }
 
     Ok(Json(serde_json::json!({
