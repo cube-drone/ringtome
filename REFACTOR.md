@@ -9,24 +9,6 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
-### `an undeliverable notice waits` flakes about once in thirty runs (2026-08-11)
-
-Observed failing once, on the FIRST assertion - no `outbound_notices` row existed at all - then
-passing in 323ms on a rerun with an unchanged binary. Everything between the last green run and
-the red one was JavaScript, CSS and the string catalog, so the outbox could not have been
-touched.
-
-The shape is a `settle` with a fixed try count in front of a multi-stage background pipeline:
-dial interest → subscription refresh → `publish::reconcile` mints a public-edge → `outbox::queue`.
-Four hops, each on its own beat, and the test polls for the end of the chain. On a loaded machine
-(this session ran CI back to back for hours) one hop slipping past the window is enough.
-
-Not worth chasing as a product bug, worth fixing as a test: the assertion wants a longer settle,
-or - better - a wait on the *subscription* row landing before it starts polling for the notice,
-so it is timing one hop rather than four. Left as-is because a rare flake with a known cause is
-cheaper than a wrong fix, but it will waste somebody's afternoon eventually if nobody writes it
-down.
-
 ### A suppressed inbox notice still holds its ring slot (2026-08-10)
 
 `undelivered_twice` hides a delivered notice once the fold derives the same fact, but the chain

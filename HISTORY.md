@@ -4742,3 +4742,66 @@ row it lands in.** Locally right, globally wrong, three times.
 `an undeliverable notice waits` flaked once during this work and passed on rerun with an unchanged
 binary - REFACTOR carries it with the diagnosis (a `settle` polling for the end of a four-hop
 background chain, on a machine that had been running CI back to back for hours).
+
+## 2026-08-11 — the tree, made real: four hops of edits and deletions with the fast lane off
+
+Curtis: "If a fourth hop is not constructible in the design then we designed it wrong." He was
+right, and the defect was a contradiction sitting inside one PROJECT_PLAN subsection: it
+prescribed a STAR in one paragraph - every sharer pins the author, "one accountable demand edge
+per (sharer-node, author)" - and reasoned about a TREE eight lines later ("...and so on to the
+leaves"). Both were locally convincing. Both could not be true. The code faithfully built the
+star, so every sharer subscribed to the author's whole chain (ten thousand shares of one post:
+ten thousand full subscriptions - the exact fan-out the design forbids, arriving through the
+door marked "accountable"), nobody ever relayed, `relayable` was dead code, and deletion
+travelled exactly two hops and stopped.
+
+The dissolving insight came from Curtis asking for star AND tree: **reachability never needed a
+subscription.** "Is this document still alive" is one round trip on the fragment ALPN; the first
+design conflated it with "sync their history", and only the second is expensive. So:
+
+- **A share obliges a COPY, not a subscription.** The pin records "a persona here shares this
+  document"; `rebroadcast_pins` stopped feeding the sync worklist entirely. Subscriptions are
+  back to O(people you follow). The old unit test asserting the subscription -
+  `a_share_keeps_its_author_synced_with_no_dial_at_all` - was a correct test of a wrong
+  invariant; its inverse now stands guard.
+- **Revalidation is star and tree, in that order**: ask the author (authoritative, jittered
+  against the thundering herd a viral post would otherwise aim at its own author), fall back to
+  the origin (who holds the content, and eventually the knowledge). The fast lane can be forced
+  off under LOCAL_TEST (`RINGTOME_TEST_TREE_ONLY`), and the whole cascade suite runs that way,
+  because a fallback that is never exercised has rotted by the time it matters.
+- **The tombstone carries deletion past the second hop.** A node that hears `Gone` drops the
+  words and keeps 48 bytes of fact (`fragment_tombstones`), and answers `Gone` itself thereafter
+  - the only way a node that never held the author's chain can tell the next hop anything. Memo
+  first, then forget: a crash between the two leaves a stale fragment the next sweep resolves,
+  where the other order leaves a node that lies to everyone downstream.
+- **A failed fragment fetch retries** (`fragment_wants`, the missing-bodies idiom). The share
+  fold only re-runs when the sharer's chain moves, so "the pointer folded before the post
+  synced" - a race measured in milliseconds - used to eat a share forever, silently. Found as
+  "two pointers, one fragment" in the instrumentation; the want ledger is why the cascade seeds
+  reliably now.
+
+`cascade.cjs` proves it at full depth on a FIFTH integration node (echo, on the spare port lane -
+the four-hop chain needs four p2p-capable nodes, and delta's inability to dial is delta's whole
+job): edit in 3.8s, stacked edits converging on the newest, delete with the tombstone asserted at
+both intermediate and leaf hops as the mechanism rather than the outcome, edit-then-delete. Each
+scenario seeds its own document through the entire chain first - the first version shared one
+document across every assertion, and the edit contaminated the deletes so thoroughly that a
+day was spent chasing failures that were sequencing, not product.
+
+Two real product bugs fell out along the way. **Deleting a published note never minted the
+public tombstone**: the route asked `is_public` about the NOTE's id, and publishing mints a
+SEPARATE public document (`published_as`), so the answer was always no and the retraction the
+tombstone slice promised had never once fired. Curtis resolved the design correctly - deleting a
+draft is housekeeping and must not cross the membrane; **unpublish is its own public gesture**
+(`DELETE /posts/{post_id}`, "take it down" behind the edit unlock, warning that copies on
+computers that never come back cannot hear it). And the eager outbox knock was missing from the
+share path, so "someone shared your post" waited on a five-minute backstop beat.
+
+The flake recorded yesterday (`an undeliverable notice waits`) failed a second time under five
+nodes' load and got the fix its REFACTOR entry prescribed: the wait is staged on the
+subscription row first, so each settle times one background hop and a failure names its stage.
+
+What a long day of being wrong taught, kept for the next one: when a distributed path fails,
+READ before reasoning (four of four wrong hypotheses were resolved by one debug line); a test
+that shares state across scenarios is one test wearing several names; and a plan section that
+argues two ways eight lines apart will be built one way and defended with the other.

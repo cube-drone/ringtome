@@ -89,7 +89,25 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 /// by a node that never held the author either.
 async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {
     let author_hex = hex::encode(author);
-    match from_held_chain(state, &author_hex, doc_id).await {
+    let answer = answer_inner(state, &author_hex, doc_id).await;
+    tracing::debug!(
+        author = %author_hex, doc = %hex::encode(doc_id),
+        answer = match &answer {
+            FragmentMessage::Have { .. } => "have",
+            FragmentMessage::Gone => "gone",
+            _ => "unknown",
+        },
+        "fragment door answered"
+    );
+    answer
+}
+
+async fn answer_inner(
+    state: &AppState,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> FragmentMessage {
+    match from_held_chain(state, author_hex, doc_id).await {
         Ok(Some(answer)) => return answer,
         Ok(None) => {}
         Err(e) => {
@@ -98,7 +116,7 @@ async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> F
         }
     }
     if let Ok(Some((entry, auth_path))) =
-        crate::fragments::relayable(&state.node_db, &author_hex, doc_id).await
+        crate::fragments::relayable(&state.node_db, author_hex, doc_id).await
     {
         return FragmentMessage::Have { entry, auth_path };
     }
@@ -106,7 +124,7 @@ async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> F
     // without ever holding its author's chain, and the memo is all that is left. Checked AFTER
     // the two "we have it" paths, so a re-published document (new id, but the same author
     // deleting and reposting) is never shadowed by an old tombstone.
-    match crate::fragments::entombed(&state.node_db, &author_hex, doc_id).await {
+    match crate::fragments::entombed(&state.node_db, author_hex, doc_id).await {
         Ok(true) => FragmentMessage::Gone,
         _ => FragmentMessage::Unknown,
     }
@@ -186,11 +204,20 @@ pub async fn revalidate(
     doc_id: &[u8; 16],
 ) -> Fetched {
     let author_hex = hex::encode(author);
-    // The author is not asked about their own document through a relay: if we ARE the author's
-    // node, or we hold their chain, `answer_for` already knows and no dial happens.
-    match fetch(state, &author_hex, author, doc_id).await {
-        Fetched::Unknown => {}
-        answered => return answered,
+    // The fast lane can be forced off under LOCAL_TEST, and the flag exists for exactly one
+    // reason: the tree is the fallback, and a fallback that is never exercised is a fallback
+    // that has rotted by the time it matters. With the author reachable, every reader would
+    // take the shortcut and the relay path would stay green without ever running - so the
+    // integration harness pins this on, and the whole cascade suite proves the TREE.
+    let tree_only = std::env::var("RINGTOME_LOCAL_TEST").is_ok()
+        && std::env::var("RINGTOME_TEST_TREE_ONLY").is_ok();
+    if !tree_only {
+        // The author is not asked about their own document through a relay: if we ARE the
+        // author's node, or we hold their chain, `answer_for` already knows and no dial happens.
+        match fetch(state, &author_hex, author, doc_id).await {
+            Fetched::Unknown => {}
+            answered => return answered,
+        }
     }
     if origin_root == author_hex {
         return Fetched::Unknown;

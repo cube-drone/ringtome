@@ -38,6 +38,14 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("outbound_notices", vec!["outbox.rs"]),
         ("missing_bodies", vec!["net/bodies.rs"]),
         ("persona_profiles", vec!["profiles.rs"]),
+        // The rebroadcast family (registered 2026-08-11 - these existed unregistered, which is
+        // why the cop said nothing while their SQL wandered). Pins are written by the
+        // rebroadcast fold and READ by fanout's share journaling, deliberately: the worklist
+        // and its consumer.
+        ("rebroadcast_pins", vec!["rebroadcast.rs", "fanout.rs"]),
+        ("fragments", vec!["fragments.rs"]),
+        ("fragment_tombstones", vec!["fragments.rs"]),
+        ("fragment_wants", vec!["fragments.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.
         ("entries", vec!["record/imaol.rs", "net/sync.rs"]),

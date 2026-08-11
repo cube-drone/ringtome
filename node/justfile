@@ -54,6 +54,10 @@ int_a := shell('echo $(( $1 + 21 ))', port_base)
 int_b := shell('echo $(( $1 + 22 ))', port_base)
 int_c := shell('echo $(( $1 + 23 ))', port_base)
 int_d := shell('echo $(( $1 + 24 ))', port_base)
+# The fifth integration node (echo), on the spare lane past mainline-smoke's +25/+26: the
+# 4-hop cascade tests need four p2p-capable nodes, and delta - deliberately dark - cannot
+# dial or be dialled, which is its whole job.
+int_e := shell('echo $(( $1 + 27 ))', port_base)
 
 # List available recipes.
 default:
@@ -565,9 +569,10 @@ integration: build
     pb={{int_b}}
     pc={{int_c}}
     pd={{int_d}}
+    pe={{int_e}}
     # A previous run that was SIGKILLed (or whose shell died) never ran its trap. Clear only what
     # this band recorded - never by pattern, which is what made the old cleanup machine-wide.
-    for p in $pa $pb $pc $pd; do
+    for p in $pa $pb $pc $pd $pe; do
         stale="/tmp/ringtome-int-$p.pid"
         [ -e "$stale" ] || continue
         pid=$(cat "$stale")
@@ -586,7 +591,7 @@ integration: build
     RINGTOME_PORT=$pa RINGTOME_DATA_DIRECTORY="{{test_data}}" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_TEST_INBOX_KEEP=4 \
-        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 \
+        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 RINGTOME_TEST_TREE_ONLY=1 \
         RINGTOME_NODE_NAME=alpha \
         ./target/debug/ringtome > /tmp/ringtome-integration.log 2>&1 &
     NODE_PID=$!
@@ -594,7 +599,7 @@ integration: build
     RINGTOME_PORT=$pb RINGTOME_DATA_DIRECTORY="{{test_data}}-b" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_TEST_INBOX_KEEP=4 \
-        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 \
+        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 RINGTOME_TEST_TREE_ONLY=1 \
         RINGTOME_NODE_NAME=bravo \
         ./target/debug/ringtome > /tmp/ringtome-integration-b.log 2>&1 &
     NODE_B_PID=$!
@@ -602,7 +607,7 @@ integration: build
     RINGTOME_PORT=$pc RINGTOME_DATA_DIRECTORY="{{test_data}}-c" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_TEST_INBOX_KEEP=4 \
-        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 \
+        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 RINGTOME_TEST_TREE_ONLY=1 \
         RINGTOME_NODE_NAME=charlie \
         ./target/debug/ringtome > /tmp/ringtome-integration-c.log 2>&1 &
     NODE_C_PID=$!
@@ -611,19 +616,28 @@ integration: build
     RINGTOME_PORT=$pd RINGTOME_DATA_DIRECTORY="{{test_data}}-d" RINGTOME_LOCAL_TEST=1 \
         RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
         RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_TEST_INBOX_KEEP=4 \
-        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 \
+        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 RINGTOME_TEST_TREE_ONLY=1 \
         RINGTOME_NODE_NAME=delta \
         ./target/debug/ringtome > /tmp/ringtome-integration-d.log 2>&1 &
     NODE_D_PID=$!
     echo $NODE_D_PID > "/tmp/ringtome-int-$pd.pid"
+    RINGTOME_PORT=$pe RINGTOME_DATA_DIRECTORY="{{test_data}}-e" RINGTOME_LOCAL_TEST=1 \
+        RINGTOME_DISCOVERY="local:{{test_data}}-dht" RINGTOME_MAX_UPLOAD_BYTES=1048576 RINGTOME_MAX_DOCUMENT_BYTES=262144 \
+        RINGTOME_SYNC_DEBOUNCE_MS=250 RINGTOME_TEST_INBOX_KEEP=4 \
+        RINGTOME_TEST_BODY_SWEEP_MS=1500 RINGTOME_TEST_REVALIDATE_MS=500 RINGTOME_TEST_TREE_ONLY=1 \
+        RINGTOME_NODE_NAME=echo \
+        ./target/debug/ringtome > /tmp/ringtome-integration-e.log 2>&1 &
+    NODE_E_PID=$!
+    echo $NODE_E_PID > "/tmp/ringtome-int-$pe.pid"
     cleanup() {
         if command -v taskkill >/dev/null 2>&1; then
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_B_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_C_PID" 2>/dev/null || true
             MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_D_PID" 2>/dev/null || true
+            MSYS2_ARG_CONV_EXCL="*" taskkill -F -PID "$NODE_E_PID" 2>/dev/null || true
         else
-            kill "$NODE_PID" "$NODE_B_PID" "$NODE_C_PID" "$NODE_D_PID" 2>/dev/null || true
+            kill "$NODE_PID" "$NODE_B_PID" "$NODE_C_PID" "$NODE_D_PID" "$NODE_E_PID" 2>/dev/null || true
         fi
         rm -f "/tmp/ringtome-int-$pa.pid" "/tmp/ringtome-int-$pb.pid" \
               "/tmp/ringtome-int-$pc.pid" "/tmp/ringtome-int-$pd.pid"
@@ -631,7 +645,7 @@ integration: build
     trap cleanup EXIT
 
     # Wait up to ~10s for each node to answer /health.
-    for p in $pa $pb $pc $pd; do
+    for p in $pa $pb $pc $pd $pe; do
         for i in $(seq 1 50); do
             if curl -sf "http://127.0.0.1:$p/health" >/dev/null 2>&1; then
                 break
@@ -648,6 +662,7 @@ integration: build
     cd "{{justfile_directory()}}/integration"
     RINGTOME_TEST_HOST="127.0.0.1:$pa" RINGTOME_TEST_HOST_B="127.0.0.1:$pb" \
         RINGTOME_TEST_HOST_C="127.0.0.1:$pc" RINGTOME_TEST_HOST_DARK="127.0.0.1:$pd" \
+        RINGTOME_TEST_HOST_E="127.0.0.1:$pe" \
         RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" \
         RINGTOME_TEST_DATA_DIR="{{workspace}}/{{test_data}}" npm test
 

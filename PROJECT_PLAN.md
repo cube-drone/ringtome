@@ -3255,10 +3255,13 @@ authoring your chain by proxy.
 The failure mode this subsection exists to forbid, caught at design time: if *seeing* a share ever creates a
 chain subscription, density does the rest - in a well-connected network everyone eventually sees everything once,
 and "pin a fragment of the author's chain" degrades to every public persona synced to every computer. So the
-invariant, stated as doctrine: **a chain pin never propagates with viewing.** Pins are created by the deliberate
-act of *sharing*, on the sharer's own node - the one accountable demand edge per (sharer-node, author), which is
-also exactly what *Pull, Not Push* requires - and nowhere else. Readers never subscribe to the author in any
-form, suffix or otherwise.
+invariant, stated as doctrine: **a share never creates a chain subscription - not for viewers, and not for the
+sharer either** (corrected 2026-08-11; the first cut gave the sharer a full subscription per shared author, which
+was the same fan-out through the door marked "accountable" - ten thousand shares of one post meant ten thousand
+nodes pulling that author's whole history - and it flattened the share tree into a star where nobody ever
+relayed, so deletion could travel exactly two hops and stop). A pin records that a persona here shares a
+DOCUMENT, and obliges the node to keep a copy of it fresh. Nothing more. Reachability never needed a
+subscription: asking an author whether one document still lives is a single round trip on the fragment ALPN.
 
 What a reader's node holds instead is smaller than any chain fragment: **a document fragment with an origin** -
 the author's signed entry plus its referenced blobs - **all of them, inline media included, at full fidelity**
@@ -3277,16 +3280,27 @@ degradation - never as the obligation structure. A hundred-track mixtape is not 
 **Taxonomy of posts**, and publishing-and-rebroadcasting a whole bucket at a time is its own design, deliberately
 deferred.
 
-The load-bearing choice is what a fragment revalidates against: **the edge it arrived by, never the author.**
-Retraction then propagates down the share tree - author's tombstone → the sharer's pin sees it and the sharer's
-node drops its replica → each fetching node's next revalidation comes back gone → and so on to the leaves. Every
-edge in that tree already exists and already syncs; density adds zero new sync edges. The scaling law falls out:
+Revalidation is **star and tree, in that order** (settled 2026-08-11). The author's own node is asked first -
+the fastest, most authoritative answer there is, one small round trip, jittered so a viral post's ten thousand
+holders do not knock on the same second forever. When the author cannot be reached, the ORIGIN answers: whoever
+handed over the pointer holds the content, and having revalidated on its own schedule it eventually holds the
+knowledge of any edit or deletion too. Authority where it is reachable, resilience where it is not. Retraction
+propagates down the tree hop by hop - author's tombstone → a chain-holding node answers `Gone` → each fragment
+holder drops its copy, **keeps a 48-byte tombstone**, and answers `Gone` itself to whoever fetched from it. The
+tombstone is the load-bearing move: dropping the content correctly destroys a node's ability to say what
+happened, and the memo is what lets deletion travel to ANY depth rather than exactly two hops. A failed
+fragment fetch is retried by ledger (`fragment_wants`, the missing-bodies idiom), because the share fold only
+re-runs when the sharer's chain moves and a race as small as "the pointer folded before the post synced" must
+not eat a share forever. The whole relay path is proven at four hops with the fast lane disabled
+(`cascade.cjs`), precisely because a fallback that is never exercised has rotted by the time it matters. The
+scaling law falls out:
 
 - **Fragments spread O(interest × the per-post media cap)** - the shared doc, real bytes and all, gets copied
   to nodes whose users look at it. That is the feature (availability tracks heat, the CDN property), bounded by
   a number we chose at publish time, never by the author's history or the doc's appetite.
-- **Chain subscriptions spread O(deliberate shares)** - one edge per accountable click of "share". Bounded by
-  human action, not network topology.
+- **Chain subscriptions spread O(people you actually follow)** - sharing creates none, for anyone (the first
+  cut said "O(deliberate shares)", which sounded bounded and was not: shares scale with virality, and each one
+  was a full subscription).
 
 The cost this deliberately does NOT bound, named so it is a decision and not a discovery: **a node's total feed
 and fragment footprint grows with its users' appetites**, as it always has - fragments make an existing curve

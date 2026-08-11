@@ -259,6 +259,22 @@ CREATE TABLE fragments (
 -- The revalidation sweep asks "what is due", oldest check first.
 CREATE INDEX fragments_by_checked ON fragments (checked_ms);
 
+-- Fragments this node WANTS and could not get: the recovery ledger for shares that arrived
+-- before their content was reachable (the missing_bodies idiom - events for latency, sweeps
+-- for recovery). A pointer folds, the fetch comes back Unknown, and without this row nothing
+-- would ever retry: the share fold only re-runs when the SHARER's chain moves, so a race as
+-- small as "C folded the pointer before B finished syncing the post" silently ate the share
+-- forever. One row per unmet want; satisfied rows are deleted, hopeless ones age out.
+CREATE TABLE fragment_wants (
+    author_root    TEXT    NOT NULL,
+    doc_id         TEXT    NOT NULL,
+    origin_root    TEXT    NOT NULL,  -- the sharer whose readers want it; who we ask
+    first_noted_ms INTEGER NOT NULL,
+    last_tried_ms  INTEGER NOT NULL DEFAULT 0,
+    tries          INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (author_root, doc_id)
+);
+
 -- Documents this node has LEARNED are gone: the delete memo (PROJECT_PLAN, Retraction, edits,
 -- and what a node must remember forever).
 --

@@ -17,6 +17,9 @@ const HOST_C = process.env.RINGTOME_TEST_HOST_C || null;
 // A fourth, booted with NO discovery configured at all - the state a shipped node defaults to,
 // and the one the other three (all on `local:`) can never reproduce.
 const HOST_DARK = process.env.RINGTOME_TEST_HOST_DARK || null;
+// A fifth, discovery-enabled like B and C: the 4-hop cascade needs four nodes that can dial
+// (the dark node's whole job is that it cannot).
+const HOST_E = process.env.RINGTOME_TEST_HOST_E || null;
 
 function makeFetch(host = HOST) {
     const jar = new CookieJar();
@@ -55,4 +58,4 @@ async function sql(query, host = HOST) {
     return resp.json();
 }
 
-module.exports = { makeFetch, sql, HOST, HOST_B, HOST_C, HOST_DARK };
+module.exports = { makeFetch, sql, HOST, HOST_B, HOST_C, HOST_DARK, HOST_E };

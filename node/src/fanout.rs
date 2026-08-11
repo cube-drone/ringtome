@@ -370,6 +370,32 @@ fn as_shared(row: &JournalRow, shared_ms: i64) -> JournalRow {
     }
 }
 
+/// Journal one share whose content arrived late - the delivery the original fold could not
+/// make because the fragment fetch failed the first time (`fragments::drain_wants`).
+pub(crate) async fn journal_late_share(
+    state: &AppState,
+    sharer_root: &str,
+    author_root: &str,
+    row: &JournalRow,
+) {
+    let readers = match share_readers(state, sharer_root).await {
+        Ok(r) if !r.is_empty() => r,
+        _ => return,
+    };
+    let shared = as_shared(row, now_ms());
+    if let Err(e) = journal_rows(
+        &state.node_db,
+        author_root,
+        &readers,
+        &[&shared],
+        Some(sharer_root),
+    )
+    .await
+    {
+        tracing::warn!(sharer = %sharer_root, author = %author_root, error = ?e, "late share journal failed");
+    }
+}
+
 /// Who sees `sharer_root`'s shares: everyone dialled in for their rebroadcasts, plus the sharer
 /// themselves. Your own shares belong in your own feed for the same reason your own posts do -
 /// you put them there.

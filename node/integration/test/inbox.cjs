@@ -179,13 +179,28 @@ describe("an undeliverable notice waits", function () {
         const nowhere = "ab".repeat(32);
 
         await dial(sender, senderRoot, nowhere, "interest", "medium");
+        // Stage the wait: the dial has to become a subscription row, then a minted statement,
+        // then a queued envelope - four background hops, each on its own beat. Polling only for
+        // the end of the chain flaked twice on a loaded box (REFACTOR, 2026-08-11): one slow hop
+        // exhausted the whole window. Waiting for the first hop separately means each settle
+        // times one stage, and a failure names which stage stalled instead of shrugging.
+        assert.ok(
+            await settle(async () => {
+                const { rows } = await sql(
+                    `SELECT 1 FROM subscriptions
+                     WHERE local_root = '${senderRoot}' AND foreign_root = '${nowhere}'`
+                );
+                return rows.length ? true : null;
+            }),
+            "the dial became a subscription row"
+        );
         const row = await settle(async () => {
             const { rows } = await sql(
                 `SELECT recipient_root, kind, tries FROM outbound_notices
                  WHERE sender_root = '${senderRoot}' AND recipient_root = '${nowhere}'`
             );
             return rows.length ? rows[0] : null;
-        });
+        }, 160);
         assert.ok(row, "the envelope is waiting for a door to open");
         assert.equal(row.kind, "public-edge");
         assert.ok(row.tries >= 1, "and the eager attempt already counted against the backoff");

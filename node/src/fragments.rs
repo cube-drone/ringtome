@@ -296,12 +296,19 @@ pub async fn journalable(
             None
         }
         crate::net::fragment::Fetched::Unknown => {
-            // Logged, because silence here cost a debugging cycle: every origin answering
-            // "I don't carry that" looks exactly like the fold never running.
+            // Not an error and not the end: the pointer can fold before the content is
+            // reachable - as small a race as "C heard about the share before B finished
+            // syncing the post" - and the share fold only re-runs when the SHARER's chain
+            // moves. Without a retry ledger, that race ate the share forever, silently
+            // (found 2026-08-11: two pointers folded, one fragment established, and the
+            // second was never asked for again). The want row is what asks again.
             tracing::debug!(
                 author = %author_root, origin = %origin_root, doc = %doc_hex,
-                "no origin could serve this shared document"
+                "no origin could serve this shared document yet - noted for retry"
             );
+            if let Err(e) = note_want(&state.node_db, author_root, &doc_hex, origin_root).await {
+                tracing::debug!(author = %author_root, error = ?e, "could not note a fragment want");
+            }
             None
         }
     }
@@ -322,6 +329,45 @@ fn row_of(f: &Fragment, doc_hex: &str) -> crate::fanout::JournalRow {
     }
 }
 
+
+/// Note that a share's content could not be fetched, so the sweep keeps trying.
+///
+/// Idempotent, and it never resets an existing row's backoff - the same discipline as
+/// `bodies::want`, for the same reason.
+async fn note_want(
+    node_db: &Db,
+    author_root: &str,
+    doc_id: &str,
+    origin_root: &str,
+) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO fragment_wants (author_root, doc_id, origin_root, first_noted_ms)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (author_root, doc_id) DO NOTHING",
+            (author_root, doc_id, origin_root, now_ms()),
+        )
+        .await
+        .context("noting a wanted fragment")?;
+    Ok(())
+}
+
+/// A want that landed or died stops being wanted.
+async fn settle_want(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM fragment_wants WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_id),
+        )
+        .await
+        .context("settling a fragment want")?;
+    Ok(())
+}
+
+/// A want nobody has been able to satisfy stops being asked about after this long - the
+/// outbox's give-up: an unmet want three days old is a share of something that has probably
+/// been gone longer than it was ever here.
+const WANT_GIVE_UP_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 
 /// How long a held fragment may go unconfirmed before we ask its origin again.
 ///
@@ -393,6 +439,11 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
         };
         match crate::net::fragment::revalidate(&state, &origin_root, &author, &doc_id).await {
             crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+                tracing::debug!(
+                    author = %author_hex, doc = %doc_hex, origin = %origin_root,
+                    title = %verified.header.title,
+                    "fragment sweep: still served"
+                );
                 // Re-stored wholesale, so an EDIT lands the same way a first fetch did: new
                 // version, new title, new body hash. The feed row's title is refreshed from the
                 // same write, and the new body is noted as wanted - an edited post whose words
@@ -442,6 +493,80 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
                 // not sit at the head of the queue starving every other fragment.
                 touch(&state.node_db, &author_hex, &doc_hex).await?;
             }
+        }
+    }
+
+    drain_wants(&state).await
+}
+
+/// The recovery half of the share fold: fetch the fragments whose first ask failed.
+///
+/// A satisfied want journals the share to the sharer's readers on the spot - the delivery the
+/// original fold could not make. `shared_ms` is now rather than the pointer's arrival, which is
+/// honest: for THIS node the share became real when its content did.
+async fn drain_wants(state: &crate::AppState) -> Result<()> {
+    let now = now_ms();
+    let rows: Vec<(String, String, String, i64, i64)> = state
+        .node_db
+        .fetch_all(
+            "SELECT author_root, doc_id, origin_root, first_noted_ms, tries FROM fragment_wants
+             WHERE last_tried_ms <= ?1 ORDER BY last_tried_ms LIMIT ?2",
+            (now - revalidate_after_ms(), SWEEP_CAP),
+        )
+        .await
+        .context("listing unmet fragment wants")?;
+
+    for (author_hex, doc_hex, origin_root, first_noted, _tries) in rows {
+        if now - first_noted > WANT_GIVE_UP_MS {
+            settle_want(&state.node_db, &author_hex, &doc_hex).await?;
+            continue;
+        }
+        state
+            .node_db
+            .execute(
+                "UPDATE fragment_wants SET last_tried_ms = ?3, tries = tries + 1
+                 WHERE author_root = ?1 AND doc_id = ?2",
+                (author_hex.as_str(), doc_hex.as_str(), now),
+            )
+            .await
+            .context("stamping a want attempt")?;
+
+        let (Some(author), Some(doc_id)) = (
+            crate::pubkey::decode(&author_hex),
+            hex::decode(&doc_hex)
+                .ok()
+                .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()),
+        ) else {
+            settle_want(&state.node_db, &author_hex, &doc_hex).await?;
+            continue;
+        };
+        match crate::net::fragment::revalidate(state, &origin_root, &author, &doc_id).await {
+            crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+                remember(&state.node_db, &origin_root, &author_hex, &verified, &entry, &auth_path)
+                    .await?;
+                let _ = crate::net::bodies::want(
+                    &state.node_db,
+                    &author_hex,
+                    &verified.header.file_hash,
+                )
+                .await;
+                settle_want(&state.node_db, &author_hex, &doc_hex).await?;
+                tracing::info!(author = %author_hex, doc = %doc_hex, "a wanted fragment arrived");
+                if let Some(f) = held(&state.node_db, &author_hex, &doc_hex).await? {
+                    crate::fanout::journal_late_share(
+                        state,
+                        &origin_root,
+                        &author_hex,
+                        &row_of(&f, &doc_hex),
+                    )
+                    .await;
+                }
+            }
+            crate::net::fragment::Fetched::Gone => {
+                entomb(&state.node_db, &author_hex, &doc_hex).await?;
+                settle_want(&state.node_db, &author_hex, &doc_hex).await?;
+            }
+            crate::net::fragment::Fetched::Unknown => {}
         }
     }
     Ok(())
