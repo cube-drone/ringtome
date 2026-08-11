@@ -309,10 +309,11 @@ async fn journal_shares_of(
     author_root: &str,
     fresh: &[&JournalRow],
 ) -> Result<usize> {
-    let pins: Vec<(String, String)> = state
+    let pins: Vec<(String, String, i64)> = state
         .node_db
         .fetch_all(
-            "SELECT DISTINCT holder_root, doc_id FROM rebroadcast_pins WHERE author_root = ?1",
+            "SELECT DISTINCT holder_root, doc_id, updated_ms FROM rebroadcast_pins
+             WHERE author_root = ?1",
             (author_root,),
         )
         .await
@@ -321,15 +322,19 @@ async fn journal_shares_of(
         return Ok(0); // nobody here shares them - the common case, one indexed query
     }
 
-    let mut by_holder: std::collections::BTreeMap<String, Vec<&JournalRow>> = Default::default();
-    for (holder, doc_hex) in pins {
+    let mut by_holder: std::collections::BTreeMap<String, Vec<JournalRow>> = Default::default();
+    for (holder, doc_hex, shared_ms) in pins {
         if let Some(row) = fresh.iter().find(|r| r.doc_id_hex == doc_hex) {
-            by_holder.entry(holder).or_default().push(row);
+            by_holder
+                .entry(holder)
+                .or_default()
+                .push(as_shared(row, shared_ms));
         }
     }
 
     let mut written = 0usize;
     for (holder, rows) in by_holder {
+        let rows: Vec<&JournalRow> = rows.iter().collect();
         let readers = share_readers(state, &holder).await?;
         if readers.is_empty() {
             continue;
@@ -338,6 +343,31 @@ async fn journal_shares_of(
         written += readers.len();
     }
     Ok(written)
+}
+
+/// One post's facts, restamped as a SHARE rather than as its author's publication.
+///
+/// **The feed-worthy event is the share, not the writing** (Curtis, 2026-08-11). A three-year-old
+/// post passed along today is news today; sorting it by when it was written buries it three years
+/// down the reader's feed, where nobody will ever see the thing their friend just recommended.
+/// The first cut got this wrong twice - once by keeping the author's genesis stamp, once by using
+/// the moment the fragment happened to be fetched, which is an implementation artifact with no
+/// meaning to any reader.
+///
+/// The stamp is the POINTER'S ARRIVAL on this node, not the sharer's claimed clock. Same choice
+/// the bell already makes for published edges ("this replica's arrival stamp - the bell orders by
+/// it"), and it buys the same thing: no trusting a stranger's wall clock, so nobody pins
+/// themselves to the top of everyone's feed forever by claiming next Tuesday. The honest cost is
+/// that two readers can order the same share slightly differently - by when each of them learned
+/// of it - which is already true of every notification.
+///
+/// `updated_ms` keeps the author's own, because that answers a different question: the share is
+/// when this reached you, and `updated_ms` is when the words last changed.
+fn as_shared(row: &JournalRow, shared_ms: i64) -> JournalRow {
+    JournalRow {
+        published_ms: shared_ms,
+        ..row.clone()
+    }
 }
 
 /// Who sees `sharer_root`'s shares: everyone dialled in for their rebroadcasts, plus the sharer
@@ -417,13 +447,13 @@ pub async fn journal_shares_by(
         for r in &rows {
             let doc_hex = hex::encode(r.doc_id);
             if let Some(held) = page.iter().find(|p| p.doc_id_hex == doc_hex) {
-                wanted.push(held.clone());
+                wanted.push(as_shared(held, r.received_at_ms));
                 continue;
             }
             if let Some(row) =
                 crate::fragments::journalable(state, sharer_root, author_root, &r.doc_id).await
             {
-                wanted.push(row);
+                wanted.push(as_shared(&row, r.received_at_ms));
             }
         }
         if wanted.is_empty() {
@@ -472,7 +502,11 @@ pub async fn backfill_share(
             // Both heal on the author's next move, which is why this is not an error.
             return Ok(0);
         };
-        journal_rows(&state.node_db, author_root, &readers, &[row], Some(sharer_root)).await?;
+        // The share was minted a moment ago, so its arrival on this node is now. Restamped
+        // through the same door as every other share, rather than left carrying the author's
+        // publication date.
+        let shared = as_shared(row, now_ms());
+        journal_rows(&state.node_db, author_root, &readers, &[&shared], Some(sharer_root)).await?;
         Ok::<usize, anyhow::Error>(readers.len())
     };
     match attempt.await {
@@ -751,6 +785,40 @@ mod tests {
             published_ms: 1_000,
             updated_ms,
         }
+    }
+
+    /// The stamp that orders a share is the SHARE, not the writing. A three-year-old post passed
+    /// along today is news today; ordering it by its publication date buries it three years down
+    /// the feed, which is the same as not delivering it.
+    #[tokio::test]
+    async fn a_share_sorts_by_when_it_was_shared_not_when_it_was_written() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let sharer = "bb".repeat(32);
+        let reader = vec!["cc".repeat(32)];
+
+        // An old post - written long ago, shared just now.
+        let ancient = post("0", "an old favourite", 1_000);
+        let shared_at = 9_000_000;
+        let restamped = as_shared(&ancient, shared_at);
+        assert_eq!(
+            restamped.published_ms, shared_at,
+            "the share's arrival is what the feed orders by"
+        );
+        assert_eq!(
+            restamped.updated_ms, ancient.updated_ms,
+            "and the words' own history is untouched - that answers a different question"
+        );
+
+        journal_rows(&db, &author, &reader, &[&restamped], Some(&sharer))
+            .await
+            .unwrap();
+        let (published, updated): (i64, i64) = db
+            .fetch_one("SELECT published_ms, updated_ms FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(published, shared_at);
+        assert_eq!(updated, ancient.updated_ms);
     }
 
     /// The one judgment in the write path, and both directions of it. Following someone is the

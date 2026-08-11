@@ -267,8 +267,9 @@ pub async fn journalable(
 
 fn row_of(f: &Fragment, doc_hex: &str) -> crate::fanout::JournalRow {
     // A fragment has no genesis/head stamps of its own - those are folded facts about a chain we
-    // do not hold. The fetch moment is the honest stand-in: it is when this document became
-    // available HERE, which is exactly what `arrived_ms` means for every other row.
+    // do not hold. Both stamps here are placeholders that the caller REPLACES: `fanout::as_shared`
+    // sets `published_ms` to the pointer's arrival, because what orders a share in a feed is when
+    // it was shared. Leaving the fetch moment here as the final answer was the first cut's bug.
     let now = crate::clock::now_ms();
     crate::fanout::JournalRow {
         doc_id_hex: doc_hex.to_string(),

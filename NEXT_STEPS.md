@@ -42,8 +42,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     serves the share from its own fragment. Needs a self-hosting harness: the shared four nodes
     cannot be stopped mid-run without breaking every other spec (`mainline.cjs` shows the shape
     - spawn/waitHealthy/stopNode, pointed at local discovery rather than the real DHT).
-  * **A fragment carries no claimed stamp**, so its feed row sorts by when it arrived rather
-    than when it was written. Wants the author's `genesis_ms`/`head_ms` in the fragment.
   * **The edit window** and **delete memo + bloom summaries** - the two trim slices that bound
     what a node must remember forever. Designed, unbuilt.
   * **UI**: nothing renders `via`/`via_name`, and there is no share button.

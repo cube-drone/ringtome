@@ -37,6 +37,7 @@ import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
 import { useTurbolinks } from './doc/turbolinks.js';
 import { PersonBanner, PersonChip } from './person.js';
+import { useShared, markShared } from './shares.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
@@ -245,32 +246,38 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 /// the reader, and a hash carried from an earlier page load would endorse something staler than
 /// what was on screen.
 const ShareButton = ({ item, current }) => {
-    const [state, setState] = useState('idle');
-    const shared = state === 'shared';
+    const [sending, setSending] = useState(false);
+    // `null` while we do not yet know - the list is one fetch per page, and a button that
+    // guessed "share" and then flipped to "shared" is how a reader learns not to trust it.
+    const known = useShared(current.root, item.author, item.doc_id);
+    const shared = known === true;
 
     const pass = async () => {
-        if (state === 'sending') return;
-        setState('sending');
+        if (sending || known === null) return;
+        setSending(true);
+        const next = !shared;
         try {
             await api(`/api/identity/${current.root}/rebroadcasts`, {
                 method: 'POST',
                 body: JSON.stringify({
                     author: item.author,
                     doc_id: item.doc_id,
-                    ...(shared ? { retract: true } : {}),
+                    ...(next ? {} : { retract: true }),
                 }),
             });
-            setState(shared ? 'idle' : 'shared');
+            // Only after the write lands. The chain either took it or it did not, and saying
+            // "shared" on a failure is the one lie a share button must never tell.
+            markShared(current.root, item.author, item.doc_id, next);
         } catch {
-            // The chain write either happened or it did not; saying "shared" on a failure is
-            // the one lie a share button must never tell.
-            setState('idle');
+            // Left as it was. The next page load reads the chain and settles it.
+        } finally {
+            setSending(false);
         }
     };
 
     return html`<button
         class=${shared ? 'feed-share feed-share-on' : 'feed-share'}
-        disabled=${state === 'sending'}
+        disabled=${sending || known === null}
         title=${shared
             ? t('postentry.stop-sharing-this-with-your', 'stop sharing this with your network')
             : t('postentry.pass-this-along-to-your', 'pass this along to your network')}
