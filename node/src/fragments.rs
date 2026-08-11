@@ -163,6 +163,38 @@ pub fn unpack_path(packed: &[u8]) -> Vec<Vec<u8>> {
 }
 
 
+/// What version of somebody else's document this node currently holds - the head from their
+/// chain if we sync them, otherwise the fragment we fetched.
+///
+/// This is what a share endorses when the client does not name a version, and it is the honest
+/// value: the reader read bytes that came from exactly this head. `None` means we hold nothing
+/// of that document, and a node cannot vouch for words it has never seen.
+pub async fn current_version(
+    state: &crate::AppState,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> Option<[u8; 32]> {
+    let author_hex = hex::encode(author);
+    if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
+        if let Ok(Some(head)) = crate::record::documents::public_head(&db, doc_id).await {
+            return Some(head.head);
+        }
+    }
+    let row: Option<(String,)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT version FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            (author_hex.as_str(), hex::encode(doc_id)),
+        )
+        .await
+        .ok()
+        .flatten();
+    row.and_then(|(v,)| {
+        let bytes = hex::decode(v).ok()?;
+        <[u8; 32]>::try_from(bytes.as_slice()).ok()
+    })
+}
+
 /// The fragment path: get this document from the origin if we do not have it, and hand back what
 /// a feed row needs.
 ///

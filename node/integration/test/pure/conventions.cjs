@@ -214,6 +214,28 @@ describe('the pure core', () => {
         });
     }
 
+    it('every api() call names a path under /api/', () => {
+        // A 404 the build cannot see. `api()` hands its argument straight to `fetch`, so the
+        // prefix is the caller's job - and every one of the ~40 call sites writes `/api/...`
+        // except when somebody forgets, at which point the request 404s at runtime with the
+        // button silently doing nothing. That is exactly what happened to the share button on
+        // 2026-08-11, in a slice that passed ui-check, strings and conventions.
+        //
+        // `apiText` is deliberately not covered: it is also used for the PUBLIC `/id/...`
+        // routes, which take no prefix, so it has no single rule to enforce.
+        const offenders = [];
+        for (const file of jsFiles) {
+            const src = code(file);
+            for (const m of src.matchAll(/\bapi\(\s*(['`])([^'`]*)\1/g)) {
+                const literal = m[2];
+                if (!literal.startsWith('/')) continue; // not a path literal; nothing to judge
+                if (literal.startsWith('/api/')) continue;
+                offenders.push(`${rel(file)}: api('${literal}')`);
+            }
+        }
+        assert.deepEqual(offenders, [], 'these will 404 - api() paths start with /api/');
+    });
+
     it('holds every module that qualifies - nothing pure hides outside it', () => {
         // A module with no local imports that touches no browser API belongs in pure/. This is the
         // nudge, not a law: it catches the case where someone writes a genuinely pure module in the

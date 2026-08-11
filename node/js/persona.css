@@ -1064,6 +1064,70 @@
     font-size: 1.15em;
 }
 
+/* "Passed this along": who shared this into your feed. Above the banner and quieter than it,
+ * because the card is the AUTHOR speaking - a share is how it reached you, not whose words
+ * these are. Same reason it is smaller than the byline it sits over. */
+.feed-entry-via {
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+    margin: 0 0 0.35em;
+    color: var(--faint);
+    font-size: 0.72em;
+}
+
+/* The chip brings its own hexagon and label; all this row does is set the scale it sits at and
+ * keep the icon from growing with it. */
+.feed-entry-via .person-chip {
+    font-size: 1em;
+}
+
+.feed-entry-via > svg {
+    width: 1em;
+    height: 1em;
+    flex: none;
+}
+
+/* The share button wears the edit button's clothes: both are quiet actions in the banner's
+ * actions slot, and a louder one would make passing something along feel like the point of
+ * reading. Deliberately no count anywhere near it. */
+.feed-share {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+    cursor: pointer;
+}
+
+.feed-share svg {
+    width: 0.9em;
+    height: 0.9em;
+}
+
+.feed-share:hover {
+    border-color: var(--teal);
+    color: var(--sea);
+}
+
+.feed-share:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Already shared: filled rather than outlined, so the state reads without a label change being
+ * the only signal. */
+.feed-share-on {
+    border-color: var(--teal);
+    color: var(--sea);
+    background: var(--teal-wash, transparent);
+}
+
 .feed-entry-when {
     color: var(--faint);
     font-size: 0.75em;

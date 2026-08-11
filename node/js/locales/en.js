@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 428 phrases across 41 files.
+// 434 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -338,6 +338,11 @@ export default {
     'postentry.ready': 'ready',
     'postentry.failed': 'failed',
     'postentry.failed-2': 'failed',
+    'postentry.stop-sharing-this-with-your': 'stop sharing this with your network',
+    'postentry.pass-this-along-to-your': 'pass this along to your network',
+    'postentry.shared': 'shared',
+    'postentry.share': 'share',
+    'postentry.passed-this-along': 'passed this along',
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.edit': 'edit',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
@@ -402,6 +407,7 @@ export default {
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
     'identity.routes.rebroadcast-is-for-other-peoples-documents': "a persona rebroadcasts other people's documents; publish your own",
+    'identity.routes.this-computer-doesnt-have-that-post': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',

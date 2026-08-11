@@ -591,6 +591,10 @@ struct FeedItem {
     via: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     via_name: Option<String>,
+    /// The sharer's avatar, so the chip beside their name shows a face rather than an
+    /// identicon. From the same byline cache as the author's - one lookup, both people.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    via_avatar: Option<String>,
 }
 
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly
@@ -638,11 +642,9 @@ async fn feed_handler(
         .map(|r| {
             let mine = r.author_root == root;
             let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
-            let via_name = r
-                .via_root
-                .as_ref()
-                .and_then(|v| bylines.get(v))
-                .and_then(|b| b.name.clone());
+            let via_byline = r.via_root.as_ref().and_then(|v| bylines.get(v));
+            let via_name = via_byline.and_then(|b| b.name.clone());
+            let via_avatar = via_byline.and_then(|b| b.avatar.clone());
             FeedItem {
                 mine,
                 author_name: byline.name,
@@ -656,6 +658,7 @@ async fn feed_handler(
                 arrived_ms: r.arrived_ms,
                 via: r.via_root,
                 via_name,
+                via_avatar,
             }
         })
         .collect();
@@ -933,9 +936,16 @@ struct RebroadcastRequest {
     author: String,
     /// Which document of theirs, hex (16 bytes).
     doc_id: String,
-    /// The version being endorsed, hex (32 bytes). Omit to WITHDRAW a share.
+    /// The version being endorsed, hex (32 bytes). Omit and this node resolves what it
+    /// currently holds - which is the honest answer to "what did the sharer see", since the
+    /// bytes they read were served from exactly that head. A client passing a hash it read on
+    /// an earlier page load would be endorsing something staler than what it showed.
     #[serde(default)]
     version: Option<String>,
+    /// Withdraw the share instead of making one. An explicit word rather than "no version",
+    /// because absence now means "resolve it for me" and one field cannot mean both.
+    #[serde(default)]
+    retract: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -963,10 +973,6 @@ async fn rebroadcast_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let author = hex_fixed::<32>(&req.author, "author root")?;
     let doc_id = hex_fixed::<16>(&req.doc_id, "doc id")?;
-    let version = match req.version.as_deref() {
-        Some(v) => Some(hex_fixed::<32>(v, "version hash")?),
-        None => None,
-    };
     if author == hex_fixed::<32>(&root, "root")? {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.rebroadcast-is-for-other-peoples-documents",
@@ -974,6 +980,19 @@ async fn rebroadcast_handler(
         )));
     }
     let data = store::open(&state, &session.account.id, &root).await?;
+    let version = if req.retract {
+        None
+    } else {
+        match req.version.as_deref() {
+            Some(v) => Some(hex_fixed::<32>(v, "version hash")?),
+            None => Some(crate::fragments::current_version(&state, &author, &doc_id).await.ok_or_else(|| {
+                AppError::BadRequest(crate::msg!(
+                    "identity.routes.this-computer-doesnt-have-that-post",
+                    "this computer doesn't have that post yet - it can't share what it hasn't read"
+                ))
+            })?),
+        }
+    };
     let entry = data.rebroadcasts().share(&author, &doc_id, version).await?;
 
     // Tell the author, if there is anything to tell. A withdrawal is deliberately silent -

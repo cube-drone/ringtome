@@ -82,6 +82,23 @@ describe('the string tool finds messages however the source wrapped them', funct
         );
     });
 
+    it('gives one phrase used twice a single catalog entry', async () => {
+        const { collect, renderEnglish } = await tool();
+        // Two call sites, same words, same file: one phrase with one translation, which is the
+        // whole point of a key. Emitting it per call site produced a duplicate object literal
+        // key - an esbuild warning and an eslint error - and neither said what to do about it.
+        const entries = [
+            { file: 'a.js', line: 1, key: 'a.someone', english: 'someone' },
+            { file: 'a.js', line: 9, key: 'a.someone', english: 'someone' },
+            { file: 'a.js', line: 12, key: 'a.other', english: 'other' },
+        ];
+        const rendered = renderEnglish(entries, {});
+        const hits = rendered.split('\n').filter((l) => l.includes("'a.someone'"));
+        assert.equal(hits.length, 1, 'one key, one line');
+        assert.ok(rendered.includes('2 phrases'), 'and the count is of keys, not call sites');
+        assert.ok(collect, 'collect is exported for the check path');
+    });
+
     it('finds every message in a file that mixes both forms', async () => {
         const { rustMessages } = await tool();
         const src = [

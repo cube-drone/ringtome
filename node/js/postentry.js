@@ -36,7 +36,7 @@ import { Editor } from './doc/editor.js';
 import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
 import { useTurbolinks } from './doc/turbolinks.js';
-import { PersonBanner } from './person.js';
+import { PersonBanner, PersonChip } from './person.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
@@ -234,6 +234,53 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
  * `item`: { author, doc_id (PUBLIC), title, format, published_ms, mine,
  *           author_name?, author_avatar? }
  */
+/// "Pass this along": one click to rebroadcast a post into your own network.
+///
+/// Deliberately NOT a counter, and deliberately not showing how many others shared it. A share
+/// here is a routing act - it puts a post in front of the people who follow you for your
+/// recommendations - and a visible tally is the engagement machinery the Vision indicts. What it
+/// shows is whether YOU have shared it, which is the only fact the button needs to carry.
+///
+/// The version is resolved server-side rather than sent: this node knows what head it served
+/// the reader, and a hash carried from an earlier page load would endorse something staler than
+/// what was on screen.
+const ShareButton = ({ item, current }) => {
+    const [state, setState] = useState('idle');
+    const shared = state === 'shared';
+
+    const pass = async () => {
+        if (state === 'sending') return;
+        setState('sending');
+        try {
+            await api(`/api/identity/${current.root}/rebroadcasts`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    author: item.author,
+                    doc_id: item.doc_id,
+                    ...(shared ? { retract: true } : {}),
+                }),
+            });
+            setState(shared ? 'idle' : 'shared');
+        } catch {
+            // The chain write either happened or it did not; saying "shared" on a failure is
+            // the one lie a share button must never tell.
+            setState('idle');
+        }
+    };
+
+    return html`<button
+        class=${shared ? 'feed-share feed-share-on' : 'feed-share'}
+        disabled=${state === 'sending'}
+        title=${shared
+            ? t('postentry.stop-sharing-this-with-your', 'stop sharing this with your network')
+            : t('postentry.pass-this-along-to-your', 'pass this along to your network')}
+        onClick=${pass}
+    >
+        <${Icons.colRebroadcast} />
+        ${shared ? t('postentry.shared', 'shared') : t('postentry.share', 'share')}
+    </button>`;
+};
+
 export const PostEntry = ({ item, current, interest, editing }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);
@@ -308,6 +355,27 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                 .join('; ') || undefined}
         >
             ${editing && html`<${BakeModal} items=${editing.baking} />`}
+            ${/* Who passed this along, when it arrived by rebroadcast. ABOVE the banner and
+                quieter than it, because the card is still the AUTHOR speaking - a share is how
+                it reached you, not whose words these are. Getting that hierarchy backwards is
+                how a quote-tweet reads as the quoter's post. */ ''}
+            ${!!item.via &&
+            html`<p class="feed-entry-via">
+                <${Icons.colRebroadcast} />
+                <${PersonChip}
+                    root=${item.via}
+                    current=${current}
+                    size="mini"
+                    profile=${{
+                        fields: [
+                            item.via_name && { field: 'name', value: item.via_name },
+                            item.via_avatar && { field: 'avatar', value: item.via_avatar },
+                        ].filter(Boolean),
+                        via: [],
+                    }}
+                />
+                ${t('postentry.passed-this-along', 'passed this along')}
+            </p>`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini hexagon made you
                 hover. The when and - for your own posts - the unlock ride its actions slot. */ ''}
@@ -322,6 +390,7 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                     via: [],
                 }}
                 actions=${html`<span class="feed-entry-when">${when}</span>
+                    ${!item.mine && !!current && html`<${ShareButton} item=${item} current=${current} />`}
                     ${editing &&
                     !open &&
                     (editing.locked

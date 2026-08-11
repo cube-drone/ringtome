@@ -752,7 +752,7 @@ const jsFiles = () =>
 const rustFiles = () => walk(RUST_DIR, '.rs').map(relPath).sort();
 
 /// Every catalogued phrase, in source order, grouped by the file it lives in.
-function collect() {
+export function collect() {
     const entries = [];
     for (const file of jsFiles()) {
         const src = stripComments(fs.readFileSync(path.join(WORKSPACE, file), 'utf8'));
@@ -784,7 +784,7 @@ async function loadEnglish() {
  * seed at the call site. Grouping and ordering always come from the source, so a phrase that moves
  * between files moves here too.
  */
-function renderEnglish(entries, existing) {
+export function renderEnglish(entries, existing) {
     const lines = [];
     lines.push('// The English catalog: every phrase the application says to a person, in one place.');
     lines.push('//');
@@ -798,10 +798,19 @@ function renderEnglish(entries, existing) {
     lines.push('// attached to it. To start another language, copy this file, translate the values, and');
     lines.push('// register it in i18n.js - the keys are already right.');
     lines.push('//');
-    lines.push(`// ${entries.length} phrases across ${new Set(entries.map((e) => e.file)).size} files.`);
+    lines.push(
+        `// ${new Set(entries.map((e) => e.key)).size} phrases across ${new Set(entries.map((e) => e.file)).size} files.`,
+    );
     lines.push('export default {');
     let currentFile = null;
+    // One line per KEY, not per call site. The same sentence used twice in one file mints the
+    // same key both times - which is correct, it is one phrase with one translation - and
+    // emitting it twice produced a duplicate object literal key that esbuild warned about and
+    // eslint refused. Found 2026-08-11 by using "someone" in two places in postentry.js.
+    const written = new Set();
     for (const e of entries) {
+        if (written.has(e.key)) continue;
+        written.add(e.key);
         if (e.file !== currentFile) {
             if (currentFile !== null) lines.push('');
             currentFile = e.file;
@@ -991,13 +1000,20 @@ async function check() {
         );
     }
 
-    // Duplicate keys would silently collapse two phrases into one translation.
+    // A key carrying two DIFFERENT sentences would silently collapse them into one translation,
+    // and that is the failure worth failing on. The same sentence at two call sites is not that:
+    // it is one phrase used twice, it mints the same key by design, and it gets one catalog
+    // entry. Flagging it would punish the reuse the key system exists to enable.
     const seen = new Map();
     for (const e of entries) {
-        if (seen.has(e.key)) {
-            problems.push(`duplicate key ${e.key}: ${seen.get(e.key)} and ${e.file}:${e.line}`);
+        const prior = seen.get(e.key);
+        if (prior && prior.english !== e.english) {
+            problems.push(
+                `key ${e.key} carries two different phrases: ${prior.where} says ${JSON.stringify(prior.english)}, ` +
+                    `${e.file}:${e.line} says ${JSON.stringify(e.english)}`,
+            );
         }
-        seen.set(e.key, `${e.file}:${e.line}`);
+        if (!prior) seen.set(e.key, { english: e.english, where: `${e.file}:${e.line}` });
     }
 
     // Copy that never went through `t` - the whole point of the cop.
