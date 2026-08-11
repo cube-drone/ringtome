@@ -190,6 +190,7 @@ pub async fn publish(
     }
 
     let mut swaps: Vec<(String, String)> = Vec::new();
+    let mut baked: Vec<[u8; 16]> = Vec::new();
     let mut items: Vec<BakeItem> = Vec::new();
     let mut blocked = false;
     for r in &refs {
@@ -200,6 +201,7 @@ pub async fn publish(
                 match docs.bake_private_media(media).await {
                     Ok((public, fmt)) => {
                         swaps.push((target.clone(), public_media_target(root_hex, &public, fmt)));
+                        baked.push(public);
                         items.push(BakeItem {
                             source: target.clone(),
                             kind: "private",
@@ -237,6 +239,7 @@ pub async fn publish(
                             .map(|h| crate::record::documents::Format::from_wire(h.format))
                             .unwrap_or(crate::record::documents::Format::Avif);
                         swaps.push((target.clone(), public_media_target(root_hex, &public, fmt)));
+                        baked.push(public);
                         items.push(BakeItem {
                             source: target.clone(),
                             kind: "external",
@@ -272,7 +275,77 @@ pub async fn publish(
     if blocked {
         return Ok(Outcome::Baking(items));
     }
+    // Everything is baked and public, so the bytes this post will ask the network to carry are
+    // finally knowable. Checked HERE rather than at upload: a single upload under the per-file
+    // cap says nothing about a post that embeds forty of them.
+    media_budget(state, data, &baked).await?;
     Ok(Outcome::Posted(docs.publish(doc_id, Some(rewrite(&body, &swaps))).await?))
+}
+
+/// What one post's embedded media may total, once baked.
+///
+/// **This is the number that makes a rebroadcast fragment bounded by construction** (PROJECT_PLAN,
+/// What travels with a share): a share carries the document's referenced blobs at full fidelity,
+/// so "how big can a fragment be" is exactly "how big can a post's media be" - and without a
+/// cap here that is unbounded, because the per-file transcode ceiling bounds each blob while
+/// nothing bounds how many a body references. A hundred ten-megabyte tracks is a gigabyte
+/// fragment replicated to everyone who looks at the share.
+///
+/// Media only: the body's own size is capped separately (`RINGTOME_MAX_DOCUMENT_BYTES`), and the
+/// two ceilings stack rather than sharing one budget.
+///
+/// A post that needs more than this is not one post - it is a Taxonomy of them (a mixtape is a
+/// bucket, not a document), and publishing a whole bucket at a time is its own design.
+const MAX_POST_MEDIA_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Total the baked media and refuse the post if it is over budget.
+///
+/// **Deduplicated by blob hash**, because embedding one image three times asks the network to
+/// carry it once - charging three times would refuse posts that cost nothing extra.
+///
+/// A media document whose size cannot be read is skipped rather than assumed: it was baked
+/// moments ago on this node, so absence means something stranger than a big file, and failing a
+/// publish over a metadata miss would be a worse bug than the one this guards.
+async fn media_budget(
+    state: &AppState,
+    data: &crate::record::store::Store,
+    baked: &[[u8; 16]],
+) -> Result<(), AppError> {
+    let mut seen: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
+    let mut total: u64 = 0;
+    for media in baked {
+        let Some(head) = crate::record::documents::public_head(data.db(), media).await? else {
+            continue;
+        };
+        if !seen.insert(head.file_hash) {
+            continue; // the same picture twice is one blob on every node that carries it
+        }
+        total += state
+            .files
+            .size_of(head.file_hash.into())
+            .await
+            .unwrap_or(0);
+    }
+    if total > MAX_POST_MEDIA_BYTES {
+        return Err(AppError::BadRequest(crate::msg!(
+            "record.bake.post-media-over-budget",
+            "this post's media adds up to {total} - one post may carry {cap}. Split it across several posts.",
+            total = human_bytes(total),
+            cap = human_bytes(MAX_POST_MEDIA_BYTES)
+        )));
+    }
+    Ok(())
+}
+
+/// Bytes as a person reads them. Publish refusals are read by whoever pressed Post, and
+/// "10485760" is not a sentence.
+fn human_bytes(n: u64) -> String {
+    const MB: u64 = 1024 * 1024;
+    if n >= MB {
+        format!("{:.1}MB", n as f64 / MB as f64)
+    } else {
+        format!("{}KB", (n / 1024).max(1))
+    }
 }
 
 fn bake_meter_key(root_hex: &str, url: &str) -> String {
@@ -440,6 +513,26 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_budget_reads_as_a_sentence_not_a_number() {
+        assert_eq!(human_bytes(10 * 1024 * 1024), "10.0MB");
+        assert_eq!(human_bytes(1536 * 1024), "1.5MB");
+        assert_eq!(human_bytes(4096), "4KB");
+        assert_eq!(human_bytes(12), "1KB", "never zero - a refusal saying 0KB reads as a bug");
+    }
+
+    /// The cap is what makes a rebroadcast fragment bounded, so it must stay in the same order
+    /// as the other "nothing bigger moves on the network" ceilings. A careless edit to
+    /// gigabytes would silently un-bound every fragment in the system.
+    #[test]
+    fn the_media_budget_stays_in_network_order() {
+        assert!(
+            (1024 * 1024..=64 * 1024 * 1024).contains(&MAX_POST_MEDIA_BYTES),
+            "a post's media budget is also every fragment holder's disk cost"
+        );
+    }
+
     use super::*;
 
     const ROOT: &str = "aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22";

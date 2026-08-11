@@ -31,7 +31,7 @@ pub use error::ProtoError;
 pub use crown::{Ceiling, KeyStatus, Crown};
 pub use registry::{
     Anchor, Authorize, Disposition, DocHeaderPlain, KeyEpoch, PrivateKind, PrivatePlain,
-    PrivateRecord, ProfileSet, PublicEdge, Rebroadcast,
+    PostRetraction, PrivateRecord, ProfileSet, PublicEdge, Rebroadcast,
     Revoke,
 };
 pub use deliver::{DeliverMessage, Envelope, SignedEnvelope};

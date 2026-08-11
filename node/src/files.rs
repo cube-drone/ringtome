@@ -170,6 +170,18 @@ impl FileStore {
         Ok(decrypt_file(&blob, keys))
     }
 
+    /// How big is this blob, if we hold it whole? Metadata only - never reads the bytes.
+    ///
+    /// Used by the publish-time media budget (`record::bake`), which has to total up what a post
+    /// is about to ask every node that carries it to store. Reading each blob to measure it
+    /// would mean pulling megabytes through memory to learn a number the store already knows.
+    pub async fn size_of(&self, hash: Hash) -> Option<u64> {
+        match self.store().blobs().status(hash).await {
+            Ok(iroh_blobs::api::blobs::BlobStatus::Complete { size }) => Some(size),
+            _ => None,
+        }
+    }
+
     /// Do we hold this blob, complete, locally?
     pub async fn has(&self, hash: Hash) -> bool {
         matches!(

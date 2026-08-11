@@ -191,6 +191,24 @@ CREATE TABLE published_edges (
     PRIMARY KEY (subject_root)
 );
 
+-- Public documents this persona has WITHDRAWN: the folded `post-retract` tombstones
+-- (PROJECT_PLAN, Retraction, edits, and what a node must remember forever).
+--
+-- Content-free by construction and kept forever, which is the point: "is this document
+-- withdrawn?" is the one question that must stay answerable for all time, and answering it
+-- costs sixteen bytes per document ever retracted rather than an index of what they said. The
+-- delete-summary filters that eventually ship between nodes summarize exactly this table.
+--
+-- LWW on the standard stamp against the document's newest version, so a retraction followed by
+-- a re-publication resolves by stamp rather than by arrival order.
+CREATE TABLE public_retractions (
+    doc_id        BLOB    PRIMARY KEY,
+    timestamp_ms  INTEGER NOT NULL,
+    seq           INTEGER NOT NULL,
+    entry_hash    BLOB    NOT NULL,
+    received_at_ms INTEGER NOT NULL
+);
+
 -- Rebroadcasts this persona has published: signed pointers at other people's documents,
 -- folded from their own rebroadcast chains (imaol::catch_up_rebroadcasts - the fold writes the
 -- memo, reads never fold). PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica.

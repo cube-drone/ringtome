@@ -729,6 +729,27 @@ impl Documents<'_> {
             .await
     }
 
+    /// Is this document on the public shelf right now? The gate for whether deleting it also
+    /// owes the network a retraction.
+    pub async fn is_public(&self, doc_id: &[u8; 16]) -> Result<bool, AppError> {
+        Ok(crate::record::documents::public_doc_ids(&self.store.db)
+            .await?
+            .contains(&hex::encode(doc_id)))
+    }
+
+    /// Withdraw a PUBLIC document from the network: a content-free tombstone on the posts
+    /// chain, which travels wherever the document travelled (PROJECT_PLAN, Retraction, edits,
+    /// and what a node must remember forever). Distinct from [`Self::delete`], which is a
+    /// private fact about the author's own lists.
+    pub async fn retract_public(&self, doc_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
+        crate::record::documents::retract_public(
+            &self.store.db,
+            &self.store.authorship.signer,
+            doc_id,
+        )
+        .await
+    }
+
     /// Undelete a document (LWW set-remove): it reappears in every list with its history intact,
     /// since nothing on the version chain was ever removed. A delete/restore race resolves by
     /// timestamp, like every other LWW fact.

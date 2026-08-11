@@ -9,6 +9,22 @@ Judge entries against STYLE.md; when one gets picked up, work it as its own comm
 
 ## Open items
 
+### The localization extractor skips line-continued literals (2026-08-10)
+
+`tools/strings.mjs` does not see a `msg!` whose English is written across two lines with a `\`
+continuation. The phrase never enters the catalog, `just strings` reports "+0 new", and
+`strings-check` stays green - so a user-facing sentence ships unlocalizable with no cop firing.
+Found by writing a publish-refusal message the natural way for a long sentence; putting it on one
+line fixed it.
+
+Worse than an ordinary gap because of *which* messages it eats: the long ones, which are the most
+user-visible. The file already carries a comment about a previous version of this same shape ("a
+pattern anchored without it silently skips exactly the longest and most user-visible messages"),
+so this is the second time round.
+
+The fix wants a test with a line-continued literal in a fixture, not just a pattern change - a
+regex edit with no cop is how this recurs a third time.
+
 ### A suppressed inbox notice still holds its ring slot (2026-08-10)
 
 `undelivered_twice` hides a delivered notice once the fold derives the same fact, but the chain

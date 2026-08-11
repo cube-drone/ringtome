@@ -734,10 +734,39 @@ pub async fn public_doc_ids(db: &Db) -> Result<std::collections::HashSet<String>
     if quarantined(db).await? {
         return Ok(Default::default());
     }
+    // Retracted documents leave the shelf, and this is the chokepoint that makes deletion
+    // travel: `fanout::retract_vanished` reconciles every reader's journal against exactly this
+    // set, so a withdrawn post disappears from followers' feeds on the next public move - and a
+    // rebroadcaster's pin sees it the same way. Before the public tombstone existed, deleting a
+    // post was a private fact and this set never changed.
+    let retracted = retracted_doc_ids(db).await?;
     let rows: Vec<(Vec<u8>,)> = db
         .fetch_all("SELECT doc_id FROM doc_heads WHERE lane = 'public'", ())
         .await
         .context("listing public document ids")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .map(|(id,)| hex::encode(id))
+        .filter(|id| !retracted.contains(id))
+        .collect())
+}
+
+/// Which public documents are withdrawn, as hex - the shelf's filter.
+///
+/// **A tombstone is final for its document id**, with no stamp comparison against the versions.
+/// That is not a shortcut, it is the model: re-publishing after a delete mints a NEW document
+/// id (PROJECT_PLAN - "the record is the record", and the recourse for a typo is
+/// delete-and-repost), so "retracted, then published again under the same id" is not a state the
+/// system produces. Finality also buys order-independence for free: whether a node folds the
+/// header first or the tombstone first, both orders settle to withdrawn, forever.
+pub(crate) async fn retracted_doc_ids(
+    db: &Db,
+) -> Result<std::collections::HashSet<String>, AppError> {
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all("SELECT doc_id FROM public_retractions", ())
+        .await
+        .context("reading public retractions")
         .map_err(AppError::Internal)?;
     Ok(rows.into_iter().map(|(id,)| hex::encode(id)).collect())
 }
@@ -995,12 +1024,25 @@ async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<usize, AppError> {
 /// the anonymous /id serving routes catch up through this without touching the private
 /// half, and it advances its own watermarks + memoizes its own changed heads.
 pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, AppError> {
-    let public_entries = crate::record::imaol::entries_past_watermarks(
+    // **Both public entry types in ONE pass**, because a view watermark is per (author,
+    // service) and two folds sharing a service would fight over one cursor - a retraction
+    // folded by a pass that then advanced past headers, or the reverse, loses entries silently.
+    // (This is the same constraint that put rebroadcasts on their own chain; here the two types
+    // genuinely belong on one chain, so the fold is what has to widen.)
+    let mut public_entries = crate::record::imaol::entries_past_watermarks(
         db,
         service::POSTS,
         entry_type::DOC_HEADER,
     )
     .await?;
+    public_entries.extend(
+        crate::record::imaol::entries_past_watermarks(
+            db,
+            service::POSTS,
+            entry_type::POST_RETRACT,
+        )
+        .await?,
+    );
     let mut by_author: BTreeMap<String, Vec<SignedEntry>> = BTreeMap::new();
     for signed in public_entries {
         by_author
@@ -1010,15 +1052,35 @@ pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, 
     }
     let mut changed: BTreeSet<[u8; 16]> = BTreeSet::new();
     let mut advances: Vec<(String, u64)> = Vec::new();
-    for (author_hex, chain) in by_author {
+    for (author_hex, mut chain) in by_author {
+        // Two type-filtered reads concatenated are not in seq order; the watermark and the LWW
+        // comparisons both assume they are.
+        chain.sort_by_key(|s| s.entry().seq);
         let mut advance_to: Option<u64> = None;
         for signed in chain {
             if let Payload::Inline(payload) = &signed.entry().payload {
-                if let Ok(header) = ringtome_proto::DocHeaderPlain::decode(payload) {
-                    changed.insert(header.doc_id);
-                    fold_header(db, &signed, &header, "public").await?;
-                } else {
-                    tracing::warn!(seq = signed.entry().seq, "skipping undecodable public doc header");
+                match signed.entry().entry_type {
+                    entry_type::POST_RETRACT => match ringtome_proto::PostRetraction::decode(payload)
+                    {
+                        Ok(tombstone) => {
+                            changed.insert(tombstone.doc_id);
+                            fold_retraction(db, &signed, &tombstone).await?;
+                        }
+                        Err(_) => tracing::warn!(
+                            seq = signed.entry().seq,
+                            "skipping undecodable post retraction"
+                        ),
+                    },
+                    _ => match ringtome_proto::DocHeaderPlain::decode(payload) {
+                        Ok(header) => {
+                            changed.insert(header.doc_id);
+                            fold_header(db, &signed, &header, "public").await?;
+                        }
+                        Err(_) => tracing::warn!(
+                            seq = signed.entry().seq,
+                            "skipping undecodable public doc header"
+                        ),
+                    },
                 }
             }
             advance_to = Some(signed.entry().seq);
@@ -1033,6 +1095,65 @@ pub(crate) async fn catch_up_public_lane(db: &Db) -> Result<BTreeSet<[u8; 16]>, 
             .await?;
     }
     Ok(changed)
+}
+
+/// Withdraw one public document: append the tombstone to the persona's POSTS chain.
+///
+/// Public, unlike `Documents::delete`, which writes an epoch-encrypted set-add on the doc-meta
+/// chain and therefore reaches only the author's own devices. Both exist and mean different
+/// things: the private one hides a document from its author's own lists, the public one tells
+/// the network it is gone. Publishing something and then deleting it needs both, which is why
+/// the route below writes both.
+pub async fn retract_public(
+    db: &Db,
+    key: &ringtome_proto::SigningKey,
+    doc_id: &[u8; 16],
+) -> Result<SignedEntry, AppError> {
+    let payload = ringtome_proto::PostRetraction { doc_id: *doc_id }.encode();
+    crate::record::imaol::append(
+        db,
+        key,
+        service::POSTS,
+        entry_type::POST_RETRACT,
+        Payload::Inline(payload),
+    )
+    .await
+}
+
+/// Fold one `post-retract` tombstone: the document is withdrawn.
+///
+/// LWW on the standard stamp, so a retraction that arrives after a later re-publication does
+/// not win by arriving late - `retracted_after` below is what compares them, and it compares
+/// the *entries*, never the arrival order.
+async fn fold_retraction(
+    db: &Db,
+    signed: &SignedEntry,
+    tombstone: &ringtome_proto::PostRetraction,
+) -> Result<(), AppError> {
+    db.execute(
+        "INSERT INTO public_retractions
+           (doc_id, timestamp_ms, seq, entry_hash, received_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(doc_id) DO UPDATE SET
+           timestamp_ms = excluded.timestamp_ms,
+           seq = excluded.seq,
+           entry_hash = excluded.entry_hash,
+           received_at_ms = excluded.received_at_ms
+         WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+             > (public_retractions.timestamp_ms, public_retractions.seq,
+                public_retractions.entry_hash)",
+        (
+            tombstone.doc_id.as_slice(),
+            signed.entry().timestamp_ms,
+            signed.entry().seq as i64,
+            signed.hash().as_slice(),
+            crate::clock::now_ms(),
+        ),
+    )
+    .await
+    .context("folding a post retraction")
+    .map_err(AppError::Internal)?;
+    Ok(())
 }
 
 /// Re-resolve and upsert one `doc_heads` row per changed document. NOT judgment-in-SQL: every
@@ -2285,6 +2406,109 @@ pub async fn read_body(
 
 #[cfg(test)]
 mod tests {
+    /// Append a public doc header straight to the POSTS chain. The real publish path needs a
+    /// FileStore for the body; the fold under test only reads the header, so this stays a unit
+    /// test instead of an integration one.
+    async fn mint_public_header(
+        db: &Db,
+        key: &ringtome_proto::SigningKey,
+        doc_id: &[u8; 16],
+        title: &str,
+    ) {
+        let header = DocHeaderPlain {
+            doc_id: *doc_id,
+            parents: Vec::new(),
+            file_hash: [1u8; 32],
+            body_hash: [1u8; 32],
+            title: title.to_string(),
+            format: None,
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
+            preview_hash: None,
+        };
+        crate::record::imaol::append(
+            db,
+            key,
+            service::POSTS,
+            entry_type::DOC_HEADER,
+            Payload::Inline(header.encode().unwrap()),
+        )
+        .await
+        .unwrap();
+    }
+
+
+    /// The gap this whole slice exists to close: before the public tombstone, a deleted post
+    /// stayed on the shelf forever from every other node's point of view, because the only
+    /// record of the deletion was an epoch-encrypted fact on a private chain.
+    #[tokio::test]
+    async fn a_public_retraction_takes_a_document_off_the_shelf() {
+        let db = crate::db::test_user_db().await;
+        let key = ringtome_proto::SigningKey::from_bytes(&[7u8; 32]);
+
+        let doc = [3u8; 16];
+        mint_public_header(&db, &key, &doc, "a post worth regretting").await;
+        assert!(
+            public_doc_ids(&db).await.unwrap().contains(&hex::encode(doc)),
+            "precondition: it is on the shelf"
+        );
+
+        retract_public(&db, &key, &doc).await.unwrap();
+        assert!(
+            !public_doc_ids(&db).await.unwrap().contains(&hex::encode(doc)),
+            "a withdrawn document leaves the shelf - which is what fanout::retract_vanished \
+             reconciles every reader's journal against"
+        );
+    }
+
+    /// Order-independence, which finality buys: a node that folds the tombstone before the
+    /// header it withdraws must settle the same as one that folds them the other way round.
+    #[tokio::test]
+    async fn a_retraction_that_arrives_first_still_wins() {
+        let db = crate::db::test_user_db().await;
+        let key = ringtome_proto::SigningKey::from_bytes(&[8u8; 32]);
+        let doc = [4u8; 16];
+
+        // The tombstone is minted first, then the header - the out-of-order arrival, which is
+        // ordinary on a network where entries stream in whatever order a peer had them.
+        retract_public(&db, &key, &doc).await.unwrap();
+        mint_public_header(&db, &key, &doc, "posted after the tombstone").await;
+
+        assert!(
+            !public_doc_ids(&db).await.unwrap().contains(&hex::encode(doc)),
+            "a tombstone is final for its document id, whichever order the fold saw them in"
+        );
+    }
+
+    /// Both public entry types share one chain and therefore one watermark. If the fold ever
+    /// advanced past one type while reading only the other, entries would be skipped in
+    /// silence - so: interleave them and check nothing is lost.
+    #[tokio::test]
+    async fn headers_and_tombstones_interleave_without_losing_either() {
+        let db = crate::db::test_user_db().await;
+        let key = ringtome_proto::SigningKey::from_bytes(&[9u8; 32]);
+        let (kept, withdrawn) = ([5u8; 16], [6u8; 16]);
+
+        mint_public_header(&db, &key, &kept, "stays").await;
+        retract_public(&db, &key, &withdrawn).await.unwrap();
+        mint_public_header(&db, &key, &withdrawn, "goes").await;
+        retract_public(&db, &key, &kept).await.unwrap();
+        mint_public_header(&db, &key, &kept, "stays, edited").await;
+
+        let shelf = public_doc_ids(&db).await.unwrap();
+        assert!(
+            !shelf.contains(&hex::encode(withdrawn)),
+            "the withdrawn document is gone"
+        );
+        assert!(
+            !shelf.contains(&hex::encode(kept)),
+            "and so is the other one - both tombstones folded, neither skipped by the shared \
+             watermark"
+        );
+    }
+
     use super::*;
 
     async fn test_db() -> Db {

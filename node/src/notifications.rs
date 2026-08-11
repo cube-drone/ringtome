@@ -23,11 +23,20 @@ use crate::AppState;
 /// render what they do.
 pub const KIND_PUBLIC_EDGE: &str = "public-edge";
 
+/// "Someone you follow shared something of yours." The derived twin of
+/// `deliver::notice_kind::REBROADCAST` - a follow edge produces no inbox row, ever, so where the
+/// author already syncs the sharer this fold is the only thing that speaks.
+pub const KIND_REBROADCAST: &str = "rebroadcast";
+
 /// One notification, as the endpoint serves it.
 #[derive(Debug, serde::Serialize)]
 pub struct NotificationRow {
     pub author_root: String,
     pub kind: String,
+    /// Which object, for kinds that are about one - the shared document, hex. Empty for kinds
+    /// about a relationship.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub doc_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trust: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,19 +54,23 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
 }
 
 async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
-    // The cheap gate first: most authors have published no edges, and this hook fires on
-    // every public frontier move - so ask the chain_heads memo (one node.db probe) before
-    // paying for a user-database open.
-    if !crate::net::frontier::has_service_chain(
-        &state.node_db,
-        author_root,
-        ringtome_proto::registry::service::FOLLOWS_PUBLIC,
-    )
-    .await?
-    {
+    use ringtome_proto::registry::service;
+
+    // The cheap gates first: most authors have published no edges and shared nothing, and this
+    // hook fires on every public frontier move - so ask the chain_heads memo (node.db probes)
+    // before paying for a user-database open.
+    let has_edges =
+        crate::net::frontier::has_service_chain(&state.node_db, author_root, service::FOLLOWS_PUBLIC)
+            .await?;
+    let has_shares =
+        crate::net::frontier::has_service_chain(&state.node_db, author_root, service::REBROADCASTS)
+            .await?;
+    if !has_edges && !has_shares {
         return Ok(());
     }
-    // One database open, the fold edge's allowance (the same shape as fanout::journal_for).
+    // ONE database open for both folds, the fold edge's allowance (the same shape as
+    // fanout::journal_for). Two folds reading one handle beats two handles, and the
+    // conventions cop counts opens per file for exactly this reason.
     let Some(db) = state
         .user_dbs
         .get(author_root)
@@ -66,11 +79,22 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
     else {
         return Ok(()); // an author we hold nothing of has published nothing we can read
     };
-    let published = crate::record::imaol::published_edges(&db)
-        .await
-        .map_err(|e| anyhow::anyhow!("folding {author_root}'s published edges: {e}"))?;
+    let published = if has_edges {
+        crate::record::imaol::published_edges(&db)
+            .await
+            .map_err(|e| anyhow::anyhow!("folding {author_root}'s published edges: {e}"))?
+    } else {
+        Default::default()
+    };
+    let shared = if has_shares {
+        crate::record::imaol::rebroadcasts(&db)
+            .await
+            .map_err(|e| anyhow::anyhow!("folding {author_root}'s rebroadcasts: {e}"))?
+    } else {
+        Vec::new()
+    };
     drop(db);
-    if published.is_empty() {
+    if published.is_empty() && shared.is_empty() {
         return Ok(());
     }
 
@@ -80,6 +104,47 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
             .map_err(|e| anyhow::anyhow!("listing hosted personas: {e}"))?
             .into_iter()
             .collect();
+
+    // "Someone you follow shared something of yours." The reader here is the shared document's
+    // AUTHOR, not a follower of the sharer - which is the whole difference between this fold and
+    // the feed's. Same follow-edge rule as below: we only speak about authors this reader chose
+    // to sync, because reaching someone who does not follow you is the inbox path's job.
+    for row in &shared {
+        if !hosted.contains(&row.author_root) || row.author_root == author_root {
+            continue;
+        }
+        if !crate::net::subscriptions::follows(&state.node_db, &row.author_root, author_root).await?
+        {
+            continue;
+        }
+        let doc_hex = hex::encode(row.doc_id);
+        if row.is_retracted() {
+            // Un-sharing removes the notification rather than announcing itself. "X no longer
+            // shares your post" is not news, just the absence of some - the same rule the
+            // retracted edge follows below, and the same one `verify_claim` applies to the
+            // delivered twin.
+            delete_row(
+                &state.node_db,
+                &row.author_root,
+                author_root,
+                KIND_REBROADCAST,
+                &doc_hex,
+            )
+            .await?;
+        } else {
+            upsert_row(
+                &state.node_db,
+                &row.author_root,
+                author_root,
+                KIND_REBROADCAST,
+                &doc_hex,
+                None,
+                None,
+                row.received_at_ms,
+            )
+            .await?;
+        }
+    }
 
     for (subject_hex, row) in published {
         if subject_hex == author_root || !hosted.contains(&subject_hex) {
@@ -93,12 +158,14 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
             continue;
         }
         if row.edge.is_empty() {
-            delete_row(&state.node_db, &subject_hex, author_root).await?;
+            delete_row(&state.node_db, &subject_hex, author_root, KIND_PUBLIC_EDGE, "").await?;
         } else {
             upsert_row(
                 &state.node_db,
                 &subject_hex,
                 author_root,
+                KIND_PUBLIC_EDGE,
+                "",
                 row.edge.trust.as_deref(),
                 row.edge.interest.as_deref(),
                 row.received_at_ms,
@@ -111,10 +178,13 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
 
 /// Upsert one public-edge notification. Stamps come from the winning entry's arrival, so
 /// re-folding the same chains is a no-op rather than a resurrection of old rows as "new".
+#[allow(clippy::too_many_arguments)]
 async fn upsert_row(
     node_db: &Db,
     reader_root: &str,
     author_root: &str,
+    kind: &str,
+    doc_id: &str,
     trust: Option<&str>,
     interest: Option<&str>,
     updated_ms: i64,
@@ -122,16 +192,17 @@ async fn upsert_row(
     node_db
         .execute(
             "INSERT INTO notifications
-               (reader_root, author_root, kind, trust, interest, updated_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT (reader_root, author_root, kind) DO UPDATE SET
+               (reader_root, author_root, kind, doc_id, trust, interest, updated_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT (reader_root, author_root, kind, doc_id) DO UPDATE SET
                  trust = excluded.trust,
                  interest = excluded.interest,
                  updated_ms = excluded.updated_ms",
             (
                 reader_root,
                 author_root,
-                KIND_PUBLIC_EDGE,
+                kind,
+                doc_id,
                 trust,
                 interest,
                 updated_ms,
@@ -142,12 +213,18 @@ async fn upsert_row(
     Ok(())
 }
 
-async fn delete_row(node_db: &Db, reader_root: &str, author_root: &str) -> Result<()> {
+async fn delete_row(
+    node_db: &Db,
+    reader_root: &str,
+    author_root: &str,
+    kind: &str,
+    doc_id: &str,
+) -> Result<()> {
     node_db
         .execute(
             "DELETE FROM notifications
-             WHERE reader_root = ?1 AND author_root = ?2 AND kind = ?3",
-            (reader_root, author_root, KIND_PUBLIC_EDGE),
+             WHERE reader_root = ?1 AND author_root = ?2 AND kind = ?3 AND doc_id = ?4",
+            (reader_root, author_root, kind, doc_id),
         )
         .await
         .context("retracting a notification")?;
@@ -157,11 +234,11 @@ async fn delete_row(node_db: &Db, reader_root: &str, author_root: &str) -> Resul
 /// One reader's notifications, newest first. Small and bounded on purpose: the memo collapses
 /// per (author, kind), so the row count is the reader's social circle, not their history.
 pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<NotificationRow>> {
-    /// `(author_root, kind, trust, interest, updated_ms)`, as the row comes back.
-    type Row = (String, String, Option<String>, Option<String>, i64);
+    /// `(author_root, kind, doc_id, trust, interest, updated_ms)`, as the row comes back.
+    type Row = (String, String, String, Option<String>, Option<String>, i64);
     let rows: Vec<Row> = node_db
         .fetch_all(
-            "SELECT author_root, kind, trust, interest, updated_ms FROM notifications
+            "SELECT author_root, kind, doc_id, trust, interest, updated_ms FROM notifications
              WHERE reader_root = ?1 ORDER BY updated_ms DESC LIMIT ?2",
             (reader_root, i64::from(limit)),
         )
@@ -170,9 +247,10 @@ pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<Not
     Ok(rows
         .into_iter()
         .map(
-            |(author_root, kind, trust, interest, updated_ms)| NotificationRow {
+            |(author_root, kind, doc_id, trust, interest, updated_ms)| NotificationRow {
                 author_root,
                 kind,
+                doc_id,
                 trust,
                 interest,
                 updated_ms,
@@ -191,16 +269,63 @@ mod tests {
         let reader = "aa".repeat(32);
         let author = "bb".repeat(32);
 
-        upsert_row(&db, &reader, &author, None, Some("high"), 1000).await.unwrap();
-        upsert_row(&db, &reader, &author, Some("max"), Some("high"), 2000).await.unwrap();
+        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", None, Some("high"), 1000).await.unwrap();
+        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", Some("max"), Some("high"), 2000).await.unwrap();
 
         let rows = page(&db, &reader, 50).await.unwrap();
         assert_eq!(rows.len(), 1, "collapse by (sender, kind): one row however often they publish");
         assert_eq!(rows[0].trust.as_deref(), Some("max"));
         assert_eq!(rows[0].updated_ms, 2000);
 
-        delete_row(&db, &reader, &author).await.unwrap();
+        delete_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "").await.unwrap();
         assert!(page(&db, &reader, 50).await.unwrap().is_empty(), "a retraction is an absence");
+    }
+
+    /// The seam the object key exists for. A re-published edge is the SAME fact restated, so it
+    /// collapses; two of your posts being shared are two facts, and collapsing them would
+    /// silently drop one - the reader would be told about the first share and never the second.
+    #[tokio::test]
+    async fn shares_are_per_document_where_edges_are_per_person() {
+        let db = crate::db::test_node_db().await;
+        let me = "aa".repeat(32);
+        let sharer = "bb".repeat(32);
+        let (first, second) = ("11".repeat(16), "22".repeat(16));
+
+        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &first, None, None, 1000)
+            .await
+            .unwrap();
+        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &second, None, None, 2000)
+            .await
+            .unwrap();
+        assert_eq!(
+            page(&db, &me, 50).await.unwrap().len(),
+            2,
+            "two documents shared is two pieces of news"
+        );
+
+        // The same document again (they re-shared after an edit) still collapses.
+        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &first, None, None, 3000)
+            .await
+            .unwrap();
+        let rows = page(&db, &me, 50).await.unwrap();
+        assert_eq!(rows.len(), 2, "re-sharing one document updates its row");
+        assert_eq!(rows[0].doc_id, first, "and moves it to the top");
+        assert_eq!(rows[0].updated_ms, 3000);
+
+        // And an edge from the same person is a third, independent row - the kinds do not
+        // collide even though the author is the same.
+        upsert_row(&db, &me, &sharer, KIND_PUBLIC_EDGE, "", None, Some("high"), 4000)
+            .await
+            .unwrap();
+        assert_eq!(page(&db, &me, 50).await.unwrap().len(), 3);
+
+        // Un-sharing one leaves the other standing.
+        delete_row(&db, &me, &sharer, KIND_REBROADCAST, &first)
+            .await
+            .unwrap();
+        let rows = page(&db, &me, 50).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|r| r.doc_id == second));
     }
 
     #[tokio::test]
@@ -209,9 +334,9 @@ mod tests {
         let me = "aa".repeat(32);
         let housemate = "cc".repeat(32);
 
-        upsert_row(&db, &me, &"b1".repeat(32), None, Some("low"), 100).await.unwrap();
-        upsert_row(&db, &me, &"b2".repeat(32), Some("high"), None, 300).await.unwrap();
-        upsert_row(&db, &housemate, &"b3".repeat(32), None, Some("max"), 200).await.unwrap();
+        upsert_row(&db, &me, &"b1".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("low"), 100).await.unwrap();
+        upsert_row(&db, &me, &"b2".repeat(32), KIND_PUBLIC_EDGE, "", Some("high"), None, 300).await.unwrap();
+        upsert_row(&db, &housemate, &"b3".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("max"), 200).await.unwrap();
 
         let mine = page(&db, &me, 50).await.unwrap();
         assert_eq!(

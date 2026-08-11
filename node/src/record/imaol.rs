@@ -753,6 +753,13 @@ async fn drop_views_fed_by(
     }
     if touches(service::POSTS) || touches(service::DOCUMENTS_PRIVATE) {
         crate::record::documents::clear_view(db).await?;
+        // Folded from the POSTS chain by the same pass that folds headers, so it drops with
+        // them - the invariant this function exists to keep (a view and its watermarks go
+        // together over every service that feeds them).
+        db.execute("DELETE FROM public_retractions", ())
+            .await
+            .context("clearing the public-retractions view")
+            .map_err(AppError::Internal)?;
         dropped.insert(service::POSTS);
         dropped.insert(service::DOCUMENTS_PRIVATE);
     }

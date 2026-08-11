@@ -35,13 +35,23 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Posts can be annotated with tags, emoji, description, buckets
 * Make a whole bucket public in one fell swoop.
 * **Rebroadcast — the current arc.** Design settled 2026-08-10 (PROJECT_PLAN, *Rebroadcast:
-  Pointer Plus Pinned Replica*): a signed pointer on your chain + a pinned replica your node
-  serves, never a copy; retraction rides the retract_vanished machinery one hop out; hash-seen
-  recorded, head rendered, drift badged; hollow, not auto-retract. First cut is plain
-  rebroadcast of a post - replies (rebroadcast + comment, parent-plus-root pinning leaning)
-  come after, and "share this user to my network" after that. To discover during the build:
-  the refresh cadence and the pin subscription class (syncing a suffix of an author you don't
-  follow).
+  Pointer Plus Pinned Replica* + its two network subsections). Shipped so far: the pointer
+  chain and fold, the pin (a share holds its author in the sync worklist), and both notice
+  halves (delivered envelope kind + derived fold, keyed per document). Remaining, in the order
+  the design stacks:
+  * **Public tombstone on POSTS** - deletion today is a private doc-meta fact that propagates
+    to nobody; nothing downstream works until deletion is speech.
+  * **Per-post media budget at publish** (~10MB, one big file or many small ones) - what makes
+    a fragment bounded by construction; enforced in the bake/publish pre-pass, where the blob
+    sizes are already in hand.
+  * **The edit window** - fold rule, claimed-delta judged; freezes old content so fragments
+    never re-check it.
+  * **Delete memo + bloom summaries** - the one-bit-forever half, wrong in one direction only.
+  * **Fragment ledger + reader-side fetch** - cache-with-origin, revalidated along the arrival
+    edge (never the author; pins never propagate with viewing); feeds the existing body-walk.
+  * **Feed** - journal shared docs to rebroadcast-band followers; `via_root` is waiting.
+  * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
+    user to my network" after that.
 * Save to bucket
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")

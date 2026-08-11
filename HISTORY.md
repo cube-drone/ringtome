@@ -4408,3 +4408,136 @@ extrapolation. Measured, **1.7s** - off by ten. Three asserted-then-corrected me
 day (an overnight CPU average that was really a sleeping laptop, a post-wake spike reported as
 steady state, and this) is a pattern rather than three slips. Measure before asserting; one window
 is a story, not a number.
+
+## 2026-08-10 — rebroadcast: the arc from "how do I share this" to "and the author can take it back"
+
+One sitting, six slices, and the interesting parts are all places the design changed under
+questioning rather than places the code went in. Recorded as one entry because the story only
+makes sense in sequence.
+
+### The shape, argued before anything was written
+
+The question was how to share someone else's post through your network, and the tension was
+stated up front: **copying content whole into your own chain is the easy replication model and it
+destroys the original author's ability to delete or edit that content, ever.** The balance point
+turned out to be one the system had already found for feeds - the author's shelf is
+authoritative, everything downstream is a disposable copy that honours it - proven end-to-end
+that same morning by the repudiation work, where a disowned device's posts were swept from a
+follower's journal and its bodies un-served on nodes the author never touched. *A delivery memo
+cannot launder disproven content*, generalised one hop out.
+
+So: **a signed pointer on your chain, plus a pinned replica your node serves. Never a copy.** The
+pointer is the durable social act (`(author, doc_id, version_seen)`, LWW, retraction by
+omission); the replica is the virality, carrying the author's own signed entry and body so no hop
+can launder provenance. **Silence preserves, speech deletes**: an author who merely goes offline
+cannot retract, so their content survives through the replicas - the availability that full-copy
+wanted - while an author who *actively* retracts is honoured by every honest node. Full-copy
+trades the second away to get the first; this keeps both, and edits keep working too.
+
+### What shipped, in order
+
+**The pointer** (`service::REBROADCASTS`, its own chain). Its own chain rather than an entry type
+on `posts` for a reason that bites twice: a view watermark is per `(author, service)`, so two
+folds sharing a service fight over one cursor - and the separation is the *feature*, because a
+reader's rebroadcast band is a different dial from their interest band. Memo-backed from birth
+rather than after the fact: the full-chain audit's rule applied before it could be broken.
+
+**The pin**, which turned out to be a different object than it looked. The obvious reading is
+"keep a copy so we can serve it". The half that matters: **a pin is what keeps the author's
+retraction reachable.** A copy nobody refreshes can never learn it was withdrawn - which is
+exactly the permanence full-copy would have handed out, arriving by the back door. So a share
+holds its author in the sync worklist past the moment every contact dial pointing at them goes to
+nothing. The test says it plainly: with no subscriptions row anywhere, one share puts the author
+in the worklist; withdrawing takes them out. It also lands cleanly on *Pull, Not Push* - a share
+IS the accountable demand signal, so `detach` releases a departing persona's pins.
+
+**Both notice halves.** Delivered (`notice_kind::REBROADCAST`) for an author who does not follow
+the sharer, with the binding that makes it evidence rather than assertion: the pointer must name
+the RECIPIENT as the shared document's author, or anyone could announce a share of anyone's work
+to anyone. Derived (`KIND_REBROADCAST`) for an author who does. Building the derived half forced
+a schema correction: notifications collapsed per `(reader, author, kind)`, which is right for
+edges (a re-published edge is the same fact restated) and **wrong for shares** (two of your posts
+shared are two facts, and collapsing would have silently dropped one). The key gained the object.
+`doc_id` is `NOT NULL DEFAULT ''` rather than nullable because SQLite permits duplicate NULLs in
+a primary key - a nullable object column would have silently un-collapsed the kinds that need
+collapsing.
+
+**The public tombstone**, which closed a hole nobody had noticed. Deleting a document wrote an
+LWW set-add on the **doc-meta chain** - private, epoch-encrypted - so it reached the author's own
+devices and nobody else. Every follower's feed and every rebroadcaster's replica went on serving
+a post its author had taken down, forever, with no signal that could ever say otherwise. The
+design's central promise was resting on a mechanism that did not exist. `POST_RETRACT` is the
+public half: content-free by construction (sixteen bytes of doc id, asserted under 32 bytes by a
+test), riding the POSTS chain so it travels wherever the documents travelled. The payoff needed
+no new plumbing - `public_doc_ids` is the chokepoint every public surface already reads, and
+`fanout::retract_vanished` already reconciled every reader's journal against it.
+
+**The media budget.** Checked at the END of the bake, because a single upload passing the
+per-file cap says nothing about a post embedding forty of them. Deduplicated by blob hash (one
+image three times is one blob on every node that carries it), measured through a new
+`FileStore::size_of` that reads blob metadata rather than pulling megabytes through memory to
+learn a number the store already knew.
+
+### Four design corrections, which are the real content
+
+**Pins must never propagate with viewing.** Caught at design time, and the failure mode is
+precise: if *seeing* a share ever created a chain subscription, density does the rest - in a
+well-connected network everyone eventually sees everything once, and "pin a fragment of the
+author's chain" degrades to every public persona synced to every computer. So pins are created by
+the deliberate act of sharing, on the sharer's own node, and nowhere else. Readers hold a
+**document fragment with an origin**, revalidated against **the edge it arrived by, never the
+author** - which makes retraction cascade down the share tree over edges that already exist, and
+adds zero new sync edges however dense the network gets.
+
+**A tombstone is final for its document id.** This one arrived by starting to build the wrong
+thing: an LWW comparison of retraction against versions, abandoned on discovering `doc_heads`
+carries no `seq` - and then realising the comparison should not exist. Re-publishing after a
+delete mints a NEW doc id ("the record is the record"), so "retracted then republished under the
+same id" is not a state the system produces. Finality buys order-independence for free: fold the
+tombstone first or the header first, both settle to withdrawn.
+
+**The fold widens; it does not split.** Headers and tombstones share the POSTS chain and therefore
+one watermark, so two folds would have skipped entries in silence. `catch_up_public_lane` now
+folds both types in one seq-ordered pass, with an interleaving test as the cop. (The same
+constraint that put rebroadcasts on their own chain - there the types belonged apart, here they
+belong together, so the fold moved instead.)
+
+**Preview tiers, proposed and withdrawn.** "A share's disk cost is bounded per doc" was wrong: the
+transcode cap bounds each blob, nothing bounded how many a body referenced. The proposed fix - a
+preview tier owed by fragments, full media fetched on play - was rejected on the grounds that a
+hundred-track doc is not one post but a **Taxonomy** of them, and that viral transmission of the
+*real bytes* is what keeps the network feeling fast. The bound moved to the source instead: cap
+the post, carry everything. The honest cost of the whole retraction design, recorded as a
+decision rather than discovered later: **you cannot fix a typo in a two-year-old post**, because
+the edit window freezes content and the recourse is delete-and-repost under a new id.
+
+### The trim that keeps it affordable
+
+The unbounded-memory question - how does a node answer "is this still live? was it edited?" about
+arbitrarily old documents without either deep search or memoizing everything forever - was split
+by the same move the inbox ring made. **Edits are allowed only within a window of publishing**
+(rolling state, O(posting-rate × window), never growing with history, and it kills the rug-pull as
+a side effect since the window anchors at publish rather than at share). **Deletes are memoized
+forever** because they are sixteen content-free bytes, and one-bit-per-document is exactly what
+compact sets are for. The window is judged by the author's own claimed delta, not local receipt
+time - receipt time diverges, since a fresh node syncing an old chain would find everything "in
+window" and honour an edit every established node refused. Bloom filters carry the delete-sets
+between nodes, **allowed to be wrong in one direction only**: bloom-negative means definitely
+live, bloom-positive means fetch the signed tombstone, which is proof.
+
+### Residuals
+
+The feed does not show shares yet (`feed_journal.via_root` has waited since the pin slice), the
+edit window and the delete-summary filters are unbuilt, and the fragment ledger - the piece that
+lets a reader resolve content they do not already hold - is the last one. Two cops earned their
+keep along the way: `conventions.rs` caught a new user-db call site and made the
+once-per-edge-versus-once-per-persona judgment explicit, and the kind-string test now loops over
+both notice kinds, because two modules declaring the same string independently is how a dedup
+silently stops matching.
+
+And a hole found in a cop rather than in the code: **the localization extractor silently skips
+string literals written across two lines with a `\` continuation.** A refusal message went in
+unlocalizable, `just strings` reported "+0 new", and `strings-check` stayed green. Long messages
+are the most user-visible ones, and `tools/strings.mjs` already carries a comment about a
+previous version of this same class of bug. Left unfixed, deliberately, rather than fold a
+tooling repair into a feature commit.

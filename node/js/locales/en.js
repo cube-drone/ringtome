@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 421 phrases across 41 files.
+// 422 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -473,6 +473,7 @@ export default {
     // --- node/src/record/bake.rs ---
     'record.bake.no-such-document': 'no such document',
     'record.bake.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
+    'record.bake.post-media-over-budget': "this post's media adds up to {total} - one post may carry {cap}. Split it across several posts.",
 
     // --- node/src/record/documents.rs ---
     'record.documents.no-such-document': 'no such document',

@@ -3250,6 +3250,103 @@ with a badge when head ≠ seen ("edited since rebroadcast"). The version DAG ma
 hollow. Software must not retract your chain entry because someone else deleted theirs - that is someone else
 authoring your chain by proxy.
 
+#### What travels with a share, and what never does (settled 2026-08-10)
+
+The failure mode this subsection exists to forbid, caught at design time: if *seeing* a share ever creates a
+chain subscription, density does the rest - in a well-connected network everyone eventually sees everything once,
+and "pin a fragment of the author's chain" degrades to every public persona synced to every computer. So the
+invariant, stated as doctrine: **a chain pin never propagates with viewing.** Pins are created by the deliberate
+act of *sharing*, on the sharer's own node - the one accountable demand edge per (sharer-node, author), which is
+also exactly what *Pull, Not Push* requires - and nowhere else. Readers never subscribe to the author in any
+form, suffix or otherwise.
+
+What a reader's node holds instead is smaller than any chain fragment: **a document fragment with an origin** -
+the author's signed entry plus its referenced blobs - **all of them, inline media included, at full fidelity**
+- cached at journal time the same way feed bodies already ride behind headers. Self-authenticating on its own:
+the author's signature is on the entry, the blobs are content-addressed, and nothing about holding it requires
+holding their history.
+
+**What makes "all of them" safe to say is a bound at the source, not a tier at the destination** (settled
+2026-08-10, replacing a briefly-considered preview-tier design): a public post's total media budget is capped at
+publish time - ~10MB, one big file or many small ones, deliberately the same order as the existing "nothing
+bigger moves on the network" ceilings (`RINGTOME_MAX_DOCUMENT_BYTES`, the transcode output cap). So a fragment
+is bounded by construction, and replication carries the *real bytes*: viral transmission of the actual media is
+what keeps hot content fast everywhere, instead of every reader hitting one origin for the payload behind a
+preview. "Display the preview if that's all you have, fetch the original if you can" survives as graceful
+degradation - never as the obligation structure. A hundred-track mixtape is not one post over the cap; it is a
+**Taxonomy of posts**, and publishing-and-rebroadcasting a whole bucket at a time is its own design, deliberately
+deferred.
+
+The load-bearing choice is what a fragment revalidates against: **the edge it arrived by, never the author.**
+Retraction then propagates down the share tree - author's tombstone → the sharer's pin sees it and the sharer's
+node drops its replica → each fetching node's next revalidation comes back gone → and so on to the leaves. Every
+edge in that tree already exists and already syncs; density adds zero new sync edges. The scaling law falls out:
+
+- **Fragments spread O(interest × the per-post media cap)** - the shared doc, real bytes and all, gets copied
+  to nodes whose users look at it. That is the feature (availability tracks heat, the CDN property), bounded by
+  a number we chose at publish time, never by the author's history or the doc's appetite.
+- **Chain subscriptions spread O(deliberate shares)** - one edge per accountable click of "share". Bounded by
+  human action, not network topology.
+
+The cost this deliberately does NOT bound, named so it is a decision and not a discovery: **a node's total feed
+and fragment footprint grows with its users' appetites**, as it always has - fragments make an existing curve
+steeper, not a new curve. The answer is operator storage management (quotas, eviction pressure on the journal's
+"forgettable" end), which is Node Management's problem and is not solved here.
+
+Costs, named: staleness is bounded by the revalidation cadence *per hop*, so deep share chains honour retraction
+slowly, and a node serves stale while its origin is offline - "silence preserves, speech deletes", operating
+hop by hop. A fragment whose origin vanishes forever is orphaned; fragments ride the journal rows' lifecycle
+("recent, relevant, forgettable" - the feed row ages out or is excised, the fragment's claim on disk goes with
+it), which is GC, discoverable later. And the genuinely new machinery is bookkeeping, not transport: a fragment
+ledger (whose doc, from whom, last revalidated) feeding the same body-walk and healing loops `net::bodies`
+already runs - a new table and a membership rule, not a new protocol.
+
+#### Retraction, edits, and what a node must remember forever (settled 2026-08-10)
+
+The prerequisite nothing above works without: **today a public post has no public un-publish signal at all.**
+Deleting a document writes a tombstone on the doc-meta chain - private, epoch-encrypted, synced only to the
+author's own nodes - so a follower's replica can never learn a post was deleted, and "author retracts → replicas
+drop" is currently true only of repudiation. The fix is a **public tombstone on the POSTS chain**: content-free
+(a doc_id, nothing else), LWW per document, the same retraction-as-a-write shape the rebroadcast pointer already
+uses. Deletion becomes speech, and speech propagates.
+
+With retraction real, the next question is what every serving node owes history: naively, "is X still live? has
+X been edited?" answered about arbitrarily old documents means either deep search into the annals or memoizing
+every edit and delete forever. The trim (Curtis, 2026-08-10) splits the problem by the same move the inbox ring
+made - a bounded rolling window plus a one-bit-forever fact, which have completely different storage laws:
+
+- **Edits are allowed only within a fixed timespan of publishing.** After the window a document's content is
+  frozen; only deletion remains. Edit-tracking state becomes O(posting-rate × window) - a rolling buffer that
+  never grows with history - and a fragment fetched on a doc older than the window needs *no edit revalidation,
+  ever*. Side effect, nearly free: **the rug-pull dies.** The window anchors at publish, not at share, so
+  "post something benign, wait for it to go viral, rewrite it" fails - by the time it is viral, it is frozen.
+  The drift badge becomes a "recently published, still settling" indicator instead of a permanent vigilance
+  mechanism. (The window's width is a product number, deliberately not pinned here.)
+- **The window is judged by the author's own claimed delta** - honor an edit iff its claimed timestamp is within
+  the window of the original's - NOT by local receipt time. Receipt time diverges: a fresh node syncing an old
+  chain receives original and late edit in one exchange, finds everything "in window" by its own clock, and
+  honors an edit every established node refused - divergent heads by join date. The claimed delta is
+  deterministic on every node forever. Still clock-free where doctrine cares: no network time, no cross-author
+  comparison, both stamps signed by the same author on the same chain. The loophole - an author backdating an
+  edit to sneak inside their own window - is self-scoped (their doc, their lie about their own two numbers) and
+  the version-seen badge shows the drift regardless. Enforced in the FOLD, never at chain admission: the sync
+  gate stays signatures-and-hashes-only, and a late edit is an entry that is admitted and ignored.
+- **Deletes are memoized forever, because they are the cheap half**: sixteen bytes, no content, and "is X
+  deleted?" is the only question that must stay answerable for all time. One bit per document ever published is
+  the only obligation that compounds without bound - and one-bit-forever is exactly what compact sets are for.
+- **Bloom filters carry the delete-sets between nodes, allowed to be wrong in one direction only.** A bloom
+  cannot prove deletion (it is not signed data, and a false positive would wrongly hollow a live share - the bad
+  direction). So: **bloom-negative → definitely live, serve on** (the steady state, O(1)); **bloom-positive →
+  maybe deleted, fetch the signed tombstone entry, which IS proof** (a false positive costs one round trip,
+  never a wrongly-dead share). Per-author delete-blooms become shippable summaries: a fragment holder
+  batch-revalidates its whole shelf against a kilobyte of filter instead of a query per fragment, and the
+  tombstone entries on the author's chain remain the ground truth the filters merely summarize.
+
+The honest cost, chosen rather than discovered: **you cannot fix a typo in a two-year-old post.** The recourse
+is delete-and-repost, which mints a new doc_id and loses the shares and journal position pointing at the old
+one. The record is the record - the old-internet posture, and the price of every node not carrying an
+ever-growing edit index.
+
 #### Replies are rebroadcast plus a comment (second cut, deliberately after)
 
 A public reply carries the soft promise of rebroadcasting the thing it responds to - without it, "well,

@@ -667,6 +667,9 @@ struct NotificationItem {
     /// root alone - see the byline note on the handler.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     stranger: bool,
+    /// Which document, for kinds about one (a share). Empty for relationship kinds.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    doc_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -722,6 +725,7 @@ async fn notifications_handler(
             NotificationItem {
                 seen: r.updated_ms <= watermark,
                 stranger: false,
+                doc_id: r.doc_id,
                 author_name: byline.name,
                 author_avatar: byline.avatar,
                 author: r.author_root,
@@ -737,6 +741,11 @@ async fn notifications_handler(
     items.extend(delivered.into_iter().map(|n| NotificationItem {
         seen: n.timestamp_ms <= watermark,
         stranger: true,
+        // The delivered path's inbox rows collapse per (sender, kind) by design - a bounded
+        // pool cannot key on every object a stranger might mention - so a delivered share says
+        // "they shared something of yours" without naming which. The derived row above does
+        // name it, which is one more thing answering the door buys you.
+        doc_id: String::new(),
         author_name: None,
         author_avatar: None,
         author: n.sender_root,
@@ -1322,6 +1331,18 @@ async fn docs_retitle_handler(
 /// every list and search. The version chain is untouched - a `restore` would bring it back with
 /// its history - so this is reversible-by-design, not an erasure (Immutable Chains ≠ Immutable
 /// Content). Idempotent: deleting an already-deleted doc is a no-op re-add.
+///
+/// **If the document was published, this ALSO withdraws it publicly** (2026-08-10): a
+/// content-free `post-retract` tombstone on the posts chain, which travels wherever the document
+/// travelled. Before that existed, deleting a published post was a private fact - it vanished
+/// from the author's own lists while every follower's feed and every rebroadcaster's replica
+/// went on serving it, forever, with no signal that could ever say otherwise.
+///
+/// Both halves, deliberately, because they mean different things: the private one is "not in my
+/// lists", the public one is "gone from the network". A private-only document only ever gets the
+/// first, which is why the public half is conditional rather than unconditional - minting
+/// retractions for documents that were never public would put a permanent, network-visible
+/// tombstone on every private note anyone ever tidied away.
 async fn docs_delete_handler(
     session: Session,
     State(state): State<AppState>,
@@ -1329,7 +1350,15 @@ async fn docs_delete_handler(
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
+    let was_public = data.documents().is_public(&doc_id).await?;
     let signed = data.documents().delete(&doc_id).await?;
+    if was_public {
+        data.documents().retract_public(&doc_id).await?;
+        // The public lane moved, so the fan-out edge runs: `retract_vanished` reconciles every
+        // reader's journal against the shelf this document has just left, and a rebroadcaster's
+        // pin sees the same absence on its next refresh.
+        crate::fanout::after_public_move(&state, &root).await;
+    }
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -3367,6 +3396,7 @@ mod notification_dedup_tests {
         NotificationItem {
             author: author.to_string(),
             kind: kind.to_string(),
+            doc_id: String::new(),
             trust: None,
             interest: None,
             updated_ms: 1,
@@ -3415,13 +3445,17 @@ mod notification_dedup_tests {
     /// symptom is not a crash but the exact bug this fixes, quietly back. So: pin them equal.
     #[test]
     fn both_paths_spell_the_same_fact_the_same_way() {
-        assert_eq!(
-            crate::notifications::KIND_PUBLIC_EDGE,
-            ringtome_proto::deliver::notice_kind::name(
-                ringtome_proto::deliver::notice_kind::PUBLIC_EDGE
-            ),
-            "the derived fold and the delivered envelope must name this fact identically, \
-             or the notification dedup silently stops matching"
-        );
+        use ringtome_proto::deliver::notice_kind;
+        for (derived, delivered) in [
+            (crate::notifications::KIND_PUBLIC_EDGE, notice_kind::PUBLIC_EDGE),
+            (crate::notifications::KIND_REBROADCAST, notice_kind::REBROADCAST),
+        ] {
+            assert_eq!(
+                derived,
+                notice_kind::name(delivered),
+                "the derived fold and the delivered envelope must name this fact identically, \
+                 or the notification dedup silently stops matching"
+            );
+        }
     }
 }

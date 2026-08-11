@@ -112,6 +112,10 @@ pub mod entry_type {
     /// share. The content itself is never copied here; the rebroadcaster's node pins a replica
     /// of the author's own signed entry and body instead.
     pub const REBROADCAST: u32 = 10;
+    /// A public document withdrawn ([`PostRetraction`]) - the tombstone that makes deletion
+    /// *speech*. Content-free by construction: sixteen bytes of doc id and nothing else, which
+    /// is what lets every node remember it forever without remembering what it withdrew.
+    pub const POST_RETRACT: u32 = 11;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -123,6 +127,7 @@ pub mod entry_type {
             PRIVATE_RECORD => "private-record",
             DOC_HEADER => "doc-header",
             REBROADCAST => "rebroadcast",
+            POST_RETRACT => "post-retract",
             PUBLIC_EDGE => "public-edge",
             INBOX_NOTICE => "inbox-notice",
             _ => "unknown-type",
@@ -913,6 +918,57 @@ impl PublicEdge {
     }
 }
 
+/// Payload of a `post-retract` entry: one public document, withdrawn.
+///
+/// **Deletion has to be speech** (PROJECT_PLAN, Retraction, edits, and what a node must remember
+/// forever). Deleting a document writes a tombstone on the doc-meta chain, which is private and
+/// epoch-encrypted - so it reaches the author's own devices and nobody else, and every follower
+/// and every rebroadcaster keeps serving a post its author took down. This entry is the public
+/// half: it rides the POSTS chain with the documents it withdraws, so it travels wherever they
+/// travelled.
+///
+/// **Content-free on purpose, and that is the whole storage argument.** A retraction carries a
+/// doc id and nothing else - no title, no body, no reason - so a node can remember every
+/// retraction it has ever seen without remembering anything about what was retracted. That is
+/// what makes "deletes are memoized forever, edits are not" affordable: one bit per document
+/// ever published, summarizable into a filter, versus an ever-growing index of content.
+///
+/// LWW per document, so a retraction and a later re-publication resolve on the standard stamp
+/// rather than by arrival order. There is deliberately no un-retract *payload*: republishing is
+/// a new version of the document, which is a `doc-header` and wins on its own merits.
+///
+/// Encoding: integer-keyed map `{0: bstr(16) doc_id}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostRetraction {
+    pub doc_id: [u8; 16],
+}
+
+impl PostRetraction {
+    pub fn encode(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.map(1);
+        w.uint(0);
+        w.bytes(&self.doc_id);
+        w.into_bytes()
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let mut map = r.int_map()?;
+        let mut doc_id: Option<[u8; 16]> = None;
+        while let Some(key) = map.next_key()? {
+            match key {
+                0 => doc_id = Some(map.bytes_fixed::<16>()?),
+                _ => map.skip_value()?,
+            }
+        }
+        r.finish()?;
+        Ok(Self {
+            doc_id: doc_id.ok_or(ProtoError::BadEntry("post-retract missing doc id"))?,
+        })
+    }
+}
+
 /// Payload of a `rebroadcast` entry: a signed pointer at someone else's document
 /// (PROJECT_PLAN, Rebroadcast: Pointer Plus Pinned Replica). **The content is never here.** The
 /// rebroadcaster's node pins a replica of the author's own signed entry and body, exact bytes,
@@ -987,6 +1043,22 @@ impl Rebroadcast {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_post_retraction_is_sixteen_bytes_of_regret() {
+        let t = PostRetraction { doc_id: [5u8; 16] };
+        assert_eq!(PostRetraction::decode(&t.encode()).unwrap(), t);
+        // The storage argument, asserted: a tombstone a node keeps forever must stay tiny, and
+        // there must be nowhere in it to smuggle content.
+        assert!(t.encode().len() < 32, "a tombstone carries no content");
+    }
+
+    #[test]
+    fn a_retraction_of_nothing_is_rejected() {
+        let mut w = Writer::new();
+        w.map(0);
+        assert!(PostRetraction::decode(&w.into_bytes()).is_err());
+    }
 
     #[test]
     fn rebroadcast_round_trips_and_retracts() {

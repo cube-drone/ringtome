@@ -260,11 +260,21 @@ CREATE INDEX rebroadcast_pins_by_author ON rebroadcast_pins (author_root);
 CREATE TABLE notifications (
     reader_root TEXT    NOT NULL,  -- the persona on this node being notified
     author_root TEXT    NOT NULL,  -- who did the thing
-    kind        TEXT    NOT NULL,  -- 'public-edge' (future kinds get their own words)
+    kind        TEXT    NOT NULL,  -- 'public-edge' | 'rebroadcast' (future kinds get their own)
+    -- WHICH thing, for kinds where that is a distinct fact - the shared document, hex. Empty
+    -- string (never NULL: SQLite permits duplicate NULLs in a primary key, which would silently
+    -- un-collapse the kinds that DO want collapsing) for kinds that are about a relationship
+    -- rather than an object.
+    --
+    -- This is the seam between two different notions of "same event". A re-published edge is
+    -- the SAME fact restated, so it must collapse; two of your posts being shared are two
+    -- facts, and collapsing them would silently drop one. So the key carries the object when
+    -- there is one.
+    doc_id      TEXT    NOT NULL DEFAULT '',
     trust       TEXT,              -- the published trust band, as published
     interest    TEXT,              -- the published interest band, as published
     updated_ms  INTEGER NOT NULL,  -- when the winning statement reached THIS node
-    PRIMARY KEY (reader_root, author_root, kind)
+    PRIMARY KEY (reader_root, author_root, kind, doc_id)
 );
 CREATE INDEX notifications_by_reader ON notifications (reader_root, updated_ms);
 
