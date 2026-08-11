@@ -51,15 +51,6 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str) -> Result<()> {
     {
         return Ok(());
     }
-    // Only a persona this node HOSTS can oblige it. A foreign identity's shares are their own
-    // node's business - fronting on their say-so would be push, and the policy forbids it.
-    if !crate::identity::is_agented(&state.node_db, sharer_root)
-        .await
-        .unwrap_or(false)
-    {
-        return Ok(());
-    }
-
     let Some(db) = state
         .user_dbs
         .get(sharer_root)
@@ -72,17 +63,39 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("folding {sharer_root}'s rebroadcasts: {e}"))?;
     drop(db);
+    if pointers.is_empty() {
+        return Ok(());
+    }
 
-    for row in pointers {
-        // A withdrawn share drops its pin in the same pass that folds the retraction. This is
-        // the whole "speech deletes" half of the design: stop sharing and this node stops
-        // carrying, without anyone having to sweep for it later.
-        if row.is_retracted() {
-            unpin(&state.node_db, sharer_root, &row.author_root, &row.doc_id).await?;
-        } else {
-            pin(&state.node_db, sharer_root, &row).await?;
+    // **Two acts, two audiences, and they need different gates** (split 2026-08-10, after one
+    // guard was found doing both jobs and getting the second one wrong).
+    //
+    // PINNING is an obligation this node takes on: it fronts a stranger's document because one
+    // of ITS OWN personas asked. Hosted-only is correct and load-bearing - fronting on a foreign
+    // persona's say-so would be push, and *Pull, Not Push* forbids it.
+    //
+    // JOURNALING is not an obligation, it is delivery: writing a row into a local reader's feed
+    // because that reader follows the sharer for exactly this. It must happen for FOREIGN
+    // sharers - that is the whole normal case, a reader on one node following a sharer on
+    // another - and gating it on hosting made a synced share do nothing at all, which is the
+    // bug this split fixes.
+    if crate::identity::is_agented(&state.node_db, sharer_root)
+        .await
+        .unwrap_or(false)
+    {
+        for row in &pointers {
+            // A withdrawn share drops its pin in the same pass that folds the retraction. This
+            // is the "speech deletes" half: stop sharing and this node stops carrying, without
+            // anyone having to sweep for it later.
+            if row.is_retracted() {
+                unpin(&state.node_db, sharer_root, &row.author_root, &row.doc_id).await?;
+            } else {
+                pin(&state.node_db, sharer_root, row).await?;
+            }
         }
     }
+
+    crate::fanout::journal_shares_by(state, sharer_root, &pointers).await;
     Ok(())
 }
 

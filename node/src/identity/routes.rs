@@ -1012,6 +1012,18 @@ async fn rebroadcast_handler(
     // author next posts - the `backfill_follow` gesture, for shares.
     if version.is_some() {
         crate::fanout::backfill_share(&state, &root, &hex::encode(author), &doc_id).await;
+        // And knock NOW rather than at the next backstop beat. The periodic outbox sweep shares
+        // the body sweep's cadence - five minutes - which is the right number for "keep knocking
+        // politely at machines that are mostly asleep" and the wrong one for "tell this person
+        // their post was shared". The public-edge mint already does exactly this for the same
+        // reason: the sweep exists for the doors that were shut, not as the normal path to an
+        // open one. Spawned, because the sharer should not wait on a stranger's node to answer.
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::outbox::sweep(state).await {
+                tracing::debug!(error = ?e, "eager share-notice delivery failed");
+            }
+        });
     }
 
     Ok(Json(serde_json::json!({

@@ -355,6 +355,79 @@ async fn share_readers(state: &AppState, sharer_root: &str) -> Result<Vec<String
     Ok(readers)
 }
 
+/// A sharer's rebroadcast lane moved: journal what they share to the local readers who follow
+/// them for it.
+///
+/// **This is the path that carries a share ACROSS nodes**, and its absence was a hole in the
+/// first cut of the feed: `journal_shares_of` fires on the shared AUTHOR's move, which never
+/// happens on a node that does not hold that author, and `backfill_share` fires only in the
+/// share route on the sharer's own node. So a reader syncing a foreign sharer's pointers
+/// journaled nothing, forever - the normal case for a network with more than one node.
+///
+/// One user-database open per shared AUTHOR, not per pointer: the documents live in their
+/// authors' databases, and a prolific sharer's pointers cluster into far fewer authors than
+/// pointers. Bounded further by only opening authors whose documents we actually hold.
+///
+/// Best-effort: this hangs off a frontier move, and a feed row that fails to write is picked up
+/// by the author's next move or the next fold.
+pub async fn journal_shares_by(
+    state: &AppState,
+    sharer_root: &str,
+    pointers: &[crate::record::imaol::RebroadcastRow],
+) {
+    let readers = match share_readers(state, sharer_root).await {
+        Ok(r) if !r.is_empty() => r,
+        Ok(_) => return, // nobody here follows them for shares - the common case
+        Err(e) => {
+            tracing::debug!(sharer = %sharer_root, error = ?e, "share readers lookup failed");
+            return;
+        }
+    };
+
+    // Group by author so each author's shelf is opened once, however many of their documents
+    // this sharer carries.
+    let mut by_author: std::collections::BTreeMap<&str, Vec<&crate::record::imaol::RebroadcastRow>> =
+        Default::default();
+    for row in pointers.iter().filter(|r| !r.is_retracted()) {
+        by_author.entry(&row.author_root).or_default().push(row);
+    }
+
+    for (author_root, rows) in by_author {
+        let page = match shelf_page(state, author_root).await {
+            Ok(p) if !p.is_empty() => p,
+            // We hold nothing of this author yet. Correct and expected on a reader's node: the
+            // pointer says what was shared, and resolving it to content is the fragment
+            // ledger's job, which is not built. The row is simply not written until it can be.
+            Ok(_) => continue,
+            Err(e) => {
+                tracing::debug!(author = %author_root, error = ?e, "shelf read failed for a share");
+                continue;
+            }
+        };
+        let wanted: Vec<&JournalRow> = rows
+            .iter()
+            .filter_map(|r| {
+                let doc_hex = hex::encode(r.doc_id);
+                page.iter().find(|p| p.doc_id_hex == doc_hex)
+            })
+            .collect();
+        if wanted.is_empty() {
+            continue;
+        }
+        if let Err(e) = journal_rows(
+            &state.node_db,
+            author_root,
+            &readers,
+            &wanted,
+            Some(sharer_root),
+        )
+        .await
+        {
+            tracing::warn!(sharer = %sharer_root, author = %author_root, error = ?e, "journaling a share failed");
+        }
+    }
+}
+
 /// A new share's backfill: the shared document, journaled to the sharer's rebroadcast-followers
 /// NOW rather than whenever the original author next posts.
 ///
