@@ -73,6 +73,14 @@ pub const MAX_AUTH_PATH: usize = 8;
 /// too small to be a payload channel (PROJECT_PLAN, The Inbound Gate).
 pub const MAX_GREETING_LEN: usize = 280;
 
+/// Byte ceiling on a claimed display name. Short on purpose: it is a name, and a "name" with a
+/// paragraph in it is a payload channel wearing a label.
+pub const MAX_DISPLAY_NAME_LEN: usize = 64;
+
+/// A name is shorter than a sentence. Compile time, because there is no moment at which a
+/// stranger's *name* should be allowed more room than their one paragraph of free text.
+const _: () = assert!(MAX_DISPLAY_NAME_LEN < MAX_GREETING_LEN);
+
 /// What a notice claims happened. One kind exists; the rest of the space is named in
 /// PROJECT_PLAN (comment, tag, rebroadcast, first-contact, group invite) and each will arrive
 /// with its own evidence rule, so ids are minted as their verification is written rather than
@@ -124,8 +132,27 @@ pub struct Envelope {
     pub auth_path: Vec<Vec<u8>>,
     /// The signed entry that makes the claim checkable, as its author's exact bytes.
     pub evidence: Option<Vec<u8>>,
-    /// A first-contact greeting - the one unverifiable field, hence the cap.
+    /// A first-contact greeting - one of the two unverifiable fields, hence the cap.
     pub greeting: Option<String>,
+    /// What the sender calls themselves, so a stranger's notice reads as something other than
+    /// a hash. **Unverified, and unverifiable at any price worth paying** (settled 2026-08-11).
+    ///
+    /// The rejected alternative was carrying the sender's signed `profile-set` entry as
+    /// evidence, on the theory that a *published* name is accountable where a per-recipient
+    /// string is not. It is not: a fresh identity's chain is attacker-controlled from genesis,
+    /// so "Bank Support" is a genuine signed entry the moment they decide to sign it. A
+    /// signature proves authorship, never honesty, and accountability needs something to lose -
+    /// which a throwaway identity does not have. What the signed form would actually have
+    /// bought is narrow: per-recipient lying would need equivocation (self-proving) rather than
+    /// being free - while lying with a STALE entry stays undetectable either way, since the
+    /// recipient has no copy of their chain head to compare against. Not worth an evidence
+    /// field and a verification branch.
+    ///
+    /// **The defence is in the rendering, not in the field.** A claimed name is shown as an
+    /// annotation beside the identity derived from the root - the speakable words and identicon
+    /// nobody can choose - and never in the identity's place. A stranger calling themselves
+    /// "Ringtome Support" then reads as an unknown key making a claim, which is what it is.
+    pub display_name: Option<String>,
     /// Proof-of-work stamp ([`crate::pow`]). Present whenever the sender believes the door
     /// charges anything, absent when it believes the price is zero - which is a configuration
     /// an operator may choose, so the field stays optional.
@@ -144,6 +171,13 @@ impl Envelope {
         {
             return Err(ProtoError::BadEntry("greeting too long"));
         }
+        if self
+            .display_name
+            .as_ref()
+            .is_some_and(|n| n.len() > MAX_DISPLAY_NAME_LEN)
+        {
+            return Err(ProtoError::BadEntry("display name too long"));
+        }
         Ok(())
     }
 
@@ -154,6 +188,7 @@ impl Envelope {
         }
         fields += u64::from(self.evidence.is_some());
         fields += u64::from(self.greeting.is_some());
+        fields += u64::from(self.display_name.is_some());
         fields += u64::from(self.stamp.is_some());
 
         let mut w = Writer::new();
@@ -185,6 +220,10 @@ impl Envelope {
             w.uint(7);
             w.bytes(stamp);
         }
+        if let Some(name) = &self.display_name {
+            w.uint(8);
+            w.text(name);
+        }
         w.into_bytes()
     }
 
@@ -214,6 +253,7 @@ impl Envelope {
         let mut evidence: Option<Vec<u8>> = None;
         let mut greeting: Option<String> = None;
         let mut stamp: Option<Vec<u8>> = None;
+        let mut display_name: Option<String> = None;
         while let Some(key) = map.next_key()? {
             match key {
                 0 => sender_root = Some(map.bytes_fixed::<32>()?),
@@ -237,6 +277,7 @@ impl Envelope {
                 5 => evidence = Some(map.bytes()?.to_vec()),
                 6 => greeting = Some(map.text()?.to_string()),
                 7 => stamp = Some(map.bytes()?.to_vec()),
+                8 => display_name = Some(map.text()?.to_string()),
                 _ => map.skip_value()?,
             }
         }
@@ -252,6 +293,7 @@ impl Envelope {
             evidence,
             greeting,
             stamp,
+            display_name,
         };
         out.check()?;
         Ok(out)
@@ -797,6 +839,7 @@ mod tests {
             ),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         SignedEnvelope::create(&envelope, leaf).unwrap()
     }
@@ -847,6 +890,7 @@ mod tests {
             evidence: Some(evidence.bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         SignedEnvelope::create(&envelope, leaf).unwrap()
     }
@@ -922,6 +966,7 @@ mod tests {
             ),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         let notice = SignedEnvelope::create(&envelope, &leaf).unwrap();
         assert!(
@@ -950,6 +995,7 @@ mod tests {
             evidence: Some(vec![0xBB; 60]),
             greeting: None,
             stamp: None,
+            display_name: None,
         }
     }
 
@@ -962,6 +1008,32 @@ mod tests {
         assert_eq!(seen, signed);
         assert_eq!(seen.envelope(), signed.envelope());
         assert_eq!(seen.hash(), signed.hash(), "the id is the bytes' hash");
+    }
+
+    /// A name is a name. Both unverifiable fields are capped, and the name's cap is far tighter
+    /// than the greeting's for the same reason the greeting has one at all: an uncapped field a
+    /// stranger controls is a payload channel wearing a label.
+    #[test]
+    fn a_claimed_name_is_capped_like_the_greeting() {
+        let k = key(11);
+        let mut envelope = Envelope {
+            sender_root: pubkey(&k),
+            signer: pubkey(&k),
+            recipient_root: [7u8; 32],
+            kind: notice_kind::PUBLIC_EDGE,
+            auth_path: vec![],
+            evidence: None,
+            greeting: None,
+            stamp: None,
+            display_name: Some("a".repeat(MAX_DISPLAY_NAME_LEN)),
+        };
+        assert!(SignedEnvelope::create(&envelope, &k).is_ok(), "at the cap is fine");
+
+        envelope.display_name = Some("a".repeat(MAX_DISPLAY_NAME_LEN + 1));
+        assert!(
+            SignedEnvelope::create(&envelope, &k).is_err(),
+            "one byte over is refused before it is ever signed"
+        );
     }
 
     #[test]
@@ -979,6 +1051,7 @@ mod tests {
             evidence: None,
             greeting: Some("it's Dave from the conference".into()),
             stamp: None,
+            display_name: Some("Dave".into()),
         };
         let signed = SignedEnvelope::create(&envelope, &k).unwrap();
         signed.verify().unwrap();
@@ -1124,6 +1197,7 @@ mod tests {
             evidence: Some(public_edge(&root, recipient, None, Some("low")).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         let claim = verify_claim(&SignedEnvelope::create(&envelope, &root).unwrap()).unwrap();
         assert_eq!(claim.interest.as_deref(), Some("low"));
@@ -1145,6 +1219,7 @@ mod tests {
             evidence: Some(public_edge(&watch, recipient, None, Some("max")).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         let claim = verify_claim(&SignedEnvelope::create(&envelope, &watch).unwrap()).unwrap();
         assert_eq!(claim.sender_root, pubkey(&root), "the ROOT is the identity, not the leaf");
@@ -1165,6 +1240,7 @@ mod tests {
             evidence: Some(public_edge(&mallory, recipient, Some("max"), None).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         let err = verify_claim(&SignedEnvelope::create(&envelope, &mallory).unwrap());
         assert!(err.is_err(), "a path that does not start at the claimed root is no path");
@@ -1183,6 +1259,7 @@ mod tests {
             evidence: Some(public_edge(&watch, recipient, None, Some("high")).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &watch).unwrap()).is_err());
     }
@@ -1203,6 +1280,7 @@ mod tests {
             evidence: Some(public_edge(&watch, recipient, None, Some("high")).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &watch).unwrap()).is_err());
     }
@@ -1221,6 +1299,7 @@ mod tests {
             evidence: Some(public_edge(&phone, recipient, None, Some("high")).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &watch).unwrap()).is_err());
     }
@@ -1241,6 +1320,7 @@ mod tests {
             ),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &leaf).unwrap()).is_err());
     }
@@ -1257,6 +1337,7 @@ mod tests {
             evidence: Some(public_edge(&leaf, recipient, None, None).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(
             verify_claim(&SignedEnvelope::create(&envelope, &leaf).unwrap()).is_err(),
@@ -1300,6 +1381,7 @@ mod tests {
             evidence: Some(profile.bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &leaf).unwrap()).is_err());
     }
@@ -1317,6 +1399,7 @@ mod tests {
             evidence: Some(public_edge(&leaf, recipient, None, Some("max")).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &leaf).unwrap()).is_err());
     }
@@ -1336,6 +1419,7 @@ mod tests {
             evidence: Some(evidence),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &leaf).unwrap()).is_err());
     }
@@ -1352,6 +1436,7 @@ mod tests {
             evidence: Some(public_edge(&leaf, recipient, None, Some("max")).bytes().to_vec()),
             greeting: None,
             stamp: None,
+            display_name: None,
         };
         assert!(verify_claim(&SignedEnvelope::create(&envelope, &leaf).unwrap()).is_err());
     }

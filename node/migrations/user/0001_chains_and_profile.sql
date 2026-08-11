@@ -251,6 +251,11 @@ CREATE TABLE inbox_notices (
     envelope      BLOB    NOT NULL,  -- the delivered envelope, verbatim, re-verifiable
     trust         TEXT,              -- the published bands the evidence carried
     interest      TEXT,
+    -- What the sender CLAIMS to be called. Unverified and unverifiable at any sane price (see
+    -- deliver::Envelope::display_name); denormalized here at fold time rather than decoded out
+    -- of the envelope on every bell read, because reads never fold. Rendered as an annotation
+    -- beside the identity derived from their root, never in its place.
+    display_name  TEXT,
     timestamp_ms  INTEGER NOT NULL,  -- LWW stamp: the transcribing node's claimed time
     seq           INTEGER NOT NULL,
     entry_hash    BLOB    NOT NULL,

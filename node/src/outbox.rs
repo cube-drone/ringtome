@@ -78,6 +78,11 @@ pub async fn seal_notice(
         evidence: Some(evidence.bytes().to_vec()),
         greeting: None,
         stamp: None,
+        // What we call ourselves publicly, so a stranger's door can render a name rather than a
+        // hash. Read from our OWN published profile rather than taken as a parameter: there is
+        // exactly one honest answer to "what is this persona called", and letting a caller pass
+        // a different one is how a per-recipient name becomes possible by accident.
+        display_name: published_name(db).await,
     };
     // **Stamp, then sign, in that order.** The challenge is the body with the stamp field
     // absent, and the signature covers the body with it present - so the work binds every
@@ -88,6 +93,32 @@ pub async fn seal_notice(
         envelope.stamp = Some(solve_blocking(envelope.challenge(), price_bits).await?);
     }
     SignedEnvelope::create(&envelope, signer).map_err(|e| anyhow!("sealing a notice: {e}"))
+}
+
+/// This persona's published display name, capped to what an envelope may carry.
+///
+/// Best-effort and quiet: a notice with no name is worse-looking but perfectly valid, and a
+/// profile read failing must never stop a notice going out.
+async fn published_name(db: &Db) -> Option<String> {
+    let fields = crate::record::imaol::get_profile(db).await.ok()?;
+    let name = fields
+        .into_iter()
+        .find(|f| f.field == "name")
+        .map(|f| f.value)?;
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    // Truncated on a CHARACTER boundary, not a byte one: the cap is in bytes, and slicing a
+    // multi-byte name mid-codepoint would panic on the way to telling someone who followed them.
+    let mut out = String::new();
+    for c in name.chars() {
+        if out.len() + c.len_utf8() > ringtome_proto::deliver::MAX_DISPLAY_NAME_LEN {
+            break;
+        }
+        out.push(c);
+    }
+    Some(out)
 }
 
 /// Pay the price off the reactor.

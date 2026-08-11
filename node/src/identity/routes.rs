@@ -694,6 +694,12 @@ struct NotificationItem {
     author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     author_avatar: Option<String>,
+    /// What a STRANGER says they are called - a claim off the envelope, never a fetched
+    /// profile. Kept in its own field rather than folded into `author_name` precisely so the
+    /// client cannot render it where a verified name goes: it is shown beside the identity
+    /// derived from their root, never in place of it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    claimed_name: Option<String>,
 }
 
 /// GET `/api/identity/{root}/notifications` - one list, two sources.
@@ -745,6 +751,7 @@ async fn notifications_handler(
             NotificationItem {
                 seen: r.updated_ms <= watermark,
                 stranger: false,
+                claimed_name: None,
                 doc_id: r.doc_id,
                 author_name: byline.name,
                 author_avatar: byline.avatar,
@@ -766,6 +773,9 @@ async fn notifications_handler(
         // "they shared something of yours" without naming which. The derived row above does
         // name it, which is one more thing answering the door buys you.
         doc_id: String::new(),
+        // The one thing a stranger's row now says out loud - and the ONLY name on it, since
+        // author_name stays None: nothing has been fetched about them.
+        claimed_name: n.display_name,
         author_name: None,
         author_avatar: None,
         author: n.sender_root,
@@ -3451,6 +3461,7 @@ mod notification_dedup_tests {
             author: author.to_string(),
             kind: kind.to_string(),
             doc_id: String::new(),
+            claimed_name: None,
             trust: None,
             interest: None,
             updated_ms: 1,
@@ -3468,6 +3479,7 @@ mod notification_dedup_tests {
             trust: None,
             interest: None,
             timestamp_ms: 1,
+            display_name: None,
             service: ringtome_proto::registry::service::INBOX_STRANGER,
         }
     }

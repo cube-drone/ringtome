@@ -18,11 +18,33 @@ import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
 import { agoUnit } from '../pure/ago.js';
+import { speakable } from '../speakable.js';
 
 const html = htm.bind(h);
 
 /// The row's words, from what the statement actually publishes. The vouch reading is reserved
 /// for the max band because that stop IS the vouch (The Vouch Dissolved into the Ledger).
+/// Who the row is about, said out loud.
+///
+/// Both kinds get a visible name; only the provenance differs, and the quote marks carry it. A
+/// followed persona's name came off their own chain when we synced them, so it stands unadorned
+/// in the subject position. A stranger's came out of the envelope they sent, so it is quoted -
+/// their words about themselves, next to an identicon that is not theirs to choose.
+///
+/// When neither exists, the speakable form of their key: derived, unforgeable, and the same
+/// words the chip shows on hover, so the row and the face agree.
+const Subject = ({ row }) => {
+    if (row.stranger && row.claimed_name) {
+        return html`<q
+            class="notif-claimed"
+            title=${t('apps.notifications.what-they-call-themselves-unverified', 'what they call themselves - an unverified claim, not a name this computer has checked')}
+            >${row.claimed_name}</q
+        >`;
+    }
+    const known = !row.stranger && row.author_name;
+    return html`<strong class="notif-subject">${known || speakable(row.author)}</strong>`;
+};
+
 const sentence = (r) => {
     const follows = !!r.interest;
     const vouches = r.trust === 'max';
@@ -116,12 +138,17 @@ export const NotificationsApp = ({ current }) => {
                               >
                                   ${/* Passing a profile - even an EMPTY one, which is what a
                                       stranger's row carries - is what stops usePerson fetching
-                                      their page. That is the rule, not an optimisation: an
-                                      unadmitted stranger renders as derived identity only
-                                      (identicon + speakable words), because claimed identity
-                                      costs a sync and you pay it only for people you have
-                                      answered. Follow them and they become a derived row with
-                                      a byline. */ ''}
+                                      their page. That rule is about FAN-OUT and stays: a flood
+                                      of stranger notices must not become a flood of syncs.
+                                      Follow them and they become a derived row with a byline.
+
+                                      What the rule is NOT is an impersonation defence, and
+                                      pretending otherwise cost clarity for nothing (2026-08-11):
+                                      hiding the name never stopped anyone from BEING "Bank
+                                      Support", it only made honest strangers unreadable. So the
+                                      claim is shown - beside the identicon and speakable words
+                                      derived from their root, which nobody can choose, and
+                                      never in the identity's place. */ ''}
                                   <${PersonChip}
                                       root=${r.author}
                                       current=${current}
@@ -134,6 +161,13 @@ export const NotificationsApp = ({ current }) => {
                                       }}
                                   />
                                   <span class="notif-text">
+                                      ${/* Every row names its subject. The chip is a FACE - its
+                                          label is a hover tooltip - so a row without this reads
+                                          "follows you, publicly" with nobody doing it. Adding a
+                                          visible name to strangers only (2026-08-11) made the
+                                          unverified claim MORE prominent than a real name, which
+                                          is the exact inversion this design is trying to avoid. */ ''}
+                                      <${Subject} row=${r} />
                                       ${sentence(r)}
                                       ${r.stranger &&
                                       html`<span

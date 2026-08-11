@@ -52,7 +52,28 @@
     color: var(--ink);
 }
 
-/* The stranger marker: says why there is no name here, quietly. */
+/* What a stranger CLAIMS to be called. Rendered as a quotation, deliberately: the quote marks
+ * are the whole safety argument in one glyph - they say "these are their words about
+ * themselves", where an unadorned name would say "this is who this is". The identity that
+ * cannot be forged (identicon + speakable words) sits to the left, in the chip, holding the
+ * position a name would otherwise take. */
+.notif-claimed {
+    color: var(--ink);
+    font-style: italic;
+    margin-right: 0.3em;
+}
+
+/* A name this computer read off their own chain: plain, unquoted, in the subject position.
+ * Deliberately no louder than the claimed form beside it - the difference between them is the
+ * quote marks and the stranger tag, not weight or colour, because a reader should have to
+ * notice the provenance rather than feel it. */
+.notif-subject {
+    color: var(--ink);
+    font-weight: 600;
+    margin-right: 0.3em;
+}
+
+/* The stranger marker: says the name beside it is a claim and nothing has been fetched. */
 .notif-stranger {
     margin-left: 0.4em;
     padding: 0.05em 0.4em;

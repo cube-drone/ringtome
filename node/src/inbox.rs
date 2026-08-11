@@ -111,6 +111,9 @@ pub enum Verdict {
 pub struct Notice {
     pub sender_root: String,
     pub kind: String,
+    /// What the sender says they are called. A claim, never an identity - see
+    /// `deliver::Envelope::display_name` for why no cheap mechanism makes it more than that.
+    pub display_name: Option<String>,
     pub trust: Option<String>,
     pub interest: Option<String>,
     /// The transcribing node's claimed time - the recipient's own clock, not the sender's.
@@ -385,14 +388,15 @@ async fn fold_notice(
     db.execute(
         "INSERT INTO inbox_notices
            (sender_root, kind, service, author_pubkey, envelope, trust, interest,
-            timestamp_ms, seq, entry_hash)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            display_name, timestamp_ms, seq, entry_hash)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
          ON CONFLICT(sender_root, kind) DO UPDATE SET
            service = excluded.service,
            author_pubkey = excluded.author_pubkey,
            envelope = excluded.envelope,
            trust = excluded.trust,
            interest = excluded.interest,
+           display_name = excluded.display_name,
            timestamp_ms = excluded.timestamp_ms,
            seq = excluded.seq,
            entry_hash = excluded.entry_hash
@@ -406,6 +410,9 @@ async fn fold_notice(
             envelope_bytes.as_slice(),
             claim.trust.as_deref(),
             claim.interest.as_deref(),
+            // Straight off the envelope, not off the claim: it is not evidence of anything, so
+            // `verify_claim` has no business carrying it.
+            envelope.envelope().display_name.as_deref(),
             signed.entry().timestamp_ms,
             signed.entry().seq as i64,
             signed.hash().as_slice(),
@@ -432,11 +439,12 @@ pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
 /// codebase, the fold happens on read, because sync ingest deliberately holds no epoch keys.
 pub async fn page(db: &Db, keys: &EpochKeys, limit: u32) -> Result<Vec<Notice>, AppError> {
     catch_up(db, keys).await.map_err(AppError::Internal)?;
-    /// `(sender_root, kind, trust, interest, timestamp_ms, service)`.
-    type Row = (String, String, Option<String>, Option<String>, i64, i64);
+    /// `(sender_root, kind, trust, interest, timestamp_ms, service, display_name)`.
+    type Row = (String, String, Option<String>, Option<String>, i64, i64, Option<String>);
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT sender_root, kind, trust, interest, timestamp_ms, service FROM inbox_notices
+            "SELECT sender_root, kind, trust, interest, timestamp_ms, service, display_name
+             FROM inbox_notices
              ORDER BY timestamp_ms DESC LIMIT ?1",
             (i64::from(limit),),
         )
@@ -446,9 +454,10 @@ pub async fn page(db: &Db, keys: &EpochKeys, limit: u32) -> Result<Vec<Notice>, 
     Ok(rows
         .into_iter()
         .map(
-            |(sender_root, kind, trust, interest, timestamp_ms, service)| Notice {
+            |(sender_root, kind, trust, interest, timestamp_ms, service, display_name)| Notice {
                 sender_root,
                 kind,
+                display_name,
                 trust,
                 interest,
                 timestamp_ms,

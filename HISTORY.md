@@ -4663,3 +4663,82 @@ One residual, small but visible: a fragment has no folded chain stamps of its ow
 `published_ms` is the fetch moment. In a feed ordered by publication date a shared post will sort
 by when it arrived rather than when it was written, which is wrong and will want the author's
 claimed stamp carried in the fragment.
+
+## 2026-08-11 — a stranger gets a name, and it goes in quotes
+
+Curtis, on the bell: "when an unknown user - a stranger - sends a notification into my inbox,
+they're just rendered as 'banana-boat' or some similar speakable version of their key... getting
+followed by an identicon with an anonymized name isn't really very clear."
+
+The rule he was questioning bundled two jobs, and only one of them was real.
+
+**Bounding fan-out is real and stays.** Fetching a stranger's profile means syncing their chains;
+a flood of stranger notices would become a flood of syncs, turning the inbox into an amplifier
+pointed at its owner. Nothing here touches that.
+
+**Stopping impersonation was never happening.** Hiding the name does not prevent anyone from
+BEING "Bank Support" - it only makes honest strangers unreadable, while the hostile ones are
+equally unreadable and equally free to try. The legitimate case paid the entire cost. Worse for
+safety, arguably: "banana-boat followed you" gives a reader nothing to be suspicious *of*.
+
+So the constraint to keep was **no fetch**, not **no name**, and those come apart cleanly.
+
+### The design that was proposed, and why Curtis was right to kill it
+
+The first proposal was to carry the sender's signed `profile-set` entry as evidence - verified
+offline by the same auth-path walk, no sync - on the theory that a *published* name is
+accountable where a per-recipient string is not. Curtis: "does it give them accountability? they
+could just forge their whole profile chain from genesis, ending in 'Bank Support', couldn't they?"
+
+Yes. A fresh identity's chain is attacker-controlled end to end, so "Bank Support" is a genuine
+signed entry the moment they decide to sign it. **A signature proves authorship, never honesty**,
+and accountability needs something to lose - which a throwaway identity does not have. What the
+signed form would actually have bought is narrow: per-recipient lying would need equivocation
+(self-proving, if anyone ever compares) instead of being free, while lying with a STALE entry
+stays undetectable either way, since the recipient holds no copy of their chain head. That is not
+worth an evidence field, a verification branch, and envelope bytes.
+
+Which meant the defence was never going to live in the field at all.
+
+### Where it does live: the rendering hierarchy
+
+**The unforgeable thing holds the identity position.** The speakable words and identicon are
+derived from the root and cannot be chosen; the claimed name is an annotation beside them, in
+quote marks, never in their place. A stranger calling themselves "Ringtome Support" then reads as
+an unknown key making a claim, which is exactly what it is. The quote marks are the whole safety
+argument in one glyph - they say "their words about themselves" where an unadorned name would say
+"this is who this is".
+
+Shipped: `Envelope::display_name`, capped at 64 bytes (a name is shorter than a sentence, asserted
+at compile time against the greeting's 280); read from the sender's OWN published profile rather
+than taken as a parameter, because there is one honest answer to "what is this persona called" and
+a parameter is how per-recipient names happen by accident; folded onto the inbox row at
+transcription rather than decoded per bell read; and surfaced as `claimed_name`, its own wire
+field. That last one is deliberate: sharing a field with the fetched-and-verified `author_name`
+would let a future client render a claim where a verified name goes, and the distinction would
+quietly die. Separate fields make the misuse require a decision.
+
+### The bug the fix introduced, caught immediately
+
+With strangers named and everyone else not, the bell read `<chip> "Gary" follows you · a stranger`
+beside `<chip> follows you` - because `PersonChip`'s label is a hover tooltip, and `sentence()`
+returns a bare verb phrase. **The unverified claim had become more prominent than the verified
+name**, which is the precise inversion the whole design exists to prevent. Curtis spotted it in
+one line.
+
+Fixed by giving EVERY row a visible subject: a followed persona's real name (from the byline
+cache, read off their own chain when we synced them) unquoted in the subject position, a
+stranger's quoted, and the speakable form of the key when there is neither. Styled deliberately at
+the same weight - the difference between them is the quote marks and the stranger tag, not colour
+or boldness, because a reader should have to *notice* provenance rather than absorb it as
+importance.
+
+The pattern behind that mistake, and behind two others the same day (the via-line's hierarchy, the
+share button's prominence): **a UI change reasoned about the element being added rather than the
+row it lands in.** Locally right, globally wrong, three times.
+
+### Residual
+
+`an undeliverable notice waits` flaked once during this work and passed on rerun with an unchanged
+binary - REFACTOR carries it with the diagnosis (a `settle` polling for the end of a four-hop
+background chain, on a machine that had been running CI back to back for hours).
