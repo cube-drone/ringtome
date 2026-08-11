@@ -699,22 +699,37 @@ function bareRustErrors(file, src, taken) {
 }
 
 /// The server's user-facing error prose, as `msg!(code, english)` pairs.
-function rustMessages(src) {
+export function rustMessages(src) {
     const out = [];
-    const pattern = /\bmsg!\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"/g;
+    // The `s` flag is load-bearing, not tidiness. Rust wraps a long literal with a trailing
+    // backslash before the newline, and without `s` the `\\.` alternation cannot match
+    // backslash-newline - so the whole `msg!` failed to match and the phrase vanished from the
+    // catalog with no error anywhere. Silent, and it ate exactly the LONGEST messages, which are
+    // the most user-visible ones. (Second time this shape has bitten: see the comment in
+    // `bareRustErrors` about a pattern anchored without its trailing comma.)
+    const pattern = /\bmsg!\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"/gs;
     let m;
     while ((m = pattern.exec(src)) !== null) {
         // `m[0]` ends on the closing quote of the seed, so its span falls straight out.
         const seedEnd = m.index + m[0].length;
         out.push({
             key: m[1],
-            english: m[2].replace(/\\(.)/g, '$1'),
+            english: unescapeRust(m[2]),
             offset: m.index,
             seedStart: seedEnd - (m[2].length + 2),
             seedEnd,
         });
     }
     return out;
+}
+
+/// A Rust string literal's body as the text it denotes.
+///
+/// The line continuation goes FIRST and is its own rule: `\` before a newline eats the newline
+/// *and* the next line's leading whitespace, which is not what the generic escape below would do
+/// with it. Everything after is the ordinary backslash-X unescape.
+export function unescapeRust(raw) {
+    return raw.replace(/\\\n\s*/g, '').replace(/\\(.)/g, '$1');
 }
 
 /// The `{name}` holes in a message.
@@ -1008,7 +1023,14 @@ async function check() {
     console.log(`locales/en.js is current (${entries.length} phrases), and no copy bypasses t().`);
 }
 
-const mode = process.argv[2];
-if (mode === '--migrate') migrate();
-else if (mode === '--check') await check();
-else await writeEnglish();
+// Run only when invoked as a command. Without this guard, importing anything from this file -
+// which the pure test does, to exercise the scanners on fixtures - would rewrite the real
+// catalog as a side effect of loading the module.
+const invokedDirectly =
+    process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+    const mode = process.argv[2];
+    if (mode === '--migrate') migrate();
+    else if (mode === '--check') await check();
+    else await writeEnglish();
+}

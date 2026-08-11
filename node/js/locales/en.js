@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 422 phrases across 41 files.
+// 428 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -387,10 +387,14 @@ export default {
     'identity.adoption.unreadable-what-3': 'unreadable {what}',
     'identity.adoption.unreadable-what-4': 'unreadable {what}',
     'identity.adoption.not-an-adoption-request-code': 'not an adoption request code',
+    'identity.adoption.that-request-code-comes-from': 'that request code comes from this very computer - it is already this persona. Adoption brings a persona to a NEW computer; run "bring your persona" there instead.',
     'identity.adoption.that-key-is-already-in': 'that key is already in the tree',
+    'identity.adoption.this-computers-key-is-no': "this computer's key is no longer active for this persona - it can't invite new ones.",
     'identity.adoption.no-pending-adoption-for-that': 'no pending adoption for that key',
     'identity.adoption.not-an-adoption-grant-code': 'not an adoption grant code',
+    'identity.adoption.that-invite-points-back-at': 'that invite points back at this very computer - it was granted here. Paste it on the NEW computer instead.',
     'identity.adoption.no-pending-adoption-for-that-2': 'no pending adoption for that key',
+    'identity.adoption.our-key-is-not-yet': 'our key is not (yet) authorized on the identity chain - paste the request code at the granting node first',
 
     // --- node/src/identity/routes.rs ---
     'identity.routes.not-found': 'not found',
@@ -501,9 +505,11 @@ export default {
     'record.store.video-cant-be-baked-into': "video can't be baked into a post yet - image and audio only for now",
     'record.store.an-embedded-target-is-not': 'an embedded target is not a media document',
     'record.store.this-medias-bytes-havent-arrived': "this media's bytes haven't arrived on this computer yet",
+    'record.store.annotation-value-exceeds-bytes-past': 'annotation value exceeds {limit} bytes: past that, a description is becoming another document - write one and reference it',
     'record.store.bucket-name-is-empty': 'bucket name is empty',
     'record.store.bucket-name-exceeds-bytes': 'bucket name exceeds {limit} bytes',
     'record.store.app-type-exceeds-bytes': 'app-type exceeds {limit} bytes',
+    'record.store.placing-this-list-here-would': 'placing this list here would create a cycle: the destination is already inside it (directly or through nested lists)',
 
     // --- node/src/test_endpoints.rs ---
     'test_endpoints.sql-error-e': 'sql error: {e}',

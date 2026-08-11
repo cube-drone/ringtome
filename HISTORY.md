@@ -4541,3 +4541,43 @@ unlocalizable, `just strings` reported "+0 new", and `strings-check` stayed gree
 are the most user-visible ones, and `tools/strings.mjs` already carries a comment about a
 previous version of this same class of bug. Left unfixed, deliberately, rather than fold a
 tooling repair into a feature commit.
+
+## 2026-08-10 — the cop that could not see wrapped sentences
+
+A side-quest off the rebroadcast arc, taken while it was fresh. Writing a publish-refusal message
+the natural way for a long sentence - wrapped across two lines with a trailing backslash - put a
+user-facing phrase into the source that `tools/strings.mjs` could not see. `just strings` reported
+"+0 new". `strings-check` reported green. The phrase would have shipped unlocalizable, and the one
+mechanism whose whole job is making that impossible said nothing.
+
+The cause was one missing regex flag: `\bmsg!\(..."..."...\)` without `s`, so the `\\.` alternation
+could not match backslash-newline and the entire `msg!` failed to match. **An extractor that finds
+nothing looks exactly like a source with nothing in it**, which is why the failure was silent - and
+why it selected for the LONGEST messages, since those are the ones anyone wraps.
+
+Fixing it surfaced **six phrases that were already missing**, none of them mine: four adoption
+errors, an annotation-size refusal, and the taxonomy cycle message. All long, all wrapped, all
+invisible for as long as they had existed. 422 phrases became 428.
+
+This was the second round of the same shape. The file already carries a comment from round one -
+a pattern anchored without the trailing comma rustfmt leaves behind, which "silently skips exactly
+the longest and most user-visible messages". Same failure, same selection bias, same silence. So
+the fix is not just the flag:
+
+- **`unescapeRust` is now its own named rule**, because a continuation is not an ordinary escape:
+  `\` before a newline eats the newline *and* the next line's indentation, which the generic
+  backslash-X unescape would have got wrong even once the pattern matched.
+- **The tool no longer runs on import.** Its entry point is guarded, so loading the module has no
+  side effects - which is what lets a test exercise the scanners at all. A tool that rewrites the
+  catalog merely by being imported is its own footgun.
+- **`integration/test/pure/strings.cjs` is the cop for the cop**, and every fixture in it is a
+  WRAPPED form, because that is the shape both rounds shared. It was verified the only way a
+  regression test is worth anything: the flag was removed again, three of the five tests failed,
+  and the flag was put back. Two of the three cover span arithmetic rather than extraction -
+  `syncSeeds` rewrites source in place using those offsets, so a drifting span corrupts files
+  rather than merely missing a phrase, which is the worse of the two failures.
+
+The rule this leaves behind, for any scanner whose job is to find things: **a finder that reports
+nothing is indistinguishable from nothing being there, so it needs a fixture that proves it can
+still find.** Every pattern in this file that matches source across a line break is now one
+rustfmt decision away from the same silence.
