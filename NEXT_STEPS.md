@@ -38,10 +38,11 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   Pinned Replica* and its two network subsections; HISTORY has the arc and the fragment slice).
   Pointer, pin, both notice halves, public tombstone, media budget, feed with `via_root`, and
   the fragment ledger. What is left:
-  * **The node-death test** - kill the author's and the sharer's nodes, assert a reader still
-    serves the share from its own fragment. Needs a self-hosting harness: the shared four nodes
-    cannot be stopped mid-run without breaking every other spec (`mainline.cjs` shows the shape
-    - spawn/waitHealthy/stopNode, pointed at local discovery rather than the real DHT).
+  * **The node-death test** - make the author's and the sharer's nodes unreachable, assert a
+    reader still serves the share from its own fragment. The harness exists:
+    `withUnplugged([HOST, HOST_B], ...)` from `integration/test/unplug.cjs` partitions rig nodes
+    without stopping them (node/README, *Simulating a partition*). Unplug both directions so C
+    cannot be reached either, and assert the feed row and the body both survive the window.
   * **The edit window** and **delete memo + bloom summaries** - the two trim slices that bound
     what a node must remember forever. Designed, unbuilt.
   * **UI**: nothing renders `via`/`via_name`, and there is no share button.

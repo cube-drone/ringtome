@@ -70,9 +70,7 @@ pub async fn deliver_grant(
     grant: &GrantCode,
 ) -> Result<DeliveryAck> {
     let addr = crate::net::sync::endpoint_addr(requester_endpoint_id, requester_addrs)?;
-    let conn = state
-        .endpoint
-        .connect(addr, ADOPT_ALPN)
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, ADOPT_ALPN)
         .await
         .context("dialing requester for grant delivery")?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening adopt stream")?;

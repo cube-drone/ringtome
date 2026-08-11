@@ -249,3 +249,49 @@ fn create_sites_stay_rare() {
          Option so absence is an answer, and `held` is for personas whose absence is a bug."
     );
 }
+
+/// Every outbound connection goes through `net::p2p::dial`, which is the only thing that makes the
+/// test transport gate (`/test/unplug`) *total* rather than approximate.
+///
+/// This cop exists because the failure it guards is silent and awful: a seventh dial site that
+/// called `endpoint.connect` directly would leave a partition test passing while a whole protocol
+/// kept talking through the "partition". The test would then be proving nothing, and saying so
+/// confidently. Nothing at runtime can notice that; a grep can.
+///
+/// The rule is spelled as "`.connect(` appears nowhere but these files", which also catches a
+/// future site that spells its receiver differently (`ep.connect`, `self.endpoint.connect`).
+#[test]
+fn every_outbound_dial_goes_through_the_gate() {
+    let expected: BTreeMap<&str, usize> = BTreeMap::from([
+        // The gate itself: the one place allowed to open an iroh connection.
+        ("net/p2p.rs", 1),
+        // A different `connect` entirely - turso opening a local database file, no network in it.
+        ("db.rs", 1),
+    ]);
+
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut found: BTreeMap<String, usize> = BTreeMap::new();
+    for path in files {
+        let source = std::fs::read_to_string(&path).expect("readable source");
+        // Flattened, because these calls are written across three lines as often as one.
+        let flat: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        let n = flat.matches(".connect(").count();
+        if n > 0 {
+            let rel = path
+                .strip_prefix(&src)
+                .expect("path under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            found.insert(rel, n);
+        }
+    }
+    let found_ref: BTreeMap<&str, usize> = found.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    assert_eq!(
+        found_ref, expected,
+        "a new `.connect(` call site appeared. If it dials a peer, route it through \
+         `net::p2p::dial(&state.unplugged, &state.endpoint, addr, ALPN)` so the transport gate \
+         covers it - a dial that bypasses the gate makes every partition test quietly half-true."
+    );
+}

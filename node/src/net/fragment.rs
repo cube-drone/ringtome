@@ -296,9 +296,7 @@ async fn ask(
     doc_id: &[u8; 16],
 ) -> Result<Fetched> {
     let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
-    let conn = state
-        .endpoint
-        .connect(addr, FRAGMENT_ALPN)
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
         .await
         .map_err(|e| anyhow!("dialing {endpoint_id} for a fragment: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;

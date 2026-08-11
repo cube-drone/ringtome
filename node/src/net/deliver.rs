@@ -262,9 +262,7 @@ pub(crate) async fn candidates(state: &AppState, recipient_root: &str) -> Vec<St
 
 async fn knock(state: &AppState, endpoint_id: &str, envelope: &[u8]) -> Result<Outcome> {
     let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
-    let conn = state
-        .endpoint
-        .connect(addr, DELIVER_ALPN)
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, DELIVER_ALPN)
         .await
         .map_err(|e| anyhow!("dialing {endpoint_id} for delivery: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening delivery stream")?;

@@ -4805,3 +4805,77 @@ What a long day of being wrong taught, kept for the next one: when a distributed
 READ before reasoning (four of four wrong hypotheses were resolved by one debug line); a test
 that shares state across scenarios is one test wearing several names; and a plan section that
 argues two ways eight lines apart will be built one way and defended with the other.
+
+## 2026-08-11 — a node that stops answering without stopping
+
+The integration suite had no way to turn a node off. Every spec shares the rig's four nodes, so
+"assert C still serves this when A and B are gone" could not be written at all: killing A and B
+takes the next forty files down with them. The rebroadcast **node-death test** had been sitting in
+NEXT_STEPS behind exactly that, described there as waiting on a self-hosting harness.
+
+Two candidates were on the table - every spec boots and tears down its own nodes, or nodes learn to
+go quiet on command. The second won, and the deciding argument was not that it is cheaper (it is):
+**the two are not substitutes, and the quiet one is the sharper instrument for what these tests
+actually claim.** "This reader needed nobody" is a stronger statement than "the other processes had
+exited", and it leaves the partitioned node's HTTP surface up so a test can still interrogate it.
+Killing a process additionally proves cold start, WAL replay, and a fresh UDP port with a dead
+address cache - which is why `mainline.cjs` spawns its own nodes and will keep doing so. The
+self-hosting harness is still the right tool; it is now the right tool for a much smaller set.
+
+### Why it is a `/test/` route and not an admin instruction
+
+The other shape considered was an admin-only instruction, alongside grant/revoke. Refused: that is
+permanent production surface for **a node that silently stops talking to its peers while `/health`
+stays green**, which is close to the worst outage this codebase could ship by accident, and it hands
+a compromised admin account a partition button. `test_endpoints` already had the better posture -
+the route is not *mounted* unless `RINGTOME_LOCAL_TEST` is set, so on a real node the path does not
+exist rather than existing-but-forbidden. `Unplugged::arm` refuses outside local-test mode anyway,
+because two locks cost one `if`. (A real operational *drain* is a legitimate future feature, and a
+different design: it would withdraw serving records and refuse gracefully rather than blackhole.
+A test's convenience must not get to invent it.)
+
+### The four things that would have made it quietly wrong
+
+- **Scope is per-ALPN, not "sync".** Peer traffic arrives over five ALPNs, and the fragment path is
+  precisely the one the node-death test needs dead. A gate that only understood the word "sync"
+  would have left the reader fetching the very document the test claims it already holds.
+- **Both directions.** Inbound-only would leave an unplugged node still dialling out - an
+  asymmetric partition, which is a real thing to test and a terrible default. `direction` asks for
+  it explicitly.
+- **A typo is a 400.** `alpns: ["fragments"]` silently refusing nothing produces a test that passes
+  while proving the opposite of what it says. Names resolve through the ALPN table or the request
+  fails, and `Refusals` can only hold strings that came out of that table.
+- **The reset is a root hook, not a convention.** The failure worth engineering against is not a
+  spec that forgets to plug a node back in - it is a spec that *dies mid-partition*, after which
+  every later file fails on a network that isn't there and the diagnosis points at innocent code.
+  So `withUnplugged` re-plugs in a `finally` (the belt) and `integration/roothooks.cjs` re-plugs
+  anything this process touched after every test (the braces, which are what survives a hang). It
+  costs one function call on the ~600 tests that never touch the gate.
+
+### One table, and a cop to keep it honest
+
+`build_endpoint` used to spell its five ALPNs inline; the gate needed the same list. Two lists of
+ALPNs would drift the day a sixth protocol lands, leaving a gate that no longer covers the surface
+it claims to - so `p2p::ALPNS` is now the single owner and the endpoint advertises what it holds.
+
+The sharper risk is a seventh *dial site*. The gate is total only because every outbound connection
+goes through `p2p::dial`; a call that reached for `endpoint.connect` directly would leave a partition
+test passing while a whole protocol kept talking straight through the "partition" - failing silently,
+and confidently. Nothing at runtime can notice that, so
+`conventions.rs::every_outbound_dial_goes_through_the_gate` fails the build when `.connect(` appears
+outside `net/p2p.rs` (plus `db.rs`, which is turso opening a file and no network at all). Verified
+the only way a cop is worth anything: the bypass was planted back into `net/fragment.rs`, the test
+went red naming the file, and it was removed again.
+
+### Deliberately not built
+
+A real partition usually looks like a **timeout**, and iroh has the higher-fidelity door for it -
+`Incoming::ignore`, which answers no packet whatsoever. It can only be used before the handshake,
+i.e. before the ALPN is known, so it cannot do per-protocol work; and every test using it would pay
+a dial timeout in wall-clock. Deterministic and fast beat realistic and slow here, so refusals close
+the connection instead. If some code path ever needs the timeout shape specifically, that door is
+named in `Unplugged`'s doc and wants its own mode rather than a change to this one.
+
+Also worth writing down: the gate stops the **transport**, not the directory. An unplugged node
+still resolves serving records and still knows where its peers live. A test that needs a node to
+*forget* its peers wants different scissors.

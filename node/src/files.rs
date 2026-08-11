@@ -59,6 +59,10 @@ impl Backend {
 pub struct FileStore {
     backend: Backend,
     max_blob_bytes: u64,
+    /// A clone of the node's test transport gate, because this layer opens its OWN connections
+    /// (see `fetch`) and would otherwise be the one hole in `/test/unplug`. Default-constructed
+    /// here, so a store built without one refuses nothing - see [`crate::net::p2p::Unplugged`].
+    unplugged: crate::net::p2p::Unplugged,
 }
 
 impl FileStore {
@@ -67,6 +71,7 @@ impl FileStore {
         Self {
             backend: Backend::Mem(MemStore::new()),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
+            unplugged: crate::net::p2p::Unplugged::default(),
         }
     }
 
@@ -76,12 +81,19 @@ impl FileStore {
         Ok(Self {
             backend: Backend::Fs(store),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
+            unplugged: crate::net::p2p::Unplugged::default(),
         })
     }
 
     /// Set the per-blob ciphertext ceiling (a real node derives it from `max_document_bytes`).
     pub fn with_max_blob_bytes(mut self, max: u64) -> Self {
         self.max_blob_bytes = max;
+        self
+    }
+
+    /// Share the node's transport gate, so blob dials obey `/test/unplug` like every other dial.
+    pub fn with_unplugged(mut self, unplugged: crate::net::p2p::Unplugged) -> Self {
+        self.unplugged = unplugged;
         self
     }
 
@@ -198,8 +210,7 @@ impl FileStore {
         provider: EndpointAddr,
         hash: Hash,
     ) -> Result<()> {
-        let conn = endpoint
-            .connect(provider, BLOB_ALPN)
+        let conn = crate::net::p2p::dial(&self.unplugged, endpoint, provider, BLOB_ALPN)
             .await
             .context("dialing blob provider")?;
         self.fetch_on(conn, hash).await
@@ -239,7 +250,8 @@ impl FileStore {
         provider: EndpointAddr,
         hashes: &[Hash],
     ) -> usize {
-        let conn = match endpoint.connect(provider, BLOB_ALPN).await {
+        let conn = match crate::net::p2p::dial(&self.unplugged, endpoint, provider, BLOB_ALPN).await
+        {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("dialing blob provider: {e}");
@@ -312,6 +324,7 @@ mod tests {
             refreshing: Default::default(),
             activity: Default::default(),
             sweep_marks: Default::default(),
+            unplugged: Default::default(),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

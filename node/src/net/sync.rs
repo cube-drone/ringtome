@@ -1256,11 +1256,14 @@ pub async fn sync_with_peer(
     // this node holds nothing of theirs yet (idface::fetch_foreign is the caller).
     let db = state.user_dbs.create(root_hex).await?;
 
-    let conn = state
-        .endpoint
-        .connect(addr.clone(), ringtome_proto::sync::SYNC_ALPN)
-        .await
-        .map_err(|e| anyhow!("connecting to peer: {e}"))?;
+    let conn = crate::net::p2p::dial(
+        &state.unplugged,
+        &state.endpoint,
+        addr.clone(),
+        ringtome_proto::sync::SYNC_ALPN,
+    )
+    .await
+    .map_err(|e| anyhow!("connecting to peer: {e}"))?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening sync stream")?;
     let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
     let peer_id: [u8; 32] = *conn.remote_id().as_bytes();

@@ -9,13 +9,165 @@
 //! publishing) is the flagged upgrade path for when there is a public network to join.
 
 use anyhow::{anyhow, Context, Result};
-use iroh::endpoint::{presets, RecvStream, SendStream};
-use iroh::{Endpoint, SecretKey};
+use iroh::endpoint::{presets, Connection, RecvStream, SendStream};
+use iroh::{Endpoint, EndpointAddr, SecretKey};
 use ringtome_proto::sync::{SyncMessage, MAX_SYNC_FRAME_BYTES, SYNC_ALPN};
 
 use crate::keystore::Keystore;
 
 const NODE_KEY_NAME: &str = "node_iroh";
+
+/// Every ALPN this node speaks, each with the short house name the test gate refuses it by
+/// (`/test/unplug`). **One table, deliberately**: `build_endpoint` advertises exactly these and
+/// [`Unplugged`] gates exactly these, and two lists of ALPNs would drift the day a sixth protocol
+/// lands - leaving a gate that silently no longer covers the whole surface it claims to.
+///
+/// The names are spelled out rather than derived from the wire strings: the wire string is a
+/// format (frozen on ship day), the short name is a test API, and they should be free to differ.
+pub const ALPNS: [(&str, &[u8]); 5] = [
+    ("sync", SYNC_ALPN),
+    ("blob", crate::files::BLOB_ALPN),
+    ("adopt", crate::net::adopt::ADOPT_ALPN),
+    ("deliver", ringtome_proto::deliver::DELIVER_ALPN),
+    ("fragment", ringtome_proto::fragment::FRAGMENT_ALPN),
+];
+
+/// The short house name for a wire ALPN; `None` for an ALPN this node does not speak (which the
+/// endpoint cannot negotiate, since it advertises [`ALPNS`] and nothing else).
+pub fn alpn_name(alpn: &[u8]) -> Option<&'static str> {
+    ALPNS
+        .iter()
+        .find(|(_, wire)| *wire == alpn)
+        .map(|(name, _)| *name)
+}
+
+/// Resolve a caller's spelling to the table's OWN `&'static str`, or `None` if this node speaks no
+/// such protocol. Two jobs in one lookup: it turns a `/test/unplug` typo into a 400 rather than a
+/// gate that quietly refuses nothing, and it means [`Refusals`] can only ever hold names that are
+/// in [`ALPNS`] - there is no way to spell a refusal the accept loop will not recognise.
+pub fn alpn_named(name: &str) -> Option<&'static str> {
+    ALPNS
+        .iter()
+        .find(|(house, _)| *house == name)
+        .map(|(house, _)| *house)
+}
+
+/// The test-only transport gate: which ALPNs this node is refusing right now, in which direction.
+/// A cheaply-cloneable handle onto one shared truth (`AppState::unplugged`, and a clone held by
+/// [`crate::files::FileStore`] so its own dials obey the same switch).
+///
+/// **Why it exists.** The integration suite needs to simulate a partition, and the shared four-node
+/// rig cannot have nodes killed mid-run without breaking every other spec (NEXT_STEPS: the
+/// rebroadcast node-death test). Unplugging is also the *sharper* instrument for most of those
+/// tests - "this reader needed nobody" is a stronger claim than "the other processes had exited",
+/// and it leaves the unplugged node's HTTP surface up so a test can still interrogate it.
+///
+/// **Why it is safe.** Two locks, because a node that silently stops talking to its peers while
+/// `/health` stays green is about the worst thing this codebase could ship by accident:
+///   1. the only caller that can arm it is `/test/unplug`, a route not *mounted* unless
+///      `RINGTOME_LOCAL_TEST` is set (see [`crate::test_endpoints`]);
+///   2. [`Unplugged::arm`] itself refuses in any other mode, so a future caller reaching for it
+///      outside local test gets nothing.
+///
+/// A default-constructed handle refuses nothing, which is every real node's state forever.
+///
+/// **What it does not do.** It gates the *transport*, not the directory: an unplugged node still
+/// resolves serving records and still knows where its peers live. A test that needs a node to
+/// *forget* its peers wants different scissors. It also does not gate HTTP - `/health`, the API and
+/// the SQL passthrough all keep answering, which is the point.
+///
+/// **The failure mode is a fast refusal, not silence.** Inbound, the connection is closed right
+/// after the handshake; outbound, the dial never happens. A real partition usually looks like a
+/// *timeout*, and iroh does offer the higher-fidelity door for that (`Incoming::ignore`, which
+/// answers no packet at all) - but it can only be used before the handshake, i.e. before the ALPN
+/// is known, so it cannot do per-ALPN work; and every test using it would pay a dial timeout in
+/// wall-clock. Deterministic and fast beats realistic and slow here. If a code path ever needs the
+/// timeout shape specifically, `Incoming::ignore` is the door, and it wants its own mode rather
+/// than a change to this one.
+#[derive(Clone, Default)]
+pub struct Unplugged(std::sync::Arc<std::sync::Mutex<Refusals>>);
+
+/// House ALPN names, by direction. Empty sets - the default - mean "plugged in".
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct Refusals {
+    pub inbound: std::collections::BTreeSet<&'static str>,
+    pub outbound: std::collections::BTreeSet<&'static str>,
+}
+
+impl Unplugged {
+    /// Replace the whole refusal set. **The call is the entire state** - nothing is merged with what
+    /// a previous call left behind - so a test never has to reason backwards about what darkened a
+    /// node. Passing an empty [`Refusals`] plugs the node back in.
+    ///
+    /// Refuses outside local-test mode; see the type doc for why that second lock is here at all.
+    pub fn arm(&self, config: &crate::config::Config, refusals: Refusals) -> Result<()> {
+        if !config.local_test {
+            return Err(anyhow!(
+                "the transport gate is a local-test affordance; this node is not in local-test mode"
+            ));
+        }
+        *self.0.lock().expect("unplug gate poisoned") = refusals;
+        Ok(())
+    }
+
+    /// What is refused right now, for `/test/unplug`'s answer and for diagnosing a rig that a dead
+    /// spec left unplugged.
+    pub fn refusals(&self) -> Refusals {
+        self.0.lock().expect("unplug gate poisoned").clone()
+    }
+
+    /// Refuse an inbound connection on this ALPN? Called once per accepted connection.
+    pub fn refuses_inbound(&self, alpn: &[u8]) -> bool {
+        match alpn_name(alpn) {
+            Some(name) => self
+                .0
+                .lock()
+                .expect("unplug gate poisoned")
+                .inbound
+                .contains(name),
+            None => false,
+        }
+    }
+
+    /// Refuse to dial on this ALPN? Called once per outbound connection, from [`dial`].
+    pub fn refuses_outbound(&self, alpn: &[u8]) -> bool {
+        match alpn_name(alpn) {
+            Some(name) => self
+                .0
+                .lock()
+                .expect("unplug gate poisoned")
+                .outbound
+                .contains(name),
+            None => false,
+        }
+    }
+}
+
+/// **Every outbound connection in the node goes through here**, which is what makes the test gate
+/// total rather than approximate: five protocol callers plus the blob store's two. A dial that
+/// bypassed this would leave `/test/unplug` quietly half-true, so
+/// `node/tests/conventions.rs::every_outbound_dial_goes_through_the_gate` fails the build if
+/// `endpoint.connect` is called anywhere else.
+///
+/// The error is deliberately plain-worded: it lands in a test's log when the gate is the reason
+/// nothing happened, and "unplugged" beats a QUIC timeout for saying so.
+pub async fn dial(
+    unplugged: &Unplugged,
+    endpoint: &Endpoint,
+    addr: EndpointAddr,
+    alpn: &'static [u8],
+) -> Result<Connection> {
+    if unplugged.refuses_outbound(alpn) {
+        return Err(anyhow!(
+            "unplugged: this node is refusing to dial on the {} protocol",
+            alpn_name(alpn).unwrap_or("unknown")
+        ));
+    }
+    endpoint
+        .connect(addr, alpn)
+        .await
+        .map_err(|e| anyhow!("{e}"))
+}
 
 /// Load (or first-boot-generate) the node's iroh secret key, sealed at rest like every other
 /// key. A key file that exists but fails to open is a hard error - silently regenerating would
@@ -55,13 +207,7 @@ pub async fn build_endpoint(
     };
     let endpoint = builder
         .secret_key(secret)
-        .alpns(vec![
-            SYNC_ALPN.to_vec(),
-            crate::files::BLOB_ALPN.to_vec(),
-            crate::net::adopt::ADOPT_ALPN.to_vec(),
-            ringtome_proto::deliver::DELIVER_ALPN.to_vec(),
-            ringtome_proto::fragment::FRAGMENT_ALPN.to_vec(),
-        ])
+        .alpns(ALPNS.iter().map(|(_, wire)| wire.to_vec()).collect())
         .bind()
         .await
         .map_err(|e| anyhow!("binding iroh endpoint: {e}"))?;
@@ -109,6 +255,17 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                 match incoming.await {
                     Ok(conn) => {
                         let remote = conn.remote_id();
+                        // The inbound half of the test gate, before any dispatch, so it covers
+                        // every ALPN by construction rather than per handler (see `Unplugged`).
+                        if state.unplugged.refuses_inbound(conn.alpn()) {
+                            tracing::info!(
+                                %remote,
+                                alpn = alpn_name(conn.alpn()).unwrap_or("unknown"),
+                                "unplugged: refusing an inbound connection"
+                            );
+                            conn.close(0u32.into(), b"unplugged");
+                            return;
+                        }
                         if conn.alpn() == crate::files::BLOB_ALPN {
                             if let Err(e) =
                                 iroh::protocol::ProtocolHandler::accept(&blobs, conn).await

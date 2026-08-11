@@ -529,6 +529,8 @@ export default {
     'test_endpoints.sql-error-e': 'sql error: {e}',
     'test_endpoints.sql-error-e-2': 'sql error: {e}',
     'test.endpoints.unknown-revalidation-mode': 'unknown revalidation mode {other:?} (tree | fast | default)',
+    'test_endpoints.unplug-unknown-alpn': 'no such protocol {name}; this node speaks {known}',
+    'test_endpoints.unplug-bad-direction': 'no such direction {other}; use both, inbound or outbound',
 
     // --- node/src/ui.rs ---
     'ui.not-a-font-file-filename': 'not a font file: {filename}',

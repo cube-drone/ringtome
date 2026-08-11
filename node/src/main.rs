@@ -90,6 +90,11 @@ pub struct AppState {
     pub sweep_marks: loops::FreshnessMarks,
     /// Which accounts are actively using this node right now (see [`ActivityMarks`]).
     pub activity: ActivityMarks,
+    /// The test-only transport gate: which ALPNs this node is refusing, in which direction. Armed
+    /// only through `/test/unplug`, which is not mounted outside local-test mode, and refuses to
+    /// arm outside it regardless. Empty - refusing nothing - on every real node, forever.
+    /// See [`net::p2p::Unplugged`] for the whole argument.
+    pub unplugged: net::p2p::Unplugged,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -286,10 +291,14 @@ async fn main() -> anyhow::Result<()> {
     // so "nothing over ~10MB moves on the network" is enforced where bytes actually cross between
     // nodes - not just at our own HTTP door.
     let max_blob_bytes = config.max_document_bytes as u64 + 64 * 1024;
+    // One gate, two holders: the accept loop and `p2p::dial` read it off AppState, and the blob
+    // store carries its own clone because it opens its own connections (net::p2p::Unplugged).
+    let unplugged = net::p2p::Unplugged::default();
     let files = std::sync::Arc::new(
         files::FileStore::fs(config.data_directory.join("blobs"))
             .await?
-            .with_max_blob_bytes(max_blob_bytes),
+            .with_max_blob_bytes(max_blob_bytes)
+            .with_unplugged(unplugged.clone()),
     );
     let ingest = ingest::Ingest::new(config.quarantine_directory.clone());
     ingest.ensure_dir()?;
@@ -312,6 +321,7 @@ async fn main() -> anyhow::Result<()> {
         refreshing: Default::default(),
         sweep_marks: Default::default(),
         activity: Default::default(),
+        unplugged,
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
 
@@ -519,6 +529,15 @@ async fn main() -> anyhow::Result<()> {
             .route(
                 "/test/derive",
                 axum::routing::post(test_endpoints::derive_pass),
+            )
+            // The transport gate: simulate a partition on the shared rig without killing a node.
+            .route(
+                "/test/unplug",
+                axum::routing::post(test_endpoints::unplug).get(test_endpoints::unplug_state),
+            )
+            .route(
+                "/test/plug-in",
+                axum::routing::post(test_endpoints::plug_in),
             );
     }
 

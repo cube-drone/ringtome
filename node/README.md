@@ -23,7 +23,7 @@ RINGTOME_PORT=8080 cargo run --bin ringtome
 | `RINGTOME_TENANCY` | `multi` | `multi` (hosted: many accounts behind logins) or `single` (personal desktop: the OS user is the tenant). |
 | `RINGTOME_DISCOVERY` | *(off)* | `off`, `local:<path>` (shared-folder DHT simulation, for tests/LAN), or `mainline` (real DHT + iroh relays via the `N0` preset). Also selects the iroh preset. |
 | `RINGTOME_ENVELOPE_KEY` | *(generated)* | 64 hex chars (32 bytes). Envelope key for private keys at rest. If unset, generated on first boot and persisted to `data/envelope.key` (0600). Set it explicitly for anything you'd restore from backup. |
-| `RINGTOME_LOCAL_TEST` | *(off)* | **DANGEROUS.** `1`/`true` arms local-integration-test mode: raw SQL passthrough over HTTP, rate limiting off, no first-account admin bootstrap, minimal-parameter (weak, fast) Argon2, `/rebuild` exposed. Never on a reachable node. |
+| `RINGTOME_LOCAL_TEST` | *(off)* | **DANGEROUS.** `1`/`true` arms local-integration-test mode: raw SQL passthrough over HTTP, the `/test/unplug` transport gate (a node that refuses its peers while looking healthy), rate limiting off, no first-account admin bootstrap, minimal-parameter (weak, fast) Argon2, `/rebuild` exposed. Never on a reachable node. |
 | `RINGTOME_MAX_OPEN_DATABASES` | `128` | How many per-user databases stay open at once. A miss is a per-file act (key unseal, decrypt, migration check, journal attach), so a node holding more personas than this thrashes. Really a file-descriptor budget: ~4 per open database (main, WAL, shm, journal), so 128 ≈ 512 fds — leave headroom for sockets. |
 | `RINGTOME_SYNC_DEBOUNCE_MS` | `3000` | Eager push: how long a changed identity sits quiet before its peers get an unprompted exchange (change detection ticks every ~2s, so the write-to-peer floor is ~tick + debounce + tick). |
 | `RINGTOME_RESYNC_INTERVAL_SECS` | `300` | Anti-entropy cadence: every interval, each identity with peers exchanges with up to 3 random peers, dirty or not. The immediate first pass is the boot catch-up. |
@@ -70,6 +70,30 @@ The integration suite talks to real nodes over real HTTP (and real iroh QUIC for
 sync tests). Two-node tests skip themselves if `RINGTOME_TEST_HOST_B` is absent. The one exception
 is `test/pure/`: pure-logic tests over the UI's browser-free modules, which need no node at all -
 they run in the full suite like everything else, and on their own in seconds via `just ui-check`.
+
+### Simulating a partition
+
+The rig's four nodes are shared by every spec, so a test cannot kill one to make it unreachable -
+the next forty files need it up. `/test/unplug` makes a node **refuse iroh connections while its
+HTTP surface stays healthy**, per protocol and per direction, which is a partition for every
+purpose a test has. From a spec, always through the helper:
+
+```js
+const { withUnplugged } = require("./unplug.cjs");
+
+await withUnplugged([HOST_B, HOST_C], async () => { /* B and C are dead to the network */ });
+await withUnplugged([HOST_B], fn, { alpns: ["blob"] });          // bodies only; sync still runs
+await withUnplugged([HOST_B], fn, { direction: "inbound" });     // an asymmetric partition
+```
+
+`integration/roothooks.cjs` re-plugs anything a spec left unplugged after every test, so a spec
+that dies mid-partition cannot poison the ones after it. The gate is armed only in local-test mode
+and refuses to arm outside it; `src/net/p2p.rs` (`Unplugged`) carries the design and the safety
+argument, and `integration/test/unplugged.cjs` proves it stops real traffic.
+
+What it does **not** do: kill a process. Cold start, WAL replay and iroh rebinding on a fresh UDP
+port need a node that actually restarts - `test/mainline.cjs` is the shape for that (it spawns and
+restarts its own, on the band's spare lane).
 
 ## Code conventions
 
