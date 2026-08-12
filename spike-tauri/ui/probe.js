@@ -32,13 +32,21 @@ function badge(ok) {
     return ok ? '<span class="ok">PASS</span>' : '<span class="bad">FAIL</span>';
 }
 
+// An informational row describes the engine and cannot fail the run, so it must not be painted
+// like a failure - a red FAIL beside "ImageDecoder absent (harmless)" invites exactly the wrong
+// conclusion, which is the mistake that produced a bogus Linux FAIL verdict on 2026-08-11.
+function rowBadge(row) {
+    if (row.informational) return `<span class="info">${row.ok ? 'note' : 'n/a'}</span>`;
+    return badge(row.ok);
+}
+
 function renderRows(tableId, rows, withMs) {
     const table = $(tableId);
     const body = table.querySelector('tbody');
     body.innerHTML = rows
         .map(
             (r) =>
-                `<tr><td class="state">${badge(r.ok)}</td><td>${escapeHtml(r.name)}</td>` +
+                `<tr><td class="state">${rowBadge(r)}</td><td>${escapeHtml(r.name)}</td>` +
                 `<td class="detail">${escapeHtml(r.detail ?? '')}</td>` +
                 (withMs ? `<td class="ms">${r.ms ?? ''}</td>` : '') +
                 `</tr>`,
@@ -225,7 +233,8 @@ function markdown() {
         lines.push('| | Step | Detail | ms |');
         lines.push('|---|---|---|---|');
         for (const r of state.idb.results) {
-            lines.push(`| ${r.ok ? 'PASS' : 'FAIL'} | ${r.name} | ${String(r.detail).replace(/\|/g, '\\|')} | ${r.ms} |`);
+            const mark = r.informational ? (r.ok ? 'note' : 'n/a') : r.ok ? 'PASS' : 'FAIL';
+            lines.push(`| ${mark} | ${r.name} | ${String(r.detail).replace(/\|/g, '\\|')} | ${r.ms} |`);
         }
     }
     lines.push('');

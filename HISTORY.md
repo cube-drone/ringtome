@@ -5048,3 +5048,156 @@ in this pass.
 
 Gates: nothing in the workspace moved, so `just ci` was not run. The spike builds only from inside
 `spike-tauri/src-tauri`, by design.
+
+## 2026-08-11 — the Tauri spike ran, and both predictions were wrong
+
+Two platforms probed (macOS 26.6.1 / WebKit 21624.4.5.11.5, and Ubuntu 26.04 LTS / WebKitGTK 2.52.3),
+both in the `http` origin mode. Curtis's call on the evidence: **Tauri is sufficient for our
+purposes.** DESKTOP's *deciding experiment* is answered and its risk paragraph amended accordingly.
+
+**The mirror passes on both WebKit engines.** `liveQuery` fired and reacted - the disqualifying row -
+and the 8MB Blob and ArrayBuffer round-trips came back byte-identical on both, which was the specific
+worry. Dexie stays; the memory-mirror workaround is not needed for desktop. WebKitGTK is slower
+(148ms vs 92ms on the snapshot, 272ms vs 53ms on the Blob) and fine.
+
+**Both predictions in the docs were wrong, in opposite directions.** Linux was written up as the
+dangerous engine and is the only one that reached the compact `av1` lane - WebKitGTK's MediaRecorder
+muxes AV1, WKWebView's does not. And the mirror, written up as the risk, was never in trouble.
+
+**The macOS row's real finding is about our code, not the engine.** MediaRecorder cannot mux `av01`
+there, but `VideoEncoder.isConfigSupported` reports `av01.0.04M.08` supported - the same asymmetry
+video-ingest recorded for Firefox, now on a second engine. Rebuilding the av1 lane on WebCodecs plus a
+real WebM muxer, already video-ingest's top recommended improvement, would recover the compact lane on
+macOS and would also sidestep the missing `HTMLMediaElement.captureStream` there, since a WebCodecs
+lane needs no audio tap.
+
+### The harness reported a FAIL that was its own bug
+
+`LINUX.md` records `Verdict: FAIL - 1 failing: storage quota + persistence posture`, on
+`navigator.storage is undefined`. Every load-bearing row passed. The step was documented in the README
+*and in its own code comment* as informational and unable to fail a run, and was then implemented with
+a `throw` - so **a category that existed only in a comment failed a probe it was written not to
+fail.** WebKitGTK 2.52.3 has no StorageManager at all, which is the engine fact worth keeping; the
+FAIL was noise on top of it.
+
+Fixed by making the category real: `informational` is a flag on the step, the verdict filters those
+out, and they no longer render as failures (a red FAIL beside "ImageDecoder absent (harmless)" invited
+the same misreading). The raw export in `LINUX.md` is left as-exported rather than edited - a results
+file that quietly corrects itself is worth less than one that shows its scars.
+
+### Two things not to lean on
+
+**WebKitGTK's AV1 support is a property of the install, not the engine.** Media goes through
+GStreamer, so `MediaRecorder av01` depends on which plugins that distro shipped. `pickLane()` already
+probes at runtime, so the product copes - but no Linux capability can be stated as a platform
+requirement, which is harder to document than a uniform answer would have been.
+
+**`canPlayType` is not evidence on WebKitGTK.** It answered `probably` for all seven probed types
+*including HEVC*, because it reports GStreamer's registry rather than real decode capability.
+
+### Still outstanding, and none of it blocks the shell decision
+
+No **end-to-end ingest run** on either platform - so "video works" is an inference from a capability
+matrix, and video-ingest's own history contains a case where that inference was wrong. Also the reload
+check on both rows, the `scheme` origin mode everywhere, Windows as a formality, and an older Linux
+(which the install-dependent finding above makes interesting rather than redundant).
+
+Harness gained one thing along the way: it now reports `tauri::webview_version()` and the real OS
+version, because **a webview's UA identifies nothing** - WKWebView reports a frozen
+`Intel Mac OS X 10_15_7` regardless of the system, which made the first export uninterpretable.
+
+Gates: nothing in the workspace moved. The spike builds only from `spike-tauri/src-tauri` and its
+three probe modules pass `node --check`.
+
+## 2026-08-11 — DESKTOP flipped to Tauri, node embedded from the start
+
+The spike came back clean on both WebKit engines, so the shell decision was made and
+[DESKTOP.md](DESKTOP.md) was rewritten as a Tauri plan. Not the sidecar shape it costed earlier -
+**shape (3): the node linked in as a library, axum on Tauri's own tokio runtime, one process, one
+binary.** In-process from the start rather than as a later optimization, because the sidecar's
+problems are all problems it does not have.
+
+**The clearest illustration of why:** the Electron plan needed a stdin-EOF watchdog so a crashed
+shell could not orphan the node. In-process, that requirement does not exist. Same for the readiness
+poll and most of the port-collision handling - deleted rather than solved. Packaging loses
+`extraResources`, the asar exec restriction, and nested-binary signing; ~200MB becomes ~30-50MB; the
+Chromium CVE treadmill becomes the OS's job.
+
+**One genuinely open design question, recorded with three answers.** A shifting port drops per-origin
+state (*Caveats that apply to desktop mode regardless*), so: (a) a persisted fixed port with page and
+API same-origin - **recommended, because it is the configuration the spike actually validated and it
+keeps CORS off the node's door**; (b) Tauri's custom scheme for the page with a cross-origin API,
+stable forever but needs CORS and is untested; (c) serve HTTP straight into the axum `Router` through
+the scheme handler, elegant, retires the port question, unvalidated, and the WebSocket still needs a
+real listener. Took (a). **Under (a) the WebSocket wrinkle disappears entirely** - page and stream
+share an origin - which is the second-largest simplification after the watchdog.
+
+**What we are trading away, written down where it can be checked later:** "when something breaks at
+11pm, somebody has already hit it and written it down" belongs to Electron by a wide margin, and it was
+the strongest argument for a one-person project. Also live: stale engines on old OSes, which we cannot
+patch, and whose shape the spike already showed - WebKitGTK capabilities vary by install, so we degrade
+per machine rather than requiring a platform.
+
+The `lib.rs` split is Stage 1 and is flagged as the one stage that can disturb the gates: it moves the
+composition root, and `tests/conventions.rs` reasons about table ownership by file path.
+
+Knock-on edits so nothing contradicts: README's document list now describes a Tauri plan; MOBILE's
+*Tauri as the shell* section says it **converges** with desktop rather than diverging, since the
+desktop plan now pays for the split, the in-process node and a working Tauri build on its own account -
+**a phone client becomes a port of a shipping application rather than a new project**, which is the
+biggest move in that document's estimate since it was written. MOBILE's "two shells against one UI"
+residual is struck through rather than deleted, because its disappearance is part of the argument.
+
+Outstanding editorial act, unchanged: PROJECT_PLAN's *Desktop mode: local server + system browser, NOT
+Tauri* now contradicts DESKTOP by title. Canon has not been amended.
+
+Gates: markdown only; nothing outside `*.md` moved.
+
+## 2026-08-11 — canon amended: desktop mode is Tauri with the node embedded
+
+PROJECT_PLAN's *Desktop mode: local server + system browser, NOT Tauri* is now **Desktop mode: Tauri,
+with the node embedded (settled 2026-08-11)**. The rename is the point: that section's title carried
+its conclusion, so a section that reversed had to lose it.
+
+The amendment records the reversal rather than tidying it, because both original arguments failed
+instructively. The first - "we already have HTTP on localhost, so Tauri's bridge is a bridge we do not
+need" - **answered the wrong question**: nobody picks a webview shell for the IPC bridge, they pick it
+for being an application, and the section's own floor case (auto-open the browser, no GUI) is exactly
+the config-page shape that made this come up. The second, webview skew, was the strong one and was
+**tested rather than argued away** - `spike-tauri/`, both WebKit engines, the mirror passes.
+
+Also written into canon: in-process rather than sidecar *deletes* the orphan, readiness and
+port-collision problems instead of solving them; the `lib.rs` split is mechanical because `crate::`
+still resolves to the crate root inside a library, so the ~49 files using it are untouched; the
+persisted-port answer to the stable-origin warning, which also makes the live-cache WebSocket
+same-origin; and what we are accepting - stale engines we cannot patch, capabilities that vary by
+install, and the loss of Electron's decade of battle-testedness, named so it can be checked later.
+
+### Three consequential edits, because canon must not contradict itself
+
+Renaming a section strands every cross-reference to it, so the same pass fixed the three places that
+depended on the old position:
+
+- ***The Client Story*'s desktop-delivery bullet** said the shell opens the system browser in app mode
+  at a stable localhost port. Rewritten to one binary that is both node and window, keeping the part
+  that was right (one installer, one signing identity, tray and autostart in the same executable).
+- ***Caveats that apply to desktop mode regardless*** opened by noting the caveats "would cost the same
+  under Tauri, so they are not arguments for it." That framing predicted its own survival correctly, so
+  it is recorded as such - and two caveats now have settled answers rather than open warnings: the
+  localhost-CSRF hazard is what the launch token closes, and the stable-port requirement is answered by
+  persisting the port.
+- **The Godot bullet's skew clause** rejected webview-in-Godot hybrids "for the same webview-skew reason
+  as Tauri" - a reason that no longer exists. The strike stands; its stated grounds are now the narrower
+  and more honest one, that a webview inside a game engine is a second rendering model fighting the
+  first. A coherence problem, not a compatibility one.
+
+Knock-on: DESKTOP's status block flips from "canon says the opposite" to "canon agrees" and its residual
+from "amend canon" to what remains; README's trio framing no longer claims all three documents disagree
+with canon, because one of them no longer does.
+
+**Still predating this decision, and flagged rather than rewritten:** *Phones: deferred, by design*
+(whose no-background-sidecar-on-iOS premise MOBILE corrects, and whose cost estimate this decision
+materially lowers) and *Always-on nodes are needed either way* (against DESKTOP's autostart argument).
+Both are Curtis's call.
+
+Gates: markdown only; nothing outside `*.md` moved.

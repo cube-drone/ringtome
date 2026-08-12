@@ -118,15 +118,17 @@ export async function runCapabilityProbe() {
     // Informational only: ImageDecoder is Chromium-only and video-ingest uses it in its TEST,
     // never in the library. Its absence is not a finding about the lanes.
     rows.push({
-        name: 'ImageDecoder (informational — test-only in video-ingest)',
+        name: 'ImageDecoder (test-only in video-ingest)',
         ok: typeof globalThis.ImageDecoder !== 'undefined',
+        informational: true,
         detail: typeof globalThis.ImageDecoder !== 'undefined' ? 'present' : 'absent (Chromium-only; harmless)',
     });
 
     // Informational: gates any ffmpeg.wasm-shaped workaround, which needs threads.
     rows.push({
-        name: 'SharedArrayBuffer (informational — gates a wasm-codec workaround)',
+        name: 'SharedArrayBuffer (gates a wasm-codec workaround)',
         ok: typeof SharedArrayBuffer !== 'undefined',
+        informational: true,
         detail:
             typeof SharedArrayBuffer !== 'undefined'
                 ? `present, crossOriginIsolated=${globalThis.crossOriginIsolated}`

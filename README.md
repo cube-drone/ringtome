@@ -41,13 +41,15 @@ federated, unapologetically Old Internet.
 - [`REFACTOR.md`](REFACTOR.md) — the ledger: known compromises and queued cleanups (tech debt is
   a mortgage; this is the current balance). Completed entries are deleted — git is the archive.
 - **The delivery-shape trio** — what kind of application this is, one document per candidate
-  surface. All three are explorations that **disagree with canon on purpose**: PROJECT_PLAN's
-  *Delivery and Packaging* is still the decided position, and each document states plainly whether
-  it proposes superseding a section or merely records why an idea keeps returning. Read them
-  together; they constrain each other.
-  - [`DESKTOP.md`](DESKTOP.md) — an Electron shell around the existing node binary, with the
-    rollout and the recurring signing costs. Proposes superseding *Desktop mode: local server and
-    system browser, NOT Tauri*.
+  surface. Their relationship to canon differs and each says which at the top: **DESKTOP is
+  canon-aligned** (PROJECT_PLAN's *Desktop mode: Tauri, with the node embedded* was rewritten to match
+  it on 2026-08-11), while MOBILE and GODOT still **disagree with canon on purpose** — the first
+  correcting a premise in *Phones: deferred, by design*, the second recording why an idea *The Client
+  Story* struck keeps returning. Read them together; they constrain each other.
+  - [`DESKTOP.md`](DESKTOP.md) — a Tauri shell with the node **linked in-process**, one binary, plus
+    the rollout and the recurring signing costs. The decision itself is canon as of 2026-08-11
+    (*Desktop mode: Tauri, with the node embedded*); this document is the execution plan, and it keeps
+    the Electron comparison as the record of how the decision was made.
   - [`MOBILE.md`](MOBILE.md) — the soft shape for phones: Tauri v2, the node linked in-process, a
     deliberately narrow UI. Corrects a factual premise in *Phones: deferred, by design* and
     carries the availability arithmetic for a network with no always-on infrastructure.

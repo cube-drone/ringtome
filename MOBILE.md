@@ -135,11 +135,16 @@ otherwise.
 
 ## Tauri as the shell
 
-Tauri's backend is Rust, which is what makes it the right shell *here* even though
-[DESKTOP.md](DESKTOP.md) plans Electron for desktop. That document's *Electron and Tauri, compared*
-carries the full head-to-head and the experiment that decides it; the summary relevant here is that
-Tauri's third shape — **the node linked in-process** — is the one that makes phones a port rather
-than a separate project.
+Tauri's backend is Rust, which is what makes it the right shell here — and **as of 2026-08-11 it is
+the desktop shell too**, with the node linked in-process, so this document no longer diverges from
+[DESKTOP.md](DESKTOP.md). It converges with it. That document carries the head-to-head against
+Electron, the evidence from [`spike-tauri/`](spike-tauri/README.md) that settled it, and the rollout
+whose Stage 1 is the `lib.rs` split this page needs.
+
+The consequence for phones is large: the desktop plan now pays for the split, the in-process node, and
+a working Tauri build on its own account. **A phone client becomes a port of a shipping application
+rather than a new project** — which is the single biggest change to this document's cost estimate
+since it was written.
 
 - The node runs **in-process** — which needs the composition root in `src/main.rs` split into a
   `lib.rs`, since `node/Cargo.toml` declares only `[[bin]]`. Mechanical: that file already wires
@@ -226,7 +231,7 @@ Named rather than resolved, so they do not ambush whoever picks this up:
    and a battery policy; neither exists.
 4. **Where presence lives**, if a gamey layer ever happens — the ephemeral-tier question is stated
    in [GODOT.md](GODOT.md) and applies identically here.
-5. **Two shells against one UI**, if both this and [DESKTOP.md](DESKTOP.md) proceed. A knowing
-   maintenance cost, mitigated by the client-agnostic API rule that makes both possible — and
-   avoidable outright if desktop ever lands on Tauri-in-process, which is the one outcome where a
-   single shell covers all three platforms.
+5. ~~**Two shells against one UI.**~~ **Resolved 2026-08-11**: desktop landed on Tauri-in-process, so
+   one shell covers all three platforms. The residual is gone rather than mitigated — kept here
+   struck through because it was load-bearing in the original comparison and its disappearance is
+   part of why the phone estimate moved.

@@ -69,15 +69,27 @@ function checkPattern(bytes, n) {
     return null;
 }
 
-async function step(name, fn) {
+// `informational` steps report a fact about the engine and CANNOT fail the run. The flag exists
+// because the first version of this file did not have it: the storage-posture step was documented
+// as "informational, never a failure" and then implemented with a throw, so a WebKitGTK box with no
+// `navigator.storage` reported the whole mirror as FAIL while every load-bearing row passed
+// (field-found 2026-08-11, Ubuntu 26.04). A category that lives only in a comment is not a category.
+async function step(name, fn, { informational = false } = {}) {
     const started = performance.now();
     try {
         const detail = await fn();
-        return { name, ok: true, detail: detail ?? '', ms: Math.round(performance.now() - started) };
+        return {
+            name,
+            ok: true,
+            informational,
+            detail: detail ?? '',
+            ms: Math.round(performance.now() - started),
+        };
     } catch (err) {
         return {
             name,
             ok: false,
+            informational,
             detail: `${err?.name ?? 'Error'}: ${err?.message ?? String(err)}`,
             ms: Math.round(performance.now() - started),
         };
@@ -86,8 +98,8 @@ async function step(name, fn) {
 
 export async function runIndexedDbProbe({ onStep }) {
     const results = [];
-    const record = async (name, fn) => {
-        const r = await step(name, fn);
+    const record = async (name, fn, opts) => {
+        const r = await step(name, fn, opts);
         results.push(r);
         onStep?.(r);
         return r;
@@ -248,29 +260,36 @@ export async function runIndexedDbProbe({ onStep }) {
         return 'ArrayBuffer stored and read back byte-identical';
     });
 
-    await record('storage quota + persistence posture', async () => {
-        if (!navigator.storage) throw new Error('navigator.storage is undefined');
-        const estimate = navigator.storage.estimate
-            ? await navigator.storage.estimate()
-            : { quota: null, usage: null };
-        const alreadyPersisted = navigator.storage.persisted
-            ? await navigator.storage.persisted()
-            : null;
-        let granted = null;
-        if (navigator.storage.persist) {
-            try {
-                granted = await navigator.storage.persist();
-            } catch {
-                granted = 'threw';
+    // Informational by construction (see `step`): an engine that refuses persistence - or omits
+    // StorageManager entirely, as WebKitGTK 2.52.3 does - still runs the mirror. The mirror is
+    // disposable and any doubt sends a full snapshot, so eviction is a cost, never a break. This
+    // step therefore reports and never throws.
+    await record(
+        'storage quota + persistence posture',
+        async () => {
+            if (!navigator.storage) {
+                return 'navigator.storage absent — no quota signal, and persistence cannot be requested; the mirror is fully evictable here';
             }
-        }
-        const quota = estimate.quota ? `${(estimate.quota / 1024 / 1024).toFixed(0)}MB quota` : 'quota unknown';
-        const usage = estimate.usage ? `${(estimate.usage / 1024 / 1024).toFixed(1)}MB used` : 'usage unknown';
-        // Informational, never a failure: an engine that refuses persistence still works, it just
-        // means the mirror is evictable - which the design already tolerates, since any doubt
-        // sends a full snapshot.
-        return `${quota}, ${usage}, persisted=${alreadyPersisted}, persist()=${granted}`;
-    });
+            const estimate = navigator.storage.estimate
+                ? await navigator.storage.estimate()
+                : { quota: null, usage: null };
+            const alreadyPersisted = navigator.storage.persisted
+                ? await navigator.storage.persisted()
+                : 'unsupported';
+            let granted = 'unsupported';
+            if (navigator.storage.persist) {
+                try {
+                    granted = await navigator.storage.persist();
+                } catch {
+                    granted = 'threw';
+                }
+            }
+            const quota = estimate.quota ? `${(estimate.quota / 1024 / 1024).toFixed(0)}MB quota` : 'quota unknown';
+            const usage = estimate.usage ? `${(estimate.usage / 1024 / 1024).toFixed(1)}MB used` : 'usage unknown';
+            return `${quota}, ${usage}, persisted=${alreadyPersisted}, persist()=${granted}`;
+        },
+        { informational: true },
+    );
 
     await record('write reload marker', async () => {
         const docs = await db.docs.count();
@@ -278,7 +297,9 @@ export async function runIndexedDbProbe({ onStep }) {
         return `marker at ${docs} docs — reload and re-run to prove persistence`;
     });
 
-    const failed = results.filter((r) => !r.ok);
+    // Informational steps are excluded from the verdict on purpose - they describe the engine, they
+    // do not grade it.
+    const failed = results.filter((r) => !r.ok && !r.informational);
     const pending = results.find(
         (r) => r.name === 'persistence across reload' && r.detail.startsWith('no marker'),
     );

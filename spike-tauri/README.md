@@ -186,14 +186,23 @@ heading; the summary table is the part DESKTOP.md reads.
 | platform | engine | origin mode | IndexedDB | video | notes |
 |---|---|---|---|---|---|
 | macOS 26.6.1 (WKWebView) | WebKit 21624.4.5.11.5 | `http` | **PASS** (reload check outstanding) | **DEGRADED** → `frames` | no MediaRecorder AV1, but **WebCodecs AV1 encode works**; no `captureStream`; end-to-end run outstanding |
+| Ubuntu 26.04 LTS (WebKitGTK) | 2.52.3 | `http` | **PASS** (reload check outstanding) | **HAPPY** → `av1` | MediaRecorder muxes AV1 here; no `navigator.storage` at all; end-to-end run outstanding |
 | macOS (WKWebView) | | `scheme` | | | |
 | Windows (WebView2) | | `http` | | | |
 | Windows (WebView2) | | `scheme` | | | |
-| Linux, current (WebKitGTK) | | `http` | | | |
 | Linux, old LTS (WebKitGTK) | | `http` | | | |
 
-One row in. The headline: **the mirror is not the problem on WebKit — the av1 lane is, and the fix
-is one we already wanted.**
+**Verdict, called 2026-08-11: Tauri is sufficient for our purposes.** Both WebKit engines run the
+mirror, neither blocks video, and the deciding experiment DESKTOP.md named — *does the Dexie mirror
+survive WKWebView and WebKitGTK?* — came back **yes on both**. Dexie stays; the memory-mirror
+workaround is not needed for desktop. The outstanding items below are scoping notes, not blockers.
+
+Two predictions in this file were wrong, and both are recorded rather than quietly amended:
+
+1. **Linux was supposed to be the dangerous row.** It is the *only* row that reached the happy `av1`
+   lane. WebKitGTK's MediaRecorder muxes AV1 on Ubuntu 26.04; WKWebView's does not.
+2. **The mirror was supposed to be the risk.** It passed everywhere, including the 8MB Blob
+   round-trips that were the specific worry.
 
 ### macOS (WKWebView), origin mode `http` — 2026-08-11
 
@@ -253,7 +262,43 @@ Provenance, stated because it matters for a results file: those two versions wer
 launch on the same machine, not from the original export, which predates the fix. Every subsequent
 row carries them natively.
 
-#### Raw export
+### Ubuntu 26.04 LTS (WebKitGTK 2.52.3), origin mode `http` — 2026-08-11
+
+Raw export: [`LINUX.md`](LINUX.md). What it means:
+
+**The mirror passes here too**, including `liveQuery` and both 8MB round-trips byte-identical.
+Slower than WKWebView (148ms vs 92ms for the snapshot, 272ms vs 53ms for the Blob) and entirely
+acceptable.
+
+**`LINUX.md` records the verdict as FAIL. That verdict was a harness bug, not a result.** The
+storage-posture step is documented in this file and in its own code comment as informational and
+unable to fail a run — and was then implemented with a `throw`, so an engine with no
+`navigator.storage` failed the whole probe while every load-bearing row passed. Fixed the same day:
+`informational` is now a flag on the step rather than a claim in a comment, the verdict excludes such
+steps, and they no longer render as failures. **Read that row as PASS.** The raw export is left
+as-exported rather than edited, because a results file that quietly corrects itself is worth less
+than one that shows its scars.
+
+The engine fact underneath it is real and worth keeping: **WebKitGTK 2.52.3 has no StorageManager at
+all**, so there is no quota signal and persistence cannot even be requested. The mirror is fully
+evictable there. Tolerable by design — the mirror is disposable and any doubt sends a full snapshot —
+and one more reason the persistence tier buys less than it appears to.
+
+**Video reached the happy path**, which is the inversion. `MediaRecorder` supports
+`video/webm;codecs=av01,opus`, so `pickLane()` routed to `av1` — the compact lane, unavailable on
+macOS. **But this is a property of the install, not of the engine.** WebKitGTK delegates media to
+GStreamer, so AV1 muxing depends on which plugins Ubuntu 26.04 shipped; another distro, or a
+stripped container, may answer differently. The consequence is not doubt about Tauri, it is that the
+product must probe at runtime and degrade per machine — which `pickLane()` already does. It does mean
+**no Linux capability can be stated as a platform requirement**, which is harder to document than a
+uniform answer would have been.
+
+**One claim in this row not to lean on:** every `canPlayType` returned `probably`, *including HEVC*.
+WebKitGTK answers from GStreamer's registry rather than from real decode capability, so on this
+engine `canPlayType` is an optimistic guess. That raises the value of the end-to-end run rather than
+substituting for it.
+
+### macOS raw export
 
 - **Webview:** `WebKit 21624.4.5.11.5` · **OS:** `macos 26.6.1` (both backfilled — see above)
 - **Origin:** `http://127.0.0.1:61912` · secureContext=true · crossOriginIsolated=false
@@ -304,12 +349,23 @@ Video routed lane: `frames`
 
 No end-to-end ingest run.
 
-**Which rows are worth the effort**, per the engine table above. The **old-LTS Linux** row can
-return a blocking answer and nothing else can, so it earns the most work — including finding a
-machine to run it on. **macOS** ranks second, not because a failure is likely but because WKWebView
-is the mandatory engine for any future iOS client ([`../MOBILE.md`](../MOBILE.md)), so this row is
-the only preview of that platform available. **Windows** is a formality: WebView2 is Chromium, and a
-green result there confirms rather than informs.
+### What is still outstanding
+
+The shell decision no longer waits on any of these. They are the difference between "Tauri can host
+this" (settled) and "video upload works" (not yet observed).
+
+1. **No end-to-end ingest run on either platform.** The capability matrices say the pieces exist;
+   nobody has watched a lane complete and emit valid output. **This is an inference, not an
+   observation**, and video-ingest's own history is exactly a case where a capability probe routed a
+   lane into a throw. Worth closing before video upload ships; not before a shell is chosen.
+2. **The reload check on both rows.** Two runs with a reload between. Unproven persistence across
+   restart on either engine, and on WebKitGTK it is the more interesting question, given there is no
+   StorageManager to ask.
+3. **The `scheme` origin mode, everywhere.** Both rows so far are `http`. Storage is origin-
+   partitioned, so a custom-scheme result is not implied by a loopback one.
+4. **Windows.** A formality — WebView2 is Chromium — and worth one run to confirm rather than assume.
+5. **An older Linux.** Ubuntu 26.04 is current. The install-dependent AV1 finding above means an
+   older or more minimal system is the interesting comparison, not a redundant one.
 
 ## What this spike does not answer
 

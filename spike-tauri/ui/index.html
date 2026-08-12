@@ -50,6 +50,9 @@
     td.detail { font-family: ui-monospace, monospace; font-size: 12px; color: var(--note); }
     .ok { color: var(--ok); }
     .bad { color: var(--bad); }
+    /* Informational rows describe the engine and cannot fail the run - painting them like failures
+       is what produced a bogus FAIL verdict on 2026-08-11. */
+    .info { color: var(--note); font-weight: 400; }
     .verdict { font-weight: 700; padding: 8px 0; }
     #markdown {
         width: 100%;

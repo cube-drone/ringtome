@@ -4048,15 +4048,61 @@ keys live on our nodes, "move to your own machine" is a migration nobody bothers
 **self-hosting a first-class, documented, easy path from day one**, and ship desktop mode *before* hosted usage
 calcifies - the moment hosted-first feels like it is working is the moment to ship desktop, not later.
 
-### Desktop mode: local server + system browser, NOT Tauri
+### Desktop mode: Tauri, with the node embedded (settled 2026-08-11)
 
-The app is *already* a full HTTP server, so Tauri's core value (bridging a webview to native Rust) is a bridge we do
-not need - we already have the universal one: HTTP on localhost. Desktop mode is therefore the same server bound to
-localhost, plus a **minimal native shell** (tray icon: status light, log tail, "open in browser", quit - or, at the
-floor, just auto-open the system browser with no GUI at all) that opens the user's real browser at the localhost
-port. This is the Syncthing / Jupyter / Plex model: proven, and it dodges Tauri's worst tax - cross-platform webview
-skew (WebView2 vs WebKitGTK vs WebKit), which is a documented misery. We develop against real browsers and that is
-what ships; the node's JS UI is reused verbatim.
+**One binary.** A Tauri v2 window, and the node linked in as a library running axum on the same tokio runtime - no
+child process, no sidecar, no second executable. The window loads the UI from the node's own HTTP server, so `ui.rs`
+keeps its job and the hosted-browser path and the desktop path serve byte-identical UI from one source. The rollout,
+the packaging and the signing costs are [DESKTOP.md](DESKTOP.md); the evidence is
+[`spike-tauri/`](spike-tauri/README.md).
+
+This **reverses** this section's previous position ("local server + system browser, NOT Tauri"), and the reversal is
+recorded rather than tidied away, because both of its arguments failed in instructive ways.
+
+**The first argument answered the wrong question.** It held that Tauri's core value is bridging a webview to native
+Rust, and that we already have the universal bridge in HTTP-on-localhost. True, and beside the point: nobody chooses
+a webview shell for the IPC bridge. They choose it for *being an application* - one signed binary, its own icon,
+window and dock identity, a tray, an updater. A shell that opens your real browser for all of its UI reads as a
+service with a config page, and this section's own floor case (auto-open the browser, no GUI at all) is exactly that
+shape. That matters beyond taste: an application that reads as a toy has an adoption problem, and adoption is
+load-bearing for *Node-first as the bootstrap* and for the desktop-as-always-on-node argument below. The cited
+precedent also drifted - Syncthing *is* the config-page feel, Plex ships native clients, Ollama shipped a real
+desktop app.
+
+**The second argument was the strong one, and it was tested rather than argued away.** Cross-platform webview skew
+is a documented misery in general, but for this codebase it had a specific address: the Dexie mirror, because
+IndexedDB-on-WebKit is the most notorious compatibility surface on the web platform and `js/mirror.js` is the whole
+read path. `spike-tauri/` put the real UI in both WebKit engines and hammered it. **Both pass**: WKWebView (WebKit
+21624.4.5.11.5, macOS 26.6.1) and WebKitGTK 2.52.3 on Ubuntu 26.04, with `liveQuery` reacting to writes and the 8MB
+Blob and ArrayBuffer round-trips byte-identical on both. Dexie stays. Two predictions in the docs were wrong in
+opposite directions and are kept on the record: Linux was expected to be the dangerous engine and was the best one,
+and the mirror was expected to be the risk and never was.
+
+**In-process rather than sidecar, from the start.** A sidecar has to solve orphaned children, a readiness race and
+port collisions; embedding *deletes* those problems instead - there is nothing to orphan, we know when the server is
+up because we started it, and the per-launch auth token never leaves the process. One Mach-O to notarize, nothing
+placed beside the executable. The cost is the `lib.rs` split (`node/Cargo.toml` declares only `[[bin]]` today), which
+is mechanical - `crate::` still resolves to the crate root inside a library, so the ~49 files using it are untouched -
+and which **phones and any future engine client need anyway**. That is the convergence that makes this decision worth
+more than a nicer window: one shell, one Rust toolchain, three platforms, and a phone client that becomes a *port of
+a shipping application* rather than a separate project. *Phones: deferred, by design* predates this and wants
+revisiting in that light.
+
+**What we are accepting, so it can be checked later.** "We develop against real browsers and that is what ships"
+splits in half: because the node serves the UI over HTTP, day-to-day development is unchanged - Chrome pointed at
+localhost, the shell involved only at package time - but what *ships* is not what we developed against. Windows is
+Chromium regardless (WebView2 is Chromium-based and evergreen), so the exposure is macOS and Linux. Two live risks
+ride with it: **stale engines** on old systems we cannot patch, and **capabilities that vary by install** - WebKitGTK
+delegates media to GStreamer, so the spike found AV1 encode present on one Ubuntu and absent on WKWebView, meaning we
+degrade per machine rather than requiring a platform. Electron was the other candidate and was declined: it would
+have bought one pinned Chromium and a decade of battle-testedness ("when something breaks at 11pm, somebody has
+already hit it and written it down"), at the price of ~200MB, two shipped runtimes, owning Chromium's CVEs forever,
+and no mobile story at all.
+
+**The port question, answered.** *Caveats that apply to desktop mode regardless* warns that a floating port silently
+drops per-origin state. The node picks a port on first run, persists it in the data directory and reuses it, keeping
+the page and the API same-origin - which also means the live-cache WebSocket needs no cross-origin handling. A
+collision picks a new port and the mirror resnapshots, which is free because the mirror is disposable.
 
 ### The Client Story: one client, carried by the web
 
@@ -4077,12 +4123,16 @@ period-authentic "click the speaker icon to enable sound" ritual.
   UI - exactly what game-engine UI toolkits are worst at - and a solo project's novelty budget is already fully
   spent on the protocol layer. The markup AST keeps the door open at near-zero cost (a future client implements a
   renderer for a few dozen tags, not a browser); a game-engine client is justified only if a genuinely gamey
-  product layer someday demands one, and it is on no path to v1. Webview-in-Godot hybrids are rejected for the same
-  webview-skew reason as Tauri.
-- **Desktop delivery = the tray sidecar opens an app-mode window.** Desktop mode's "minimal native shell" (tray
-  icon, autostart, status light) is the node binary itself; "open Ringtome" launches the system browser in app mode
-  at the stable localhost port. One binary, one installer, one signing identity - the Ollama/Syncthing pattern,
-  which the last few years have made a normal consumer shape, not a nerd shape.
+  product layer someday demands one, and it is on no path to v1. Webview-in-Godot hybrids stay rejected, but note the
+  stated reason no longer holds: it was "the same webview-skew reason as Tauri", and skew was tested and passed
+  (2026-08-11). The surviving objection is narrower - a webview inside a game engine is a second rendering model
+  fighting the first, which is a coherence problem rather than a compatibility one. The strike itself is unaffected;
+  [GODOT.md](GODOT.md) carries the properly-costed version of this argument.
+- **Desktop delivery = one binary that is both the node and the window** (amended 2026-08-11; see *Desktop mode:
+  Tauri, with the node embedded*). This bullet used to say the shell opens the system browser in app mode at a stable
+  localhost port - the Ollama/Syncthing pattern. It is now a Tauri window with the node linked in, which keeps the
+  part that was right (one binary, one installer, one signing identity, and the tray/autostart duties live in the same
+  executable) and drops the part that read as a config page rather than an application.
 
 ### Phones: deferred, by design
 
@@ -4112,8 +4162,11 @@ is therefore never throwaway - those nodes become the seeders/fronts the desktop
 
 ### Caveats that apply to desktop mode regardless (do not forget these)
 
-These are the irreducible price of shipping a background service to non-terminal users - and note most of them would
-cost the same under Tauri, so they are not arguments for it:
+These are the irreducible price of shipping a background service to non-terminal users. They were written when this
+section still planned a browser-opening shell, and they survive the 2026-08-11 move to Tauri unchanged - which is what
+the original framing predicted, having noted they would cost the same either way. Two now have settled answers rather
+than open warnings: the localhost-CSRF hazard is what the desktop app's per-launch auth token exists to close, and the
+stable-port requirement is answered by persisting the port (both in *Desktop mode: Tauri, with the node embedded*).
 
 - **Localhost is not automatically safe.** A malicious web page you visit can make requests to `localhost:PORT`, so
   the local server needs CSRF / origin-checking even though it is "just local" (Syncthing shipped exactly this bug).
