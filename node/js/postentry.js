@@ -295,6 +295,54 @@ const UnpublishButton = ({ item, current }) => {
 /// The version is resolved server-side rather than sent: this node knows what head it served
 /// the reader, and a hash carried from an earlier page load would endorse something staler than
 /// what was on screen.
+/// "and four others", with the four of them behind a hover.
+///
+/// Two numbers, deliberately not the same one: the COUNT is the server's and is exact, while the
+/// roster is capped (`fanout::VIA_OTHERS_CAP`) because a list is a payload and a viral post could
+/// otherwise put two hundred names on one row. When the cap bites, the roster says so rather than
+/// quietly presenting a sample as the whole set.
+///
+/// The others are chips, not names, so a sharer reads the same here as everywhere else - nickname,
+/// claimed name, speakable fallback and face all come out of `usePerson`, instead of this row
+/// growing a second and thinner copy of that logic.
+const ViaOthers = ({ item, current }) => {
+    const others = item.via_others || [];
+    if (!others.length) return null;
+    // via_count includes the lead; the phrase is about everyone BUT the lead.
+    const more = (item.via_count || others.length + 1) - 1;
+    const hidden = more - others.length;
+    return html`<span class="feed-entry-via-others">
+        <span class="feed-entry-via-count">
+            ${more === 1
+                ? t('postentry.and-one-other', 'and one other')
+                : t('postentry.and-count-others', 'and {count} others', { count: more })}
+        </span>
+        <span class="feed-entry-via-roster">
+            ${others.map(
+                (other) => html`<${PersonChip}
+                    key=${other.root}
+                    root=${other.root}
+                    current=${current}
+                    size="mini"
+                    profile=${{
+                        fields: [
+                            other.name && { field: 'name', value: other.name },
+                            other.avatar && { field: 'avatar', value: other.avatar },
+                        ].filter(Boolean),
+                        via: [],
+                    }}
+                />`
+            )}
+            ${hidden > 0 &&
+            html`<span class="feed-entry-via-rest"
+                >${t('postentry.count-more-not-listed', 'and {count} more, not listed here', {
+                    count: hidden,
+                })}</span
+            >`}
+        </span>
+    </span>`;
+};
+
 const ShareButton = ({ item, current }) => {
     const [sending, setSending] = useState(false);
     // `null` while we do not yet know - the list is one fetch per page, and a button that
@@ -431,6 +479,7 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                         via: [],
                     }}
                 />
+                <${ViaOthers} item=${item} current=${current} />
                 ${t('postentry.passed-this-along', 'passed this along')}
             </p>`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and

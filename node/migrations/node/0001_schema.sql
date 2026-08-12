@@ -224,6 +224,38 @@ CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
 -- listing never touches the table itself.
 CREATE INDEX feed_journal_by_author ON feed_journal (author_root, doc_id);
 
+-- Everyone who passed one document into one reader's feed: the crowd behind a feed row's byline.
+--
+-- `feed_journal` keeps ONE row per (reader, author, doc) - a post six people share is one entry in
+-- a feed, not six - and its `via_root` names the INTRODUCER. This is the rest of them, so a row can
+-- say "Sam and four others passed this along" and name the four when asked.
+--
+-- WHY A MEMO AND NOT A QUERY. The authoritative answer lives on each sharer's own chain, inside
+-- their user database, so a page mentioning twelve sharers would open twelve encrypted files to
+-- render one screen - precisely the fan-in thrash "one question, one database" exists to forbid.
+-- `rebroadcast_pins` cannot answer it either, and that is by design rather than by omission:
+-- pinning is an OBLIGATION a node takes on for its own personas (rebroadcast.rs, "fronting on a
+-- foreign persona's say-so would be push"), so a reader's node holds no pin for a foreign sharer.
+-- Journaling is delivery and runs for foreign sharers; pinning is hosting and does not.
+--
+-- Disposable like every memo here, and rebuildable from the sharers' chains.
+--
+-- Read JOINED against `subscriptions`, which is what keeps unfollowing a sharer correct with no
+-- cleanup at all: the row stays, and simply stops counting. Deleted only where a share genuinely
+-- ceases to exist - a withdrawal, an excised fragment, a persona leaving the node.
+CREATE TABLE feed_shares (
+    reader_root TEXT    NOT NULL,  -- whose feed
+    author_root TEXT    NOT NULL,  -- whose document
+    doc_id      TEXT    NOT NULL,  -- hex; the PUBLIC document
+    via_root    TEXT    NOT NULL,  -- who passed it along. NEVER null, unlike feed_journal's
+    shared_ms   INTEGER NOT NULL,  -- when this node first learned THIS sharer had shared it;
+                                   --   ascending, so the earliest is the introducer
+    PRIMARY KEY (reader_root, author_root, doc_id, via_root)
+);
+-- The PK's leading three columns serve the per-row read. This is the other direction: the
+-- withdrawal and excise paths delete by the DOCUMENT, across every reader at once.
+CREATE INDEX feed_shares_by_doc ON feed_shares (author_root, doc_id);
+
 -- Documents this node holds WITHOUT holding their author: the fragment ledger (PROJECT_PLAN,
 -- What travels with a share).
 --

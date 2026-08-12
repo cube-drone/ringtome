@@ -206,6 +206,13 @@ pub(crate) struct JournalRow {
 /// claim - if you follow the author, their post is theirs in your feed, not something a third
 /// party showed you - and the two paths race freely (the author moves; someone shares an old
 /// post), so which wins has to be a rule rather than an ordering.
+///
+/// Between two SHARERS, the first one keeps the column: `via_root` is the INTRODUCER, the person
+/// this document reached you through, and that is a fact about the past like `arrived_ms` beside it
+/// rather than a slot for whoever spoke most recently. It used to take the newest sharer, which
+/// made a viral post's byline mutate under the reader while the words never changed, and named
+/// somebody arbitrary while dropping everyone else in silence. Who ELSE passed it along is a
+/// question with a real answer now ([`followed_sharers`]), asked at read time.
 async fn journal_rows(
     node_db: &crate::db::Db,
     author_root: &str,
@@ -248,7 +255,7 @@ async fn journal_rows(
                  via_root = CASE
                      WHEN excluded.via_root IS NULL THEN NULL
                      WHEN feed_journal.via_root IS NULL THEN NULL
-                     ELSE excluded.via_root
+                     ELSE feed_journal.via_root
                  END",
             placeholders.join(",")
         );
@@ -276,6 +283,83 @@ async fn journal_rows(
             .await
             .context("journaling arrivals")?;
     }
+    if let Some(via) = via_root {
+        remember_sharer(node_db, author_root, readers, rows, via, now).await?;
+    }
+    Ok(())
+}
+
+/// Note that this sharer passed these documents to these readers - the crowd `feed_journal`'s one
+/// row cannot hold (`feed_shares`).
+///
+/// `DO NOTHING` on conflict, so `shared_ms` keeps the moment we FIRST heard it from them. Every
+/// frontier move re-folds a sharer's whole pointer list, so this runs constantly with nothing new
+/// to say, and a stamp that crept forward on each pass would slowly reorder the crowd and unseat
+/// the introducer.
+async fn remember_sharer(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    readers: &[String],
+    rows: &[&JournalRow],
+    via_root: &str,
+    now: i64,
+) -> Result<()> {
+    for reader in readers {
+        for row in rows {
+            node_db
+                .execute(
+                    "INSERT INTO feed_shares
+                       (reader_root, author_root, doc_id, via_root, shared_ms)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT (reader_root, author_root, doc_id, via_root) DO NOTHING",
+                    (
+                        reader.as_str(),
+                        author_root,
+                        row.doc_id_hex.as_str(),
+                        via_root,
+                        now,
+                    ),
+                )
+                .await
+                .context("noting who passed a document along")?;
+        }
+    }
+    Ok(())
+}
+
+/// A sharer withdrew: forget that they ever passed this document along, in every feed on this node.
+///
+/// Runs for FOREIGN sharers as well as hosted ones, which is the whole point - the crowd is made of
+/// people on other computers, and "I stopped sharing this" has to be able to shrink it. The feed row
+/// itself is not touched here: it may have arrived through somebody else entirely, and whether it
+/// survives is `excise_shared`'s question, asked of the fragment rather than of any one sharer.
+pub async fn forget_sharer(
+    node_db: &crate::db::Db,
+    via_root: &str,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM feed_shares
+             WHERE author_root = ?1 AND doc_id = ?2 AND via_root = ?3",
+            (author_root, doc_id, via_root),
+        )
+        .await
+        .context("forgetting a withdrawn share")?;
+    Ok(())
+}
+
+/// Every trace of a departing persona's feed crowd: the rows in THEIR feed, and their name in
+/// everybody else's. The counterpart to `rebroadcast::forget_holder`, for the same moment.
+pub async fn forget_reader_shares(node_db: &crate::db::Db, root: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM feed_shares WHERE reader_root = ?1 OR via_root = ?1",
+            (root,),
+        )
+        .await
+        .context("dropping a departing persona's share crowd")?;
     Ok(())
 }
 
@@ -676,6 +760,16 @@ pub(crate) async fn excise_shared(
         )
         .await
         .context("retracting a forgotten fragment from feeds")?;
+    // The crowd goes with the row. Nobody's share survives a document that no longer exists here,
+    // and a `feed_shares` row outliving its `feed_journal` row would count toward a byline that
+    // has nothing left to byline.
+    node_db
+        .execute(
+            "DELETE FROM feed_shares WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_id),
+        )
+        .await
+        .context("retracting a forgotten fragment's sharers")?;
     Ok(())
 }
 
@@ -779,6 +873,103 @@ pub struct FeedRow {
     pub published_ms: i64,
     pub updated_ms: i64,
     pub arrived_ms: i64,
+}
+
+/// How many of a document's other sharers a feed row will carry. A count is exact; a LIST is a
+/// payload, and a viral post shared by everyone you follow would otherwise put two hundred names
+/// on one row. The count beside it stays honest, so "and 200 others" is still sayable with twelve
+/// names behind the hover.
+pub const VIA_OTHERS_CAP: usize = 12;
+
+/// Everyone this reader follows who passed each of these documents along, **earliest first** - so
+/// the head of each list is the introducer and the tail is the crowd behind them.
+///
+/// Two indexed node.db reads for a whole page, never one per row, and each in its owning module
+/// (`feed_shares` here, `subscriptions` in [`crate::net::subscriptions`]) so the conventions cop
+/// stays satisfied.
+///
+/// **The subscription filter happens HERE rather than at write time**, which is the one place this
+/// differs from every other memo in the file. `feed_shares` keeps a row for a share that reached
+/// the reader, and whether the reader still follows that sharer is asked when the question is
+/// asked - so unfollowing somebody removes them from the crowd with no cleanup pass, no delete,
+/// and no chance of a stale name surviving in a list nobody thought to reconcile.
+///
+/// The reader's own shares count: your own recommendation belongs in your own feed, which is
+/// already why `share_readers` puts it there, so the reader is exempt from the follow test.
+pub async fn followed_sharers(
+    node_db: &crate::db::Db,
+    reader_root: &str,
+    rows: &[FeedRow],
+) -> Result<std::collections::BTreeMap<(String, String), Vec<String>>> {
+    let mut out: std::collections::BTreeMap<(String, String), Vec<String>> = Default::default();
+    // Only rows that ARRIVED as a share can have sharers to name. A row you hold because you
+    // follow its author has `via_root` cleared (the stronger claim), and showing "also shared by"
+    // on it would be answering a question the row is not asking.
+    let wanted: std::collections::BTreeSet<(String, String)> = rows
+        .iter()
+        .filter(|r| r.via_root.is_some())
+        .map(|r| (r.author_root.clone(), r.doc_id.clone()))
+        .collect();
+    if wanted.is_empty() {
+        return Ok(out);
+    }
+    let docs = hex_in_list(wanted.iter().map(|(_, d)| d));
+    if docs.is_empty() {
+        return Ok(out);
+    }
+
+    // One reader, the page's documents. `doc_id IN (...)` under the PK's leading `reader_root`
+    // rather than a row-value IN over pairs: the author is checked against `wanted` below, which
+    // costs a handful of discarded rows and buys a query shape whose portability is not in doubt.
+    let shares: Vec<(String, String, String, i64)> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT author_root, doc_id, via_root, shared_ms FROM feed_shares
+                 WHERE reader_root = ?1 AND doc_id IN ({})",
+                docs.join(",")
+            ),
+            (reader_root,),
+        )
+        .await
+        .context("reading who passed this page's documents along")?;
+    let shares: Vec<(String, String, String, i64)> = shares
+        .into_iter()
+        .filter(|(a, d, _, _)| wanted.contains(&(a.clone(), d.clone())))
+        .collect();
+    if shares.is_empty() {
+        return Ok(out);
+    }
+
+    let sharers: Vec<String> = shares
+        .iter()
+        .map(|(_, _, via, _)| via.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let followed =
+        crate::net::subscriptions::rebroadcast_follows_among(node_db, reader_root, &sharers).await?;
+
+    // Earliest share first, sharer as the tiebreak so a page renders the same way twice.
+    let mut ordered = shares;
+    ordered.sort_by(|a, b| a.3.cmp(&b.3).then_with(|| a.2.cmp(&b.2)));
+    for (author, doc, via, _) in ordered {
+        if via != reader_root && !followed.contains(&via) {
+            continue;
+        }
+        out.entry((author, doc)).or_default().push(via);
+    }
+    Ok(out)
+}
+
+/// A quoted hex IN-list, the belt-and-braces `profiles::bylines` uses: anything that is not hex
+/// cannot name a row these tables hold, so the list can carry nothing else.
+fn hex_in_list<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
+    values
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|v| format!("'{v}'"))
+        .collect()
 }
 
 /// One page of a reader's feed, strictly chronological (published DESC), keyset-cursored like

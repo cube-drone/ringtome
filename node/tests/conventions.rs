@@ -34,6 +34,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("subscriptions", vec!["net/subscriptions.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
         ("feed_journal", vec!["fanout.rs"]),
+        ("feed_shares", vec!["fanout.rs"]),
         ("notifications", vec!["notifications.rs"]),
         ("outbound_notices", vec!["outbox.rs"]),
         ("missing_bodies", vec!["net/bodies.rs"]),

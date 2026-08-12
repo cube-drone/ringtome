@@ -564,7 +564,12 @@ integration: build
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{workspace}}"
-    rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-c" "{{test_data}}-d" "{{test_data}}-dht"
+    # Every lane the rig boots, and the discovery folder they share. `-e` was missing here until
+    # 2026-08-12, so echo's database was the one that SURVIVED between runs - invisible while the
+    # schema held still, and a node that refused to boot the first time the generation moved. A
+    # node added to the boot list below wants adding here in the same breath.
+    rm -rf "{{test_data}}" "{{test_data}}-b" "{{test_data}}-c" "{{test_data}}-d" \
+           "{{test_data}}-e" "{{test_data}}-dht"
     pa={{int_a}}
     pb={{int_b}}
     pc={{int_c}}

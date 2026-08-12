@@ -102,6 +102,19 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str) -> Result<()> {
         }
     }
 
+    // The same "speech deletes" half for the feed's CROWD, outside the hosted gate on purpose:
+    // the people in a reader's "and four others" are mostly on other computers, so a withdrawal
+    // has to shrink the crowd whether or not this node hosts the person withdrawing.
+    for row in pointers.iter().filter(|r| r.is_retracted()) {
+        crate::fanout::forget_sharer(
+            &state.node_db,
+            sharer_root,
+            &row.author_root,
+            &hex::encode(row.doc_id),
+        )
+        .await?;
+    }
+
     crate::fanout::journal_shares_by(state, sharer_root, &pointers).await;
     Ok(())
 }

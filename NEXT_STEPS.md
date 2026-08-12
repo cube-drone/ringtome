@@ -37,11 +37,22 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * **Rebroadcast — shipped end to end 2026-08-11** (PROJECT_PLAN, *Rebroadcast: Pointer Plus
   Pinned Replica* and its two network subsections; HISTORY has the arc and the fragment slice).
   Pointer, pin, both notice halves, public tombstone, media budget, feed with `via_root`, the
-  fragment ledger, and the cascade proven with the author's node actually dark
-  (`cascade.cjs`, *with the author's node dark*). What is left:
+  fragment ledger, the cascade proven with the author's node actually dark (`cascade.cjs`, *with
+  the author's node dark*), and the crowd behind a viral share - "Sam and four others", one row
+  per document, `feed_shares` (`sharedby.cjs`). What is left:
   * **The edit window** and **delete memo + bloom summaries** - the two trim slices that bound
     what a node must remember forever. Designed, unbuilt.
-  * **UI**: nothing renders `via`/`via_name`, and there is no share button.
+  * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
+    stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
+    the only reason it was ever there. A question for the retraction rules, not the read path
+    (which currently falls back to `feed_journal.via_root` and says so in a comment).
+  * **A fragment remembers one origin.** `fragments.origin_root` is single-valued and
+    last-writer-wins, so a document six people you follow are holding is revalidated against
+    exactly one of them, and a dark origin ends the chain. `feed_shares` now knows the other
+    five: the fallback is a query away. Virality should make a document harder to lose.
+  * **A stale sharer can roll a fragment back.** `remember` overwrites version/entry/body_hash
+    with whatever the last origin served and never checks it is NEWER ("the version is allowed
+    to move"), so six sharers pinned at different times can un-apply an edit between them.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket

@@ -313,6 +313,48 @@ pub async fn rebroadcast_followers_of(
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
+/// Which of `candidates` does this reader follow for REBROADCASTS? [`rebroadcast_followers_of`]
+/// asked from the reader's side, for a page's worth of sharers in one round.
+///
+/// The feed's "and four others" line is what needs this. A viral document is passed along by many
+/// people, and only the ones THIS reader follows belong in their count - same rule the journal
+/// already enforces at write time ("the feed is the reader's room"), applied to a list rather than
+/// to one row. Node-level throughout: `subscriptions` is a memo, so counting a page's sharers
+/// opens no user database at all.
+pub async fn rebroadcast_follows_among(
+    node_db: &crate::db::Db,
+    local_root: &str,
+    candidates: &[String],
+) -> Result<std::collections::BTreeSet<String>> {
+    let mut out = std::collections::BTreeSet::new();
+    // Quoted hex IN-list, the same belt-and-braces as `profiles::bylines`: anything that is not a
+    // root pubkey cannot name a row, so the list can never carry anything but roots.
+    let quoted: Vec<String> = candidates
+        .iter()
+        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|r| format!("'{r}'"))
+        .collect();
+    if quoted.is_empty() {
+        return Ok(out);
+    }
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT foreign_root FROM subscriptions
+                 WHERE local_root = ?1 AND rebroadcast IS NOT NULL AND rebroadcast > 0
+                   AND foreign_root IN ({})",
+                quoted.join(",")
+            ),
+            (local_root,),
+        )
+        .await
+        .context("reading which of these sharers a reader follows")?;
+    for (root,) in rows {
+        out.insert(root);
+    }
+    Ok(out)
+}
+
 /// Does `local_root` follow `foreign_root` for feed purposes? The same criterion as
 /// `followers_of`, asked pointwise - the notifications fold's routing check.
 pub async fn follows(

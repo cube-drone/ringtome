@@ -5255,3 +5255,81 @@ has checked, and these are claims about data loss.
 `seed` was split into `seedToCleo` + `shareOnwardToDana` so a scenario can change the world between
 the third hop and the fourth; `seed` is now their composition and the eight existing scenarios are
 untouched by it.
+
+## 2026-08-12 — Sam and four others
+
+A viral post arrives over and over. Six people you follow pass the same thing along, six separate
+pointers on six separate chains, and Curtis's instinct was that it should be one row in the feed
+rather than six. It already was - `feed_journal`'s key is `(reader, author, doc)` and has been all
+along - so the question turned out to be a different one: **what does the row SAY when six people
+are behind it?**
+
+The answer it gave was the worst of the three available. `via_root` took the newest sharer, so the
+byline mutated under the reader while the words never changed, named somebody arbitrary, and dropped
+the other five in silence. Not the introducer, not the crowd. Now the row leads with the
+longest-standing sharer among the people still sharing it, and carries the rest: `via_others` with
+faces and names, `via_count` exact even when the list is capped, and a hover that opens the roster.
+
+### The plan was wrong, and the schema comment had said so all along
+
+The design I proposed and defended was **no new table**: `rebroadcast_pins` is keyed
+`(holder_root, author_root, doc_id)`, which is exactly "who shared what", and `subscriptions`
+answers "does this reader follow them" - so the crowd was two indexed node.db reads away, with no
+write path and no cleanup paths to forget. It was a good argument for a design that cannot work.
+
+The test came back with `rebroadcast_pins` **empty** on the reader's node, and the reason was
+written in the schema next to the column I had misread: `holder_root` is "the local persona whose
+share obliges this node". `rebroadcast::fold` puts it plainer still - pinning is an obligation
+hosted-only *and load-bearing*, because "fronting on a foreign persona's say-so would be push, and
+*Pull, Not Push* forbids it", while journaling is delivery and must run for foreign sharers. The two
+halves were deliberately split on 2026-08-10 after one guard was found doing both jobs. So a
+reader's node holds pins for its own personas and never for the strangers whose shares fill its
+feeds - which is the entire population of a crowd.
+
+The lesson is not "read the comments". It is that **the query returning nothing looked exactly like
+the feature not being wired up yet**, and the only reason it was diagnosed in one pass rather than
+five was dumping the three tables into the failure output instead of reasoning about which was
+likeliest.
+
+So `feed_shares` exists after all, written beside the journal row in `journal_rows`, and the memo
+argument I had waved away is the right one: the authoritative answer lives on each sharer's chain,
+in their user database, and a page naming twelve sharers would open twelve encrypted files to draw
+one screen - the fan-in thrash "one question, one database" exists to forbid.
+
+### What survived from the derived design
+
+The half that was right, kept: **the subscription filter still happens at read time.** A stored
+crowd has two ways to go stale, and they are not the same kind of fact. "I unfollowed them" is
+private to one reader and reversible, so it is asked when the question is asked - unfollowing
+removes a name from the count with no delete anywhere, and re-following brings it back. "They
+withdrew the share" is a fact about the world, so it is a real delete, in the same fold pass that
+already drops the pin - outside the hosted gate, because the crowd is mostly other people's
+computers.
+
+Three delete paths in the end, each beside a deletion that already existed: a withdrawal
+(`rebroadcast::fold`), an excised fragment (`excise_shared`), a persona leaving the node
+(`identity::detach`). The fourth - unfollowing - never needed one.
+
+### A byline is a claim in the present tense
+
+Following from that: the rendered lead is NOT `feed_journal.via_root`. That column remembers who
+brought the row and always will, which is right for history and wrong for a byline - crediting Sam
+after Sam withdrew credits a recommendation nobody is making. So the lead comes off the live list,
+and `sharedby.cjs` pins the consequence that makes the rule real: re-sharing does **not** hand the
+lead back, because standing behind a post now dates from the re-share.
+
+### The bug the schema bump found
+
+The rig's five nodes were wiped between runs - four of them. `-e` was never added to the `rm -rf`
+list when echo joined, so echo's database was the one that SURVIVED, invisibly, for as long as the
+schema held still. Bumping the node generation to 18 turned that into the only node that refused to
+boot. Fixed, with a note in the recipe pointing at the boot list beside it.
+
+### Residual
+
+Three things this slice found and did not fix, now in NEXT_STEPS: an orphaned share row (every
+sharer withdrew, the row stays), a fragment that remembers only ONE origin while `feed_shares` now
+knows the other five, and `remember` overwriting a fragment with an older version because nothing
+checks that an arriving version is newer.
+
+**This needs `just clean` on any dev network before it will boot** - node schema generation 17 to 18.

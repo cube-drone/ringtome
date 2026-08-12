@@ -596,6 +596,27 @@ struct FeedItem {
     /// identicon. From the same byline cache as the author's - one lookup, both people.
     #[serde(skip_serializing_if = "Option::is_none")]
     via_avatar: Option<String>,
+    /// Everyone ELSE the reader follows who also passed this along - `via` excluded, since it
+    /// leads the line, and capped at `fanout::VIA_OTHERS_CAP` because a list is a payload.
+    /// Most recently shared first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    via_others: Vec<Sharer>,
+    /// How many people the reader follows shared this, `via` included - **exact**, even when
+    /// `via_others` was capped, so "and 200 others" stays sayable. Absent unless more than one
+    /// person shared it, which keeps the ordinary single-sharer row byte-identical to before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    via_count: Option<usize>,
+}
+
+/// One of the other people who passed a document along, dressed like the lead sharer so the
+/// client renders them with the same widget rather than a second, thinner one.
+#[derive(Serialize)]
+struct Sharer {
+    root: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    avatar: Option<String>,
 }
 
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly
@@ -630,10 +651,19 @@ async fn feed_handler(
     let more = rows.len() as i64 > page;
     rows.truncate(page as usize);
 
+    // Who else passed each of these along - two indexed node.db reads for the whole page, never
+    // per row (`fanout::followed_sharers` argues for deriving this rather than storing it).
+    let sharers = crate::fanout::followed_sharers(&state.node_db, &root, &rows)
+        .await
+        .map_err(AppError::Internal)?;
+
     // Bylines for authors AND sharers: "X shared Y's post" needs two names, and asking for
-    // them in one lookup beats a second round of database opens at render time.
+    // them in one lookup beats a second round of database opens at render time. The other
+    // sharers ride the same lookup for the same reason - a hover list of twelve faces must not
+    // become twelve queries.
     let mut authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
     authors.extend(rows.iter().filter_map(|r| r.via_root.clone()));
+    authors.extend(sharers.values().flatten().cloned());
     let bylines = crate::profiles::bylines(&state.node_db, &authors)
         .await
         .map_err(AppError::Internal)?;
@@ -643,9 +673,48 @@ async fn feed_handler(
         .map(|r| {
             let mine = r.author_root == root;
             let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
-            let via_byline = r.via_root.as_ref().and_then(|v| bylines.get(v));
+
+            // Who leads the line. `feed_shares` is earliest-first and is the LIVE list, so its
+            // head is the introducer - and when that person has since withdrawn, the head becomes
+            // whoever is earliest among those still sharing it. That distinction is the point:
+            // `feed_journal.via_root` remembers who brought this row and never changes, which is
+            // right for the row's history and wrong for a byline, because a byline is a claim in
+            // the present tense and nobody should be credited with a recommendation they took back.
+            //
+            // The row's own memory is the fallback for the one case the live list cannot answer:
+            // nobody the reader follows shares it any more, and yet the row is still here. That
+            // state is arguably a row that should have been retired rather than re-bylined, and
+            // deciding so is a question for the retraction rules rather than for this handler -
+            // until then, how it reached you is the truest thing left to say about it.
+            let crowd = sharers.get(&(r.author_root.clone(), r.doc_id.clone()));
+            let lead = crowd
+                .and_then(|list| list.first())
+                .or(r.via_root.as_ref())
+                .cloned();
+            let via_byline = lead.as_ref().and_then(|v| bylines.get(v));
             let via_name = via_byline.and_then(|b| b.name.clone());
             let via_avatar = via_byline.and_then(|b| b.avatar.clone());
+            // Everyone but the lead. The count is what is actually shown plus the lead, so the
+            // number and the names can never disagree.
+            let others: Vec<&String> = crowd
+                .map(|list| list.iter().skip(1).collect())
+                .unwrap_or_default();
+            let via_count = match (&lead, others.len()) {
+                (Some(_), n) if n > 0 => Some(n + 1),
+                _ => None,
+            };
+            let via_others: Vec<Sharer> = others
+                .into_iter()
+                .take(crate::fanout::VIA_OTHERS_CAP)
+                .map(|holder| {
+                    let b = bylines.get(holder).cloned().unwrap_or_default();
+                    Sharer {
+                        root: holder.clone(),
+                        name: b.name,
+                        avatar: b.avatar,
+                    }
+                })
+                .collect();
             FeedItem {
                 mine,
                 author_name: byline.name,
@@ -657,9 +726,11 @@ async fn feed_handler(
                 published_ms: r.published_ms,
                 updated_ms: r.updated_ms,
                 arrived_ms: r.arrived_ms,
-                via: r.via_root,
+                via: lead,
                 via_name,
                 via_avatar,
+                via_others,
+                via_count,
             }
         })
         .collect();

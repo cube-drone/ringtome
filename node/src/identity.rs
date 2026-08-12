@@ -463,6 +463,11 @@ pub async fn detach(node_db: &Db, account_id: &Uuid, root_hex: &str) -> Result<(
     if let Err(e) = crate::rebroadcast::forget_holder(node_db, root_hex).await {
         tracing::warn!(root = %root_hex, error = ?e, "could not drop a departing persona's pins");
     }
+    // And their name out of every feed crowd here - both the one that was theirs and the ones
+    // they were a face in.
+    if let Err(e) = crate::fanout::forget_reader_shares(node_db, root_hex).await {
+        tracing::warn!(root = %root_hex, error = ?e, "could not drop a departing persona's share crowd");
+    }
     tracing::info!(root = %root_hex, "detached persona from this node");
     Ok(())
 }

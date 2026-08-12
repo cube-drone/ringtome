@@ -1088,6 +1088,58 @@
     flex: none;
 }
 
+/* "and four others": the rest of the people who passed this along, revealed on hover.
+ *
+ * Folded away by default on purpose. A viral post is passed along by everybody, and a row that
+ * grew a paragraph of names each time would make the loudest thing on the card the crowd rather
+ * than the words - which is the same hierarchy mistake as letting a share read as the sharer's
+ * post. The count is the summary; the names are there when you ask.
+ *
+ * `:focus-within` beside `:hover` is what keeps it reachable without a mouse: the roster is made
+ * of chips, and a chip is a link, so tabbing into the list opens it. */
+.feed-entry-via-others {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.feed-entry-via-count {
+    border-bottom: 1px dotted currentColor;
+    cursor: default;
+}
+
+.feed-entry-via-roster {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    visibility: hidden;
+    max-width: min(22em, 60vw);
+    flex-wrap: wrap;
+    gap: 0.25em 0.6em;
+    padding: 0.5em 0.6em;
+    border: 1px solid var(--border);
+    border-radius: 0.4em;
+    margin-bottom: 0.25em;
+    background: var(--surface);
+    box-shadow: 0 2px 8px var(--shadow-drop);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.feed-entry-via-others:hover .feed-entry-via-roster,
+.feed-entry-via-others:focus-within .feed-entry-via-roster {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* The cap admitting itself: shown only when there are more sharers than the payload carries. */
+.feed-entry-via-rest {
+    align-self: center;
+    color: var(--faint);
+}
+
 /* The share button wears the edit button's clothes: both are quiet actions in the banner's
  * actions slot, and a louder one would make passing something along feel like the point of
  * reading. Deliberately no count anywhere near it. */
