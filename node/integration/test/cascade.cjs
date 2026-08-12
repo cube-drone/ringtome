@@ -21,13 +21,19 @@
     Each scenario seeds its own document through the whole chain before acting, so a failure in
     one path can never decide the outcome of another - the lesson of the first version of these
     tests, where one shared post carried every assertion and the edit contaminated the deletes.
+
+    A THIRD block runs the same three claims - serve, edit, delete - with the fast lane on and
+    Alice's node actually unreachable (`/test/unplug`). Both lanes above are policy: `tree` asks
+    the tree because it was told to. Only that block proves the fast lane FALLS BACK, which is the
+    case the share tree exists for and the one production will meet.
 */
 const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { sql, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
+const { sql, HOST, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { unplug, plugIn } = require("./unplug.cjs");
 
 const settle = async (fn, tries = 240) => {
     for (let i = 0; i < tries; i++) {
@@ -46,9 +52,11 @@ const feedOf = async (reader, host) => {
     return rows;
 };
 
+// `version` is the entry hash: the identity of the exact version held, which is how a test can
+// tell "still the copy it had" from "refetched something new".
 const fragmentsOf = async (author, host) => {
     const { rows } = await sql(
-        `SELECT doc_id, title FROM fragments WHERE author_root = '${author}'`,
+        `SELECT doc_id, title, version FROM fragments WHERE author_root = '${author}'`,
         host
     );
     return rows;
@@ -126,10 +134,11 @@ async function setLane(mode) {
         await dial(dana, danaRoot, cleoRoot, "interest_rebroadcasts", "high");
     });
 
-    /// One document, pushed through the whole chain: Alice publishes, Bob shares, Cleo shares
-    /// onward, and the return value arrives only once Dana can see it. Every scenario starts
-    /// here, with its own document, so the scenarios cannot contaminate each other.
-    async function seed(title) {
+    /// The first three hops: Alice publishes, Bob shares, and the return value arrives only once
+    /// Cleo holds a fragment. Split out from `seed` so a scenario can stop the chain HERE and
+    /// change the world before the fourth hop runs (the author-dark tests below do exactly that:
+    /// the last hop has to happen with Alice's node already gone).
+    async function seedToCleo(title) {
         const made = await (
             await alice(`api/identity/${aliceRoot}/docs`, {
                 method: "POST",
@@ -163,6 +172,11 @@ async function setLane(mode) {
             }),
             `seed(${title}): Bob's share reached Cleo as a fragment`
         );
+        return { post, draft: made.doc_id, version: made.version };
+    }
+
+    /// The fourth hop: Cleo shares onward, and Dana holds a fragment whose origin is Cleo.
+    async function shareOnwardToDana(post, label) {
         const cleoShared = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
             method: "POST",
             body: JSON.stringify({ author: aliceRoot, doc_id: post }),
@@ -174,9 +188,16 @@ async function setLane(mode) {
                 const rows = await feedOf(danaRoot, HOST_E);
                 return rows.some((r) => r.doc_id === post && r.via_root === cleoRoot) ? true : null;
             }),
-            `seed(${title}): Cleo's share reached Dana - the fourth hop`
+            `seed(${label}): Cleo's share reached Dana - the fourth hop`
         );
-        return { post, draft: made.doc_id, version: made.version };
+    }
+
+    /// One document, pushed through the whole chain. Every scenario starts here, with its own
+    /// document, so the scenarios cannot contaminate each other.
+    async function seed(title) {
+        const seeded = await seedToCleo(title);
+        await shareOnwardToDana(seeded.post, title);
+        return seeded;
     }
 
     /// Edit the draft and republish, returning the new private version for chained edits.
@@ -330,5 +351,166 @@ async function setLane(mode) {
         before(() => setLane("fast"));
         after(() => setLane("default"));
         scenarios("fast");
+    });
+
+    /*
+        The author actually goes away.
+
+        The two lanes above are policy: `tree` asks the tree because it was TOLD to, which proves
+        the fallback's code runs but never proves it is reached. Production runs the fast lane, and
+        the fast lane only falls back when the author's node genuinely does not answer - the moment
+        the whole share tree exists for, and the one no test could reach until `/test/unplug`.
+
+        So these run with the fast lane ON and Alice's node dark, which makes each assertion a claim
+        about the network rather than about a config flag: readers try the author first, get nothing,
+        and the chain has to carry it.
+
+        WHY THE TWO-PHASE DARKNESS. Alice's chain reaches Bob over the SYNC alpn; readers ask her for
+        fragments over the FRAGMENT alpn. If she stayed fully reachable while an edit or a takedown
+        travelled to Bob, the sweeps - every ~1.5s here - would let Cleo and Dana learn it straight
+        from Alice, and the test would pass with the share tree carrying nothing at all. So her
+        fragment door is shut BEFORE the act, which makes every later arrival provably second-hand,
+        and her node then goes fully dark before the deepest hop. What is asserted after that point
+        happened with the author's node answering nobody, about anything.
+    */
+    describe("with the author's node dark (the fallback's real case)", function () {
+        before(() => setLane("fast"));
+        after(() => setLane("default"));
+
+        // Belt; `roothooks.cjs` is the braces. A test that dies mid-partition must not leave alpha
+        // dark for the rest of the suite.
+        afterEach(() => plugIn(HOST));
+
+        it("a share is served onward while the author is dark", async () => {
+            // The plainest form of the claim: a reader who has NEVER held this document gets a
+            // complete, verified copy of it at a moment when its author is unreachable. Nothing
+            // here is preserved-by-inertia - the fragment Dana ends up with did not exist when
+            // Alice went dark, so the chain did not merely keep its copies, it served a new one.
+            const { post } = await seedToCleo("dark-serve");
+
+            await unplug(HOST);
+            await shareOnwardToDana(post, "dark-serve");
+
+            const row = (await feedOf(danaRoot, HOST_E)).find((r) => r.doc_id === post);
+            assert.ok(row, "the fourth hop landed with the author's node dark");
+            assert.equal(row.author_root, aliceRoot, "still credited to Alice, who never answered");
+            assert.equal(row.via_root, cleoRoot, "and bylined via the node that actually served it");
+
+            // The words themselves, not just a feed row pointing at them: Dana holds the author's
+            // own signed entry, verified against a delegation path that travelled with it.
+            const held = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
+            assert.ok(held, "Dana holds the fragment itself");
+            assert.equal(held.title, "dark-serve", "with the author's title intact");
+            assert.equal(
+                (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                0,
+                "an author who cannot be reached has not deleted anything"
+            );
+        });
+
+        it("an unreachable author is not a deleted one", async () => {
+            // The safety property the whole design rests on, and the one whose failure would be a
+            // catastrophe rather than a bug: if a failed revalidation were read as a takedown,
+            // closing your laptop would erase your work from everyone who shared it. Silence
+            // preserves, speech deletes (fragments::sweep).
+            const { post } = await seed("dark-survives");
+            const before = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
+            assert.ok(before, "precondition: Dana holds it");
+
+            await unplug(HOST);
+            // Long enough for many rounds at both hops - the revalidation interval here is 500ms
+            // and the sweep beat 1.5s, so this is a dozen or more chances to get it wrong.
+            await new Promise((r) => setTimeout(r, 12000));
+
+            const after = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
+            assert.ok(after, "Dana still holds the fragment after the author stopped answering");
+            assert.equal(after.version, before.version, "and it is the same version, not a refetch");
+            assert.ok(
+                (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                "and it is still in her feed"
+            );
+            for (const [who, host] of [["Cleo", HOST_C], ["Dana", HOST_E]]) {
+                assert.equal(
+                    (await tombstonesOf(aliceRoot, host)).filter((r) => r.doc_id === post).length,
+                    0,
+                    `${who} did not entomb a post whose author merely went offline`
+                );
+            }
+        });
+
+        it("an edit reaches the fourth hop after the author goes dark", async () => {
+            const { post, draft, version } = await seed("dark-edit");
+
+            // Phase one: Alice can still sync her chain to Bob, but answers no fragment asks - so
+            // anything Cleo or Dana learn from here on came through the tree.
+            await unplug(HOST, { alpns: ["fragment"] });
+            await editAndRepublish(draft, version, "dark-edit, revised");
+
+            assert.ok(
+                await settle(async () => {
+                    const r = (await feedOf(cleoRoot, HOST_C)).find((x) => x.doc_id === post);
+                    return r && r.title.includes("revised") ? true : null;
+                }),
+                "the revision crossed A->B by chain sync and B->C by revalidation, not from Alice"
+            );
+
+            // Phase two: the author's node is gone entirely. The last hop is on its own.
+            await unplug(HOST);
+            const row = await settle(async () => {
+                const r = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
+                return r && r.title.includes("revised") ? r : null;
+            });
+            assert.ok(row, "the revision reached the fourth hop with the author's node dark");
+            assert.equal(row.author_root, aliceRoot, "still Alice's words");
+            assert.equal(row.via_root, cleoRoot, "still bylined via Cleo");
+            assert.equal(
+                (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post).title,
+                "dark-edit, revised",
+                "and Dana's stored copy is the new one, not just her feed row's title"
+            );
+        });
+
+        it("a takedown reaches the fourth hop after the author goes dark", async () => {
+            // The hardest direction, and the one an author most needs to work: a retraction has to
+            // outrun its own author's disappearance. Bob holds Alice's chain and so can say `Gone`
+            // on her behalf; Cleo, who holds no chain at all, can only pass on the TOMBSTONE - and
+            // that memo is the sole thing Dana can ever hear it from once Alice is unreachable.
+            const { post } = await seed("dark-delete");
+
+            await unplug(HOST, { alpns: ["fragment"] });
+            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
+            assert.equal(down.status, 200, await down.text());
+
+            assert.ok(
+                await settle(async () => {
+                    const gone = !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post);
+                    const entombed = (await tombstonesOf(aliceRoot, HOST_C)).some(
+                        (r) => r.doc_id === post
+                    );
+                    return gone && entombed ? true : null;
+                }),
+                "Cleo heard `Gone` from Bob, who holds the author's chain - and kept the fact"
+            );
+
+            await unplug(HOST);
+            assert.ok(
+                await settle(async () => {
+                    return (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post)
+                        ? null
+                        : true;
+                }),
+                "the takedown reached the fourth hop with the author's node dark"
+            );
+            assert.equal(
+                (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                0,
+                "Dana dropped the words"
+            );
+            assert.equal(
+                (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                1,
+                "and kept the fact, so a fifth hop could still be told"
+            );
+        });
     });
 });

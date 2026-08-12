@@ -36,13 +36,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Make a whole bucket public in one fell swoop.
 * **Rebroadcast — shipped end to end 2026-08-11** (PROJECT_PLAN, *Rebroadcast: Pointer Plus
   Pinned Replica* and its two network subsections; HISTORY has the arc and the fragment slice).
-  Pointer, pin, both notice halves, public tombstone, media budget, feed with `via_root`, and
-  the fragment ledger. What is left:
-  * **The node-death test** - make the author's and the sharer's nodes unreachable, assert a
-    reader still serves the share from its own fragment. The harness exists:
-    `withUnplugged([HOST, HOST_B], ...)` from `integration/test/unplug.cjs` partitions rig nodes
-    without stopping them (node/README, *Simulating a partition*). Unplug both directions so C
-    cannot be reached either, and assert the feed row and the body both survive the window.
+  Pointer, pin, both notice halves, public tombstone, media budget, feed with `via_root`, the
+  fragment ledger, and the cascade proven with the author's node actually dark
+  (`cascade.cjs`, *with the author's node dark*). What is left:
   * **The edit window** and **delete memo + bloom summaries** - the two trim slices that bound
     what a node must remember forever. Designed, unbuilt.
   * **UI**: nothing renders `via`/`via_name`, and there is no share button.

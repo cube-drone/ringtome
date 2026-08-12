@@ -5201,3 +5201,57 @@ materially lowers) and *Always-on nodes are needed either way* (against DESKTOP'
 Both are Curtis's call.
 
 Gates: markdown only; nothing outside `*.md` moved.
+
+## 2026-08-11 — the author leaves the building
+
+`cascade.cjs` already walked an edit and a delete to the fourth hop through both revalidation
+lanes. But both lanes were **policy**: `tree` asks the tree because it was told to, `fast` asks the
+author because she was there. Neither could prove the thing the share tree exists for - that a
+reader who asks the author first, and gets nothing, still ends up with the right answer. The
+fallback's code ran in every suite; the fallback's *trigger* had never once fired.
+
+`/test/unplug` made the real case reachable, so the same three claims now run again with the fast
+lane on and Alice's node dark:
+
+- **A share is served onward while the author is dark.** The chain stops at Cleo, Alice goes
+  offline, and only then does Cleo share to Dana. The copy Dana ends up with did not exist when
+  Alice went away, so this is not inertia: the tree served a new reader a document whose author
+  was unreachable throughout.
+- **An unreachable author is not a deleted one.** Twelve seconds of sweeps - a dozen chances per
+  hop to get it wrong - and the fragment, its version, and the feed row all stand, with no
+  tombstone anywhere. If a failed revalidation were ever read as a takedown, closing your laptop
+  would erase your work from everyone who shared it. *Silence preserves, speech deletes*, pinned.
+- **An edit and a takedown each reach the fourth hop after their author goes dark.**
+
+### The two-phase darkness, and why it is not theatre
+
+The obvious way to write these is: publish the edit, unplug Alice, assert. That test passes with
+the share tree carrying nothing at all - the sweeps run every ~1.5s here, so Cleo and Dana would
+simply have learned it from Alice during the window before she went dark.
+
+Alice's chain reaches Bob over the **sync** ALPN; readers ask her for documents over the
+**fragment** ALPN. So her fragment door is shut *before* the act, which makes every subsequent
+arrival provably second-hand, and her node goes fully dark before the deepest hop runs. That the
+gate is per-protocol is what makes this expressible; it was the reason not to build a gate that
+only understood the word "sync", and this is the payoff arriving one day later.
+
+### Proven by planting the failure
+
+Two false passes were possible here, and both were checked by making them happen rather than by
+reasoning about them:
+
+- Shutting **Bob's** fragment door as well made *an edit reaches the fourth hop* fail on exactly
+  the assertion that says the revision came from Bob. So that test measures the B→C hop, not
+  Alice answering quickly.
+- Shutting **Cleo's** made *a takedown reaches the fourth hop* fail. Dana's only route to `Gone`
+  really is Cleo's tombstone - the memo held by a node that never had Alice's chain and no longer
+  has her words either.
+
+Both were then removed and the suite re-run green. A test that has never failed is a claim nobody
+has checked, and these are claims about data loss.
+
+### Residual
+
+`seed` was split into `seedToCleo` + `shareOnwardToDana` so a scenario can change the world between
+the third hop and the fourth; `seed` is now their composition and the eight existing scenarios are
+untouched by it.
