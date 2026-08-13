@@ -1155,9 +1155,17 @@ pub async fn retract_public(
 
 /// Fold one `post-retract` tombstone: the document is withdrawn.
 ///
-/// LWW on the standard stamp, so a retraction that arrives after a later re-publication does
-/// not win by arriving late - `retracted_after` below is what compares them, and it compares
-/// the *entries*, never the arrival order.
+/// The LWW stamp below settles retractions against OTHER RETRACTIONS - re-retracting is
+/// idempotent (see the route), and two of this author's computers doing it at once must land on
+/// one row rather than flapping. It does not weigh a retraction against a publication, and there
+/// is no rule here that could: **withdrawal is final for the document id**, which
+/// `retracted_doc_ids` states and the whole share tree relies on.
+///
+/// Said plainly because the comment this replaces claimed the opposite - that a retraction
+/// "does not win by arriving late" against "a later re-publication", and cited a `retracted_after`
+/// that has never existed in this tree. Prose describing a function nobody wrote outranked the
+/// code for as long as anyone was reading instead of grepping (2026-08-13, after it was quoted
+/// back as canon in an argument for a protocol change the model did not need).
 async fn fold_retraction(
     db: &Db,
     signed: &SignedEntry,

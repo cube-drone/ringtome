@@ -83,10 +83,12 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 
 /// What we can honestly say about one document of somebody else's.
 ///
-/// Two shelves, in order. First our own copy of the author's chain - the case where we sync them
-/// because one of our people follows them, or because one of our people SHARED them and the pin
-/// keeps them current. Then our own fragment ledger, so a fragment can be relayed one more hop
-/// by a node that never held the author either.
+/// Three shelves, in order. First our own copy of the author's chain - the case where we sync
+/// them because one of our people follows them, or because one of our people SHARED them and the
+/// pin keeps them current; it is the most current thing we have, and it reports a retraction
+/// itself. Then the tombstone, because a document we know to be dead is dead no matter what we
+/// still have lying around. Only then our own fragment ledger, so a live fragment can be relayed
+/// one more hop by a node that never held the author either.
 async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {
     let author_hex = hex::encode(author);
     let answer = answer_inner(state, &author_hex, doc_id).await;
@@ -115,19 +117,36 @@ async fn answer_inner(
             return FragmentMessage::Unknown;
         }
     }
+    // The memo, and it outranks our own copy of the words (reordered 2026-08-13). **A tombstone
+    // is final for its document id** - `documents::retracted_doc_ids` states the model, and the
+    // recourse for a typo is delete-and-repost under a NEW id - so a fragment sitting beside a
+    // tombstone is not a choice between two sources, it is a contradiction, and the tombstone is
+    // the half that cannot have arrived from someone who had not heard.
+    //
+    // This used to be checked last, on the argument that a re-published document "(new id, but
+    // the same author deleting and reposting)" must not be shadowed by an old tombstone. That
+    // argument refutes itself: a new id has a different tombstone key and could never have been
+    // shadowed. What the order actually bought was a node that had heard a takedown, and kept
+    // serving the post to everyone one hop further out (`cascade.cjs`, *a document that was
+    // buried stays buried*).
+    match crate::fragments::entombed(&state.node_db, author_hex, doc_id).await {
+        Ok(true) => return FragmentMessage::Gone,
+        Ok(false) => {}
+        Err(e) => {
+            // Never relay on a failed tombstone read: `Unknown` sends the asker elsewhere, which
+            // is recoverable, while `Have` would hand out words we cannot currently vouch for.
+            tracing::debug!(author = %author_hex, error = ?e, "tombstone lookup failed");
+            return FragmentMessage::Unknown;
+        }
+    }
+    // Our own fragment ledger, so a fragment can be relayed one more hop by a node that never
+    // held the author either.
     if let Ok(Some((entry, auth_path))) =
         crate::fragments::relayable(&state.node_db, author_hex, doc_id).await
     {
         return FragmentMessage::Have { entry, auth_path };
     }
-    // Last, and the reason deletion reaches past two hops: we may have dropped this document
-    // without ever holding its author's chain, and the memo is all that is left. Checked AFTER
-    // the two "we have it" paths, so a re-published document (new id, but the same author
-    // deleting and reposting) is never shadowed by an old tombstone.
-    match crate::fragments::entombed(&state.node_db, author_hex, doc_id).await {
-        Ok(true) => FragmentMessage::Gone,
-        _ => FragmentMessage::Unknown,
-    }
+    FragmentMessage::Unknown
 }
 
 /// The answer from our own copy of the author's chain, if we hold one.

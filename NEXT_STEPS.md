@@ -52,7 +52,17 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     five: the fallback is a query away. Virality should make a document harder to lose.
   * **A stale sharer can roll a fragment back.** `remember` overwrites version/entry/body_hash
     with whatever the last origin served and never checks it is NEWER ("the version is allowed
-    to move"), so six sharers pinned at different times can un-apply an edit between them.
+    to move"), so six sharers pinned at different times can un-apply an edit between them. The
+    *deleted* case of this is closed (2026-08-13: a tombstone now refuses the write, and
+    `cascade.cjs` proves it); an EDIT still has no comparison to make, because a fragment's
+    version is an entry hash and nothing beside it says which of two hashes came later.
+  * **`published_as` outlives a retraction**, so the model may not be enforced where it is
+    stated. `retracted_doc_ids` says re-publishing after a delete mints a NEW document id and
+    that "retracted, then published again under the same id" is not a state the system
+    produces - but `unpublish_handler` writes only the tombstone, and `Store::publish` reuses
+    the post id whenever that annotation is set. Publishing the same draft again would then
+    mint a version under the buried id, answer 200, and be filtered off the shelf forever.
+    Found by reading, not by testing; wants a test before it wants a fix.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket

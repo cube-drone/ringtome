@@ -26,6 +26,12 @@
     Alice's node actually unreachable (`/test/unplug`). Both lanes above are policy: `tree` asks
     the tree because it was told to. Only that block proves the fast lane FALLS BACK, which is the
     case the share tree exists for and the one production will meet.
+
+    A FOURTH block turns the cascade around. Every block above walks a delete FORWARD through a
+    network where everyone hears in order, which is not a property any real network has. The last
+    one partitions a sharer so she never hears at all, and then has her offer the dead post back to
+    a reader who has already buried it - the direction in which "speech deletes" is a claim about
+    MEMORY rather than about propagation.
 */
 const assert = require("node:assert");
 const dns = require("node:dns");
@@ -510,6 +516,94 @@ async function setLane(mode) {
                 (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
                 1,
                 "and kept the fact, so a fifth hop could still be told"
+            );
+        });
+    });
+
+    /*
+        The delete travelling forward is only half of "speech deletes". The other half is that it
+        has to STAY deleted at a node that already heard it - and every test above walks the
+        cascade in one direction, through a network where everyone hears in order.
+
+        Real networks do not do that. A sharer who was asleep, or slow, or partitioned during the
+        takedown wakes up still holding the words and still pointing at them, and offers them to a
+        reader who has already buried the thing. The reader's tombstone is the only thing in the
+        system that knows better.
+    */
+    describe("a document that was buried stays buried", function () {
+        before(() => setLane("fast"));
+        after(() => setLane("default"));
+
+        // Two nodes get partitioned here, so both come back. Belt; roothooks is the braces.
+        afterEach(async () => {
+            await plugIn(HOST);
+            await plugIn(HOST_C);
+        });
+
+        it("a stale sharer cannot resurrect a document its reader has entombed", async () => {
+            const { post } = await seed("revenant");
+
+            // The stale sharer, modelled precisely: Cleo's OUTBOUND fragment door shuts, so no
+            // revalidation can ever tell her the post died - "silence preserves" keeps her copy
+            // exactly as it should. Her inbound door stays open, so she will still hand it to
+            // anyone who asks. That asymmetry is the whole population this test is about, and it
+            // is why the gate takes a direction.
+            await unplug(HOST_C, { alpns: ["fragment"], direction: "outbound" });
+
+            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
+            assert.equal(down.status, 200, await down.text());
+
+            assert.ok(
+                await settle(async () => {
+                    const gone = !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post);
+                    const entombed = (await tombstonesOf(aliceRoot, HOST_E)).some(
+                        (r) => r.doc_id === post
+                    );
+                    return gone && entombed ? true : null;
+                }),
+                "Dana heard the takedown and buried it"
+            );
+
+            // The precondition that makes the rest mean anything: Cleo genuinely never heard.
+            assert.ok(
+                (await fragmentsOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
+                "precondition: the stale sharer still holds the words she was never told about"
+            );
+
+            // And now the author cannot speak either. Without this, Dana's next sweep would ask
+            // Alice, hear `Gone` a second time and quietly re-bury it - so the test would pass on
+            // the author's availability rather than on Dana's memory, which is the opposite of
+            // what it claims. From here, Dana's tombstone is the only thing standing.
+            await unplug(HOST, { alpns: ["fragment"] });
+
+            const again = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
+                method: "POST",
+                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+            });
+            assert.equal(again.status, 200, await again.text());
+
+            // Several sweeps' worth: the fold, the fetch and the journal each get many chances.
+            await new Promise((r) => setTimeout(r, 8000));
+
+            // All three facts in one assertion, on purpose: they fail in different combinations
+            // and the combination is the diagnosis. A fragment back WITHOUT the feed row means
+            // Dana is silently serving a corpse to a fifth hop; the feed row back as well means
+            // a deleted post is on a reader's screen. Asserting them one at a time would report
+            // whichever came first and hide the rest.
+            assert.deepEqual(
+                {
+                    knows_it_is_dead:
+                        (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post)
+                            .length === 1,
+                    took_the_words_back:
+                        (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post)
+                            .length > 0,
+                    back_in_her_feed: (await feedOf(danaRoot, HOST_E)).some(
+                        (r) => r.doc_id === post
+                    ),
+                },
+                { knows_it_is_dead: true, took_the_words_back: false, back_in_her_feed: false },
+                "a tombstone must outrank a sharer who never heard about the deletion"
             );
         });
     });

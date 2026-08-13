@@ -38,6 +38,12 @@ pub struct Fragment {
 /// and the origin will hand over the newer one. What may never move without a re-verification is
 /// the entry itself, which is why the caller passes bytes that `verify_fragment` has already
 /// approved rather than anything this function trusts on its own.
+///
+/// **A buried document is never taken back.** Verification proves the author wrote these words;
+/// it says nothing about *when the sharer last heard*, and a peer who was asleep through a
+/// takedown holds a perfectly signed copy of a post that no longer exists. This is the guard for
+/// that, and it lives here because this is the single door all three intake paths land on - the
+/// first fetch, the revalidation sweep, and the want-drain.
 pub async fn remember(
     node_db: &Db,
     origin_root: &str,
@@ -46,6 +52,16 @@ pub async fn remember(
     entry: &[u8],
     auth_path: &[Vec<u8>],
 ) -> Result<()> {
+    // Final for the document id, exactly as the author's own shelf treats it
+    // (`documents::retracted_doc_ids`): re-publishing after a delete mints a NEW id, so there is
+    // no legitimate arrival a tombstone could wrongly refuse.
+    if entombed(node_db, author_root, &verified.doc_id).await? {
+        tracing::debug!(
+            author = %author_root, doc = %hex::encode(verified.doc_id), origin = %origin_root,
+            "refused a fragment for a document we know to be gone"
+        );
+        return Ok(());
+    }
     let now = now_ms();
     node_db
         .execute(
@@ -253,6 +269,13 @@ pub async fn journalable(
     let doc_hex = hex::encode(doc_id);
     if let Ok(Some(f)) = held(&state.node_db, author_root, &doc_hex).await {
         return Some(row_of(&f, &doc_hex));
+    }
+    // Buried already? Then there is nothing to journal and nobody worth dialling. `remember` is
+    // what makes this safe rather than merely tidy - but a stale sharer's pointer is re-folded
+    // on every frontier move they make, so without this the node would dial out for the same
+    // dead document forever, and throw the answer away every time.
+    if entombed(&state.node_db, author_root, doc_id).await.unwrap_or(false) {
+        return None;
     }
 
     let author = crate::pubkey::decode(author_root)?;
@@ -612,5 +635,64 @@ mod tests {
         let packed = pack_path(&[vec![1u8; 10], vec![2u8; 10]]);
         assert_eq!(unpack_path(&packed[..packed.len() - 4]).len(), 1);
         assert!(unpack_path(&[0, 0, 0]).is_empty());
+    }
+
+    fn verified(doc: [u8; 16]) -> ringtome_proto::fragment::VerifiedFragment {
+        ringtome_proto::fragment::VerifiedFragment {
+            doc_id: doc,
+            version: [7u8; 32],
+            header: ringtome_proto::registry::DocHeaderPlain {
+                doc_id: doc,
+                parents: Vec::new(),
+                file_hash: [1u8; 32],
+                body_hash: [2u8; 32],
+                title: "the words".to_string(),
+                format: None,
+                width: None,
+                height: None,
+                duration_ms: None,
+                thumb_hash: None,
+                preview_hash: None,
+            },
+        }
+    }
+
+    /// **A verified fragment is not the same claim as a current one.** Verification proves the
+    /// author signed these words; it is silent on whether the sharer has heard that they were
+    /// taken down since. A peer that slept through a takedown holds a flawlessly signed copy of
+    /// a dead post, and before 2026-08-13 handing it over was enough to bring it back - words,
+    /// feed row and all - at any depth the share tree reached.
+    #[tokio::test]
+    async fn a_buried_document_is_not_taken_back() {
+        let db = crate::db::test_node_db().await;
+        let author = "a".repeat(64);
+        let doc = [3u8; 16];
+        let doc_hex = hex::encode(doc);
+
+        remember(&db, &"b".repeat(64), &author, &verified(doc), &[1, 2, 3], &[])
+            .await
+            .unwrap();
+        assert!(
+            held(&db, &author, &doc_hex).await.unwrap().is_some(),
+            "precondition: it arrived the ordinary way first"
+        );
+
+        // The author takes it down: drop the words, keep the fact.
+        entomb(&db, &author, &doc_hex).await.unwrap();
+        forget(&db, &author, &doc_hex).await.unwrap();
+
+        // And now somebody who never heard offers it back, from a different origin.
+        remember(&db, &"c".repeat(64), &author, &verified(doc), &[1, 2, 3], &[])
+            .await
+            .unwrap();
+
+        assert!(
+            held(&db, &author, &doc_hex).await.unwrap().is_none(),
+            "a tombstone outranks a stale sharer, however well signed their copy is"
+        );
+        assert!(
+            entombed(&db, &author, &doc).await.unwrap(),
+            "and the fact survives the attempt"
+        );
     }
 }

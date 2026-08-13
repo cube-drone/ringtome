@@ -5393,3 +5393,79 @@ given to "resolve it for me" when `retract` was added. Two stale sentences in on
 argument for reading the whole of a comment when correcting any of it.
 
 Gates: `just ci`, exit 0, 635 passing.
+
+## 2026-08-13 — the revenant: a delete that did not stay dead
+
+Every cascade test walked a deletion FORWARD, through a network where everyone hears in order.
+No real network has that property, and the direction nobody had asked about turned out to be
+broken: a sharer who slept through a takedown, offering the post back to a reader who had
+already buried it, got it accepted. `cascade.cjs` now has *a document that was buried stays
+buried*, and it failed on the first run exactly as predicted.
+
+The reader ended up holding **a tombstone and a fragment at once** - privately knowing the
+document was dead while serving it to anyone one hop further out, because `answer_for` consulted
+its own copy of the words before its own memo.
+
+### The stale sharer had to be built, not waited for
+
+The shape needs a peer who never hears and still answers, which is not a state a test can reach
+by timing. `/test/unplug`'s **direction** parameter is exactly it: Cleo's OUTBOUND fragment door
+shuts, so no revalidation can ever tell her the post died and "silence preserves" keeps her copy
+in good faith; her inbound door stays open, so she hands it to anyone who asks. The gate was
+built with `direction` on the argument that inbound-only would be "a real thing to test and a
+terrible default" - this is the first test to need it, two days later.
+
+Alice's fragment door then shuts too, because otherwise Dana's next sweep would hear `Gone` from
+the author a second time and quietly re-bury it - and the test would be passing on the author's
+availability while claiming to test the reader's memory.
+
+### Two guards, and the argument for the old order refuted itself
+
+`fragments::remember` now refuses a fragment for an entombed document, and `answer_for` checks
+the tombstone BEFORE the relayable copy. The old ordering was justified in a comment: last, "so
+a re-published document (new id, but the same author deleting and reposting) is never shadowed
+by an old tombstone" - which refutes itself, because a new id has a different tombstone key and
+could never have been shadowed. What the order actually bought was the resurrection.
+
+The guard lives in `remember` rather than at the three call sites because that is the single
+door all intake lands on - first fetch, sweep, want-drain. `journalable` additionally declines
+to dial at all for a buried document: correctness comes from the guard, but a stale sharer's
+pointer is re-folded on every frontier move they make, so without it the node would fetch the
+same dead document forever and discard it every time.
+
+### The wrong turn, and what caused it
+
+I first proposed a protocol change - `Gone` carrying the author's signed retraction so tombstones
+could be dated - on the grounds that a permanent tombstone would black-hole a legitimate
+re-publication. Curtis pushed back: deletion is final, and re-publishing means a new document.
+
+He was right, and the codebase says so plainly in `retracted_doc_ids`: **"A tombstone is final
+for its document id... re-publishing after a delete mints a NEW document id, so 'retracted, then
+published again under the same id' is not a state the system produces."** What I had read instead
+was `fold_retraction`'s comment, which describes a retraction losing to "a later re-publication"
+and names `retracted_after` as the thing that compares them - **a function that has never existed
+in this tree.** One grep, one hit, and the hit is the comment itself.
+
+So a description of code nobody wrote outranked the code, and turned a one-line guard into an
+argued case for a schema bump and a protocol change. The comment is rewritten to say what the
+LWW stamp there actually settles (retractions against other retractions, so two of the author's
+computers re-retracting land on one row), and to say what it does not. **A comment naming a
+function is a checkable claim; this is the cheapest possible check and nobody had run it.**
+
+### Proven by planting the failure
+
+The unit test (`a_buried_document_is_not_taken_back`) had the guard cut out from under it and
+went red on the exact assertion, then had it restored. The integration test failed before the
+fix on the same claim. Neither is a test that has never failed.
+
+### Residual
+
+`Gone` still carries no proof - `Have` is self-proving and its opposite is a bare tag taken on a
+relay's word. Not needed for finality, so not built, and not written into NEXT_STEPS as a task
+either: it is a property of the protocol worth knowing, not a job.
+
+Also found by reading and now in NEXT_STEPS: `published_as` survives a retraction, so
+`Store::publish` would reuse a buried post id rather than minting the new one the model
+requires - the same finality rule, possibly unenforced on the author's own side.
+
+Gates: `just ci`, exit 0, 636 passing.
