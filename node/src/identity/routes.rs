@@ -1080,12 +1080,15 @@ struct RebroadcastItem {
 }
 
 /// POST `/api/identity/{root}/rebroadcasts` - share one of someone else's documents, or
-/// withdraw a share by omitting `version`.
+/// withdraw a share with `retract`.
 ///
-/// The pointer is all this writes. Pinning the author's replica so this node can actually SERVE
-/// what it points at is the other half of the feature and is not here yet - so today a share is
-/// a durable, syncing statement that readers cannot yet resolve to content unless they hold the
-/// author's chain themselves.
+/// The pointer is all this handler writes, and that has stopped meaning what it used to. The
+/// **pin** - the obligation to keep a fresh copy of what the pointer points at - is not written
+/// here but folded out of the chain by `rebroadcast::refresh_from` (hosted-only, on the frontier
+/// move this append causes), and the copy is already in hand: resolving `version` below reads
+/// `fragments`, so the ordinary path can only share a document this node already holds and can
+/// already serve on the fragment ALPN. A reader no longer needs the author's chain to resolve a
+/// share, which is the whole of *Pointer Plus Pinned Replica* and the reason a fourth hop exists.
 async fn rebroadcast_handler(
     session: Session,
     State(state): State<AppState>,

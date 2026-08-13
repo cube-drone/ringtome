@@ -5333,3 +5333,63 @@ knows the other five, and `remember` overwriting a fragment with an older versio
 checks that an arriving version is newer.
 
 **This needs `just clean` on any dev network before it will boot** - node schema generation 17 to 18.
+
+## 2026-08-13 — the fake network learns to pass things along
+
+`just test-data` drew from a hat of thirteen actions and none of them was a share, so every
+rebroadcast surface - the via-line, the crowd, the withdrawal - was invisible in dev data and
+could only be seen by making it by hand. Two entries now close that: `rebroadcast-something`
+and `withdraw-a-share`.
+
+**The share is drawn from the persona's own feed, never from the roster.** That is the only
+honest source, because you can pass along what has reached you, and what has reached you is
+the product of follows, sync and time. Picking a random stranger's `doc_id` would have
+exercised a path no button in the UI can reach - and would have failed on the handler's
+`current_version` check anyway, which is the node refusing to endorse bytes it never read.
+The version is omitted for the same reason the UI omits it: the honest answer to "what did
+the sharer see" is what this node holds.
+
+### Two findings, and the second one is the interesting one
+
+**The dial nobody set.** `follow-someone` wrote `interest` and stopped, so a persona could
+share correctly and reach *nobody* - `interest_rebroadcasts` is a separate rung, and
+`subscriptions::edge_of` reads it separately. The action would have written valid pointers
+that no other node ever journaled, and the feature would have looked broken in the data while
+being perfectly correct in the code. The follow now draws the second dial independently
+(~60%), because not every follow wants what you pass along, and `unfollow-someone` clears
+both - an unfollow that left the rebroadcast rung standing would seed a relationship no UI
+gesture makes.
+
+**Uniform draws never make a crowd.** The first run: 240 actions, 11 live shares, 12 feed rows
+arrived by rebroadcast, and **zero** with `via_count > 1`. A crowd needs two people a reader
+follows to land on the same document, which random picking from twenty-row feeds essentially
+never does - so the whole "Sam and four others" shape, built two days ago, would have had no
+representation in dev data at all. Half the draws now prefer an item that arrived *by* a
+share. That is not a thumb on the scale for the test case: re-sharing what was passed to you
+is what virality IS, and the previous behaviour was the unrealistic one, a network where every
+post is passed along at most once.
+
+Verified on a scratch pair rather than argued: 10 personas x 30 actions, 0 failed, and a probe
+across all twenty personas found 21 live shares, 24 rows arrived by rebroadcast, and 4 rows
+carrying a crowd.
+
+### And the comment the work walked past
+
+`rebroadcast_handler`'s doc comment still described the feature's first day: "pinning the
+author's replica so this node can actually SERVE what it points at ... is not here yet - so
+today a share is a durable, syncing statement that readers cannot yet resolve to content unless
+they hold the author's chain themselves." Every clause of that was false by 2026-08-11. Left
+standing it was worse than no comment, because it tells a reader the share tree does not work -
+the exact thing four hops of integration tests exist to say it does.
+
+Rewritten to what runs: the pin is folded out of the chain by `rebroadcast::refresh_from` on the
+frontier move the append causes, not written by the handler; and the copy is already in hand,
+because resolving `version` reads `fragments`, so the ordinary path can only share what this
+node already holds and can already serve.
+
+Its **first line was wrong too**, and more cheaply: "withdraw a share by omitting `version`" -
+which is precisely what the request struct four lines above says it is not, absence having been
+given to "resolve it for me" when `retract` was added. Two stale sentences in one comment is the
+argument for reading the whole of a comment when correcting any of it.
+
+Gates: `just ci`, exit 0, 635 passing.

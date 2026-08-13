@@ -386,8 +386,9 @@ integration-install:
 
 # Populate the currently-running nodes with a vibrant fake network: N personas per booted
 # node (default 15), each performing N actions (default 15) drawn from a weighted hat -
-# public posts, follows and trust across nodes, private notebooks, spreading onto other
-# nodes. Same seed, same network; credentials land in harness/testdata-state.json. Extend it
+# public posts, follows and trust across nodes, rebroadcasts of each other's posts, private
+# notebooks, spreading onto other nodes. Same seed, same network; credentials land in
+# harness/testdata-state.json. Extend it
 # by adding an entry to ACTIONS in harness/testdata.mjs.
 #
 # Seed a fake network onto the running nodes (see harness/testdata.mjs; extensible).

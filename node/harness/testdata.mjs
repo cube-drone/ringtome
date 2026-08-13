@@ -5,8 +5,9 @@
 // Finds every booted node (the dev ports), registers PERSONAS fresh accounts on each - one
 // persona per account, named, credentialed - then has every persona perform ACTIONS actions
 // drawn from a weighted hat: posting in public, following and trusting strangers across
-// nodes, keeping private notebooks, spreading onto other nodes. The point is a network worth
-// testing against after a schema wipe, without rebuilding it by hand.
+// nodes, passing each other's posts along, keeping private notebooks, spreading onto other
+// nodes. The point is a network worth testing against after a schema wipe, without rebuilding
+// it by hand.
 //
 // EXTENDING IT is the design center, because "populating a vibrant fake network" is a
 // permanent testing need, not this script's one-off shape. An action is one entry in ACTIONS:
@@ -74,6 +75,16 @@ const ACTIONS = [
             await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/interest`, {
                 value: level,
             });
+            // The second dial, drawn independently (person.js offers both): whether what they
+            // PASS ALONG arrives too. Not every follow wants it, which is why it is its own
+            // rung rather than a consequence of the first - but most of them here do, because
+            // a network where nobody accepts rebroadcasts is one where `rebroadcast-something`
+            // writes pointers that reach no feed and the feature looks broken in the data.
+            if (rng() < 0.6) {
+                await api(p, 'PUT',
+                    `/api/identity/${p.root}/private/kv/contact:${them.root}/interest_rebroadcasts`,
+                    { value: ctx.pick(rng, ['low', 'medium', 'high', 'max']) });
+            }
         },
     },
     {
@@ -82,9 +93,13 @@ const ACTIONS = [
         run: async (ctx, p, rng) => {
             const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root));
             if (!them) return;
-            await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/interest`, {
-                value: '',
-            });
+            // Both dials: an action named "unfollow" that leaves the rebroadcast rung standing
+            // would seed a relationship no UI gesture makes, and the reader would go on
+            // receiving this person's shares from a contact card that says they follow nobody.
+            for (const key of ['interest', 'interest_rebroadcasts']) {
+                await api(p, 'PUT',
+                    `/api/identity/${p.root}/private/kv/contact:${them.root}/${key}`, { value: '' });
+            }
         },
     },
     {
@@ -226,6 +241,57 @@ const ACTIONS = [
         run: async (ctx, p) => {
             // Serve: consent to the anonymous shelf and the directory. Idempotent.
             await api(p, 'POST', `/api/identity/${p.root}/serve`);
+        },
+    },
+    {
+        // Pass someone else's post along. Drawn from the persona's OWN FEED rather than from
+        // the roster, because that is the only honest source: you can share what has reached
+        // you, and what has reached you is the product of follows, sync and time. A generator
+        // that shared by picking a random stranger's doc_id would exercise a path no button
+        // in the UI can reach.
+        //
+        // The version is deliberately omitted, which asks the node to endorse what it
+        // currently holds - the handler's argument for that being the honest answer to "what
+        // did the sharer see". Early rounds mostly find an empty feed and return silently;
+        // the action gets interesting once posting and syncing have had a few rounds to run.
+        name: 'rebroadcast-something',
+        weight: 10,
+        run: async (ctx, p, rng) => {
+            const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
+            const theirs = (feed.items || []).filter((i) =>
+                i.author !== p.root && !p.shares.some((s) => s.author === i.author && s.doc_id === i.doc_id));
+            // Half the time, prefer something that reached this persona BY a share. Uniform
+            // draws make a network where every post is passed along at most once, so the
+            // crowd behind a row - `via_count`, `via_others`, the whole "Sam and four others"
+            // shape - is a coincidence that 240 actions never once produced. Re-sharing what
+            // was passed to you is also just what virality IS, so the bias models the thing
+            // rather than merely manufacturing the test case.
+            const passed = theirs.filter((i) => i.via);
+            const item = ctx.pick(rng, passed.length && rng() < 0.5 ? passed : theirs);
+            if (!item) return;
+            await api(p, 'POST', `/api/identity/${p.root}/rebroadcasts`, {
+                author: item.author,
+                doc_id: item.doc_id,
+            });
+            p.shares.push({ author: item.author, doc_id: item.doc_id });
+        },
+    },
+    {
+        // Standing behind a post is a claim in the present tense, so somebody has to stop
+        // making it. Rare on purpose - withdrawal is the unusual act - but not absent, because
+        // it is the only thing that seeds a feed row whose lead sharer has to be recomputed
+        // (and, when it was the only sharer, the orphaned row NEXT_STEPS is still chewing on).
+        name: 'withdraw-a-share',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            const held = ctx.pick(rng, p.shares);
+            if (!held) return;
+            await api(p, 'POST', `/api/identity/${p.root}/rebroadcasts`, {
+                author: held.author,
+                doc_id: held.doc_id,
+                retract: true,
+            });
+            p.shares = p.shares.filter((s) => s !== held);
         },
     },
     {
@@ -439,9 +505,16 @@ for (const base of nodes) {
             base, bases: [base], root: made.root_pubkey, username: who.username,
             fetch: s.fetch, buckets: [], name: who.display,
             // What this persona has made, so the actions below have something to revisit:
-            // private notes as { doc_id, head } (head is the parent an edit asserts), and
-            // the taxonomies they have started. A life needs a history to act on.
-            notes: [], taxonomies: [],
+            // private notes as { doc_id, head } (head is the parent an edit asserts), the
+            // taxonomies they have started, and what they currently pass along. A life needs
+            // a history to act on.
+            //
+            // `shares` is this process's memory, not the chain's: it exists so a persona can
+            // withdraw something later and so re-sharing what they already share does not eat
+            // draws. The authoritative list is `GET /rebroadcasts`, and it is not consulted -
+            // a generator that re-read it every round would spend its time asking rather than
+            // seeding, and nothing else here writes shares for these personas.
+            notes: [], taxonomies: [], shares: [],
         };
         await api(p, 'POST', `/api/identity/${p.root}/profile`, { field: 'name', value: p.name });
         personas.push(p);
