@@ -323,3 +323,93 @@ describe("publication", () => {
         assert.match(await resp.text(), /diverged/, "and it says why");
     });
 });
+
+/*
+    The other direction: taking a post down, and what that leaves the author holding.
+
+    A tombstone is final for the POST's id - the recourse for a typo is delete-and-repost under
+    a new one (PROJECT_PLAN, *Retraction, edits, and what a node must remember forever*). Which
+    is only a recourse if the machinery agrees: `publish` reuses whatever id `published_as`
+    names, so an unpublish that left the annotation standing made the canonical recovery path
+    mint versions into the buried id - a 200 nobody would ever see. Found by reading on
+    2026-08-13; became urgent the day the take-it-down button became reachable.
+*/
+describe("taking it down, and saying it again", () => {
+    let note, post;
+
+    before(async () => {
+        const made = await (
+            await owner(`api/identity/${root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "Regrets",
+                    body: "posted in haste",
+                    format: "marquee",
+                }),
+            })
+        ).json();
+        note = made.doc_id;
+        const pub = await owner(`api/identity/${root}/docs/${note}/publish`, { method: "POST" });
+        const text = await pub.text();
+        assert.equal(pub.status, 200, text);
+        post = JSON.parse(text).post_id;
+    });
+
+    it("takes the post off the public face - the listing AND the direct URL", async () => {
+        // The direct URL is the half a listing filter cannot cover: anyone who ever loaded
+        // the post holds its address, and "off the shelf" that kept answering at the door
+        // would be a takedown in name only. Both held the words until 2026-08-14 - the
+        // takedown cleared every reader's feed on the network while the author's own node
+        // kept listing AND serving it, because `public_docs` and `public_head` never
+        // subtracted `public_retractions`. Found by this test's first run.
+        const before = await anon(`id/${root}/docs/${post}/body`);
+        assert.equal(before.status, 200, "precondition: the words were served to anyone");
+
+        const down = await owner(`api/identity/${root}/posts/${post}`, { method: "DELETE" });
+        assert.equal(down.status, 200, await down.text());
+
+        const prof = await (await anon(`api/id/${root}/profile`)).json();
+        assert.ok(
+            !prof.posts.some((p) => p.doc_id === post),
+            "the shelf no longer offers it"
+        );
+        const after = await anon(`id/${root}/docs/${post}/body`);
+        assert.equal(after.status, 404, "and the direct URL answers absence, not the words");
+    });
+
+    it("releases the note, so posting again mints a NEW post - not versions into the grave", async () => {
+        const doc = await (await owner(`api/identity/${root}/docs/${note}`)).json();
+        const r = await owner(`api/identity/${root}/docs/${note}`, {
+            method: "PUT",
+            body: JSON.stringify({
+                title: "Reconsidered",
+                body: "posted at leisure",
+                format: "marquee",
+                parents: doc.save_parents,
+            }),
+        });
+        assert.equal(r.status, 200, await r.text());
+
+        const again = await owner(`api/identity/${root}/docs/${note}/publish`, { method: "POST" });
+        const text = await again.text();
+        assert.equal(again.status, 200, text);
+        const reborn = JSON.parse(text).post_id;
+        assert.notEqual(
+            reborn,
+            post,
+            "a fresh id: the tombstone is final for the old one, and publish must not write into it"
+        );
+
+        const prof = await (await anon(`api/id/${root}/profile`)).json();
+        assert.ok(
+            prof.posts.some((p) => p.doc_id === reborn),
+            "the new post is on the shelf"
+        );
+        assert.ok(
+            !prof.posts.some((p) => p.doc_id === post),
+            "and the buried one stayed buried"
+        );
+        const body = await anon(`id/${root}/docs/${reborn}/body`);
+        assert.match(await body.text(), /leisure/, "with the reconsidered words");
+    });
+});

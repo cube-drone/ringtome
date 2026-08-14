@@ -676,13 +676,19 @@ pub async fn public_docs(
     }
     // NULL is plaintext (absent on the wire); the only other text format is marquee.
     let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
+    // Retracted documents leave THIS shelf too (2026-08-14). `public_doc_ids` had the filter
+    // from the day tombstones landed, and every feed reconciliation inherited it - but this
+    // query is what the anonymous /id surfaces actually page, so a takedown vanished from
+    // every reader's feed while remaining listed on the author's own public page. In SQL
+    // rather than post-filtered, per this file's own doctrine: keyset pages stay full.
+    let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (Vec<u8>, String, Option<i64>, i64, i64, Option<Vec<u8>>);
     let rows: Vec<Row> = match after {
         None => db
             .fetch_all(
                 &format!(
                     "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
-                     WHERE lane = 'public' AND {text_only}
+                     WHERE lane = 'public' AND {text_only} AND {not_retracted}
                      ORDER BY genesis_ms DESC, doc_id LIMIT ?"
                 ),
                 (limit,),
@@ -692,7 +698,7 @@ pub async fn public_docs(
             .fetch_all(
                 &format!(
                     "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
-                     WHERE lane = 'public' AND {text_only}
+                     WHERE lane = 'public' AND {text_only} AND {not_retracted}
                        AND (genesis_ms < ? OR (genesis_ms = ? AND doc_id > ?))
                      ORDER BY genesis_ms DESC, doc_id LIMIT ?"
                 ),
@@ -806,10 +812,18 @@ pub async fn public_head(
     doc_id: &[u8; 16],
 ) -> Result<Option<PublicHead>, AppError> {
     catch_up_public_lane(db).await?;
+    // A retracted document has no public head, full stop (filter added 2026-08-14, when the
+    // take-it-down button became reachable and its first real use showed the gap): the head
+    // row survives in doc_heads because the chain is the chain, but every caller here is
+    // asking "what does this author currently say in public?" - the anonymous body route, the
+    // share resolver, publish's re-parent, the fragment door - and for all of them a buried
+    // post must answer as absence. Before this filter, a takedown cleared every feed on the
+    // network while the author's own node kept serving the words to anyone at the direct URL.
     let row: Option<PublicHeadRow> = db
         .fetch_optional(
             "SELECT entry_hash, format, file_hash, thumb_hash, title FROM doc_heads
-             WHERE doc_id = ?1 AND lane = 'public'",
+             WHERE doc_id = ?1 AND lane = 'public'
+               AND doc_id NOT IN (SELECT doc_id FROM public_retractions)",
             (doc_id.to_vec(),),
         )
         .await

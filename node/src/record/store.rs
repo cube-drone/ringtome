@@ -961,12 +961,17 @@ impl Documents<'_> {
                 return Ok(existing.expect("a head implies a post"));
             }
         }
-        let onto = existing.map(|post| {
-            (
-                post,
-                head.as_ref().map(|h| vec![h.head]).unwrap_or_default(),
-            )
-        });
+        // A claim on a post with no public head is stale: the post was retracted (or a
+        // repudiation's genesis cut took it), and `public_head` now answers absence for both.
+        // The tombstone is final for that id - parenting onto it would mint versions into a
+        // grave every shelf filters out, a 200 nobody would ever see - so the claim is
+        // released and this publish mints the fresh id finality requires. The unpublish route
+        // clears the annotation at the source; this is the belt, for claims that arrive stale
+        // by sync from a device that has not folded the clear yet.
+        let onto = match (existing, &head) {
+            (Some(post), Some(h)) => Some((post, vec![h.head])),
+            _ => None,
+        };
 
         let post = crate::record::documents::save_public_text(
             &self.store.db,
@@ -1139,6 +1144,31 @@ impl Annotations<'_> {
     /// root - a caller-built collection, when a handle for it is earned.
     fn collection(&self, doc_id: &[u8; 16]) -> String {
         annot_collection(&self.store.root, doc_id)
+    }
+
+    /// The private note claiming this public post - the reverse of the `published_as` write
+    /// `publish` makes. A walk over the doc-meta view rather than an index, because it runs
+    /// once per unpublish, a human gesture; minting a lookup table for it would be a second
+    /// source of truth nothing else needs.
+    pub async fn note_claiming(&self, post_id: &[u8; 16]) -> Result<Option<[u8; 16]>, AppError> {
+        let want = hex::encode(post_id);
+        let view = self.store.doc_meta_view().await?;
+        for collection in view.collections() {
+            let Some((root, doc_id)) = parse_annot_collection(collection) else {
+                continue;
+            };
+            if root != self.store.root {
+                continue;
+            }
+            if view
+                .registers_in(collection)
+                .iter()
+                .any(|r| r.key == PUBLISHED_AS && r.value == want)
+            {
+                return Ok(Some(doc_id));
+            }
+        }
+        Ok(None)
     }
 
     /// Read one annotation field, or None. Reads the DOC-META view, not the general-private

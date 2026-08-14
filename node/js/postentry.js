@@ -21,6 +21,7 @@ import { api, apiText } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
+import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
 import {
     FEED_STYLE,
@@ -239,50 +240,75 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 ///
 /// **Its own gesture, on the PUBLIC document** (2026-08-11). Deleting the note this was minted
 /// from is housekeeping in your own drawer and leaves the post standing; this is the act that
-/// changes what other people can see. Sitting behind the same unlock as editing, because both
-/// change something already said and both should take a breath.
+/// changes what other people can see.
+///
+/// On your own posts directly, NOT behind the editing unlock (moved 2026-08-14): the unlock
+/// jumps straight into the composer, so the only state that ever rendered this button was
+/// unlocked-but-closed - reachable exclusively by unlocking and then reloading the page.
+/// Curtis went looking for it and could not find it, which is the whole finding. The ask/
+/// confirm below is the gesture's own breath; a second gate labeled "open this for editing"
+/// guarded nothing and pointed the wrong way.
 ///
 /// Says what it costs before it does it: a retraction travels to followers' feeds and to anyone
 /// holding a shared copy, but it cannot reach a node that never comes back online, and it cannot
 /// unsee. Promising erasure would be a lie the protocol cannot keep.
-const UnpublishButton = ({ item, current }) => {
+const UnpublishButton = ({ item, current, editing }) => {
     const [asking, setAsking] = useState(false);
     const [going, setGoing] = useState(false);
 
-    if (!asking) {
-        return html`<button
+    // Icon-plus-hover like its neighbors (2026-08-14); the deliberation moved from an inline
+    // strip to the house modal, because a confirm that reflows the card it is deciding about
+    // reads as part of the card - the system stepping forward is exactly what the modal frame
+    // is for, and a takedown is the system being asked to do something irreversible.
+    return html`<button
             class="feed-unpublish"
             title=${t('postentry.take-this-post-back-off', 'take this post back off the network')}
             onClick=${() => setAsking(true)}
-        >${t('postentry.take-it-down', 'take it down')}</button>`;
-    }
-    return html`<span class="feed-unpublish-ask">
-        <span class="feed-unpublish-warn"
-            >${t(
-                'postentry.this-removes-it-from-other',
-                'removes it from other people\'s feeds and shares. Copies on computers that never come back cannot hear it.'
-            )}</span
-        >
-        <button
-            class="feed-unpublish-go"
-            disabled=${going}
-            onClick=${async () => {
-                setGoing(true);
-                try {
-                    await api(`/api/identity/${current.root}/posts/${item.doc_id}`, {
-                        method: 'DELETE',
-                    });
-                    // The row goes on the next feed read; nothing is faked here.
-                } catch {
-                    setGoing(false);
-                    setAsking(false);
-                }
+        ><${Icons.trash} /></button>
+        ${asking &&
+        html`<${Modal}
+            title=${t('postentry.take-it-down', 'take it down')}
+            onClose=${() => {
+                if (!going) setAsking(false);
             }}
-        >${going ? t('postentry.taking-it-down', 'taking it down…') : t('postentry.yes-take-it-down', 'yes, take it down')}</button>
-        <button class="feed-unpublish-no" onClick=${() => setAsking(false)}
-            >${t('postentry.keep-it', 'keep it')}</button
         >
-    </span>`;
+            <p class="feed-unpublish-warn">
+                ${t(
+                    'postentry.this-removes-it-from-other',
+                    'removes it from other people\'s feeds and shares. Copies on computers that never come back cannot hear it.'
+                )}
+            </p>
+            <div class="feed-unpublish-acts">
+                <button
+                    class="feed-unpublish-go"
+                    disabled=${going}
+                    onClick=${async () => {
+                        setGoing(true);
+                        try {
+                            await api(`/api/identity/${current.root}/posts/${item.doc_id}`, {
+                                method: 'DELETE',
+                            });
+                            // The server released the note (published_as cleared - it is a
+                            // draft again, and re-posting mints a NEW post); this device's
+                            // seal pref goes with it, so the draft doesn't sit locked over a
+                            // publication that no longer exists. The row goes on the next
+                            // feed read; nothing is faked.
+                            if (editing) editing.unseal();
+                        } catch {
+                            // Fall through: either way the modal closes, and the next feed
+                            // read tells the truth about what happened.
+                        }
+                        setGoing(false);
+                        setAsking(false);
+                    }}
+                >${going ? t('postentry.taking-it-down', 'taking it down…') : t('postentry.yes-take-it-down', 'yes, take it down')}</button>
+                <button
+                    class="feed-unpublish-no"
+                    disabled=${going}
+                    onClick=${() => setAsking(false)}
+                >${t('postentry.keep-it', 'keep it')}</button>
+            </div>
+        <//>`}`;
 };
 
 /// "Pass this along": one click to rebroadcast a post into your own network.
@@ -373,6 +399,9 @@ const ShareButton = ({ item, current }) => {
         }
     };
 
+    // Icon-only, the lock's pattern (2026-08-14: the actions row speaks one language - a
+    // glyph, a hover title with the words, no label). The shared state reads from the fill
+    // (feed-share-on), which the CSS already promised would carry it without a label change.
     return html`<button
         class=${shared ? 'feed-share feed-share-on' : 'feed-share'}
         disabled=${sending || known === null}
@@ -382,7 +411,6 @@ const ShareButton = ({ item, current }) => {
         onClick=${pass}
     >
         <${Icons.colRebroadcast} />
-        ${shared ? t('postentry.shared', 'shared') : t('postentry.share', 'share')}
     </button>`;
 };
 
@@ -511,7 +539,7 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                               title=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
                           >${t('postentry.edit', 'edit')}</button>`)}
-                    ${editing && !editing.locked && !open && html`<${UnpublishButton} item=${item} current=${current} />`}`}
+                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} />`}`}
             />
             ${!open &&
             !!title &&

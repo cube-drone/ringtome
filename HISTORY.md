@@ -5622,3 +5622,73 @@ door delivered those deaths; the tests measure the cursor and nothing else. Plan
 Also: the census cop caught the mirror's user-db open (count bumped with its per-edge
 justification), the strings gate caught the "none" mode's error message, and clippy demanded
 `LoggedDeath` be a struct - three gates, three findings, all cheaper than review.
+
+## 2026-08-14 — the take-it-down button becomes reachable, and its first real use finds a hole
+
+Curtis asked for UI to delete a post. It existed - `UnpublishButton`, "take it down", built
+2026-08-11 with the tombstone arc - and he was right that it needed building anyway, because it
+was reachable exclusively by page reload: the button rendered only when unlocked-but-closed,
+and the unlock's own handler jumped straight into the composer (`setOpen(true)`), so the one
+state that showed it could not be reached by any deliberate gesture. He unlocked a post to
+check and found an editor and no button, which was the finding exactly.
+
+Now it sits on your own posts directly. The second gate guarded nothing and its label ("open
+this for editing") pointed the wrong way; the ask/confirm flow - which spells out what a
+takedown can and cannot reach - was always the real breath.
+
+### The aftermath made truthful
+
+With the button reachable, the `published_as` residual (found by reading, 2026-08-13) was due:
+unpublish wrote the tombstone and left the annotation, so the draft read "posted", stayed
+sealed, and re-posting minted versions into the buried id - a 200 nobody would ever see, on
+the exact path canon names as the recourse ("the recourse for a typo is delete-and-repost").
+Three moves:
+
+- `unpublish_handler` finds the note claiming the post (`Annotations::note_claiming`, a walk
+  over the doc-meta view - once per human gesture, no index) and clears the claim. The draft
+  is honestly a draft again; the button also releases this device's seal pref.
+- `Store::publish` refuses to parent onto a claim whose post has no public head - the belt,
+  for stale annotations arriving by sync from a device that has not folded the clear.
+- The next publish mints the fresh id finality requires. `publish.cjs` pins the whole journey:
+  post, take down, edit, post again → a NEW id, the old one still buried, the new words live.
+
+### The hole the new test found on its first run
+
+The takedown asserts came back red: the post was still on the author's public page. Not test
+error - **`public_docs` and `public_head` never subtracted `public_retractions`.** The filter
+lived in `public_doc_ids`, which every feed reconciliation and the fragment door consult - so
+a takedown vanished from every reader's feed across the network while the author's own node
+kept LISTING the post on `/id/{root}` and SERVING its words at the direct body URL, to anyone,
+forever. Nothing had ever asserted the author's own anonymous surfaces: cascade watches feeds,
+fragments and tombstones, and publish.cjs had no takedown shape until today.
+
+Both now filter in SQL (keyset pages stay full, the file's own doctrine), and every
+`public_head` caller was read before changing its meaning - all six want absence for a buried
+doc: the body route stops serving, `fragments::current_version` refuses to let a retracted
+post be newly shared, bake stops silently reusing a retracted media twin, publish gets the
+belt above. The direct-URL claim is pinned in the test: 200 before the takedown, 404 after.
+
+Gates: `just ci` exit 0, 642 passing. The new tests were red before the fixes - organically,
+which is better than a plant.
+
+## 2026-08-14 — the actions row learns one grammar
+
+Three affordances sat on a post card in three dialects: the lock (icon, hover title), share
+(icon PLUS a text label), take-it-down (text button, and its confirm as an inline strip that
+reflowed the card). Now all three speak the lock's language - a glyph in a bordered chip at
+the same scale, the words in the hover title.
+
+The share button's "shared" state survives the label's removal by design that was already
+there: `feed-share-on` fills the chip, and its CSS comment had promised "the state reads
+without a label change being the only signal" since the day it was written.
+
+The takedown's deliberation moved into the house modal (`modal.js` - "a modal reads as the
+system stepping forward"), which is what it should have been from the start: a confirm that
+reflows the card it is deciding about reads as part of the card, and a takedown is precisely
+the system being asked to do something irreversible. Same warning words, same yes/keep-it
+pair, Escape and the scrim to decline - and the modal refuses to close mid-flight while the
+delete is in the air.
+
+`just strings` retired the two labels the icons replaced ("share", "shared") - the catalog is
+at 446. Gates: `just ui-check` 380 passing; strings clean. CSS rides the next `just start`'s
+bundle.

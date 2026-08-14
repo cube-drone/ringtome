@@ -1145,15 +1145,23 @@
  * reading. Deliberately no count anywhere near it. */
 /* Taking a post down: quiet until asked, then explicit about what it costs. Styled apart from
  * edit and share because it is the one action here that cannot be undone. */
+/* The actions row's shared language (2026-08-14): a glyph in a bordered chip at the lock's
+ * scale, the words in the hover title. Three buttons, one grammar. */
 .feed-unpublish {
+    display: inline-flex;
+    align-items: center;
     background: none;
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--muted);
-    font: inherit;
-    font-size: 0.72rem;
-    padding: 0.15rem 0.6rem;
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
     cursor: pointer;
+}
+
+.feed-unpublish svg {
+    width: 1em;
+    height: 1em;
 }
 
 .feed-unpublish:hover {
@@ -1161,17 +1169,19 @@
     color: var(--ink);
 }
 
-.feed-unpublish-ask {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4em;
-    flex-wrap: wrap;
-}
-
+/* Inside the confirm modal, not on the card: the deliberation is the system stepping
+ * forward, so it wears the modal's room rather than reflowing the post it is about. */
 .feed-unpublish-warn {
     color: var(--muted);
-    font-size: 0.7rem;
-    max-width: 26em;
+    font-size: 0.85rem;
+    max-width: 30em;
+    margin: 0 0 0.8em;
+}
+
+.feed-unpublish-acts {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
 }
 
 .feed-unpublish-go,
@@ -1197,20 +1207,18 @@
 .feed-share {
     display: inline-flex;
     align-items: center;
-    gap: 0.3em;
     background: none;
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--muted);
-    font: inherit;
-    font-size: 0.72rem;
-    padding: 0.15rem 0.6rem;
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
     cursor: pointer;
 }
 
 .feed-share svg {
-    width: 0.9em;
-    height: 0.9em;
+    width: 1em;
+    height: 1em;
 }
 
 .feed-share:hover {

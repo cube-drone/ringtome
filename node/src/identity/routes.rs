@@ -1042,6 +1042,18 @@ async fn unpublish_handler(
         )));
     }
     let signed = data.documents().retract_public(&post_id).await?;
+    // Release the note that claimed this post. A tombstone is final for the POST's id, and the
+    // recourse for a typo is delete-and-repost under a new one - but `publish` reuses whatever
+    // id `published_as` names, so leaving the annotation standing made the canonical recourse
+    // impossible: the draft went on reading "posted", stayed sealed, and re-posting it minted
+    // versions into the buried id - a 200 that nobody would ever see (found 2026-08-13 by
+    // reading, confirmed the day the take-it-down button became reachable). Cleared, the note
+    // is honestly a draft again and the next publish mints the fresh id finality requires.
+    if let Some(note) = data.annotations().note_claiming(&post_id).await? {
+        data.annotations()
+            .clear_field(&note, crate::record::store::PUBLISHED_AS)
+            .await?;
+    }
     // The public lane moved: `retract_vanished` reconciles every reader's journal against the
     // shelf this post has just left, and every fragment holder hears `Gone` when they next ask.
     crate::fanout::after_public_move(&state, &root).await;

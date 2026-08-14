@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 448 phrases across 41 files.
+// 446 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -341,7 +341,7 @@ export default {
     'postentry.failed-2': 'failed',
     'postentry.take-this-post-back-off': 'take this post back off the network',
     'postentry.take-it-down': 'take it down',
-    'postentry.this-removes-it-from-other': "removes it from other people's feeds and shares. Copies on computers that never come back cannot hear it.",
+    'postentry.this-removes-it-from-other': "removes it from other people's feeds and shares, but very slowly",
     'postentry.taking-it-down': 'taking it down…',
     'postentry.yes-take-it-down': 'yes, take it down',
     'postentry.keep-it': 'keep it',
@@ -350,8 +350,6 @@ export default {
     'postentry.count-more-not-listed': 'and {count} more, not listed here',
     'postentry.stop-sharing-this-with-your': 'stop sharing this with your network',
     'postentry.pass-this-along-to-your': 'pass this along to your network',
-    'postentry.shared': 'shared',
-    'postentry.share': 'share',
     'postentry.passed-this-along': 'passed this along',
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.edit': 'edit',

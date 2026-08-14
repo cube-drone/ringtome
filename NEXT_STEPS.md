@@ -70,13 +70,13 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     last reference dies (fragment forgotten, post retracted, draft deleted) - refcounts or a
     mark-and-sweep over the referencing tables. Part of the deletion story proper, alongside
     signed `Gone` and retraction cursors (found 2026-08-13, reading for the deletion audit).
-  * **`published_as` outlives a retraction**, so the model may not be enforced where it is
-    stated. `retracted_doc_ids` says re-publishing after a delete mints a NEW document id and
-    that "retracted, then published again under the same id" is not a state the system
-    produces - but `unpublish_handler` writes only the tombstone, and `Store::publish` reuses
-    the post id whenever that annotation is set. Publishing the same draft again would then
-    mint a version under the buried id, answer 200, and be filtered off the shelf forever.
-    Found by reading, not by testing; wants a test before it wants a fix.
+  * ~~**`published_as` outlives a retraction**~~ Fixed 2026-08-14 (with the take-it-down
+    button's reachability): unpublish clears the annotation, `Store::publish` refuses to
+    parent onto a headless claim (the belt, for stale annotations arriving by sync), and the
+    same pass closed the hole its test found - `public_docs` and `public_head` never filtered
+    `public_retractions`, so a takedown cleared every reader's feed while the author's own
+    node kept listing AND serving the post anonymously. `publish.cjs`, *taking it down, and
+    saying it again*.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket
