@@ -321,7 +321,14 @@ CREATE TABLE fragment_wants (
 -- fact that must stay answerable for all time, at the only size that makes "for all time" a
 -- sentence anyone can afford to mean. The delete-summary filters that eventually ship between
 -- nodes are a compression OF THIS TABLE, not a replacement for it.
+-- Every death this node can prove: its tombstones, and also its retraction LOG - the two are
+-- one table, because a tombstone that carries its proof is exactly one gossipable death.
+-- `id` is the cursor peers resume from (WantDeaths{since}): AUTOINCREMENT for strictly-
+-- increasing-forever, which is what makes "what died since N?" answerable with no timestamp
+-- races and an empty page in the steady state. Rows are never deleted; growth scales with
+-- regret (takedowns heard), never with the corpus.
 CREATE TABLE fragment_tombstones (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
     author_root TEXT    NOT NULL,
     doc_id      TEXT    NOT NULL,
     heard_ms    INTEGER NOT NULL,  -- when this node learned; local clock, never synced
@@ -332,7 +339,16 @@ CREATE TABLE fragment_tombstones (
     auth_path   BLOB    NOT NULL,  -- the delegation rungs tying its signer to the author's
                                    --   root, packed like fragments.auth_path and for the same
                                    --   reason: this node cannot re-derive what it never held
-    PRIMARY KEY (author_root, doc_id)
+    UNIQUE (author_root, doc_id)   -- finality: one death per document, first proof wins
+);
+
+-- Where this node's next "what died since N?" resumes, per peer it asks. The cursor is the
+-- PEER'S log id - opaque here, monotonic there - so nothing on this side ever compares clocks.
+-- `asked_ms` orders the reap's politeness rotation, oldest-asked first.
+CREATE TABLE death_cursors (
+    origin_root TEXT    PRIMARY KEY,
+    cursor      INTEGER NOT NULL,
+    asked_ms    INTEGER NOT NULL
 );
 
 -- Why this node fronts a foreign identity it was never asked to follow: one of its personas

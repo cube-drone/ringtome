@@ -151,6 +151,228 @@ pub async fn entomb(
     Ok(())
 }
 
+/// One page of the death log, strictly after `since`: what this node can prove died, in the
+/// order it heard. The answering half of `WantDeaths` - and the whole cursor design in one
+/// query, because an empty result IS the steady-state answer.
+///
+/// `limit` is the wire's page discipline, not a politeness budget: proofs are small (an entry
+/// plus a short path), so a page of eight sits far under the frame cap with room for deep
+/// delegation paths.
+pub async fn deaths_since(node_db: &Db, since: i64, limit: i64) -> Result<Vec<LoggedDeath>> {
+    type Row = (i64, String, String, Vec<u8>, Vec<u8>);
+    let rows: Vec<Row> = node_db
+        .fetch_all(
+            "SELECT id, author_root, doc_id, entry, auth_path FROM fragment_tombstones
+             WHERE id > ?1 ORDER BY id LIMIT ?2",
+            (since, limit),
+        )
+        .await
+        .context("reading the death log")?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, author_root, doc_id, entry, packed)| LoggedDeath {
+            id,
+            author_root,
+            doc_id,
+            entry,
+            auth_path: unpack_path(&packed),
+        })
+        .collect())
+}
+
+/// One row of the death log, as the serving door reads it.
+pub struct LoggedDeath {
+    pub id: i64,
+    pub author_root: String,
+    pub doc_id: String,
+    pub entry: Vec<u8>,
+    pub auth_path: Vec<Vec<u8>>,
+}
+
+/// Where the next ask of this peer resumes. Zero for a peer never asked - the log's ids start
+/// at one, so zero reads their whole history, which is exactly right for first contact.
+pub async fn death_cursor(node_db: &Db, origin_root: &str) -> Result<i64> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT cursor FROM death_cursors WHERE origin_root = ?1",
+            (origin_root,),
+        )
+        .await
+        .context("reading a death cursor")?;
+    Ok(row.map(|(c,)| c).unwrap_or(0))
+}
+
+/// Remember how far into this peer's log we have read. The cursor is THEIR id space, stored
+/// opaquely - advancing it is the only write, and it advances even past proofs we skipped
+/// (unheld documents, garbage), because the per-document sweep is the backstop for anything a
+/// peer garbled and a stuck cursor would re-serve the same page forever.
+pub async fn advance_death_cursor(node_db: &Db, origin_root: &str, cursor: i64) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO death_cursors (origin_root, cursor, asked_ms)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT (origin_root) DO UPDATE SET
+                 cursor = excluded.cursor,
+                 asked_ms = excluded.asked_ms",
+            (origin_root, cursor, now_ms()),
+        )
+        .await
+        .context("advancing a death cursor")?;
+    Ok(())
+}
+
+/// Mirror one held author's chain-folded retractions into the death log, proofs attached.
+///
+/// The log's second tributary. Deaths heard over the wire land in the log through `entomb`;
+/// deaths this node learns by HOLDING the author's chain (a follow's sync, a pin's) fold into
+/// that persona's `public_retractions` and would otherwise be servable only one-at-a-time by
+/// the chain door - a cursor ask against this node would never see them. So the same frontier
+/// hooks that fold notifications and rebroadcast pins call here, and every death this node
+/// knows becomes one gossipable row regardless of how it arrived.
+///
+/// Cheap in the steady state: one indexed diff against the log, and proof assembly only for
+/// rows the log lacks - which scales with the author's regret, not their chain.
+pub async fn mirror_retractions(state: &crate::AppState, author_root: &str) {
+    if let Err(e) = mirror_retractions_inner(state, author_root).await {
+        tracing::debug!(author = %author_root, error = ?e, "retraction mirror failed");
+    }
+}
+
+async fn mirror_retractions_inner(state: &crate::AppState, author_root: &str) -> Result<()> {
+    let Some(db) = state
+        .user_dbs
+        .get(author_root)
+        .await
+        .context("opening the author's database")?
+    else {
+        return Ok(());
+    };
+    let retracted = crate::record::documents::retracted_doc_ids(&db)
+        .await
+        .map_err(|e| anyhow::anyhow!("listing {author_root}'s retractions: {e}"))?;
+    if retracted.is_empty() {
+        return Ok(());
+    }
+    let known: Vec<(String,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT doc_id FROM fragment_tombstones WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("diffing the death log")?;
+    let known: std::collections::HashSet<String> = known.into_iter().map(|(d,)| d).collect();
+    for doc_hex in retracted.iter().filter(|d| !known.contains(*d)) {
+        let Ok(doc_bytes) = hex::decode(doc_hex) else { continue };
+        let Ok(doc_id) = <[u8; 16]>::try_from(doc_bytes.as_slice()) else { continue };
+        let proof = crate::record::documents::retraction_proof(&db, author_root, &doc_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("assembling a retraction proof: {e}"))?;
+        // No proof, no row: a fold that knows a hash the chain no longer holds (a repudiation's
+        // genesis cut) has nothing servable to say. Same rule as the serving door.
+        if let Some((entry, auth_path)) = proof {
+            entomb(&state.node_db, author_root, doc_hex, &entry, &auth_path).await?;
+            tracing::debug!(author = %author_root, doc = %doc_hex, "mirrored a chain retraction into the death log");
+        }
+    }
+    Ok(())
+}
+
+/// The reap: one cursor ask per peer covers deletion for everything they serve us.
+///
+/// The batch half of revalidation (PROJECT_PLAN, *Retraction cursors carry the delete-sets
+/// between nodes*). The per-document sweep stays for edit freshness and as the backstop; this
+/// is what decouples DELETION latency from the size of the shelf - a node holding ten thousand
+/// shares hears every death in O(peers) asks per beat, not O(documents) dials spread over days
+/// behind `SWEEP_CAP`.
+///
+/// Who gets asked: every distinct origin (the tree - edges that already exist), plus every
+/// distinct fragment author unless the tree-only lane is forced (the same star-and-tree order
+/// `revalidate` walks, for the same reason). Deliberately uncapped: the peer set scales with
+/// relationships, this design's favorite number, and a cap here would reintroduce exactly the
+/// tail-staleness the cursor exists to delete. Own personas are skipped - their log IS this
+/// log.
+pub async fn reap(state: &crate::AppState) -> Result<()> {
+    let mut peers: Vec<(String,)> = state
+        .node_db
+        .fetch_all("SELECT DISTINCT origin_root FROM fragments", ())
+        .await
+        .context("listing origins to reap from")?;
+    if !crate::net::fragment::tree_only() {
+        peers.extend(
+            state
+                .node_db
+                .fetch_all::<(String,)>("SELECT DISTINCT author_root FROM fragments", ())
+                .await
+                .context("listing authors to reap from")?,
+        );
+    }
+    let mut seen = std::collections::HashSet::new();
+    for (peer,) in peers {
+        if !seen.insert(peer.clone()) {
+            continue;
+        }
+        if crate::identity::is_agented(&state.node_db, &peer)
+            .await
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let mut cursor = death_cursor(&state.node_db, &peer).await?;
+        loop {
+            let Some((proofs, next, raw)) =
+                crate::net::fragment::fetch_deaths(state, &peer, cursor as u64).await
+            else {
+                break; // silence: nothing learned, the cursor holds, the next beat retries
+            };
+            for p in proofs {
+                apply_death(&state.node_db, &p).await?;
+            }
+            // Advanced even past skipped proofs (unheld documents, garbage): a stuck cursor
+            // would re-serve the same page forever, and the per-document sweep is the backstop
+            // for anything a peer garbled.
+            if next as i64 > cursor {
+                cursor = next as i64;
+                advance_death_cursor(&state.node_db, &peer, cursor).await?;
+            }
+            if raw < crate::net::fragment::DEATHS_PAGE as usize {
+                break; // a short page means the log is drained
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Bury one death from a batch, if it is ours to bury.
+///
+/// **Demand-scoped, and that bound is load-bearing**: a peer's log names every death it has
+/// heard, and a node that entombed them all would grow its forever-set with every deletion
+/// anyone it talks to ever relayed - unbounded, and about documents it never held. So a death
+/// for a document we do not hold changes nothing here; if a pointer to it ever arrives,
+/// `journalable` will ask, hear `Gone` with proof, and bury it then. The caller has already
+/// verified the proof (`fetch_deaths`, at the wire edge); this function is bookkeeping.
+///
+/// The memo-then-forget order is the sweep's own: a crash between the two leaves a tombstone
+/// and a stale fragment, which the next pass resolves - never a node that forgot both the
+/// words and the reason.
+pub async fn apply_death(
+    node_db: &Db,
+    p: &ringtome_proto::fragment::DeathProof,
+) -> Result<bool> {
+    let author_hex = hex::encode(p.author);
+    let doc_hex = hex::encode(p.doc_id);
+    if held(node_db, &author_hex, &doc_hex).await?.is_none() {
+        return Ok(false); // not our funeral
+    }
+    tracing::info!(
+        author = %author_hex, doc = %doc_hex,
+        "a death arrived by cursor - dropping the copy"
+    );
+    entomb(node_db, &author_hex, &doc_hex, &p.entry, &p.auth_path).await?;
+    forget(node_db, &author_hex, &doc_hex).await?;
+    Ok(true)
+}
+
 /// The stored proof, for answering onward: the author's signed `post-retract` and its
 /// delegation path, exactly as they arrived. The serving door's half of `entomb`.
 pub async fn tomb_proof(
@@ -550,7 +772,14 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
         }
     }
 
-    drain_wants(&state).await
+    drain_wants(&state).await?;
+    // The batch pass rides the same beat: per-document dials above for edit freshness on the
+    // young end of the shelf, one cursor ask per peer here for deletion everywhere. Errors are
+    // the beat's to absorb - a failed reap is retried next beat from the same cursors.
+    if let Err(e) = reap(&state).await {
+        tracing::debug!(error = ?e, "reap failed; next beat resumes from the same cursors");
+    }
+    Ok(())
 }
 
 /// The recovery half of the share fold: fetch the fragments whose first ask failed.
@@ -732,5 +961,101 @@ mod tests {
             Some((vec![9, 9, 9], vec![vec![8]])),
             "and the proof serves back exactly as it was stored - evidence, not hearsay"
         );
+    }
+
+    /// The log IS the tombstone table: every death gets a strictly increasing id, "since N"
+    /// reads exactly what came after N, and re-hearing a death grows nothing - one row per
+    /// document, forever, which is what lets a cursor be a promise instead of a heuristic.
+    #[tokio::test]
+    async fn the_death_log_answers_since_exactly() {
+        let db = crate::db::test_node_db().await;
+        let alice = "a".repeat(64);
+
+        for (i, doc) in [[1u8; 16], [2u8; 16], [3u8; 16]].iter().enumerate() {
+            entomb(&db, &alice, &hex::encode(doc), &[i as u8], &[]).await.unwrap();
+        }
+        // Re-hearing the second death: finality means one row per document, first proof wins.
+        entomb(&db, &alice, &hex::encode([2u8; 16]), &[99], &[]).await.unwrap();
+
+        let all = deaths_since(&db, 0, 10).await.unwrap();
+        assert_eq!(all.len(), 3, "three documents died, three rows - re-hearing added nothing");
+        assert!(
+            all.windows(2).all(|w| w[0].id < w[1].id),
+            "ids strictly increase in hearing order"
+        );
+        assert_eq!(all[1].auth_path, Vec::<Vec<u8>>::new());
+        assert_eq!(all[1].entry, vec![1u8], "the re-heard death kept its FIRST proof");
+
+        let after = deaths_since(&db, all[0].id, 10).await.unwrap();
+        assert_eq!(after.len(), 2, "since-N excludes N itself");
+        assert_eq!(after[0].id, all[1].id);
+
+        assert!(
+            deaths_since(&db, all[2].id, 10).await.unwrap().is_empty(),
+            "a caught-up cursor reads an empty page - the steady state costs nothing"
+        );
+
+        // The page limit is a wire discipline, honored mid-log.
+        let paged = deaths_since(&db, 0, 2).await.unwrap();
+        assert_eq!(paged.len(), 2);
+        let rest = deaths_since(&db, paged[1].id, 2).await.unwrap();
+        assert_eq!(rest.len(), 1, "the next page resumes where the last ended, losing nothing");
+    }
+
+    /// A death you never held is not your funeral. A peer's log names every death it has
+    /// heard, and a node that buried them all would grow its forever-set with every deletion
+    /// anyone it talks to ever relayed - unbounded, and about documents it never carried. The
+    /// bound: nothing enters this node's log by cursor unless this node held the words.
+    #[tokio::test]
+    async fn a_death_by_cursor_is_only_ours_if_we_hold_the_document() {
+        let db = crate::db::test_node_db().await;
+        let alice = "a".repeat(64);
+        let held_doc = [1u8; 16];
+        let stranger_doc = [2u8; 16];
+
+        remember(&db, &"b".repeat(64), &alice, &verified(held_doc), &[1], &[])
+            .await
+            .unwrap();
+
+        let death = |doc| ringtome_proto::fragment::DeathProof {
+            author: crate::pubkey::decode(&alice).unwrap(),
+            doc_id: doc,
+            entry: vec![7],
+            auth_path: Vec::new(),
+        };
+
+        assert!(
+            !apply_death(&db, &death(stranger_doc)).await.unwrap(),
+            "a stranger's death is heard and not kept"
+        );
+        assert!(
+            !entombed(&db, &alice, &stranger_doc).await.unwrap(),
+            "no tombstone grows for a document this node never held"
+        );
+
+        assert!(apply_death(&db, &death(held_doc)).await.unwrap());
+        assert!(
+            held(&db, &alice, &hex::encode(held_doc)).await.unwrap().is_none(),
+            "the held document's words are dropped"
+        );
+        assert!(
+            entombed(&db, &alice, &held_doc).await.unwrap(),
+            "and its death is kept, provable, gossipable"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cursor_starts_at_zero_and_remembers_its_advance() {
+        let db = crate::db::test_node_db().await;
+        let bob = "b".repeat(64);
+        assert_eq!(
+            death_cursor(&db, &bob).await.unwrap(),
+            0,
+            "a peer never asked is read from the top - ids start at one, so zero means everything"
+        );
+        advance_death_cursor(&db, &bob, 7).await.unwrap();
+        assert_eq!(death_cursor(&db, &bob).await.unwrap(), 7);
+        advance_death_cursor(&db, &bob, 12).await.unwrap();
+        assert_eq!(death_cursor(&db, &bob).await.unwrap(), 12);
     }
 }

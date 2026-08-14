@@ -259,6 +259,17 @@ pub async fn derive_pass(State(state): State<AppState>) -> Result<Json<Value>, A
     Ok(Json(serde_json::json!({ "derived": true })))
 }
 
+/// Ring one reap on demand (`fragments::reap` - the death-cursor pass). The `derive_pass`
+/// idiom, for the same reason: the reap rides the sweep beat, and a test proving "the batch
+/// carried this, not the queue" needs to ring exactly one batch at a chosen moment rather than
+/// race a cadence.
+pub async fn reap_pass(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    crate::fragments::reap(&state)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "reaped": true })))
+}
+
 /// Convert a database row into a JSON object. The stored value's own type drives the JSON shape
 /// (SQLite values are self-describing, so computed expressions like `COUNT(*)` come through as
 /// what they are); blobs become arrays of byte values, since JSON has no bytes type.
@@ -279,7 +290,7 @@ fn row_to_json(row: &turso::Row, column_names: &[String]) -> serde_json::Map<Str
 
 #[derive(Deserialize)]
 pub struct RevalidationModeRequest {
-    /// "tree" | "fast" | "default"
+    /// "tree" | "fast" | "none" | "default"
     pub mode: String,
 }
 
@@ -292,11 +303,15 @@ pub async fn revalidation_mode(
     let value = match req.mode.as_str() {
         "tree" => 1,
         "fast" => 2,
+        // Per-document revalidation parked entirely; the reap alone moves anything. For the
+        // test that proves a death arrived by the cursor and not the queue - which needs the
+        // queue provably off, not merely slow.
+        "none" => 3,
         "default" => 0,
         other => {
             return Err(AppError::BadRequest(crate::msg!(
                 "test.endpoints.unknown-revalidation-mode",
-                "unknown revalidation mode {other:?} (tree | fast | default)",
+                "unknown revalidation mode {other:?} (tree | fast | none | default)",
                 other = other
             )))
         }

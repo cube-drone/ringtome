@@ -47,6 +47,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("fragments", vec!["fragments.rs"]),
         ("fragment_tombstones", vec!["fragments.rs"]),
         ("fragment_wants", vec!["fragments.rs"]),
+        ("death_cursors", vec!["fragments.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.
         ("entries", vec!["record/imaol.rs", "net/sync.rs"]),
@@ -158,7 +159,10 @@ fn user_db_opens_are_deliberate() {
         ("record/bake.rs", 1),     // bake_one: ONE persona per external-media job, the ingest pattern
         // One open per SHARE - `fragments::current_version` resolves what head this node holds
         // so a share endorses what the reader actually saw. A human gesture, once, never a loop.
-        ("fragments.rs", 1),
+        // Plus one per public frontier MOVE - `mirror_retractions` opens the persona whose
+        // chain just moved to mirror its retractions into the death log: per-edge, the
+        // rebroadcast::refresh_from pattern, and the handle is hot from the sync that fired it.
+        ("fragments.rs", 2),
         // One open per fragment REQUEST - a stranger asking for one document, and the open is
         // how we answer from our own copy of that author's chain. Per-request, not per-persona:
         // the loop this test guards against would be opening every author we hold to answer one

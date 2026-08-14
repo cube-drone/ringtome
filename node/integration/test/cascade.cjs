@@ -617,4 +617,181 @@ async function setLane(mode) {
             );
         });
     });
+
+    /*
+        The retraction cursor: "what died since N?" asked of a peer, answered with a page of
+        signed proofs. The per-document sweep revalidates one dial at a time behind a politeness
+        cap, so deletion latency used to grow linearly with the shelf; the cursor covers a peer's
+        every death in one ask. These tests park the per-document queue entirely
+        (`/test/revalidation` mode "none") before killing anything - so whatever arrives
+        afterwards provably came by the batch, not the queue.
+    */
+    describe("the death cursor: one ask covers the shelf", function () {
+        const setLaneOn = async (host, mode) => {
+            const res = await makeFetch(host)("test/revalidation", {
+                method: "POST",
+                body: JSON.stringify({ mode }),
+            });
+            assert.equal(res.status, 200, `setting revalidation mode on ${host}`);
+        };
+        const reapOn = async (host) => {
+            const res = await makeFetch(host)("test/reap", { method: "POST" });
+            assert.equal(res.status, 200, `ringing the reap on ${host}`);
+        };
+
+        afterEach(async () => {
+            await setLaneOn(HOST_C, "default");
+            await setLaneOn(HOST_E, "default");
+            await plugIn(HOST);
+        });
+
+        it("three deletions arrive by the batch, not by the queue", async () => {
+            const seeded = [];
+            for (const title of ["reaped-one", "reaped-two", "reaped-three"]) {
+                seeded.push((await seedToCleo(title)).post);
+            }
+
+            // Park Cleo's per-document revalidation BEFORE anything dies: from here, her only
+            // road to a deletion is the cursor.
+            await setLaneOn(HOST_C, "none");
+            for (const post of seeded) {
+                const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                    method: "DELETE",
+                });
+                assert.equal(down.status, 200, await down.text());
+            }
+
+            // Bob holds Alice's chain, so his death log grows by the fold's mirror - the rows
+            // Cleo's one ask will read.
+            assert.ok(
+                await settle(async () => {
+                    const rows = await tombstonesOf(aliceRoot, HOST_B);
+                    return seeded.every((p) => rows.some((r) => r.doc_id === p)) ? true : null;
+                }),
+                "Bob's log carries all three deaths, proofs attached"
+            );
+
+            await reapOn(HOST_C);
+            const tombs = (await tombstonesOf(aliceRoot, HOST_C)).filter((r) =>
+                seeded.includes(r.doc_id)
+            );
+            assert.equal(tombs.length, 3, "one ask buried all three - no per-document dials ran");
+            assert.ok(
+                tombs.every((r) => r.proof_bytes > 0),
+                "each with the author's signed word for it"
+            );
+            for (const post of seeded) {
+                assert.ok(
+                    !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post),
+                    "and the feed rows went with them"
+                );
+            }
+        });
+
+        it("a death you never held is not your funeral", async () => {
+            // Cleo holds something of Alice's via Bob, so Bob is a peer her reap will ask.
+            await seedToCleo("reap-bystander");
+
+            // A post that reaches Bob's feed but is never SHARED - Cleo never holds it.
+            const made = await (
+                await alice(`api/identity/${aliceRoot}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title: "unshared",
+                        body: "unshared: the words",
+                        format: "plaintext",
+                    }),
+                })
+            ).json();
+            const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
+                method: "POST",
+            });
+            const post = JSON.parse(await pub.text()).post_id;
+            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                method: "DELETE",
+            });
+            assert.equal(down.status, 200, await down.text());
+
+            assert.ok(
+                await settle(async () => {
+                    const rows = await tombstonesOf(aliceRoot, HOST_B);
+                    return rows.some((r) => r.doc_id === post) ? true : null;
+                }),
+                "Bob's log carries the death"
+            );
+
+            await reapOn(HOST_C);
+            // The reap consumed Bob's log - the cursor moved - and still kept nothing: a log
+            // names every death its keeper heard, and burying them all would grow the
+            // forever-set with every deletion anyone ever relayed, about documents never held.
+            const { rows: cursors } = await sql(
+                `SELECT cursor FROM death_cursors WHERE origin_root = '${bobRoot}'`,
+                HOST_C
+            );
+            assert.ok(
+                cursors.length === 1 && cursors[0].cursor > 0,
+                "the cursor advanced past it"
+            );
+            assert.ok(
+                !(await tombstonesOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
+                "no tombstone grew for a document Cleo never carried"
+            );
+        });
+
+        it("the fourth hop hears the batch, with the author dark", async () => {
+            const { post } = await seed("reap-depth");
+
+            await setLaneOn(HOST_C, "none");
+            await setLaneOn(HOST_E, "none");
+            // Her fragment door first - every arrival after this is provably second-hand -
+            // then the takedown, then full darkness before the deep hops move.
+            await unplug(HOST, { alpns: ["fragment"] });
+            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                method: "DELETE",
+            });
+            assert.equal(down.status, 200, await down.text());
+            assert.ok(
+                await settle(async () => {
+                    const rows = await tombstonesOf(aliceRoot, HOST_B);
+                    return rows.some((r) => r.doc_id === post) ? true : null;
+                }),
+                "Bob's log carries the death"
+            );
+            await unplug(HOST);
+
+            await reapOn(HOST_C); // Cleo reads Bob's log
+            await reapOn(HOST_E); // Dana reads Cleo's - rows Cleo just buried, proofs relayed
+            const danaTomb = (await tombstonesOf(aliceRoot, HOST_E)).filter(
+                (r) => r.doc_id === post
+            );
+            assert.equal(danaTomb.length, 1, "two asks walked the death to the fourth hop");
+            assert.ok(
+                danaTomb[0].proof_bytes > 0,
+                "with the unreachable author's own signature intact at the deepest hop"
+            );
+            assert.ok(
+                !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
+                "and out of Dana's feed"
+            );
+        });
+
+        it("the steady state is an empty page", async () => {
+            await seedToCleo("reap-quiet");
+            await reapOn(HOST_C);
+            const cursorOf = async () => {
+                const { rows } = await sql(
+                    `SELECT cursor FROM death_cursors WHERE origin_root = '${bobRoot}'`,
+                    HOST_C
+                );
+                return rows.length ? rows[0].cursor : 0;
+            };
+            const settled = await cursorOf();
+            await reapOn(HOST_C);
+            assert.equal(
+                await cursorOf(),
+                settled,
+                "asking again when nothing died moves nothing - the whole argument for cursors"
+            );
+        });
+    });
 });

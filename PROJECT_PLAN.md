@@ -3352,7 +3352,8 @@ made - a bounded rolling window plus a one-bit-forever fact, which have complete
   list fits in a packet. The obligation compounds with takedowns - rare, deliberate human acts - never with
   writing.
 - **Retraction cursors carry the delete-sets between nodes** (amended 2026-08-13; this bullet previously
-  specified per-author bloom-filter summaries, struck below). Retractions are entries on the author's POSTS
+  specified per-author bloom-filter summaries, struck below. Built the same day: `WantDeaths`/`Deaths` on
+  the fragment ALPN, the death log in `fragments.rs`, one reap per sweep beat). Retractions are entries on the author's POSTS
   chain: append-only, signed, and sequence-numbered - so the batch question is not "check your shelf against
   this summary" but **"what died since seq N?"**, and the steady-state answer is *empty*: one round trip,
   no payload, nothing to tune. A non-empty answer is a short list of signed tombstone entries with their

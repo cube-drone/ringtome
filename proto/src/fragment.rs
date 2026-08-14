@@ -54,6 +54,8 @@ pub const MAX_FRAGMENT_FRAME_BYTES: usize = 16 * 1024;
 /// | 1   | Have    | bstr entry bytes, array of bstr auth-path rungs |
 /// | 2   | Gone    | bstr entry bytes, array of bstr auth-path rungs |
 /// | 3   | Unknown | - |
+/// | 4   | WantDeaths | uint since |
+/// | 5   | Deaths  | array of [bstr(32) author, bstr(16) doc_id, bstr entry, array rungs], uint cursor |
 ///
 /// [`Gone`](Self::Gone) and [`Unknown`](Self::Unknown) are deliberately different answers.
 /// *Gone* is a fact about the document - it was withdrawn, and the reader should drop it. *Unknown*
@@ -74,12 +76,39 @@ pub enum FragmentMessage {
     /// the author it is relayed.
     Gone { entry: Vec<u8>, auth_path: Vec<Vec<u8>> },
     Unknown,
+    /// The batch question (added 2026-08-13, the retraction-cursor slice): everything you have
+    /// heard die since `since`, which is YOUR log's cursor - opaque to the asker, monotonic to
+    /// you. The steady-state answer is an empty page, which is the whole argument for cursors
+    /// over summaries: "nothing happened" costs one round trip and zero bytes of payload.
+    WantDeaths { since: u64 },
+    /// One page of deaths, each carrying the same proof a single `Gone` does - the author's own
+    /// signed retraction plus its delegation path, verified per-proof at the receiving edge. The
+    /// page names its authors explicitly because a log mixes them: an origin relays every death
+    /// it has heard, and each one proves itself against ITS author, not against the origin.
+    /// `cursor` is where the next ask resumes; a page shorter than the server's page size means
+    /// the log is drained.
+    Deaths { proofs: Vec<DeathProof>, cursor: u64 },
 }
+
+/// One death in a batch: whose document, which document, and the author's signed word for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeathProof {
+    pub author: [u8; 32],
+    pub doc_id: [u8; 16],
+    pub entry: Vec<u8>,
+    pub auth_path: Vec<Vec<u8>>,
+}
+
+/// Cap on proofs per page, enforced at decode. The encoder pages far below this (frame budget);
+/// the decoder refuses anything a well-behaved encoder could not have sent.
+pub const MAX_DEATHS_PER_PAGE: usize = 32;
 
 const TAG_WANT: u64 = 0;
 const TAG_HAVE: u64 = 1;
 const TAG_GONE: u64 = 2;
 const TAG_UNKNOWN: u64 = 3;
+const TAG_WANT_DEATHS: u64 = 4;
+const TAG_DEATHS: u64 = 5;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -113,6 +142,27 @@ impl FragmentMessage {
                 w.array(1);
                 w.uint(TAG_UNKNOWN);
             }
+            Self::WantDeaths { since } => {
+                w.array(2);
+                w.uint(TAG_WANT_DEATHS);
+                w.uint(*since);
+            }
+            Self::Deaths { proofs, cursor } => {
+                w.array(3);
+                w.uint(TAG_DEATHS);
+                w.array(proofs.len() as u64);
+                for p in proofs {
+                    w.array(4);
+                    w.bytes(&p.author);
+                    w.bytes(&p.doc_id);
+                    w.bytes(&p.entry);
+                    w.array(p.auth_path.len() as u64);
+                    for rung in &p.auth_path {
+                        w.bytes(rung);
+                    }
+                }
+                w.uint(*cursor);
+            }
         }
         w.into_bytes()
     }
@@ -141,6 +191,32 @@ impl FragmentMessage {
                 Self::Gone { entry, auth_path }
             }
             (TAG_UNKNOWN, 1) => Self::Unknown,
+            (TAG_WANT_DEATHS, 2) => Self::WantDeaths { since: r.uint()? },
+            (TAG_DEATHS, 3) => {
+                let count = r.array()?;
+                if count > MAX_DEATHS_PER_PAGE as u64 {
+                    return Err(ProtoError::BadEntry("deaths page too large"));
+                }
+                let mut proofs = Vec::new();
+                for _ in 0..count {
+                    if r.array()? != 4 {
+                        return Err(ProtoError::BadEntry("malformed death proof"));
+                    }
+                    let author = r.bytes_fixed::<32>()?;
+                    let doc_id = r.bytes_fixed::<16>()?;
+                    let (entry, auth_path) = Self::entry_and_path(&mut r)?;
+                    proofs.push(DeathProof {
+                        author,
+                        doc_id,
+                        entry,
+                        auth_path,
+                    });
+                }
+                Self::Deaths {
+                    proofs,
+                    cursor: r.uint()?,
+                }
+            }
             _ => return Err(ProtoError::BadEntry("unknown fragment message")),
         };
         r.finish()?;
@@ -291,12 +367,51 @@ mod tests {
                 auth_path: Vec::new(),
             },
             FragmentMessage::Unknown,
+            FragmentMessage::WantDeaths { since: 0 },
+            FragmentMessage::WantDeaths { since: 4_321 },
+            FragmentMessage::Deaths {
+                proofs: Vec::new(),
+                cursor: 7,
+            },
+            FragmentMessage::Deaths {
+                proofs: vec![
+                    DeathProof {
+                        author: [1u8; 32],
+                        doc_id: [2u8; 16],
+                        entry: vec![3, 4],
+                        auth_path: vec![vec![5], vec![6, 7]],
+                    },
+                    DeathProof {
+                        author: [8u8; 32],
+                        doc_id: [9u8; 16],
+                        entry: Vec::new(),
+                        auth_path: Vec::new(),
+                    },
+                ],
+                cursor: 99,
+            },
         ] {
             assert_eq!(
                 FragmentMessage::decode(&message.encode()).unwrap(),
                 message
             );
         }
+    }
+
+    /// The decode cap is the door's bouncer: a page no honest encoder would send is refused
+    /// before a byte of it is believed, same posture as the frame cap and the path-depth cap.
+    #[test]
+    fn an_oversized_deaths_page_is_refused() {
+        let proofs = (0..MAX_DEATHS_PER_PAGE + 1)
+            .map(|_| DeathProof {
+                author: [1u8; 32],
+                doc_id: [2u8; 16],
+                entry: vec![3],
+                auth_path: Vec::new(),
+            })
+            .collect();
+        let bytes = FragmentMessage::Deaths { proofs, cursor: 0 }.encode();
+        assert!(FragmentMessage::decode(&bytes).is_err());
     }
 
     /// "The author took it back" and "I don't have it" must never collapse into one answer: a

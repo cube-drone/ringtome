@@ -5562,3 +5562,63 @@ Residual, unchanged: retraction cursors (slice 2) are now pure batching - "what 
 seq N?" answered with a list of exactly what the tombstone door already serves one at a time.
 
 Gates: `just ci`, exit 0, 636 passing.
+
+## 2026-08-13 — the reap: one ask covers the shelf
+
+Slice 2 of the deletion arc, hours after slice 1, because the proofs made it pure batching:
+`WantDeaths { since }` / `Deaths { proofs, cursor }` on the fragment ALPN, answered from a
+death log that turned out to already exist - `fragment_tombstones` IS the log, once it gained
+an AUTOINCREMENT id to be the cursor and (author, doc) stepped down to a UNIQUE constraint.
+One table, because a tombstone that carries its proof is exactly one gossipable death. Node
+schema 19→20 in the same uncommitted stack as 18→19; **one `just clean` covers both**.
+
+The log has two tributaries. Deaths heard over the wire were already landing in it through
+`entomb`. Deaths a node learns by HOLDING the author's chain - a follow's sync, a pin's - fold
+into that persona's `public_retractions`, where a cursor ask could never see them; so the same
+`after_public_move` hook that reconciles feeds now mirrors them out, proofs assembled at
+mirror time (`fragments::mirror_retractions`, the `rebroadcast::refresh_from` pattern, one
+user-db open per frontier move and the handle hot from the sync that fired it).
+
+`reap()` rides the sweep beat: distinct origins plus distinct fragment authors (the same
+star-and-tree order `revalidate` walks), one cursor each, pages of eight, every proof verified
+at the receiving edge against the author it names - a log mixes authors and the relay vouches
+for none of them. One bad proof skips loudly and the rest of the page stands; the cursor
+advances regardless, because a stuck cursor re-serves the same page forever and the
+per-document sweep is the backstop for anything a peer garbled.
+
+### The bound that is not obvious until it is
+
+**A death you never held is not your funeral.** A peer's log names every death it has heard,
+and a node that buried them all would grow its forever-set with every deletion anyone it talks
+to ever relayed - unbounded, and about documents it never carried. `apply_death` buries only
+what this node holds; everything else is heard, skipped, and advanced past. The forever-set
+stays demand-scoped: the regret of people you follow and of documents you actually carried.
+
+### What this buys, measured against last week's arithmetic
+
+Deletion latency stops scaling with the shelf. The per-document sweep runs 16 dials per beat
+(politeness), so a 10,000-fragment shelf cycled every ~2 days and the hypothetical 500,000-row
+node every ~108; the reap covers a peer's every death in one ask, O(peers) per beat, and the
+steady-state answer is an empty page. The per-document dial remains for what it is still for:
+edit freshness - which is why the EDIT WINDOW is now the only reason revalidation must visit
+the whole shelf at all, and NEXT_STEPS says so.
+
+### Proven by muting the door
+
+Unit: since-N exactness, pagination without loss, one-row-per-death finality, cursors from
+zero, the demand-scope filter (planted: guard inverted, test red on the right line). Proto:
+round-trips and the oversized-page refusal. Integration, four shapes with per-document
+revalidation PARKED first (`/test/revalidation` gained mode "none"; `/test/reap` rings one
+pass, the `/test/derive` idiom): three deletions in one ask; a bystander death consumed but
+not buried, cursor advanced past it; the fourth hop hearing the batch with the author dark;
+and the steady state costing nothing.
+
+Then the whole claim checked at once: `deaths_page` planted to answer empty, full suite run.
+Exactly the three cursor tests failed, each on its load-bearing assertion, and *the steady
+state is an empty page* correctly survived - an empty page is what the plant serves. No other
+door delivered those deaths; the tests measure the cursor and nothing else. Plant removed,
+`just ci` exit 0, 640 passing.
+
+Also: the census cop caught the mirror's user-db open (count bumped with its per-edge
+justification), the strings gate caught the "none" mode's error message, and clippy demanded
+`LoggedDeath` be a struct - three gates, three findings, all cheaper than review.

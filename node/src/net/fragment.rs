@@ -76,17 +76,65 @@ async fn read_frame(recv: &mut RecvStream) -> Result<Option<FragmentMessage>> {
 // ---------------------------------------------------------------------------------------------
 // The door
 
-/// Serve one fragment request.
+/// Proofs per `Deaths` page. Eight small entries with short paths sit far under the 16KB frame
+/// cap even at MAX_AUTH_PATH depth; the decode-side cap (`MAX_DEATHS_PER_PAGE`) is looser on
+/// purpose, so this can grow without a protocol conversation.
+pub(crate) const DEATHS_PAGE: i64 = 8;
+
+/// Serve one fragment request: a `Want` for one document, or a `WantDeaths` for a page of the
+/// death log (the retraction-cursor slice, 2026-08-13 - one ask covers every death this node
+/// can prove, instead of one dial per document the asker holds).
 pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     let (mut send, mut recv) = conn.accept_bi().await.context("accepting fragment stream")?;
-    let Some(FragmentMessage::Want { author, doc_id }) = read_frame(&mut recv).await? else {
-        return Err(anyhow!("expected a Want"));
+    let answer = match read_frame(&mut recv).await? {
+        Some(FragmentMessage::Want { author, doc_id }) => {
+            answer_for(&state, &author, &doc_id).await
+        }
+        Some(FragmentMessage::WantDeaths { since }) => deaths_page(&state, since).await,
+        _ => return Err(anyhow!("expected a Want or WantDeaths")),
     };
-    let answer = answer_for(&state, &author, &doc_id).await;
     write_frame(&mut send, &answer).await?;
     send.finish().ok();
     conn.closed().await;
     Ok(())
+}
+
+/// One page of "what died since N", from the log. Rows whose stored identity fails to parse are
+/// skipped rather than fatal - the asker verifies every proof anyway, and one corrupt row must
+/// not wedge the cursor for everything behind it.
+async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
+    let rows = match crate::fragments::deaths_since(&state.node_db, since as i64, DEATHS_PAGE).await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::debug!(error = ?e, "death log read failed");
+            return FragmentMessage::Deaths {
+                proofs: Vec::new(),
+                cursor: since,
+            };
+        }
+    };
+    let mut cursor = since;
+    let mut proofs = Vec::new();
+    for row in rows {
+        cursor = row.id as u64;
+        let (Some(author), Ok(doc_bytes)) = (
+            crate::pubkey::decode(&row.author_root),
+            hex::decode(&row.doc_id),
+        ) else {
+            continue;
+        };
+        let Ok(doc_id) = <[u8; 16]>::try_from(doc_bytes.as_slice()) else {
+            continue;
+        };
+        proofs.push(ringtome_proto::fragment::DeathProof {
+            author,
+            doc_id,
+            entry: row.entry,
+            auth_path: row.auth_path,
+        });
+    }
+    FragmentMessage::Deaths { proofs, cursor }
 }
 
 /// What we can honestly say about one document of somebody else's.
@@ -245,10 +293,13 @@ pub enum Fetched {
 /// (`/test/revalidation`) overrides it per node at runtime, which is what lets one suite run the
 /// same cascade through both lanes.
 ///
-/// 0 = follow the boot env; 1 = force tree-only; 2 = force the fast lane.
+/// 0 = follow the boot env; 1 = force tree-only; 2 = force the fast lane; 3 = no per-document
+/// revalidation at all ("none" - LOCAL_TEST only, `/test/revalidation`). Mode 3 exists for one
+/// test shape: proving a death arrived by the CURSOR and not the queue, which needs the queue
+/// provably parked. The reap is untouched by it.
 pub static REVALIDATION_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
-fn tree_only() -> bool {
+pub(crate) fn tree_only() -> bool {
     match REVALIDATION_MODE.load(std::sync::atomic::Ordering::Relaxed) {
         1 => true,
         2 => false,
@@ -265,6 +316,9 @@ pub async fn revalidate(
     author: &[u8; 32],
     doc_id: &[u8; 16],
 ) -> Fetched {
+    if REVALIDATION_MODE.load(std::sync::atomic::Ordering::Relaxed) == 3 {
+        return Fetched::Unknown; // the queue is parked; only the reap moves anything
+    }
     let author_hex = hex::encode(author);
     if !tree_only() {
         // The author is not asked about their own document through a relay: if we ARE the
@@ -336,6 +390,80 @@ pub async fn fetch(
         }
     }
     Fetched::Unknown
+}
+
+/// Ask one peer for a page of its death log, verifying every proof at this edge before a byte
+/// of it is believed - per proof, against the AUTHOR each names, because a log mixes authors
+/// and the origin relaying it vouches for none of them. A proof that fails drops loudly and the
+/// rest of the page stands: refusing a whole page over one garbled row would let it dam every
+/// real death behind it, and the per-document sweep remains the backstop for whatever was lost.
+///
+/// Returns the verified proofs, the cursor to resume from, and the RAW page length - the caller
+/// needs the third to tell "drained" from "a page of skips", or it would stop paging early.
+pub async fn fetch_deaths(
+    state: &AppState,
+    origin_root: &str,
+    since: u64,
+) -> Option<(Vec<ringtome_proto::fragment::DeathProof>, u64, usize)> {
+    for candidate in crate::net::deliver::candidates(state, origin_root).await {
+        let endpoint_id =
+            crate::idface::leaf_via_to_endpoint(state, origin_root, &candidate).await;
+        let asked = tokio::time::timeout(
+            FETCH_TIMEOUT,
+            ask_deaths(state, &endpoint_id, since),
+        )
+        .await;
+        match asked {
+            Ok(Ok(answer)) => return Some(answer),
+            Ok(Err(e)) => {
+                tracing::debug!(origin = %origin_root, error = ?e, "death cursor ask failed")
+            }
+            Err(_) => tracing::debug!(origin = %origin_root, "death cursor ask timed out"),
+        }
+    }
+    None
+}
+
+async fn ask_deaths(
+    state: &AppState,
+    endpoint_id: &str,
+    since: u64,
+) -> Result<(Vec<ringtome_proto::fragment::DeathProof>, u64, usize)> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for the death log: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(&mut send, &FragmentMessage::WantDeaths { since }).await?;
+    send.finish().ok();
+    let answer = read_frame(&mut recv).await?;
+    conn.close(0u8.into(), b"done");
+    let Some(FragmentMessage::Deaths { proofs, cursor }) = answer else {
+        return Err(anyhow!("unexpected answer to a death cursor ask: {answer:?}"));
+    };
+    let raw = proofs.len();
+    let verified = proofs
+        .into_iter()
+        .filter(|p| {
+            match ringtome_proto::fragment::verify_retraction(
+                p.author,
+                p.doc_id,
+                &p.entry,
+                &p.auth_path,
+            ) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!(
+                        author = %hex::encode(p.author), doc = %hex::encode(p.doc_id),
+                        error = ?e,
+                        "a death in the log failed its own proof - skipped"
+                    );
+                    false
+                }
+            }
+        })
+        .collect();
+    Ok((verified, cursor, raw))
 }
 
 async fn ask(

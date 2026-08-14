@@ -530,6 +530,7 @@ async fn main() -> anyhow::Result<()> {
                 "/test/derive",
                 axum::routing::post(test_endpoints::derive_pass),
             )
+            .route("/test/reap", axum::routing::post(test_endpoints::reap_pass))
             // The transport gate: simulate a partition on the shared rig without killing a node.
             .route(
                 "/test/unplug",

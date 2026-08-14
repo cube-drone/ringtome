@@ -83,6 +83,11 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str) {
         Ok(_) => {}
         Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed retraction failed"),
     }
+    // The same event, mirrored into the death log: `retract_vanished` reconciles this node's
+    // FEEDS against the author's shelf; this makes the deaths this node just learned SERVABLE,
+    // proofs attached, to anyone who asks "what died since N?" (fragments::deaths_since). Both
+    // ride the public move because both are consequences of exactly it.
+    crate::fragments::mirror_retractions(state, root_hex).await;
     // Push onward only for personas this node authors. Relaying someone ELSE's lane onward is
     // rebroadcast - a consent question, not a routing one - and waits for its own design.
     match crate::identity::is_agented(&state.node_db, root_hex).await {

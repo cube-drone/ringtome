@@ -40,13 +40,13 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   fragment ledger, the cascade proven with the author's node actually dark (`cascade.cjs`, *with
   the author's node dark*), and the crowd behind a viral share - "Sam and four others", one row
   per document, `feed_shares` (`sharedby.cjs`). What is left:
-  * **The edit window** and **retraction cursors** - the two trim slices that bound what a node
-    must remember and ask forever. Designed, unbuilt. (Cursors replaced the bloom summaries
-    2026-08-13 - PROJECT_PLAN, *Retraction, edits, and what a node must remember forever* records
-    why.) The proof half landed the same day: `Gone` now travels as the author's signed
-    retraction, verified at every hop (`verify_retraction`), so the cursor slice is pure
-    batching over a wire shape that already exists - its answer is a list of exactly what the
-    tombstone door already serves one at a time.
+  * **The edit window** - the remaining trim slice, and now the only reason per-document
+    revalidation still has to visit the whole shelf: deletion travels by cursor
+    (`WantDeaths`/`Deaths`, built 2026-08-13 with the signed-`Gone` proofs), so once
+    out-of-window documents need no edit checks, the sweep's steady state is O(peers) per beat
+    and the archive costs nothing. Open before building: the window's width (a product number),
+    and where a fragment holder learns the ORIGINAL publish stamp it must judge the author's
+    claimed delta against - the current doc header does not carry it.
   * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
     stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
     the only reason it was ever there. A question for the retraction rules, not the read path
