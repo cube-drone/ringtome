@@ -18,6 +18,14 @@
 //! should drop their copy. `Unknown` says we do not carry it, so ask somebody else. A reader
 //! that could not tell them apart would delete a live share every time it asked the wrong node,
 //! which is why the protocol spends a whole message tag on the distinction.
+//!
+//! And since 2026-08-13, `Gone` is not a word at all but a document: the author's own signed
+//! `post-retract`, carried with its delegation path and verified at the receiving edge exactly
+//! as a fragment is. Before that, `Have` proved itself while its opposite was taken on the
+//! answering node's say-so - and under tombstone finality, a lying origin could permanently
+//! bury any document it had ever served, for its whole subtree, whenever the author was dark.
+//! Now deletion is as unforgeable as content: a node relays the retraction it heard, and a
+//! node that cannot show the author's word for a death moves nothing.
 
 use anyhow::{anyhow, Context, Result};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
@@ -96,7 +104,7 @@ async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> F
         author = %author_hex, doc = %hex::encode(doc_id),
         answer = match &answer {
             FragmentMessage::Have { .. } => "have",
-            FragmentMessage::Gone => "gone",
+            FragmentMessage::Gone { .. } => "gone",
             _ => "unknown",
         },
         "fragment door answered"
@@ -123,15 +131,20 @@ async fn answer_inner(
     // tombstone is not a choice between two sources, it is a contradiction, and the tombstone is
     // the half that cannot have arrived from someone who had not heard.
     //
+    // The memo answers with the PROOF it stored when it heard - the author's own signed
+    // retraction, relayed exactly as the author's signed header is: an honest post office either
+    // way, unable to alter a byte of either. This is what lets `Gone` cross a node that never
+    // held the author's chain and still be verified at the far end.
+    //
     // This used to be checked last, on the argument that a re-published document "(new id, but
     // the same author deleting and reposting)" must not be shadowed by an old tombstone. That
     // argument refutes itself: a new id has a different tombstone key and could never have been
     // shadowed. What the order actually bought was a node that had heard a takedown, and kept
     // serving the post to everyone one hop further out (`cascade.cjs`, *a document that was
     // buried stays buried*).
-    match crate::fragments::entombed(&state.node_db, author_hex, doc_id).await {
-        Ok(true) => return FragmentMessage::Gone,
-        Ok(false) => {}
+    match crate::fragments::tomb_proof(&state.node_db, author_hex, doc_id).await {
+        Ok(Some((entry, auth_path))) => return FragmentMessage::Gone { entry, auth_path },
+        Ok(None) => {}
         Err(e) => {
             // Never relay on a failed tombstone read: `Unknown` sends the asker elsewhere, which
             // is recoverable, while `Have` would hand out words we cannot currently vouch for.
@@ -164,14 +177,18 @@ async fn from_held_chain(
     let live = crate::record::documents::public_doc_ids(&db).await?;
     let doc_hex = hex::encode(doc_id);
     if !live.contains(&doc_hex) {
-        // We hold this author. If we hold them and the document is not on their shelf, the
-        // honest answer is that it is gone - not that we are ignorant of it.
-        let ever = crate::record::documents::public_head(&db, doc_id).await?.is_some();
-        return Ok(Some(if ever {
-            FragmentMessage::Gone
-        } else {
-            FragmentMessage::Unknown
-        }));
+        // We hold this author, and the document is not on their shelf. `Gone` needs their
+        // signed retraction in hand - the proof travels with the answer - and everything else
+        // off-shelf is `Unknown`: never published, or a shelf presenting nothing under
+        // equivocation quarantine. The old shape ("off the shelf but ever published = Gone",
+        // bare) told fragment askers a quarantined document was DELETED, which finality would
+        // have made permanent for everyone downstream of them.
+        return Ok(Some(
+            match crate::record::documents::retraction_proof(&db, author_hex, doc_id).await? {
+                Some((entry, auth_path)) => FragmentMessage::Gone { entry, auth_path },
+                None => FragmentMessage::Unknown,
+            },
+        ));
     }
     let Some(entry) = crate::record::documents::public_header_entry(&db, doc_id).await? else {
         return Ok(None);
@@ -191,8 +208,10 @@ async fn from_held_chain(
 pub enum Fetched {
     /// Verified, and the author's own words.
     Have(Box<VerifiedFragment>, Vec<u8>, Vec<Vec<u8>>),
-    /// The author withdrew it. Drop what we hold.
-    Gone,
+    /// The author withdrew it - verified, and the author's own retraction. Drop what we hold,
+    /// and keep these bytes: they are what `entomb` stores and the tombstone door serves, so
+    /// the proof outlives the words at every hop.
+    Gone { entry: Vec<u8>, auth_path: Vec<Vec<u8>> },
     /// This origin cannot help. Nothing has been learned about the document itself.
     Unknown,
 }
@@ -284,7 +303,18 @@ pub async fn fetch(
                     }
                 }
             }
-            FragmentMessage::Gone => Fetched::Gone,
+            FragmentMessage::Gone { entry, auth_path } => {
+                // Our own stored proof still passes through the verifier - the mirror of "our
+                // own fragment failed its own proof" above, and for the same reason: a row
+                // corrupted on disk must not act, however it got here.
+                match ringtome_proto::fragment::verify_retraction(*author, *doc_id, &entry, &auth_path) {
+                    Ok(()) => Fetched::Gone { entry, auth_path },
+                    Err(e) => {
+                        tracing::warn!(error = ?e, "our own tombstone failed its own proof");
+                        Fetched::Unknown
+                    }
+                }
+            }
             _ => Fetched::Unknown,
         };
     }
@@ -339,7 +369,17 @@ async fn ask(
                 .map_err(|e| anyhow!("a fragment failed its own proof: {e}"))?;
             Ok(Fetched::Have(Box::new(verified), entry, auth_path))
         }
-        Some(FragmentMessage::Gone) => Ok(Fetched::Gone),
+        Some(FragmentMessage::Gone { entry, auth_path }) => {
+            // The same edge, the darker direction - and the erring side is chosen by what each
+            // failure costs. Believing a forged `Have` shows a reader words the author never
+            // signed; believing a forged `Gone` PERMANENTLY buries a live document, because a
+            // tombstone is final. So an unprovable `Gone` earns the same treatment as an
+            // unprovable `Have`: an error, the next candidate gets asked, and a node that
+            // cannot prove its claim moves nothing. Silence preserves - hearsay is silence.
+            ringtome_proto::fragment::verify_retraction(*author, *doc_id, &entry, &auth_path)
+                .map_err(|e| anyhow!("a deletion failed its own proof: {e}"))?;
+            Ok(Fetched::Gone { entry, auth_path })
+        }
         Some(FragmentMessage::Unknown) => Ok(Fetched::Unknown),
         other => Err(anyhow!("unexpected answer to a fragment request: {other:?}")),
     }

@@ -5469,3 +5469,96 @@ Also found by reading and now in NEXT_STEPS: `published_as` survives a retractio
 requires - the same finality rule, possibly unenforced on the author's own side.
 
 Gates: `just ci`, exit 0, 636 passing.
+
+## 2026-08-13 — blooms out, cursors in: the delete-set summary loses to an empty answer
+
+Canon amended: *Retraction, edits, and what a node must remember forever* no longer specifies
+per-author bloom filters as the shippable delete-set summary. Retraction CURSORS replace them -
+"what died since seq N?", asked of the origins a node already dials, answered with the signed
+tombstone entries themselves.
+
+Curtis opened the door himself ("I have a real tendency to introduce bloom filters into projects
+that don't need them... this is a great offramp") and the offramp turned out to be paved by the
+data, not by taste:
+
+- **Delete-sets scale with regret, not the corpus.** The struck design's own arithmetic - "one
+  bit per document ever published" - assumed the set grows with everything written. It grows
+  with takedowns: an author of ten thousand posts retracts maybe fifty, and a bloom with a
+  useful error rate over fifty elements is no smaller than the fifty doc_ids it summarizes.
+  The previous bullet's tail ("one-bit-forever is exactly what compact sets are for") was the
+  setup for the bloom and went with it.
+- **Append-only + signed + sequenced means a cursor beats any summary.** The steady-state
+  answer to "anything since N?" is empty - one round trip, no payload, no p to tune. A bloom
+  cannot answer "nothing happened" better; it answers it with more machinery.
+- **The bloom design already deferred to the exact protocol.** Bloom-positive → fetch the
+  signed entry "which IS proof" - so the signed path had to exist and be correct regardless,
+  and the filter was a cache in front of it: sizing knobs, inter-node skew, un-printable state,
+  in the one path where a wrong "dead" is now permanent by design (the finality fix, same day).
+- **The cursor's answer IS the missing proof.** A list of signed retraction entries plus
+  delegation paths is the `Gone { entry, auth_path }` primitive the trust residual has been
+  waiting for - so the batching design and the authentication fix turn out to be one slice,
+  not two.
+
+Re-entry criteria are written into the amendment rather than left as vibes: blooms come back
+if a set turns huge, unenumerable, or held by a party that cannot be asked incrementally (the
+someday-gateway checking arbitrary doc_ids is the named example). A decision, not an allergy.
+
+This also answers the scaling question that prompted the review: a node's revalidation load is
+O(relationships) for followed chains, capped at SWEEP_CAP=16 dials per beat for fragments today
+(bounded but linearly stale at the tail), and O(origins) per beat under cursors - never
+O(feed rows), never 500,000 asks.
+
+NEXT_STEPS' trim-slice bullet renamed to match. Gates: markdown only; nothing outside `*.md`
+moved.
+
+## 2026-08-13 — Gone becomes signed speech: deletion proves itself like content does
+
+Slice 1 of the deletion arc (PROJECT_PLAN, *Retraction, edits, and what a node must remember
+forever*). `Have` always proved itself - the author's signed entry, verified offline at the
+receiving edge, a relay unable to alter a byte. Its opposite was the one unauthenticated word in
+the protocol: a bare tag, taken on the answering node's say-so. Under tombstone finality (three
+days old) that had become the sharpest edge in the system - a lying origin could permanently
+bury any document it had ever served, for its whole subtree, whenever the author was dark.
+
+Now `Gone` carries `{ entry, auth_path }`: the author's own `post-retract` and the delegation
+rungs tying its signer to their root. `verify_retraction` is the deliberate mirror of
+`verify_fragment` - same checks, same edge, opposite claim - and its doc-id check carries the
+same weight in the darker direction: without it, one genuine deletion in hand would be a
+skeleton key for the author's whole shelf. `fragment_tombstones` stores the proof beside the
+memo (node schema 18→19, **`just clean` before the next dev boot**) and the tombstone door
+serves it onward verbatim, so the author's signature crosses nodes that never held their chain
+and still verifies at the far end - the cascade's deepest assertion now checks exactly that.
+
+An unprovable `Gone` is an error at the asking edge, like an unprovable `Have`: the next
+candidate gets asked, and a node that cannot show the author's word for a death moves nothing.
+Chosen by what each failure costs - a forged `Have` believed shows words the author never
+signed; a forged `Gone` believed is a permanent burial. Hearsay is silence, and silence
+preserves.
+
+### The bug the proof requirement fixed by existing
+
+`from_held_chain` answered `Gone` for any ever-published document missing from the shelf - and
+`public_doc_ids` presents an EMPTY shelf under equivocation quarantine. So a quarantined
+author's every document read as deleted to every fragment asker, which finality would have made
+permanent for everyone downstream. Structurally impossible now: `Gone` needs the retraction
+entry in hand, a quarantine has none to offer, and `documents::retraction_proof` returns the
+only honest alternative, `Unknown`. What cannot be proven is not asserted - the rule fixed a
+bug nobody had found yet.
+
+The old wire shape is not a compatibility case: a one-element `Gone` frame fails to decode, and
+a proto test pins that on purpose (`a_gone_without_its_proof_is_not_a_message`) - it is not the
+old protocol, it is the attack.
+
+### Proven
+
+Proto: round-trips, the skeleton-key refusal (a retraction of X refused as an answer about Y),
+wrong-kind refusal (a genuine doc-header is not a retraction), wrong-author refusal. Node: the
+resurrection test round-trips the stored proof; the cascade asserts `length(entry) > 0` on
+Cleo's tombstone and on Dana's - the latter being the whole slice in one row, the author's
+signature at hop four, relayed by a node that could not have minted it, while the author's node
+answered nobody.
+
+Residual, unchanged: retraction cursors (slice 2) are now pure batching - "what died since
+seq N?" answered with a list of exactly what the tombstone door already serves one at a time.
+
+Gates: `just ci`, exit 0, 636 passing.

@@ -68,9 +68,12 @@ const fragmentsOf = async (author, host) => {
     return rows;
 };
 
+// `entry` rides along so the suite can assert a tombstone is EVIDENCE and not hearsay: since
+// 2026-08-13 the memo holds the author's own signed retraction, verified on receipt and served
+// onward - a node past the chain buries nothing it cannot prove.
 const tombstonesOf = async (author, host) => {
     const { rows } = await sql(
-        `SELECT doc_id FROM fragment_tombstones WHERE author_root = '${author}'`,
+        `SELECT doc_id, length(entry) AS proof_bytes FROM fragment_tombstones WHERE author_root = '${author}'`,
         host
     );
     return rows;
@@ -296,10 +299,11 @@ async function setLane(mode) {
             0,
             "Cleo dropped her copy"
         );
-        assert.equal(
-            (await tombstonesOf(aliceRoot, HOST_C)).filter((r) => r.doc_id === post).length,
-            1,
-            "and kept the fact of the deletion"
+        const cleoTomb = (await tombstonesOf(aliceRoot, HOST_C)).filter((r) => r.doc_id === post);
+        assert.equal(cleoTomb.length, 1, "and kept the fact of the deletion");
+        assert.ok(
+            cleoTomb[0].proof_bytes > 0,
+            "and the fact is the author's own signed retraction, not Cleo's say-so"
         );
         assert.equal(
             (await fragmentsOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
@@ -512,10 +516,16 @@ async function setLane(mode) {
                 0,
                 "Dana dropped the words"
             );
-            assert.equal(
-                (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
-                1,
-                "and kept the fact, so a fifth hop could still be told"
+            const danaTomb = (await tombstonesOf(aliceRoot, HOST_E)).filter(
+                (r) => r.doc_id === post
+            );
+            assert.equal(danaTomb.length, 1, "and kept the fact, so a fifth hop could still be told");
+            // The strongest form of the whole slice's claim: Dana's proof arrived through Cleo,
+            // a node that never held Alice's chain - the author's signature crossed a relay that
+            // could not have minted it, while the author was unreachable.
+            assert.ok(
+                danaTomb[0].proof_bytes > 0,
+                "and the fact at the deepest hop is the author's signed word, relayed intact"
             );
         });
     });

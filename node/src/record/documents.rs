@@ -1130,6 +1130,41 @@ pub async fn auth_path_for(
         .map_err(AppError::Internal)
 }
 
+/// The proof behind a `Gone`: this author's signed `post-retract` for one document, with the
+/// delegation path a stranger needs to verify it (net::fragment serves it; the asker checks it
+/// with `verify_retraction`, offline, exactly as a fragment is checked).
+///
+/// `None` when no retraction entry exists - and the callers turn that into `Unknown`, never a
+/// bare `Gone`, which is a correctness rule and not a shrug: a document can be off the shelf
+/// without being retracted (the equivocation quarantine presents an empty shelf), and before
+/// proofs, that case answered `Gone` to every fragment asker - a quarantine reading as a
+/// deletion, permanently, to everyone downstream. What cannot be proven is not asserted.
+pub async fn retraction_proof(
+    db: &Db,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> Result<Option<(Vec<u8>, Vec<Vec<u8>>)>, AppError> {
+    let row: Option<(Vec<u8>,)> = db
+        .fetch_optional(
+            "SELECT entry_hash FROM public_retractions WHERE doc_id = ?1",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading a retraction's identity")
+        .map_err(AppError::Internal)?;
+    let Some((hash_bytes,)) = row else {
+        return Ok(None);
+    };
+    let hash = hash32(&hash_bytes)?;
+    let Some(entry) = crate::record::imaol::entry_by_hash(db, &hash).await? else {
+        // The fold knows a hash the chain no longer holds - a repudiation's genesis cut can do
+        // this. Unprovable is unsayable, same rule as above.
+        return Ok(None);
+    };
+    let auth_path = auth_path_for(db, author_hex, &entry).await?;
+    Ok(Some((entry.bytes().to_vec(), auth_path)))
+}
+
 /// Withdraw one public document: append the tombstone to the persona's POSTS chain.
 ///
 /// Public, unlike `Documents::delete`, which writes an epoch-encrypted set-add on the doc-meta

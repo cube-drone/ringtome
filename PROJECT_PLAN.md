@@ -3346,15 +3346,33 @@ made - a bounded rolling window plus a one-bit-forever fact, which have complete
   the version-seen badge shows the drift regardless. Enforced in the FOLD, never at chain admission: the sync
   gate stays signatures-and-hashes-only, and a late edit is an entry that is admitted and ignored.
 - **Deletes are memoized forever, because they are the cheap half**: sixteen bytes, no content, and "is X
-  deleted?" is the only question that must stay answerable for all time. One bit per document ever published is
-  the only obligation that compounds without bound - and one-bit-forever is exactly what compact sets are for.
-- **Bloom filters carry the delete-sets between nodes, allowed to be wrong in one direction only.** A bloom
-  cannot prove deletion (it is not signed data, and a false positive would wrongly hollow a live share - the bad
-  direction). So: **bloom-negative → definitely live, serve on** (the steady state, O(1)); **bloom-positive →
-  maybe deleted, fetch the signed tombstone entry, which IS proof** (a false positive costs one round trip,
-  never a wrongly-dead share). Per-author delete-blooms become shippable summaries: a fragment holder
-  batch-revalidates its whole shelf against a kilobyte of filter instead of a query per fragment, and the
-  tombstone entries on the author's chain remain the ground truth the filters merely summarize.
+  deleted?" is the only question that must stay answerable for all time. And the set is far smaller than
+  "forever" suggests, which the first draft of this section got wrong: **the delete-set scales with regret,
+  not with the corpus.** An author with ten thousand posts across a decade retracts perhaps fifty; the whole
+  list fits in a packet. The obligation compounds with takedowns - rare, deliberate human acts - never with
+  writing.
+- **Retraction cursors carry the delete-sets between nodes** (amended 2026-08-13; this bullet previously
+  specified per-author bloom-filter summaries, struck below). Retractions are entries on the author's POSTS
+  chain: append-only, signed, and sequence-numbered - so the batch question is not "check your shelf against
+  this summary" but **"what died since seq N?"**, and the steady-state answer is *empty*: one round trip,
+  no payload, nothing to tune. A non-empty answer is a short list of signed tombstone entries with their
+  delegation paths - the same self-proving shape a fragment travels as, so deletion becomes verifiable
+  offline exactly like content is, and a lying relay can no more kill a document than alter one. A fragment
+  holder asks its ORIGINS, not its authors: one dial per relationship it already maintains, a per-pair
+  cursor, "what died among everything you serve me, since T?" - so batch revalidation scales
+  O(people your users follow) per beat, this design's favorite number, with per-document dials reserved for
+  the young, in-window minority.
+
+  *Why the blooms were struck* (they were this section's original answer, and they lost on the merits, not
+  on taste): a bloom compresses a large set, and the sets here are small - a filter with a useful error rate
+  over fifty retractions is no smaller than the fifty doc_ids it summarizes; a cursor's empty delta answers
+  "nothing happened" better than any summary can answer anything; and the design already conceded that a
+  bloom-positive must fetch the signed entry, so the exact signed protocol had to exist and be correct
+  regardless - the filter was only a cache in front of it, with sizing knobs, inter-node version skew, and
+  un-printable state, sitting in the one path where a wrong "dead" is permanent by design. Re-entry
+  criteria, so this is a decision and not an allergy: blooms earn a place when a set is huge, unenumerable,
+  or held by a party that cannot be asked incrementally - e.g. an anonymous gateway someday checking
+  arbitrary doc_ids against deletions it never subscribed to. Nothing on the current map is that.
 
 The honest cost, chosen rather than discovered: **you cannot fix a typo in a two-year-old post.** The recourse
 is delete-and-repost, which mints a new doc_id and loses the shares and journal position pointing at the old

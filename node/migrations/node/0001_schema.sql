@@ -324,7 +324,14 @@ CREATE TABLE fragment_wants (
 CREATE TABLE fragment_tombstones (
     author_root TEXT    NOT NULL,
     doc_id      TEXT    NOT NULL,
-    heard_ms    INTEGER NOT NULL,  -- when this node learned; never signed, never synced
+    heard_ms    INTEGER NOT NULL,  -- when this node learned; local clock, never synced
+    entry       BLOB    NOT NULL,  -- the author's signed post-retract: the PROOF, verified on
+                                   --   receipt and served onward verbatim - a tombstone that
+                                   --   could not show its evidence would be hearsay with a
+                                   --   forever lifespan (2026-08-13)
+    auth_path   BLOB    NOT NULL,  -- the delegation rungs tying its signer to the author's
+                                   --   root, packed like fragments.auth_path and for the same
+                                   --   reason: this node cannot re-derive what it never held
     PRIMARY KEY (author_root, doc_id)
 );
 

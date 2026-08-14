@@ -123,19 +123,50 @@ pub async fn forget(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()>
 /// `Unknown` - "nothing learned, keep what you have" - and holds a deleted post forever.
 /// Deletion then travels exactly two hops from its author and stops.
 ///
-/// So the content goes and the FACT stays. Forty-eight bytes, no title, no words, no reason -
-/// which is the only shape in which "forever" is a promise a node can keep.
-pub async fn entomb(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
+/// So the content goes and the FACT stays - and since 2026-08-13, the fact is the author's own
+/// signed retraction rather than this node's say-so. The proof is stored beside the memo for
+/// the same reason a fragment stores its auth path: this node cannot re-derive it (it never
+/// held the author's chain), and the next asker down the tree deserves evidence, not hearsay.
+/// The caller MUST have verified it (`verify_retraction`) before it lands here; this function
+/// records, it does not judge.
+///
+/// `ON CONFLICT DO NOTHING` keeps the first proof heard: retraction is final per doc_id, so
+/// any genuine proof is as good as any other, forever.
+pub async fn entomb(
+    node_db: &Db,
+    author_root: &str,
+    doc_id: &str,
+    entry: &[u8],
+    auth_path: &[Vec<u8>],
+) -> Result<()> {
     node_db
         .execute(
-            "INSERT INTO fragment_tombstones (author_root, doc_id, heard_ms)
-             VALUES (?1, ?2, ?3)
+            "INSERT INTO fragment_tombstones (author_root, doc_id, heard_ms, entry, auth_path)
+             VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT (author_root, doc_id) DO NOTHING",
-            (author_root, doc_id, now_ms()),
+            (author_root, doc_id, now_ms(), entry, pack_path(auth_path)),
         )
         .await
         .context("recording that a document is gone")?;
     Ok(())
+}
+
+/// The stored proof, for answering onward: the author's signed `post-retract` and its
+/// delegation path, exactly as they arrived. The serving door's half of `entomb`.
+pub async fn tomb_proof(
+    node_db: &Db,
+    author_root: &str,
+    doc_id: &[u8; 16],
+) -> Result<Option<(Vec<u8>, Vec<Vec<u8>>)>> {
+    let row: Option<(Vec<u8>, Vec<u8>)> = node_db
+        .fetch_optional(
+            "SELECT entry, auth_path FROM fragment_tombstones
+             WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, hex::encode(doc_id)),
+        )
+        .await
+        .context("reading a tombstone's proof")?;
+    Ok(row.map(|(entry, packed)| (entry, unpack_path(&packed))))
 }
 
 /// Do we know this document to be gone? The answer a node can still give after it has forgotten
@@ -307,14 +338,14 @@ pub async fn journalable(
             let f = held(&state.node_db, author_root, &doc_hex).await.ok()??;
             Some(row_of(&f, &doc_hex))
         }
-        crate::net::fragment::Fetched::Gone => {
+        crate::net::fragment::Fetched::Gone { entry, auth_path } => {
             // The author withdrew it while it was being fetched. Drop whatever we held and do
             // not journal - "speech deletes", arriving down the share tree.
             tracing::debug!(
                 author = %author_root, doc = %doc_hex,
                 "a shared document was withdrawn by its author"
             );
-            let _ = entomb(&state.node_db, author_root, &doc_hex).await;
+            let _ = entomb(&state.node_db, author_root, &doc_hex, &entry, &auth_path).await;
             let _ = forget(&state.node_db, author_root, &doc_hex).await;
             None
         }
@@ -494,7 +525,7 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
                 )
                 .await;
             }
-            crate::net::fragment::Fetched::Gone => {
+            crate::net::fragment::Fetched::Gone { entry, auth_path } => {
                 tracing::info!(
                     author = %author_hex, doc = %doc_hex,
                     "a shared document was withdrawn by its author - dropping the copy"
@@ -502,7 +533,7 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
                 // The memo FIRST: a crash between these two leaves a tombstone and a stale
                 // fragment, which the next sweep resolves. The other order leaves a node that
                 // has forgotten both the words and the reason, and lies to everyone downstream.
-                entomb(&state.node_db, &author_hex, &doc_hex).await?;
+                entomb(&state.node_db, &author_hex, &doc_hex, &entry, &auth_path).await?;
                 forget(&state.node_db, &author_hex, &doc_hex).await?;
             }
             crate::net::fragment::Fetched::Unknown => {
@@ -585,8 +616,8 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
                     .await;
                 }
             }
-            crate::net::fragment::Fetched::Gone => {
-                entomb(&state.node_db, &author_hex, &doc_hex).await?;
+            crate::net::fragment::Fetched::Gone { entry, auth_path } => {
+                entomb(&state.node_db, &author_hex, &doc_hex, &entry, &auth_path).await?;
                 settle_want(&state.node_db, &author_hex, &doc_hex).await?;
             }
             crate::net::fragment::Fetched::Unknown => {}
@@ -677,8 +708,10 @@ mod tests {
             "precondition: it arrived the ordinary way first"
         );
 
-        // The author takes it down: drop the words, keep the fact.
-        entomb(&db, &author, &doc_hex).await.unwrap();
+        // The author takes it down: drop the words, keep the fact. The proof bytes are opaque
+        // to this layer - `entomb` records what its caller verified, it does not judge - so
+        // stand-ins are honest here, and round-tripping them below is part of the claim.
+        entomb(&db, &author, &doc_hex, &[9, 9, 9], &[vec![8]]).await.unwrap();
         forget(&db, &author, &doc_hex).await.unwrap();
 
         // And now somebody who never heard offers it back, from a different origin.
@@ -693,6 +726,11 @@ mod tests {
         assert!(
             entombed(&db, &author, &doc).await.unwrap(),
             "and the fact survives the attempt"
+        );
+        assert_eq!(
+            tomb_proof(&db, &author, &doc).await.unwrap(),
+            Some((vec![9, 9, 9], vec![vec![8]])),
+            "and the proof serves back exactly as it was stored - evidence, not hearsay"
         );
     }
 }

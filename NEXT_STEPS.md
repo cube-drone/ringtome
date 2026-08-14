@@ -40,8 +40,13 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   fragment ledger, the cascade proven with the author's node actually dark (`cascade.cjs`, *with
   the author's node dark*), and the crowd behind a viral share - "Sam and four others", one row
   per document, `feed_shares` (`sharedby.cjs`). What is left:
-  * **The edit window** and **delete memo + bloom summaries** - the two trim slices that bound
-    what a node must remember forever. Designed, unbuilt.
+  * **The edit window** and **retraction cursors** - the two trim slices that bound what a node
+    must remember and ask forever. Designed, unbuilt. (Cursors replaced the bloom summaries
+    2026-08-13 - PROJECT_PLAN, *Retraction, edits, and what a node must remember forever* records
+    why.) The proof half landed the same day: `Gone` now travels as the author's signed
+    retraction, verified at every hop (`verify_retraction`), so the cursor slice is pure
+    batching over a wire shape that already exists - its answer is a list of exactly what the
+    tombstone door already serves one at a time.
   * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
     stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
     the only reason it was ever there. A question for the retraction rules, not the read path
@@ -56,6 +61,15 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     *deleted* case of this is closed (2026-08-13: a tombstone now refuses the write, and
     `cascade.cjs` proves it); an EDIT still has no comparison to make, because a fragment's
     version is an entry hash and nothing beside it says which of two hashes came later.
+  * **Deleted bytes are still served.** `FileStore` has no delete - put/get/has/size is the
+    whole surface, and nothing in the tree calls a removal - so a takedown cascade deletes
+    every POINTER (fragment row, feed rows, shelf listing) and leaves the body blob in the
+    store on every node that ever fetched it, still answerable by hash over the blobs ALPN to
+    anyone who kept the `file_hash`. The plan's asterisk promised deleted content stays
+    *confirmable*, never recoverable; today it is recoverable. Wants blob reaping when the
+    last reference dies (fragment forgotten, post retracted, draft deleted) - refcounts or a
+    mark-and-sweep over the referencing tables. Part of the deletion story proper, alongside
+    signed `Gone` and retraction cursors (found 2026-08-13, reading for the deletion audit).
   * **`published_as` outlives a retraction**, so the model may not be enforced where it is
     stated. `retracted_doc_ids` says re-publishing after a delete mints a NEW document id and
     that "retracted, then published again under the same id" is not a state the system
