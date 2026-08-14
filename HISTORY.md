@@ -5692,3 +5692,23 @@ delete is in the air.
 `just strings` retired the two labels the icons replaced ("share", "shared") - the catalog is
 at 446. Gates: `just ui-check` 380 passing; strings clean. CSS rides the next `just start`'s
 bundle.
+
+### And the card stops outliving its own funeral
+
+Field-tested minutes later: taking a post down left it on screen until a page refresh. The
+original design said "the row goes on the next feed read; nothing is faked here" - but nothing
+is faked the other way either: the 200 IS the tombstone landing on the chain, and a post its
+owner just watched die staring back at them reads as the delete not having worked. The card
+now retires itself on the confirmed write (the `markShared` discipline - reflect what the
+server acknowledged, never the guess), with the early return placed after every hook so a
+retiring card cannot trip preact's ordering. List state upstream still names the row; the
+next feed read reconciles.
+
+One catalog note riding along: the takedown warning's wording is Curtis's own edit ("removes
+it from other people's feeds and shares, but very slowly") and the catalog is authoritative,
+so `just strings` rewrote the call-site seed to match rather than the reverse. "Very slowly"
+predates the retraction cursors by a day - deletion now travels one sweep beat per hop - and
+Curtis kept it anyway, deliberately: "removing things from the internet is, notably, actually
+impossible", and the one direction this copy must never err is over-promising what a takedown
+reaches. The under-promise is the honest register for deletion, whatever the machinery's
+current speed. A standing rule for this app's copy, not a stale phrase.

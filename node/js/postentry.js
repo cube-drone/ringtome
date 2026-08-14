@@ -252,7 +252,7 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 /// Says what it costs before it does it: a retraction travels to followers' feeds and to anyone
 /// holding a shared copy, but it cannot reach a node that never comes back online, and it cannot
 /// unsee. Promising erasure would be a lie the protocol cannot keep.
-const UnpublishButton = ({ item, current, editing }) => {
+const UnpublishButton = ({ item, current, editing, onTakenDown }) => {
     const [asking, setAsking] = useState(false);
     const [going, setGoing] = useState(false);
 
@@ -275,7 +275,7 @@ const UnpublishButton = ({ item, current, editing }) => {
             <p class="feed-unpublish-warn">
                 ${t(
                     'postentry.this-removes-it-from-other',
-                    'removes it from other people\'s feeds and shares. Copies on computers that never come back cannot hear it.'
+                    "removes it from other people's feeds and shares, but very slowly"
                 )}
             </p>
             <div class="feed-unpublish-acts">
@@ -291,9 +291,16 @@ const UnpublishButton = ({ item, current, editing }) => {
                             // The server released the note (published_as cleared - it is a
                             // draft again, and re-posting mints a NEW post); this device's
                             // seal pref goes with it, so the draft doesn't sit locked over a
-                            // publication that no longer exists. The row goes on the next
-                            // feed read; nothing is faked.
+                            // publication that no longer exists.
                             if (editing) editing.unseal();
+                            // And the card retires NOW. This used to wait for the next feed
+                            // read ("nothing is faked here"), and nothing is faked here
+                            // either: the 200 IS the tombstone on the chain, and a post the
+                            // reader just deleted staring back at them reads as the delete
+                            // not having worked (Curtis, 2026-08-14, from the UI). The
+                            // markShared discipline - reflect the confirmed write, never
+                            // the guess.
+                            if (onTakenDown) onTakenDown();
                         } catch {
                             // Fall through: either way the modal closes, and the next feed
                             // read tells the truth about what happened.
@@ -418,6 +425,11 @@ export const PostEntry = ({ item, current, interest, editing }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);
     const [open, setOpen] = useState(false);
+    // Taken down from THIS card, this session: the card retires itself rather than waiting
+    // for a page refresh to stop showing a post its owner just watched die. List state
+    // upstream still names the row; the next feed read reconciles, and until then null is
+    // the truthful render.
+    const [gone, setGone] = useState(false);
     // The words as this reader last CONFIRMED them: after an in-place edit, the session's
     // own buffer - already in hand, already acknowledged by the publish - never a refetch of
     // what the user just typed.
@@ -475,6 +487,10 @@ export const PostEntry = ({ item, current, interest, editing }) => {
     const tlProfile = useTurbolinks(shownBody || '', item.format);
     const { lead, cut } = leadOf(shownBody || '', emphasis);
     const shown = wholeThing ? shownBody : lead;
+
+    // After every hook has run (useTurbolinks above is one), never before - a card that
+    // skipped hooks while retiring would trip preact's ordering on the re-render.
+    if (gone) return null;
 
     return html`
         <article
@@ -539,7 +555,7 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                               title=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
                           >${t('postentry.edit', 'edit')}</button>`)}
-                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} />`}`}
+                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}`}
             />
             ${!open &&
             !!title &&
