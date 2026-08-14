@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 446 phrases across 41 files.
+// 445 phrases across 41 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -458,7 +458,6 @@ export default {
     'idface.nothing-of-theirs-is-held': 'nothing of theirs is held here',
     'idface.no-such-persona-here': 'no such persona here',
     'idface.no-such-document': 'no such document',
-    'idface.nothing-of-theirs-is-held-2': 'nothing of theirs is held here',
     'idface.no-such-public-document-here': 'no such public document here',
     'idface.this-document-has-no-thumbnail': 'this document has no thumbnail',
     'idface.the-bytes-havent-arrived-here': "the bytes haven't arrived here yet - headers travel ahead of bodies",

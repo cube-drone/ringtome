@@ -34,12 +34,25 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets
 * Make a whole bucket public in one fell swoop.
-* **Rebroadcast — shipped end to end 2026-08-11** (PROJECT_PLAN, *Rebroadcast: Pointer Plus
-  Pinned Replica* and its two network subsections; HISTORY has the arc and the fragment slice).
-  Pointer, pin, both notice halves, public tombstone, media budget, feed with `via_root`, the
-  fragment ledger, the cascade proven with the author's node actually dark (`cascade.cjs`, *with
-  the author's node dark*), and the crowd behind a viral share - "Sam and four others", one row
-  per document, `feed_shares` (`sharedby.cjs`). What is left:
+* **Rebroadcast — data layer shipped 2026-08-11; the reader's screen reached 2026-08-14**
+  (PROJECT_PLAN, *Rebroadcast: Pointer Plus Pinned Replica* and its two network subsections;
+  HISTORY has the arc, the fragment slice, and *the last inch*). Pointer, pin, both notice
+  halves, public tombstone, media budget, feed with `via_root`, the fragment ledger, the
+  cascade proven with the author's node actually dark (`cascade.cjs`, *with the author's node
+  dark*), the crowd behind a viral share ("Sam and four others", `feed_shares`, `sharedby.cjs`)
+  - and, three days later than "end to end" was first claimed, the part a reader touches: the
+  body route serves the fragment shelf, the origin heals the bytes, and the cascade now asserts
+  the END DEVICE fetches the words over HTTP in every lane (the claim that went red 17 times on
+  its first run, catching the healing gap the database-level assertions had hidden for months).
+  What is left:
+  * **Media doesn't hop yet.** A shared post's embedded media (the baked public twins) mints
+    identity-rooted targets that only the author's chain-holders can serve, and the fragment
+    lane neither fetches nor pins them - a fragment-held post past hop one renders its words
+    and a broken image. The walk belongs where the body text lands (`media_refs` over the
+    healed blob, fragment-Want each same-author media doc from the same origin, thumb + bytes
+    wants), bounded by the source-side media budget. THEN the media deletion story (the orphan
+    reaper, retract-the-twin, blob reaping) composes on top - virality first, per Curtis
+    2026-08-14.
   * **The edit window** - the remaining trim slice, and now the only reason per-document
     revalidation still has to visit the whole shelf: deletion travels by cursor
     (`WantDeaths`/`Deaths`, built 2026-08-13 with the signed-`Gone` proofs), so once

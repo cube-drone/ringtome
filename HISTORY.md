@@ -5712,3 +5712,56 @@ Curtis kept it anyway, deliberately: "removing things from the internet is, nota
 impossible", and the one direction this copy must never err is over-promising what a takedown
 reaches. The under-promise is the honest register for deletion, whatever the machinery's
 current speed. A standing rule for this app's copy, not a stale phrase.
+
+## 2026-08-14 — the last inch: the share tree reaches the reader's screen
+
+Curtis asked whether an A-B-C-D chain with A asleep leaves D staring at an empty post with a
+broken image, and the answer was worse: **every reader past the chain has stared at "these
+words haven't reached this computer" since the day fragments shipped.** The distributed layer
+was real - verified entries in the ledger, tombstones, four hops, author-dark, all proven -
+and the last inch, store to screen, did not exist:
+
+- The anonymous body route (`public_doc_bytes`) consulted `user_dbs` and nothing else; idface
+  had zero fragment awareness. A fragment holder's node could not serve the words to its own
+  browser.
+- And the bytes were never there to serve anyway: the body-healing candidates (profile-via,
+  askers, sync peers) all derive from a relationship with the AUTHOR, which a reader past the
+  chain has none of - so `missing_bodies` rows aged forever with zero candidates.
+
+Nobody saw it because every seat anyone had ever sat in was a chain-holding seat (sharer-side
+node, direct follow, or a profile visit whose member fetch pulls the chain in), and the
+cascade tests asserted `feed_journal` and `fragments` rows - the tables, never the surface.
+The same class as the share button's `/api` 404: a well-tested layer under an untested inch,
+found by asking the user's own question ("can the end device actually fetch this?").
+
+### Three legs, and Curtis's test requirement drove all of them
+
+- **`fragments::serving_header`**: the ledger serves a browser from the author's own signed
+  entry - re-verified on the way out (the `tomb_proof` posture), tombstone consulted first
+  (the entomb/forget crash window). `public_doc_bytes` falls back to it when no chain is held;
+  a held chain stays authoritative.
+- **The origin heals what it named** (`bodies::fetch_wanted` + origins as sweep candidates +
+  an eager `heal_from` at fragment intake): whoever handed you the pointer holds, or knows who
+  holds, the bytes it names.
+- **The cascade asserts the HTTP surface at every hop**: `servedBody` - the exact URL
+  PostEntry fetches - must return the words at C and at D in every lane, with the author dark,
+  and after an edit (the SERVED words update, not just the feed row's title).
+
+### The new assertion earned its keep inside its own slice
+
+First full run: **17 failures**, all the new claim. The heal path I had just wired dialed the
+right origin and fetched nothing - `fetch_missing_bodies` computes its fetch list by walking a
+HELD chain's `doc_versions`, and a fragment author has no chain to walk, so the walk opened
+with a refusal and healed zero. The ledger knew the exact hashes all along; nothing read it.
+`fetch_wanted` is the ledger-direct fetch (a public blob's hash is the whole capability), run
+first at every candidate. Second run: 642 passing, exit 0. A surface-level test catching a
+bug in the very slice that added it is the whole argument for testing the surface.
+
+### Still open, queued in NEXT_STEPS
+
+Media doesn't hop: the `media_refs` walk where the body text lands, same origin, budget-bound
+- and only then the media deletion story (orphan reaper, retract-the-twin, blob reaping),
+virality before deletion, per Curtis. The "shipped end to end 2026-08-11" bullet now says what
+was true: the data layer shipped then; the reader's screen was reached today.
+
+Gates: `just ci` exit 0, 642 passing.

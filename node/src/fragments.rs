@@ -373,6 +373,81 @@ pub async fn apply_death(
     Ok(true)
 }
 
+/// What the anonymous serving routes need to hand a fragment-held document to a browser: the
+/// decoded header, straight from the author's own signed entry.
+///
+/// **The last inch of the share tree** (2026-08-14): the ledger held verified entries and the
+/// blob store held healed bytes, and no route connected either to the reader's own browser -
+/// so every reader past the chain rendered "these words haven't reached this computer",
+/// forever, under months of green cascade tests that stopped at the database.
+///
+/// Re-verified from its own bytes on the way out - the `tomb_proof` fetch posture, for the
+/// same reason: a row corrupted on disk must not serve, however it got here. And the tombstone
+/// is consulted first, because `entomb` and `forget` are two writes with a crash window
+/// between them, and the door must not serve a document out of that window.
+pub async fn serving_header(
+    node_db: &Db,
+    author_root: &str,
+    doc_id: &[u8; 16],
+) -> Result<Option<ringtome_proto::registry::DocHeaderPlain>> {
+    if entombed(node_db, author_root, doc_id).await? {
+        return Ok(None);
+    }
+    let row: Option<(Vec<u8>, Vec<u8>)> = node_db
+        .fetch_optional(
+            "SELECT entry, auth_path FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, hex::encode(doc_id)),
+        )
+        .await
+        .context("reading a fragment for serving")?;
+    let Some((entry, packed)) = row else {
+        return Ok(None);
+    };
+    let Some(author) = crate::pubkey::decode(author_root) else {
+        return Ok(None);
+    };
+    match ringtome_proto::fragment::verify_fragment(author, *doc_id, &entry, &unpack_path(&packed))
+    {
+        Ok(v) => Ok(Some(v.header)),
+        Err(e) => {
+            tracing::warn!(
+                author = %author_root, doc = %hex::encode(doc_id), error = ?e,
+                "a stored fragment failed its own proof at the serving door"
+            );
+            Ok(None)
+        }
+    }
+}
+
+/// Ring the eager body heal behind a fragment arrival: the header just landed from this
+/// origin, so the bytes it names are one dial away at the same door - spawned, because no
+/// fold or sweep should wait on a network round trip it only benefits from. The public-edge
+/// mint's eager-knock idiom: the sweep exists for the doors that were shut, not as the normal
+/// path to an open one.
+fn heal_soon(state: &crate::AppState, author_root: &str, origin_root: &str) {
+    let state = state.clone();
+    let author = author_root.to_string();
+    let origin = origin_root.to_string();
+    tokio::spawn(async move {
+        crate::net::bodies::heal_from(&state, &author, &origin).await;
+    });
+}
+
+/// Everyone who ever handed this node a pointer at this author's documents - the body-healing
+/// candidates a pure fragment holder actually has. The profile-via, the askers and the sync
+/// peers all come from relationships with the AUTHOR, and a reader past the chain has none of
+/// them; who it has is the tree, and the tree is written in this column.
+pub async fn origins_of(node_db: &Db, author_root: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT DISTINCT origin_root FROM fragments WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("listing a fragment author's origins")?;
+    Ok(rows.into_iter().map(|(o,)| o).collect())
+}
+
 /// The stored proof, for answering onward: the author's signed `post-retract` and its
 /// delegation path, exactly as they arrived. The serving door's half of `entomb`.
 pub async fn tomb_proof(
@@ -557,6 +632,7 @@ pub async fn journalable(
             {
                 tracing::debug!(author = %author_root, error = ?e, "could not note a fragment body");
             }
+            heal_soon(state, author_root, origin_root);
             let f = held(&state.node_db, author_root, &doc_hex).await.ok()??;
             Some(row_of(&f, &doc_hex))
         }
@@ -746,6 +822,7 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
                     &verified.header.file_hash,
                 )
                 .await;
+                heal_soon(&state, &author_hex, &origin_root);
             }
             crate::net::fragment::Fetched::Gone { entry, auth_path } => {
                 tracing::info!(
@@ -833,6 +910,7 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
                     &verified.header.file_hash,
                 )
                 .await;
+                heal_soon(state, &author_hex, &origin_root);
                 settle_want(&state.node_db, &author_hex, &doc_hex).await?;
                 tracing::info!(author = %author_hex, doc = %doc_hex, "a wanted fragment arrived");
                 if let Some(f) = held(&state.node_db, &author_hex, &doc_hex).await? {

@@ -84,6 +84,16 @@ const base58 = async (host) => {
     return toBase58((await (await host("api/node")).json()).endpoint_id);
 };
 
+// What a reader's BROWSER sees: the anonymous body route on the reader's own node - the exact
+// URL PostEntry fetches. Added 2026-08-14, after months of green runs proved the database and
+// nobody ever asked the HTTP surface: every assertion below the chain (C, D) held verified
+// entries and healed blobs behind a route that answered "nothing of theirs is held here".
+// The end device fetching the words IS the feature; the tables are how.
+const servedBody = async (author, post, host) => {
+    const res = await makeFetch(host)(`id/${author}/docs/${post}/body`);
+    return res.status === 200 ? res.text() : null;
+};
+
 const dial = (fetcher, mine, theirs, key, value) =>
     fetcher(`api/identity/${mine}/private/kv/contact:${theirs}/${key}`, {
         method: "PUT",
@@ -181,6 +191,13 @@ async function setLane(mode) {
             }),
             `seed(${title}): Bob's share reached Cleo as a fragment`
         );
+        assert.ok(
+            await settle(async () => {
+                const body = await servedBody(aliceRoot, post, HOST_C);
+                return body && body.includes(title) ? true : null;
+            }),
+            `seed(${title}): Cleo's own node serves the words to her browser`
+        );
         return { post, draft: made.doc_id, version: made.version };
     }
 
@@ -198,6 +215,13 @@ async function setLane(mode) {
                 return rows.some((r) => r.doc_id === post && r.via_root === cleoRoot) ? true : null;
             }),
             `seed(${label}): Cleo's share reached Dana - the fourth hop`
+        );
+        assert.ok(
+            await settle(async () => {
+                const body = await servedBody(aliceRoot, post, HOST_E);
+                return body && body.includes(label) ? true : null;
+            }),
+            `seed(${label}): the end device serves the words - the pipeline reaches the screen`
         );
     }
 
@@ -241,6 +265,13 @@ async function setLane(mode) {
         assert.ok(row, "the revision travelled A->B by sync, B->C and C->D by revalidation");
         assert.equal(row.author_root, aliceRoot, "still Alice's words");
         assert.equal(row.via_root, cleoRoot, "still bylined via Cleo");
+        assert.ok(
+            await settle(async () => {
+                const body = await servedBody(aliceRoot, post, HOST_E);
+                return body && body.includes("revised") ? true : null;
+            }),
+            "and the SERVED words at the end device are the revision, not a stale blob"
+        );
     });
 
     it(`edits stack: the fourth hop converges on the newest [${tag}]`, async () => {
@@ -411,6 +442,15 @@ async function setLane(mode) {
             const held = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
             assert.ok(held, "Dana holds the fragment itself");
             assert.equal(held.title, "dark-serve", "with the author's title intact");
+            // And her BROWSER can read them, from her own node, with the author dark: the
+            // whole point of holding a copy is that the screen shows it when nobody answers.
+            assert.ok(
+                await settle(async () => {
+                    const body = await servedBody(aliceRoot, post, HOST_E);
+                    return body && body.includes("dark-serve") ? true : null;
+                }),
+                "the words are served to the end device while the author is unreachable"
+            );
             assert.equal(
                 (await tombstonesOf(aliceRoot, HOST_E)).filter((r) => r.doc_id === post).length,
                 0,

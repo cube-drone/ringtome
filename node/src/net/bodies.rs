@@ -102,6 +102,77 @@ fn due(tries: i64, last_tried_ms: i64, now: i64) -> bool {
     last_tried_ms == 0 || last_tried_ms + backoff_ms(tries) <= now
 }
 
+/// Fetch exactly what the ledger says is missing, from one provider - the walk a FRAGMENT
+/// author gets. `fetch_missing_bodies` recomputes its fetch list from a held chain's
+/// `doc_versions`, and a fragment author has no chain here to walk (`user_dbs.held` refuses,
+/// the walk heals nothing) - but the ledger already names the precise blobs, noted at fragment
+/// intake, and a public blob's hash is the whole capability. Landed rows clear; the rest stay
+/// for the next candidate or beat.
+pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::EndpointAddr) -> u64 {
+    let inner: Result<u64> = async {
+        let rows: Vec<(Vec<u8>,)> = state
+            .node_db
+            .fetch_all(
+                "SELECT blob_hash FROM missing_bodies WHERE root_pubkey = ?1",
+                (root_hex,),
+            )
+            .await
+            .context("reading wanted bodies")?;
+        let mut hashes: Vec<iroh_blobs::Hash> = Vec::new();
+        for (bytes,) in rows {
+            if let Ok(h) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                let hash = iroh_blobs::Hash::from_bytes(h);
+                if !state.files.has(hash).await {
+                    hashes.push(hash);
+                }
+            }
+        }
+        if hashes.is_empty() {
+            return Ok(0);
+        }
+        let fetched = state
+            .files
+            .fetch_many(&state.endpoint, addr, &hashes)
+            .await as u64;
+        for hash in &hashes {
+            if state.files.has(*hash).await {
+                state
+                    .node_db
+                    .execute(
+                        "DELETE FROM missing_bodies WHERE root_pubkey = ?1 AND blob_hash = ?2",
+                        (root_hex, hash.as_bytes().to_vec()),
+                    )
+                    .await
+                    .context("clearing a landed body")?;
+            }
+        }
+        Ok(fetched)
+    }
+    .await;
+    inner.unwrap_or_else(|e| {
+        tracing::debug!(root = %root_hex, error = ?e, "wanted-body fetch failed");
+        0
+    })
+}
+
+/// Heal one author's missing bodies NOW, from one named origin - the evented half of the
+/// ledger (events for latency, sweeps for recovery), rung at fragment intake so a shared
+/// post's words arrive on the heels of its header rather than a sweep beat later. Spawn-safe
+/// and best-effort: a miss here is exactly what the sweep above recovers, from the same
+/// origin among others.
+pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
+    for c in crate::net::deliver::candidates(state, origin_root).await {
+        let ep = crate::idface::leaf_via_to_endpoint(state, origin_root, &c).await;
+        let Ok(addr) = crate::net::sync::dial_addr(state, &ep).await else {
+            continue;
+        };
+        fetch_wanted(state, author_root, addr).await;
+        if let Ok(0) = remaining(&state.node_db, author_root).await {
+            return;
+        }
+    }
+}
+
 /// One pass of the rounds. For every persona with due rows: guess who might have the bytes,
 /// run the ordinary body walk at each candidate (the walk itself reconciles the ledger as
 /// bodies land), and mark whatever remains as tried so the backoff ladder advances.
@@ -140,6 +211,24 @@ pub async fn sweep(state: AppState) -> Result<()> {
                 candidates.push(peer);
             }
         }
+        // The fragment ORIGINS (2026-08-14) - and for a reader past the chain, the only list
+        // with anything in it. The three sources above all come from a relationship with the
+        // AUTHOR (a profile fetch, their askers, their sync peers); a node holding this
+        // persona's documents purely by way of a share has none of those, so its want rows
+        // aged forever with zero candidates and the words never arrived. Who it does have is
+        // whoever handed it the pointer - who by construction holds (or knows who holds) the
+        // very bytes the pointer names.
+        for origin in crate::fragments::origins_of(&state.node_db, &root)
+            .await
+            .unwrap_or_default()
+        {
+            for c in crate::net::deliver::candidates(&state, &origin).await {
+                let ep = crate::idface::leaf_via_to_endpoint(&state, &origin, &c).await;
+                if !candidates.contains(&ep) {
+                    candidates.push(ep);
+                }
+            }
+        }
 
         let mut healed = 0u64;
         for candidate in &candidates {
@@ -147,6 +236,10 @@ pub async fn sweep(state: AppState) -> Result<()> {
                 Ok(a) => a,
                 Err(_) => continue, // unparseable/unresolvable id - the next guess may not be
             };
+            // The ledger-exact fetch first (it is what works for fragment authors, where the
+            // chain walk below has nothing to open), then the walk, which can additionally
+            // discover references nothing had noted yet.
+            healed += fetch_wanted(&state, &root, addr.clone()).await;
             healed += crate::record::documents::fetch_missing_bodies(&state, &root, addr).await;
             if remaining(&state.node_db, &root).await? == 0 {
                 break;

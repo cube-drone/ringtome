@@ -815,23 +815,50 @@ async fn public_doc_bytes(
         .ok()
         .and_then(|b| b.try_into().ok())
         .ok_or_else(|| AppError::NotFound(crate::msg!("idface.no-such-document", "no such document")))?;
-    // An anonymous probe for a stranger's bytes finds nothing rather than minting a place
-    // to look: absence is the answer here, and `get` is the verb that can say it.
-    let Some(db) = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? else {
-        return Err(AppError::NotFound(crate::msg!("idface.nothing-of-theirs-is-held-2", "nothing of theirs is held here")));
-    };
-    let Some(head) = crate::record::documents::public_head(&db, &doc_id).await? else {
+    // Two shelves, the author's chain first. Held chain: authoritative, retraction-filtered
+    // at `public_head`. No chain: the FRAGMENT ledger (2026-08-14) - a reader whose node
+    // learned of this document through a share holds the author's own signed entry and (once
+    // healed) its bytes, and this route was the missing door between that store and the
+    // reader's own browser. Every reader past the chain rendered "these words haven't reached
+    // this computer" forever, under months of green cascade tests that stopped at the
+    // database. An anonymous probe for a document held NEITHER way finds nothing rather than
+    // minting a place to look: absence is the answer here, and `get` is the verb that can say
+    // it.
+    struct ServeFacts {
+        file_hash: [u8; 32],
+        thumb_hash: Option<[u8; 32]>,
+        format: Option<u64>,
+    }
+    let facts: Option<ServeFacts> =
+        match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
+            Some(db) => crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
+                ServeFacts {
+                    file_hash: h.file_hash,
+                    thumb_hash: h.thumb_hash,
+                    format: h.format,
+                }
+            }),
+            None => crate::fragments::serving_header(&state.node_db, &root_hex, &doc_id)
+                .await
+                .map_err(AppError::Internal)?
+                .map(|h| ServeFacts {
+                    file_hash: h.file_hash,
+                    thumb_hash: h.thumb_hash,
+                    format: h.format,
+                }),
+        };
+    let Some(ServeFacts { file_hash, thumb_hash, format }) = facts else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
     };
     let (hash, mime) = if thumb {
-        let Some(t) = head.thumb_hash else {
+        let Some(t) = thumb_hash else {
             return Err(AppError::NotFound(crate::msg!("idface.this-document-has-no-thumbnail", "this document has no thumbnail")));
         };
         (t, "image/avif")
     } else {
         (
-            head.file_hash,
-            crate::record::documents::Format::from_wire(head.format).mime(),
+            file_hash,
+            crate::record::documents::Format::from_wire(format).mime(),
         )
     };
     // The URL names the DOCUMENT (mutable - editing re-publishes new words under the same
