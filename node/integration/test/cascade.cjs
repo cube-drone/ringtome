@@ -1122,10 +1122,19 @@ async function setLane(mode) {
             await dial(rae, raeRoot, samRoot, "interest_rebroadcasts", "high");
         });
 
+        const setLaneOn = async (host, mode) => {
+            const res = await makeFetch(host)("test/revalidation", {
+                method: "POST",
+                body: JSON.stringify({ mode }),
+            });
+            assert.equal(res.status, 200, `setting revalidation mode on ${host}`);
+        };
+
         afterEach(async () => {
             await plugIn(HOST);
             await plugIn(HOST_B);
             await plugIn(HOST_C);
+            await setLaneOn(HOST_E, "default");
         });
 
         /// Publish (optionally with an embedded image), have BOB share first - settled, so the
@@ -1293,6 +1302,105 @@ async function setLane(mode) {
                 }),
                 "and the image's bytes healed from the other sharer too"
             );
+        });
+
+        it("an old version cannot roll a newer one back", async () => {
+            /*
+                The out-of-order construction, deterministic by ALPN: Bo's SYNC door freezes
+                his chain knowledge at v2 while his FRAGMENT door keeps answering; the world
+                moves to v3; the author goes dark; Rae's revalidation now consults a fossil
+                every beat. Today `remember` re-stores whatever the last answerer served -
+                last-write-by-ARRIVAL - so v2 overwrites v3 within a beat or two, and with
+                heterogeneous sharers the copy can oscillate v2/v3 by whoever answers first.
+                The desired property, asserted and RED until the ordering fix lands: an
+                arriving version older by the author's own numbers changes nothing.
+            */
+            // Fast lane on Rae's node: the rig boots tree-only, where she could never reach
+            // v3 at all with her origin fossilized - which the pre-fix run demonstrated by
+            // failing at the ARRIVAL stage. The rollback claim needs v3 in hand first.
+            await setLaneOn(HOST_E, "fast");
+            const { post, draft, version } = await seedDual("rollback-one");
+
+            // v2, converged everywhere - including Bo, whose copy is about to fossilize.
+            const put2 = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    title: "rollback-two",
+                    body: "rollback-two: the words",
+                    parents: [version],
+                    format: "plaintext",
+                }),
+            });
+            const put2Text = await put2.text();
+            assert.equal(put2.status, 200, put2Text);
+            const v2 = JSON.parse(put2Text).version;
+            const rep2 = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
+                method: "POST",
+            });
+            assert.equal(rep2.status, 200, await rep2.text());
+            for (const [who, root, host] of [["Bo", boRoot, HOST_B], ["Rae", raeRoot, HOST_E]]) {
+                assert.ok(
+                    await settle(async () => {
+                        const rows = await feedOf(root, host);
+                        const r = rows.find((x) => x.doc_id === post);
+                        return r && r.title === "rollback-two" ? true : null;
+                    }),
+                    `v2 reached ${who}`
+                );
+            }
+
+            // Bo's chain knowledge fossilizes: sync refused, fragment door still answering.
+            await unplug(HOST_B, { alpns: ["sync"] });
+
+            // v3, which Bo can never learn of.
+            const put3 = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    title: "rollback-three",
+                    body: "rollback-three: the words",
+                    parents: [v2],
+                    format: "plaintext",
+                }),
+            });
+            assert.equal(put3.status, 200, await put3.text());
+            const rep3 = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
+                method: "POST",
+            });
+            assert.equal(rep3.status, 200, await rep3.text());
+            assert.ok(
+                await settle(async () => {
+                    const rows = await fragmentsOf(allyRoot, HOST_E);
+                    const r = rows.find((x) => x.doc_id === post);
+                    return r && r.title === "rollback-three" ? true : null;
+                }),
+                "Rae reached v3 straight from the author"
+            );
+            // The staleness pin: Bo provably still believes v2.
+            const boRows = await feedOf(boRoot, HOST_B);
+            assert.equal(
+                boRows.find((x) => x.doc_id === post).title,
+                "rollback-two",
+                "precondition: the fossil is a fossil"
+            );
+
+            // The author goes dark; the fossil answers every revalidation from here.
+            await unplug(HOST, { alpns: ["fragment"] });
+
+            // The property: across many sweep beats of Bo serving v2, Rae's copy never goes
+            // backward. Sampled, not settled - the failure mode IS a transition, and one
+            // sighting of v2 is the defect demonstrated.
+            for (let i = 0; i < 12; i++) {
+                await new Promise((r) => setTimeout(r, 700));
+                const rows = await fragmentsOf(allyRoot, HOST_E);
+                const r = rows.find((x) => x.doc_id === post);
+                assert.ok(r, "the fragment stands throughout");
+                assert.equal(
+                    r.title,
+                    "rollback-three",
+                    `sample ${i}: an old version arriving late must change nothing - ` +
+                        "the author's own numbers order the author's own document"
+                );
+            }
         });
 
         it("every source dark is silence, not loss - and not overreach", async () => {

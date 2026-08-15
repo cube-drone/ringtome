@@ -6015,3 +6015,47 @@ What remains of that residual family: the in-window stale-sharer EDIT rollback (
 self-healing; a same-chain seq comparison would shrink it further) and the orphaned share row.
 
 Gates: `just ci` exit 0, 656 passing; catalog at 450.
+
+## 2026-08-15 — arrival order is not authorship order: the rollback closes
+
+The last data-integrity residual on the rebroadcast ledger. `remember` re-stored wholesale -
+last answerer won - so which version a fragment holder had was a function of network ARRIVAL
+ORDER: a sharer whose chain knowledge had fossilized could roll an edit back at every node the
+author could not out-answer, and the multi-origin walk (same day) had widened the exposure in
+both directions. Now an arriving version older by the author's own numbers changes nothing:
+same-leaf-chain versions compare by `seq` - pure causal order, deliberately OUTRANKING the
+stamps, because a skewed clock cannot reorder one device's own chain - and cross-device
+versions by `(claimed stamp, hash)`, which is `display_head`'s own comparator, so fragment
+holders and chain holders converge on the same version from the same author-signed numbers.
+
+Curtis asked the right adversarial question first - "is this building a dependence on
+wall-clock time into our distributed system?" - and the answer shaped the comment block: no
+local clock, no network time, no cross-author comparison; the stamp functions as an
+author-signed version label whose accuracy is never load-bearing (the hash tiebreak alone
+makes the order total), and the thing REMOVED is a genuine nondeterminism - arrival order,
+unreplayable and different on every node. The LWW-register move: max-merge is a semilattice;
+overwrite is not. The same version still passes through, because the wholesale re-store is
+how `checked_ms` advances and refusing an identical refresh would leave the row perpetually
+due; a held entry that no longer decodes fails OPEN, because corruption must not wedge a row
+against every future update.
+
+### The test, and what its first red taught
+
+The out-of-order construction is deterministic by ALPN: Bo's SYNC door freezes his chain
+knowledge at v2 while his FRAGMENT door keeps answering; the world moves to v3; the author
+goes dark; Rae's revalidation consults a fossil every beat, and twelve samples over many
+beats assert the words never go backward. The pre-fix run went red one assertion EARLY, and
+honestly: the rig boots tree-only, where Rae could never reach v3 at all with her origin
+fossilized - single-origin fragility demonstrating itself at the arrival stage. The test
+gained a fast-lane override on Rae's node, and the sampling property earned its red by plant
+instead: ordering disabled, sample 1 caught `rollback-two` wearing `rollback-three`'s place.
+Plant removed, unit test beside it (seq outranks a lying stamp; older cross-device stamp
+refused; newer stored, whoever delivered it).
+
+With this, the residual family from 2026-08-12 is closed whole: deletes cannot resurrect
+(tombstone finality), deletions travel signed and batched, media rides and dies with its
+post, any sharer serves, and no version of anything moves backward. What remains on the
+rebroadcast ledger is UX-and-policy, not integrity: the orphaned share row, the orphan-twin
+reaper, the drift badge, then replies.
+
+Gates: `just ci` exit 0, 657 passing.

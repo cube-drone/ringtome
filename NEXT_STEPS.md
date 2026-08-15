@@ -33,17 +33,11 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets
 * Make a whole bucket public in one fell swoop.
-* **Rebroadcast — data layer shipped 2026-08-11; the reader's screen reached 2026-08-14**
+* Rebroadcast
   * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
     stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
     the only reason it was ever there. A question for the retraction rules, not the read path
     (which currently falls back to `feed_journal.via_root` and says so in a comment).
-  * **A stale sharer can roll a fragment back.** `remember` overwrites version/entry/body_hash
-    with whatever the last origin served and never checks it is NEWER ("the version is allowed
-    to move"), so six sharers pinned at different times can un-apply an edit between them. The
-    *deleted* case of this is closed (2026-08-13: a tombstone now refuses the write, and
-    `cascade.cjs` proves it); an EDIT still has no comparison to make, because a fragment's
-    version is an entry hash and nothing beside it says which of two hashes came later.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket

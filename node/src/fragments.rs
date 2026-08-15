@@ -79,19 +79,54 @@ pub async fn remember(
             return Ok(());
         }
     }
-    let held_genesis: Option<(Option<i64>,)> = node_db
+    let held_row: Option<(Option<i64>, Vec<u8>, String)> = node_db
         .fetch_optional(
-            "SELECT genesis_ms FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            "SELECT genesis_ms, entry, version FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
             (author_root, hex::encode(verified.doc_id)),
         )
         .await
-        .context("reading a held fragment's genesis")?;
-    if let Some((held,)) = held_genesis {
-        if held.is_some() && held != verified.header.genesis_ms {
+        .context("reading a held fragment")?;
+    if let Some((held_genesis, held_entry, held_version)) = held_row {
+        if held_genesis.is_some() && held_genesis != verified.header.genesis_ms {
             tracing::warn!(
                 author = %author_root, doc = %hex::encode(verified.doc_id),
                 "refused a fragment whose genesis moved between fetches");
             return Ok(());
+        }
+        // The ordering rule (2026-08-15): an arriving version OLDER by the author's own
+        // numbers changes nothing. Without it, "which version does a fragment holder have?"
+        // was a function of network ARRIVAL ORDER - the last answerer won, so a sharer whose
+        // chain knowledge had fossilized could roll an edit back at every node the author
+        // could not out-answer, and heterogeneous sharers made the copy oscillate. This is
+        // the LWW-register move: same-leaf-chain versions compare by `seq` (pure causal
+        // order, no stamps consulted), cross-device versions by `(claimed stamp, hash)` -
+        // `display_head`'s own comparator, so fragment holders and chain holders converge on
+        // the same answer from the same author-signed numbers. No local clock, no network
+        // time, no cross-author comparison anywhere; an author whose devices' clocks disagree
+        // confuses only their own document's holders, in-window, until the freeze.
+        //
+        // The SAME version passes through: the wholesale re-store is how `checked_ms`
+        // advances, and refusing an identical refresh would leave the row perpetually due.
+        // A held entry that no longer decodes fails OPEN - corruption must not wedge a row
+        // against every future update; the serving door already refuses to serve it.
+        if held_version != hex::encode(verified.version) {
+            if let (Ok(held), Ok(arriving)) = (
+                ringtome_proto::SignedEntry::decode(&held_entry),
+                ringtome_proto::SignedEntry::decode(entry),
+            ) {
+                let (h, a) = (held.entry(), arriving.entry());
+                let older = if a.chain.author == h.chain.author {
+                    a.seq < h.seq
+                } else {
+                    (a.timestamp_ms, *arriving.hash()) < (h.timestamp_ms, *held.hash())
+                };
+                if older {
+                    tracing::debug!(
+                        author = %author_root, doc = %hex::encode(verified.doc_id),
+                        "ignored a version older than the one held - arrival order is not authorship order");
+                    return Ok(());
+                }
+            }
         }
     }
     let now = now_ms();
@@ -1569,6 +1604,76 @@ mod tests {
             held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
             "revised",
             "a genesis that moves between fetches is nonsense, not a case to honor"
+        );
+    }
+
+    /// The ordering rule: arrival order is not authorship order. Same-chain versions compare
+    /// by seq - pure causal order, and it OUTRANKS the stamps (a skewed clock cannot reorder
+    /// one device's own chain) - cross-device versions by (claimed stamp, hash),
+    /// `display_head`'s comparator, so fragment and chain holders converge identically.
+    #[tokio::test]
+    async fn an_older_version_arriving_late_changes_nothing() {
+        let db = crate::db::test_node_db().await;
+        let alice = "a".repeat(64);
+        let doc = [6u8; 16];
+        let doc_hex = hex::encode(doc);
+        let bob = "b".repeat(64);
+        let key_one = ringtome_proto::SigningKey::from_bytes(&[41u8; 32]);
+        let key_two = ringtome_proto::SigningKey::from_bytes(&[42u8; 32]);
+
+        let entry_bytes = |key: &ringtome_proto::SigningKey, seq: u64, ts: i64| {
+            let entry = ringtome_proto::Entry {
+                v: ringtome_proto::ENTRY_VERSION,
+                entry_type: ringtome_proto::registry::entry_type::DOC_HEADER,
+                chain: ringtome_proto::ChainId {
+                    author: key.verifying_key().to_bytes(),
+                    service: ringtome_proto::registry::service::POSTS,
+                },
+                seq,
+                prev_hash: ringtome_proto::ZERO_HASH,
+                timestamp_ms: ts,
+                payload: ringtome_proto::Payload::Inline(vec![0xa0]),
+            };
+            ringtome_proto::SignedEntry::create(&entry, key)
+                .unwrap()
+                .bytes()
+                .to_vec()
+        };
+        let titled = |title: &str, ts: i64| {
+            let mut v = verified_at(doc, ts, Some(100));
+            v.header.title = title.into();
+            v.version = [ts as u8; 32]; // distinct version identity per store
+            v
+        };
+
+        // Same chain: seq 5 at stamp 500 held; seq 4 arrives wearing a LATER stamp - the
+        // clock lies, the chain does not. Refused.
+        remember(&db, &bob, &alice, &titled("v-held", 500), &entry_bytes(&key_one, 5, 500), &[])
+            .await
+            .unwrap();
+        remember(&db, &bob, &alice, &titled("v-rollback", 900), &entry_bytes(&key_one, 4, 900), &[])
+            .await
+            .unwrap();
+        assert_eq!(
+            held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
+            "v-held",
+            "same-chain seq outranks any stamp"
+        );
+
+        // Cross-device: another leaf's version with an OLDER claimed stamp is refused...
+        remember(&db, &bob, &alice, &titled("v-stale", 200), &entry_bytes(&key_two, 9, 200), &[])
+            .await
+            .unwrap();
+        assert_eq!(held(&db, &alice, &doc_hex).await.unwrap().unwrap().title, "v-held");
+
+        // ...and a NEWER one is stored: the same comparator display_head runs on full chains.
+        remember(&db, &bob, &alice, &titled("v-newer", 800), &entry_bytes(&key_two, 2, 800), &[])
+            .await
+            .unwrap();
+        assert_eq!(
+            held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
+            "v-newer",
+            "newer by the author's own numbers wins, whoever delivered it"
         );
     }
 
