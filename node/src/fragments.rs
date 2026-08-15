@@ -106,6 +106,20 @@ pub async fn remember(
 /// `retract_vanished` applies to followed authors, applied where that sweep cannot reach: it
 /// reconciles against the author's shelf, and on a reader's node there is no shelf to read.
 pub async fn forget(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
+    forget_one(node_db, author_root, doc_id).await?;
+    // The cover cascade (2026-08-14): if this was a POST, the media fragments it covered lose
+    // a reason to exist, and the ones with no covers left go with it. One level deep by
+    // construction - a public post's refs only ever name media twins (the bake refuses
+    // anything else), and media documents are leaves.
+    for media in drop_covers_of_post(node_db, author_root, doc_id).await? {
+        tracing::debug!(author = %author_root, media = %media, post = %doc_id,
+            "a media fragment lost its last cover - dropped with its post");
+        forget_one(node_db, author_root, &media).await?;
+    }
+    Ok(())
+}
+
+async fn forget_one(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()> {
     node_db
         .execute(
             "DELETE FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
@@ -114,6 +128,223 @@ pub async fn forget(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()>
         .await
         .context("forgetting a fragment")?;
     crate::fanout::excise_shared(node_db, author_root, doc_id).await
+}
+
+// ---------------------------------------------------------------------------------------------
+// Covers: why a media fragment exists.
+//
+// A share is an implicit rebroadcast of the post's media (PROJECT_PLAN: one pointer, one
+// budget, one renderable whole), and the signed header's `refs` say exactly what that means -
+// so a post fragment's arrival obliges this node to hold its refs, and a post fragment's death
+// releases them. `fragment_covers` is the refcount that makes both directions local: a row per
+// (media, covering post), minted from the header, reconciled when an edit's refs change,
+// dropped with the post - and doubling as media's own retry ledger, deliberately NOT
+// `fragment_wants`, whose drain journals arrivals into feeds and an image is not a post.
+
+/// Reconcile one post's cover rows against its (possibly newly edited) refs, returning the
+/// media that just lost their LAST cover - the caller forgets those. Pure bookkeeping, no
+/// network, so the refcount is unit-testable.
+pub async fn reconcile_covers(
+    node_db: &Db,
+    author_root: &str,
+    post_hex: &str,
+    refs: &[[u8; 16]],
+) -> Result<Vec<String>> {
+    let want: std::collections::HashSet<String> = refs.iter().map(hex::encode).collect();
+    let held: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT media_doc FROM fragment_covers WHERE author_root = ?1 AND post_doc = ?2",
+            (author_root, post_hex),
+        )
+        .await
+        .context("reading a post's covers")?;
+    let mut orphaned = Vec::new();
+    for (media,) in held {
+        if !want.contains(&media) {
+            node_db
+                .execute(
+                    "DELETE FROM fragment_covers
+                     WHERE author_root = ?1 AND post_doc = ?2 AND media_doc = ?3",
+                    (author_root, post_hex, media.as_str()),
+                )
+                .await
+                .context("dropping an edited-away cover")?;
+            if !covered(node_db, author_root, &media).await? {
+                orphaned.push(media);
+            }
+        }
+    }
+    for media in &want {
+        node_db
+            .execute(
+                "INSERT OR IGNORE INTO fragment_covers (author_root, media_doc, post_doc)
+                 VALUES (?1, ?2, ?3)",
+                (author_root, media.as_str(), post_hex),
+            )
+            .await
+            .context("recording a cover")?;
+    }
+    Ok(orphaned)
+}
+
+/// Drop every cover a dying post held, returning the media left with none.
+async fn drop_covers_of_post(
+    node_db: &Db,
+    author_root: &str,
+    post_hex: &str,
+) -> Result<Vec<String>> {
+    let held: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT media_doc FROM fragment_covers WHERE author_root = ?1 AND post_doc = ?2",
+            (author_root, post_hex),
+        )
+        .await
+        .context("reading a dying post's covers")?;
+    node_db
+        .execute(
+            "DELETE FROM fragment_covers WHERE author_root = ?1 AND post_doc = ?2",
+            (author_root, post_hex),
+        )
+        .await
+        .context("dropping a dying post's covers")?;
+    let mut orphaned = Vec::new();
+    for (media,) in held {
+        if !covered(node_db, author_root, &media).await? {
+            orphaned.push(media);
+        }
+    }
+    Ok(orphaned)
+}
+
+/// Does anything still claim this media?
+async fn covered(node_db: &Db, author_root: &str, media_hex: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM fragment_covers WHERE author_root = ?1 AND media_doc = ?2 LIMIT 1",
+            (author_root, media_hex),
+        )
+        .await
+        .context("counting a media fragment's covers")?;
+    Ok(row.is_some())
+}
+
+/// A post fragment landed (or revalidated): record what it covers and fetch what is missing,
+/// from the SAME origin that served the post - the pointer's edge is the media's edge, so a
+/// shared image survives its author sleeping exactly as the post does. Depth one, no
+/// recursion: refs of the fetched media are ignored by construction.
+pub async fn cover_refs(
+    state: &crate::AppState,
+    origin_root: &str,
+    author_root: &str,
+    post_hex: &str,
+    refs: &[[u8; 16]],
+) {
+    if let Err(e) = cover_refs_inner(state, origin_root, author_root, post_hex, refs).await {
+        tracing::debug!(author = %author_root, post = %post_hex, error = ?e, "cover walk failed");
+    }
+}
+
+async fn cover_refs_inner(
+    state: &crate::AppState,
+    origin_root: &str,
+    author_root: &str,
+    post_hex: &str,
+    refs: &[[u8; 16]],
+) -> Result<()> {
+    for media in reconcile_covers(&state.node_db, author_root, post_hex, refs).await? {
+        tracing::debug!(author = %author_root, media = %media,
+            "an edit dropped the last cover - media fragment released");
+        forget_one(&state.node_db, author_root, &media).await?;
+    }
+    for media in refs {
+        let media_hex = hex::encode(media);
+        if held(&state.node_db, author_root, &media_hex).await?.is_some() {
+            continue;
+        }
+        fetch_cover(state, origin_root, author_root, media).await;
+    }
+    Ok(())
+}
+
+/// Fetch one covered media document from an origin and remember it - the media half of what
+/// `journalable` does for the post, minus the feed row an image must never become.
+async fn fetch_cover(
+    state: &crate::AppState,
+    origin_root: &str,
+    author_root: &str,
+    media: &[u8; 16],
+) {
+    let Some(author) = crate::pubkey::decode(author_root) else {
+        return;
+    };
+    let media_hex = hex::encode(media);
+    match crate::net::fragment::fetch(state, origin_root, &author, media).await {
+        crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+            if let Err(e) = remember(
+                &state.node_db,
+                origin_root,
+                author_root,
+                &verified,
+                &entry,
+                &auth_path,
+            )
+            .await
+            {
+                tracing::warn!(author = %author_root, media = %media_hex, error = ?e,
+                    "could not store a covered media fragment");
+                return;
+            }
+            // The bytes an image needs are more than a post's: body, thumbnail, preview -
+            // whichever the signed header names.
+            let mut blobs = vec![verified.header.file_hash];
+            blobs.extend(verified.header.thumb_hash);
+            blobs.extend(verified.header.preview_hash);
+            for hash in blobs {
+                let _ = crate::net::bodies::want(&state.node_db, author_root, &hash).await;
+            }
+            heal_soon(state, author_root, origin_root);
+        }
+        crate::net::fragment::Fetched::Gone { entry, auth_path } => {
+            // The author retracted the media twin itself. The proof travels like any death's.
+            let _ = entomb(&state.node_db, author_root, &media_hex, &entry, &auth_path).await;
+            let _ = forget_one(&state.node_db, author_root, &media_hex).await;
+        }
+        crate::net::fragment::Fetched::Unknown => {
+            // Nothing learned; the cover row IS the retry - `heal_covers` asks again on the
+            // next beat, from whatever origin the covering post has by then.
+        }
+    }
+}
+
+/// Media fetches the walk could not finish, retried on the sweep beat: any cover whose media
+/// fragment is not held is a fetch owed, asked of the covering post's CURRENT origin. Skips
+/// the entombed - a dead twin is not owed, it is buried.
+async fn heal_covers(state: &crate::AppState) -> Result<()> {
+    type Row = (String, String, String);
+    let rows: Vec<Row> = state
+        .node_db
+        .fetch_all(
+            "SELECT c.author_root, c.media_doc, f.origin_root
+             FROM fragment_covers c
+             JOIN fragments f ON f.author_root = c.author_root AND f.doc_id = c.post_doc
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM fragments m
+                 WHERE m.author_root = c.author_root AND m.doc_id = c.media_doc
+             )
+             LIMIT 16",
+            (),
+        )
+        .await
+        .context("listing uncovered media fetches")?;
+    for (author_hex, media_hex, origin_root) in rows {
+        let Ok(bytes) = hex::decode(&media_hex) else { continue };
+        let Ok(media) = <[u8; 16]>::try_from(bytes.as_slice()) else { continue };
+        if entombed(&state.node_db, &author_hex, &media).await? {
+            continue;
+        }
+        fetch_cover(state, &origin_root, &author_hex, &media).await;
+    }
+    Ok(())
 }
 
 /// Remember that a document is gone, having just dropped the copy of it.
@@ -633,6 +864,9 @@ pub async fn journalable(
                 tracing::debug!(author = %author_root, error = ?e, "could not note a fragment body");
             }
             heal_soon(state, author_root, origin_root);
+            // The implicit rebroadcast: what this post's signed header covers travels with
+            // it, from the same origin, before any reader asks.
+            cover_refs(state, origin_root, author_root, &doc_hex, &verified.header.refs).await;
             let f = held(&state.node_db, author_root, &doc_hex).await.ok()??;
             Some(row_of(&f, &doc_hex))
         }
@@ -789,6 +1023,16 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
         ) else {
             continue;
         };
+        // The due list is a snapshot, and rows die mid-pass: a post's `Gone` cascades its
+        // covered media out from under the very same sweep that queued them, and re-storing
+        // from the stale snapshot resurrected an uncovered media fragment FOREVER - the
+        // author retracts the post, never the twin, so the origin answers `Have` on every
+        // later beat and the row self-perpetuates (caught 2026-08-14, first run of the
+        // image-rides test: Cleo re-held "cat" seconds after dropping it with its post). A
+        // sweep REVALIDATES what is held; what is no longer held is no longer its business.
+        if held(&state.node_db, &author_hex, &doc_hex).await?.is_none() {
+            continue;
+        }
         match crate::net::fragment::revalidate(&state, &origin_root, &author, &doc_id).await {
             crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
                 tracing::debug!(
@@ -823,6 +1067,10 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
                 )
                 .await;
                 heal_soon(&state, &author_hex, &origin_root);
+                // An edit can change what a post embeds; the reconcile inside drops covers
+                // the new refs no longer name and releases orphaned media.
+                cover_refs(&state, &origin_root, &author_hex, &doc_hex, &verified.header.refs)
+                    .await;
             }
             crate::net::fragment::Fetched::Gone { entry, auth_path } => {
                 tracing::info!(
@@ -850,6 +1098,11 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
     }
 
     drain_wants(&state).await?;
+    // Media the cover walk could not finish - the same recovery posture as the wants drain,
+    // on its own ledger so an image can never be journaled as a post.
+    if let Err(e) = heal_covers(&state).await {
+        tracing::debug!(error = ?e, "cover heal failed; next beat retries");
+    }
     // The batch pass rides the same beat: per-document dials above for edit freshness on the
     // young end of the shelf, one cursor ask per peer here for deletion everywhere. Errors are
     // the beat's to absorb - a failed reap is retried next beat from the same cursors.
@@ -911,6 +1164,8 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
                 )
                 .await;
                 heal_soon(state, &author_hex, &origin_root);
+                cover_refs(state, &origin_root, &author_hex, &doc_hex, &verified.header.refs)
+                    .await;
                 settle_want(&state.node_db, &author_hex, &doc_hex).await?;
                 tracing::info!(author = %author_hex, doc = %doc_hex, "a wanted fragment arrived");
                 if let Some(f) = held(&state.node_db, &author_hex, &doc_hex).await? {
@@ -1120,6 +1375,57 @@ mod tests {
         assert!(
             entombed(&db, &alice, &held_doc).await.unwrap(),
             "and its death is kept, provable, gossipable"
+        );
+    }
+
+    /// The cover refcount: a media fragment lives exactly as long as some covering post
+    /// fragment does. Two posts embed one image; one dies, the image stays; the last dies,
+    /// the image goes - and an EDIT that drops the embed releases it the same way.
+    #[tokio::test]
+    async fn a_media_fragment_lives_while_anything_covers_it() {
+        let db = crate::db::test_node_db().await;
+        let alice = "a".repeat(64);
+        let image = [9u8; 16];
+        let image_hex = hex::encode(image);
+        let (post_a, post_b) = (hex::encode([1u8; 16]), hex::encode([2u8; 16]));
+
+        // The image fragment, held; both posts claim it.
+        remember(&db, &"b".repeat(64), &alice, &verified(image), &[1], &[]).await.unwrap();
+        assert!(reconcile_covers(&db, &alice, &post_a, &[image]).await.unwrap().is_empty());
+        assert!(reconcile_covers(&db, &alice, &post_b, &[image]).await.unwrap().is_empty());
+
+        // Post A dies: the image is still covered by B.
+        forget(&db, &alice, &post_a).await.unwrap();
+        assert!(
+            held(&db, &alice, &image_hex).await.unwrap().is_some(),
+            "one cover left is one reason to exist"
+        );
+
+        // Post B's EDIT drops the embed: the last cover goes, and the caller is told.
+        let orphaned = reconcile_covers(&db, &alice, &post_b, &[]).await.unwrap();
+        assert_eq!(orphaned, vec![image_hex.clone()], "the reconcile names what it released");
+
+        // (cover_refs would forget it; the bookkeeping test does it by hand.)
+        forget(&db, &alice, &image_hex).await.unwrap();
+        assert!(held(&db, &alice, &image_hex).await.unwrap().is_none());
+    }
+
+    /// The forget cascade in one move: a post fragment dying takes its solely-covered media
+    /// with it, without the caller knowing media was involved at all.
+    #[tokio::test]
+    async fn forgetting_a_post_drops_its_uncovered_media() {
+        let db = crate::db::test_node_db().await;
+        let alice = "a".repeat(64);
+        let image = [9u8; 16];
+        let post = hex::encode([1u8; 16]);
+
+        remember(&db, &"b".repeat(64), &alice, &verified(image), &[1], &[]).await.unwrap();
+        reconcile_covers(&db, &alice, &post, &[image]).await.unwrap();
+
+        forget(&db, &alice, &post).await.unwrap();
+        assert!(
+            held(&db, &alice, &hex::encode(image)).await.unwrap().is_none(),
+            "the image went with the only post that carried it"
         );
     }
 

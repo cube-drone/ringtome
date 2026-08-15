@@ -3280,6 +3280,21 @@ degradation - never as the obligation structure. A hundred-track mixtape is not 
 **Taxonomy of posts**, and publishing-and-rebroadcasting a whole bucket at a time is its own design, deliberately
 deferred.
 
+**A share is an implicit rebroadcast of the post's media** (built 2026-08-14): one pointer, one budget, one
+renderable whole - nobody believes they shared a post minus its picture, and the machinery now agrees. The
+covered set is never parsed out of a foreign body: the post's SIGNED header names what it embeds
+(`DocHeaderPlain.refs`, derived at the mint by the same parse that bakes, capped at 50 - the count cap prices
+the obligations the way the byte budget prices the bytes). A post fragment's arrival obliges its refs from the
+SAME origin - the pointer's edge is the media's edge, so a shared image survives its author sleeping exactly as
+the post does - and the media set is version-relative: an edit's refs reconcile, fetching what was added and
+releasing what was dropped. Deletion composes instead of needing its own story: `fragment_covers` refcounts why
+each media fragment exists (a doc two shared posts embed is one fragment with two reasons), and a post
+fragment's death - takedown, withdrawal, edit - releases its solely-covered media on the spot, locally, no
+network round trip. The lying-author cases are self-scoped like every header claim: an over-claim obliges the
+author's own sharers (budget-capped), an under-claim breaks the author's own images past hop one. What remains
+deliberately open: whether a reply's parent-pin covers the PARENT's media (leaning yes, same rule one level,
+budget per covered post), to be settled when replies land.
+
 Revalidation is **star and tree, in that order** (settled 2026-08-11). The author's own node is asked first -
 the fastest, most authoritative answer there is, one small round trip, jittered so a viral post's ten thousand
 holders do not knock on the same second forever. When the author cannot be reached, the ORIGIN answers: whoever

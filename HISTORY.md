@@ -5845,3 +5845,41 @@ doesn't cover - the body-size cap foremost. The chip wants to learn the differen
 "will heal" and "needs your hand"; small, and it covers every future save-time refusal at once.
 
 Gates: `just ci` exit 0, 650 passing (5 new pure tests, embedcap.cjs); catalog at 449.
+
+## 2026-08-14 — the image rides the share: implicit rebroadcast, built
+
+The rule canon now carries (*What travels with a share*): **a share is an implicit rebroadcast
+of the post's media** - one pointer, one budget, one renderable whole, because nobody believes
+they shared a post minus its picture. The signed header's `refs` (yesterday's slice) made it
+buildable without parsing a byte of foreign Marquee: a post fragment's arrival obliges its
+refs from the SAME origin - the pointer's edge is the media's edge, so a shared image survives
+its author sleeping exactly as the post does - and `fragment_covers` refcounts why each media
+fragment exists, so the deletion story composes instead of needing its own: a post's death or
+an edit that drops an embed releases solely-covered media on the spot, locally. A doc two
+shared posts embed is one fragment with two reasons. Node schema 20→21.
+
+Deliberately NOT `fragment_wants`: the wants drain journals arrivals to the sharer's readers,
+and an image is not a post - the covers table doubles as media's own retry ledger
+(`heal_covers`, on the sweep beat, skipping the entombed).
+
+Proven with real bytes end to end (`cascade.cjs`, *the image rides the share*): a webp through
+ingest, the bake minting the public twin, the twin's fragment riding to hops three and four,
+the IMAGE BYTES serving from each reader's own node at the URL their renderer asks - and the
+takedown dropping post and image together at every hop.
+
+### The resurrection the test caught on its first run
+
+Steps one through five passed immediately; the takedown failed, and charlie's log told it
+plainly: the cover cascade dropped the twin at 00:45:52, and seconds later the twin was back -
+"still served", title "cat", every beat, forever. **The sweep's due list is a snapshot, and
+rows die mid-pass**: the same pass that heard the post's `Gone` (and cascaded its media away)
+went on to the twin's already-deleted entry from the stale snapshot, revalidated it against an
+origin with no reason to say anything but `Have` - the author retracts the POST, never the
+twin - and re-stored it. Uncovered but immortal, because every later beat revalidates the
+re-stored row.
+
+The fix is the general rule, not a media patch: **a sweep revalidates what is held, and what
+died mid-pass is no longer its business** - one held-check per due row, which also protects
+the reap's burials from the same stale-snapshot resurrection. Second run green.
+
+Gates: `just ci` exit 0, 651 passing.

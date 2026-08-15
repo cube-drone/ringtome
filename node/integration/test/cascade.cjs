@@ -815,6 +815,145 @@ async function setLane(mode) {
             );
         });
 
+    });
+
+    /*
+        The implicit rebroadcast: a share covers the post AS SEEN - one pointer, one budget,
+        one renderable whole. The post's signed header names what it embeds (`refs`), so a
+        post fragment's arrival obliges the media too, from the same origin, and a post
+        fragment's death releases it (the cover refcount). Real bytes end to end: a webp
+        through ingest, the bake minting the public twin, the twin riding the tree, and the
+        reader's BROWSER getting the image from the reader's own node.
+    */
+    describe("the image rides the share", function () {
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const webp = fs.readFileSync(
+            path.join(__dirname, "..", "..", "..", "sample_media", "its_webp.webp")
+        );
+
+        it("a shared post's image travels, serves, and dies with it", async function () {
+            // 1. A real image through the ingest door, waited to readiness.
+            const up = await alice(
+                `api/identity/${aliceRoot}/docs/binary?title=cat&parents=`,
+                { method: "POST", body: webp }
+            );
+            const upText = await up.text();
+            // 200 or 202: the door answers with the doc id while the transcode runs, and the
+            // poll below is what waits for readiness either way.
+            assert.ok(up.status === 200 || up.status === 202, upText);
+            const mediaId = JSON.parse(upText).doc_id;
+            assert.ok(mediaId, upText);
+            assert.ok(
+                await settle(async () => {
+                    const r = await alice(`api/identity/${aliceRoot}/docs/${mediaId}`);
+                    return r.status === 200 ? true : null;
+                }),
+                "the upload transcoded and the private media doc exists"
+            );
+
+            // 2. A note embedding it, published - the bake mints the public twin and the
+            //    signed header's refs name it.
+            const made = await (
+                await alice(`api/identity/${aliceRoot}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title: "cat post",
+                        body: `behold:\n\n![cat](/api/identity/${aliceRoot}/docs/${mediaId}/body/cat.webp)\n`,
+                        format: "marquee",
+                    }),
+                })
+            ).json();
+            const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
+                method: "POST",
+            });
+            const pubText = await pub.text();
+            assert.equal(pub.status, 200, pubText);
+            const post = JSON.parse(pubText).post_id;
+            assert.ok(post, `the private twin bakes inline: ${pubText}`);
+
+            // 3. Bob shares; the post reaches Cleo as a fragment, words servable (the
+            //    established claims), and the SERVED body names the public twin.
+            assert.ok(
+                await settle(async () => {
+                    const rows = await feedOf(bobRoot, HOST_B);
+                    return rows.some((r) => r.doc_id === post) ? true : null;
+                }),
+                "the post reached Bob"
+            );
+            const bobShared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
+                method: "POST",
+                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+            });
+            assert.equal(bobShared.status, 200, await bobShared.text());
+            const served = await settle(async () => {
+                const body = await servedBody(aliceRoot, post, HOST_C);
+                return body && body.includes("/docs/") ? body : null;
+            });
+            assert.ok(served, "Cleo's node serves the shared post's words");
+            const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+            assert.ok(twin, `the served body names the baked twin: ${served}`);
+            assert.notEqual(twin, post, "the twin is its own public document");
+
+            // 4. The implicit rebroadcast: the twin's FRAGMENT arrived with the post's, and
+            //    the IMAGE BYTES serve from Cleo's own node - the reader's renderer asks this
+            //    exact URL.
+            assert.ok(
+                await settle(async () => {
+                    const rows = await fragmentsOf(aliceRoot, HOST_C);
+                    return rows.some((r) => r.doc_id === twin) ? true : null;
+                }),
+                "the media twin rode the share as its own fragment"
+            );
+            assert.ok(
+                await settle(async () => {
+                    const res = await makeFetch(HOST_C)(`id/${aliceRoot}/docs/${twin}/body`);
+                    return res.status === 200 ? true : null;
+                }),
+                "and the image bytes serve from Cleo's node, to Cleo's browser"
+            );
+
+            // 5. The fourth hop: Cleo shares onward; Dana's node ends up serving the image
+            //    too, having heard of it only through the tree.
+            const onward = await cleo(`api/identity/${cleoRoot}/rebroadcasts`, {
+                method: "POST",
+                body: JSON.stringify({ author: aliceRoot, doc_id: post }),
+            });
+            assert.equal(onward.status, 200, await onward.text());
+            assert.ok(
+                await settle(async () => {
+                    const res = await makeFetch(HOST_E)(`id/${aliceRoot}/docs/${twin}/body`);
+                    return res.status === 200 ? true : null;
+                }),
+                "the image serves at the deepest hop"
+            );
+
+            // 6. The takedown: the post dies, and the image fragment - covered by nothing
+            //    else - goes with it. The cover refcount running at every hop.
+            const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
+                method: "DELETE",
+            });
+            assert.equal(down.status, 200, await down.text());
+            for (const [who, host] of [["Cleo", HOST_C], ["Dana", HOST_E]]) {
+                assert.ok(
+                    await settle(async () => {
+                        const rows = await fragmentsOf(aliceRoot, host);
+                        const postGone = !rows.some((r) => r.doc_id === post);
+                        const twinGone = !rows.some((r) => r.doc_id === twin);
+                        return postGone && twinGone ? true : null;
+                    }),
+                    `${who} dropped the post AND the image it alone justified`
+                );
+            }
+        });
+    });
+
+    describe("the death cursor: the steady state", function () {
+        const reapOn = async (host) => {
+            const res = await makeFetch(host)("test/reap", { method: "POST" });
+            assert.equal(res.status, 200, `ringing the reap on ${host}`);
+        };
+
         it("the steady state is an empty page", async () => {
             await seedToCleo("reap-quiet");
             await reapOn(HOST_C);

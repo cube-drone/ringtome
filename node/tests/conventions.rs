@@ -47,6 +47,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("fragments", vec!["fragments.rs"]),
         ("fragment_tombstones", vec!["fragments.rs"]),
         ("fragment_wants", vec!["fragments.rs"]),
+        ("fragment_covers", vec!["fragments.rs"]),
         ("death_cursors", vec!["fragments.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.

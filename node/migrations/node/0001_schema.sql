@@ -291,6 +291,21 @@ CREATE TABLE fragments (
 -- The revalidation sweep asks "what is due", oldest check first.
 CREATE INDEX fragments_by_checked ON fragments (checked_ms);
 
+-- Why a MEDIA fragment exists: the posts that embed it (2026-08-14, the implicit-rebroadcast
+-- slice - a share covers the post as seen, one pointer, one budget, one renderable whole).
+-- A row is minted when a post fragment's signed `refs` name the media, reconciled when an
+-- edit's refs change, and dropped when the covering post's fragment dies - a media fragment
+-- with no covers left goes with it, which is the deletion cascade running on local refcount.
+-- Deliberately NOT fragment_wants: the wants drain journals arrivals to the sharer's readers,
+-- and an image is not a post - this table doubles as media's own retry ledger instead
+-- (`heal_covers`: a cover whose media is not held is a fetch owed).
+CREATE TABLE fragment_covers (
+    author_root TEXT NOT NULL,
+    media_doc   TEXT NOT NULL,  -- hex, the embedded document
+    post_doc    TEXT NOT NULL,  -- hex, the covering post
+    PRIMARY KEY (author_root, media_doc, post_doc)
+);
+
 -- Fragments this node WANTS and could not get: the recovery ledger for shares that arrived
 -- before their content was reachable (the missing_bodies idiom - events for latency, sweeps
 -- for recovery). A pointer folds, the fetch comes back Unknown, and without this row nothing

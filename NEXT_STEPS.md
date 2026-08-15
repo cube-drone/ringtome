@@ -45,19 +45,14 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   the END DEVICE fetches the words over HTTP in every lane (the claim that went red 17 times on
   its first run, catching the healing gap the database-level assertions had hidden for months).
   What is left:
-  * **Media doesn't hop yet.** A shared post's embedded media (the baked public twins) mints
-    identity-rooted targets that only the author's chain-holders can serve, and the fragment
-    lane neither fetches nor pins them - a fragment-held post past hop one renders its words
-    and a broken image. The design is settled and its prerequisite is BUILT: a share is an
-    implicit rebroadcast of the post's media (one pointer, one budget, one renderable whole),
-    and the covered set now rides the SIGNED header - `DocHeaderPlain.refs`, derived at the
-    mint, capped at 50 - so the walk reads a field from the entry, in parallel with the body,
-    with no foreign Marquee parsed anywhere: fragment-Want each ref from the post's origin,
-    thumb + bytes wants, media fragments carrying their covering post so the post's death
-    cascades locally by refcount. THEN the media deletion story (the orphan reaper,
-    retract-the-twin, blob reaping) composes on top - virality first, per Curtis 2026-08-14.
-    (PROJECT_PLAN still wants the implicit-rebroadcast rule written into the share section
-    when the slice lands.)
+  * ~~**Media doesn't hop yet.**~~ Built 2026-08-14: a share is an implicit rebroadcast of the
+    post's media (PROJECT_PLAN, *What travels with a share* carries the rule). The signed
+    header's refs drive the walk from the post's origin, `fragment_covers` refcounts why each
+    media fragment exists, deaths and edits release solely-covered media locally, and
+    `cascade.cjs` proves the arc with real bytes - upload, bake, twin serving at hops three
+    and four, gone with its post's takedown. What remains of the media story is the ORPHAN
+    REAPER on the author's side (retract the unreferenced twin, then blob reaping - the
+    deletion-story residual above), now with `refs` to read instead of parsing bodies.
   * **The edit window** - the remaining trim slice, and now the only reason per-document
     revalidation still has to visit the whole shelf: deletion travels by cursor
     (`WantDeaths`/`Deaths`, built 2026-08-13 with the signed-`Gone` proofs), so once
