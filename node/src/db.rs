@@ -779,6 +779,30 @@ impl UserDbManager {
     /// `None` means something is broken, not that someone is a stranger. Never mints, so the
     /// worst a misuse can do is fail loudly - which is the whole point of not having one verb
     /// that both reads and creates.
+    /// Every identity with a database on disk - the reaper's corpus. Filesystem truth rather
+    /// than any table, because the databases ARE the references being enumerated: a file this
+    /// listing misses is a file whose blobs the reaper would wrongly collect.
+    pub fn held_roots(&self) -> Result<Vec<String>> {
+        let mut roots = Vec::new();
+        let entries = match std::fs::read_dir(&self.users_directory) {
+            Ok(e) => e,
+            // No directory yet: a fresh node with no identities holds nothing.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(roots),
+            Err(e) => return Err(e).context("listing the users directory"),
+        };
+        for entry in entries {
+            let entry = entry.context("reading a users-directory entry")?;
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if let Some(root) = name.strip_suffix(".db") {
+                if root.len() == 64 && root.chars().all(|c| c.is_ascii_hexdigit()) {
+                    roots.push(root.to_string());
+                }
+            }
+        }
+        Ok(roots)
+    }
+
     pub async fn held(&self, root_pubkey: &str) -> Result<Db> {
         self.get(root_pubkey)
             .await?

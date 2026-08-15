@@ -169,6 +169,10 @@ fn user_db_opens_are_deliberate() {
         // the loop this test guards against would be opening every author we hold to answer one
         // question, which is exactly what the (author, doc_id) key avoids.
         ("net/fragment.rs", 1),
+        // One open per HELD PERSONA per reaper round (half-hourly; the harness shortens it) -
+        // the one legitimate whole-corpus walk: mark-and-sweep is DEFINED as seeing every
+        // reference, and any error aborts the run rather than reaping blind.
+        ("reaper.rs", 1),
         // One open per REBROADCAST frontier move, not per persona - and gated behind a
         // node.db chain-heads probe first, so the overwhelming majority of moves (from the
         // people who have never shared anything) never reach it. Same shape and same

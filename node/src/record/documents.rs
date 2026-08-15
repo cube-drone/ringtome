@@ -680,6 +680,40 @@ pub struct PublicDoc {
 /// feeds the /id posts view, its pager, AND fanout's journaling into readers' feeds - and
 /// filtering in SQL keeps keyset pages full instead of mysteriously short. An unknown future
 /// format is hidden too: better absent than binary shown as text.
+/// Every blob hash this identity's documents reference, both lanes - the reaper's mark for one
+/// held database. Reads the FOLD (`doc_versions`), which the chain keeps for every version
+/// forever, so an author's own history protects its bytes for exactly as long as the rows
+/// stand. STRICT like its shelf twin: a malformed hash aborts the caller's whole run.
+pub async fn blob_refs(db: &Db, keys: Option<&EpochKeys>) -> Result<Vec<[u8; 32]>, AppError> {
+    // FOLD FIRST, or the mark lies: a save puts its blob and appends its entry, and the
+    // doc_versions row only materializes on the next read - a window in which the blob has no
+    // row to protect it. Seven integration tests found this inside one CI run when the reaper
+    // first went live (2026-08-14): fresh posts' bodies reaped out from under the publish.
+    // Public lane keylessly for every held chain; the private lane wherever this node holds
+    // the keys (elsewhere, private bodies are never fetched keyless, so there is nothing of
+    // theirs in the store to protect).
+    catch_up_public_lane(db).await?;
+    if let Some(keys) = keys {
+        catch_up(db, keys).await?;
+    }
+    type Row = (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT file_hash, thumb_hash, preview_hash FROM doc_versions",
+            (),
+        )
+        .await
+        .context("reading a held identity's blob references")
+        .map_err(AppError::Internal)?;
+    let mut out = Vec::new();
+    for (file, thumb, preview) in rows {
+        for bytes in [Some(file), thumb, preview].into_iter().flatten() {
+            out.push(hash32(&bytes)?);
+        }
+    }
+    Ok(out)
+}
+
 pub async fn public_docs(
     db: &Db,
     after: Option<(i64, [u8; 16])>,

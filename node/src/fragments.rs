@@ -664,6 +664,35 @@ fn heal_soon(state: &crate::AppState, author_root: &str, origin_root: &str) {
     });
 }
 
+/// Every blob hash the fragment shelf references: bodies from the column, thumbs and previews
+/// decoded from the stored signed entries. The reaper's mark for the shelf - and STRICT: a row
+/// whose entry no longer decodes is corruption, and the caller must abort the run rather than
+/// reap blobs this function can no longer name.
+pub async fn blob_refs(node_db: &Db) -> Result<Vec<[u8; 32]>> {
+    let rows: Vec<(Vec<u8>, Vec<u8>)> = node_db
+        .fetch_all("SELECT body_hash, entry FROM fragments", ())
+        .await
+        .context("reading the shelf's blob references")?;
+    let mut out = Vec::new();
+    for (body, entry) in rows {
+        out.push(
+            <[u8; 32]>::try_from(body.as_slice())
+                .map_err(|_| anyhow::anyhow!("corrupt body_hash on the fragment shelf"))?,
+        );
+        let signed = ringtome_proto::SignedEntry::decode(&entry)
+            .map_err(|e| anyhow::anyhow!("corrupt fragment entry: {e}"))?;
+        let ringtome_proto::Payload::Inline(payload) = &signed.entry().payload else {
+            anyhow::bail!("a fragment entry's payload is not inline");
+        };
+        let header = ringtome_proto::DocHeaderPlain::decode(payload)
+            .map_err(|e| anyhow::anyhow!("corrupt fragment header: {e}"))?;
+        out.push(header.file_hash);
+        out.extend(header.thumb_hash);
+        out.extend(header.preview_hash);
+    }
+    Ok(out)
+}
+
 /// Everyone who ever handed this node a pointer at this author's documents - the body-healing
 /// candidates a pure fragment holder actually has. The profile-via, the askers and the sync
 /// peers all come from relationships with the AUTHOR, and a reader past the chain has none of

@@ -25,6 +25,37 @@ use n0_future::StreamExt;
 
 use crate::record::private::{decrypt_file, encrypt_file, EpochKeys};
 
+/// How the reaper learns what must live: a callback armed after boot that walks the node's own
+/// reference ledgers (held chains' doc_versions, the fragment shelf, the wants ledger) and
+/// returns every hash something still points at. `Err` from the source means the reaper CANNOT
+/// see every reference right now, and the only safe answer is to reap nothing.
+/// The armed reaper: the mark source plus the store handle its tag hygiene needs.
+type ArmedGc = std::sync::Arc<std::sync::OnceLock<(LiveSource, Store)>>;
+/// Recently touched blobs, protected while their referencing rows land.
+type RecentRing = std::sync::Arc<std::sync::Mutex<Vec<(Hash, std::time::Instant)>>>;
+
+pub type LiveSource = std::sync::Arc<
+    dyn Fn() -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<std::collections::HashSet<Hash>>> + Send>,
+        > + Send
+        + Sync,
+>;
+
+/// Blobs put or fetched this recently are protected regardless of the ledgers: a put returns
+/// its hash BEFORE the caller writes the row that references it, and the reaper must not win
+/// that race. Ten minutes is oceans beside the milliseconds the row-write takes. Tests shrink
+/// it (`RINGTOME_TEST_REAP_GRACE_MS`) so a reap is watchable inside one suite.
+fn recent_grace() -> std::time::Duration {
+    static GRACE: std::sync::OnceLock<std::time::Duration> = std::sync::OnceLock::new();
+    *GRACE.get_or_init(|| {
+        std::env::var("RINGTOME_TEST_REAP_GRACE_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(600))
+    })
+}
+
 /// The blob-serving ALPN. New protocol beside the sync ALPN on the same endpoint.
 pub const BLOB_ALPN: &[u8] = iroh_blobs::ALPN;
 
@@ -59,6 +90,13 @@ impl Backend {
 pub struct FileStore {
     backend: Backend,
     max_blob_bytes: u64,
+    /// The reaper's mark source plus a store handle for tag hygiene, armed once after the
+    /// node's ledgers exist (`reaper::arm`). Until then the GC callback aborts every run - an
+    /// unarmed reaper reaps nothing.
+    armed: ArmedGc,
+    /// Hashes put or fetched recently, protected from the reaper while their referencing rows
+    /// land (see [`recent_grace`]).
+    recent: RecentRing,
     /// A clone of the node's test transport gate, because this layer opens its OWN connections
     /// (see `fetch`) and would otherwise be the one hole in `/test/unplug`. Default-constructed
     /// here, so a store built without one refuses nothing - see [`crate::net::p2p::Unplugged`].
@@ -66,23 +104,143 @@ pub struct FileStore {
 }
 
 impl FileStore {
-    /// In-memory store - tests and ephemeral nodes.
+    /// In-memory store - tests and ephemeral nodes. GC runs fast here (the unit tests want to
+    /// watch it), and reaps nothing until armed, which tests almost never do.
     pub fn memory() -> Self {
+        let (armed, recent) = Self::gc_state();
         Self {
-            backend: Backend::Mem(MemStore::new()),
+            backend: Backend::Mem(MemStore::new_with_opts(iroh_blobs::store::mem::Options {
+                gc_config: Some(Self::gc_config(
+                    std::time::Duration::from_millis(200),
+                    armed.clone(),
+                    recent.clone(),
+                )),
+            })),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             unplugged: crate::net::p2p::Unplugged::default(),
+            armed,
+            recent,
         }
     }
 
-    /// Persistent redb-backed store rooted at `path` (created if absent).
-    pub async fn fs(path: impl AsRef<Path>) -> Result<Self> {
-        let store = FsStore::load(path).await.context("opening blob store")?;
+    /// Persistent redb-backed store rooted at `path` (created if absent). `gc_interval` paces
+    /// the blob reaper's rounds; the reaper still reaps nothing until `arm_gc` is called.
+    pub async fn fs(path: impl AsRef<Path>, gc_interval: std::time::Duration) -> Result<Self> {
+        let (armed, recent) = Self::gc_state();
+        let path = path.as_ref();
+        let mut options = iroh_blobs::store::fs::options::Options::new(path);
+        options.gc = Some(Self::gc_config(gc_interval, armed.clone(), recent.clone()));
+        let store = FsStore::load_with_opts(path.join("blobs.db"), options)
+            .await
+            .context("opening blob store")?;
         Ok(Self {
             backend: Backend::Fs(store),
             max_blob_bytes: DEFAULT_MAX_BLOB_BYTES,
             unplugged: crate::net::p2p::Unplugged::default(),
+            armed,
+            recent,
         })
+    }
+
+    fn gc_state() -> (ArmedGc, RecentRing) {
+        (Default::default(), Default::default())
+    }
+
+    /// Arm the reaper: from now on, GC runs mark from `source` (plus the recent ring) and
+    /// sweep the rest. Idempotent; the first arm wins.
+    pub fn arm_gc(&self, source: LiveSource) {
+        let _ = self.armed.set((source, self.store().clone()));
+    }
+
+    /// Note a blob as recently touched, so the reaper cannot win the race against the row
+    /// that is about to reference it.
+    fn note_recent(&self, hash: Hash) {
+        let mut ring = self.recent.lock().expect("recent ring poisoned");
+        let cutoff = std::time::Instant::now() - recent_grace();
+        ring.retain(|(_, at)| *at > cutoff);
+        ring.push((hash, std::time::Instant::now()));
+    }
+
+    /// The GC hook, shared by both backends: iroh-blobs runs the sweep on its own interval and
+    /// asks this callback what must live. Unarmed, or a source error, ABORTS the run - the
+    /// documented use of that outcome, because a reaper that cannot see every reference must
+    /// not reap. Tags are dropped for anything outside the live set: a tag here is
+    /// `add_bytes` bookkeeping, never a reference - the ledgers are the references - and
+    /// iroh's mark phase treats tags as roots, so a dead blob's tag would keep it immortal.
+    fn gc_config(
+        interval: std::time::Duration,
+        armed: ArmedGc,
+        recent: RecentRing,
+    ) -> iroh_blobs::store::GcConfig {
+        use iroh_blobs::store::ProtectOutcome;
+        iroh_blobs::store::GcConfig {
+            interval,
+            // The callback's future must be Sync (iroh's ProtectCb) and the store's own
+            // sub-futures are not - so the real work runs in a spawned task and the callback
+            // awaits its JoinHandle, which is.
+            add_protected: Some(std::sync::Arc::new(move |live| {
+                let armed = armed.clone();
+                let recent = recent.clone();
+                let work = tokio::spawn(async move {
+                    let Some((source, store)) = armed.get() else {
+                        return None; // unarmed reaps nothing
+                    };
+                    let mut keep = match source().await {
+                        Ok(set) => set,
+                        Err(e) => {
+                            tracing::warn!(error = ?e, "blob reaper could not see every reference - run skipped");
+                            return None;
+                        }
+                    };
+                    {
+                        let cutoff = std::time::Instant::now() - recent_grace();
+                        let ring = recent.lock().expect("recent ring poisoned");
+                        keep.extend(ring.iter().filter(|(_, at)| *at > cutoff).map(|(h, _)| *h));
+                    }
+                    // Tag hygiene: a tag here is `add_bytes` bookkeeping, never a reference -
+                    // the ledgers are the references - and iroh's mark phase treats tags as
+                    // roots, so a dead blob's tag would keep it immortal. Dropped only for
+                    // hashes outside the keep set; the recent ring guards a fresh put's gap.
+                    let tags = match store.tags().list().await {
+                        Ok(stream) => {
+                            match stream
+                                .collect::<Vec<_>>()
+                                .await
+                                .into_iter()
+                                .collect::<Result<Vec<_>, _>>()
+                            {
+                                Ok(tags) => tags,
+                                Err(e) => {
+                                    tracing::warn!(error = ?e, "blob reaper could not read a tag - run skipped");
+                                    return None;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = ?e, "blob reaper could not list tags - run skipped");
+                            return None;
+                        }
+                    };
+                    for tag in tags {
+                        if !keep.contains(&tag.hash) {
+                            if let Err(e) = store.tags().delete(&tag.name).await {
+                                tracing::debug!(error = ?e, "could not drop a dead blob's tag");
+                            }
+                        }
+                    }
+                    Some(keep)
+                });
+                Box::pin(async move {
+                    match work.await {
+                        Ok(Some(keep)) => {
+                            live.extend(keep);
+                            ProtectOutcome::Continue
+                        }
+                        _ => ProtectOutcome::Abort,
+                    }
+                })
+            })),
+        }
     }
 
     /// Set the per-blob ciphertext ceiling (a real node derives it from `max_document_bytes`).
@@ -126,6 +284,7 @@ impl FileStore {
             );
         }
         let tag = self.store().add_bytes(blob).await.context("storing blob")?;
+        self.note_recent(tag.hash);
         Ok(tag.hash)
     }
 
@@ -146,6 +305,7 @@ impl FileStore {
             .add_bytes(plaintext.to_vec())
             .await
             .context("storing public blob")?;
+        self.note_recent(tag.hash);
         Ok(tag.hash)
     }
 
@@ -234,7 +394,10 @@ impl FileStore {
                         );
                     }
                 }
-                GetProgressItem::Done(_) => return Ok(()),
+                GetProgressItem::Done(_) => {
+                    self.note_recent(hash);
+                    return Ok(());
+                }
                 GetProgressItem::Error(e) => bail!("fetching blob {hash}: {e:?}"),
             }
         }
@@ -271,6 +434,10 @@ impl FileStore {
 
 #[cfg(test)]
 mod tests {
+    // (the reaper test below shrinks the recent-put grace so a reap is watchable; harmless to
+    // every other test because the reaper only acts on ARMED stores, and only that test arms)
+
+
     use super::*;
     use iroh::endpoint::presets;
     use iroh::protocol::Router;
@@ -448,5 +615,39 @@ mod tests {
             !store_b.has(hash).await,
             "and never lands as a complete blob"
         );
+    }
+
+    /// The blob reaper end to end, in memory: two blobs, one referenced, one not - the armed
+    /// mark keeps the first, the sweep collects the second, and nothing happens at all until
+    /// the store is armed (the unarmed abort is the safety the whole design leans on).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_reaper_collects_what_nothing_references() {
+        std::env::set_var("RINGTOME_TEST_REAP_GRACE_MS", "50");
+        let store = FileStore::memory();
+        let keep = store.put_public(b"keep me").await.unwrap();
+        let dead = store.put_public(b"reap me").await.unwrap();
+
+        // Unarmed: several GC intervals pass and both stand. A reaper that cannot see the
+        // ledgers must not reap.
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        assert!(store.has(keep).await && store.has(dead).await, "unarmed reaps nothing");
+
+        let live: std::collections::HashSet<Hash> = [keep].into_iter().collect();
+        store.arm_gc(std::sync::Arc::new(move || {
+            let live = live.clone();
+            Box::pin(async move { Ok(live) })
+        }));
+
+        // Armed: the dead blob goes within a few rounds; the referenced one never does.
+        let mut reaped = false;
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            if !store.has(dead).await {
+                reaped = true;
+                break;
+            }
+        }
+        assert!(reaped, "the unreferenced blob was collected");
+        assert!(store.has(keep).await, "the referenced blob stands");
     }
 }

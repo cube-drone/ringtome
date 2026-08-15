@@ -270,6 +270,26 @@ pub async fn reap_pass(State(state): State<AppState>) -> Result<Json<Value>, App
     Ok(Json(serde_json::json!({ "reaped": true })))
 }
 
+/// Does the blob store hold these bytes right now? The reaper's observability: a takedown's
+/// serving stops when the fragment dies, and THIS is how a test watches the bytes themselves
+/// go on the next GC round.
+pub async fn blob_present(
+    State(state): State<AppState>,
+    axum::extract::Path(hash_hex): axum::extract::Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let bytes = hex::decode(&hash_hex)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        .ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "test.endpoints.not-a-blob-hash",
+                "not a blob hash: 64 hex characters expected"
+            ))
+        })?;
+    let present = state.files.has(iroh_blobs::Hash::from_bytes(bytes)).await;
+    Ok(Json(serde_json::json!({ "present": present })))
+}
+
 /// Convert a database row into a JSON object. The stored value's own type drives the JSON shape
 /// (SQLite values are self-describing, so computed expressions like `COUNT(*)` come through as
 /// what they are); blobs become arrays of byte values, since JSON has no bytes type.

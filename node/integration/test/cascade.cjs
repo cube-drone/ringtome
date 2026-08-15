@@ -928,6 +928,24 @@ async function setLane(mode) {
                 "the image serves at the deepest hop"
             );
 
+            // The twin's BYTES, by hash, before anything dies - and a control: some other
+            // live fragment's body, which the reaper must NOT touch.
+            const { rows: tw } = await sql(
+                `SELECT hex(body_hash) AS h FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id = '${twin}'`,
+                HOST_C
+            );
+            const twinBlob = tw[0].h.toLowerCase();
+            const { rows: ctl } = await sql(
+                `SELECT hex(body_hash) AS h FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id NOT IN ('${post}', '${twin}') LIMIT 1`,
+                HOST_C
+            );
+            const controlBlob = ctl[0].h.toLowerCase();
+            const blobAt = async (host, hash) => {
+                const res = await makeFetch(host)(`test/blob/${hash}`);
+                return res.status === 200 ? (await res.json()).present : null;
+            };
+            assert.equal(await blobAt(HOST_C, twinBlob), true, "precondition: the image bytes are held");
+
             // 6. The takedown: the post dies, and the image fragment - covered by nothing
             //    else - goes with it. The cover refcount running at every hop.
             const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, {
@@ -945,6 +963,22 @@ async function setLane(mode) {
                     `${who} dropped the post AND the image it alone justified`
                 );
             }
+
+            // 7. And the BYTES follow: the rows died above, so the next reaper round (2s on
+            //    the rig) collects the blobs nothing references any more - the "clear deleted
+            //    media from the intermediary filesystems" half. The control blob, referenced
+            //    by a live fragment, must survive every one of those rounds.
+            assert.ok(
+                await settle(async () => {
+                    return (await blobAt(HOST_C, twinBlob)) === false ? true : null;
+                }),
+                "the image's bytes were reaped from Cleo's filesystem"
+            );
+            assert.equal(
+                await blobAt(HOST_C, controlBlob),
+                true,
+                "and a live document's bytes were not"
+            );
         });
     });
 

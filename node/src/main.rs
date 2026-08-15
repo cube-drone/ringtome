@@ -35,6 +35,7 @@ mod pubkey;
 mod publish;
 mod rate_limit;
 mod rebroadcast;
+mod reaper;
 mod record;
 mod request_context;
 mod seal;
@@ -294,8 +295,21 @@ async fn main() -> anyhow::Result<()> {
     // One gate, two holders: the accept loop and `p2p::dial` read it off AppState, and the blob
     // store carries its own clone because it opens its own connections (net::p2p::Unplugged).
     let unplugged = net::p2p::Unplugged::default();
+    // How often the blob reaper's rounds run. Half an hour: blobs are disk-cheap and the
+    // reaper's job is drift, not urgency - a takedown's SERVING stops the moment the fragment
+    // dies; this only decides how long the unreferenced bytes sit before collection. The
+    // harness shortens it to watch a reap inside a test.
+    let gc_interval = if config.local_test {
+        std::env::var("RINGTOME_TEST_REAP_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(30 * 60))
+    } else {
+        std::time::Duration::from_secs(30 * 60)
+    };
     let files = std::sync::Arc::new(
-        files::FileStore::fs(config.data_directory.join("blobs"))
+        files::FileStore::fs(config.data_directory.join("blobs"), gc_interval)
             .await?
             .with_max_blob_bytes(max_blob_bytes)
             .with_unplugged(unplugged.clone()),
@@ -324,6 +338,9 @@ async fn main() -> anyhow::Result<()> {
         unplugged,
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
+    // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each
+    // round marks from the node's own reference ledgers (reaper::live_set) and sweeps the rest.
+    reaper::arm(&state);
 
     // Background loops: every recurring process in the node, registered here by name. Modules
     // export one-pass functions; loops.rs owns the ticking, logging, and panic containment.
@@ -531,6 +548,10 @@ async fn main() -> anyhow::Result<()> {
                 axum::routing::post(test_endpoints::derive_pass),
             )
             .route("/test/reap", axum::routing::post(test_endpoints::reap_pass))
+            .route(
+                "/test/blob/{hash}",
+                axum::routing::get(test_endpoints::blob_present),
+            )
             // The transport gate: simulate a partition on the shared rig without killing a node.
             .route(
                 "/test/unplug",

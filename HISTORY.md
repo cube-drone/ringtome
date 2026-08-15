@@ -5883,3 +5883,46 @@ died mid-pass is no longer its business** - one held-check per due row, which al
 the reap's burials from the same stale-snapshot resurrection. Second run green.
 
 Gates: `just ci` exit 0, 651 passing.
+
+## 2026-08-14 — the reaper: deleted media leaves the intermediary filesystems
+
+The file layer's first deletion path, and not a hand-rolled one: iroh-blobs refuses direct
+deletes on purpose ("users should rely only on garbage collection") and exposes mark-and-sweep
+with a protect callback - so the ledgers ARE the mark. `reaper::live_set` unions every
+reference class a node has: every held identity's `doc_versions` (both lanes - public bodies
+and thumbs, and the encrypted private bodies sharing the same store), the fragment shelf (body
+from the column, thumb and preview decoded from the stored signed entries, STRICT - corruption
+aborts rather than reaping blobs it can no longer name), and the wants ledger, because a blob
+mid-heal is referenced by intent. **Any failure anywhere aborts the whole run** - the
+documented use of `ProtectOutcome::Abort`, and the posture everything else leans on: a reaper
+that cannot see every reference must not reap. Unarmed (before boot finishes) it aborts too.
+
+Two rings around the races: a recent-put grace (a put returns its hash BEFORE the caller
+writes the referencing row, and the reaper must not win that footrace), and tag hygiene - an
+`add_bytes` tag is bookkeeping, never a reference, and iroh's mark treats tags as roots, so a
+dead blob's tag would keep it immortal; tags outside the live set are dropped each round.
+
+### The mark's one lie, caught by seven tests at once
+
+The first live run: the image test PASSED - bytes reaped at Cleo, control blob standing - and
+seven OTHER tests failed. The mark read `doc_versions`, and **the fold lags the chain**: a
+save puts its blob and appends its entry, and the row only materializes on the next READ - a
+window in which a fresh post's body has no row to protect it, unbounded in principle on an
+idle node. The rig's short grace made it flagrant inside one CI run instead of eating
+somebody's note in six months. The fix is fold-first marking: `blob_refs` runs
+`catch_up_public_lane` for every held chain and the full keyed fold where this node holds
+keys (`fetch_missing_bodies`' exact key-loading pattern) - the mark sees every row the chain
+implies, never whatever the last read happened to fold.
+
+Green now means more than it did: the whole suite runs beside a reaper sweeping every two
+seconds, so every future CI run re-proves the mark's completeness incidentally.
+
+What this deliberately does not do: reap on the author's own account. Chain rows protect
+their blobs for as long as the rows stand - which the chain keeps forever - so the author-side
+story remains the orphaned-twin reaper (NEXT_STEPS), now a query against the `refs` column.
+
+Proven: the memory-store unit test (unarmed reaps nothing across many rounds; armed collects
+the unreferenced and spares the referenced), and the cascade watching the twin's actual bytes
+leave Cleo's filesystem by hash after the takedown while a live control blob survives.
+
+Gates: `just ci` exit 0, 651 passing; catalog at 450.

@@ -102,6 +102,21 @@ fn due(tries: i64, last_tried_ms: i64, now: i64) -> bool {
     last_tried_ms == 0 || last_tried_ms + backoff_ms(tries) <= now
 }
 
+/// Every blob the ledger still wants, for the reaper's mark: a blob mid-heal is referenced by
+/// intent, and reaping it would race the very fetch trying to land it.
+pub async fn wanted_hashes(node_db: &Db) -> Result<Vec<[u8; 32]>> {
+    let rows: Vec<(Vec<u8>,)> = node_db
+        .fetch_all("SELECT blob_hash FROM missing_bodies", ())
+        .await
+        .context("reading the wants for the reaper")?;
+    rows.into_iter()
+        .map(|(b,)| {
+            <[u8; 32]>::try_from(b.as_slice())
+                .map_err(|_| anyhow::anyhow!("corrupt blob_hash in missing_bodies"))
+        })
+        .collect()
+}
+
 /// Fetch exactly what the ledger says is missing, from one provider - the walk a FRAGMENT
 /// author gets. `fetch_missing_bodies` recomputes its fetch list from a held chain's
 /// `doc_versions`, and a fragment author has no chain here to walk (`user_dbs.held` refuses,

@@ -74,15 +74,15 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     *deleted* case of this is closed (2026-08-13: a tombstone now refuses the write, and
     `cascade.cjs` proves it); an EDIT still has no comparison to make, because a fragment's
     version is an entry hash and nothing beside it says which of two hashes came later.
-  * **Deleted bytes are still served.** `FileStore` has no delete - put/get/has/size is the
-    whole surface, and nothing in the tree calls a removal - so a takedown cascade deletes
-    every POINTER (fragment row, feed rows, shelf listing) and leaves the body blob in the
-    store on every node that ever fetched it, still answerable by hash over the blobs ALPN to
-    anyone who kept the `file_hash`. The plan's asterisk promised deleted content stays
-    *confirmable*, never recoverable; today it is recoverable. Wants blob reaping when the
-    last reference dies (fragment forgotten, post retracted, draft deleted) - refcounts or a
-    mark-and-sweep over the referencing tables. Part of the deletion story proper, alongside
-    signed `Gone` and retraction cursors (found 2026-08-13, reading for the deletion audit).
+  * ~~**Deleted bytes are still served.**~~ The INTERMEDIARY half built 2026-08-14: the file
+    layer runs iroh-blobs' own mark-and-sweep (`reaper.rs` is the mark - held chains both
+    lanes folded fresh, the fragment shelf, the wants ledger; any enumeration error aborts the
+    whole run), so when a takedown's cascade drops the rows, the next round collects the
+    bytes - proven byte-level in `cascade.cjs` (the twin's blob leaves Cleo's filesystem, a
+    live control blob does not). What remains is the AUTHOR half, by design: a chain-held
+    document's rows protect its blobs forever, so an author's retracted post keeps its bytes
+    on chain-holding nodes until the orphaned-twin reaper retires the rows themselves
+    (retract the twin no live post references - the `refs` column now makes that a query).
   * ~~**`published_as` outlives a retraction**~~ Fixed 2026-08-14 (with the take-it-down
     button's reachability): unpublish clears the annotation, `Store::publish` refuses to
     parent onto a headless claim (the belt, for stale annotations arriving by sync), and the
