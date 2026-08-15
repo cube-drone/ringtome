@@ -38,6 +38,32 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
     the only reason it was ever there. A question for the retraction rules, not the read path
     (which currently falls back to `feed_journal.via_root` and says so in a comment).
+  * **Feed convergence across a persona's own nodes** (design conversation 2026-08-15; the
+    divergence classes and fixes argued there). Two slices, holes before amnesia:
+    * **Cohort-as-candidate - the last-stop hole.** A persona's nodes are not part of the
+      share tree: if node A holds a share whose sharer and author have gone dark for good,
+      node B can NEVER converge - its candidate lists for the sharer's chain, the fragment,
+      and the blobs all resolve to the departed, while its own sibling holds the complete
+      verified artifact behind doors that answer anyone who asks. The fix is routing, not
+      protocol: cohort endpoints (already known - `identity_peers` for the persona's own
+      root) join three existing candidate walks - foreign-chain sync for shared followed
+      roots (frontiers, never views; the sync gate validates), the fragment walk, and blob
+      healing. `cascade.cjs` carries the red test (*the cohort is part of the tree*, SKIPPED
+      until this lands - unskip it as the fix's first move; its red was demonstrated
+      2026-08-15 before skipping).
+    * **Journal watermarks + background history fill - the window amnesia.** The 20-post
+      journal window was designed to bound the NEW-FOLLOW burst but applies to catch-up too,
+      and its high-water mark is in-memory and boot-reset - so a node dark (or merely
+      rebooted) through a burst permanently lacks journal rows its cohort has, despite
+      holding the full chain. Fix: persist per-(reader, author) journal watermarks in
+      node.db; catch-up journals the exact gap; a background walk fills history backward to
+      the whole followed shelf (cheap - local writes from locally-held chains, and the
+      chronological feed means backfill sorts into the past, never floods the top). The
+      window survives only as pacing for brand-new follows. Also from the same conversation,
+      lower priority: attribution keys (`feed_shares.shared_ms`, the crowd's introducer)
+      are local-arrival facts, so converged membership can still disagree about the LEAD
+      sharer - converge them on the pointer's claimed share stamp, the version-ordering
+      move applied to bylines.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket

@@ -6059,3 +6059,67 @@ rebroadcast ledger is UX-and-policy, not integrity: the orphaned share row, the 
 reaper, the drift badge, then replies.
 
 Gates: `just ci` exit 0, 657 passing.
+
+## 2026-08-15 — feed selectivity designed: one slider, two budgets
+
+A design conversation, no code; PROJECT_PLAN gained *Feed selectivity: one slider, two
+budgets* under the feed section. The chain of it: Curtis asked how practical trust-edge
+implicit rebroadcast would be against the bootstrap problem; hop-0 ("people I trust")
+died on its own selection effect - both dials live on one contact card, so
+trust-without-interest is a person the reader looked at and DECLINED, the worst pool,
+selected for with precision - and the real design became depth on the trust tree along
+both-high links, where the gate's sociology (inner circles are sparse) does the bounding
+budgets would otherwise have to. Depth 2 needs no new sync at all: a followed persona's
+published edges are already in a held database.
+
+Then the UI question that shapes it all: speculative content breaks "everything in the feed
+was asked for", so the feed gains a selectivity slider - six stops, Explorer through high
+interest only, a read-time floor over a per-row effective interest level with a defined
+provenance precedence (author dial, sharer dial, path score, floor pool - which is also the
+answer to "why am I seeing this?"). Acquisition and attention strictly separated: the slider
+never touches what syncs. New users default to Explorer - the empty-room refusal. The slider
+is also the trust-leak discourage-dial from the same conversation, one control instead of
+two; and the top three stops are buildable today, the bottom three lighting up as pools land.
+
+Nothing scheduled; the section records the argument so it does not have to be re-had.
+
+## 2026-08-15 — feed convergence: the last-stop hole, pinned red
+
+A design conversation with one test as its deliverable. Curtis asked whether a persona's
+nodes converge on the same feed - "if Node A is the last stop in a rebroadcast chain, does it
+share that with the same user on Node B, eventually?" - and the honest answer was NO, never:
+the cohort is not part of the share tree. Node A can hold a share complete - the sharer's
+chain, the fragment, the blobs, all behind doors that answer anyone who asks - and when the
+sharer and author go dark for good, node B's candidate lists (sharer-chain sync, the fragment
+walk, blob healing) all resolve to the departed. The sibling is never asked.
+
+The divergence inventory (the fuller conversation is NEXT_STEPS' two slices): the last-stop
+hole above; the journal window applied to catch-up with an in-memory boot-reset watermark, so
+a node dark or merely rebooted through a burst permanently lacks rows its cohort has despite
+holding the full chain (the window was designed for NEW-FOLLOW bursts, and the chronological
+feed means background history fill sorts into the past rather than flooding the top - the
+window can become pacing); and arrival-time attribution (`shared_ms`, the crowd's introducer)
+making converged membership disagree about the lead sharer. What already converges: share
+MEMBERSHIP when sources are reachable, this week's wants/multi-origin/cursor machinery having
+turned the fetch-failure class into plain sync lag. The fix family is routing, not protocol -
+cohort endpoints join three existing candidate walks; frontiers-never-views survives whole,
+because a relayed chain is evidence the sync gate validates, and no journal row ever crosses
+a wire. The thing deliberately NOT proposed: syncing the journal itself - same-owner privacy
+would permit it, but it turns a disposable memo into a replicated structure with a conflict
+story, to paper over an amnesia rather than cure it.
+
+The test (*the cohort is part of the tree*, cascade.cjs): cora adopted onto a second rig node
+via the daisychain ceremony, the sibling asleep through a share, the last stop loaded and
+serving, author and sharer then dark forever, the sibling waking into a network where its own
+cohort is the only holder. RED demonstrated live on the named assertion - "the share's feed
+row reached the waking sibling" - then SKIPPED, deliberately: a standing red suite blocks
+every interleaved slice (green before forward), so the red is recorded here, the skip carries
+a loud unskip-me comment, and unskipping is the fix's first move. Both slices are in
+NEXT_STEPS under *Feed convergence across a persona's own nodes*.
+
+Also: one observed flake on the rerun ledger - *a delete reaches the fourth hop [fast]* went
+red once ("Cleo dropped her copy": a fragment surviving a feed-row excise), green on the
+clean rerun that proved it a flake by the standing rule. Recorded in case it recurs; no
+mechanism identified.
+
+Gates: `just ci` exit 0, 657 passing, 2 pending (the armed skip among them).

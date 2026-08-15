@@ -3196,6 +3196,77 @@ closing encrypted files to build one screen. The answer is this codebase's own i
   it do, so a persona's nodes keep each other current without anyone shipping an opinion. Evidence crosses wires;
   opinions stay home. It is "The Browser Is a View" promoted one level: the node is a view too.
 
+#### Feed selectivity: one slider, two budgets (designed 2026-08-15)
+
+The feed shows everything it knows about, and until now everything it knew about was something a reader
+explicitly asked for - a follow, or a rebroadcast-follow. Speculative content (below) breaks that equation: the
+feed will know about things the reader is at best *speculatively* interested in, and the difference between a
+vibrant feed and a flooded one becomes a display decision. The design is one visible control resolving what
+would otherwise be several buried settings.
+
+**Two budgets, strictly separated.** ACQUISITION is what the node syncs, journals and stores - governed by the
+dials, the derived subscriptions and their caps, invisible here. ATTENTION is what a human is shown - governed
+by one slider at the top of the feed. The slider is pure attention-side: a read-time floor over a per-row
+interest level, which is "the node routes; the user ranks" as a control. Moving it is instant, reversible, and
+network-silent in both directions - Explorer reveals what was already journaled, "high interest only" hides
+without deleting, and nothing about the slider ever changes what syncs.
+
+**Six stops, the title changing as it moves** (Curtis's design, verbatim): *Explorer, highly speculative,
+speculative, interest only, medium interest only, high interest only*. What each shows:
+
+| stop | rows shown |
+|---|---|
+| high interest only  | explicit dial >= high |
+| medium interest only | explicit dial >= medium |
+| interest only       | any EXPLICIT dial - follows and rebroadcast-follows |
+| speculative         | + depth-2 trust-tree (strong paths: friend-of-close-friend) |
+| highly speculative  | + depth-3 / decayed paths |
+| Explorer            | + everything the node can honestly surface: weakest paths, same-node shares, eventually the node feed |
+
+**New users default to Explorer.** A new user's explicit-interest feed is empty by definition; defaulting to
+the widest floor is refusing to show a new user an empty room when the node knows about furniture - the
+"network is empty" bootstrap answer, wearing a UI. The top three stops are buildable immediately; the bottom
+three are labeled slots that light up as their pools land, and until then Explorer shows what "interest only"
+shows - harmless, forward-compatible, the control teaching its vocabulary before the vocabulary has full
+referents.
+
+**Every row carries one effective interest level, with a defined provenance precedence:** the reader's explicit
+dial on the AUTHOR; else the reader's rebroadcast dial on the SHARER (asking for a sharer's taste is an
+explicit signal about the row); else the derived path score; else the floor pool that admitted it. All
+derivable at read time from the subscription memo and the derived-subscription score memo - and the precedence
+doubles as the answer to "why am I seeing this?", which a feature whose whole mode is unasked-for content owes
+at every stop. (This also closes a quiet existing gap: a shared-in post by an unfollowed author currently
+renders at default emphasis by accident; under the precedence it renders by the sharer dial, by decision.)
+
+**Mechanics decided; one deferred.** The filter runs client-side first - selectivity is ranking, and the feed's
+pages are small; a floor hint on the feed request is the known remedy if speculative volume ever makes
+high-selectivity pages hollow (twenty rows sent, nineteen hidden), added when that problem demonstrates itself
+rather than before. The slider position is a persona-level private register, not a device pref - selectivity is
+a fact about the person's feed and syncs with them, unlike the deliberately per-device seal prefs. Emphasis
+continues to ride the effective level through the existing machinery (`postScale`, `emphasisOf`): speculative
+rows arrive small and quiet by construction.
+
+**The speculative pools** (designed, not scheduled; the argument from 2026-08-15's design conversation):
+
+- **The trust tree, at depth, along both-high links.** NOT "people I trust" flatly - trust-without-interest is
+  a *decision* (both dials live on one contact card; a trusted-but-not-followed person is someone the reader
+  looked at and declined to subscribe to, the worst possible pool, selected for with precision). The value is
+  depth along links that carry high trust AND high interest: my inner circle's inner circles. The both-high
+  gate is itself the fan-out control - inner-circle links are sparse by sociology, so budgets can be generous
+  and rarely felt. Mechanically: my outgoing dials are local truth; a followed persona's outgoing edges are
+  their PUBLISHED edges (`PublicEdge` on FOLLOWS_PUBLIC - signed, folded, and for depth-2 already sitting in a
+  held database, no new sync). A derived-subscriptions memo `(root, target, score, best_path)` written by the
+  `refresh_from` fold idiom; targets' rebroadcast chains sync with decayed path scores; `share_readers` unions
+  score-holders; everything downstream is the share pipeline unchanged. Revocation is a re-score, never a
+  cascade walk. `best_path` is the provenance ("via Alice -> Bob"). Parallel paths MAX rather than sum - sums
+  invite gaming by edge-splitting. Depth 2 is likely the whole value; 3 the tail. Doctrine note, said once: the
+  derived subscription acts on private dials combined with public speech, and it is ROUTING under the standing
+  carve-out - observably identical to a low rebroadcast-follow - not disclosure; but it deliberately re-couples
+  the trust and interest the subscription schema divorced, and the slider is the divorce restored on demand.
+- **Same-node shares**: nearly free (`share_readers` unions local sharers), nearly worthless until federated
+  mode gives "the cozy node's common room" real meaning. Parked on purpose; its moment is a node with
+  strangers on it.
+
 ### Rebroadcast: Pointer Plus Pinned Replica (settled 2026-08-10)
 
 How you share someone else's post through your network. The tension the design has to hold: copying content whole

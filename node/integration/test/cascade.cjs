@@ -1431,6 +1431,147 @@ async function setLane(mode) {
         });
     });
 
+    /*
+        The last-stop hole (design conversation 2026-08-15): a persona's own nodes are not
+        part of the share tree. Node A holds a share complete - chain, fragment, blobs, all
+        behind doors that answer anyone - and when the sharer and author go dark for good,
+        node B's candidate lists (sharer-chain sync, the fragment walk, blob healing) all
+        resolve to the departed. The sibling is never asked. This test asserts the property
+        the cohort-as-candidate slice will make true: a share held only by a sibling reaches
+        the waking node.
+
+        RED as of 2026-08-15, demonstrated live before being skipped (a standing red suite
+        blocks every interleaved slice - green before forward). UNSKIP THIS as the fix's
+        first move; NEXT_STEPS carries the pointer.
+    */
+    describe.skip("the cohort is part of the tree", function () {
+        this.timeout(1200000);
+
+        let author, authorRoot, sharer, sharerRoot, cora, coraRoot;
+
+        before(async function () {
+            author = await makeUserFetch({ prefix: "lastauthor" });
+            authorRoot = (await (await author("api/identity", { method: "POST" })).json()).root_pubkey;
+            await author(`api/identity/${authorRoot}/serve`, { method: "POST" });
+            const viaAuthor = await base58(author);
+
+            sharer = await makeUserFetch({ prefix: "lastsharer", host: HOST_B });
+            sharerRoot = (await (await sharer("api/identity", { method: "POST" })).json()).root_pubkey;
+            await sharer(`api/identity/${sharerRoot}/serve`, { method: "POST" });
+            const viaSharer = await base58(sharer);
+
+            cora = await makeUserFetch({ prefix: "lastcora", host: HOST_C });
+            coraRoot = (await (await cora("api/identity", { method: "POST" })).json()).root_pubkey;
+            await cora(`api/identity/${coraRoot}/serve`, { method: "POST" });
+
+            if ((await sharer(`api/id/${authorRoot}/profile?via=${viaAuthor}`)).status !== 200)
+                this.skip();
+            await dial(sharer, sharerRoot, authorRoot, "interest", "high");
+            if ((await cora(`api/id/${sharerRoot}/profile?via=${viaSharer}`)).status !== 200)
+                this.skip();
+            await dial(cora, coraRoot, sharerRoot, "interest_rebroadcasts", "high");
+
+            // Cora's SECOND node: a fresh account on echo adopts the persona (the daisychain
+            // ceremony), and the ledger sync carries the rebroadcast-follow across - settle
+            // until echo's own subscriptions memo knows it, proving the cohort input paths
+            // work before any darkness.
+            const coraOnE = await makeUserFetch({ prefix: "lastcorae", host: HOST_E });
+            const request = await (
+                await coraOnE("api/identity/adopt/begin", { method: "POST" })
+            ).json();
+            const granted = await cora(`api/identity/${coraRoot}/nodes`, {
+                method: "POST",
+                body: JSON.stringify({ code: request.code }),
+            });
+            assert.equal(granted.status, 200, await granted.text());
+            assert.ok(
+                await settle(async () => {
+                    const { rows } = await sql(
+                        `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${sharerRoot}' AND rebroadcast IS NOT NULL`,
+                        HOST_E
+                    );
+                    return rows.length ? true : null;
+                }),
+                "the sibling learned the rebroadcast-follow from the synced ledger"
+            );
+        });
+
+        afterEach(async () => {
+            await plugIn(HOST);
+            await plugIn(HOST_B);
+            await plugIn(HOST_E);
+        });
+
+        it("a share held only by a sibling reaches the waking node", async () => {
+            // The sibling sleeps through everything.
+            await unplug(HOST_E);
+
+            const made = await (
+                await author(`api/identity/${authorRoot}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title: "laststop",
+                        body: "laststop: the words",
+                        format: "plaintext",
+                    }),
+                })
+            ).json();
+            const pub = await author(`api/identity/${authorRoot}/docs/${made.doc_id}/publish`, {
+                method: "POST",
+            });
+            const pubText = await pub.text();
+            assert.equal(pub.status, 200, pubText);
+            const post = JSON.parse(pubText).post_id;
+
+            assert.ok(
+                await settle(async () => {
+                    const rows = await feedOf(sharerRoot, HOST_B);
+                    return rows.some((r) => r.doc_id === post) ? true : null;
+                }),
+                "the post reached the sharer"
+            );
+            const shared = await sharer(`api/identity/${sharerRoot}/rebroadcasts`, {
+                method: "POST",
+                body: JSON.stringify({ author: authorRoot, doc_id: post }),
+            });
+            assert.equal(shared.status, 200, await shared.text());
+
+            // The last stop loads up: charlie holds the row, the fragment, the words.
+            assert.ok(
+                await settle(async () => {
+                    const body = await servedBody(authorRoot, post, HOST_C);
+                    return body && body.includes("laststop") ? true : null;
+                }),
+                "the awake node holds and serves the share"
+            );
+
+            // The rest of the world leaves, forever.
+            await unplug(HOST);
+            await unplug(HOST_B);
+
+            // The sibling wakes into a network where its own cohort is the only holder.
+            await plugIn(HOST_E);
+
+            // THE PROPERTY: the share reaches the sibling - feed row, fragment, served
+            // words - with charlie the only live source. Today every candidate list points
+            // at the departed, and this settle times out.
+            assert.ok(
+                await settle(async () => {
+                    const rows = await feedOf(coraRoot, HOST_E);
+                    return rows.some((r) => r.doc_id === post) ? true : null;
+                }, 160),
+                "the share's feed row reached the waking sibling"
+            );
+            assert.ok(
+                await settle(async () => {
+                    const body = await servedBody(authorRoot, post, HOST_E);
+                    return body && body.includes("laststop") ? true : null;
+                }, 80),
+                "and the sibling serves the words its cohort preserved"
+            );
+        });
+    });
+
     describe("the death cursor: the steady state", function () {
         const reapOn = async (host) => {
             const res = await makeFetch(host)("test/reap", { method: "POST" });
