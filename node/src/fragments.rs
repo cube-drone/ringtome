@@ -991,6 +991,7 @@ mod tests {
                 duration_ms: None,
                 thumb_hash: None,
                 preview_hash: None,
+                refs: Vec::new(),
             },
         }
     }

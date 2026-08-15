@@ -295,6 +295,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
             title: job.title.clone(),
             body: ingested.body,
             format: ingested.format,
+            refs: Vec::new(), // a media document is a leaf - it embeds nothing
             media: Some(MediaMeta {
                 width: ingested.width,
                 height: ingested.height,

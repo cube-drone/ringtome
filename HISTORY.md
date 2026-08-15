@@ -5765,3 +5765,83 @@ virality before deletion, per Curtis. The "shipped end to end 2026-08-11" bullet
 was true: the data layer shipped then; the reader's screen was reached today.
 
 Gates: `just ci` exit 0, 642 passing.
+
+## 2026-08-14 — the reserved key becomes real: headers name what their bodies embed
+
+Groundwork for implicit rebroadcast, cut where Curtis cut it: before a share can promise "the
+post and its media," something signed has to SAY what the media is - and until today the only
+way to know was parsing the whole body as Marquee. `DocHeaderPlain` gains `refs` (key 11), the
+additive key the encoding comment had reserved from the start: the documents this body embeds,
+derived at authoring time by the same parse that bakes media, so the set is knowable from the
+entry alone - a fragment names its media before its body arrives, a sharer's pin has a
+checkable shape, and no fold or sweep ever parses foreign Marquee.
+
+Two caps now stand where one stood, and they price different things: `media_budget` (10MB,
+confirmed in and unit-tested, dedup-by-blob) prices the BYTES; `MAX_REFS = 50` prices the
+OBLIGATIONS - every ref is a fetch every sharer owes, and fifty distinct embedded documents is
+already an album (Curtis: "the huge refchain starts to be awkward and it's good to set a limit
+somewhere"). Counted on the distinct-target list so repetition cannot dodge it, refused before
+a byte of bake work, and enforced at the proto's both doors - the encoder cannot mint an
+over-count header and the decoder refuses one minted by other code.
+
+**Private documents carry refs too** (Curtis's call, same message): derived in `Store::save` -
+the one door every private save passes - own private embeds only, external links excluded
+because a URL is not a document, duplicates counted once, and the caller's assertion always
+overwritten, because refs is a claim about the body and the body is in hand. The fold persists
+them (`doc_versions.refs`, user schema 13→14), which is what makes "which media does this note
+hold?" - and its inverse, the unreferenced-media hunt - a column read instead of a
+decrypt-and-parse of every body ever written.
+
+Derivation lives at the two mints and nowhere else: `bake::publish` hands the baked twin set
+(post-rewrite, so refs name what a reader's renderer will actually ask for) into the public
+header; ingest's media saves and `save_public_media` write empty refs because a media document
+is a leaf; `retitle` preserves what its head carried. The lying-author case is self-scoped
+like every header claim - over-claim obliges your own sharers (budget-capped), under-claim
+breaks your own images past hop one.
+
+Proven: proto round-trips with empty-is-absent pinned byte-for-byte (old readers and old
+entries agree), both cap doors red-tested; store tests for the derivation (the twice-embedded
+image counts once, the URL not at all, plaintext embeds nothing), the fence at exactly fifty,
+and the published entry carrying its refs through decode.
+
+**User schema 13→14 rides the uncommitted stack - the next dev boot wants `just clean`.**
+Gates: `just ci` exit 0, 642 passing; catalog at 447.
+
+## 2026-08-14 — the 51st embed: refused at the gesture, rescued at the paste
+
+The refs cap's first UX was inherited, not designed: a marquee note crossing fifty embeds hit
+the server's refusal at AUTOSAVE, where the editor's error copy promises "it will keep
+retrying" - true for the network blips it was written for, false for a refusal that no retry
+can outrun. Nothing persisted past the 51st embed; the words lived in the tab; closing it lost
+them (the unload flush eats the same 400). The body-size cap has failed saves through this
+exact loop all along - the refs cap just made the treadmill easy to reach.
+
+Two doors now stand in front of it, both Curtis's design:
+
+- **The gesture refuses.** Picker, drop and paste-of-files all funnel through `captureFiles`,
+  which counts the buffer's distinct own-document embeds (the real grammar, parsed - never a
+  regex) plus the files in hand, and declines to start: no upload, no placeholder, no doomed
+  autosave, and a self-clearing note where the gesture happened - "this page already embeds
+  {n} files, and one page holds 50 - start another page for the rest."
+- **The paste is rescued.** Embeds that arrive in the body as TEXT (paste is the door the
+  funnel cannot see) are met at save time: everything past the first fifty distinct documents
+  is replaced with refusal text that names what it displaced - ("sunset" removed - one page
+  holds 50 embedded files) - which IS saveable. The rewrite lands in the visible editor
+  (`setBody`; LiveMarquee already honors external replacement), never silently in the payload
+  alone, which would fight the buffer forever.
+
+The surgery is humble on purpose, and the tests pin the humility: the PARSE decides what
+counts (`pure/embedcap.js` takes the AST; the marquee grammar punishes pattern-matching and
+bake.rs says why), the string work only relocates what the parse identified, a rewrite is
+trusted only after RE-PARSING under the cap, and a candidate it cannot cut confidently - an
+opener spanning a blank line, a bare target with no `![` - is left alone to wear the server's
+refusal. Best-effort rescue, exact backstop.
+
+Counting mirrors the server's classification exactly: distinct documents (repetition is one
+obligation, matching the budget's dedup), own documents only, a URL is none.
+
+Residual, named: the "will keep retrying" copy still lies for any PERMANENT refusal the rescue
+doesn't cover - the body-size cap foremost. The chip wants to learn the difference between
+"will heal" and "needs your hand"; small, and it covers every future save-time refusal at once.
+
+Gates: `just ci` exit 0, 650 passing (5 new pure tests, embedcap.cjs); catalog at 449.

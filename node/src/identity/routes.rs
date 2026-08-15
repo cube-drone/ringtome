@@ -1488,6 +1488,7 @@ async fn docs_save_handler(
             body: req.body.into_bytes(),
             format,
             media: None,
+            refs: Vec::new(), // derived in Store::save, never client-asserted
         })
         .await?;
     Ok(Json(DocSaved {
@@ -3481,6 +3482,7 @@ mod media_info_tests {
                 duration_ms,
                 thumb_hash,
                 preview_hash,
+                refs: Vec::new(),
             },
         }
     }

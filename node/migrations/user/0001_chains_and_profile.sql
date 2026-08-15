@@ -94,6 +94,11 @@ CREATE TABLE doc_versions (
     duration_ms   INTEGER,
     thumb_hash    BLOB,
     preview_hash  BLOB,
+    refs          BLOB    NOT NULL DEFAULT X'', -- concatenated 16-byte ids of the documents this
+                                                --   body embeds (2026-08-14): the header's derived
+                                                --   index, folded out so "which media does this
+                                                --   note hold?" is a column read, never a
+                                                --   decrypt-and-parse of every body
     timestamp_ms  INTEGER NOT NULL,     -- the entry's claimed stamp (display/LWW only)
     seq           INTEGER NOT NULL,     -- position on the author's chain
     author_pubkey TEXT    NOT NULL,     -- hex leaf key that signed the version (device attribution)

@@ -109,6 +109,16 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
     // File upload + crosslink drops: the shared capture hook (doc/upload.js) - placeholders at the
     // cursor, the modal, the reference swap, and the dragged-document cozy dressing. The chip
     // opens the picker; drop and paste land on the surface handlers below.
+    // A refused upload gesture says so HERE, where the gesture happened, and clears itself:
+    // it is advice about what just didn't happen, not a state of the document.
+    const [uploadNote, setUploadNote] = useState(null);
+    const uploadNoteTimer = useRef(null);
+    const refuseUpload = (message) => {
+        setUploadNote(message);
+        if (uploadNoteTimer.current) clearTimeout(uploadNoteTimer.current);
+        uploadNoteTimer.current = setTimeout(() => setUploadNote(null), 8000);
+    };
+
     const {
         catchDrop,
         allowFileDrag,
@@ -123,6 +133,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
         body,
         setBody,
         touched,
+        onRefused: refuseUpload,
         cursorPos: () => {
             const c = recallCursor(root, docId);
             return c ? (typeof c.end === 'number' ? c.end : c.start) || 0 : null;
@@ -441,6 +452,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
                 )}
             </div>`}
             ${status === 'error' && html`<p class="form-error">${error}</p>`}
+            ${uploadNote && html`<p class="form-error">${uploadNote}</p>`}
             ${writingSurface()}
             ${/* A host's own footer (the Feed composer's Post button): a render-prop so the
                 host can flush the save and take the confirmed words - the editor owns the

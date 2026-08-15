@@ -624,13 +624,42 @@ impl Documents<'_> {
                 body: body.to_vec(),
                 format,
                 media: None,
+                refs: Vec::new(), // derived in save(), just below
             })
             .await?;
         Ok((doc_id, version))
     }
 
     /// Save one version (the client asserts its parents). Returns the new version's hash.
-    pub async fn save(&self, save: crate::record::documents::Save) -> Result<[u8; 32], AppError> {
+    pub async fn save(&self, mut save: crate::record::documents::Save) -> Result<[u8; 32], AppError> {
+        // The header's embed index, DERIVED here - the one door every private save passes -
+        // never trusted from the caller: `refs` is a claim about the body, and the body is in
+        // hand. Marquee only (plaintext embeds nothing), own private documents only, external
+        // links excluded (a URL is not a document). The cap is counted before anything is
+        // written: a body embedding more than MAX_REFS distinct documents is a collection
+        // wearing a post's clothes, and the answer is a Taxonomy, not a bigger header.
+        save.refs = Vec::new();
+        if save.format == crate::record::documents::Format::Marquee {
+            if let Ok(body) = std::str::from_utf8(&save.body) {
+                let root_hex = hex::encode(self.store.root);
+                let mut seen = std::collections::HashSet::new();
+                for r in crate::record::bake::media_refs(body, &root_hex) {
+                    if let crate::record::bake::MediaRef::PrivateDoc { doc_id, .. } = r {
+                        if seen.insert(doc_id) {
+                            save.refs.push(doc_id);
+                        }
+                    }
+                }
+            }
+            if save.refs.len() > ringtome_proto::DocHeaderPlain::MAX_REFS {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "record.store.too-many-embedded-documents",
+                    "this note embeds {count} documents - one document may hold {cap}. A collection this size wants a notebook, not one page.",
+                    count = save.refs.len(),
+                    cap = ringtome_proto::DocHeaderPlain::MAX_REFS
+                )));
+            }
+        }
         crate::record::documents::save_version(
             &self.store.db,
             &self.store.authorship.signer,
@@ -912,6 +941,7 @@ impl Documents<'_> {
         &self,
         doc_id: &[u8; 16],
         body_override: Option<String>,
+        refs: Vec<[u8; 16]>,
     ) -> Result<[u8; 16], AppError> {
         let view = self.all().await?;
         let doc = view
@@ -982,6 +1012,7 @@ impl Documents<'_> {
                 title: &resolved.title,
                 body: &body,
                 format,
+                refs,
             },
         )
         .await?;
@@ -2115,6 +2146,105 @@ mod tests {
             authorship: Authorship { signer, epoch_keys },
             files: std::sync::Arc::new(crate::files::FileStore::memory()),
         }
+    }
+
+    /// The header's embed index is DERIVED at the save door: own private embeds land in
+    /// `refs`, external links do not (a URL is not a document), duplicates count once, and
+    /// whatever the caller asserted is overwritten - refs is a claim about the body, and the
+    /// body is in hand.
+    #[tokio::test]
+    async fn a_save_derives_its_refs_and_a_url_is_not_a_document() {
+        let store = test_store().await;
+        let docs = Documents { store: &store };
+        let root_hex = hex::encode(store.root);
+        let a = hex::encode([1u8; 16]);
+        let b = hex::encode([2u8; 16]);
+        let body = format!(
+            "![one](/api/identity/{root_hex}/docs/{a}/body/x.avif)\n\n\
+             ![again](/api/identity/{root_hex}/docs/{a}/body/x.avif)\n\n\
+             ![two](/api/identity/{root_hex}/docs/{b}/body/y.avif)\n\n\
+             ![web](https://example.com/pic.png)\n"
+        );
+        let (doc_id, _) = docs
+            .create("album", body.as_bytes(), crate::record::documents::Format::Marquee)
+            .await
+            .unwrap();
+
+        let view = docs.all().await.unwrap();
+        let head = view.docs[&doc_id].display_head().unwrap();
+        assert_eq!(
+            head.header.refs,
+            vec![[1u8; 16], [2u8; 16]],
+            "two distinct own documents; the twice-embedded one counted once, the URL not at all"
+        );
+
+        // Plaintext embeds nothing, whatever the body says.
+        let (plain, _) = docs
+            .create("notes", body.as_bytes(), crate::record::documents::Format::Plaintext)
+            .await
+            .unwrap();
+        let view = docs.all().await.unwrap();
+        assert!(view.docs[&plain].display_head().unwrap().header.refs.is_empty());
+    }
+
+    /// The count cap refuses at the save door, before anything is written: a body embedding
+    /// more than MAX_REFS distinct documents is a collection wearing a note's clothes.
+    #[tokio::test]
+    async fn a_note_embedding_more_than_the_cap_is_refused() {
+        let store = test_store().await;
+        let docs = Documents { store: &store };
+        let root_hex = hex::encode(store.root);
+        let over: String = (0..=ringtome_proto::DocHeaderPlain::MAX_REFS)
+            .map(|i| {
+                let mut id = [0u8; 16];
+                id[..8].copy_from_slice(&(i as u64).to_be_bytes());
+                format!("![i](/api/identity/{root_hex}/docs/{}/body/x.avif)\n\n", hex::encode(id))
+            })
+            .collect();
+        let refused = docs
+            .create("hoard", over.as_bytes(), crate::record::documents::Format::Marquee)
+            .await;
+        assert!(refused.is_err(), "fifty-one embedded documents is not one note");
+
+        let exactly: String = (0..ringtome_proto::DocHeaderPlain::MAX_REFS)
+            .map(|i| {
+                let mut id = [0u8; 16];
+                id[..8].copy_from_slice(&(i as u64).to_be_bytes());
+                format!("![i](/api/identity/{root_hex}/docs/{}/body/x.avif)\n\n", hex::encode(id))
+            })
+            .collect();
+        docs.create("album", exactly.as_bytes(), crate::record::documents::Format::Marquee)
+            .await
+            .expect("fifty exactly is the fence, not past it");
+    }
+
+    /// The publish mint carries the refs it is handed into the SIGNED public header - the
+    /// field the whole implicit-rebroadcast design reads, so a fragment names its media from
+    /// the entry alone.
+    #[tokio::test]
+    async fn a_published_header_carries_its_refs() {
+        let store = test_store().await;
+        let docs = Documents { store: &store };
+        let (doc_id, _) = docs
+            .create("post", b"the words", crate::record::documents::Format::Marquee)
+            .await
+            .unwrap();
+        let twins = vec![[5u8; 16], [6u8; 16]];
+        let post = docs
+            .publish(&doc_id, Some("the words".into()), twins.clone())
+            .await
+            .unwrap();
+        let entry = crate::record::documents::public_header_entry(&store.db, &post)
+            .await
+            .unwrap()
+            .expect("the post is on the public lane");
+        let header = match entry.entry().payload {
+            ringtome_proto::Payload::Inline(ref bytes) => {
+                ringtome_proto::DocHeaderPlain::decode(bytes).unwrap()
+            }
+            _ => panic!("a public header is inline"),
+        };
+        assert_eq!(header.refs, twins, "the signed entry names its media");
     }
 
     #[tokio::test]

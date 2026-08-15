@@ -20,6 +20,9 @@ import { Modal } from '../modal.js';
 import { Annotations } from './annotations.js';
 import { ensureTreeRoot } from './tree.js';
 import { takeDocDropSwap, SECTION_DRAG, DOC_DRAG } from './crosslink.js';
+import { parse } from '@cube-drone/marquee-react-renderer';
+import { t } from '../i18n.js';
+import { overCapTargets, EMBED_CAP } from '../pure/embedcap.js';
 import { Icons } from '../icons.js';
 // The in-browser video pre-encoder (the video-ingest spike, now in service): the HOSTILE decode
 // happens in the browser's hardened, licensed decoder, and the server only ever sees
@@ -432,6 +435,7 @@ export function useUploadCapture({
     setBody,
     touched,
     cursorPos,
+    onRefused,
 }) {
     const [uploadFiles, setUploadFiles] = useState(null); // File[] | null
     const filePickRef = useRef(null);
@@ -440,6 +444,30 @@ export function useUploadCapture({
     const uploadTokens = useRef([]); // placeholder text per file index, for the open modal
     const captureFiles = (files) => {
         if (!files.length) return;
+        // The embed cap, met at the GESTURE - the only place stopping costs nothing. Every
+        // file here becomes a fresh embedded document, so the arithmetic is current distinct
+        // embeds plus the handful in hand; refusing now means no upload, no placeholder, and
+        // no autosave that can never succeed. Marquee only: plaintext derives no refs, and an
+        // unparsable buffer gets the benefit of the doubt (the save-side rescue and the
+        // server's own door still stand behind this).
+        if (format === 'marquee') {
+            let distinct = null;
+            try {
+                distinct = overCapTargets(parse(bodyNow.current), root, EMBED_CAP).distinct;
+            } catch {
+                // unparsable mid-edit: let the pipeline's later doors decide
+            }
+            if (distinct != null && distinct + files.length > EMBED_CAP) {
+                onRefused &&
+                    onRefused(
+                        t('doc.upload.one-page-holds-embedded-files', 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest', {
+                            distinct,
+                            cap: EMBED_CAP,
+                        })
+                    );
+                return;
+            }
+        }
         const tokens = files.map(
             (f) => `[uploading "${f.name}" …${Math.random().toString(36).slice(2, 6)}]`
         );

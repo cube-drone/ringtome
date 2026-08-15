@@ -13,6 +13,9 @@ import { openMirror, useLive } from '../mirror.js';
 import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
 import { needsReload } from '../pure/lookout.js';
 import { keepaliveOk } from '../pure/keepalive.js';
+import { parse } from '@cube-drone/marquee-react-renderer';
+import { overCapTargets, replaceTargets, EMBED_CAP } from '../pure/embedcap.js';
+import { t } from '../i18n.js';
 
 const AUTOSAVE_MS = 10_000;
 
@@ -77,6 +80,30 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         setStatus('clean');
     };
 
+    /// The rescued body, or null when nothing needs (or survives) rescue.
+    const rescueOverCap = (source) => {
+        let ast;
+        try {
+            ast = parse(source);
+        } catch {
+            return null; // unparsable is the renderer's problem, not the cap's
+        }
+        const { over } = overCapTargets(ast, root, EMBED_CAP);
+        if (!over.size) return null;
+        const note = (alt) =>
+            t('doc.session.embed-removed-over-cap', '(“{alt}” removed — one page holds {cap} embedded files)', {
+                alt,
+                cap: EMBED_CAP,
+            });
+        const { source: out } = replaceTargets(source, over, note);
+        try {
+            if (overCapTargets(parse(out), root, EMBED_CAP).over.size > 0) return null;
+        } catch {
+            return null;
+        }
+        return out;
+    };
+
     const save = async ({ unloading = false } = {}) => {
         const m = machine.current;
         if (!m.dirty || m.inflight) return;
@@ -86,6 +113,22 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         // Snapshot what we're saving (from the ref, never a closure); edits during the
         // request keep the buffer dirty.
         const snapshot = { ...buffer.current, parents: m.parents };
+        // The paste rescue: a marquee body embedding more than the cap would be REFUSED by
+        // the server, and a refusal at autosave is a treadmill - every retry fails until a
+        // human edits, while the words live only in this tab. So over-cap embeds (they can
+        // only arrive by paste; the upload funnel refuses at the gesture) are replaced with
+        // refusal text, which IS saveable, and the rewrite lands in the visible editor -
+        // never silently in the payload alone, which would fight the buffer forever. The
+        // rewrite is trusted only after re-parsing under the cap; a body the surgery cannot
+        // fix saves as-is and wears the server's refusal.
+        if (snapshot.format === 'marquee') {
+            const rescued = rescueOverCap(snapshot.body);
+            if (rescued != null) {
+                snapshot.body = rescued;
+                setBody(rescued);
+                buffer.current = { ...buffer.current, body: rescued };
+            }
+        }
         const payload = JSON.stringify({
             title: snapshot.title,
             body: snapshot.body,

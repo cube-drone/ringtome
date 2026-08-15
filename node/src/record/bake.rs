@@ -177,7 +177,7 @@ pub async fn publish(
         .unwrap_or(crate::record::documents::Format::Plaintext);
     if format != crate::record::documents::Format::Marquee {
         // Plaintext (and the media-format refusal inside) take the plain path: no embeds.
-        return Ok(Outcome::Posted(docs.publish(doc_id, None).await?));
+        return Ok(Outcome::Posted(docs.publish(doc_id, None, Vec::new()).await?));
     }
     let resolved = docs.resolved(doc).await?;
     let body = resolved.body.ok_or_else(|| {
@@ -186,7 +186,21 @@ pub async fn publish(
 
     let refs = media_refs(&body, root_hex);
     if refs.is_empty() {
-        return Ok(Outcome::Posted(docs.publish(doc_id, Some(body)).await?));
+        return Ok(Outcome::Posted(docs.publish(doc_id, Some(body), Vec::new()).await?));
+    }
+    // The COUNT cap, before a byte of bake work: `media_budget` below prices the bytes, this
+    // prices the obligations - every ref is a fetch every sharer owes, and fifty distinct
+    // embedded documents is already an album (Curtis, 2026-08-14: "the huge refchain starts
+    // to be awkward and it's good to set a limit somewhere"). Checked on the distinct-target
+    // list so it cannot be dodged by embedding one thing repeatedly, and checked here so an
+    // over-count post costs a refusal, never fifty transcodes first.
+    if refs.len() > ringtome_proto::DocHeaderPlain::MAX_REFS {
+        return Err(AppError::BadRequest(crate::msg!(
+            "record.bake.post-embeds-too-many-documents",
+            "this post embeds {count} documents - one post may carry {cap}. A collection this size wants to be several posts.",
+            count = refs.len(),
+            cap = ringtome_proto::DocHeaderPlain::MAX_REFS
+        )));
     }
 
     let mut swaps: Vec<(String, String)> = Vec::new();
@@ -279,7 +293,18 @@ pub async fn publish(
     // finally knowable. Checked HERE rather than at upload: a single upload under the per-file
     // cap says nothing about a post that embeds forty of them.
     media_budget(state, data, &baked).await?;
-    Ok(Outcome::Posted(docs.publish(doc_id, Some(rewrite(&body, &swaps))).await?))
+    // The baked twin set IS the header's refs: derived post-rewrite, so it names exactly the
+    // public documents a reader's renderer will ask for. Deduplicated - the same picture
+    // embedded twice is one obligation, matching the budget's own arithmetic.
+    let mut header_refs: Vec<[u8; 16]> = Vec::new();
+    for id in &baked {
+        if !header_refs.contains(id) {
+            header_refs.push(*id);
+        }
+    }
+    Ok(Outcome::Posted(
+        docs.publish(doc_id, Some(rewrite(&body, &swaps)), header_refs).await?,
+    ))
 }
 
 /// What one post's embedded media may total, once baked.

@@ -48,11 +48,16 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   * **Media doesn't hop yet.** A shared post's embedded media (the baked public twins) mints
     identity-rooted targets that only the author's chain-holders can serve, and the fragment
     lane neither fetches nor pins them - a fragment-held post past hop one renders its words
-    and a broken image. The walk belongs where the body text lands (`media_refs` over the
-    healed blob, fragment-Want each same-author media doc from the same origin, thumb + bytes
-    wants), bounded by the source-side media budget. THEN the media deletion story (the orphan
-    reaper, retract-the-twin, blob reaping) composes on top - virality first, per Curtis
-    2026-08-14.
+    and a broken image. The design is settled and its prerequisite is BUILT: a share is an
+    implicit rebroadcast of the post's media (one pointer, one budget, one renderable whole),
+    and the covered set now rides the SIGNED header - `DocHeaderPlain.refs`, derived at the
+    mint, capped at 50 - so the walk reads a field from the entry, in parallel with the body,
+    with no foreign Marquee parsed anywhere: fragment-Want each ref from the post's origin,
+    thumb + bytes wants, media fragments carrying their covering post so the post's death
+    cascades locally by refcount. THEN the media deletion story (the orphan reaper,
+    retract-the-twin, blob reaping) composes on top - virality first, per Curtis 2026-08-14.
+    (PROJECT_PLAN still wants the implicit-rebroadcast rule written into the share section
+    when the slice lands.)
   * **The edit window** - the remaining trim slice, and now the only reason per-document
     revalidation still has to visit the whole shelf: deletion travels by cursor
     (`WantDeaths`/`Deaths`, built 2026-08-13 with the signed-`Gone` proofs), so once

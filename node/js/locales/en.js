@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 445 phrases across 41 files.
+// 449 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -178,6 +178,9 @@ export default {
     'doc.reader.pinned-click-to-unpin-it': 'Pinned — click to unpin it from the top of the list',
     'doc.reader.not-pinned-click-to-pin': 'Not pinned — click to pin it to the top of the list',
 
+    // --- node/js/doc/session.js ---
+    'doc.session.embed-removed-over-cap': '(“{alt}” removed — one page holds {cap} embedded files)',
+
     // --- node/js/doc/tree.js ---
     'doc.tree.untitled-section': '(untitled section)',
     'doc.tree.untitled-section-2': '(untitled section)',
@@ -192,6 +195,9 @@ export default {
     'doc.tree.tree': 'tree',
     'doc.tree.section': 'section',
     'doc.tree.nothing-here-yet---start': 'nothing here yet - start a {itemNoun}, or a section to put them in.',
+
+    // --- node/js/doc/upload.js ---
+    'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
 
     // --- node/js/idpage.js ---
     'idpage.synced': 'synced {when}',
@@ -491,6 +497,7 @@ export default {
     // --- node/src/record/bake.rs ---
     'record.bake.no-such-document': 'no such document',
     'record.bake.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
+    'record.bake.post-embeds-too-many-documents': 'this post embeds {count} documents - one post may carry {cap}. A collection this size wants to be several posts.',
     'record.bake.post-media-over-budget': "this post's media adds up to {total} - one post may carry {cap}. Split it across several posts.",
 
     // --- node/src/record/documents.rs ---
@@ -510,6 +517,7 @@ export default {
     'record.store.identity-not-found': 'identity not found',
     'record.store.unknown-profile-field-allowed': 'unknown profile field {field} (allowed: {allowed})',
     'record.store.device-names-are-capped-at': 'device names are capped at {limit} bytes - this is a nickname, not a description',
+    'record.store.too-many-embedded-documents': 'this note embeds {count} documents - one document may hold {cap}. A collection this size wants a notebook, not one page.',
     'record.store.no-such-document': 'no such document',
     'record.store.this-note-is-diverged--': 'this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict',
     'record.store.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",

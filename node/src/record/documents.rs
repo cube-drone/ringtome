@@ -333,6 +333,12 @@ pub struct Save {
     /// transcoding: measured dimensions, optional duration, and the hash of the thumbnail blob it
     /// already stored. `body` for a media save is the transcoded AVIF, not the original upload.
     pub media: Option<MediaMeta>,
+    /// The documents this body embeds - derived, never client-asserted: `Store::save` computes
+    /// it from the body with the same parser the bake uses (own private docs only, external
+    /// links excluded - a URL is not a document), so callers pass `Vec::new()` and the store
+    /// overwrites. In the header it makes "which media does this note hold?" a field read
+    /// instead of a decrypt-and-parse of every body - the unreferenced-media question, cheap.
+    pub refs: Vec<[u8; 16]>,
 }
 
 /// What the ingest crush measured/produced, minus the bytes themselves - every field optional
@@ -428,6 +434,7 @@ pub async fn save_version(
         duration_ms: save.media.as_ref().and_then(|m| m.duration_ms),
         thumb_hash: save.media.as_ref().and_then(|m| m.thumb_hash),
         preview_hash: save.media.as_ref().and_then(|m| m.preview_hash),
+        refs: save.refs,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -492,6 +499,7 @@ pub async fn retitle(
         duration_ms: head.header.duration_ms,
         thumb_hash: head.header.thumb_hash,
         preview_hash: head.header.preview_hash,
+        refs: head.header.refs.clone(),
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -550,6 +558,7 @@ pub async fn save_public_media(
         duration_ms: ingested.duration_ms,
         thumb_hash,
         preview_hash: None,
+        refs: Vec::new(), // media documents are leaves - they embed nothing
     };
     let payload = header
         .encode()
@@ -580,6 +589,11 @@ pub struct PublicText<'a> {
     pub title: &'a str,
     pub body: &'a str,
     pub format: Format,
+    /// The public media documents this body embeds - the baked twin set, derived post-rewrite
+    /// by the publish pre-pass (record::bake), so it names what a reader's renderer will
+    /// actually ask for. In the SIGNED header so a fragment names its media from the entry
+    /// alone, and no sweep ever parses foreign Marquee.
+    pub refs: Vec<[u8; 16]>,
 }
 
 pub async fn save_public_text(
@@ -588,7 +602,7 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format } = text;
+    let PublicText { onto, title, body, format, refs } = text;
     let (doc_id, parents) = match onto {
         Some((id, parents)) => (id, parents),
         None => (new_doc_id(), vec![]),
@@ -612,6 +626,7 @@ pub async fn save_public_text(
         duration_ms: None,
         thumb_hash: None,
         preview_hash: None,
+        refs,
     };
     let payload = header
         .encode()
@@ -861,6 +876,20 @@ pub fn new_doc_id() -> [u8; 16] {
 // subset the proto crate speaks. MAX_PARENTS is 16, so the array header is always the single
 // byte 0x80|len; each item is bstr(32) = 0x58 0x20 + the hash.
 
+/// Refs as a column: plain concatenation of 16-byte ids. Never a protocol - this value is
+/// read only by its own decoder below, exactly like `fragments.auth_path`'s packing.
+fn encode_refs(refs: &[[u8; 16]]) -> Vec<u8> {
+    refs.concat()
+}
+
+/// Truncation degrades to fewer refs, never a panic: the bytes come off disk.
+fn decode_refs(bytes: &[u8]) -> Vec<[u8; 16]> {
+    bytes
+        .chunks_exact(16)
+        .map(|c| <[u8; 16]>::try_from(c).expect("chunks_exact(16) yields 16-byte slices"))
+        .collect()
+}
+
 fn encode_parents(parents: &[[u8; 32]]) -> Vec<u8> {
     debug_assert!(parents.len() <= DocHeaderPlain::MAX_PARENTS);
     let mut out = Vec::with_capacity(1 + parents.len() * 34);
@@ -906,10 +935,10 @@ async fn fold_header(
     db.execute(
         "INSERT OR IGNORE INTO doc_versions
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
-            duration_ms, thumb_hash, preview_hash, timestamp_ms, seq, author_pubkey, lane)
+            duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq, author_pubkey, lane)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
-                 :width, :height, :duration_ms, :thumb_hash, :preview_hash, :timestamp_ms,
-                 :seq, :author_pubkey, :lane)",
+                 :width, :height, :duration_ms, :thumb_hash, :preview_hash, :refs,
+                 :timestamp_ms, :seq, :author_pubkey, :lane)",
         turso::named_params! {
             ":entry_hash": signed.hash().as_slice(),
             ":doc_id": header.doc_id.as_slice(),
@@ -923,6 +952,7 @@ async fn fold_header(
             ":duration_ms": header.duration_ms.map(|d| d as i64),
             ":thumb_hash": header.thumb_hash.map(|h| h.to_vec()),
             ":preview_hash": header.preview_hash.map(|h| h.to_vec()),
+            ":refs": encode_refs(&header.refs),
             ":timestamp_ms": signed.entry().timestamp_ms,
             ":seq": signed.entry().seq as i64,
             ":author_pubkey": hex::encode(signed.entry().chain.author),
@@ -1377,6 +1407,7 @@ type VersionRow = (
     Option<i64>,     // duration_ms
     Option<Vec<u8>>, // thumb_hash
     Option<Vec<u8>>, // preview_hash
+    Vec<u8>,         // refs (concatenated 16-byte doc ids; empty = none)
     i64,             // timestamp_ms
     i64,             // seq (folded fact; the DAG doesn't use it)
     String,          // author_pubkey
@@ -1397,6 +1428,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         duration_ms,
         thumb_hash,
         preview_hash,
+        refs,
         timestamp_ms,
         _seq,
         author_hex,
@@ -1418,6 +1450,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         duration_ms: duration_ms.map(|d| d as u64),
         thumb_hash: thumb_hash.as_deref().map(hash32).transpose()?,
         preview_hash: preview_hash.as_deref().map(hash32).transpose()?,
+        refs: decode_refs(&refs),
     };
     Ok((
         doc_id,
@@ -1436,7 +1469,7 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
     let rows: Vec<VersionRow> = db
         .fetch_all(
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
-                    height, duration_ms, thumb_hash, preview_hash, timestamp_ms, seq,
+                    height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey
              FROM doc_versions WHERE doc_id = ?1",
             (doc_id.to_vec(),),
@@ -1473,7 +1506,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
     let rows: Vec<VersionRow> = db
         .fetch_all(
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
-                    height, duration_ms, thumb_hash, preview_hash, timestamp_ms, seq,
+                    height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey
              FROM doc_versions",
             (),
@@ -2517,6 +2550,7 @@ mod tests {
             duration_ms: None,
             thumb_hash: None,
             preview_hash: None,
+            refs: Vec::new(),
         };
         crate::record::imaol::append(
             db,
@@ -2636,6 +2670,7 @@ mod tests {
                 body: body.into(),
                 format: Format::Plaintext,
                 media: None,
+                refs: Vec::new(),
             },
         )
         .await
@@ -2667,6 +2702,7 @@ mod tests {
                 body: body.into(),
                 format,
                 media: None,
+                refs: Vec::new(),
             },
         )
         .await
@@ -2906,6 +2942,7 @@ mod tests {
             body: b"start".to_vec(),
             format: Format::Marquee,
             media: None,
+            refs: Vec::new(),
         };
         let converted = save_version(&db, &key, &keys, &files, convert(vec![reverted]))
             .await

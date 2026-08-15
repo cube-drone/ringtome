@@ -498,9 +498,9 @@ impl PrivatePlain {
 /// enum grows additively.
 ///
 /// Encoding: `{0: bstr(16) doc_id, 1: array<bstr(32)> parents, 2: bstr(32) file_hash,
-/// 3: bstr(32) body_hash, 4: text title, 5?: uint format}`. A `refs` field (the derived index of
-/// what the body references) is reserved as a future additive key - readers already skip unknown
-/// keys.
+/// 3: bstr(32) body_hash, 4: text title, 5?: uint format, ..., 11?: array<bstr(16)> refs}`.
+/// `refs` was reserved here as a future additive key from the start and realized 2026-08-14 -
+/// readers that predate it skip unknown keys, so old and new entries decode either way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocHeaderPlain {
     /// The document's stable identity across all its versions - what taxonomies and publication
@@ -527,12 +527,27 @@ pub struct DocHeaderPlain {
     /// `preview_hash` - the file-layer hash of a silent AV1-in-WebM hover-preview clip, stored as
     /// its OWN sibling blob exactly like `thumb_hash` (video only, `None` for everything else).
     pub preview_hash: Option<[u8; 32]>,
+    /// The documents this body embeds, derived at authoring time by the SAME parse that bakes
+    /// media - the reserved additive key, realized 2026-08-14. In the header so the set is
+    /// knowable from the entry alone: a fragment names its media before its body arrives, a
+    /// sharer's pin has a checkable shape, and no fold or sweep ever parses foreign Marquee.
+    /// Self-scoped like every header claim: an over-claim obliges the author's own sharers
+    /// (budget-capped), an under-claim breaks the author's own images past hop one. Empty is
+    /// absent on the wire. Capped at [`Self::MAX_REFS`] - a document embedding more is not a
+    /// document, it is a Taxonomy wearing one's clothes (the media-budget argument, counted).
+    pub refs: Vec<[u8; 16]>,
 }
 
 impl DocHeaderPlain {
     pub const MAX_TITLE_LEN: usize = 1024;
     /// A merge of more heads than this is not a document any more.
     pub const MAX_PARENTS: usize = 16;
+    /// A body embedding more documents than this is not a post - it is a collection wearing a
+    /// post's clothes, and collections are Taxonomies. Set well above any honest page (fifty
+    /// distinct embedded documents is already an album) and well below where a refchain
+    /// becomes a lever: every ref is a fetch obligation for every sharer, and the count is the
+    /// cheap half of the bound the media budget prices in bytes.
+    pub const MAX_REFS: usize = 50;
 
     /// The body fingerprint: BLAKE3 keyed by a document-scoped key. Keying by `doc_id` kills
     /// global rainbow tables - a dictionary attack against a low-entropy body must be mounted
@@ -551,6 +566,9 @@ impl DocHeaderPlain {
         if self.parents.len() > Self::MAX_PARENTS {
             return Err(ProtoError::BadEntry("too many parents"));
         }
+        if self.refs.len() > Self::MAX_REFS {
+            return Err(ProtoError::BadEntry("too many embedded documents"));
+        }
         let mut w = Writer::new();
         // Base 5 fields (0..4) plus whichever optionals are present. Keys stay in ascending
         // order, so the map is canonical.
@@ -560,7 +578,8 @@ impl DocHeaderPlain {
             + self.height.is_some() as u64
             + self.duration_ms.is_some() as u64
             + self.thumb_hash.is_some() as u64
-            + self.preview_hash.is_some() as u64;
+            + self.preview_hash.is_some() as u64
+            + !self.refs.is_empty() as u64;
         w.map(n);
         w.uint(0);
         w.bytes(&self.doc_id);
@@ -599,6 +618,13 @@ impl DocHeaderPlain {
             w.uint(10);
             w.bytes(p);
         }
+        if !self.refs.is_empty() {
+            w.uint(11);
+            w.array(self.refs.len() as u64);
+            for r in &self.refs {
+                w.bytes(r);
+            }
+        }
         Ok(w.into_bytes())
     }
 
@@ -609,6 +635,7 @@ impl DocHeaderPlain {
             (None, None, None, None, None, None);
         let (mut width, mut height, mut duration_ms, mut thumb_hash, mut preview_hash) =
             (None, None, None, None, None);
+        let mut refs: Vec<[u8; 16]> = Vec::new();
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -642,6 +669,15 @@ impl DocHeaderPlain {
                 8 => duration_ms = Some(map.uint()?),
                 9 => thumb_hash = Some(map.bytes_fixed::<32>()?),
                 10 => preview_hash = Some(map.bytes_fixed::<32>()?),
+                11 => {
+                    let n = map.array()?;
+                    if n as usize > Self::MAX_REFS {
+                        return Err(ProtoError::BadEntry("too many embedded documents"));
+                    }
+                    for _ in 0..n {
+                        refs.push(map.bytes_fixed::<16>()?);
+                    }
+                }
                 _ => map.skip_value()?,
             }
         }
@@ -658,6 +694,7 @@ impl DocHeaderPlain {
             duration_ms,
             thumb_hash,
             preview_hash,
+            refs,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -1292,6 +1329,67 @@ mod tests {
         assert_eq!(PrivateRecord::decode(&pr.encode().unwrap()).unwrap(), pr);
     }
 
+    /// The realized reserved key: refs round-trip, empty stays absent on the wire (byte-equal
+    /// to a pre-refs encoding), and the cap refuses at BOTH doors - an encoder cannot mint an
+    /// over-count header and a decoder refuses one minted by other code.
+    #[test]
+    fn doc_header_refs_round_trip_and_cap() {
+        let base = DocHeaderPlain {
+            doc_id: [9u8; 16],
+            parents: vec![[1u8; 32]],
+            file_hash: [3u8; 32],
+            body_hash: [4u8; 32],
+            title: "album".into(),
+            format: Some(1),
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
+            preview_hash: None,
+            refs: vec![[7u8; 16], [8u8; 16]],
+        };
+        assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
+
+        let empty = DocHeaderPlain {
+            refs: Vec::new(),
+            ..base.clone()
+        };
+        let bytes = empty.encode().unwrap();
+        assert_eq!(
+            DocHeaderPlain::decode(&bytes).unwrap().refs,
+            Vec::<[u8; 16]>::new(),
+            "no refs is wire-absence, so pre-refs readers and entries agree byte-for-byte"
+        );
+
+        let over = DocHeaderPlain {
+            refs: vec![[7u8; 16]; DocHeaderPlain::MAX_REFS + 1],
+            ..base.clone()
+        };
+        assert!(over.encode().is_err(), "the encoder refuses an over-count header");
+
+        let mut w = Writer::new();
+        w.map(6);
+        w.uint(0);
+        w.bytes(&base.doc_id);
+        w.uint(1);
+        w.array(0);
+        w.uint(2);
+        w.bytes(&base.file_hash);
+        w.uint(3);
+        w.bytes(&base.body_hash);
+        w.uint(4);
+        w.text("smuggled");
+        w.uint(11);
+        w.array((DocHeaderPlain::MAX_REFS + 1) as u64);
+        for _ in 0..=DocHeaderPlain::MAX_REFS {
+            w.bytes(&[7u8; 16]);
+        }
+        assert!(
+            DocHeaderPlain::decode(&w.into_bytes()).is_err(),
+            "and the decoder refuses one minted by somebody else's encoder"
+        );
+    }
+
     #[test]
     fn doc_header_round_trips_genesis_save_and_merge() {
         // The three parent shapes: genesis (none), ordinary save (one), merge (two).
@@ -1308,6 +1406,7 @@ mod tests {
                 duration_ms: None,
                 thumb_hash: None,
                 preview_hash: None,
+                refs: Vec::new(),
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -1324,6 +1423,7 @@ mod tests {
             duration_ms: None,
             thumb_hash: None,
             preview_hash: None,
+            refs: Vec::new(),
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -1339,6 +1439,7 @@ mod tests {
             duration_ms: None,
             thumb_hash: Some([7u8; 32]),
             preview_hash: None,
+            refs: Vec::new(),
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
@@ -1354,6 +1455,7 @@ mod tests {
             duration_ms: Some(20_149),
             thumb_hash: Some([7u8; 32]),
             preview_hash: Some([8u8; 32]),
+            refs: Vec::new(),
         };
         assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
@@ -1372,6 +1474,7 @@ mod tests {
             duration_ms: None,
             thumb_hash: None,
             preview_hash: None,
+            refs: Vec::new(),
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {
