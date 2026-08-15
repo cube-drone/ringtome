@@ -5975,3 +5975,43 @@ every other suite's posts would freeze mid-flight.
 
 **Node schema 21→22 (`fragments.genesis_ms`) - `just clean` before the next dev boot.**
 Gates: `just ci` exit 0, 653 passing; catalog at 451.
+
+## 2026-08-15 — any sharer will do: the ledger outlives the recorded origin
+
+The `fragments` row remembers ONE origin - first server wins - while `feed_shares` knows every
+sharer a local reader follows who stands behind the document. Until today only the death reap
+consulted the ledger; edits, body bytes and covered media all hung on the recorded origin's
+uptime while five other holders idled. Now the asking walks: `revalidate` tries author, then
+origin, then the document's sharers (`fanout::sharers_of_doc` - the union over readers of the
+per-reader byline ledger, which Curtis correctly pinned as NOT a node-wide sharer index; the
+union is one query on the by-doc index the deletion paths already built, and its scope is the
+right bound by construction - only relationships this node's own users created).
+Introducer-first, capped at three fallback dials per revalidation. Blob healing gains the
+per-author union; cover healing walks the covering post's sharers.
+
+Test-first, and the test was designed around the false pass: dual-follow self-heals the
+INITIAL fetch through the second sharer's own pointer, so the scenarios sit where the second
+pointer cannot help. The per-ALPN gate makes each a mechanism assertion: the author's fragment
+door shut (sync stays open - Sam's chain copy must keep updating) and the recorded origin
+fully dark, so the second sharer is the only body in the universe that can carry the edit; the
+origin's BLOB door shut before his share, so every entry arrives and every byte is refused and
+the wants ledger fills with a candidate that then dies. First run: both red on their named
+assertions. Third scenario - every source dark is silence, not loss, and not overreach - is
+the permanent plant, green before and after. The premise itself is pinned in SQL before any
+darkness: `origin_root = bob`, ledger knows two.
+
+### The flake the walk flushed out
+
+One old test failed on infrastructure: the raw SQL passthrough 400'd a settle loop's feed read
+with turso's "concurrent use forbidden". Pre-existing by its own admission - `Db::query`'s
+lock covered only ISSUANCE, and the returned stream outlived the guard, racing every
+production statement on the shared connection; the walk's extra sweep traffic merely made the
+collision likely enough for CI to find. Replaced with `query_drained`: the whole statement
+drains under the lock, values extracted before release, and no caller can hold an open
+statement across it any more. The open-statement rule at the top of `Db` was always the law;
+now it is also the type's shape.
+
+What remains of that residual family: the in-window stale-sharer EDIT rollback (24h-bounded,
+self-healing; a same-chain seq comparison would shrink it further) and the orphaned share row.
+
+Gates: `just ci` exit 0, 656 passing; catalog at 450.

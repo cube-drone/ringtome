@@ -1070,6 +1070,259 @@ async function setLane(mode) {
         });
     });
 
+    /*
+        Multi-origin resilience: the row remembers ONE origin (first server wins), the
+        feed_shares ledger knows every sharer a local reader follows - and until 2026-08-15
+        only the reap ever consulted the ledger. These tests are built on the cases where a
+        second sharer's own pointer CANNOT paper over the gap (dual-follow self-heals the
+        initial fetch through existing machinery): revalidation of edits, and blob healing.
+
+        The per-ALPN gate is what makes each claim a mechanism assertion rather than an
+        outcome: with the author's fragment door and the recorded origin both provably dark,
+        the second sharer is the only body in the universe that can carry the goods.
+    */
+    describe("any sharer will do: the ledger outlives the recorded origin", function () {
+        this.timeout(1200000);
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const webp = fs.readFileSync(
+            path.join(__dirname, "..", "..", "..", "sample_media", "its_webp.webp")
+        );
+
+        let ally, allyRoot, bo, boRoot, sam, samRoot, rae, raeRoot;
+
+        before(async function () {
+            // Two sharers on DIFFERENT nodes - or dark-Bob is dark-Sam - and a reader who
+            // follows both for rebroadcasts.
+            ally = await makeUserFetch({ prefix: "morigally" });
+            allyRoot = (await (await ally("api/identity", { method: "POST" })).json()).root_pubkey;
+            await ally(`api/identity/${allyRoot}/serve`, { method: "POST" });
+            const viaAlly = await base58(ally);
+
+            bo = await makeUserFetch({ prefix: "morigbo", host: HOST_B });
+            boRoot = (await (await bo("api/identity", { method: "POST" })).json()).root_pubkey;
+            await bo(`api/identity/${boRoot}/serve`, { method: "POST" });
+            const viaBo = await base58(bo);
+
+            sam = await makeUserFetch({ prefix: "morigsam", host: HOST_C });
+            samRoot = (await (await sam("api/identity", { method: "POST" })).json()).root_pubkey;
+            await sam(`api/identity/${samRoot}/serve`, { method: "POST" });
+            const viaSam = await base58(sam);
+
+            rae = await makeUserFetch({ prefix: "morigrae", host: HOST_E });
+            raeRoot = (await (await rae("api/identity", { method: "POST" })).json()).root_pubkey;
+
+            if ((await bo(`api/id/${allyRoot}/profile?via=${viaAlly}`)).status !== 200) this.skip();
+            await dial(bo, boRoot, allyRoot, "interest", "high");
+            if ((await sam(`api/id/${allyRoot}/profile?via=${viaAlly}`)).status !== 200) this.skip();
+            await dial(sam, samRoot, allyRoot, "interest", "high");
+            if ((await rae(`api/id/${boRoot}/profile?via=${viaBo}`)).status !== 200) this.skip();
+            await dial(rae, raeRoot, boRoot, "interest_rebroadcasts", "high");
+            if ((await rae(`api/id/${samRoot}/profile?via=${viaSam}`)).status !== 200) this.skip();
+            await dial(rae, raeRoot, samRoot, "interest_rebroadcasts", "high");
+        });
+
+        afterEach(async () => {
+            await plugIn(HOST);
+            await plugIn(HOST_B);
+            await plugIn(HOST_C);
+        });
+
+        /// Publish (optionally with an embedded image), have BOB share first - settled, so the
+        /// fragment's recorded origin is deterministically his - then SAM. Ends by pinning the
+        /// premise in SQL: the row remembers one, the ledger knows two. Without that pin the
+        /// suite proves nothing - if the origin happened to be Sam, darkening Bob tests the
+        /// happy path.
+        async function seedDual(title, { image = false } = {}) {
+            let body = `${title}: the words`;
+            if (image) {
+                const up = await ally(
+                    `api/identity/${allyRoot}/docs/binary?title=pic&parents=`,
+                    { method: "POST", body: webp }
+                );
+                const upText = await up.text();
+                assert.ok(up.status === 200 || up.status === 202, upText);
+                const mediaId = JSON.parse(upText).doc_id;
+                assert.ok(
+                    await settle(async () => {
+                        const r = await ally(`api/identity/${allyRoot}/docs/${mediaId}`);
+                        return r.status === 200 ? true : null;
+                    }),
+                    `seedDual(${title}): the upload transcoded`
+                );
+                body = `${title}: the words\n\n![pic](/api/identity/${allyRoot}/docs/${mediaId}/body/pic.webp)\n`;
+            }
+            const made = await (
+                await ally(`api/identity/${allyRoot}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title,
+                        body,
+                        format: image ? "marquee" : "plaintext",
+                    }),
+                })
+            ).json();
+            const pub = await ally(`api/identity/${allyRoot}/docs/${made.doc_id}/publish`, {
+                method: "POST",
+            });
+            const pubText = await pub.text();
+            assert.equal(pub.status, 200, pubText);
+            const post = JSON.parse(pubText).post_id;
+
+            for (const [who, root, host] of [["Bo", boRoot, HOST_B], ["Sam", samRoot, HOST_C]]) {
+                assert.ok(
+                    await settle(async () => {
+                        const rows = await feedOf(root, host);
+                        return rows.some((r) => r.doc_id === post) ? true : null;
+                    }),
+                    `seedDual(${title}): the post reached ${who}'s chain copy`
+                );
+            }
+
+            const boShared = await bo(`api/identity/${boRoot}/rebroadcasts`, {
+                method: "POST",
+                body: JSON.stringify({ author: allyRoot, doc_id: post }),
+            });
+            assert.equal(boShared.status, 200, await boShared.text());
+            assert.ok(
+                await settle(async () => {
+                    const rows = await fragmentsOf(allyRoot, HOST_E);
+                    return rows.some((r) => r.doc_id === post) ? true : null;
+                }),
+                `seedDual(${title}): Rae holds the fragment via Bo`
+            );
+
+            const samShared = await sam(`api/identity/${samRoot}/rebroadcasts`, {
+                method: "POST",
+                body: JSON.stringify({ author: allyRoot, doc_id: post }),
+            });
+            assert.equal(samShared.status, 200, await samShared.text());
+            assert.ok(
+                await settle(async () => {
+                    const { rows } = await sql(
+                        `SELECT via_root FROM feed_shares WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
+                        HOST_E
+                    );
+                    const vias = rows.map((r) => r.via_root);
+                    return vias.includes(boRoot) && vias.includes(samRoot) ? true : null;
+                }),
+                `seedDual(${title}): the ledger knows both sharers`
+            );
+
+            // THE PREMISE, pinned: one recorded origin (Bo, deterministically - he served
+            // first), two known sharers.
+            const { rows: frows } = await sql(
+                `SELECT origin_root FROM fragments WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
+                HOST_E
+            );
+            assert.equal(frows[0].origin_root, boRoot, "the row remembers exactly one origin");
+
+            return { post, draft: made.doc_id, version: made.version };
+        }
+
+        it("an edit arrives from the OTHER sharer when the recorded origin is dark", async () => {
+            const { post, draft, version } = await seedDual("anyorigin-edit");
+            // Words settled at Rae first, so the edit assertion below is a CHANGE, not a first
+            // arrival.
+            assert.ok(
+                await settle(async () => {
+                    const body = await servedBody(allyRoot, post, HOST_E);
+                    return body && body.includes("anyorigin-edit") ? true : null;
+                }),
+                "precondition: the original words serve at Rae's node"
+            );
+
+            // The choreography that forces the mechanism: the author's FRAGMENT door shuts
+            // (her sync door stays open - Sam's chain copy must keep updating), the recorded
+            // origin goes fully dark. Sam is now the only body in the universe holding v2
+            // that Rae can reach.
+            await unplug(HOST, { alpns: ["fragment"] });
+            await unplug(HOST_B);
+
+            const put = await ally(`api/identity/${allyRoot}/docs/${draft}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    title: "anyorigin-edit, revised",
+                    body: "anyorigin-edit, revised: the words",
+                    parents: [version],
+                    format: "plaintext",
+                }),
+            });
+            assert.equal(put.status, 200, await put.text());
+            const rep = await ally(`api/identity/${allyRoot}/docs/${draft}/publish`, {
+                method: "POST",
+            });
+            assert.equal(rep.status, 200, await rep.text());
+
+            assert.ok(
+                await settle(async () => {
+                    const rows = await fragmentsOf(allyRoot, HOST_E);
+                    const r = rows.find((x) => x.doc_id === post);
+                    return r && r.title.includes("revised") ? true : null;
+                }),
+                "the revision reached Rae - only Sam could have carried it"
+            );
+            assert.ok(
+                await settle(async () => {
+                    const body = await servedBody(allyRoot, post, HOST_E);
+                    return body && body.includes("revised") ? true : null;
+                }),
+                "and the revised WORDS serve - the blob walked the same fallback"
+            );
+        });
+
+        it("the words and the image arrive when the origin dies between header and body", async () => {
+            // Bo's BLOB door shuts before he shares: every entry arrives from him (fragment
+            // ALPN, open), every byte is refused (blob ALPN) - the wants ledger fills with a
+            // candidate that then goes fully dark. Sam holds every blob one hop away.
+            await unplug(HOST_B, { alpns: ["blob"] });
+            const { post } = await seedDual("anyorigin-bytes", { image: true });
+            await unplug(HOST_B);
+
+            const served = await settle(async () => {
+                const body = await servedBody(allyRoot, post, HOST_E);
+                return body && body.includes("anyorigin-bytes") ? body : null;
+            });
+            assert.ok(served, "the post's words healed from the other sharer");
+            const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+            assert.ok(twin, `the served body names the twin: ${served}`);
+            assert.ok(
+                await settle(async () => {
+                    const res = await makeFetch(HOST_E)(`id/${allyRoot}/docs/${twin}/body`);
+                    return res.status === 200 ? true : null;
+                }),
+                "and the image's bytes healed from the other sharer too"
+            );
+        });
+
+        it("every source dark is silence, not loss - and not overreach", async () => {
+            const { post } = await seedDual("anyorigin-silence");
+            assert.ok(
+                await settle(async () => {
+                    const body = await servedBody(allyRoot, post, HOST_E);
+                    return body && body.includes("anyorigin-silence") ? true : null;
+                }),
+                "precondition: fully arrived before the world goes dark"
+            );
+            const before = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
+
+            await unplug(HOST, { alpns: ["fragment"] });
+            await unplug(HOST_B);
+            await unplug(HOST_C);
+            // Many sweep beats: every candidate the fallback walk could try refuses.
+            await new Promise((r) => setTimeout(r, 8000));
+
+            const after = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
+            assert.ok(after, "the fragment stands");
+            assert.equal(after.version, before.version, "same version - exhaustion is not news");
+            assert.equal(
+                (await tombstonesOf(allyRoot, HOST_E)).filter((r) => r.doc_id === post).length,
+                0,
+                "and silence buried nothing"
+            );
+        });
+    });
+
     describe("the death cursor: the steady state", function () {
         const reapOn = async (host) => {
             const res = await makeFetch(host)("test/reap", { method: "POST" });

@@ -328,11 +328,42 @@ pub async fn revalidate(
             answered => return answered,
         }
     }
-    if origin_root == author_hex {
-        return Fetched::Unknown;
+    if origin_root != author_hex {
+        match fetch(state, origin_root, author, doc_id).await {
+            Fetched::Unknown => {}
+            answered => return answered,
+        }
     }
-    fetch(state, origin_root, author, doc_id).await
+    // The ledger walk (2026-08-15): the row remembers ONE origin - first server wins - while
+    // `feed_shares` knows every sharer a local reader follows who stands behind this exact
+    // document. Any of them can carry an edit or a death as well as the recorded origin can;
+    // asking them when the origin is silent is what makes virality make a document HARDER to
+    // lose, not merely more seen. Introducer-first, politeness-capped, and still only ever
+    // relationships this node's own users created.
+    let sharers = crate::fanout::sharers_of_doc(&state.node_db, &author_hex, &hex::encode(doc_id))
+        .await
+        .unwrap_or_default();
+    let mut walked = 0;
+    for sharer in sharers {
+        if sharer == author_hex || sharer == origin_root {
+            continue;
+        }
+        if walked >= SHARER_WALK_CAP {
+            break;
+        }
+        walked += 1;
+        match fetch(state, &sharer, author, doc_id).await {
+            Fetched::Unknown => {}
+            answered => return answered,
+        }
+    }
+    Fetched::Unknown
 }
+
+/// Fallback sharers dialed per revalidation after the author and the recorded origin both
+/// answered nothing. A politeness bound, not a correctness one: the next beat resumes, and
+/// the introducer-first order means the walk tries the longest-standing sharers first.
+const SHARER_WALK_CAP: usize = 3;
 
 pub async fn fetch(
     state: &AppState,

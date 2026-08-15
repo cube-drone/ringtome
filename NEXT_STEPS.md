@@ -29,66 +29,21 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ### Public posts and fan-out
 
 * Posts link to a post-specific page (each post has its own location)
-* obviously the feed should use swatch internet time rather than dumb old localized time, or maybe ... both
 * Search my posts
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets
 * Make a whole bucket public in one fell swoop.
 * **Rebroadcast — data layer shipped 2026-08-11; the reader's screen reached 2026-08-14**
-  (PROJECT_PLAN, *Rebroadcast: Pointer Plus Pinned Replica* and its two network subsections;
-  HISTORY has the arc, the fragment slice, and *the last inch*). Pointer, pin, both notice
-  halves, public tombstone, media budget, feed with `via_root`, the fragment ledger, the
-  cascade proven with the author's node actually dark (`cascade.cjs`, *with the author's node
-  dark*), the crowd behind a viral share ("Sam and four others", `feed_shares`, `sharedby.cjs`)
-  - and, three days later than "end to end" was first claimed, the part a reader touches: the
-  body route serves the fragment shelf, the origin heals the bytes, and the cascade now asserts
-  the END DEVICE fetches the words over HTTP in every lane (the claim that went red 17 times on
-  its first run, catching the healing gap the database-level assertions had hidden for months).
-  What is left:
-  * ~~**Media doesn't hop yet.**~~ Built 2026-08-14: a share is an implicit rebroadcast of the
-    post's media (PROJECT_PLAN, *What travels with a share* carries the rule). The signed
-    header's refs drive the walk from the post's origin, `fragment_covers` refcounts why each
-    media fragment exists, deaths and edits release solely-covered media locally, and
-    `cascade.cjs` proves the arc with real bytes - upload, bake, twin serving at hops three
-    and four, gone with its post's takedown. What remains of the media story is the ORPHAN
-    REAPER on the author's side (retract the unreferenced twin, then blob reaping - the
-    deletion-story residual above), now with `refs` to read instead of parsing bodies.
-  * ~~**The edit window**~~ Built 2026-08-15 at one day (PROJECT_PLAN carries the pinned
-    width and the anchor design). The sweep's steady state is now O(peers) per beat: frozen
-    fragments leave revalidation forever, deletion travels by cursor, and the reaper collects
-    a frozen post's superseded versions' blobs (display head only survives). The last of the
-    two trim slices from the 2026-08-10 design - what a node must remember AND ask forever is
-    now bounded on every axis this arc named.
   * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
     stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
     the only reason it was ever there. A question for the retraction rules, not the read path
     (which currently falls back to `feed_journal.via_root` and says so in a comment).
-  * **A fragment remembers one origin.** `fragments.origin_root` is single-valued and
-    last-writer-wins, so a document six people you follow are holding is revalidated against
-    exactly one of them, and a dark origin ends the chain. `feed_shares` now knows the other
-    five: the fallback is a query away. Virality should make a document harder to lose.
   * **A stale sharer can roll a fragment back.** `remember` overwrites version/entry/body_hash
     with whatever the last origin served and never checks it is NEWER ("the version is allowed
     to move"), so six sharers pinned at different times can un-apply an edit between them. The
     *deleted* case of this is closed (2026-08-13: a tombstone now refuses the write, and
     `cascade.cjs` proves it); an EDIT still has no comparison to make, because a fragment's
     version is an entry hash and nothing beside it says which of two hashes came later.
-  * ~~**Deleted bytes are still served.**~~ The INTERMEDIARY half built 2026-08-14: the file
-    layer runs iroh-blobs' own mark-and-sweep (`reaper.rs` is the mark - held chains both
-    lanes folded fresh, the fragment shelf, the wants ledger; any enumeration error aborts the
-    whole run), so when a takedown's cascade drops the rows, the next round collects the
-    bytes - proven byte-level in `cascade.cjs` (the twin's blob leaves Cleo's filesystem, a
-    live control blob does not). What remains is the AUTHOR half, by design: a chain-held
-    document's rows protect its blobs forever, so an author's retracted post keeps its bytes
-    on chain-holding nodes until the orphaned-twin reaper retires the rows themselves
-    (retract the twin no live post references - the `refs` column now makes that a query).
-  * ~~**`published_as` outlives a retraction**~~ Fixed 2026-08-14 (with the take-it-down
-    button's reachability): unpublish clears the annotation, `Store::publish` refuses to
-    parent onto a headless claim (the belt, for stale annotations arriving by sync), and the
-    same pass closed the hole its test found - `public_docs` and `public_head` never filtered
-    `public_retractions`, so a takedown cleared every reader's feed while the author's own
-    node kept listing AND serving the post anonymously. `publish.cjs`, *taking it down, and
-    saying it again*.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket

@@ -461,6 +461,47 @@ fn as_shared(row: &JournalRow, shared_ms: i64) -> JournalRow {
 
 /// Journal one share whose content arrived late - the delivery the original fold could not
 /// make because the fragment fetch failed the first time (`fragments::drain_wants`).
+/// Every sharer of one document that ANY local reader follows - the union, over readers, of
+/// the per-reader byline ledger (2026-08-15, the multi-origin walk). NOT a sharer index: a row
+/// exists only where journaling delivered through a real follow edge, so this is exactly
+/// "relationships this node's own users created", which is the bound the candidate walk should
+/// have. Introducer-first, deterministically - the earliest to stand behind the document is
+/// asked first.
+pub async fn sharers_of_doc(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    doc_hex: &str,
+) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT via_root FROM feed_shares
+             WHERE author_root = ?1 AND doc_id = ?2
+             GROUP BY via_root ORDER BY MIN(shared_ms)",
+            (author_root, doc_hex),
+        )
+        .await
+        .context("listing a document's sharers")?;
+    Ok(rows.into_iter().map(|(v,)| v).collect())
+}
+
+/// The per-AUTHOR union of the same - the blob-healing candidates: bodies are wanted per
+/// author, and any sharer of ANY of their documents this node journals is a node that holds
+/// (or knows who holds) that author's public bytes.
+pub async fn sharers_of_author(
+    node_db: &crate::db::Db,
+    author_root: &str,
+) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT via_root FROM feed_shares WHERE author_root = ?1
+             GROUP BY via_root ORDER BY MIN(shared_ms)",
+            (author_root,),
+        )
+        .await
+        .context("listing an author's sharers")?;
+    Ok(rows.into_iter().map(|(v,)| v).collect())
+}
+
 pub(crate) async fn journal_late_share(
     state: &AppState,
     sharer_root: &str,
@@ -1261,5 +1302,54 @@ mod tests {
             assert_eq!(updated_ms, 9_000);
             assert_eq!(arrived_ms, 42, "arrival is set once, never rewritten");
         }
+    }
+
+    /// The candidate walk's source: the union over readers of the byline ledger,
+    /// introducer-first, one row per sharer however many readers they reached - and empty for
+    /// a document nobody local was ever journaled a share of, which is the scope bound ("we
+    /// only lean on relationships our own users created") as a property of a query.
+    #[tokio::test]
+    async fn sharers_union_is_introducer_first_and_demand_scoped() {
+        let db = crate::db::test_node_db().await;
+        let alice = "a".repeat(64);
+        let doc = hex::encode([1u8; 16]);
+        let other_doc = hex::encode([2u8; 16]);
+        let (bob, sam, rae, kim) = ("b".repeat(64), "c".repeat(64), "d".repeat(64), "e".repeat(64));
+
+        let insert = |reader: String, doc: String, via: String, ms: i64| {
+            let db = db.clone();
+            let alice = alice.clone();
+            async move {
+                db.execute(
+                    "INSERT INTO feed_shares (reader_root, author_root, doc_id, via_root, shared_ms)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    (reader, alice, doc, via, ms),
+                )
+                .await
+                .unwrap();
+            }
+        };
+        // Sam introduced the doc to one reader; Bob reached two readers, later.
+        insert(rae.clone(), doc.clone(), sam.clone(), 100).await;
+        insert(rae.clone(), doc.clone(), bob.clone(), 200).await;
+        insert(kim.clone(), doc.clone(), bob.clone(), 150).await;
+        // A different document's sharer must not leak into this one's walk.
+        insert(kim.clone(), other_doc.clone(), kim.clone(), 50).await;
+
+        let sharers = sharers_of_doc(&db, &alice, &doc).await.unwrap();
+        assert_eq!(
+            sharers,
+            vec![sam.clone(), bob.clone()],
+            "introducer first, one row per sharer across readers"
+        );
+
+        let by_author = sharers_of_author(&db, &alice).await.unwrap();
+        assert_eq!(by_author, vec![kim.clone(), sam.clone(), bob.clone()],
+            "the per-author union spans documents, earliest stand first");
+
+        assert!(
+            sharers_of_doc(&db, &alice, &hex::encode([9u8; 16])).await.unwrap().is_empty(),
+            "a document nobody local was journaled a share of yields nothing to dial"
+        );
     }
 }

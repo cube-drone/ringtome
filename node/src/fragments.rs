@@ -353,11 +353,11 @@ async fn fetch_cover(
 /// fragment is not held is a fetch owed, asked of the covering post's CURRENT origin. Skips
 /// the entombed - a dead twin is not owed, it is buried.
 async fn heal_covers(state: &crate::AppState) -> Result<()> {
-    type Row = (String, String, String);
+    type Row = (String, String, String, String);
     let rows: Vec<Row> = state
         .node_db
         .fetch_all(
-            "SELECT c.author_root, c.media_doc, f.origin_root
+            "SELECT c.author_root, c.media_doc, c.post_doc, f.origin_root
              FROM fragment_covers c
              JOIN fragments f ON f.author_root = c.author_root AND f.doc_id = c.post_doc
              WHERE NOT EXISTS (
@@ -369,13 +369,30 @@ async fn heal_covers(state: &crate::AppState) -> Result<()> {
         )
         .await
         .context("listing uncovered media fetches")?;
-    for (author_hex, media_hex, origin_root) in rows {
+    for (author_hex, media_hex, post_hex, origin_root) in rows {
         let Ok(bytes) = hex::decode(&media_hex) else { continue };
         let Ok(media) = <[u8; 16]>::try_from(bytes.as_slice()) else { continue };
         if entombed(&state.node_db, &author_hex, &media).await? {
             continue;
         }
-        fetch_cover(state, &origin_root, &author_hex, &media).await;
+        // The covering POST's sharers stand behind the image too (implicit rebroadcast), so
+        // the walk is origin-first then the ledger - same order, same cap, same bound as
+        // `revalidate`'s (2026-08-15).
+        let mut candidates = vec![origin_root];
+        for sharer in crate::fanout::sharers_of_doc(&state.node_db, &author_hex, &post_hex)
+            .await
+            .unwrap_or_default()
+        {
+            if !candidates.contains(&sharer) && sharer != author_hex {
+                candidates.push(sharer);
+            }
+        }
+        for candidate in candidates.iter().take(4) {
+            fetch_cover(state, candidate, &author_hex, &media).await;
+            if held(&state.node_db, &author_hex, &media_hex).await?.is_some() {
+                break;
+            }
+        }
     }
     Ok(())
 }

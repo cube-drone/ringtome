@@ -233,13 +233,30 @@ impl Db {
         Ok(self.conn.execute_batch(sql).await?)
     }
 
-    /// Raw row stream, for the callers that must inspect columns dynamically (the local-test SQL
-    /// passthrough). Everyone else goes through the typed `fetch_*` helpers. The lock only
-    /// covers issuing the statement - the returned stream outlives it - so this stays a
-    /// test-passthrough affordance, never a production path.
-    pub async fn query(&self, sql: &str, params: impl IntoParams) -> Result<turso::Rows> {
+    /// A dynamic statement, drained WHOLE under the lock, for the callers that must inspect
+    /// columns at runtime (the local-test SQL passthrough). This replaced a streaming variant
+    /// whose guard covered only issuance - the open statement then raced every production
+    /// statement on the shared connection, and stayed a latent "concurrent use forbidden"
+    /// until 2026-08-15, when the multi-origin walk thickened sweep traffic enough for CI to
+    /// hit it: a settle loop's feed read 400'd mid-test. The open-statement rule at the top of
+    /// this struct was always the law; now no caller can hold one across the lock's release.
+    pub async fn query_drained(
+        &self,
+        sql: &str,
+        params: impl IntoParams,
+    ) -> Result<(Vec<String>, Vec<Vec<Value>>)> {
         let _guard = self.stmt_lock.lock().await;
-        Ok(self.conn.query(sql, params).await?)
+        let mut rows = self.conn.query(sql, params).await?;
+        let names: Vec<String> = rows.column_names();
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let mut values = Vec::with_capacity(names.len());
+            for idx in 0..names.len() {
+                values.push(row.get_value(idx).unwrap_or(Value::Null));
+            }
+            out.push(values);
+        }
+        Ok((names, out))
     }
 
     /// Every row, extracted into `T`.

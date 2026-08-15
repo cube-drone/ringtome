@@ -233,10 +233,22 @@ pub async fn sweep(state: AppState) -> Result<()> {
         // aged forever with zero candidates and the words never arrived. Who it does have is
         // whoever handed it the pointer - who by construction holds (or knows who holds) the
         // very bytes the pointer names.
-        for origin in crate::fragments::origins_of(&state.node_db, &root)
+        let mut fragment_peers = crate::fragments::origins_of(&state.node_db, &root)
+            .await
+            .unwrap_or_default();
+        // ...and every sharer of any of this author's documents that a local reader follows
+        // (2026-08-15): the recorded origin is one name; the byline ledger's union is the
+        // rest of the tree, and any of them holds - or knows who holds - the author's public
+        // bytes. Designed resilience where origins_of gave coincidental resilience.
+        for sharer in crate::fanout::sharers_of_author(&state.node_db, &root)
             .await
             .unwrap_or_default()
         {
+            if !fragment_peers.contains(&sharer) {
+                fragment_peers.push(sharer);
+            }
+        }
+        for origin in fragment_peers {
             for c in crate::net::deliver::candidates(&state, &origin).await {
                 let ep = crate::idface::leaf_via_to_endpoint(&state, &origin, &c).await;
                 if !candidates.contains(&ep) {

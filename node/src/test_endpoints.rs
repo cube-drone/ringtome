@@ -46,21 +46,15 @@ pub async fn raw_sql(
 ) -> Result<Json<SqlResponse>, AppError> {
     tracing::warn!(sql = %req.sql, "LOCAL_TEST raw SQL passthrough");
 
-    let mut fetched = state
+    let (column_names, raw) = state
         .node_db
-        .query(&req.sql, ())
+        .query_drained(&req.sql, ())
         .await
         .map_err(|e| AppError::BadRequest(crate::msg!("test_endpoints.sql-error-e", "sql error: {e}", e = e)))?;
-    let column_names = fetched.column_names();
-
-    let mut rows = Vec::new();
-    loop {
-        match fetched.next().await {
-            Ok(Some(row)) => rows.push(row_to_json(&row, &column_names)),
-            Ok(None) => break,
-            Err(e) => return Err(AppError::BadRequest(crate::msg!("test_endpoints.sql-error-e-2", "sql error: {e}", e = e))),
-        }
-    }
+    let rows: Vec<serde_json::Map<String, Value>> = raw
+        .into_iter()
+        .map(|values| row_to_json(&values, &column_names))
+        .collect();
 
     Ok(Json(SqlResponse {
         rows,
@@ -309,15 +303,15 @@ pub async fn blob_present(
 /// Convert a database row into a JSON object. The stored value's own type drives the JSON shape
 /// (SQLite values are self-describing, so computed expressions like `COUNT(*)` come through as
 /// what they are); blobs become arrays of byte values, since JSON has no bytes type.
-fn row_to_json(row: &turso::Row, column_names: &[String]) -> serde_json::Map<String, Value> {
+fn row_to_json(values: &[turso::Value], column_names: &[String]) -> serde_json::Map<String, Value> {
     let mut obj = serde_json::Map::new();
     for (idx, name) in column_names.iter().enumerate() {
-        let value = match row.get_value(idx) {
-            Ok(turso::Value::Integer(i)) => Value::from(i),
-            Ok(turso::Value::Real(f)) => Value::from(f),
-            Ok(turso::Value::Text(s)) => Value::from(s),
-            Ok(turso::Value::Blob(b)) => Value::from(b),
-            Ok(turso::Value::Null) | Err(_) => Value::Null,
+        let value = match values.get(idx) {
+            Some(turso::Value::Integer(i)) => Value::from(*i),
+            Some(turso::Value::Real(f)) => Value::from(*f),
+            Some(turso::Value::Text(s)) => Value::from(s.clone()),
+            Some(turso::Value::Blob(b)) => Value::from(b.clone()),
+            Some(turso::Value::Null) | None => Value::Null,
         };
         obj.insert(name.clone(), value);
     }
