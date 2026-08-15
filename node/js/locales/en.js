@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 450 phrases across 43 files.
+// 451 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -522,6 +522,7 @@ export default {
     'record.store.this-note-is-diverged--': 'this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict',
     'record.store.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
     'record.store.media-publishes-by-its-own': 'media publishes by its own door, not this one',
+    'record.store.this-post-has-settled': 'this post has settled - posts can be edited for a day, then what you said is what you said. Take it down and post afresh if it needs changing.',
     'record.store.an-embedded-media-document-is': 'an embedded media document is missing',
     'record.store.embedded-media-has-no-readable': 'embedded media has no readable head',
     'record.store.video-cant-be-baked-into': "video can't be baked into a post yet - image and audio only for now",

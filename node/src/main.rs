@@ -549,6 +549,10 @@ async fn main() -> anyhow::Result<()> {
             )
             .route("/test/reap", axum::routing::post(test_endpoints::reap_pass))
             .route(
+                "/test/edit-window",
+                axum::routing::post(test_endpoints::edit_window),
+            )
+            .route(
                 "/test/blob/{hash}",
                 axum::routing::get(test_endpoints::blob_present),
             )

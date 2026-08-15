@@ -3483,6 +3483,7 @@ mod media_info_tests {
                 thumb_hash,
                 preview_hash,
                 refs: Vec::new(),
+                genesis_ms: None,
             },
         }
     }

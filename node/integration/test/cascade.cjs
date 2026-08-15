@@ -982,6 +982,94 @@ async function setLane(mode) {
         });
     });
 
+    /*
+        The edit window: a day to fix your words, after which what you said is what you said
+        (width settled 2026-08-15). Runtime-overridable per node (/test/edit-window) because a
+        suite cannot wait a day - and set per test, never boot-wide, or every other test's
+        posts would freeze mid-flight.
+    */
+    describe("the edit window: the words settle", function () {
+        const setWindowOn = async (host, ms) => {
+            const res = await makeFetch(host)("test/edit-window", {
+                method: "POST",
+                body: JSON.stringify({ ms }),
+            });
+            assert.equal(res.status, 200, `setting the edit window on ${host || "A"}`);
+        };
+
+        afterEach(async () => {
+            await setWindowOn(undefined, 0);
+            await setWindowOn(HOST_C, 0);
+        });
+
+        it("a settled post refuses the edit at the author's own door", async () => {
+            const { post, draft, version } = await seedToCleo("settles");
+            await setWindowOn(undefined, 2000);
+            await new Promise((r) => setTimeout(r, 2600));
+
+            // The private draft edits fine - the window is a PUBLIC posture...
+            const put = await alice(`api/identity/${aliceRoot}/docs/${draft}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    title: "settles, too late",
+                    body: "settles, too late: the words",
+                    parents: [version],
+                    format: "plaintext",
+                }),
+            });
+            assert.equal(put.status, 200, await put.text());
+
+            // ...and re-publication is where the freeze speaks, with words, not a shrug.
+            const rep = await alice(`api/identity/${aliceRoot}/docs/${draft}/publish`, {
+                method: "POST",
+            });
+            assert.equal(rep.status, 400, "past the window, the publish refuses");
+            assert.match(
+                await rep.text(),
+                /settled/,
+                "and says the post has settled rather than failing mutely"
+            );
+
+            // The published words never moved.
+            const body = await servedBody(aliceRoot, post, HOST_C);
+            assert.ok(body && body.includes("settles: the words"), "what was said is what was said");
+        });
+
+        it("a frozen fragment leaves the sweep forever", async () => {
+            const { post } = await seedToCleo("freezes");
+            const checkedOf = async () => {
+                const { rows } = await sql(
+                    `SELECT checked_ms FROM fragments WHERE author_root = '${aliceRoot}' AND doc_id = '${post}'`,
+                    HOST_C
+                );
+                return rows.length ? rows[0].checked_ms : null;
+            };
+
+            // First, prove the sweep is alive FOR THIS ROW: its stamp advances while young.
+            const first = await checkedOf();
+            assert.ok(first, "the fragment is on Cleo's shelf");
+            assert.ok(
+                await settle(async () => {
+                    const now = await checkedOf();
+                    return now > first ? true : null;
+                }),
+                "in-window, the sweep revalidates the fragment"
+            );
+
+            // Freeze it (the post's genesis is already seconds old; a 1s window is past), and
+            // the stamp stops forever - the sweep no longer visits, which is the whole
+            // archive-costs-nothing claim in one column.
+            await setWindowOn(HOST_C, 1000);
+            const frozen = await checkedOf();
+            await new Promise((r) => setTimeout(r, 5000));
+            assert.equal(
+                await checkedOf(),
+                frozen,
+                "past the window, the sweep never visits the fragment again"
+            );
+        });
+    });
+
     describe("the death cursor: the steady state", function () {
         const reapOn = async (host) => {
             const res = await makeFetch(host)("test/reap", { method: "POST" });

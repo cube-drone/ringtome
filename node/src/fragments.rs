@@ -62,13 +62,45 @@ pub async fn remember(
         );
         return Ok(());
     }
+    // The edit window, shelf side (2026-08-15): a version claiming to postdate its own
+    // genesis by more than the window is admitted and ignored - the fold's posture, on the
+    // one node that has no chain to fold. Both stamps are the author's own claims. And a
+    // genesis that MOVES between fetches is refused as malformed: an honest author's genesis
+    // never changes, so drift is corruption or nonsense, not a case to honor (carries no
+    // security weight - the freeze itself contains the forger, whose rewrite the established
+    // network simply never asks about; Curtis, 2026-08-15).
+    if let Some(genesis) = verified.header.genesis_ms {
+        if verified.timestamp_ms
+            > genesis.saturating_add(crate::record::documents::edit_window_ms())
+        {
+            tracing::debug!(
+                author = %author_root, doc = %hex::encode(verified.doc_id),
+                "ignored an edit past the window");
+            return Ok(());
+        }
+    }
+    let held_genesis: Option<(Option<i64>,)> = node_db
+        .fetch_optional(
+            "SELECT genesis_ms FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, hex::encode(verified.doc_id)),
+        )
+        .await
+        .context("reading a held fragment's genesis")?;
+    if let Some((held,)) = held_genesis {
+        if held.is_some() && held != verified.header.genesis_ms {
+            tracing::warn!(
+                author = %author_root, doc = %hex::encode(verified.doc_id),
+                "refused a fragment whose genesis moved between fetches");
+            return Ok(());
+        }
+    }
     let now = now_ms();
     node_db
         .execute(
             "INSERT INTO fragments
                (author_root, doc_id, origin_root, version, entry, auth_path, title, format,
-                body_hash, fetched_ms, checked_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+                body_hash, genesis_ms, fetched_ms, checked_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11, ?10, ?10)
              ON CONFLICT (author_root, doc_id) DO UPDATE SET
                  origin_root = excluded.origin_root,
                  version = excluded.version,
@@ -91,6 +123,7 @@ pub async fn remember(
                     .to_string(),
                 verified.header.file_hash.to_vec(),
                 now,
+                verified.header.genesis_ms,
             ),
         )
         .await
@@ -1033,9 +1066,17 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
     let rows: Vec<(String, String, String)> = state
         .node_db
         .fetch_all(
+            // Frozen documents are excluded outright (2026-08-15): past the window there is
+            // no edit to check for, ever, and deletion travels by cursor - so the sweep's
+            // population is the young end of the shelf, O(posting-rate x window), a rolling
+            // buffer that never grows with history. NULL genesis is frozen-from-birth (media,
+            // and anything predating the anchor). Local clock, scheduling only - the HONOR
+            // rule compares the author's own two stamps and lives in `remember`.
             "SELECT author_root, doc_id, origin_root FROM fragments
-             WHERE checked_ms <= ?1 ORDER BY checked_ms LIMIT ?2",
-            (due, SWEEP_CAP),
+             WHERE checked_ms <= ?1
+               AND genesis_ms IS NOT NULL AND genesis_ms > ?3
+             ORDER BY checked_ms LIMIT ?2",
+            (due, SWEEP_CAP, now_ms() - crate::record::documents::edit_window_ms()),
         )
         .await
         .context("listing fragments due for revalidation")?;
@@ -1260,9 +1301,20 @@ mod tests {
     }
 
     fn verified(doc: [u8; 16]) -> ringtome_proto::fragment::VerifiedFragment {
+        // Genesis and stamp equal: a fresh post, squarely in its window. The window tests
+        // below choose their own numbers.
+        verified_at(doc, 1_000, Some(1_000))
+    }
+
+    fn verified_at(
+        doc: [u8; 16],
+        timestamp_ms: i64,
+        genesis_ms: Option<i64>,
+    ) -> ringtome_proto::fragment::VerifiedFragment {
         ringtome_proto::fragment::VerifiedFragment {
             doc_id: doc,
             version: [7u8; 32],
+            timestamp_ms,
             header: ringtome_proto::registry::DocHeaderPlain {
                 doc_id: doc,
                 parents: Vec::new(),
@@ -1276,6 +1328,7 @@ mod tests {
                 thumb_hash: None,
                 preview_hash: None,
                 refs: Vec::new(),
+                genesis_ms,
             },
         }
     }
@@ -1455,6 +1508,50 @@ mod tests {
         assert!(
             held(&db, &alice, &hex::encode(image)).await.unwrap().is_none(),
             "the image went with the only post that carried it"
+        );
+    }
+
+    /// The shelf side of the edit window: a version whose claimed stamp postdates its own
+    /// genesis claim by more than the window is admitted and ignored - and a genesis that
+    /// MOVES between fetches is refused as malformed (an honest author's never does; the
+    /// check carries no security weight, the freeze itself contains the forger).
+    #[tokio::test]
+    async fn the_shelf_ignores_late_edits_and_moving_geneses() {
+        let day = 24 * 60 * 60 * 1000;
+        let db = crate::db::test_node_db().await;
+        let alice = "a".repeat(64);
+        let doc = [4u8; 16];
+        let doc_hex = hex::encode(doc);
+        let bob = "b".repeat(64);
+
+        remember(&db, &bob, &alice, &verified_at(doc, 1_000, Some(1_000)), &[1], &[])
+            .await
+            .unwrap();
+
+        // An in-window edit updates the row (title travels with the wholesale re-store).
+        let mut edit = verified_at(doc, 1_000 + day - 1, Some(1_000));
+        edit.header.title = "revised".into();
+        remember(&db, &bob, &alice, &edit, &[2], &[]).await.unwrap();
+        assert_eq!(held(&db, &alice, &doc_hex).await.unwrap().unwrap().title, "revised");
+
+        // A late edit is ignored: the row stands as it was.
+        let mut late = verified_at(doc, 1_000 + day + 1, Some(1_000));
+        late.header.title = "rug".into();
+        remember(&db, &bob, &alice, &late, &[3], &[]).await.unwrap();
+        assert_eq!(
+            held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
+            "revised",
+            "past the window, what was said is what was said"
+        );
+
+        // A moved genesis is refused even in-window-by-its-own-lights.
+        let mut drifted = verified_at(doc, day + 3_000, Some(day + 2_000));
+        drifted.header.title = "relaunched".into();
+        remember(&db, &bob, &alice, &drifted, &[4], &[]).await.unwrap();
+        assert_eq!(
+            held(&db, &alice, &doc_hex).await.unwrap().unwrap().title,
+            "revised",
+            "a genesis that moves between fetches is nonsense, not a case to honor"
         );
     }
 

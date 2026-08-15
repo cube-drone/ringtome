@@ -5926,3 +5926,52 @@ the unreferenced and spares the referenced), and the cascade watching the twin's
 leave Cleo's filesystem by hash after the takedown while a live control blob survives.
 
 Gates: `just ci` exit 0, 651 passing; catalog at 450.
+
+## 2026-08-15 — the edit window: a day, then the words settle
+
+The last trim slice from the 2026-08-10 design, width pinned by Curtis at ONE day. Three
+voices, one rule:
+
+- **The author's own door refuses with words**: past the window, `Store::publish` answers
+  "this post has settled - posts can be edited for a day, then what you said is what you
+  said" - and the composer SHOWS it (the swallow at `editing.post()`'s catch would have read
+  as a broken button). The recourse is canon's: delete and repost, which the `published_as`
+  release made real.
+- **The resolver ignores**: late public versions are dropped before threading - admitted to
+  the chain, invisible to every head. Genesis is the chain's own parentless minimum, never the
+  header's carried claim, because a field the resolver can derive is a field it must not
+  trust. Deterministic forever: the author's own two stamps, no local clock.
+- **The shelf freezes**: `remember` ignores late versions and refuses moving geneses;
+  the sweep excludes frozen rows outright. The revalidation population is now O(posting-rate x
+  window) - the archive is never dialed again - and with deletion on cursors, the steady state
+  the whole arc aimed at: O(peers) per beat, empty pages.
+
+The anchor rides the signed header (`genesis_ms`, key 12), because a fragment holder has no
+chain to derive it from. The forged-anchor worry died in design review (Curtis: "doesn't this
+just create a repost that many nodes will never bother to carry?") - frozen holders never
+re-ask, chain holders derive, so a forward-dated rewrite reaches only newcomers, wearing the
+drift badge, contradicted by every established carrier. The freeze IS the containment.
+
+Storage dividend: the reaper's author-side mark now protects only the display head's blobs for
+frozen public posts - an edited viral post becomes one version of bytes and N small headers.
+Media documents freeze from birth (no genesis, no edits, leaves by construction).
+
+### Two self-inflicted reds, both instructive
+
+Five edit-cascade tests failed on the first full run: the mint stamps the header's genesis
+claim milliseconds before the entry's stamp exists, and the re-publish path re-DERIVED genesis
+from the chain - so v1's claim and v2's differed by those milliseconds and the shelf's own
+drift check refused every honest edit. The fix is the comment's own sentence made mechanical:
+an honest author's genesis never moves because it is CARRIED forward verbatim from the
+previous header, never re-derived. And 36 resolver tests went red when a two-step edit left
+`materialize` without its threading loop entirely - restored with the honor rule in front.
+
+Proven: resolver honor by pure claimed-stamp arithmetic (in-window head moves, late edit
+invisible, private lane edits forever); shelf honor and genesis-drift refusal the same way;
+and the cascade's two ends - the refusal with its words at the author's door, and a frozen
+fragment's `checked_ms` standing still through five seconds of beats after demonstrably
+moving while young. `/test/edit-window` is per-test runtime override, never boot-wide, or
+every other suite's posts would freeze mid-flight.
+
+**Node schema 21→22 (`fragments.genesis_ms`) - `just clean` before the next dev boot.**
+Gates: `just ci` exit 0, 653 passing; catalog at 451.

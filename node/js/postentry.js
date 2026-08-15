@@ -425,6 +425,9 @@ export const PostEntry = ({ item, current, interest, editing }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);
     const [open, setOpen] = useState(false);
+    // Why the last in-place publish was refused, rendered under the composer - see the
+    // catch below.
+    const [postError, setPostError] = useState(null);
     // Taken down from THIS card, this session: the card retires itself rather than waiting
     // for a page refresh to stop showing a post its owner just watched die. List state
     // upstream still names the row; the next feed read reconciles, and until then null is
@@ -567,17 +570,23 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                       published=${true}
                       onPost=${async (words) => {
                           // The publish's 200 IS the confirmation; on failure the editor
-                          // stays open with the buffer intact, and nothing pretends.
+                          // stays open with the buffer intact, and nothing pretends - but the
+                          // REASON shows (2026-08-15): a swallowed refusal reads as a broken
+                          // button, and the edit window's "this post has settled" is a
+                          // refusal the author needs the words of.
                           try {
                               await editing.post();
-                          } catch {
+                          } catch (e) {
+                              setPostError(e.message);
                               return;
                           }
+                          setPostError(null);
                           setAmended(words);
                           setOpen(false);
                       }}
                       posting=${editing.posting}
-                  />`
+                  />
+                  ${postError && html`<p class="form-error">${postError}</p>`}`
                 : html`${shownBody === undefined && html`<p class="null-sub">…</p>`}
                       ${shownBody === null &&
                       html`<p class="null-sub">

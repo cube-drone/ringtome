@@ -3350,7 +3350,14 @@ made - a bounded rolling window plus a one-bit-forever fact, which have complete
   ever*. Side effect, nearly free: **the rug-pull dies.** The window anchors at publish, not at share, so
   "post something benign, wait for it to go viral, rewrite it" fails - by the time it is viral, it is frozen.
   The drift badge becomes a "recently published, still settling" indicator instead of a permanent vigilance
-  mechanism. (The window's width is a product number, deliberately not pinned here.)
+  mechanism. **Width: one day** (pinned 2026-08-15 - "a day to fix your words, after which what you said is
+  what you said"), and built the same day: the anchor rides the signed header (`genesis_ms`, carried forward
+  verbatim on every re-publication, never re-derived - the mint's claim and the entry's stamp differ by
+  milliseconds, and a re-derivation would trip the shelf's own drift check), the resolver drops late versions
+  before threading (chain genesis, never the header claim), the author's own publish refuses with words, and
+  a frozen fragment leaves the revalidation sweep forever. The forged-genesis worry answered itself in review
+  (Curtis): frozen holders never re-ask, chain holders derive, so a forward-dated rewrite is a repost the
+  established network declines to carry - newcomer-only, wearing the drift badge.
 - **The window is judged by the author's own claimed delta** - honor an edit iff its claimed timestamp is within
   the window of the original's - NOT by local receipt time. Receipt time diverges: a fresh node syncing an old
   chain receives original and late edit in one exchange, finds everything "in window" by its own clock, and

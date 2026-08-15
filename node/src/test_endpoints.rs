@@ -270,6 +270,22 @@ pub async fn reap_pass(State(state): State<AppState>) -> Result<Json<Value>, App
     Ok(Json(serde_json::json!({ "reaped": true })))
 }
 
+#[derive(Deserialize)]
+pub struct EditWindowRequest {
+    /// Milliseconds; 0 restores the boot default.
+    pub ms: i64,
+}
+
+/// Override the edit window at runtime - the `/test/revalidation` idiom, for the same reason:
+/// a suite cannot wait a day to watch a post freeze, and a boot-wide tiny window would freeze
+/// every OTHER test's posts mid-flight.
+pub async fn edit_window(Json(req): Json<EditWindowRequest>) -> Result<Json<Value>, AppError> {
+    crate::record::documents::EDIT_WINDOW_OVERRIDE
+        .store(req.ms.max(0), std::sync::atomic::Ordering::Relaxed);
+    tracing::warn!(ms = req.ms, "LOCAL_TEST edit window override");
+    Ok(Json(serde_json::json!({ "ms": req.ms })))
+}
+
 /// Does the blob store hold these bytes right now? The reaper's observability: a takedown's
 /// serving stops when the fragment dies, and THIS is how a test watches the bytes themselves
 /// go on the next GC round.

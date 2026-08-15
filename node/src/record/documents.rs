@@ -121,6 +121,36 @@ pub struct Version {
     pub author: [u8; 32],
 }
 
+/// How long after first publication a public post's words may still change (Curtis,
+/// 2026-08-15: one day - "a day to fix your words, after which what you said is what you
+/// said"). After it, edits are admitted and ignored, the author's own publish refuses, and
+/// every fragment holder stops paying edit-revalidation for the document forever. Deletion is
+/// the one act that stays open.
+const EDIT_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
+
+/// The window in force. LOCAL_TEST may shrink it at boot (`RINGTOME_TEST_EDIT_WINDOW_MS`) or
+/// at runtime (`/test/edit-window`, the `/test/revalidation` idiom) - a suite cannot wait a
+/// day to watch a freeze. 0 in the atomic means "no runtime override".
+pub fn edit_window_ms() -> i64 {
+    let runtime = EDIT_WINDOW_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
+    if runtime > 0 {
+        return runtime;
+    }
+    if std::env::var("RINGTOME_LOCAL_TEST").is_ok() {
+        if let Some(ms) = std::env::var("RINGTOME_TEST_EDIT_WINDOW_MS")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            return ms;
+        }
+    }
+    EDIT_WINDOW_MS
+}
+
+/// See [`edit_window_ms`]. Written only by the LOCAL_TEST endpoint.
+pub static EDIT_WINDOW_OVERRIDE: std::sync::atomic::AtomicI64 =
+    std::sync::atomic::AtomicI64::new(0);
+
 /// One document: every decryptable version, threaded into a DAG.
 #[derive(Debug, Default, Clone)]
 pub struct Doc {
@@ -152,6 +182,35 @@ impl Doc {
             .iter()
             .filter_map(|h| self.versions.get(h))
             .max_by_key(|v| (v.timestamp_ms, v.hash))
+    }
+
+    /// The edit window's honor rule, chain side (PROJECT_PLAN: enforced in the FOLD, never at
+    /// chain admission - a late edit is an entry that is admitted and ignored). Public lane
+    /// only; genesis is the chain's own parentless-minimum, NEVER the header's carried claim,
+    /// because a field the resolver can derive is a field it must not trust. Deterministic on
+    /// every node forever: both stamps are the author's own claims, no local clock anywhere.
+    fn drop_late_public_edits(&mut self) {
+        if self.lane != "public" {
+            return;
+        }
+        let genesis = self
+            .versions
+            .values()
+            .filter(|v| v.header.parents.is_empty())
+            .map(|v| v.timestamp_ms)
+            .min()
+            .or_else(|| self.versions.values().map(|v| v.timestamp_ms).min());
+        let Some(genesis) = genesis else { return };
+        let deadline = genesis.saturating_add(edit_window_ms());
+        let late: Vec<[u8; 32]> = self
+            .versions
+            .values()
+            .filter(|v| v.timestamp_ms > deadline)
+            .map(|v| v.hash)
+            .collect();
+        for hash in late {
+            self.versions.remove(&hash);
+        }
     }
 
     /// Thread the loaded versions into the DAG: heads are versions no other version of the same
@@ -435,6 +494,7 @@ pub async fn save_version(
         thumb_hash: save.media.as_ref().and_then(|m| m.thumb_hash),
         preview_hash: save.media.as_ref().and_then(|m| m.preview_hash),
         refs: save.refs,
+        genesis_ms: None, // the edit window is a PUBLIC posture; private notes edit forever
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -500,6 +560,7 @@ pub async fn retitle(
         thumb_hash: head.header.thumb_hash,
         preview_hash: head.header.preview_hash,
         refs: head.header.refs.clone(),
+        genesis_ms: head.header.genesis_ms,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -559,6 +620,7 @@ pub async fn save_public_media(
         thumb_hash,
         preview_hash: None,
         refs: Vec::new(), // media documents are leaves - they embed nothing
+        genesis_ms: None, // and they never edit: absent genesis IS frozen-from-birth
     };
     let payload = header
         .encode()
@@ -603,9 +665,36 @@ pub async fn save_public_text(
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
     let PublicText { onto, title, body, format, refs } = text;
-    let (doc_id, parents) = match onto {
-        Some((id, parents)) => (id, parents),
-        None => (new_doc_id(), vec![]),
+    // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
+    // chain knows when this document freezes. A mint anchors at its own moment; a further
+    // version carries the post's memoized genesis forward unchanged - an honest author's
+    // genesis never moves.
+    let (doc_id, parents, genesis_ms) = match onto {
+        Some((id, parents)) => {
+            // CARRIED from the previous header's own claim, never re-derived: the mint's
+            // claim and the entry's stamp are minted milliseconds apart, so a re-derivation
+            // (the chain's parentless minimum) would differ from the claim by those
+            // milliseconds - and the shelf's drift check would then refuse every honest
+            // edit as "genesis moved" (caught by five cascade tests on this slice's first
+            // run). A header that predates the anchor starts one from the chain's value.
+            let carried = match public_header_entry(db, &id).await? {
+                Some(entry) => match &entry.entry().payload {
+                    ringtome_proto::Payload::Inline(payload) => {
+                        DocHeaderPlain::decode(payload)
+                            .ok()
+                            .and_then(|h| h.genesis_ms)
+                    }
+                    _ => None,
+                },
+                None => None,
+            };
+            let genesis = match carried {
+                Some(g) => g,
+                None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
+            };
+            (id, parents, genesis)
+        }
+        None => (new_doc_id(), vec![], crate::clock::now_ms()),
     };
     let file_hash = files
         .put_public(body.as_bytes())
@@ -627,6 +716,7 @@ pub async fn save_public_text(
         thumb_hash: None,
         preview_hash: None,
         refs,
+        genesis_ms: Some(genesis_ms),
     };
     let payload = header
         .encode()
@@ -696,11 +786,24 @@ pub async fn blob_refs(db: &Db, keys: Option<&EpochKeys>) -> Result<Vec<[u8; 32]
     if let Some(keys) = keys {
         catch_up(db, keys).await?;
     }
+    // The edit window's storage dividend (2026-08-15): a FROZEN public post's superseded
+    // versions can never be displayed again - the head cannot move - so their bytes are pure
+    // archaeology and only the display head's blobs stay protected. Young public posts and
+    // the whole private lane keep every version's blobs (private notes edit forever, and
+    // history-walking is their feature). Local clock, storage posture only - never the honor
+    // rule.
     type Row = (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
+    let frozen_before = crate::clock::now_ms() - edit_window_ms();
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT file_hash, thumb_hash, preview_hash FROM doc_versions",
-            (),
+            "SELECT v.file_hash, v.thumb_hash, v.preview_hash
+             FROM doc_versions v
+             LEFT JOIN doc_heads h ON h.doc_id = v.doc_id AND h.lane = 'public'
+             WHERE v.lane != 'public'
+                OR h.entry_hash IS NULL
+                OR h.genesis_ms > ?1
+                OR v.entry_hash = h.entry_hash",
+            (frozen_before,),
         )
         .await
         .context("reading a held identity's blob references")
@@ -855,6 +958,21 @@ pub struct PublicHead {
 }
 
 type PublicHeadRow = (Vec<u8>, Option<i64>, Vec<u8>, Option<Vec<u8>>, String);
+
+/// A public post's memoized genesis claim - the edit window's anchor, as `refresh_doc_heads`
+/// derived it from the chain's parentless versions. `None` when the doc has no public head row.
+pub async fn public_genesis(db: &Db, doc_id: &[u8; 16]) -> Result<Option<i64>, AppError> {
+    catch_up_public_lane(db).await?;
+    let row: Option<(i64,)> = db
+        .fetch_optional(
+            "SELECT genesis_ms FROM doc_heads WHERE doc_id = ?1 AND lane = 'public'",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading a post's genesis")
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(g,)| g))
+}
 
 pub async fn public_head(
     db: &Db,
@@ -1485,6 +1603,10 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         thumb_hash: thumb_hash.as_deref().map(hash32).transpose()?,
         preview_hash: preview_hash.as_deref().map(hash32).transpose()?,
         refs: decode_refs(&refs),
+        // Not persisted in doc_versions, deliberately: on a chain-holding node the resolver
+        // derives genesis from the parentless versions (the chain's own truth) and must never
+        // consult a header CLAIM it can compute - the rug-forger's field is ignored here.
+        genesis_ms: None,
     };
     Ok((
         doc_id,
@@ -1516,7 +1638,8 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
         let (_, version) = version_from_row(row)?;
         doc.versions.insert(version.hash, version);
     }
-    doc.thread();
+    // Lane BEFORE threading (moved 2026-08-15): the window's honor rule needs to know it is
+    // looking at the public lane before it decides which versions exist to thread.
     if let Some((lane,)) = db
         .fetch_optional::<(String,)>(
             "SELECT lane FROM doc_versions WHERE doc_id = ?1 LIMIT 1",
@@ -1528,6 +1651,8 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
     {
         doc.lane = lane;
     }
+    doc.drop_late_public_edits();
+    doc.thread();
     Ok(doc)
 }
 
@@ -1562,13 +1687,9 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
             .insert(version.hash, version);
     }
 
-    // Thread each doc's DAG: true heads, then the mop-up (which heads carry distinct words).
-    for doc in view.docs.values_mut() {
-        doc.thread();
-    }
-
     // Lanes ride beside the versions (one per doc, whole): a separate cheap map keeps
-    // VersionRow untouched.
+    // VersionRow untouched. Fetched BEFORE threading (2026-08-15) so the edit window's honor
+    // rule knows which docs are public while deciding which versions exist to thread.
     let lanes: Vec<(Vec<u8>, String)> = db
         .fetch_all("SELECT DISTINCT doc_id, lane FROM doc_versions", ())
         .await
@@ -1580,6 +1701,13 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
                 doc.lane = lane;
             }
         }
+    }
+
+    // Thread each doc's DAG - true heads, then the mop-up - with the edit window's honor rule
+    // running first, now that lanes are known.
+    for doc in view.docs.values_mut() {
+        doc.drop_late_public_edits();
+        doc.thread();
     }
     Ok(view)
 }
@@ -2585,6 +2713,7 @@ mod tests {
             thumb_hash: None,
             preview_hash: None,
             refs: Vec::new(),
+            genesis_ms: None,
         };
         crate::record::imaol::append(
             db,
@@ -4857,5 +4986,63 @@ mod tests {
         let rows = search_rows(&reader, &keys, &with_blob, &BTreeMap::new()).await.unwrap();
         let tokens = tokens_of(&rows, &doc_id);
         assert!(tokens.contains(&"secret".to_string()), "body now indexed: {tokens:?}");
+    }
+
+    /// The edit window's honor rule, chain side: a version claiming to postdate its own
+    /// genesis by more than the window is not part of the document - admitted to the chain,
+    /// ignored by the resolver, deterministically on every node (both stamps are the author's
+    /// own claims; no local clock is consulted).
+    #[test]
+    fn a_late_public_edit_is_admitted_and_ignored() {
+        let day = 24 * 60 * 60 * 1000;
+        let version = |hash: u8, t: i64, parents: Vec<[u8; 32]>| Version {
+            hash: [hash; 32],
+            timestamp_ms: t,
+            author: [0u8; 32],
+            header: DocHeaderPlain {
+                doc_id: [1u8; 16],
+                parents,
+                file_hash: [hash; 32],
+                body_hash: [hash; 32],
+                title: format!("v{hash}"),
+                format: None,
+                width: None,
+                height: None,
+                duration_ms: None,
+                thumb_hash: None,
+                preview_hash: None,
+                refs: Vec::new(),
+                genesis_ms: None,
+            },
+        };
+        let build = |lane: &str, edit_at: i64| {
+            let mut doc = Doc {
+                lane: lane.to_string(),
+                ..Doc::default()
+            };
+            let v1 = version(1, 1_000, vec![]);
+            let v2 = version(2, edit_at, vec![v1.hash]);
+            doc.versions.insert(v1.hash, v1);
+            doc.versions.insert(v2.hash, v2);
+            doc.drop_late_public_edits();
+            doc.thread();
+            doc
+        };
+
+        // In-window: the edit is the head.
+        let doc = build("public", 1_000 + day - 1);
+        assert_eq!(doc.display_head().unwrap().header.title, "v2");
+
+        // Past the window: the edit does not exist to the resolver; v1 stands.
+        let doc = build("public", 1_000 + day + 1);
+        assert_eq!(
+            doc.display_head().unwrap().header.title,
+            "v1",
+            "a late edit is admitted and ignored"
+        );
+
+        // Private notes edit forever - the window is a PUBLIC posture.
+        let doc = build("private", 1_000 + day * 400);
+        assert_eq!(doc.display_head().unwrap().header.title, "v2");
     }
 }

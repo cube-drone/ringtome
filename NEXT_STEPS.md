@@ -53,13 +53,12 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     and four, gone with its post's takedown. What remains of the media story is the ORPHAN
     REAPER on the author's side (retract the unreferenced twin, then blob reaping - the
     deletion-story residual above), now with `refs` to read instead of parsing bodies.
-  * **The edit window** - the remaining trim slice, and now the only reason per-document
-    revalidation still has to visit the whole shelf: deletion travels by cursor
-    (`WantDeaths`/`Deaths`, built 2026-08-13 with the signed-`Gone` proofs), so once
-    out-of-window documents need no edit checks, the sweep's steady state is O(peers) per beat
-    and the archive costs nothing. Open before building: the window's width (a product number),
-    and where a fragment holder learns the ORIGINAL publish stamp it must judge the author's
-    claimed delta against - the current doc header does not carry it.
+  * ~~**The edit window**~~ Built 2026-08-15 at one day (PROJECT_PLAN carries the pinned
+    width and the anchor design). The sweep's steady state is now O(peers) per beat: frozen
+    fragments leave revalidation forever, deletion travels by cursor, and the reaper collects
+    a frozen post's superseded versions' blobs (display head only survives). The last of the
+    two trim slices from the 2026-08-10 design - what a node must remember AND ask forever is
+    now bounded on every axis this arc named.
   * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
     stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
     the only reason it was ever there. A question for the retraction rules, not the read path

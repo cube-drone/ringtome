@@ -527,6 +527,13 @@ pub struct DocHeaderPlain {
     /// `preview_hash` - the file-layer hash of a silent AV1-in-WebM hover-preview clip, stored as
     /// its OWN sibling blob exactly like `thumb_hash` (video only, `None` for everything else).
     pub preview_hash: Option<[u8; 32]>,
+    /// The post's FIRST publication, as its author claims it - the edit window's anchor
+    /// (2026-08-15), carried so a fragment holder with no chain knows when the words freeze.
+    /// Public posts only; absent elsewhere. Advisory like every claimed stamp, and
+    /// self-defeating to forge: chain holders derive the true genesis from the chain and
+    /// ignore this claim, frozen holders never re-ask, so a forward-dated rewrite is a repost
+    /// the established network declines to carry (Curtis, 2026-08-15).
+    pub genesis_ms: Option<i64>,
     /// The documents this body embeds, derived at authoring time by the SAME parse that bakes
     /// media - the reserved additive key, realized 2026-08-14. In the header so the set is
     /// knowable from the entry alone: a fragment names its media before its body arrives, a
@@ -579,7 +586,8 @@ impl DocHeaderPlain {
             + self.duration_ms.is_some() as u64
             + self.thumb_hash.is_some() as u64
             + self.preview_hash.is_some() as u64
-            + !self.refs.is_empty() as u64;
+            + !self.refs.is_empty() as u64
+            + self.genesis_ms.is_some() as u64;
         w.map(n);
         w.uint(0);
         w.bytes(&self.doc_id);
@@ -625,6 +633,13 @@ impl DocHeaderPlain {
                 w.bytes(r);
             }
         }
+        if let Some(g) = self.genesis_ms {
+            if g < 0 {
+                return Err(ProtoError::BadEntry("genesis before the epoch"));
+            }
+            w.uint(12);
+            w.uint(g as u64);
+        }
         Ok(w.into_bytes())
     }
 
@@ -636,6 +651,7 @@ impl DocHeaderPlain {
         let (mut width, mut height, mut duration_ms, mut thumb_hash, mut preview_hash) =
             (None, None, None, None, None);
         let mut refs: Vec<[u8; 16]> = Vec::new();
+        let mut genesis_ms: Option<i64> = None;
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -669,6 +685,13 @@ impl DocHeaderPlain {
                 8 => duration_ms = Some(map.uint()?),
                 9 => thumb_hash = Some(map.bytes_fixed::<32>()?),
                 10 => preview_hash = Some(map.bytes_fixed::<32>()?),
+                12 => {
+                    let g = map.uint()?;
+                    genesis_ms = Some(
+                        i64::try_from(g)
+                            .map_err(|_| ProtoError::BadEntry("genesis out of range"))?,
+                    );
+                }
                 11 => {
                     let n = map.array()?;
                     if n as usize > Self::MAX_REFS {
@@ -695,6 +718,7 @@ impl DocHeaderPlain {
             thumb_hash,
             preview_hash,
             refs,
+            genesis_ms,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -1347,6 +1371,7 @@ mod tests {
             thumb_hash: None,
             preview_hash: None,
             refs: vec![[7u8; 16], [8u8; 16]],
+            genesis_ms: None,
         };
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
@@ -1407,6 +1432,7 @@ mod tests {
                 thumb_hash: None,
                 preview_hash: None,
                 refs: Vec::new(),
+                genesis_ms: None,
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -1424,6 +1450,7 @@ mod tests {
             thumb_hash: None,
             preview_hash: None,
             refs: Vec::new(),
+            genesis_ms: None,
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -1440,6 +1467,7 @@ mod tests {
             thumb_hash: Some([7u8; 32]),
             preview_hash: None,
             refs: Vec::new(),
+            genesis_ms: None,
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
@@ -1456,6 +1484,7 @@ mod tests {
             thumb_hash: Some([7u8; 32]),
             preview_hash: Some([8u8; 32]),
             refs: Vec::new(),
+            genesis_ms: None,
         };
         assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
@@ -1475,6 +1504,7 @@ mod tests {
             thumb_hash: None,
             preview_hash: None,
             refs: Vec::new(),
+            genesis_ms: None,
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {

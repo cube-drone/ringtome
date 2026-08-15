@@ -284,6 +284,11 @@ CREATE TABLE fragments (
     title         TEXT    NOT NULL,  -- denormalized for journaling, like feed_journal's own
     format        TEXT,
     body_hash     BLOB    NOT NULL,  -- the blob the words live in (fetched separately)
+    genesis_ms    INTEGER,           -- the author's claimed first-publication stamp, off the
+                                     --   signed header (2026-08-15): the edit window's anchor.
+                                     --   NULL is FROZEN-FROM-BIRTH - media documents never
+                                     --   edit and carry no genesis - so absence costs nothing
+                                     --   and old rows freeze harmlessly
     fetched_ms    INTEGER NOT NULL,
     checked_ms    INTEGER NOT NULL,  -- last successful revalidation against the origin
     PRIMARY KEY (author_root, doc_id)
