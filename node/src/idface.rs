@@ -518,6 +518,20 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
                 via.push(leaf);
             }
         }
+        // The cohort, last (2026-08-15): our own personas' sibling nodes hold the followed
+        // world we slept through, and the sync door already answers for any persona their
+        // users follow. This is FRONTIER GOSSIP's fetch half - the AM-node scenario: every
+        // hint above names the followed persona's own machinery, and when all of it is dark
+        // (the author left; we hold nothing of their tree), the sibling that stayed up is
+        // the one candidate that still exists.
+        for endpoint in crate::net::sync::cohort_endpoints(&task_state)
+            .await
+            .unwrap_or_default()
+        {
+            if !via.contains(&endpoint) {
+                via.push(endpoint);
+            }
+        }
         let ok = fetch_foreign(&task_state, &root_hex, &via).await;
         if !ok {
             tracing::debug!(root = %root_hex, "background revalidation reached nobody");

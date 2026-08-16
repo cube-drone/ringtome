@@ -14,8 +14,8 @@
     proof (pointer + fragment + blobs). When something regresses, this one says whether the
     chain lane broke; that one says whether the share lane did.
 
-    RED as of 2026-08-15, demonstrated live before being skipped (green before forward).
-    UNSKIP with the cohort-as-candidate slice; NEXT_STEPS carries the pointer.
+    RED as of 2026-08-15, demonstrated live before being skipped; unskipped the same day as
+    the cohort-as-candidate slice's first move. Green means the chain lane holds.
 */
 const assert = require("node:assert");
 const dns = require("node:dns");
@@ -54,7 +54,7 @@ const base58 = async (host) => {
     return toBase58((await (await host("api/node")).json()).endpoint_id);
 };
 
-(HOST_C && HOST_E ? describe.skip : describe.skip)( // ARMED-SKIPPED: red demonstrated 2026-08-15; unskip with cohort-as-candidate
+(HOST_C && HOST_E ? describe : describe.skip)(
     "frontier gossip: the sibling that stayed up",
     function () {
         this.timeout(1200000);

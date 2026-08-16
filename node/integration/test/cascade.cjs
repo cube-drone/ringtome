@@ -1441,10 +1441,10 @@ async function setLane(mode) {
         the waking node.
 
         RED as of 2026-08-15, demonstrated live before being skipped (a standing red suite
-        blocks every interleaved slice - green before forward). UNSKIP THIS as the fix's
-        first move; NEXT_STEPS carries the pointer.
+        blocks every interleaved slice - green before forward); unskipped the same day as
+        the cohort-as-candidate slice's first move. Green means the share lane holds.
     */
-    describe.skip("the cohort is part of the tree", function () {
+    describe("the cohort is part of the tree", function () {
         this.timeout(1200000);
 
         let author, authorRoot, sharer, sharerRoot, cora, coraRoot;

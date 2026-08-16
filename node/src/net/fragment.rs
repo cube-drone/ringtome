@@ -357,6 +357,27 @@ pub async fn revalidate(
             answered => return answered,
         }
     }
+    // The cohort, last (2026-08-15): every rung above names the DOCUMENT's own machinery -
+    // author, recorded origin, the byline ledger's sharers - and all of it can be dark for
+    // good while a sibling node of one of our own personas still holds the fragment whole.
+    // Endpoint-addressed rather than root-addressed, because the sibling is not a persona in
+    // this document's tree; it is our own household, reached by the addresses the ceremony
+    // already bound.
+    for endpoint in crate::net::sync::cohort_endpoints(state)
+        .await
+        .unwrap_or_default()
+    {
+        let asked =
+            tokio::time::timeout(FETCH_TIMEOUT, ask(state, &endpoint, author, doc_id)).await;
+        match asked {
+            Ok(Ok(Fetched::Unknown)) => {}
+            Ok(Ok(answered)) => return answered,
+            Ok(Err(e)) => {
+                tracing::debug!(cohort = %endpoint, error = ?e, "cohort fragment ask failed")
+            }
+            Err(_) => tracing::debug!(cohort = %endpoint, "cohort fragment ask timed out"),
+        }
+    }
     Fetched::Unknown
 }
 
@@ -453,6 +474,28 @@ pub async fn fetch_deaths(
         }
     }
     None
+}
+
+/// The death-cursor ask, endpoint-addressed - the reap's cohort rung (2026-08-15). A sibling
+/// node is not a persona in any fragment's tree, so `fetch_deaths`' root-to-candidates
+/// resolution has nothing to resolve; the reap keys its cursor by the endpoint instead and
+/// dials it directly. Same wire, same per-proof verification at the same edge.
+pub async fn fetch_deaths_at(
+    state: &AppState,
+    endpoint_id: &str,
+    since: u64,
+) -> Option<(Vec<ringtome_proto::fragment::DeathProof>, u64, usize)> {
+    match tokio::time::timeout(FETCH_TIMEOUT, ask_deaths(state, endpoint_id, since)).await {
+        Ok(Ok(answer)) => Some(answer),
+        Ok(Err(e)) => {
+            tracing::debug!(cohort = %endpoint_id, error = ?e, "cohort death ask failed");
+            None
+        }
+        Err(_) => {
+            tracing::debug!(cohort = %endpoint_id, "cohort death ask timed out");
+            None
+        }
+    }
 }
 
 async fn ask_deaths(

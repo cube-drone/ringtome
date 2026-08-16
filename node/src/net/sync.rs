@@ -1252,10 +1252,6 @@ pub async fn sync_with_peer(
     addr: EndpointAddr,
 ) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
-    // create: the requester dials to FETCH, and a first fetch is exactly the case where
-    // this node holds nothing of theirs yet (idface::fetch_foreign is the caller).
-    let db = state.user_dbs.create(root_hex).await?;
-
     let conn = crate::net::p2p::dial(
         &state.unplugged,
         &state.endpoint,
@@ -1264,22 +1260,35 @@ pub async fn sync_with_peer(
     )
     .await
     .map_err(|e| anyhow!("connecting to peer: {e}"))?;
+    // EXISTS, not create - yet. The requester dials to FETCH, and a first fetch is exactly
+    // the case where this node holds nothing of theirs (idface::fetch_foreign is the caller) -
+    // but the wake pass chases followed strangers on a beat, and minting the shelf on the ASK
+    // wrote every unreachable contact an empty database - key, WAL, journal - per attempt,
+    // the same mistake `stored_tree_leaves` shed 2026-08-08. Surviving the dial is not
+    // evidence either (2026-08-15, found by the cohort rung: a sibling answers the ALPN and
+    // politely serves an empty exchange for a persona nobody there holds). The shelf is
+    // minted below, when the peer CLAIMS something to put on it.
+    let held = state.user_dbs.get(root_hex).await?;
     let (mut send, mut recv) = conn.open_bi().await.context("opening sync stream")?;
     let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
     let peer_id: [u8; 32] = *conn.remote_id().as_bytes();
 
+    let frontiers = match &held {
+        Some(db) => local_frontiers(db, false).await?,
+        None => Vec::new(),
+    };
     write_frame(
         &mut send,
         &SyncMessage::Hello {
             root,
-            frontiers: local_frontiers(&db, false).await?,
+            frontiers,
             proof: our_member_proof(state, root, &our_id, &peer_id).await,
         },
     )
     .await?;
 
     // Responder: Hello, entries we lack, Done.
-    let (peer_frontiers, peer_proven) = match read_frame(&mut recv).await? {
+    let (peer_frontiers, peer_proof) = match read_frame(&mut recv).await? {
         Some(SyncMessage::Hello {
             root: peer_root,
             frontiers,
@@ -1288,34 +1297,7 @@ pub async fn sync_with_peer(
             if peer_root != root {
                 bail!("peer answered for a different identity");
             }
-            let proven = peer_is_member(&db, root, &proof, &peer_id, &our_id).await;
-            // A proven member is a sibling worth remembering: healing on any contact, and
-            // the proof names the leaf, which binds the row for revocation cleanup. HOSTED
-            // personas only (2026-08-07): identity_peers is the device-mesh worklist
-            // (roots_with_peers drives eager sync + anti-entropy), and enrolling a merely-
-            // mirrored persona there because its device dialed us gave every follower node
-            // an unpaced, unfollow-blind background sync of everyone it follows - the wake
-            // pass (idface::refresh_followed_pass) is that job, done with presence priority,
-            // the eagerness dial, and a cap.
-            if proven
-                && crate::identity::is_agented(&state.node_db, root_hex)
-                    .await
-                    .unwrap_or(false)
-            {
-                if let (Some(p), Ok(ep)) = (&proof, iroh::PublicKey::from_bytes(&peer_id)) {
-                    if let Err(e) = add_peer_with_leaf(
-                        &state.node_db,
-                        root_hex,
-                        &ep.to_string(),
-                        Some(&hex::encode(p.leaf)),
-                    )
-                    .await
-                    {
-                        tracing::debug!(error = ?e, "recording a proven peer failed");
-                    }
-                }
-            }
-            (frontiers, proven)
+            (frontiers, proof)
         }
         other => bail!("expected Hello from peer, got {other:?}"),
     };
@@ -1330,6 +1312,53 @@ pub async fn sync_with_peer(
         crate::net::frontier::record_claim(&state.node_db, root_hex, &peer_hex, claimed).await
     {
         tracing::debug!(error = ?e, "recording a peer frontier claim failed");
+    }
+
+    // The empty handshake ends here, shelf unminted: we hold nothing and they claim nothing,
+    // so no entry can move in either direction - finish the protocol politely and go. This
+    // is every wake-pass attempt at a stranger whose people are all dark or all ignorant,
+    // which the cohort rung made the common case of a quiet mesh.
+    let db = match held {
+        Some(db) => db,
+        None if peer_frontiers.is_empty() => {
+            write_frame(&mut send, &SyncMessage::Done).await?;
+            send.finish().ok();
+            conn.closed().await;
+            return Ok(ExchangeStats {
+                received: 0,
+                rejected: 0,
+                sent: 0,
+                bodies_fetched: 0,
+            });
+        }
+        None => state.user_dbs.create(root_hex).await?,
+    };
+
+    let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
+    // A proven member is a sibling worth remembering: healing on any contact, and the proof
+    // names the leaf, which binds the row for revocation cleanup. HOSTED personas only
+    // (2026-08-07): identity_peers is the device-mesh worklist (roots_with_peers drives
+    // eager sync + anti-entropy), and enrolling a merely-mirrored persona there because its
+    // device dialed us gave every follower node an unpaced, unfollow-blind background sync
+    // of everyone it follows - the wake pass (idface::refresh_followed_pass) is that job,
+    // done with presence priority, the eagerness dial, and a cap.
+    if peer_proven
+        && crate::identity::is_agented(&state.node_db, root_hex)
+            .await
+            .unwrap_or(false)
+    {
+        if let (Some(p), Ok(ep)) = (&peer_proof, iroh::PublicKey::from_bytes(&peer_id)) {
+            if let Err(e) = add_peer_with_leaf(
+                &state.node_db,
+                root_hex,
+                &ep.to_string(),
+                Some(&hex::encode(p.leaf)),
+            )
+            .await
+            {
+                tracing::debug!(error = ?e, "recording a proven peer failed");
+            }
+        }
     }
 
     let outcome = ingest_stream(&db, root, &mut recv, peer_proven).await?;
@@ -1788,6 +1817,57 @@ pub async fn liveliest_leaves(node_db: &Db, root_hex: &str, cap: u32) -> Result<
         .await
         .context("listing liveliest leaves")?;
     Ok(rows.into_iter().map(|(l,)| l).collect())
+}
+
+/// The COHORT: every sibling endpoint of every persona this node hosts, liveliest first,
+/// self excluded - the last rung of every candidate walk (the follow-refresh ladder, the
+/// fragment walk, blob healing, the reap; one consistent order, decided 2026-08-15).
+///
+/// The insight this list carries is that a persona's own devices hold each other's followed
+/// world: a node that slept through an author's posts can catch up from its 24x7 sibling,
+/// because the sync door already answers for any persona somebody at the answering node
+/// follows (`serve`'s `wanted` gate). Nothing here creates a relationship - these rows exist
+/// because a ceremony or a member-proven dial already bound the machines to one persona -
+/// and asking a housemate discloses nothing a stranger could see.
+///
+/// LAST rung on purpose: the persona's own machinery (author, origin, sharers, serving
+/// records) carries fresher authority and spreads load across the network; the cohort is
+/// the household fallback for when the world outside has gone dark.
+pub async fn cohort_endpoints(state: &crate::AppState) -> Result<Vec<String>> {
+    let ours = state.endpoint.id().to_string();
+    // Through the owner's door: `identities` belongs to identity.rs, so the hosted set comes
+    // from its reader and lands here as a quoted IN-list (the belt-and-braces idiom: a root
+    // that is not 64 hex chars cannot name a row, so the list can carry nothing but roots).
+    let hosted = crate::identity::hosted_roots(&state.node_db)
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
+    let quoted: Vec<String> = hosted
+        .iter()
+        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|r| format!("'{r}'"))
+        .collect();
+    if quoted.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(String,)> = state
+        .node_db
+        .fetch_all(
+            &format!(
+                "SELECT endpoint_id FROM identity_peers
+                 WHERE root_pubkey IN ({})
+                 GROUP BY endpoint_id
+                 ORDER BY MAX(COALESCE(last_synced_ms, 0)) DESC, MAX(added_at_ms) DESC",
+                quoted.join(",")
+            ),
+            (),
+        )
+        .await
+        .context("listing the cohort")?;
+    Ok(rows
+        .into_iter()
+        .map(|(id,)| id)
+        .filter(|id| *id != ours)
+        .collect())
 }
 
 /// Distinct roots that have at least one known peer - the background sync worklist.

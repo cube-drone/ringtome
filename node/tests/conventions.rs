@@ -156,7 +156,11 @@ fn user_db_opens_are_deliberate() {
         ("inbox.rs", 1),           // accept: ONE recipient per delivered envelope
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute
         ("net/resync.rs", 1),
-        ("net/sync.rs", 3),        // + derive_peers_for: ONE persona's crown per derive edge
+        // + derive_peers_for: ONE persona's crown per derive edge. The 4th (2026-08-15) is
+        // sync_with_peer's exists-check before its create: the shelf is minted only when the
+        // peer's Hello claims something to put on it, or the wake pass would mint an empty
+        // database per unreachable followed stranger per beat.
+        ("net/sync.rs", 4),
         ("record/bake.rs", 1),     // bake_one: ONE persona per external-media job, the ingest pattern
         // One open per SHARE - `fragments::current_version` resolves what head this node holds
         // so a share endorses what the reader actually saw. A human gesture, once, never a loop.

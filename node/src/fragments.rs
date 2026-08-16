@@ -604,10 +604,12 @@ async fn mirror_retractions_inner(state: &crate::AppState, author_root: &str) ->
 ///
 /// Who gets asked: every distinct origin (the tree - edges that already exist), plus every
 /// distinct fragment author unless the tree-only lane is forced (the same star-and-tree order
-/// `revalidate` walks, for the same reason). Deliberately uncapped: the peer set scales with
+/// `revalidate` walks, for the same reason), plus the COHORT last (2026-08-15) - the sibling
+/// nodes of this node's own personas, whose logs carry deaths this node slept through after
+/// their sources left for good. Deliberately uncapped: the peer set scales with
 /// relationships, this design's favorite number, and a cap here would reintroduce exactly the
 /// tail-staleness the cursor exists to delete. Own personas are skipped - their log IS this
-/// log.
+/// log - but their sibling NODES are not: same persona, different shelf.
 pub async fn reap(state: &crate::AppState) -> Result<()> {
     let mut peers: Vec<(String,)> = state
         .node_db
@@ -634,26 +636,57 @@ pub async fn reap(state: &crate::AppState) -> Result<()> {
         {
             continue;
         }
-        let mut cursor = death_cursor(&state.node_db, &peer).await?;
-        loop {
-            let Some((proofs, next, raw)) =
-                crate::net::fragment::fetch_deaths(state, &peer, cursor as u64).await
-            else {
-                break; // silence: nothing learned, the cursor holds, the next beat retries
-            };
-            for p in proofs {
-                apply_death(&state.node_db, &p).await?;
+        drain_death_log(state, ReapDoor::Origin(&peer)).await?;
+    }
+    for endpoint in crate::net::sync::cohort_endpoints(state)
+        .await
+        .unwrap_or_default()
+    {
+        drain_death_log(state, ReapDoor::Cohort(&endpoint)).await?;
+    }
+    Ok(())
+}
+
+/// One door the reap knocks on. An origin is a persona root, resolved to dial candidates the
+/// usual way; a cohort sibling is a bare endpoint - not a persona in any fragment's tree -
+/// dialed directly, its cursor keyed under a `cohort:` prefix so the two keyspaces (both
+/// 64-hex strings) can never collide in `death_cursors`.
+enum ReapDoor<'a> {
+    Origin(&'a str),
+    Cohort(&'a str),
+}
+
+/// Drain one peer's death log from wherever its cursor left off.
+async fn drain_death_log(state: &crate::AppState, door: ReapDoor<'_>) -> Result<()> {
+    let key = match door {
+        ReapDoor::Origin(root) => root.to_string(),
+        ReapDoor::Cohort(endpoint) => format!("cohort:{endpoint}"),
+    };
+    let mut cursor = death_cursor(&state.node_db, &key).await?;
+    loop {
+        let page = match door {
+            ReapDoor::Origin(root) => {
+                crate::net::fragment::fetch_deaths(state, root, cursor as u64).await
             }
-            // Advanced even past skipped proofs (unheld documents, garbage): a stuck cursor
-            // would re-serve the same page forever, and the per-document sweep is the backstop
-            // for anything a peer garbled.
-            if next as i64 > cursor {
-                cursor = next as i64;
-                advance_death_cursor(&state.node_db, &peer, cursor).await?;
+            ReapDoor::Cohort(endpoint) => {
+                crate::net::fragment::fetch_deaths_at(state, endpoint, cursor as u64).await
             }
-            if raw < crate::net::fragment::DEATHS_PAGE as usize {
-                break; // a short page means the log is drained
-            }
+        };
+        let Some((proofs, next, raw)) = page else {
+            break; // silence: nothing learned, the cursor holds, the next beat retries
+        };
+        for p in proofs {
+            apply_death(&state.node_db, &p).await?;
+        }
+        // Advanced even past skipped proofs (unheld documents, garbage): a stuck cursor
+        // would re-serve the same page forever, and the per-document sweep is the backstop
+        // for anything a peer garbled.
+        if next as i64 > cursor {
+            cursor = next as i64;
+            advance_death_cursor(&state.node_db, &key, cursor).await?;
+        }
+        if raw < crate::net::fragment::DEATHS_PAGE as usize {
+            break; // a short page means the log is drained
         }
     }
     Ok(())

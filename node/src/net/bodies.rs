@@ -256,6 +256,15 @@ pub async fn sweep(state: AppState) -> Result<()> {
                 }
             }
         }
+        // The cohort, last (2026-08-15): every list above traces the AUTHOR or the share
+        // tree, and all of it can be gone for good while a sibling node of one of our own
+        // personas still holds the bytes. Already endpoint-shaped; a blob fetch is
+        // hash-capability, and asking our own household discloses nothing.
+        for ep in crate::net::sync::cohort_endpoints(&state).await.unwrap_or_default() {
+            if !candidates.contains(&ep) {
+                candidates.push(ep);
+            }
+        }
 
         let mut healed = 0u64;
         for candidate in &candidates {

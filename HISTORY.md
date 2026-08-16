@@ -6146,3 +6146,29 @@ argument); new-device bootstrap inheriting the granter's followed world through 
 already holds; household politeness (one device pays the external sync, siblings share); and
 the future speculative pools inheriting cohort resilience for free, being just more followed
 roots.
+
+## 2026-08-15: the cohort joins the tree
+
+The fix the two armed tests were waiting for, and it turned out to be routing, not protocol.
+One new roster - `net::sync::cohort_endpoints`, every sibling endpoint of every hosted
+persona out of `identity_peers`, liveliest first, self excluded - appended as the LAST rung
+of four candidate walks, one consistent order everywhere: the follow-refresh hint ladder,
+the fragment walk (endpoint-addressed, after author - origin - sharers), blob healing's
+candidate list, and the reap (a sibling is not a persona in any fragment's tree, so its
+death cursor is keyed `cohort:<endpoint>` and dialed directly; the drain loop extracted so
+both doors share it).
+
+The satisfying discovery: FRONTIER GOSSIP needed no new wire. The sync door's `wanted` gate
+has answered for any persona the responder's users follow since pull-not-push was built -
+so the whole chain half of "the sibling that stayed up" reduced to making the sibling a
+dial candidate. Both armed tests unskipped as the first move and went green on the first
+full run (with the rig gaining follow-refresh pacing knobs beside its sweep siblings).
+
+The slice earned its keep twice: the fast test beat put the wake pass and the
+stranger-mint guard test in the same window for the first time, and the guard caught
+`sync_with_peer` minting an empty database - key, WAL, journal - for every unreachable
+followed stranger on every attempt, in production since the wake pass landed. Two rounds to
+pin it (mint-after-dial still minted once the cohort made dials SUCCEED - a sibling
+politely answering "I hold nothing" is not a reason to mint a shelf): the shelf now waits
+for a Hello that claims something to put on it. 659 passing, 1 pending; the census bumped
+to 4 for net/sync.rs with the why in place.
