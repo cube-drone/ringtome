@@ -6123,3 +6123,26 @@ clean rerun that proved it a flake by the standing rule. Recorded in case it rec
 mechanism identified.
 
 Gates: `just ci` exit 0, 657 passing, 2 pending (the armed skip among them).
+
+### Addendum: the simple diagnostic, and what gossip buys beyond shares
+
+Same day, second test: `cohort.cjs`, *frontier gossip: the sibling that stayed up* - the
+AM-node scenario verbatim, with the share machinery stripped out entirely. Two personas, one
+follow, one post: the sibling sleeps, the awake node journals, the author leaves forever, the
+sibling wakes into a network where its own cohort is the only holder - and the feed row never
+comes. RED demonstrated live on the named assertion ("the sibling's frontier gossip carried
+the followed author's post"; 657 others green), then skip-armed like its cascade sibling. The
+two tests split the diagnosis on purpose: this one says whether the CHAIN lane broke, the
+torturous one whether the share lane did.
+
+Writing it sharpened the finding: the last-stop hole was never about rebroadcasts. Plain
+follows diverge identically - an author who posts while one device sleeps and then goes dark
+is unreachable to the sleeper forever. Which is also the inventory of what frontier gossip
+buys beyond the share tree: the AM-node backfill for the whole followed universe; the
+phone/desktop story's missing mechanism (a waking phone catches up from its own always-on
+desktop in one session instead of forty cellular dials - the connective tissue between
+MOBILE's intermittent-peer design and DESKTOP's your-desktop-is-your-infrastructure
+argument); new-device bootstrap inheriting the granter's followed world through sessions it
+already holds; household politeness (one device pays the external sync, siblings share); and
+the future speculative pools inheriting cohort resilience for free, being just more followed
+roots.
