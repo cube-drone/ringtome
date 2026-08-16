@@ -355,6 +355,22 @@ pub async fn rebroadcast_follows_among(
     Ok(out)
 }
 
+/// Every (reader, author) follow edge on the node, feed criterion (eagerness above the
+/// bottom stop) - the history dig's worklist (fanout::fill_pass). Pairs, not authors,
+/// because history is per relationship: each reader's dig has its own cursor and its own
+/// follow point behind it.
+pub async fn eager_follows(node_db: &crate::db::Db) -> Result<Vec<(String, String)>> {
+    let rows: Vec<(String, String)> = node_db
+        .fetch_all(
+            "SELECT local_root, foreign_root FROM subscriptions
+             WHERE eagerness IS NOT NULL AND eagerness > 0",
+            (),
+        )
+        .await
+        .context("listing the node's follow edges")?;
+    Ok(rows)
+}
+
 /// Does `local_root` follow `foreign_root` for feed purposes? The same criterion as
 /// `followers_of`, asked pointwise - the notifications fold's routing check.
 pub async fn follows(

@@ -461,6 +461,21 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("follow-refresh", follow_beat, state.clone(), idface::refresh_followed_pass);
+    // The history dig (fanout::fill_pass): every follow edge's feed extended backward, one
+    // page per pair per beat, until the year horizon. Local reads feeding local writes - the
+    // pace exists to bound shelf opens per beat and node.db growth, not network politeness,
+    // because there is no network in it. LOCAL_TEST may shorten it so a test can watch a
+    // whole history converge.
+    let fill_beat = if local_test {
+        std::env::var("RINGTOME_TEST_JOURNAL_FILL_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(60))
+    } else {
+        std::time::Duration::from_secs(60)
+    };
+    loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
     // WAL maintenance (Db::checkpoint): truncate node.db's and every open user db's log on a
     // slow beat. Turso's own auto-checkpoint bounds work, not the file - the log only shrinks
     // on TRUNCATE, and an unbounded WAL taxes every read after it (568MB observed, 2026-08-05).

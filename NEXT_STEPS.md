@@ -40,28 +40,19 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
     (which currently falls back to `feed_journal.via_root` and says so in a comment).
   * **Feed convergence across a persona's own nodes** (design conversation 2026-08-15; the
     divergence classes and fixes argued there). Two slices, holes before amnesia:
-    * ~~**Cohort-as-candidate - the last-stop hole.**~~ Built 2026-08-15: `cohort_endpoints`
-      (sibling endpoints of every hosted persona, liveliest first, self excluded) is the LAST
-      rung of four walks - the follow-refresh hint ladder (which turned out to be the whole
-      frontier-gossip fetch half: the sync door already answers for any persona the
-      responder's users follow), the fragment walk, blob healing, and the reap
-      (endpoint-keyed cursors under a `cohort:` prefix). Both armed tests unskipped and
-      green; the slice also flushed out and fixed the wake pass minting an empty database
-      per unreachable followed stranger per attempt (sync_with_peer now mints only when the
-      peer's Hello claims something to put on the shelf).
-    * **Journal watermarks + background history fill - the window amnesia.** The 20-post
-      journal window was designed to bound the NEW-FOLLOW burst but applies to catch-up too,
-      and its high-water mark is in-memory and boot-reset - so a node dark (or merely
-      rebooted) through a burst permanently lacks journal rows its cohort has, despite
-      holding the full chain. Fix: persist per-(reader, author) journal watermarks in
-      node.db; catch-up journals the exact gap; a background walk fills history backward to
-      the whole followed shelf (cheap - local writes from locally-held chains, and the
-      chronological feed means backfill sorts into the past, never floods the top). The
-      window survives only as pacing for brand-new follows. Also from the same conversation,
-      lower priority: attribution keys (`feed_shares.shared_ms`, the crowd's introducer)
-      are local-arrival facts, so converged membership can still disagree about the LEAD
-      sharer - converge them on the pointer's claimed share stamp, the version-ordering
-      move applied to bylines.
+    * ~~**Journal watermarks + background history fill - the window amnesia.**~~ Built
+      2026-08-16, posts lane (`journal_marks` + `journal_fill`, schema gen 23): the
+      persisted per-author mark makes the forward catch-up exact (pages down until the gap
+      closes, bounded by the year horizon), and the history dig extends each follow edge's
+      feed backward a page per beat to the horizon - the follow point is the guarantee,
+      genesis is not (Curtis: one year). Remaining from that design:
+      * **The share lane's history dig**: an old share needs its fragment fetched to
+        journal at all - a network walk per row against possibly-dark authors - so it wants
+        its own harder pacing and skip-and-retry on the same `journal_fill` cursor idiom.
+      * Lower priority: attribution keys (`feed_shares.shared_ms`, the crowd's introducer)
+        are local-arrival facts, so converged membership can still disagree about the LEAD
+        sharer - converge them on the pointer's claimed share stamp, the version-ordering
+        move applied to bylines.
   * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
     user to my network" after that.
 * Save to bucket

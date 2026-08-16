@@ -33,12 +33,50 @@ use crate::AppState;
 /// dialing from prerequisite to polish (NEXT_STEPS, Popularity Problems).
 const PUSH_DIAL_CAP: i64 = 16;
 
-/// The per-author high-water mark's domain in `sweep_marks`: the newest `updated_ms` this
-/// node has journaled for the author, so a move journals only what passed it (the delta)
-/// instead of re-upserting the whole page per reader. In-memory and boot-reset like every
-/// mark: the first move after a restart re-journals one full page, and the upsert makes
-/// that a no-op rather than a duplicate.
-const JOURNAL_MARK: &str = "journal";
+/// How far back the feed reaches, ever: one year. The follow point is the guarantee -
+/// everything published after it must land in the feed, holes forbidden - and history
+/// before it is a courtesy with a floor, not an obligation to genesis (Curtis, 2026-08-16).
+/// Both walks honor it: the forward catch-up will not page past it chasing an ancient mark,
+/// and the backward dig declares itself done on reaching it.
+const FILL_HORIZON_MS: i64 = 365 * 24 * 3600 * 1000;
+
+/// Follow edges the history dig advances per beat. A pace, not a cap: every pair is reached,
+/// a page at a time, round after round - this only bounds how many author shelves one beat
+/// opens (the census's concern) and how fast a fresh node's node.db grows.
+const FILL_PAIRS_PER_BEAT: usize = 4;
+
+/// The forward high-water mark: the newest `updated_ms` this node has journaled for the
+/// author, so a move journals only what passed it (the delta) instead of re-upserting the
+/// whole page per reader. PERSISTED (2026-08-16, `journal_marks`) - it lived in sweep_marks,
+/// in-memory and boot-reset, which quietly capped every catch-up at one page: a node dark
+/// (or merely rebooted) through more than twenty posts journaled the newest twenty and
+/// skipped the rest forever, despite holding the full chain. Durable, the mark makes the gap
+/// exact, and `journal_for` pages down until it closes it.
+async fn journal_mark(node_db: &crate::db::Db, author_root: &str) -> Result<Option<i64>> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT newest_ms FROM journal_marks WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("reading the journal mark")?;
+    Ok(row.map(|(ms,)| ms))
+}
+
+/// Advance the mark, monotone - the chain_heads discipline: lagging under-reports, and an
+/// under-report re-upserts idempotently; leading would skip rows forever.
+async fn record_journal_mark(node_db: &crate::db::Db, author_root: &str, newest_ms: i64) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO journal_marks (author_root, newest_ms) VALUES (?1, ?2)
+             ON CONFLICT (author_root) DO UPDATE SET newest_ms = excluded.newest_ms
+             WHERE excluded.newest_ms > newest_ms",
+            (author_root, newest_ms),
+        )
+        .await
+        .context("advancing the journal mark")?;
+    Ok(())
+}
 
 /// Rows per multi-row journal upsert: 8 binds each, kept well under SQLite's classic
 /// 999-variable floor so the statement never outgrows the engine.
@@ -99,15 +137,17 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str) {
 
 /// One journal row per (reader who follows them) x (post that moved past the watermark).
 ///
-/// The newest page is the whole journal window, and that bound is doing deliberate work:
-/// following someone with years of history journals their latest twenty posts, not their life
-/// story ("backfill is the burst to bound" - PROJECT_PLAN, Data Layer). The older posts are not
-/// lost - they are on the persona's page, where reading further back is a choice.
-///
-/// Within the page, only the DELTA is written: the high-water mark remembers the newest
+/// Only the DELTA is written: the persisted high-water mark remembers the newest
 /// `updated_ms` already journaled for this author, so the common move (one new post) writes
 /// one row per reader, not the whole page per reader - re-upserting nineteen unchanged rows
 /// per reader was most of the fan-out write bill, and it stalled the sweep this runs inside.
+///
+/// The catch-up is EXACT (2026-08-16): the walk pages down the shelf until the gap to the
+/// mark closes, so a node dark through two hundred posts journals two hundred rows on its
+/// first move - coverage after the follow point is contiguous, holes forbidden. Two floors
+/// bound the walk: the year horizon (nothing older ever journals), and on a first-ever move
+/// (no mark) the single newest page - the new-follow burst-to-bound, with everything older
+/// left to the history dig's pace (`fill_pass`).
 async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let mut readers = crate::net::subscriptions::followers_of(&state.node_db, author_root).await?;
     // Your own posts appear in your own feed, as if you had written them - which you did
@@ -127,40 +167,68 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     if readers.is_empty() && !anyone_shares(state, author_root).await? {
         return Ok(0); // the common case, and it costs one query per index
     }
-    let page = shelf_page(state, author_root).await?;
-    if page.is_empty() {
-        return Ok(0); // the move was profile/keys, not posts - nothing feed-shaped arrived
+    let mark = journal_mark(&state.node_db, author_root).await?;
+    // Where the walk may stop paging. A missing mark (first move ever for this author) means
+    // the newest page alone - `i64::MAX` stops the walk after one page. Otherwise the walk
+    // owes every row whose updated_ms could pass the filter below, and pages are keyed by
+    // GENESIS - but the edit window bounds how far updated_ms can outrun genesis_ms, so
+    // `mark - edit_window` is the genesis depth that provably covers them all. The horizon
+    // floors both cases.
+    let floor = mark
+        .map_or(i64::MAX, |m| {
+            m.saturating_sub(crate::record::documents::edit_window_ms())
+        })
+        .max(now_ms() - FILL_HORIZON_MS);
+    let mut cursor: Option<(i64, [u8; 16])> = None;
+    let mut fresh: Vec<JournalRow> = Vec::new();
+    let mut newest: Option<i64> = None;
+    loop {
+        let page = shelf_page(state, author_root, cursor).await?;
+        let Some(last) = page.last() else {
+            break; // the shelf ends (or was empty: the move was profile/keys, not posts)
+        };
+        newest = newest.max(page.iter().map(|r| r.updated_ms).max());
+        let bottom = last.published_ms;
+        cursor = last.cursor();
+        // `>=` at the boundary, not `>`: two posts sharing the boundary millisecond but
+        // arriving across two exchanges would slip a strict filter forever; re-upserting one
+        // boundary row per move costs a fraction of a chunk.
+        fresh.extend(
+            page.into_iter()
+                .filter(|r| mark.is_none_or(|m| r.updated_ms >= m)),
+        );
+        if bottom < floor || cursor.is_none() {
+            break; // the gap is closed (or a corrupt id ended the keyset - the dig's backstop)
+        }
     }
-    // `>=` at the boundary, not `>`: two posts sharing the boundary millisecond but arriving
-    // across two exchanges would slip a strict filter forever; re-upserting one boundary row
-    // per move costs a fraction of a chunk. A missing mark (first move since boot) takes the
-    // whole page - the boot catch-up, and the heal for any mark this logic ever gets wrong.
-    let mark = state.sweep_marks.last(JOURNAL_MARK, author_root);
-    let fresh: Vec<&JournalRow> = page
-        .iter()
-        .filter(|r| mark.is_none_or(|m| r.updated_ms >= m))
-        .collect();
     if fresh.is_empty() {
         return Ok(0);
     }
+    let fresh: Vec<&JournalRow> = fresh.iter().collect();
     if !readers.is_empty() {
         journal_rows(&state.node_db, author_root, &readers, &fresh, None).await?;
     }
-    // The same page, to the people who follow whoever shared these documents.
+    // The same rows, to the people who follow whoever shared these documents.
     if let Err(e) = journal_shares_of(state, author_root, &fresh).await {
         tracing::warn!(author = %author_root, error = ?e, "journaling shares of this author failed");
     }
     // Advance only after the write landed: a failed write leaves the mark behind, and the
     // next move re-journals the same delta (idempotent) instead of skipping it forever.
-    if let Some(newest) = page.iter().map(|r| r.updated_ms).max() {
-        state.sweep_marks.record(JOURNAL_MARK, author_root, newest);
+    if let Some(newest) = newest {
+        record_journal_mark(&state.node_db, author_root, newest).await?;
     }
     Ok(readers.len())
 }
 
-/// The author's newest public page, shaped for journaling - the one user-DB open on the
-/// journal path, shared by both arrival flows (`journal_for`, `backfill_follow`).
-async fn shelf_page(state: &AppState, author_root: &str) -> Result<Vec<JournalRow>> {
+/// One public page of the author's shelf, shaped for journaling - the one user-DB open on
+/// the journal path, shared by all three arrival flows (`journal_for`, `backfill_follow`,
+/// `fill_pass`). `after` is `public_docs`' keyset cursor: None is the newest page, and a
+/// row's own [`JournalRow::cursor`] resumes below it.
+async fn shelf_page(
+    state: &AppState,
+    author_root: &str,
+    after: Option<(i64, [u8; 16])>,
+) -> Result<Vec<JournalRow>> {
     // `get`, not `create`: a followed persona whose content has never arrived here has no
     // shelf to page, and asking for one used to WRITE them an empty database (~96 KB, once
     // per contact - a whole ledger's worth on a device adopting one). Nothing to journal.
@@ -173,7 +241,7 @@ async fn shelf_page(state: &AppState, author_root: &str) -> Result<Vec<JournalRo
         return Ok(Vec::new());
     };
     let posts =
-        crate::record::documents::public_docs(&db, None, crate::idface::POSTS_PAGE).await?;
+        crate::record::documents::public_docs(&db, after, crate::idface::POSTS_PAGE).await?;
     Ok(posts
         .into_iter()
         .map(|p| JournalRow {
@@ -196,6 +264,16 @@ pub(crate) struct JournalRow {
     pub(crate) format: String,
     pub(crate) published_ms: i64,
     pub(crate) updated_ms: i64,
+}
+
+impl JournalRow {
+    /// This row as a `public_docs` keyset cursor - the next page begins below it. None only
+    /// for a doc_id that is not 16 hex-decoded bytes, which no fold ever writes; the callers
+    /// treat it as "stop paging", never as an error to propagate mid-walk.
+    fn cursor(&self) -> Option<(i64, [u8; 16])> {
+        let bytes = hex::decode(&self.doc_id_hex).ok()?;
+        Some((self.published_ms, <[u8; 16]>::try_from(bytes.as_slice()).ok()?))
+    }
 }
 
 /// Write (reader x post) journal rows as chunked multi-row upserts: one statement - one round
@@ -593,7 +671,7 @@ pub async fn journal_shares_by(
         // follow them, or where one of our own personas shared them and the pin keeps them
         // current. Empty is the NORMAL case on a reader's node, and the fragment path below is
         // the whole point of this feature: a reader gets one document, never a subscription.
-        let page = shelf_page(state, author_root).await.unwrap_or_default();
+        let page = shelf_page(state, author_root, None).await.unwrap_or_default();
         tracing::debug!(
             author = %author_root, held = page.len(), wanted = rows.len(),
             "share fold: author shelf"
@@ -650,7 +728,7 @@ pub async fn backfill_share(
         if readers.is_empty() {
             return Ok(0);
         }
-        let page = shelf_page(state, author_root).await?;
+        let page = shelf_page(state, author_root, None).await?;
         let doc_hex = hex::encode(doc_id);
         let Some(row) = page.iter().find(|r| r.doc_id_hex == doc_hex) else {
             // The document is not on the author's shelf here - either we hold nothing of theirs
@@ -690,12 +768,20 @@ pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &
     // already have, and this reader is new and has none of it.
     let just_them = [reader_root.to_string()];
     let attempt = async {
-        let page = shelf_page(state, author_root).await?;
+        let page = shelf_page(state, author_root, None).await?;
         if page.is_empty() {
             return Ok(0);
         }
         let all: Vec<&JournalRow> = page.iter().collect();
         journal_rows(&state.node_db, author_root, &just_them, &all, None).await?;
+        // Coverage begins HERE, so the mark must too (2026-08-16, caught by the dig's own
+        // integration test): `journal_for` only records a mark when it journals, and an
+        // author followed by nobody journals to nobody - so a first follow used to leave
+        // the mark unset, and the next arrival after a dark stretch fell back to "newest
+        // page only", skipping the middle forever. The follow point is the anchor.
+        if let Some(newest) = page.iter().map(|r| r.updated_ms).max() {
+            record_journal_mark(&state.node_db, author_root, newest).await?;
+        }
         Ok::<usize, anyhow::Error>(1)
     };
     match attempt.await {
@@ -708,6 +794,133 @@ pub async fn backfill_follow(state: &AppState, reader_root: &str, author_root: &
                 "follow backfill skipped - their shelf isn't here yet");
         }
     }
+}
+
+/// The history dig: every follow edge's feed, extended backward one page per beat until it
+/// reaches the year horizon (Curtis, 2026-08-16: "everything after the follow point" is the
+/// guarantee; history is a courtesy with a floor). The slow half of the journal's two walks -
+/// `journal_for` keeps coverage contiguous from the follow point forward, this fills what was
+/// published before it - and POSTS ONLY for now: an old share needs its fragment fetched to
+/// journal at all, a network walk per row against possibly-dark authors, and that lane wants
+/// its own pacing (NEXT_STEPS carries it).
+///
+/// Cheap by construction: chain sync has never had a window, so a followed author's full
+/// public chain is already on the local shelf - the dig is local reads feeding local writes,
+/// no dials anywhere. Hosted personas dig their own history too (a fresh device adopting a
+/// persona owes its feed the persona's own posts, same as any reader's).
+///
+/// Per (reader, author) rather than per author because history is per relationship: each
+/// edge has its own follow point, its own cursor, and its own done. The dig journals with
+/// `via_root = NULL` - the reader follows this author, and direct is the stronger claim.
+pub async fn fill_pass(state: AppState) -> Result<()> {
+    let mut pairs = crate::net::subscriptions::eager_follows(&state.node_db).await?;
+    for root in crate::identity::hosted_roots(&state.node_db)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+    {
+        pairs.push((root.clone(), root)); // your own posts, in your own feed (2026-08-05)
+    }
+    if pairs.is_empty() {
+        return Ok(());
+    }
+    type FillRow = (String, String, Option<i64>, Option<String>, Option<i64>);
+    /// One edge's dig state as the pass holds it: the resume cursor, and whether it's done.
+    type DigState = (Option<(i64, [u8; 16])>, bool);
+    let rows: Vec<FillRow> = state
+        .node_db
+        .fetch_all(
+            "SELECT reader_root, author_root, cursor_ms, cursor_doc, done_ms FROM journal_fill",
+            (),
+        )
+        .await
+        .context("reading the history dig's cursors")?;
+    let mut memo: std::collections::HashMap<(String, String), DigState> = Default::default();
+    for (reader, author, ms, doc, done) in rows {
+        let cursor = match (ms, doc.and_then(|d| hex::decode(d).ok())) {
+            (Some(ms), Some(doc)) => <[u8; 16]>::try_from(doc.as_slice()).ok().map(|d| (ms, d)),
+            _ => None,
+        };
+        memo.insert((reader, author), (cursor, done.is_some()));
+    }
+
+    let mut advanced = 0usize;
+    for (reader, author) in pairs {
+        if advanced >= FILL_PAIRS_PER_BEAT {
+            break;
+        }
+        let (cursor, done) = memo
+            .get(&(reader.clone(), author.clone()))
+            .cloned()
+            .unwrap_or((None, false));
+        if done {
+            continue;
+        }
+        // A stat answers "is their shelf even here" before anything opens: a followed
+        // persona whose content never arrived has nothing to dig THROUGH - and `shelf_page`'s
+        // polite empty for that case reads as "shelf exhausted", which would mark the pair
+        // done and hollow out its history when the chain finally lands.
+        if state.user_dbs.db_mtime_ms(&author).is_none() {
+            continue;
+        }
+        match dig_one(&state, &reader, &author, cursor).await {
+            Ok(()) => advanced += 1,
+            Err(e) => {
+                tracing::debug!(reader = %reader, author = %author, error = ?e, "history dig failed")
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One page of one edge's dig: journal what lands above the horizon, move the cursor below
+/// the page, declare done at the shelf's end or the horizon - whichever comes first.
+async fn dig_one(
+    state: &AppState,
+    reader_root: &str,
+    author_root: &str,
+    cursor: Option<(i64, [u8; 16])>,
+) -> Result<()> {
+    let raw = shelf_page(state, author_root, cursor).await?;
+    let horizon = now_ms() - FILL_HORIZON_MS;
+    let keep: Vec<&JournalRow> = raw.iter().filter(|r| r.published_ms >= horizon).collect();
+    if !keep.is_empty() {
+        journal_rows(
+            &state.node_db,
+            author_root,
+            &[reader_root.to_string()],
+            &keep,
+            None,
+        )
+        .await?;
+    }
+    let last = raw.last();
+    let done = raw.len() < crate::idface::POSTS_PAGE as usize
+        || last.is_some_and(|l| l.published_ms < horizon)
+        || last.is_some_and(|l| l.cursor().is_none());
+    let next = last.and_then(|l| l.cursor());
+    state
+        .node_db
+        .execute(
+            "INSERT INTO journal_fill (reader_root, author_root, cursor_ms, cursor_doc, done_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (reader_root, author_root) DO UPDATE SET
+                 cursor_ms = excluded.cursor_ms,
+                 cursor_doc = excluded.cursor_doc,
+                 done_ms = excluded.done_ms",
+            (
+                reader_root,
+                author_root,
+                next.map(|(ms, _)| ms),
+                next.map(|(_, doc)| hex::encode(doc)),
+                if done { Some(now_ms()) } else { None },
+            ),
+        )
+        .await
+        .context("advancing the history dig's cursor")?;
+    if done {
+        tracing::info!(reader = %reader_root, author = %author_root, "history dig reached its floor");
+    }
+    Ok(())
 }
 
 /// The journal's other direction: rows whose DOCUMENTS are gone. The upsert half above only
@@ -865,6 +1078,17 @@ pub async fn excise_unfollowed(
             )
             .await
             .context("excising an unfollowed author from the feed journal")?;
+        // The dig's memo goes with the rows it described: a re-follow must start a fresh
+        // dig, or it would inherit a cursor pointing below rows this excise just deleted
+        // and leave the refollowed history permanently hollow above it.
+        state
+            .node_db
+            .execute(
+                "DELETE FROM journal_fill WHERE reader_root = ?1 AND author_root = ?2",
+                (reader_root, author.as_str()),
+            )
+            .await
+            .context("resetting an unfollowed author's history dig")?;
     }
     Ok(())
 }
@@ -1082,6 +1306,29 @@ pub async fn feed_page(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn the_journal_mark_is_monotone() {
+        // The chain_heads discipline: lagging under-reports (idempotent re-upserts), leading
+        // would skip rows forever - so an out-of-order advance must lose.
+        let db = crate::db::test_node_db().await;
+        assert_eq!(journal_mark(&db, "aa").await.unwrap(), None);
+        record_journal_mark(&db, "aa", 100).await.unwrap();
+        record_journal_mark(&db, "aa", 90).await.unwrap();
+        assert_eq!(journal_mark(&db, "aa").await.unwrap(), Some(100), "a lagging report cannot drag it back");
+        record_journal_mark(&db, "aa", 110).await.unwrap();
+        assert_eq!(journal_mark(&db, "aa").await.unwrap(), Some(110));
+    }
+
+    #[test]
+    fn a_journal_row_is_its_own_cursor() {
+        let row = post("ab", "t", 5);
+        let (ms, doc) = row.cursor().expect("a fold-written doc_id resumes the keyset");
+        assert_eq!(ms, row.published_ms);
+        assert_eq!(hex::encode(doc), row.doc_id_hex);
+        let garbled = JournalRow { doc_id_hex: "zz".into(), ..post("cd", "t", 5) };
+        assert!(garbled.cursor().is_none(), "corrupt ids stop paging rather than looping");
+    }
 
     fn post(doc: &str, title: &str, updated_ms: i64) -> JournalRow {
         JournalRow {

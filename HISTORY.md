@@ -6190,3 +6190,32 @@ round, nothing hot - so no test can freeze it for another. Green at one thread, 
 threads, and full parallelism; `just ci` exit 0, 659 passing. The invariant this restores
 is the one CLAUDE.md leans on: green locally IS green on the action, which was true of the
 recipe all along and false of the parallelism the two machines brought to it.
+
+## 2026-08-16: the feed learns its history, and the gap becomes exact
+
+The journal-fill conversation ("everything AFTER the follow point gets synced; one year of
+history is fine") became two durable clocks in node.db (schema gen 23). `journal_marks` is
+the forward high-water mark, persisted per author - it lived in sweep_marks, in-memory and
+boot-reset, which quietly capped every catch-up at one page: a node dark through fifty posts
+journaled the newest twenty and skipped the rest forever, despite holding the full chain.
+`journal_for` now pages the shelf down until the gap to the mark closes (with an edit-window
+slack on the genesis keyset, since edits move updated_ms without moving genesis), so
+coverage after the follow point is contiguous - holes forbidden. `journal_fill` is the
+backward dig: per (reader, author) because history is per relationship, one page per beat,
+POSTS only (chain sync has never had a window, so the dig is local reads feeding local
+writes - no dials), down to the year horizon. The 20-post window survives exactly as
+designed: the new-follow burst-to-bound, with everything older arriving at the dig's pace.
+
+A design candidate died in review before any code: "the journal is its own watermark"
+(derive the dig floor from MIN(published_ms)) fails on precisely the amnesia case - a dark
+window leaves coverage as two segments with a hole between, and a MIN-floor digs below the
+OLD segment forever. The NEXT_STEPS two-clock design was right as argued.
+
+The new integration test (journalfill.cjs - a 30-post late follow digs to the first post; a
+25-post dark stretch journals exactly on the next arrival) caught a real gap on its first
+run: coverage that begins at FOLLOW time (backfill + dig) recorded no mark, so the first
+dark stretch after a fresh follow still fell back to newest-page-only. The follow's
+backfill now anchors the mark - coverage and mark begin together, by construction. Unfollow
+resets the dig with the rows it described (a stale cursor would leave a refollow hollow).
+`just ci` exit 0, 660 passing; the share lane's history (fragment fetch per row) and
+attribution-key convergence stay in NEXT_STEPS.

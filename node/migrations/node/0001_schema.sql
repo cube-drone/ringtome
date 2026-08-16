@@ -224,6 +224,36 @@ CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);
 -- listing never touches the table itself.
 CREATE INDEX feed_journal_by_author ON feed_journal (author_root, doc_id);
 
+-- The journal's two durable clocks (2026-08-16): how far forward delivery has reached per
+-- author, and how deep each reader's history dig has gone. Both exist because feed_journal
+-- coverage must have NO HOLES after the follow point - the amnesia finding: the forward
+-- high-water mark lived in memory, so a node dark (or merely rebooted) through more than one
+-- page of posts journaled the newest page and silently skipped the rest, forever.
+--
+-- `journal_marks` is the forward mark, per AUTHOR because delivery is per author (one page
+-- read serves every reader at once). `fanout::journal_for` pages the shelf down to this mark
+-- - the exact-gap catch-up - so coverage stays contiguous from the top no matter how long
+-- the node slept. Monotone on newest_ms, like chain_heads: lagging under-reports, and
+-- under-reporting merely re-upserts (idempotent); leading would skip.
+CREATE TABLE journal_marks (
+    author_root TEXT    PRIMARY KEY,
+    newest_ms   INTEGER NOT NULL   -- newest updated_ms already journaled for this author
+);
+
+-- `journal_fill` is the backward dig, per (reader, author) because history is per
+-- relationship: a reader who follows someone today is owed their page down to the horizon
+-- (one year - the follow point is the guarantee, genesis is not), a page per beat, never a
+-- burst. The cursor is `public_docs`' keyset; NULL means the dig hasn't started (from the
+-- top). Disposable like every memo: deleting a row costs one re-dig of idempotent upserts.
+CREATE TABLE journal_fill (
+    reader_root TEXT    NOT NULL,
+    author_root TEXT    NOT NULL,
+    cursor_ms   INTEGER,           -- resume below this genesis_ms...
+    cursor_doc  TEXT,              -- ...and this doc_id (hex) at the tie
+    done_ms     INTEGER,           -- reached the horizon or the shelf's end; NULL = digging
+    PRIMARY KEY (reader_root, author_root)
+);
+
 -- Everyone who passed one document into one reader's feed: the crowd behind a feed row's byline.
 --
 -- `feed_journal` keeps ONE row per (reader, author, doc) - a post six people share is one entry in
