@@ -45,15 +45,19 @@ pub type LiveSource = std::sync::Arc<
 /// its hash BEFORE the caller writes the row that references it, and the reaper must not win
 /// that race. Ten minutes is oceans beside the milliseconds the row-write takes. Tests shrink
 /// it (`RINGTOME_TEST_REAP_GRACE_MS`) so a reap is watchable inside one suite.
+///
+/// Read LIVE on every use, deliberately not latched in a process-wide OnceLock: the
+/// unit-test binary is one process running many tests, and a latch let whichever test touched
+/// a store first freeze the grace for every test after it - the reaper test's shrunk value
+/// lost that race exactly when the runner was slow enough to serialize the suite, which is
+/// how CI was red for a day while every parallel local run stayed green (found 2026-08-16).
+/// The read is an env scan, paid per put/fetch and per GC round - nothing on a hot path.
 fn recent_grace() -> std::time::Duration {
-    static GRACE: std::sync::OnceLock<std::time::Duration> = std::sync::OnceLock::new();
-    *GRACE.get_or_init(|| {
-        std::env::var("RINGTOME_TEST_REAP_GRACE_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .map(std::time::Duration::from_millis)
-            .unwrap_or(std::time::Duration::from_secs(600))
-    })
+    std::env::var("RINGTOME_TEST_REAP_GRACE_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(std::time::Duration::from_secs(600))
 }
 
 /// The blob-serving ALPN. New protocol beside the sync ALPN on the same endpoint.

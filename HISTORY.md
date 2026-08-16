@@ -6172,3 +6172,21 @@ pin it (mint-after-dial still minted once the cohort made dials SUCCEED - a sibl
 politely answering "I hold nothing" is not a reason to mint a shelf): the shelf now waits
 for a Hello that claims something to put on it. 659 passing, 1 pending; the census bumped
 to 4 for net/sync.rs with the why in place.
+
+### Same day: why the action was red while every local gate was green
+
+CI had failed every run since the reaper landed - and the pasted tail showed the failure in
+the ringtome binary's unit tests, which had passed locally four times that day. The culprit:
+`recent_grace()` latched its value in a process-wide OnceLock, and the unit-test binary is
+one process running many tests. The reaper test shrinks the grace to 50ms by env var, but an
+alphabetically-earlier files test touches a store first; whoever calls first latches the
+value for everyone. On a many-core Mac the reaper test's synchronous set_var fires early
+enough to win; on the constrained runner it lost every time - the latch made TEST ORDER
+load-bearing, and the two machines ordered differently. Proven locally by forcing the loss:
+`--test-threads=1` reproduced CI's exact assert ("the unreferenced blob was collected").
+
+Fix: the grace reads its env live on every use - an env scan per put/fetch and per GC
+round, nothing hot - so no test can freeze it for another. Green at one thread, two
+threads, and full parallelism; `just ci` exit 0, 659 passing. The invariant this restores
+is the one CLAUDE.md leans on: green locally IS green on the action, which was true of the
+recipe all along and false of the parallelism the two machines brought to it.
