@@ -15,6 +15,7 @@ mod auth;
 mod clock;
 mod config;
 mod db;
+mod edgegraph;
 mod error;
 mod fanout;
 mod fragments;

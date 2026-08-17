@@ -196,6 +196,34 @@ CREATE TABLE published_edges (
     PRIMARY KEY (subject_root)
 );
 
+-- IMPLICIT relationships: what this persona's friends vouch for, composed with this
+-- persona's own dials (2026-08-16, the friend-of-friend design). DERIVED, never authored -
+-- the ledger stays pure opinion; this is what the system computed from it, disposable and
+-- rebuilt whole on every fold (edgegraph::refresh_implicit). It lives in the USER db, not
+-- node.db, because the composition legitimately uses the owner's PRIVATE trust dial (ranking
+-- your own feed is not a disclosure), and a level derived from a withheld dial must not
+-- leave the persona's own database.
+--
+-- One row per (target, lane, introducer) - the feed_shares discipline: keep the crowd, roll
+-- up at read. `level` is min(my dial toward the introducer, their published band toward the
+-- target); the trust lane composes through my trust dial x their trust band, the taste lane
+-- through my REBROADCAST dial x their interest band (my rebroadcast dial is what I think of
+-- their taste, and an implicit follow is a taste judgment - Curtis, 2026-08-16).
+-- `introducer_vouches` is the introducer's outbound count on that lane, stored raw: banded
+-- promiscuity discounts happen at read, so tuning them never re-derives. Consumers roll up
+-- MAX across introducers, never sums (the Sybil doctrine), and an explicit ledger dial on
+-- the target beats every row here.
+CREATE TABLE implicit_edges (
+    target_root        TEXT    NOT NULL,  -- the friend-of-friend
+    lane               TEXT    NOT NULL,  -- 'trust' | 'taste'
+    introducer_root    TEXT    NOT NULL,  -- the friend whose published edge carried it
+    depth              INTEGER NOT NULL,  -- 2 for now: one published hop past my own dial
+    level              TEXT    NOT NULL,  -- band word: min along the two-hop path
+    introducer_vouches INTEGER NOT NULL,  -- how many edges the introducer publishes on this lane
+    updated_at_ms      INTEGER NOT NULL,
+    PRIMARY KEY (target_root, lane, introducer_root)
+);
+
 -- Public documents this persona has WITHDRAWN: the folded `post-retract` tombstones
 -- (PROJECT_PLAN, Retraction, edits, and what a node must remember forever).
 --

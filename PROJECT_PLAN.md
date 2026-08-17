@@ -3267,6 +3267,50 @@ rows arrive small and quiet by construction.
   mode gives "the cozy node's common room" real meaning. Parked on purpose; its moment is a node with
   strangers on it.
 
+#### Implicit edges: the graph assembled, the fold kept home (built 2026-08-16)
+
+The first concrete rung under the selectivity design: who the speculative pool's candidates even ARE. Two
+memos, one per level, and the level split is the design:
+
+- **`edge_graph` (node.db)**: what synced personas say PUBLICLY about each other - one row per published
+  statement `(author, subject, trust band, interest band)`, assembled from each mirrored persona's own
+  `published_edges` view on the FOLLOWS_PUBLIC frontier-move edge (probe-gated, replace-set per author).
+  SECOND-order where `subscriptions` is first-order: that table is our own personas' dials, this one is third
+  parties' published facts about third parties, and keeping them separate tables keeps the distinction legible.
+  Consented by construction - an unpublished edge never exists anywhere the fold can see - so assembling it
+  discloses nothing a crawler couldn't already derive; it is a cache of public speech, not a new disclosure.
+- **`implicit_edges` (each persona's own db)**: the composition - my dial toward a friend x their published
+  band toward a stranger, **min of the two**, one row per `(target, lane, introducer)`. In the USER database
+  deliberately: the reader's side of the composition legitimately uses their PRIVATE trust dial (ranking your
+  own feed is routing under the standing carve-out, not disclosure), and a level derived from a withheld dial
+  must not leave the persona's own database. The ledger stays pure opinion; this is what the system computed
+  from it, disposable and rebuilt whole on every fold.
+
+The algebra, pinned by the 2026-08-16 conversation:
+
+- **Two lanes that never mix.** The trust lane composes my TRUST dial with their published TRUST band. The
+  taste lane composes my REBROADCAST dial with their published INTEREST band - *my rebroadcast dial is what I
+  think of their taste, and an implicit follow is a taste judgment, not a character one*. Trusting someone's
+  character says nothing about their taste, and vice versa.
+- **Raw ingredients over pre-collapsed scores.** Each row carries depth (2 for now), the min-composed level,
+  the introducer, and the introducer's outbound vouch COUNT on that lane - stored raw so banded promiscuity
+  discounts happen at read time and tuning them never re-derives, and so the UI can explain ("high-trust
+  connection of Mara's - who vouches for 400 people") rather than assert a number.
+- **Sybil posture, enforced by shape.** Per-introducer rows, MAX across introducers at read, never sums (the
+  joint-flow doctrine). Promiscuity is a discount, not a gate: a vouch is meaningful in proportion to its
+  scarcity, and the discount is the standard answer to "one high-quality fake connection" - at depth 2 the
+  count being discounted belongs to a friend the reader chose, whose chain they fully hold. An anti-vouch
+  (published "none") spends no capacity and composes to nothing.
+- **Precedence.** An explicit ledger dial on the target beats every implicit row; blocked beats everything
+  and excludes the target from the fold entirely.
+
+Choreography: the node fold rides `fanout::after_public_move` (a friend's follows-public chain moved), then
+nudges `subscriptions::refresh_root` for every local reader with any dial on the mover - subscriptions,
+publication, and the implicit fold are one choreography, so the memos cannot drift. The user fold rides
+`subscriptions::refresh` itself, where the store is already open and the ledger already read. Served raw at
+`GET /api/identity/{root}/implicit`; consumers (the slider's pool, people search, first-contact standing) are
+future work, deliberately - the fold precedes its consumers the way `subscriptions.trust` did.
+
 ### Rebroadcast: Pointer Plus Pinned Replica (settled 2026-08-10)
 
 How you share someone else's post through your network. The tension the design has to hold: copying content whole

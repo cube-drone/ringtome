@@ -128,9 +128,19 @@ Does a mutual follow+trust make a "friend"?
 *  a mp3 browser
 
 ### Trust
+
+The arc lives in [DISCOVERY.md](DISCOVERY.md) — the four-stage pipeline, its invariants, and
+the slice order. Below is the short worklist.
+
+* ~~node-level edge graph + per-user implicit edges (depth 2)~~ built 2026-08-16 (PROJECT_PLAN: *Implicit edges*); consumers below still open
+* speculative rollup + introducer-laddered acquisition (DISCOVERY slice 1)
+* speculative journal rows + provenance (slice 2), then the slider (slice 3), then mirror eviction (slice 4)
+* surface implicit edges in the UI (people page: "suggested via..."), with banded promiscuity discounts and explicit-dial precedence at read
 * advogato-style joint flow calculation to determine how much we trust a person who we've never met, but exists somewhere in our trust graph
 * using trust & rebroadcast rules to surface content to users
+* using trust to make it easier to send messages to users
 * adversarial simulation
+
 
 ### Desktop
 * tray sidecar, autostart, app-mode window

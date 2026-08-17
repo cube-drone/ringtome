@@ -126,6 +126,10 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str) {
     // proofs attached, to anyone who asks "what died since N?" (fragments::deaths_since). Both
     // ride the public move because both are consequences of exactly it.
     crate::fragments::mirror_retractions(state, root_hex).await;
+    // The edge graph rides the same move: if the mover publishes edges, re-mirror them into
+    // the node-level graph (probe-gated inside - a persona with no follows-public chain
+    // costs one primary-key read).
+    crate::edgegraph::refresh_from(state, root_hex).await;
     // Push onward only for personas this node authors. Relaying someone ELSE's lane onward is
     // rebroadcast - a consent question, not a routing one - and waits for its own design.
     match crate::identity::is_agented(&state.node_db, root_hex).await {

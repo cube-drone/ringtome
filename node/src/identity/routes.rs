@@ -70,6 +70,12 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         )
         // Private chains: the member-only KV + set store (encrypted at rest, synced only to the
         // identity's own nodes).
+        // The implicit set: what this persona's friends vouch for, composed with their own
+        // dials (edgegraph). Raw per-introducer rows - rollup and discounts are the UI's.
+        .route(
+            "/api/identity/{root}/implicit",
+            get(implicit_list_handler),
+        )
         .route(
             "/api/identity/{root}/private/kv/{collection}",
             get(private_kv_list_handler),
@@ -1344,6 +1350,26 @@ struct PrivateKvListResponse {
 }
 
 /// The materialized registers of one private collection.
+#[derive(serde::Serialize)]
+struct ImplicitListResponse {
+    edges: Vec<crate::edgegraph::ImplicitRow>,
+}
+
+/// The persona's implicit relationships - the friend-of-friend fold, served raw so the UI
+/// can explain a suggestion ("high-trust connection of X, who vouches for 400 people")
+/// rather than assert a score.
+async fn implicit_list_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<ImplicitListResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let edges = crate::edgegraph::implicit_of(data.db())
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(ImplicitListResponse { edges }))
+}
+
 async fn private_kv_list_handler(
     session: Session,
     State(state): State<AppState>,

@@ -76,7 +76,7 @@ const EDGES_PUBLIC: &str = "edges_public";
 /// distinction the JS side learned the hard way 2026-08-08 (an unset dial is no opinion;
 /// "none" is one). Values from the retired numeric scale read as `None` too: pre-User-1, a
 /// dropped dev-data dial beats a shim carried forever.
-fn band_ordinal(value: &str) -> Option<i64> {
+pub(crate) fn band_ordinal(value: &str) -> Option<i64> {
     match value {
         "none" => Some(0),
         "low" => Some(1),
@@ -247,6 +247,14 @@ pub async fn refresh(
         crate::fanout::backfill_follow(state, root_hex, author).await;
     }
 
+    // The implicit fold rides the same pass, for the same reason: the ledger is in hand and
+    // the store is open, and this is the one place both sides of a dial change converge (a
+    // local turn nudges here; a cross-device turn arrives by the post-ingest hook). Best-
+    // effort: a derivation failure must not fail the routing memo it rides beside.
+    if let Err(e) = crate::edgegraph::refresh_implicit(state, &store, root_hex, &contacts).await {
+        tracing::warn!(root = %root_hex, error = ?e, "implicit edge fold failed");
+    }
+
     // Publication rides the same pass: this is the one place the whole ledger is read with the
     // store open, so consent flips and dial turns mint their public-edge statements here
     // (publish.rs). Locally-authored statements never take the sync gate, so the notification
@@ -353,6 +361,21 @@ pub async fn rebroadcast_follows_among(
         out.insert(root);
     }
     Ok(out)
+}
+
+/// Every reader on this node holding ANY dial on `foreign_root` - trust, interest, or
+/// rebroadcast. The implicit fold's nudge list (edgegraph::refresh_from): a friend's
+/// published edges moved, and every local persona whose ledger names that friend may owe a
+/// recomputed implicit set - including trust-only relationships neither feed worklist sees.
+pub async fn dialed_by(node_db: &crate::db::Db, foreign_root: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT local_root FROM subscriptions WHERE foreign_root = ?1",
+            (foreign_root,),
+        )
+        .await
+        .context("listing who dials a persona")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
 /// Every (reader, author) follow edge on the node, feed criterion (eagerness above the

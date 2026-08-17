@@ -6219,3 +6219,37 @@ backfill now anchors the mark - coverage and mark begin together, by constructio
 resets the dig with the rows it described (a stale cursor would leave a refollow hollow).
 `just ci` exit 0, 660 passing; the share lane's history (fragment fetch per row) and
 attribution-key convergence stay in NEXT_STEPS.
+
+## 2026-08-16: second-order edges - the graph assembled, the fold kept home
+
+The trust-and-discovery investigation's first built rung (PROJECT_PLAN: *Implicit edges*,
+beside the selectivity design it feeds). Two memos, one per level, and the level split IS
+the design. `edge_graph` (node.db, schema gen 24): what synced personas say publicly about
+each other, one row per published statement, assembled from each mirrored persona's
+`published_edges` view on the FOLLOWS_PUBLIC frontier-move edge - second-order where
+`subscriptions` is first-order, consented by construction, a cache of public speech rather
+than a new disclosure. `implicit_edges` (each persona's own db, user gen 15): the
+composition - my dial toward a friend x their published band toward a stranger, min of the
+two, per (target, lane, introducer). In the USER database deliberately: the reader's side
+legitimately uses their PRIVATE trust dial (ranking your own feed is routing, not
+disclosure), so a level derived from a withheld dial never leaves their own database.
+
+The algebra from Curtis's design: two lanes that never mix (trust composes through trust;
+taste composes through the REBROADCAST dial - "an implicit follow is a taste judgment");
+raw ingredients over pre-collapsed scores (depth, level, introducer, introducer's vouch
+count - banded promiscuity discounts happen at read, tuning never re-derives, and the UI
+can explain rather than assert); per-introducer rows with MAX-not-sum rollup (the Sybil
+doctrine); explicit dials beat implicit rows; blocked excludes at the fold. His derived-
+rows-on-the-ledger framing died in conversation before code, by his own hand ("derived
+data like that should never be on the ledger") - the ledger stays opinion, the memo carries
+inference.
+
+One choreography, no drift: the node fold rides after_public_move (probe-gated on the
+follows-public chain) and nudges subscriptions::refresh_root for every reader dialing the
+mover; the implicit fold rides subscriptions::refresh itself, where the store is already
+open. Served raw at GET /api/identity/{root}/implicit. trust.cjs proves the pipeline
+end-to-end in 706ms: three published vouches assemble into charlie's graph, compose into
+cora's implicit set capped from both sides (the taste row comes out LOW through her low
+rebroadcast dial beside her high interest dial - the lane keys on taste, provably), and a
+withdrawn vouch recedes from graph and set alike. 661 passing; consumers (the slider's
+pool, people search, first-contact standing) deliberately future work.

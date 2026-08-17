@@ -49,6 +49,11 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("fragment_wants", vec!["fragments.rs"]),
         ("fragment_covers", vec!["fragments.rs"]),
         ("death_cursors", vec!["fragments.rs"]),
+        // The second-order pair: the assembled published-edge graph (node.db) and the
+        // per-persona implicit fold over it (user db). One module owns both because the
+        // composition rule - my dial x their band, min of the two - must live in one place.
+        ("edge_graph", vec!["edgegraph.rs"]),
+        ("implicit_edges", vec!["edgegraph.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.
         ("entries", vec!["record/imaol.rs", "net/sync.rs"]),
@@ -155,6 +160,10 @@ fn user_db_opens_are_deliberate() {
         ("notifications.rs", 1),   // refresh_from: ONE author per frontier-move edge
         ("inbox.rs", 1),           // accept: ONE recipient per delivered envelope
         ("net/frontier.rs", 1),    // refresh: ONE persona per fingerprint recompute
+        // refresh_from: ONE persona per FOLLOWS_PUBLIC frontier move, probe-gated so the
+        // overwhelming majority of moves (posts, from people who publish no edges) never
+        // reach the open. The notifications.rs shape, for the same reason.
+        ("edgegraph.rs", 1),
         ("net/resync.rs", 1),
         // + derive_peers_for: ONE persona's crown per derive edge. The 4th (2026-08-15) is
         // sync_with_peer's exists-check before its create: the shelf is minted only when the

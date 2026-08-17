@@ -134,6 +134,34 @@ CREATE TABLE subscriptions (
 );
 CREATE INDEX subscriptions_by_foreign ON subscriptions (foreign_root);
 
+-- The assembled edge GRAPH: what synced personas say publicly about each other (2026-08-16).
+--
+-- SECOND-ORDER where `subscriptions` above is first-order, and the difference is the whole
+-- design: subscriptions holds OUR OWN personas' dials (opinion, consent-gated on the trust
+-- column); this holds THIRD PARTIES' published statements about third parties - each row a
+-- fact its author already published on their follows-public chain, assembled here so graph
+-- questions ("who do my friends vouch for?") are one JOIN instead of one encrypted-file open
+-- per friend. Consented by construction: an unpublished edge never exists anywhere this fold
+-- can see. Fed per FOLLOWS_PUBLIC frontier move from the mover's own `published_edges` view
+-- (replace-set per author; disposable like every memo here). A row with both bands
+-- NULL never exists here - the user-level view keeps LWW retraction tombstones; this memo
+-- keeps only standing edges, because graph reads ask "what IS vouched", never "what was".
+--
+-- Sybil note, same as subscriptions': a COUNT over one author's rows is a promiscuity signal
+-- (vouches are meaningful in proportion to scarcity); a COUNT of an edge's *inbound* rows is
+-- the per-person sum the trust doctrine forbids. Joint flow, never sums.
+CREATE TABLE edge_graph (
+    author_root  TEXT    NOT NULL,  -- who published the statement
+    subject_root TEXT    NOT NULL,  -- whom it names
+    trust        TEXT,              -- band word, as published; NULL = no trust band
+    interest     TEXT,              -- band word, as published; NULL = no interest band
+    updated_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (author_root, subject_root)
+);
+-- The other direction: "who vouches FOR this persona" - the joint-flow read and the
+-- first-contact standing check both ask by subject.
+CREATE INDEX edge_graph_by_subject ON edge_graph (subject_root);
+
 -- ---------------------------------------------------------------------------------------------
 -- Who has ASKED us about a persona: the demand record the Three Funnels has been asserting and
 -- nothing wrote (PROJECT_PLAN, The Three Funnels).
