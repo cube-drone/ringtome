@@ -40,7 +40,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 24; // 24: edge_graph - the assembled second-order edge memo (2026-08-16)
+const NODE_SCHEMA_GENERATION: i64 = 25; // 25: speculative_demand/fetches - the posts-depth speculative pass (2026-08-21)
 const USER_SCHEMA_GENERATION: i64 = 15; // 15: implicit_edges - the friend-of-friend fold (2026-08-16)
 
 /// How long a write waits on a busy connection before failing.
@@ -784,11 +784,12 @@ impl UserDbManager {
         // Stat, then open. Not atomic - a concurrent `create` between the two just means the
         // next call finds it - but the window lives in ONE place now instead of at every
         // read site, which is the difference that matters. (turso's builder takes a path, not
-        // open flags, so there is no open-if-exists to hand this to.)
+        // open flags, so there is no open-if-exists to hand this to.) The open itself goes
+        // through `create`'s coalescer, so a read racing a mint shares the one open.
         if !self.path_for(root_pubkey).exists() {
             return Ok(None);
         }
-        self.open(root_pubkey).await.map(Some)
+        self.create(root_pubkey).await.map(Some)
     }
 
     /// `get`, where absence is a BUG rather than an answer: the persona is one this node
@@ -830,15 +831,40 @@ impl UserDbManager {
     /// first sync of a foreign persona, a newly created or adopted identity, a journal
     /// rebuild. The rare, deliberate half of `get`: if you are not the reason this persona's
     /// data is about to exist here, you want `get`.
+    /// ONE open per root at a time, however many tasks ask (found 2026-08-21, made reliable
+    /// by the speculative pass's beat: an inbound push serve and a speculative pull both
+    /// reached `create` for the same stranger in the same instant, and each built a whole
+    /// independent Db - two turso connections on one encrypted file, two journal handles
+    /// appending frames to one .jnl - the loser's migration failing "table entries already
+    /// exists" was the LOUD symptom; the quiet one was exchanges hanging forever behind the
+    /// wedged pair, which is what red cascade runs actually showed. The race predates the
+    /// pass - `fetch_foreign`'s parallel ladder could always hit it - the pass just turned
+    /// rare into every-beat.) `try_get_with` runs one initialization per key and parks the
+    /// other callers on its result.
+    ///
+    /// The open rides its own TASK, deliberately: callers put timeouts around syncs
+    /// (`idface::FETCH_TIMEOUT`, the speculative pass), and a caller giving up must not
+    /// cancel a half-built database out from under everyone parked behind it - a dropped
+    /// mid-open future could leave a partially backfilled journal that the next open would
+    /// misread as complete. Once an open starts, it finishes.
     pub async fn create(&self, root_pubkey: &str) -> Result<Db> {
-        if let Some(db) = self.handles.get(root_pubkey).await {
-            return Ok(db);
-        }
-        self.open(root_pubkey).await
+        let manager = self.clone();
+        let root = root_pubkey.to_string();
+        self.handles
+            .try_get_with(root_pubkey.to_string(), async move {
+                match tokio::spawn(async move { manager.open(&root).await }).await {
+                    Ok(result) => result,
+                    Err(join_error) => Err(anyhow!("user db open task died: {join_error}")),
+                }
+            })
+            .await
+            .map_err(|e: std::sync::Arc<anyhow::Error>| anyhow!("{e:#}"))
     }
 
-    /// The shared body: open (creating if absent), migrate, attach the journal, cache the
-    /// handle. Callers choose whether absence is allowed; this one just does the work.
+    /// The shared body: open (creating if absent), migrate, attach the journal. Callers
+    /// choose whether absence is allowed; this one just does the work. Reached ONLY through
+    /// `create`'s coalescer - the cache insert is the coalescer's, so a value exists in the
+    /// cache exactly when its open completed whole.
     async fn open(&self, root_pubkey: &str) -> Result<Db> {
         let path = self.path_for(root_pubkey);
         let db = open_database(&path, &self.keystore).await?;
@@ -949,9 +975,6 @@ impl UserDbManager {
             }
         }
 
-        self.handles
-            .insert(root_pubkey.to_string(), db.clone())
-            .await;
         Ok(db)
     }
 
@@ -1036,6 +1059,45 @@ mod tests {
             profile.iter().find(|f| f.field == "name").map(|f| f.value.as_str()),
             Some("Survivor Sue"),
             "the journal replayed the profile through the validated ingest"
+        );
+    }
+
+    /// The 2026-08-21 race, pinned: an inbound push serve and a speculative pull both minting
+    /// the same stranger's database in the same instant. Pre-coalescer, each racer built its
+    /// own whole Db - two turso connections on one encrypted file, two journal handles on one
+    /// .jnl - and the loser's migration failed "table entries already exists" (seen live in a
+    /// cascade run the day the speculative pass landed; the quieter cost was exchanges
+    /// wedging behind the duplicate pair). Sixteen racers make the old failure a certainty.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_creates_coalesce_to_one_open() {
+        let dir = temp_dir().await;
+        let ks = temp_keystore(&dir);
+        let mgr = UserDbManager::new(&dir, ks, 4);
+        let key = ringtome_proto::SigningKey::generate(&mut rand::rngs::OsRng);
+        let root_hex = hex::encode(key.verifying_key().to_bytes());
+
+        let mut racers = tokio::task::JoinSet::new();
+        for _ in 0..16 {
+            let mgr = mgr.clone();
+            let root = root_hex.clone();
+            racers.spawn(async move { mgr.create(&root).await });
+        }
+        while let Some(joined) = racers.join_next().await {
+            joined.expect("racer ran").expect("every concurrent create succeeds");
+        }
+
+        // One file underneath them all: a write through a fresh handle is visible to the
+        // next, and the journal took exactly one coherent stream of frames.
+        let db = mgr.create(&root_hex).await.unwrap();
+        crate::record::imaol::set_profile_field(&db, &key, "name", "One File Frank")
+            .await
+            .unwrap();
+        let again = mgr.held(&root_hex).await.unwrap();
+        let profile = crate::record::imaol::get_profile(&again).await.unwrap();
+        assert_eq!(
+            profile.iter().find(|f| f.field == "name").map(|f| f.value.as_str()),
+            Some("One File Frank"),
+            "the coalesced handles share one coherent database"
         );
     }
 

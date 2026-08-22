@@ -54,3 +54,17 @@ The full-chain audit of 2026-08-10 is closed — all seven items, see HISTORY. T
 behind, for anything new that touches the log: **a read whose cost grows with an identity's
 history needs a watermark, a cursor, or a named reason it is bounded.** `imaol` now enforces
 the third case rather than trusting it (`service_reads_whole`).
+## The visit ladder still cancels exchanges mid-flight (noted 2026-08-22)
+
+The slice-1 build established that aborting a sync mid-exchange mints zombie connection
+state a later dial trips over, and that starved fan-out pushes for minutes at a time (the
+detach-never-cancel rule, HISTORY 2026-08-22). The beat-driven machinery was converted -
+`speculative::acquire_one` and `sync::sync_peers` detach at their deadlines - but
+`idface::fetch_foreign` still runs the old shape: parallel candidates in a JoinSet,
+`abort_all()` on first success, `FETCH_TIMEOUT` cancellation per task. Left alone
+deliberately: it fires on human visits (request-time, not a loop), the winner's exchange is
+never the one aborted, and months of green suites say the also-ran aborts are tolerable at
+that rate. The compromise is that every abort is still a potential zombie against the very
+node the winner just used. If mirror-fetch flakiness ever clusters around busy personas
+with many live candidates, convert the also-rans to detach (drop the JoinSet without
+abort_all, let them run out) before suspecting anything deeper.

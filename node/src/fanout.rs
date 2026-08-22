@@ -671,11 +671,25 @@ pub async fn journal_shares_by(
     }
 
     for (author_root, rows) in by_author {
-        // Our own copy of the author's shelf, when we have one - the case where we already
-        // follow them, or where one of our own personas shared them and the pin keeps them
-        // current. Empty is the NORMAL case on a reader's node, and the fragment path below is
-        // the whole point of this feature: a reader gets one document, never a subscription.
-        let page = shelf_page(state, author_root, None).await.unwrap_or_default();
+        // Our own copy of the author's shelf, when we have one AND a relationship keeps it
+        // current - `speculative::speculative_only`, the same freshness-contract gate the
+        // fragment door applies, and it MUST be the same gate (2026-08-22, the intermittent
+        // fourth-hop red): this fold once read a hunch-held mirror's shelf, journaled the
+        // share from it, and minted no fragment - so this node's own reader saw the post
+        // while the door, rightly hiding the hunch, had NOTHING to serve the next hop. A
+        // journaled share must leave the node able to answer for it, and the fragment path
+        // below is what does that. (This comment once said "the pin keeps them current" -
+        // stale since 2026-08-11: a share obliges a copy, never a subscription.) Empty is
+        // the NORMAL case on a reader's node, and the fragment path below is the whole
+        // point of this feature: a reader gets one document, never a subscription.
+        let hunch_held = crate::speculative::speculative_only(state, author_root)
+            .await
+            .unwrap_or(false);
+        let page = if hunch_held {
+            Vec::new()
+        } else {
+            shelf_page(state, author_root, None).await.unwrap_or_default()
+        };
         tracing::debug!(
             author = %author_root, held = page.len(), wanted = rows.len(),
             "share fold: author shelf"
@@ -732,7 +746,15 @@ pub async fn backfill_share(
         if readers.is_empty() {
             return Ok(0);
         }
-        let page = shelf_page(state, author_root, None).await?;
+        // The same freshness-contract gate as the share fold's shelf read (and the fragment
+        // door's): a hunch-held mirror's shelf must not seed feed rows the node cannot
+        // answer for onward. A gated page just means the instant backfill skips - the share
+        // fold's own beat journals it through the fragment path, obligation attached.
+        let page = if crate::speculative::speculative_only(state, author_root).await? {
+            Vec::new()
+        } else {
+            shelf_page(state, author_root, None).await?
+        };
         let doc_hex = hex::encode(doc_id);
         let Some(row) = page.iter().find(|r| r.doc_id_hex == doc_hex) else {
             // The document is not on the author's shelf here - either we hold nothing of theirs

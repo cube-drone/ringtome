@@ -7,7 +7,8 @@ are already canon); in-motion slices are mirrored in [`NEXT_STEPS.md`](NEXT_STEP
 file holds the whole arc in one place: what's built, what's next, what's far, and the
 arguments that bind them.*
 
-Design conversations 2026-08-15 → 2026-08-17.
+Design conversations 2026-08-15 → 2026-08-17; the speculative pass (one handshake, two
+depths) merged in 2026-08-21.
 
 ## The problem
 
@@ -78,6 +79,10 @@ for speculative content is our own cadence, on a slow beat with a small per-beat
 (the `FOLLOW_REFRESH_CAP` discipline at lower priority than real follows). Speculative
 content is allowed to be hours stale; that is part of what makes it cheap.
 
+The dialer itself — the lanes, the reciprocal door, the headers tier it shares — is
+specified in *The speculative pass* below (2026-08-21): this stage is that pass running at
+posts depth.
+
 ### 3. Journaling — speculative rows with provenance
 
 `journal_for` gains a third reader criterion beside followers and share-followers: readers
@@ -95,10 +100,105 @@ the slider re-fetches nothing because acquisition (what we hold) and attention (
 show) were split on purpose. Effective-interest precedence as designed: explicit author
 dial → sharer dial → path score → floor.
 
+## The speculative pass: one handshake, two depths
+
+*(Merged design, 2026-08-21. One mechanism replaces two would-be schedulers — stage-2
+acquisition for posts, and a separate slow header sync for tier-2 legibility.)*
+
+Two appetites want the same door. The pipeline spends its acquisition budget on content —
+recent posts for the top-K strangers a reader plausibly wants to *read*. But most of
+tier-2 will never crack the top-K, and the node knows nothing about them beyond an edge
+row: no claimed name, no avatar, no follows of their own. The people page's "suggested
+via…" renders identicons and hex; search over visible people has nothing to match; the
+rollup picks its top-K knowing nothing about candidates but their edge rows. The fix is
+cheap by the chain-per-service split's own design — identity-public, PROFILE_PUBLIC, and
+follows-public are kilobytes per persona — and it wants exactly the same introducer
+ladder, the same quiet-mirror rules, and the same slow beat as the posts appetite. So: one
+pass, one dialer, and the only per-target question is **depth**.
+
+**The unit of work is the introducer, not the edge.** The pass groups the work queue by
+introducer node — one connection to a friend's node services every vouched stranger
+behind it, up to the per-visit cap. A weighted draw picks which friend to visit; the visit
+drains that friend's slice of the queue. Weights are per *target* — deduped, MAX across
+introducers — never per raw edge, and visits are capped per introducer per beat, so an
+edge-minting adversary buys neither tickets nor monopolies.
+
+**Depth comes from the memo, never the dice.** For each target serviced, the speculative
+rollup row answers the only policy question: admitted under the acquisition budget →
+headers plus the newest posts page; otherwise → headers only. The dice order visits; the
+memo decides what is held and refreshed. (If the draw also chose whose posts survive the
+budget, sampling weight proportional to edges would be a sum in disguise — a thousand
+Sybil vouches, a thousand lottery tickets.)
+
+**Two lanes inside the one pass.** Speculative content is allowed to be hours stale — but
+under a pure weighted walk over a growing tier-2 pile, "hours" quietly becomes weeks:
+expected revisit time scales with pile size. So the per-beat quota splits: a small
+deterministic lane round-robins the top-K by staleness (the `FOLLOW_REFRESH_CAP`
+discipline, below real follows), and the weighted-random lane services the long tail's
+headers. Same protocol, same ladder, one dialer — the lanes are only how the quota is
+split.
+
+**The wire is the scoped sync Hello.** "Only these services" — the additive protocol
+change shallow-sync and the depth-3 appetite already want; this pass is its first
+consumer. Asks go through the standing anonymous door (`serve`'s `wanted` gate),
+introducer's endpoints first, the target's own serving records as fallback. One honesty
+note on "anonymous": iroh authenticates both endpoints' node keys, so the answering node
+always knows *which node* asked. What stays undisclosed is everything above the node — no
+subscription, no persona, no serving relationship — and answers come only from what the
+answerer already publicly fronts.
+
+**The knock is the peer's opportunity — symmetric pull, nothing volunteered.** The visited
+node likely has its own edge pile pointing back at us; an open connection lets it service
+its own queue in the same session — its asks, chosen from its own memo, at its own depth.
+That is not the exchange we decline: no node ever *offers* its inventory or its interest
+list, because a speculative pile volunteered is a shadow of readers' implicit edges pushed
+outward. Each side discloses only its own asks, each ask its own choice. Three guardrails
+hold it:
+
+- **Answered from the fronted set only.** Reciprocal asks pass the same `wanted` gate as a
+  cold knock; speculative and non-resident mirrors are never behind that door. This is the
+  invariant reciprocity actually tests: if "do you hold X?" could be answered from the
+  quiet pile, the pile stops being quiet — a peer could probe out the very interest shadow
+  we refused to volunteer.
+- **Every ask is queue-derived.** "Everything you carry that I want" means everything *in
+  my memo-derived queue routed through you*, up to the per-visit cap — never an
+  opportunistic hoover of whatever a warm connection makes reachable.
+- **An open connection is an opportunity, not an obligation.** Caps hold in both
+  directions: reciprocal asks are served under the same budget as cold knocks (dialing
+  first buys no extra work from the answerer), and the knocked-on node piggybacks at most
+  its per-visit quota, deferring the rest to its own beat.
+
+**Non-resident: a fetch is not a membership ceremony.** Headers-depth targets land in a
+new mirror state — chains held, no fronting, no serving record, no push participation,
+invisible to the peer mesh, excluded from hosted-persona counts, no freshness promise,
+freely evictable. Three dividends per kilobyte: *legibility* (names, avatars, bios for
+everyone the implicit edges can surface), *depth-3 fuel* (their follows-public chain feeds
+`edge_graph` another persona's published edges — the farther-horizon edges-only appetite
+arriving early), and *proof* (the stranger's own identity chain verifies their signed
+statements, rotations, and revocations directly, instead of through the introducer's
+mirror — the "hints are dirty, proofs are signed" discipline needs this anyway). When the
+supporting edge recedes, the refresh row recedes and the mirror ages toward eviction —
+"non-resident with no supporting tier-2 edge" is slice 4's easiest predicate.
+
+**"Last seen" is a local observation** — the last successful sync and via whom, never
+presence. A mirror refreshed only through the introducer speaks to the friend's freshness,
+not the stranger's.
+
+**Promotion is the same clean exit.** A real dial flips non-resident (or speculative) to
+an ordinary subscription; the persona leaves this regime entirely.
+
+Two build-time honesty notes: the `wanted` gate answering a *scoped* Hello is new code
+(the gate exists, the scoping does not), and "excluded from hosted-persona counts" states
+intent against storage-management surfaces that do not exist yet.
+
 ## Invariants (the doctrine, restated as checks)
 
-- **No fronting, no push participation.** Speculative mirrors serve nobody and announce
-  nothing. Promotion to fronting requires a human dial.
+- **No fronting, no push participation.** Speculative and non-resident mirrors serve
+  nobody and announce nothing. Promotion to fronting requires a human dial. Reciprocity is
+  the test: a peer's ask against the quiet pile returns nothing, or the pile isn't quiet.
+- **The dice order visits; the memo decides retention.** Weighted randomness paces the
+  pass and nothing else — membership of every held-and-refreshed set derives from the
+  current edges, top-K by best composed level, and recedes with them.
 - **Disclosure stays in-relationship.** The introducer learns we asked; the stranger
   learns nothing until their own machinery is dialed as fallback. Never dial the target
   first when an introducer path exists.
@@ -113,11 +213,15 @@ dial → sharer dial → path score → floor.
 
 ## Slices, in order
 
-1. **Rollup + acquisition.** The speculative-demand memo and the introducer-laddered
-   quiet pull. Acceptance: a friend vouches for an author cora never dialed; the author's
-   post appears on cora's node without cora following anyone; the author goes dark and the
-   post still serves (the mirror came through the friend). Red-first, the armed-skip
-   discipline if the slice waits.
+1. ~~**Rollup + the pass at posts depth.**~~ Built 2026-08-22 (`speculative.rs`, node gen
+   25; acceptance green in `speculative.cjs`, red-first). The build's field findings, now
+   doctrine: **outward surfaces speak with a held chain's authority only under a freshness
+   contract** — hosted, member-fetched, or followed; a hunch-held mirror (orphans included)
+   is invisible to the fragment door and fragment-first on the member surfaces, or a stale
+   mirror shadows truths the node already holds. **Beat-driven machinery never dials an
+   unresolved identity key**, and **deadlines detach, never cancel** — an aborted exchange
+   leaves zombie connection state that starves the fan-out behind it. Full ledger in
+   HISTORY, 2026-08-21/22.
 2. **Speculative journal rows + provenance column.** The third reader criterion, the
    marked rows, the introducer byline. Acceptance: the row exists, is marked, names the
    introducer; an explicit dial converts it in place.
@@ -126,15 +230,23 @@ dial → sharer dial → path score → floor.
 4. **Mirror eviction.** The retention edge this pipeline makes real for the first time:
    nothing today evicts a mirrored persona, ever. Scoped sweep: a mirror with no
    subscription, no fragment ledger row, and no rollup row is holding chains nobody wants.
-   Predates this work as a gap; becomes load-bearing here.
+   Predates this work as a gap; becomes load-bearing here. First customer: "non-resident
+   with no supporting tier-2 edge."
+5. **The headers depth** (order-independent of 2–3; pairs with 4; gates on the scoped sync
+   Hello). Non-resident mirrors, the weighted-random lane, the reciprocal door.
+   Acceptance: a friend-of-a-friend cora never dialed shows a claimed name and avatar on
+   the people page; their published follows land in `edge_graph`; a reciprocal ask against
+   a speculative or non-resident mirror returns nothing; withdrawing the friend's vouch
+   ages the mirror out; at no point does the stranger's node learn cora's node exists.
 
 ## The farther horizon
 
 - **Depth 3+: the edges-only appetite.** Friend-of-friend-of-friend needs FOLLOWS_PUBLIC
   chains of people nobody here syncs. Two candidate shapes, both precedented: a scoped
   sync Hello ("only these services" — additive protocol change, also what shallow-sync
-  wants), or an *edges door* in the fragment-door style (one-shot anonymous ask, signed
-  entries verified at the edge, no subscription). Kilobytes per hop either way; the
+  wants, and what the speculative pass's headers depth builds first), or an *edges door*
+  in the fragment-door style (one-shot anonymous ask, signed entries verified at the
+  edge, no subscription). Kilobytes per hop either way; the
   introducer-relay logic unchanged (the friend holds the FoF's edge chain too).
 - **Same-network detection at depth ~6.** Bidirectional search halves the exponent;
   published neighborhood sketches (a Bloom of "roots within k hops", minted onto the

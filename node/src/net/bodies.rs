@@ -209,21 +209,39 @@ pub async fn sweep(state: AppState) -> Result<()> {
     }
 
     for root in roots {
-        // Candidates, most-likely first. All three tables remember nodes that already know
-        // of this node's interest in the persona - asking them again discloses nothing new.
+        // Candidates, most-likely first - split by WHICH relationship vouches for them
+        // (2026-08-22, second draft: the first gated a hunch-held author down to the
+        // introducer alone, which also severed the share rungs below and broke "heal from
+        // the other sharer" - the very fallback the fragment ledger exists for).
+        //
+        // The AUTHOR-relationship rungs (a profile fetch, their askers, their sync peers)
+        // exist only for personas somebody here has a real relationship with; for a
+        // hunch-held mirror (speculative.rs) the one author-side candidate is the
+        // introducer endpoint that answered the pull - it already knows our interest, and
+        // nothing else on the author's side does or should. The SHARE-relationship rungs
+        // further down (fragment origins, sharers of the author) are facts about the
+        // shares, not the author, and stand for hunch-held authors exactly as for
+        // strangers we hold nothing of.
         let mut candidates: Vec<String> = Vec::new();
-        if let Some(via) = crate::idface::fetched_via(&state.node_db, &root).await? {
-            candidates.push(via);
-        }
-        for asker in crate::net::demand::askers_of(&state.node_db, &root, ASKER_CANDIDATE_CAP).await?
-        {
-            if !candidates.contains(&asker) {
-                candidates.push(asker);
+        if crate::speculative::speculative_only(&state, &root).await? {
+            if let Some(via) = crate::speculative::last_via(&state.node_db, &root).await? {
+                candidates.push(via);
             }
-        }
-        for peer in crate::net::sync::peers_for(&state.node_db, &root).await? {
-            if !candidates.contains(&peer) {
-                candidates.push(peer);
+        } else {
+            if let Some(via) = crate::idface::fetched_via(&state.node_db, &root).await? {
+                candidates.push(via);
+            }
+            for asker in
+                crate::net::demand::askers_of(&state.node_db, &root, ASKER_CANDIDATE_CAP).await?
+            {
+                if !candidates.contains(&asker) {
+                    candidates.push(asker);
+                }
+            }
+            for peer in crate::net::sync::peers_for(&state.node_db, &root).await? {
+                if !candidates.contains(&peer) {
+                    candidates.push(peer);
+                }
             }
         }
         // The fragment ORIGINS (2026-08-14) - and for a reader past the chain, the only list

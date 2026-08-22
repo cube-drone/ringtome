@@ -41,6 +41,7 @@ mod record;
 mod request_context;
 mod seal;
 mod semver;
+mod speculative;
 mod idface;
 mod identicon;
 mod speakable;
@@ -462,6 +463,20 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("follow-refresh", follow_beat, state.clone(), idface::refresh_followed_pass);
+    // Speculative acquisition (speculative::acquire_pass): the quiet pull behind the demand
+    // rollup - strangers a reader's trust admits, fetched through their introducers on a slow
+    // beat at lower priority than real follows (DISCOVERY.md slice 1). Slow on purpose:
+    // speculative content is allowed to be hours stale; that is part of what makes it cheap.
+    let speculative_beat = if local_test {
+        std::env::var("RINGTOME_TEST_SPECULATIVE_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(300))
+    } else {
+        std::time::Duration::from_secs(300)
+    };
+    loops::periodic("speculative-acquire", speculative_beat, state.clone(), speculative::acquire_pass);
     // The history dig (fanout::fill_pass): every follow edge's feed extended backward, one
     // page per pair per beat, until the year horizon. Local reads feeding local writes - the
     // pace exists to bound shelf opens per beat and node.db growth, not network politeness,

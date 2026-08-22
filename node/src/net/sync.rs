@@ -1895,6 +1895,14 @@ pub struct PeerSyncResult {
 /// failures land in the results, never in `Err` - an unreachable peer is a normal day on a p2p
 /// network. Callers choose the peer set (the sync route and eager push: all known peers;
 /// anti-entropy: a random sample).
+/// Ceiling on how long one peer may hold a multi-peer pass hostage. Found 2026-08-21 by red
+/// cascade feeds: this walk is sequential and had no bound, so ONE asker whose handshake
+/// hung (a half-dead connection - QUIC's own idle reaper takes minutes) wedged every push
+/// for that root behind it, pass after pass, while the healthy askers a line below never
+/// got dialed. Thirty seconds is generous for a live peer on any network the eager path
+/// cares about; a genuinely slow one still converges by anti-entropy.
+const PEER_PASS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub async fn sync_peers(
     state: &AppState,
     root_hex: &str,
@@ -1903,12 +1911,18 @@ pub async fn sync_peers(
     let mut results = Vec::new();
     for peer_id in peers {
         // Resolve at dial time: id -> addresses via the directory (or iroh's own discovery).
-        let attempt = async {
-            let addr = dial_addr(state, peer_id).await?;
-            sync_with_peer(state, root_hex, addr).await
-        };
-        match attempt.await {
-            Ok(stats) => {
+        // The exchange rides its own task so the deadline DETACHES rather than cancels it -
+        // an abort mid-exchange leaves zombie connection state for the next dial to trip
+        // over, which is how the unbounded version's hangs were minted in the first place.
+        let task_state = state.clone();
+        let task_root = root_hex.to_string();
+        let task_peer = peer_id.clone();
+        let mut attempt = tokio::spawn(async move {
+            let addr = dial_addr(&task_state, &task_peer).await?;
+            sync_with_peer(&task_state, &task_root, addr).await
+        });
+        match tokio::time::timeout(PEER_PASS_TIMEOUT, &mut attempt).await {
+            Ok(Ok(Ok(stats))) => {
                 mark_synced(&state.node_db, root_hex, peer_id).await?;
                 results.push(PeerSyncResult {
                     peer: peer_id.clone(),
@@ -1917,11 +1931,26 @@ pub async fn sync_peers(
                     error: None,
                 });
             }
-            Err(e) => results.push(PeerSyncResult {
+            Ok(Ok(Err(e))) => results.push(PeerSyncResult {
                 peer: peer_id.clone(),
                 ok: false,
                 stats: None,
                 error: Some(format!("{e:#}")),
+            }),
+            Ok(Err(join_error)) => results.push(PeerSyncResult {
+                peer: peer_id.clone(),
+                ok: false,
+                stats: None,
+                error: Some(format!("exchange task died: {join_error}")),
+            }),
+            Err(_) => results.push(PeerSyncResult {
+                peer: peer_id.clone(),
+                ok: false,
+                stats: None,
+                error: Some(format!(
+                    "no answer within {}s - detached, moving to the next peer",
+                    PEER_PASS_TIMEOUT.as_secs()
+                )),
             }),
         }
     }

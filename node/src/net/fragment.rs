@@ -139,12 +139,16 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
 
 /// What we can honestly say about one document of somebody else's.
 ///
-/// Three shelves, in order. First our own copy of the author's chain - the case where we sync
-/// them because one of our people follows them, or because one of our people SHARED them and the
-/// pin keeps them current; it is the most current thing we have, and it reports a retraction
-/// itself. Then the tombstone, because a document we know to be dead is dead no matter what we
-/// still have lying around. Only then our own fragment ledger, so a live fragment can be relayed
-/// one more hop by a node that never held the author either.
+/// Three shelves, in order. First our own copy of the author's chain - and only when a
+/// RELATIONSHIP keeps that copy current (someone here follows them, hosts them, or met them;
+/// `speculative::speculative_only` is the gate) - because then it is the most current thing
+/// we have, and it reports a retraction itself. (This used to say "or one of our people
+/// SHARED them and the pin keeps them current" - stale since 2026-08-11, when a share
+/// stopped subscribing the sharer to the author and started obliging a fragment COPY
+/// instead; the sharer's answer lives on the third shelf now.) Then the tombstone, because a
+/// document we know to be dead is dead no matter what we still have lying around. Only then
+/// our own fragment ledger, so a live fragment can be relayed one more hop by a node that
+/// never held the author either.
 async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {
     let author_hex = hex::encode(author);
     let answer = answer_inner(state, &author_hex, doc_id).await;
@@ -219,6 +223,19 @@ async fn from_held_chain(
     let Some(db) = state.user_dbs.get(author_hex).await? else {
         return Ok(None);
     };
+    // A chain held ONLY speculatively is invisible to this door (2026-08-21, found by
+    // cascade.cjs the day the speculative pass landed). Two reasons, one rule
+    // (`speculative::speculative_only` carries the argument): this shelf's authority is the
+    // machinery keeping it current, which a hunch-held mirror does not have - the stale
+    // mirror answered "Unknown" for documents whose fragments this node actually held, and
+    // served yesterday's version of edited ones - and speculative mirrors serve nobody
+    // (DISCOVERY invariants): the sync door's wanted gate already refuses them, and a door
+    // that answered from the quiet pile would let any peer probe out what this node
+    // speculates about. Falling through leaves the tombstone and fragment shelves to
+    // answer, exactly as they did before the mirror existed.
+    if crate::speculative::speculative_only(state, author_hex).await? {
+        return Ok(None);
+    }
     // `public_doc_ids` already filters retractions, so absence here IS the withdrawal signal -
     // the same chokepoint the feed's own retraction sweep reconciles against, which is what
     // keeps "gone from the shelf" and "gone from a share" from being two different judgments.

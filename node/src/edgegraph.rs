@@ -157,15 +157,25 @@ pub async fn refresh_implicit(
     let mut trust_dial: HashMap<&str, i64> = HashMap::new();
     let mut taste_dial: HashMap<&str, i64> = HashMap::new();
     let mut blocked: HashSet<&str> = HashSet::new();
+    // Contacts the reader has ANY explicit dial on - including "none", which is an opinion
+    // - for the demand rollup's exclusion: promotion out of (and refusal to enter) the
+    // speculative pipeline is a real dial's job, and speculation must not overrule one.
+    let mut explicit: HashSet<&str> = HashSet::new();
     for (root, facts) in contacts {
         if facts.get("blocked").map(String::as_str) == Some("yes") {
             blocked.insert(root);
+            explicit.insert(root);
         }
         let band = |key: &str| {
             facts
                 .get(key)
                 .and_then(|v| crate::net::subscriptions::band_ordinal(v))
         };
+        for dial in ["trust", "interest", "interest_rebroadcasts"] {
+            if band(dial).is_some() {
+                explicit.insert(root);
+            }
+        }
         if let Some(t) = band("trust").filter(|t| *t > 0) {
             trust_dial.insert(root, t);
         }
@@ -176,124 +186,134 @@ pub async fn refresh_implicit(
     let introducers: BTreeSet<&str> = trust_dial.keys().chain(taste_dial.keys()).copied().collect();
     let now = now_ms();
 
-    if !introducers.is_empty() {
-        // The graph's rows for exactly these authors, one query. Quoted hex IN-list, the
-        // belt-and-braces idiom: a non-root can name no row.
-        let quoted: Vec<String> = introducers
-            .iter()
-            .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
-            .map(|r| format!("'{r}'"))
-            .collect();
-        type GraphRow = (String, String, Option<String>, Option<String>);
-        let rows: Vec<GraphRow> = if quoted.is_empty() {
-            Vec::new()
-        } else {
-            state
-                .node_db
-                .fetch_all(
-                    &format!(
-                        "SELECT author_root, subject_root, trust, interest FROM edge_graph
-                         WHERE author_root IN ({})",
-                        quoted.join(",")
-                    ),
-                    (),
-                )
-                .await
-                .context("reading the friends' slice of the edge graph")?
+    // The graph's rows for exactly these authors, one query. Quoted hex IN-list, the
+    // belt-and-braces idiom: a non-root can name no row.
+    let quoted: Vec<String> = introducers
+        .iter()
+        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|r| format!("'{r}'"))
+        .collect();
+    type GraphRow = (String, String, Option<String>, Option<String>);
+    let rows: Vec<GraphRow> = if quoted.is_empty() {
+        Vec::new()
+    } else {
+        state
+            .node_db
+            .fetch_all(
+                &format!(
+                    "SELECT author_root, subject_root, trust, interest FROM edge_graph
+                     WHERE author_root IN ({})",
+                    quoted.join(",")
+                ),
+                (),
+            )
+            .await
+            .context("reading the friends' slice of the edge graph")?
+    };
+
+    // Promiscuity, per introducer per lane, counted over PUBLISHED vouches above the
+    // bottom band - an anti-vouch ("none") is not a spent capacity. Raw counts; the
+    // banded discount is the reader's, at read time.
+    let mut vouches: HashMap<(&str, &str), i64> = HashMap::new();
+    for (author, _, trust, interest) in &rows {
+        let counted = |v: &Option<String>| {
+            v.as_deref()
+                .and_then(crate::net::subscriptions::band_ordinal)
+                .is_some_and(|o| o > 0)
         };
+        if counted(trust) {
+            *vouches.entry((author, "trust")).or_default() += 1;
+        }
+        if counted(interest) {
+            *vouches.entry((author, "taste")).or_default() += 1;
+        }
+    }
 
-        // Promiscuity, per introducer per lane, counted over PUBLISHED vouches above the
-        // bottom band - an anti-vouch ("none") is not a spent capacity. Raw counts; the
-        // banded discount is the reader's, at read time.
-        let mut vouches: HashMap<(&str, &str), i64> = HashMap::new();
-        for (author, _, trust, interest) in &rows {
-            let counted = |v: &Option<String>| {
-                v.as_deref()
-                    .and_then(crate::net::subscriptions::band_ordinal)
-                    .is_some_and(|o| o > 0)
-            };
-            if counted(trust) {
-                *vouches.entry((author, "trust")).or_default() += 1;
-            }
-            if counted(interest) {
-                *vouches.entry((author, "taste")).or_default() += 1;
+    // The composition: min(my dial, their band), per lane, floor discarded - a row that
+    // composes to the bottom band says "don't show", and a row nobody will read is never
+    // written (the feed journal's own rule).
+    let mut composed: Vec<crate::speculative::ComposedEdge<'_>> = Vec::new();
+    for (author, subject, trust, interest) in &rows {
+        if subject == reader_root || blocked.contains(subject.as_str()) {
+            continue;
+        }
+        let theirs = |v: &Option<String>| {
+            v.as_deref().and_then(crate::net::subscriptions::band_ordinal)
+        };
+        if let (Some(mine), Some(published)) = (trust_dial.get(author.as_str()), theirs(trust))
+        {
+            let level = (*mine).min(published);
+            if level > 0 {
+                let count = vouches.get(&(author.as_str(), "trust")).copied().unwrap_or(0);
+                composed.push(crate::speculative::ComposedEdge {
+                    target: subject,
+                    lane: "trust",
+                    introducer: author,
+                    level,
+                    introducer_vouches: count,
+                });
             }
         }
-
-        // The composition: min(my dial, their band), per lane, floor discarded - a row that
-        // composes to the bottom band says "don't show", and a row nobody will read is never
-        // written (the feed journal's own rule).
-        let mut out: Vec<(&str, &'static str, &str, i64, i64)> = Vec::new();
-        for (author, subject, trust, interest) in &rows {
-            if subject == reader_root || blocked.contains(subject.as_str()) {
-                continue;
-            }
-            let theirs = |v: &Option<String>| {
-                v.as_deref().and_then(crate::net::subscriptions::band_ordinal)
-            };
-            if let (Some(mine), Some(published)) = (trust_dial.get(author.as_str()), theirs(trust))
-            {
-                let level = (*mine).min(published);
-                if level > 0 {
-                    let count = vouches.get(&(author.as_str(), "trust")).copied().unwrap_or(0);
-                    out.push((subject, "trust", author, level, count));
-                }
-            }
-            if let (Some(mine), Some(published)) =
-                (taste_dial.get(author.as_str()), theirs(interest))
-            {
-                let level = (*mine).min(published);
-                if level > 0 {
-                    let count = vouches.get(&(author.as_str(), "taste")).copied().unwrap_or(0);
-                    out.push((subject, "taste", author, level, count));
-                }
+        if let (Some(mine), Some(published)) =
+            (taste_dial.get(author.as_str()), theirs(interest))
+        {
+            let level = (*mine).min(published);
+            if level > 0 {
+                let count = vouches.get(&(author.as_str(), "taste")).copied().unwrap_or(0);
+                composed.push(crate::speculative::ComposedEdge {
+                    target: subject,
+                    lane: "taste",
+                    introducer: author,
+                    level,
+                    introducer_vouches: count,
+                });
             }
         }
+    }
 
-        for chunk in out.chunks(EDGE_CHUNK_ROWS) {
-            let placeholders: Vec<String> = (0..chunk.len())
-                .map(|i| {
-                    let b = i * 6;
-                    format!(
-                        "(?{},?{},?{},2,?{},?{},?{})",
-                        b + 1,
-                        b + 2,
-                        b + 3,
-                        b + 4,
-                        b + 5,
-                        b + 6
-                    )
-                })
-                .collect();
-            let sql = format!(
-                "INSERT INTO implicit_edges
-                   (target_root, lane, introducer_root, depth, level, introducer_vouches, updated_at_ms)
-                 VALUES {}
-                 ON CONFLICT (target_root, lane, introducer_root) DO UPDATE SET
-                     level = excluded.level,
-                     introducer_vouches = excluded.introducer_vouches,
-                     updated_at_ms = excluded.updated_at_ms",
-                placeholders.join(",")
-            );
-            let params: Vec<turso::Value> = chunk
-                .iter()
-                .flat_map(|(subject, lane, author, level, count)| {
-                    [
-                        turso::Value::Text((*subject).to_string()),
-                        turso::Value::Text((*lane).to_string()),
-                        turso::Value::Text((*author).to_string()),
-                        turso::Value::Text(band_word(*level).to_string()),
-                        turso::Value::Integer(*count),
-                        turso::Value::Integer(now),
-                    ]
-                })
-                .collect();
-            store
-                .db()
-                .execute(&sql, turso::params_from_iter(params))
-                .await
-                .context("writing implicit edges")?;
-        }
+    for chunk in composed.chunks(EDGE_CHUNK_ROWS) {
+        let placeholders: Vec<String> = (0..chunk.len())
+            .map(|i| {
+                let b = i * 6;
+                format!(
+                    "(?{},?{},?{},2,?{},?{},?{})",
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6
+                )
+            })
+            .collect();
+        let sql = format!(
+            "INSERT INTO implicit_edges
+               (target_root, lane, introducer_root, depth, level, introducer_vouches, updated_at_ms)
+             VALUES {}
+             ON CONFLICT (target_root, lane, introducer_root) DO UPDATE SET
+                 level = excluded.level,
+                 introducer_vouches = excluded.introducer_vouches,
+                 updated_at_ms = excluded.updated_at_ms",
+            placeholders.join(",")
+        );
+        let params: Vec<turso::Value> = chunk
+            .iter()
+            .flat_map(|edge| {
+                [
+                    turso::Value::Text(edge.target.to_string()),
+                    turso::Value::Text(edge.lane.to_string()),
+                    turso::Value::Text(edge.introducer.to_string()),
+                    turso::Value::Text(band_word(edge.level).to_string()),
+                    turso::Value::Integer(edge.introducer_vouches),
+                    turso::Value::Integer(now),
+                ]
+            })
+            .collect();
+        store
+            .db()
+            .execute(&sql, turso::params_from_iter(params))
+            .await
+            .context("writing implicit edges")?;
     }
 
     // The stamp sweep: rows this rewrite didn't touch are compositions whose inputs went
@@ -306,6 +326,15 @@ pub async fn refresh_implicit(
         )
         .await
         .context("sweeping stale implicit edges")?;
+
+    // The demand rollup rides the same pass (DISCOVERY.md slice 1), for the same reason the
+    // implicit fold rides subscriptions::refresh: the composed rows exist as values exactly
+    // here, so the two memos are one choreography and cannot drift. This is the ONE read of
+    // the reader's private-dial-derived levels that leaves their database, and what leaves
+    // is the rollup's conclusion (acquire these strangers), not the dials it came from.
+    crate::speculative::refresh_demand(state, reader_root, &composed, &explicit)
+        .await
+        .context("rolling up speculative demand")?;
     Ok(())
 }
 

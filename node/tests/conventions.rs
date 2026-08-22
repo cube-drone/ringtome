@@ -54,6 +54,11 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         // composition rule - my dial x their band, min of the two - must live in one place.
         ("edge_graph", vec!["edgegraph.rs"]),
         ("implicit_edges", vec!["edgegraph.rs"]),
+        // The speculative pass (DISCOVERY slice 1): demand rollup and the quiet-fetch
+        // registry, one module - the doctrine (introducer-first, MAX-not-sum, quiet
+        // mirrors) is enforced by these tables' shape, so their SQL stays in one place.
+        ("speculative_demand", vec!["speculative.rs"]),
+        ("speculative_fetches", vec!["speculative.rs"]),
         ("_sqlx_migrations", vec!["db.rs"]),
         // per-user DBs. `entries` is protocol law: local authorship (imaol) + the sync gate.
         ("entries", vec!["record/imaol.rs", "net/sync.rs"]),
@@ -191,6 +196,10 @@ fn user_db_opens_are_deliberate() {
         // people who have never shared anything) never reach it. Same shape and same
         // justification as notifications.rs above.
         ("rebroadcast.rs", 1),
+        // One EXISTS-probe per acquisition attempt, capped per pass (SPECULATIVE_FETCH_CAP)
+        // and network-bound behind a dial - the mint-only-on-substance check ("did the
+        // exchange actually leave a mirror?"), never a loop over held personas.
+        ("speculative.rs", 1),
         ("record/documents.rs", 1),
         ("record/store.rs", 2),
         ("identity/adoption.rs", 2),

@@ -838,21 +838,23 @@ async fn public_doc_bytes(
     // database. An anonymous probe for a document held NEITHER way finds nothing rather than
     // minting a place to look: absence is the answer here, and `get` is the verb that can say
     // it.
+    //
+    // One carve-out to "the chain first" (2026-08-21, found by cascade.cjs the day the
+    // speculative pass landed): a chain held ONLY SPECULATIVELY (speculative.rs - no hosting,
+    // no member fetch, no follow) has no freshness contract - it is allowed to be hours
+    // stale by design - so its silence is ignorance, not retraction, and it must not shadow
+    // a fragment a chosen share delivered five seconds ago. For a hunch-held persona the
+    // FRAGMENT shelf answers first (explicit beats implicit: the share was asked for), and
+    // the mirror serves only what no fragment can. Relationship-held chains keep the
+    // authoritative rule unchanged, silence included.
     struct ServeFacts {
         file_hash: [u8; 32],
         thumb_hash: Option<[u8; 32]>,
         format: Option<u64>,
     }
-    let facts: Option<ServeFacts> =
-        match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
-            Some(db) => crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
-                ServeFacts {
-                    file_hash: h.file_hash,
-                    thumb_hash: h.thumb_hash,
-                    format: h.format,
-                }
-            }),
-            None => crate::fragments::serving_header(&state.node_db, &root_hex, &doc_id)
+    let from_fragments = || async {
+        Result::<Option<ServeFacts>, AppError>::Ok(
+            crate::fragments::serving_header(&state.node_db, &root_hex, &doc_id)
                 .await
                 .map_err(AppError::Internal)?
                 .map(|h| ServeFacts {
@@ -860,6 +862,27 @@ async fn public_doc_bytes(
                     thumb_hash: h.thumb_hash,
                     format: h.format,
                 }),
+        )
+    };
+    let facts: Option<ServeFacts> =
+        match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
+            Some(db) => {
+                let speculative_only = crate::speculative::speculative_only(state, &root_hex)
+                    .await
+                    .map_err(AppError::Internal)?;
+                let fragment_first = if speculative_only { from_fragments().await? } else { None };
+                match fragment_first {
+                    Some(facts) => Some(facts),
+                    None => crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
+                        ServeFacts {
+                            file_hash: h.file_hash,
+                            thumb_hash: h.thumb_hash,
+                            format: h.format,
+                        }
+                    }),
+                }
+            }
+            None => from_fragments().await?,
         };
     let Some(ServeFacts { file_hash, thumb_hash, format }) = facts else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
@@ -985,8 +1008,16 @@ pub async fn id_posts(
     };
     let root_hex = hex::encode(root);
     let missing = || AppError::NotFound(crate::msg!("idface.no-such-persona-here-3", "no such persona here"));
+    // A member may also page a SPECULATIVELY held persona (speculative.rs): the quiet mirror
+    // serves nobody over the network, but its own node's members reading it was never
+    // serving - that is the whole reason it was pulled.
     if !hosted_here(&state, &root_hex).await?
-        && (session.is_none() || foreign_fetch_row(&state, &root_hex).await?.is_none())
+        && (session.is_none()
+            || (foreign_fetch_row(&state, &root_hex).await?.is_none()
+                && crate::speculative::fetched_at(&state.node_db, &root_hex)
+                    .await
+                    .map_err(AppError::Internal)?
+                    .is_none()))
     {
         return Err(missing());
     }
@@ -1073,7 +1104,18 @@ pub async fn id_profile(
                 via.push(last.clone());
             }
         }
+        // A speculative mirror (speculative.rs) may hold them even when no member ever asked.
+        let speculative_at = crate::speculative::fetched_at(&state.node_db, &root_hex)
+            .await
+            .map_err(AppError::Internal)?;
         match &row {
+            // Held by the quiet pull: serve what it brought home, exactly like a member
+            // fetch. No revalidation spawns here - freshness for speculative content is the
+            // acquisition pass's own slow beat, at lower priority than real follows
+            // (DISCOVERY.md), and a page view must not promote a hunch into a dial loop.
+            None if speculative_at.is_some() => {
+                synced_ms = speculative_at;
+            }
             // Nothing held: there is nothing to serve stale, so this one waits. A first visit
             // to a stranger is the only case that pays the network's latency.
             None => {

@@ -658,3 +658,39 @@ CREATE TABLE foreign_fetches (
     fetched_at_ms INTEGER NOT NULL,  -- last successful fetch; freshness TTL reads this
     last_via      TEXT               -- the endpoint key that answered; first refresh candidate
 );
+
+-- ---------------------------------------------------------------------------------------------
+-- The speculative pass at posts depth (DISCOVERY.md slice 1, 2026-08-21): demand and quiet
+-- acquisition for strangers a reader's trust admits but nobody here follows.
+--
+-- `speculative_demand` is the node-level rollup over each hosted reader's `implicit_edges`
+-- (their own db): top-K targets per reader by composed level - promiscuity-discounted, MAX
+-- across introducers and NEVER sums (the Sybil doctrine: a thousand fake vouches are worth one
+-- best path) - capped by the acquisition budget, the bound on how many strangers' chains this
+-- node holds on a reader's behalf however bushy the vouching gets. Each row carries the BEST
+-- introducer: the dial target for acquisition and the byline for display. A memo like every
+-- other - written by the implicit fold's own pass, stamp-swept per reader - so decay is free:
+-- a withdrawn vouch recedes here on the beat it recedes from `implicit_edges`.
+CREATE TABLE speculative_demand (
+    reader_root     TEXT    NOT NULL,  -- whose implicit edges admitted the target
+    target_root     TEXT    NOT NULL,  -- the stranger whose chains this node will quietly hold
+    lane            TEXT    NOT NULL,  -- which lane won the rollup ('trust' | 'taste')
+    introducer_root TEXT    NOT NULL,  -- the best path's introducer: acquisition dials THEIR node
+    level           TEXT    NOT NULL,  -- band word, after the promiscuity discount
+    updated_at_ms   INTEGER NOT NULL,
+    PRIMARY KEY (reader_root, target_root)
+);
+-- The acquisition pass asks "who wants this target" across every reader at once.
+CREATE INDEX speculative_demand_by_target ON speculative_demand (target_root);
+
+-- The quiet twin of `foreign_fetches`: when the acquisition pass last reached each speculative
+-- target, and through whom. A SEPARATE table because the two registries have opposite
+-- consequences: a `foreign_fetches` row opens the sync door (`serve`'s wanted gate) and seats
+-- the persona in the member directory - a member chose to meet them - while a speculative
+-- mirror serves nobody and announces nothing (DISCOVERY.md invariants: no fronting, no push
+-- participation, promotion only by a human dial). Only the node's own member surfaces read it.
+CREATE TABLE speculative_fetches (
+    target_root   TEXT    PRIMARY KEY,
+    fetched_at_ms INTEGER NOT NULL,  -- last successful pull; the pass's staleness clock
+    last_via      TEXT               -- the endpoint that answered: the next pull's first rung
+);

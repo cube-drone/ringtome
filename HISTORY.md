@@ -6253,3 +6253,128 @@ cora's implicit set capped from both sides (the taste row comes out LOW through 
 rebroadcast dial beside her high interest dial - the lane keys on taste, provably), and a
 withdrawn vouch recedes from graph and set alike. 661 passing; consumers (the slider's
 pool, people search, first-contact standing) deliberately future work.
+
+## 2026-08-21: the garbage-dial finding - a background loop is not a visit
+
+Found mid-build on DISCOVERY slice 1 (the speculative pass at posts depth; full entry when
+its gates go green), by the first full-suite run after the acquisition loop landed: 23 red,
+a wall clock near forty minutes against CI's nine, and the strangest symptom in the pile -
+an author's `push_to_askers` tasks sitting in dial limbo for three minutes and then all
+completing in the same second, while a follower's feed settles expired one test over.
+
+The cause was a candidate-list indulgence copied from the visit-time ladder.
+`idface::fetch_foreign` tolerates hints that resolve to nothing by "falling back to dialing
+them as the endpoint id they presumably are" - fine for a visit, because a human handed the
+hint over once and the dead dial is paid once. The acquisition pass inherited that
+tolerance INTO A LOOP: every unresolved identity key on its rung list (bare vouched roots
+with no presence anywhere, unserved targets' root rungs, leaves with no live serving
+record) became a dial "as an endpoint" every few seconds per node - each one a
+guaranteed-dead lookup that still walks the whole discovery stack, relay and DNS included.
+On the airport wifi the suite ran over (Curtis, live, mid-run), those lookups hang rather
+than fail, and the shared endpoint's real dials - eager pushes, fan-out to askers - queued
+behind junk. The suite didn't have a correctness bug there; it had a starvation bug, and a
+bad network is what made it visible. A good network would have merely paid for it quietly.
+
+The rule, now in the pass: a candidate earns a dial exactly two ways - it is an endpoint id
+that once actually answered (a recorded via), or an identity key whose live serving record
+resolved to an endpoint just now. An unresolved identity key is never dialed by machinery
+that runs on a beat. And the dial rides inside the same timeout as the exchange it opens,
+because address resolution is network work too.
+
+Same run, second finding, recorded with its fix: a chain held only speculatively shadowed
+the fragment ledger in `idface::public_doc_bytes` - the "held chain is authoritative" rule
+assumed every mirror has a freshness contract (follow, visit, pin), and a hunch-held mirror
+has none, so its silence is ignorance, not retraction. Cascade.cjs caught it the day the
+pass landed: a stale mirror 404'd words the reader's own share machinery had already
+delivered. The carve-out: for a speculative-only persona the fragment shelf answers first
+(explicit beats implicit, applied to shelves); relationship-held chains keep the
+authoritative rule unchanged.
+
+## 2026-08-22: DISCOVERY slice 1 - the speculative pass at posts depth
+
+The bytes gap's first working rung (DISCOVERY.md: *The pipeline*, stages 1-2, and *The
+speculative pass*): content nobody asked for, acquired because trust vouches for it. Two
+memos and a beat, node.db gen 25:
+
+- **`speculative_demand`** - the rollup over each reader's `implicit_edges`, written by the
+  implicit fold's own pass (`edgegraph::refresh_implicit` hands the composed rows over as
+  values, so the memos ride one choreography). Top-K per reader by composed level, the
+  banded promiscuity discount applied per path (<=50 vouches free, <=150 one band, beyond
+  two - monkeysphere numbers), MAX across introducers and never sums, best introducer on the
+  row, explicit dials excluded whole (an explicit "none" is an opinion speculation must not
+  overrule). Budget 16 per reader; a cap, not pacing. Stamp-swept, so a withdrawn vouch
+  recedes here on the beat it recedes from the implicit set.
+- **`speculative_fetches`** - the quiet twin of `foreign_fetches`, deliberately a separate
+  table because the two registries have opposite consequences: foreign_fetches opens the
+  sync door and seats the directory; a speculative mirror serves nobody and announces
+  nothing. Only member surfaces read it (idface serves a hunch-held persona to the node's
+  own readers - reading was never serving).
+- **`speculative::acquire_pass`** - the introducer-laddered quiet pull, 300s beat at lower
+  priority than real follows: candidates are endpoints that once answered or identity keys
+  whose serving record resolves NOW, introducer paths strictly before the target's own
+  machinery, four pulls per beat, cooldown-rotated, detached-never-cancelled at the 8s
+  deadline. Mirrors mint only on substance; a polite empty exchange stamps nothing.
+
+Acceptance (speculative.cjs): an UNSERVED author - no serving record anywhere, so no ladder
+resolves them and "goes dark" is the topology, not a stage direction - is vouched for by a
+friend cora trusts; the post lands on cora's node and serves to her browser with her node
+never learning the author's machinery exists (asserted from the author's node's own demand
+ledger); the mirror stays out of foreign_fetches; withdrawing the vouch recedes the demand
+row while the mirror waits for slice 4, on purpose.
+
+The build took five red integration runs to go green, and the findings are the real ledger
+(the garbage-dial entry above holds the first two; the rest):
+
+- **The user-db create race, coalesced** (db.rs): two tasks minting the same persona's
+  database each built a whole independent Db - two turso connections on one encrypted file,
+  two journal handles on one .jnl - the loser's migration failing "table entries already
+  exists" was the loud half, exchanges wedging behind the duplicate pair the quiet one. The
+  race predates the pass (`fetch_foreign`'s parallel ladder could always hit it); the pass's
+  beat made it every-run. `create` now coalesces through moka's `try_get_with`, the open
+  rides its own task so a caller's timeout cannot cancel a half-built database out from
+  under everyone parked behind it, and the cop (`concurrent_creates_coalesce_to_one_open`,
+  16 racers) was planted-red against the old body before it was trusted.
+- **Detach, never cancel** (speculative.rs, net::sync): aborting a sync mid-exchange leaves
+  zombie connection state the next dial trips over - QUIC's own idle reaper takes minutes -
+  and `sync_peers` was sequential with NO bound, so one wedged asker starved a root's entire
+  fan-out pass after pass (the red cascade feeds' actual mechanism; run 1's "every push
+  completed in the same second, minutes late" was the reaper finally clearing zombies).
+  Deadlines now detach the task and move on, in the pass and in `sync_peers` both, and
+  `sync_peers` holds a 30s per-peer ceiling.
+- **The freshness-contract predicate** (`speculative::speculative_only`), third draft made
+  honest: outward surfaces (the fragment door's held-chain shelf, `public_doc_bytes`) may
+  speak with a held chain's authority only when a RELATIONSHIP keeps it current - hosted,
+  member-fetched, followed. Draft one keyed on the speculative row and let an orphan mirror
+  (a pull that died after minting the file) masquerade as relationship-held; draft two
+  counted rebroadcast pins as a contract and was refuted by the 2026-08-11 correction
+  ("a share obliges a COPY, not a subscription" - nothing refreshes a pinned author's
+  CHAIN), which also falsified the fragment door's own header comment, now fixed. The door
+  hiding hunch-held chains is doubly load-bearing: freshness (a stale mirror answered
+  "Unknown" for words whose fragments the node held, and served yesterday's version of
+  edited posts) and quietness (the sync door's wanted gate refuses speculative mirrors; a
+  fragment door that answered from the quiet pile would let any peer probe out what this
+  node speculates about).
+- **A journaled share must leave the node able to answer for it** (fanout's share fold and
+  `backfill_share`): the fold's shelf shortcut - "we hold the author's chain, journal from
+  it, skip the fragment" - predates the pass and was sound while every held chain implied a
+  relationship. A hunch-held mirror broke the implication from the OTHER side: the fold
+  journaled the share off the mirror's shelf and minted no fragment, so the node's own
+  reader saw the post while the fragment door - rightly hiding the hunch - had nothing to
+  serve the next hop. Intermittent by pull timing, which is what made it the last one
+  standing. The shelf shortcut now applies the same freshness-contract gate as the door:
+  one predicate, every surface, or the surfaces disagree about what the node is.
+- **Speculative bodies heal by the relationship that vouches for each rung**
+  (net::bodies::sweep, two drafts): the AUTHOR-relationship rungs (profile-fetch via,
+  askers, sync peers) exist only for real relationships, so for a hunch-held author they
+  degenerated into junk dials - the introducer's `last_via` replaces them, since it already
+  knows our interest and nothing else on the author's side should. Draft one cut the whole
+  walk down to that one candidate and severed the SHARE rungs with it, breaking "heal from
+  the other sharer" - but fragment origins and sharers are facts about the shares, not the
+  author, and stand for hunch-held authors exactly as for strangers we hold nothing of.
+  What no rung can supply waits for the next pull - staleness is the deal.
+
+Gates: 663 integration passing at the clean baseline's 4-minute wall clock (a suite that
+had ballooned to 40 minutes under the garbage dials), 331 unit + 4 conventions green,
+clippy clean, `just ci` the formal seal. One void run recorded honestly: a suspended laptop
+(seven 15-33 minute holes in the rig log) fails settle windows in whatever suite it lands
+on; check the log's clock before believing a red that weird.
