@@ -45,6 +45,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         // and its consumer.
         ("rebroadcast_pins", vec!["rebroadcast.rs", "fanout.rs"]),
         ("fragments", vec!["fragments.rs"]),
+        ("fragment_deliverers", vec!["fragments.rs"]),
         ("fragment_tombstones", vec!["fragments.rs"]),
         ("fragment_wants", vec!["fragments.rs"]),
         ("fragment_covers", vec!["fragments.rs"]),

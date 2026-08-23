@@ -55,15 +55,30 @@ fn band_word(ordinal: i64) -> &'static str {
 /// bookkeeping must not fail the machinery that detected the move.
 pub async fn refresh_from(state: &AppState, author_root: &str) {
     let result: Result<()> = async {
-        if !crate::net::frontier::has_service_chain(
+        // Gate on the FOLLOWS-PUBLIC frontier having MOVED, not on the hook having fired:
+        // `after_public_move` runs at posting cadence and cannot see which service moved, so
+        // ungated this re-mirrored the whole edge set - and re-ran the per-reader fold below,
+        // a user-db open per dialed reader - on every post (REFACTOR.md 2026-08-23, costed
+        // while diagnosing CI; part of the margin loss behind the settle-flake tail). The
+        // frontier memo's change mark, EQUALITY-compared through the sweep marks' `last`
+        // (a fingerprint is not ordered), makes a posts-only move cost one primary-key read.
+        // Boot resets the marks, so the first move refolds once - the boot catch-up every
+        // mark consumer wants. Recorded before the fold, the FreshnessMarks discipline: a
+        // move landing mid-fold changes the mark and the next hook redoes one fold
+        // (idempotent) instead of skipping a real change forever.
+        let mark = crate::net::frontier::service_mark(
             &state.node_db,
             author_root,
             ringtome_proto::registry::service::FOLLOWS_PUBLIC,
         )
-        .await?
-        {
-            return Ok(());
+        .await?;
+        let Some(mark) = mark else {
+            return Ok(()); // no follows-public chain held: nothing to mirror
+        };
+        if state.sweep_marks.last("edgegraph", author_root) == Some(mark) {
+            return Ok(()); // the edges chain has not moved since the last fold
         }
+        state.sweep_marks.record("edgegraph", author_root, mark);
         let Some(db) = state
             .user_dbs
             .get(author_root)

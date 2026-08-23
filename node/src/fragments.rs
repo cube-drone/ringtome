@@ -347,7 +347,7 @@ async fn fetch_cover(
     };
     let media_hex = hex::encode(media);
     match crate::net::fragment::fetch(state, origin_root, &author, media).await {
-        crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+        crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
             if let Err(e) = remember(
                 &state.node_db,
                 origin_root,
@@ -369,6 +369,9 @@ async fn fetch_cover(
             blobs.extend(verified.header.preview_hash);
             for hash in blobs {
                 let _ = crate::net::bodies::want(&state.node_db, author_root, &hash).await;
+            }
+            if let Some(ep) = &served_by {
+                let _ = note_deliverer(&state.node_db, author_root, ep).await;
             }
             heal_soon(state, author_root, origin_root);
         }
@@ -811,6 +814,43 @@ pub async fn blob_refs(node_db: &Db) -> Result<Vec<[u8; 32]>> {
     Ok(out)
 }
 
+/// Remember WHO SERVED one of this author's fragments - the endpoint that actually answered
+/// the ask, stamped per author. The rung the 2026-08-23 cascade diagnosis found missing:
+/// `origins_of` and the sharers union below both derive from what this node's own ledger
+/// NAMES, and a reader one follow deep names exactly one sharer - so when that sharer goes
+/// dark, the candidate walk holds only dark endpoints while the node that physically handed
+/// over the header (provably alive, provably holding or knowing who holds the bytes) was
+/// remembered nowhere. The `speculative_fetches.last_via` idiom, applied to fragments.
+pub async fn note_deliverer(node_db: &Db, author_root: &str, endpoint_id: &str) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO fragment_deliverers (author_root, endpoint_id, served_at_ms)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT (author_root, endpoint_id) DO UPDATE SET
+                 served_at_ms = excluded.served_at_ms",
+            (author_root, endpoint_id, now_ms()),
+        )
+        .await
+        .context("remembering a fragment deliverer")?;
+    Ok(())
+}
+
+/// The endpoints that most recently served this author's fragments, freshest first - already
+/// endpoint-shaped, so a heal walk dials them directly with no resolution ladder (and no
+/// chance of the dial-an-unresolved-key mistake). Capped: an author served by many relays
+/// wants the recent few, not a census.
+pub async fn deliverers_of(node_db: &Db, author_root: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM fragment_deliverers
+             WHERE author_root = ?1 ORDER BY served_at_ms DESC LIMIT 4",
+            (author_root,),
+        )
+        .await
+        .context("listing an author's fragment deliverers")?;
+    Ok(rows.into_iter().map(|(e,)| e).collect())
+}
+
 /// Everyone who ever handed this node a pointer at this author's documents - the body-healing
 /// candidates a pure fragment holder actually has. The profile-via, the askers and the sync
 /// peers all come from relationships with the AUTHOR, and a reader past the chain has none of
@@ -986,7 +1026,7 @@ pub async fn journalable(
 
     let author = crate::pubkey::decode(author_root)?;
     match crate::net::fragment::fetch(state, origin_root, &author, doc_id).await {
-        crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+        crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
             if let Err(e) = remember(
                 &state.node_db,
                 origin_root,
@@ -1009,6 +1049,9 @@ pub async fn journalable(
                     .await
             {
                 tracing::debug!(author = %author_root, error = ?e, "could not note a fragment body");
+            }
+            if let Some(ep) = &served_by {
+                let _ = note_deliverer(&state.node_db, author_root, ep).await;
             }
             heal_soon(state, author_root, origin_root);
             // The implicit rebroadcast: what this post's signed header covers travels with
@@ -1189,7 +1232,7 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
             continue;
         }
         match crate::net::fragment::revalidate(&state, &origin_root, &author, &doc_id).await {
-            crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+            crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
                 tracing::debug!(
                     author = %author_hex, doc = %doc_hex, origin = %origin_root,
                     title = %verified.header.title,
@@ -1221,6 +1264,9 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
                     &verified.header.file_hash,
                 )
                 .await;
+                if let Some(ep) = &served_by {
+                    let _ = note_deliverer(&state.node_db, &author_hex, ep).await;
+                }
                 heal_soon(&state, &author_hex, &origin_root);
                 // An edit can change what a post embeds; the reconcile inside drops covers
                 // the new refs no longer name and releases orphaned media.
@@ -1309,7 +1355,7 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
             continue;
         };
         match crate::net::fragment::revalidate(state, &origin_root, &author, &doc_id).await {
-            crate::net::fragment::Fetched::Have(verified, entry, auth_path) => {
+            crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
                 remember(&state.node_db, &origin_root, &author_hex, &verified, &entry, &auth_path)
                     .await?;
                 let _ = crate::net::bodies::want(
@@ -1318,6 +1364,9 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
                     &verified.header.file_hash,
                 )
                 .await;
+                if let Some(ep) = &served_by {
+                    let _ = note_deliverer(&state.node_db, &author_hex, ep).await;
+                }
                 heal_soon(state, &author_hex, &origin_root);
                 cover_refs(state, &origin_root, &author_hex, &doc_hex, &verified.header.refs)
                     .await;

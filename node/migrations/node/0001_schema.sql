@@ -354,6 +354,21 @@ CREATE TABLE fragments (
 -- The revalidation sweep asks "what is due", oldest check first.
 CREATE INDEX fragments_by_checked ON fragments (checked_ms);
 
+-- WHO SERVED this author's fragments: the endpoint that actually answered an ask, stamped at
+-- intake (2026-08-23). The heal rung the cascade diagnosis found missing: `origins_of` and
+-- the sharers union both derive from what this node's own ledger NAMES, and a reader one
+-- follow deep names exactly one sharer - when that sharer goes dark, every ledger-derived
+-- candidate is dark with it, while the node that physically handed over the header (alive,
+-- holding or knowing who holds the bytes) was remembered nowhere. Endpoint ids, not roots:
+-- dialed directly, no resolution ladder. The `speculative_fetches.last_via` idiom, per
+-- author. Read freshest-first, capped at read time - a census is not the point.
+CREATE TABLE fragment_deliverers (
+    author_root  TEXT    NOT NULL,
+    endpoint_id  TEXT    NOT NULL,
+    served_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (author_root, endpoint_id)
+);
+
 -- Why a MEDIA fragment exists: the posts that embed it (2026-08-14, the implicit-rebroadcast
 -- slice - a share covers the post as seen, one pointer, one budget, one renderable whole).
 -- A row is minted when a post fragment's signed `refs` name the media, reconciled when an

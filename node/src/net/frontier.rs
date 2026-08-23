@@ -96,6 +96,29 @@ pub async fn note_head(
 /// answer "nothing to fold here" without opening the author's encrypted database
 /// (notifications::refresh_from is the consumer; measured 2026-08-09 beside the minting
 /// amplifier).
+/// An opaque CHANGE MARK for one service's frontier, off the memo: the held fingerprint
+/// folded to an i64, `None` when no such chain is held at all. Compare by EQUALITY (a
+/// different frontier is a different mark), never by ordering - a hash is not monotonic, and
+/// `held_at_ms` cannot serve here because two moves inside one millisecond would make the
+/// second invisible to an ordering test. One primary-key read: the probe a per-move consumer
+/// wants before doing per-move work (edgegraph's fold gates on it, 2026-08-23 - the
+/// follows-public chain moves at dial-mint cadence, but `after_public_move` fires at posting
+/// cadence).
+pub async fn service_mark(node_db: &Db, root_hex: &str, service: u32) -> Result<Option<i64>> {
+    let row: Option<(Vec<u8>,)> = node_db
+        .fetch_optional(
+            "SELECT held_fp FROM persona_frontiers WHERE root_pubkey = ?1 AND service = ?2",
+            (root_hex, service as i64),
+        )
+        .await
+        .context("reading a service frontier mark")?;
+    Ok(row.map(|(fp,)| {
+        let mut eight = [0u8; 8];
+        eight.copy_from_slice(&fp[..8.min(fp.len())]);
+        i64::from_le_bytes(eight)
+    }))
+}
+
 pub async fn has_service_chain(node_db: &Db, root_hex: &str, service: u32) -> Result<bool> {
     let row: Option<(i64,)> = node_db
         .fetch_optional(

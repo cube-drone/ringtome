@@ -271,8 +271,13 @@ async fn from_held_chain(
 /// What came of asking one origin for one document.
 #[derive(Debug)]
 pub enum Fetched {
-    /// Verified, and the author's own words.
-    Have(Box<VerifiedFragment>, Vec<u8>, Vec<Vec<u8>>),
+    /// Verified, and the author's own words. The fourth field is WHO SERVED IT - the endpoint
+    /// that actually answered, `None` when the answer came from this node's own shelf. Carried
+    /// so intake can remember the deliverer as a heal candidate (`fragments::note_deliverer`):
+    /// the 2026-08-23 cascade diagnosis found a reader whose whole candidate ledger named only
+    /// a dark sharer while the node that physically delivered the header - provably alive,
+    /// provably holding - was remembered nowhere.
+    Have(Box<VerifiedFragment>, Vec<u8>, Vec<Vec<u8>>, Option<String>),
     /// The author withdrew it - verified, and the author's own retraction. Drop what we hold,
     /// and keep these bytes: they are what `entomb` stores and the tombstone door serves, so
     /// the proof outlives the words at every hop.
@@ -419,7 +424,7 @@ pub async fn fetch(
         return match answer_for(state, author, doc_id).await {
             FragmentMessage::Have { entry, auth_path } => {
                 match verify_fragment(*author, *doc_id, &entry, &auth_path) {
-                    Ok(v) => Fetched::Have(Box::new(v), entry, auth_path),
+                    Ok(v) => Fetched::Have(Box::new(v), entry, auth_path, None),
                     Err(e) => {
                         tracing::warn!(error = ?e, "our own fragment failed its own proof");
                         Fetched::Unknown
@@ -586,7 +591,12 @@ async fn ask(
             // get nothing for the trouble.
             let verified = verify_fragment(*author, *doc_id, &entry, &auth_path)
                 .map_err(|e| anyhow!("a fragment failed its own proof: {e}"))?;
-            Ok(Fetched::Have(Box::new(verified), entry, auth_path))
+            Ok(Fetched::Have(
+                Box::new(verified),
+                entry,
+                auth_path,
+                Some(endpoint_id.to_string()),
+            ))
         }
         Some(FragmentMessage::Gone { entry, auth_path }) => {
             // The same edge, the darker direction - and the erring side is chosen by what each

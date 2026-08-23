@@ -177,8 +177,19 @@ pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::Endpoint
 /// origin among others.
 pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
     let mut tried = 0u32;
+    // The deliverer rung first (2026-08-23): whoever most recently served this author's
+    // fragments provably holds - or knows who holds - the bytes their headers name, and the
+    // origin's own resolution ladder below can be all dark exactly when this rung matters.
+    let mut endpoints: Vec<String> = crate::fragments::deliverers_of(&state.node_db, author_root)
+        .await
+        .unwrap_or_default();
     for c in crate::net::deliver::candidates(state, origin_root).await {
         let ep = crate::idface::leaf_via_to_endpoint(state, origin_root, &c).await;
+        if !endpoints.contains(&ep) {
+            endpoints.push(ep);
+        }
+    }
+    for ep in endpoints {
         let Ok(addr) = crate::net::sync::dial_addr(state, &ep).await else {
             continue;
         };
@@ -250,6 +261,20 @@ pub async fn sweep(state: AppState) -> Result<()> {
                 if !candidates.contains(&peer) {
                     candidates.push(peer);
                 }
+            }
+        }
+        // The DELIVERERS first among the share rungs (2026-08-23): the endpoints that most
+        // recently served this author's fragments, stamped at intake. Fresher than any
+        // ledger-derived name - they answered - and the fix for the cascade diagnosis, where
+        // origins and sharers below both resolved to one dark node while the endpoint that
+        // handed over the header appeared on no list at all. Already endpoint-shaped: no
+        // resolution ladder, no unresolved-key dial.
+        for ep in crate::fragments::deliverers_of(&state.node_db, &root)
+            .await
+            .unwrap_or_default()
+        {
+            if !candidates.contains(&ep) {
+                candidates.push(ep);
             }
         }
         // The fragment ORIGINS (2026-08-14) - and for a reader past the chain, the only list
