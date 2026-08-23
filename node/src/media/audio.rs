@@ -1488,8 +1488,10 @@ mod tests {
         );
         let samples: Vec<f32> = output
             .stdout
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
             .collect();
         assert!(!samples.is_empty(), "{name}: ffmpeg decoded no samples");
         Some((rms_db_of(&samples), peak_of(&samples)))

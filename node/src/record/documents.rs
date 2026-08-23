@@ -1036,10 +1036,7 @@ fn encode_refs(refs: &[[u8; 16]]) -> Vec<u8> {
 
 /// Truncation degrades to fewer refs, never a panic: the bytes come off disk.
 fn decode_refs(bytes: &[u8]) -> Vec<[u8; 16]> {
-    bytes
-        .chunks_exact(16)
-        .map(|c| <[u8; 16]>::try_from(c).expect("chunks_exact(16) yields 16-byte slices"))
-        .collect()
+    bytes.as_chunks::<16>().0.to_vec()
 }
 
 fn encode_parents(parents: &[[u8; 32]]) -> Vec<u8> {
