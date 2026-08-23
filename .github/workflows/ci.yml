@@ -53,3 +53,23 @@ jobs:
       - name: Full check (just ci)
         working-directory: node
         run: just ci
+        env:
+          # Double every settle window: five rig nodes on four vCPUs are legitimately slower
+          # than a dev machine, and 2026-08-23's CI-only reds were all settle windows sized
+          # for local hardware. Green settles return early, so this costs a green run almost
+          # nothing (helpers.cjs::settleWith).
+          RINGTOME_TEST_SETTLE_SCALE: "2"
+
+      # The rig nodes' tracing logs, saved ONLY when the gate fails. Remote-only reds were
+      # undiagnosable without these (2026-08-23: three CI-only integration failures whose
+      # local reproductions stayed green - every diagnosis had to be guessed from mocha's
+      # assert text alone, while the logs that named the mechanism evaporated with the
+      # runner). Download with `gh run download <run-id>`.
+      - name: Upload rig logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rig-logs
+          path: /tmp/ringtome-integration*.log
+          retention-days: 7
+          if-no-files-found: ignore

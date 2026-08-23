@@ -16,14 +16,7 @@ const { makeUserFetch } = require("./helpers.cjs");
 
 // The loop's cadence is 30s, but it is NUDGED by every local write, so a pass follows a write
 // within a moment. Poll rather than sleep a fixed time.
-const settle = async (fn, tries = 40) => {
-    for (let i = 0; i < tries; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const settle = require("./helpers.cjs").settleWith(40);
 
 // held_at_ms is selected deliberately: it is what catches a pass that REWRITES rows to say
 // "still the same". A sweep that touches every row every tick costs a node holding a thousand

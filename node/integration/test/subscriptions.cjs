@@ -13,14 +13,7 @@ const assert = require("node:assert");
 const { sql } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
-const settle = async (fn, tries = 60) => {
-    for (let i = 0; i < tries; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const settle = require("./helpers.cjs").settleWith(60);
 
 let owner, root;
 const THEM = "ab".repeat(32);

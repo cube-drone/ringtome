@@ -11,14 +11,7 @@ const assert = require("node:assert");
 const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch, decodeCode } = require("./helpers.cjs");
 
-const settle = async (fn, tries = 80) => {
-    for (let i = 0; i < tries; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const settle = require("./helpers.cjs").settleWith(80);
 
 const journalOf = async (reader, host) => {
     const { rows } = await sql(

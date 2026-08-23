@@ -73,4 +73,22 @@ function decodeCode(code) {
     return JSON.parse(zlib.inflateRawSync(deflated).toString("utf8"));
 }
 
-module.exports = { makeUserFetch, uniqueUsername, decodeCode };
+
+/// The one settle loop, previously copy-pasted into fifteen files with only the default
+/// budget differing - which meant no way to give CI more patience than a dev machine
+/// without editing fifteen files (the 2026-08-23 flake hunt's last finding: every CI-only
+/// red was a settle window sized for local hardware losing to a 4-vCPU runner). Each file
+/// picks its default budget; RINGTOME_TEST_SETTLE_SCALE multiplies every budget centrally
+/// (ci.yml sets 2). Green settles return early, so the scale costs a green run nothing -
+/// only failing waits and the two absence-shaped asserts run longer.
+const SETTLE_SCALE = Math.max(1, parseInt(process.env.RINGTOME_TEST_SETTLE_SCALE || "1", 10) || 1);
+const settleWith = (defaultTries) => async (fn, tries = defaultTries) => {
+    for (let i = 0; i < tries * SETTLE_SCALE; i++) {
+        const got = await fn();
+        if (got) return got;
+        await new Promise((r) => setTimeout(r, 250));
+    }
+    return null;
+};
+
+module.exports = { makeUserFetch, uniqueUsername, decodeCode, settleWith };

@@ -26,14 +26,7 @@ const { makeFetch } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 const { unplug, plugIn } = require("./unplug.cjs");
 
-const settle = async (fn, tries = 240) => {
-    for (let i = 0; i < tries; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const settle = require("./helpers.cjs").settleWith(240);
 
 const feedOf = async (reader, host) => {
     const { rows } = await sql(

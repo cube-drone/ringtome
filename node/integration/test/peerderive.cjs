@@ -12,14 +12,7 @@ const assert = require("node:assert");
 const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
-const settle = async (fn, tries = 120) => {
-    for (let i = 0; i < tries; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const settle = require("./helpers.cjs").settleWith(120);
 
 const adopt = async (haver, joiner, root) => {
     const request = await (await joiner("api/identity/adopt/begin", { method: "POST" })).json();

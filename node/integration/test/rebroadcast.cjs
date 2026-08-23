@@ -40,14 +40,7 @@ dns.setDefaultResultOrder("ipv4first");
 const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
-const settle = async (fn, tries = 100) => {
-    for (let i = 0; i < tries; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const settle = require("./helpers.cjs").settleWith(100);
 
 const createDoc = async (fetch, root, title, body) => {
     const r = await (

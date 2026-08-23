@@ -344,14 +344,7 @@ const listIds = async (fetch, root) =>
 (HOST_B && HOST_C ? describe : describe.skip)("a repudiation reaches the feeds", function () {
     this.timeout(120000);
 
-    const settle = async (fn, tries = 120) => {
-        for (let i = 0; i < tries; i++) {
-            const got = await fn();
-            if (got) return got;
-            await new Promise((r) => setTimeout(r, 250));
-        }
-        return null;
-    };
+    const settle = require("./helpers.cjs").settleWith(120);
     const feedTitles = async (reader, host) => {
         const { rows } = await sql(
             `SELECT title FROM feed_journal WHERE reader_root = '${reader}'`,

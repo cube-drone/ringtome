@@ -22,14 +22,7 @@ dns.setDefaultResultOrder("ipv4first");
 const { makeFetch, sql, HOST, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 
-const settle = async (fn, tries = 240) => {
-    for (let i = 0; i < tries; i++) {
-        const got = await fn();
-        if (got) return got;
-        await new Promise((r) => setTimeout(r, 250));
-    }
-    return null;
-};
+const settle = require("./helpers.cjs").settleWith(240);
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
