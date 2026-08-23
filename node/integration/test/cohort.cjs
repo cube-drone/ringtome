@@ -135,6 +135,21 @@ const base58 = async (host) => {
                 "the awake sibling journaled the post"
             );
 
+            // The premise, made REAL before the author leaves: the sibling holds the WORDS,
+            // not just the journal row. The header and the bytes ride different lanes, and
+            // the first draft unplugged on the journal settle alone - which raced the
+            // sibling's blob backfill and lost on CI (2026-08-23, read from the run's rig
+            // logs: "io: connection lost" on charlie's backfill, the author darkened ~100ms
+            // after the header landed). With the words never reaching the sibling, nobody
+            // reachable held them and the property under test could not hold for anyone.
+            assert.ok(
+                await settle(async () => {
+                    const body = await servedBody(authorRoot, post, HOST_C);
+                    return body && body.includes("gossiped") ? true : null;
+                }),
+                "the awake sibling holds the words, not just the header"
+            );
+
             // The author leaves, forever. No sharer exists; no fragment machinery is in
             // play; the ONLY copy of this chain outside the departed is the sibling's.
             await unplug(HOST);

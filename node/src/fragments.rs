@@ -1366,6 +1366,15 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
             continue;
         };
         match crate::net::fragment::revalidate(state, &origin_root, &author, &doc_id).await {
+            crate::net::fragment::Fetched::Unknown => {
+                // The want stays and rotates to the back of the oldest-first queue. Speak
+                // (2026-08-23, the flake hunt's rule): an origin answering "Unknown" here
+                // usually means ITS upstream hop has not synced yet - the multi-hop seed
+                // race - and this line is what lets a log say which hop starved when a
+                // share takes a minute to journal.
+                tracing::debug!(author = %author_hex, doc = %doc_hex, origin = %origin_root,
+                    "fragment want: origin cannot answer yet; requeued");
+            }
             crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
                 remember(&state.node_db, &origin_root, &author_hex, &verified, &entry, &auth_path)
                     .await?;
@@ -1397,7 +1406,6 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
                 entomb(&state.node_db, &author_hex, &doc_hex, &entry, &auth_path).await?;
                 settle_want(&state.node_db, &author_hex, &doc_hex).await?;
             }
-            crate::net::fragment::Fetched::Unknown => {}
         }
     }
     Ok(())
