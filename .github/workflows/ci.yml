@@ -22,7 +22,15 @@ jobs:
 
       # Cache cargo registry + target dir; the iroh dependency tree is heavy enough that this
       # is the difference between ~1 and ~10 minutes.
+      #
+      # cache-on-failure, because the default (save only on success) compounds red runs into
+      # slow red runs: a toolchain bump invalidates the key, the first cold run fails on the
+      # new toolchain's lints, saves nothing, and every run after rebuilds the world from
+      # scratch until one goes green (2026-08-23: 24 minutes, ~17 of them cold compile, after
+      # stable moved to 1.98 mid-red-streak).
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - uses: extractions/setup-just@v2
 

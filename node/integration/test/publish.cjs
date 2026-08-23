@@ -167,7 +167,12 @@ describe("publication", () => {
         assert.ok(revised.updated_ms > revised.published_ms, "while its update stamp moved");
     });
 
-    it("pages down the shelf with a keyset cursor, never repeating or skipping", async () => {
+    it("pages down the shelf with a keyset cursor, never repeating or skipping", async function () {
+        // 23 sequential publish round-trips are not a 5s operation on CI hardware: this test
+        // held the suite's default budget until 2026-08-23, when it became the only red in two
+        // otherwise-green CI runs (7a7104c, 36a06cf) - 1.1s on a dev machine, past 5s on a
+        // cold, busy runner whose rig beats compete for 4 vCPUs. A cap, not pacing.
+        this.timeout(30000);
         // A shelf longer than one page: 23 posts, so page one is 20 and page two is the rest.
         const owner2 = await makeUserFetch({ prefix: "shelf" });
         const id = await (await owner2("api/identity", { method: "POST" })).json();

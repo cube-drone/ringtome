@@ -68,3 +68,19 @@ that rate. The compromise is that every abort is still a potential zombie agains
 node the winner just used. If mirror-fetch flakiness ever clusters around busy personas
 with many live candidates, convert the also-rans to detach (drop the JoinSet without
 abort_all, let them run out) before suspecting anything deeper.
+
+## The edge re-mirror fires at posting cadence, not dial-mint cadence (noted 2026-08-23)
+
+`edgegraph::refresh_from` rides `after_public_move`, which fires on EVERY public move - and
+the hook cannot see which service moved. So any post by a persona with a follows-public
+chain re-mirrors their whole published edge set and then re-runs the full memo choreography
+(`subscriptions::refresh_root`: ledger read, subscriptions rewrite, implicit fold, demand
+rollup, publish reconcile - a user-db open per reader) for every local reader holding any
+dial on them. The function's own header argues "a friend's follows-public chain moves at
+dial-mint cadence", which is true of the chain and false of the trigger: the trigger is the
+posts chain too. Costed 2026-08-23 while diagnosing CI: the busy-suite churn this generates
+was a contributor to the keyset-cursor test crossing its 5s budget on CI hardware (the
+publish.cjs scar). The fix shape, when it's earned: a fold mark per author (the
+`journal_marks` idiom) storing the FOLLOWS_PUBLIC frontier last mirrored, so a posts-only
+move costs one primary-key read and the choreography runs only when the edges chain
+actually moved.

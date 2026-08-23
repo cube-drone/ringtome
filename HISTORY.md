@@ -6378,3 +6378,40 @@ had ballooned to 40 minutes under the garbage dials), 331 unit + 4 conventions g
 clippy clean, `just ci` the formal seal. One void run recorded honestly: a suspended laptop
 (seven 15-33 minute holes in the rig log) fails settle windows in whatever suite it lands
 on; check the log's clock before believing a red that weird.
+
+## 2026-08-22: CI red on a lint the local toolchain doesn't have yet
+
+The slice-1 commit sealed green under `just ci` locally and failed CI's `lint` stage anyway:
+clippy 1.98 (the action's `@stable`) grew `chunks_exact_to_as_chunks` and `-D warnings`
+made it fatal at two sites - `record::documents::decode_refs` and the ffmpeg referee in the
+audio tests. Local clippy is 1.96 and says nothing. Fixed as the lint suggests
+(`as_chunks::<N>().0`; stable since 1.88), which is also simply better - the compiler now
+knows the width, so the `try_from(..).expect(..)` ceremony goes with it. Lesson for the
+"`just ci` IS the gate" line in CLAUDE.md: it holds only while local `stable` and the
+action's `stable` agree. A red that is ONLY a lint, ONLY on CI, means the runner's toolchain
+is ahead - `rustup update` before suspecting the change.
+
+## 2026-08-23: the 25-minute CI red - two problems wearing one duration
+
+CI on the lint fix (7a7104c) failed in 24 minutes against a 8-minute green baseline, which
+read as "the second-order workstream inflated the build". Decomposed, it was three stacked
+facts, none of them a local red (`just ci` on the same tree: 663 passing, 4m suite, exit 0):
+
+- **~17 of the 24 minutes were cold compile** - and the cold was self-sustaining.
+  `rust-cache` keys on the toolchain, stable moved to 1.98 mid-red-streak, and the action's
+  default saves cache only on success: fail cold, save nothing, fail cold again. The
+  test-profile rebuild alone was 11m41s. Fixed in ci.yml with `cache-on-failure: true`.
+- **The one red test was a margin, not a bug**: publish.cjs's keyset-cursor walk - 23
+  sequential publish round-trips on mocha's 5000ms default budget, the tightest-budget test
+  in the suite. 1.1s on a dev machine; past 5s on a cold, busy runner where five rig nodes
+  share 4 vCPUs with the workstream's new 2s beats. Same single failure in BOTH red runs
+  (36a06cf warm-cache proved it wasn't the cache). Now `this.timeout(30000)` with the scar
+  in a comment - a cap, not pacing.
+- **The suite itself grew ~1 minute** (660 passing/4m green baseline -> 662/5m): mostly the
+  two new settle-heavy files (trust.cjs, speculative.cjs), partly real background churn -
+  `edgegraph::refresh_from` re-mirrors and re-folds at posting cadence, not dial-mint
+  cadence (REFACTOR.md, 2026-08-23, with the fix shape).
+
+The diagnostic lesson: a slow FAILING run's duration is not a build-time measurement.
+Decompose by stage timestamps before believing "the code got slower" - here the code's
+share of 16 extra minutes was about sixty seconds.
