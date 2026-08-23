@@ -6415,3 +6415,28 @@ facts, none of them a local red (`just ci` on the same tree: 663 passing, 4m sui
 The diagnostic lesson: a slow FAILING run's duration is not a build-time measurement.
 Decompose by stage timestamps before believing "the code got slower" - here the code's
 share of 16 extra minutes was about sixty seconds.
+
+## 2026-08-23 (later): the cascade intermittent, run to ground
+
+The "any sharer will do" family flaked in five of eight suite runs across the day (local and
+CI, three different asserts, one describe block) - and the dig kept hitting the same wall:
+every failure path in the heal machinery was silent, so a red run's log was indistinguishable
+from a healthy one. Instrumentation landed first, findings second:
+
+- **`p2p::dial` grew a test-only CONNECT ceiling** (`RINGTOME_TEST_DIAL_TIMEOUT_MS`, rig set
+  to 1500ms): on a test rig the other side is on this machine or not going to answer, and
+  QUIC's UDP means "not going to answer" is a full handshake ladder of silence even on
+  loopback. Connect only - exchange ceilings keep production patience, because five rig
+  nodes on four CI vCPUs can be CPU-starved into finishing slowly while very much THERE.
+- **The heal paths speak now**: per-candidate outcomes in `bodies::sweep`, an exit line when
+  the eager heal leaves wants standing, `edgegraph::refresh_from` errors at WARN (it has no
+  backstop beat - a swallowed error there is a missing edge set, not a late one).
+- One instrumented red run then named the bug in minutes: the sweep tried the DARK node's
+  endpoint 165 times, the eager heal fired 431 times at the dark origin, and the living
+  sharer's node appeared in neither candidate list even once. Full diagnosis and fix shape
+  in REFACTOR.md ("Any sharer will do" can only name sharers the reader follows) - the
+  deliverer of a fragment must become a remembered heal rung.
+
+Also from the hunt: the diagnosis rides a probe idiom worth keeping - `/test/sql` polled
+from OUTSIDE the suite while it runs (Content-Type: application/json required), which turns
+any intermittent into a time series without touching the code under test.

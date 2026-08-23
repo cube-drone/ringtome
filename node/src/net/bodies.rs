@@ -176,16 +176,24 @@ pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::Endpoint
 /// and best-effort: a miss here is exactly what the sweep above recovers, from the same
 /// origin among others.
 pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
+    let mut tried = 0u32;
     for c in crate::net::deliver::candidates(state, origin_root).await {
         let ep = crate::idface::leaf_via_to_endpoint(state, origin_root, &c).await;
         let Ok(addr) = crate::net::sync::dial_addr(state, &ep).await else {
             continue;
         };
+        tried += 1;
         fetch_wanted(state, author_root, addr).await;
         if let Ok(0) = remaining(&state.node_db, author_root).await {
             return;
         }
     }
+    // Every exit past this line left wants standing - the sweep's backoff ladder owns them
+    // now. Silent until 2026-08-23 (the cascade intermittent's eager half): whether this
+    // fired-and-failed or never resolved a single endpoint was indistinguishable from it
+    // having healed.
+    tracing::debug!(author = %author_root, origin = %origin_root, tried,
+        "eager body heal left wants standing");
 }
 
 /// One pass of the rounds. For every persona with due rows: guess who might have the bytes,
@@ -284,17 +292,31 @@ pub async fn sweep(state: AppState) -> Result<()> {
             }
         }
 
+        // A due root that resolves ZERO candidates is the sweep's worst state - the rows age
+        // forever with nobody to ask - and it was invisible until 2026-08-23, when the
+        // cascade heal-from-the-other-sharer intermittent took a two-hour log dig precisely
+        // because every failure path here was silent. Speak on every outcome.
+        if candidates.is_empty() {
+            tracing::debug!(root = %root, "missing-body sweep: due rows, zero candidates");
+        }
         let mut healed = 0u64;
         for candidate in &candidates {
             let addr = match crate::net::sync::dial_addr(&state, candidate).await {
                 Ok(a) => a,
-                Err(_) => continue, // unparseable/unresolvable id - the next guess may not be
+                Err(e) => {
+                    tracing::debug!(root = %root, candidate = %candidate,
+                        "missing-body sweep: candidate did not resolve: {e:#}");
+                    continue; // unparseable/unresolvable id - the next guess may not be
+                }
             };
             // The ledger-exact fetch first (it is what works for fragment authors, where the
             // chain walk below has nothing to open), then the walk, which can additionally
             // discover references nothing had noted yet.
-            healed += fetch_wanted(&state, &root, addr.clone()).await;
-            healed += crate::record::documents::fetch_missing_bodies(&state, &root, addr).await;
+            let here = fetch_wanted(&state, &root, addr.clone()).await
+                + crate::record::documents::fetch_missing_bodies(&state, &root, addr).await;
+            tracing::debug!(root = %root, candidate = %candidate, healed = here,
+                "missing-body sweep: candidate tried");
+            healed += here;
             if remaining(&state.node_db, &root).await? == 0 {
                 break;
             }
@@ -302,6 +324,9 @@ pub async fn sweep(state: AppState) -> Result<()> {
         if healed > 0 {
             tracing::info!(root = %root, healed, "recovered missing bodies on the sweep");
             crate::fanout::after_public_move(&state, &root).await;
+        } else {
+            tracing::debug!(root = %root, candidates = candidates.len(),
+                "missing-body sweep: nothing healed this pass");
         }
         // Whatever survived every candidate ages one rung; rows the walks cleared are gone
         // and never see this.

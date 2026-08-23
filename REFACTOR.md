@@ -84,3 +84,27 @@ publish.cjs scar). The fix shape, when it's earned: a fold mark per author (the
 `journal_marks` idiom) storing the FOLLOWS_PUBLIC frontier last mirrored, so a posts-only
 move costs one primary-key read and the choreography runs only when the edges chain
 actually moved.
+
+## "Any sharer will do" can only name sharers the reader follows (diagnosed 2026-08-23)
+
+The cascade intermittent ("any sharer will do", red in roughly half of runs since 2026-08-22),
+run to ground with per-candidate sweep logging and a live ledger probe: at four hops, Rae
+follows exactly one sharer, the recorded origin IS that sharer, and when the test darkens
+that node the heal candidate union - `fragments.origins_of` + `fanout::sharers_of_author`,
+both derived from what Rae's own ledger names - resolves to dark endpoints only. The node
+that PHYSICALLY DELIVERED the revised header (Sam's, alive, holding the bytes, provably one
+connection away) is remembered nowhere: in the caught red run the sweep tried the dark
+endpoint 165 times and the eager heal fired 431 times at the dark origin's three endpoints,
+while charlie's endpoint appears in neither list even once. Green runs are the attribution
+path getting lucky at intake. Production shape of the same gap: a reader one follow away
+from a share tree cannot heal bodies from sharers they don't follow, exactly when the one
+they do follow goes dark - the case the doctrine was written for.
+
+The fix shape (slice 1's own idiom, `speculative_fetches.last_via` applied to fragments):
+stamp the endpoint that served each fragment at intake, make it a heal rung in
+`net::bodies::sweep` and the eager `heal_soon` target. Whoever handed over the header holds,
+or knows who holds, the bytes it names. Costs a schema gen bump (fragments table).
+Related smaller findings from the same hunt: journalfill.cjs and trust.cjs flake in the same
+silent-failure-under-load family; the sweep's per-root `tries+1` ages fresh rows for old
+rows' failures; a persona-leaf hex can still reach the sweep's candidate list and be dialed
+as an endpoint (the garbage-dial rule, not yet applied to this walk).

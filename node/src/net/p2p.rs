@@ -163,10 +163,38 @@ pub async fn dial(
             alpn_name(alpn).unwrap_or("unknown")
         ));
     }
-    endpoint
-        .connect(addr, alpn)
-        .await
-        .map_err(|e| anyhow!("{e}"))
+    let connect = endpoint.connect(addr, alpn);
+    match dial_ceiling() {
+        Some(limit) => match tokio::time::timeout(limit, connect).await {
+            Ok(conn) => conn.map_err(|e| anyhow!("{e}")),
+            Err(_) => Err(anyhow!(
+                "dial timed out at the test ceiling ({}ms) on the {} protocol",
+                limit.as_millis(),
+                alpn_name(alpn).unwrap_or("unknown")
+            )),
+        },
+        None => connect.await.map_err(|e| anyhow!("{e}")),
+    }
+}
+
+/// Test-mode ceiling on CONNECT alone, exchange ceilings untouched. On a test rig the other
+/// side of a dial is either on this machine (answers in ms) or not going to answer at all -
+/// and QUIC is UDP, so "not going to answer" is silence, not refusal: a killed node or a
+/// stale endpoint id waits out the full handshake ladder even on loopback (the 2026-08-21
+/// garbage-dial physics). Production keeps its patience: unset means no ceiling, and only the
+/// test recipes set it. The whole-exchange timeouts at the call sites stay as they are
+/// because a same-machine peer can still be CPU-starved into finishing slowly (five rig nodes
+/// on four CI vCPUs) - there-or-not applies to connecting, not to completing.
+/// Env read once (the `files::recent_grace` idiom, hoisted to a static because this is on
+/// every dial's path).
+fn dial_ceiling() -> Option<std::time::Duration> {
+    static CEILING: std::sync::OnceLock<Option<std::time::Duration>> = std::sync::OnceLock::new();
+    *CEILING.get_or_init(|| {
+        std::env::var("RINGTOME_TEST_DIAL_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+    })
 }
 
 /// Load (or first-boot-generate) the node's iroh secret key, sealed at rest like every other

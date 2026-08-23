@@ -137,7 +137,11 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
     }
     .await;
     if let Err(e) = result {
-        tracing::debug!(author = %author_root, error = ?e, "edge graph refresh failed");
+        // WARN, not debug (2026-08-23): this fold is event-riding with no backstop beat, so
+        // a swallowed failure here is not "caught next tick" - it is edge_graph missing this
+        // author's statements until their next unrelated public move. trust.cjs caught it
+        // timing out invisibly on CI.
+        tracing::warn!(author = %author_root, error = ?e, "edge graph refresh failed");
     }
 }
 
