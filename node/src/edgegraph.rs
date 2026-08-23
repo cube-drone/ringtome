@@ -63,9 +63,14 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
         // frontier memo's change mark, EQUALITY-compared through the sweep marks' `last`
         // (a fingerprint is not ordered), makes a posts-only move cost one primary-key read.
         // Boot resets the marks, so the first move refolds once - the boot catch-up every
-        // mark consumer wants. Recorded before the fold, the FreshnessMarks discipline: a
-        // move landing mid-fold changes the mark and the next hook redoes one fold
-        // (idempotent) instead of skipping a real change forever.
+        // mark consumer wants. Recorded ON SUCCESS, at the bottom - never up here: this fold
+        // has no backstop beat, so a mark stamped before a fold that then fails would turn a
+        // transient error into edges missing until the chain's next unrelated move (caught
+        // 2026-08-23, the day the gate landed: trust.cjs red on CI while local runs stayed
+        // green - loaded runners are where transient fold errors actually happen). A failed
+        // fold leaves the mark unmoved and the very next hook retries, which is exactly the
+        // pre-gate cadence. A move landing mid-fold is also safe: it changes the FRONTIER's
+        // fingerprint, so the entry compare on the next hook misses and one fold reruns.
         let mark = crate::net::frontier::service_mark(
             &state.node_db,
             author_root,
@@ -78,7 +83,6 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
         if state.sweep_marks.last("edgegraph", author_root) == Some(mark) {
             return Ok(()); // the edges chain has not moved since the last fold
         }
-        state.sweep_marks.record("edgegraph", author_root, mark);
         let Some(db) = state
             .user_dbs
             .get(author_root)
@@ -148,6 +152,9 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
         for reader in crate::net::subscriptions::dialed_by(&state.node_db, author_root).await? {
             crate::net::subscriptions::refresh_root(state, &reader).await;
         }
+        // The whole choreography landed: only now does the mark move (see the gate comment
+        // above for why a failed fold must leave it unmoved).
+        state.sweep_marks.record("edgegraph", author_root, mark);
         Ok(())
     }
     .await;
