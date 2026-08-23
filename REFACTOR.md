@@ -54,6 +54,7 @@ The full-chain audit of 2026-08-10 is closed — all seven items, see HISTORY. T
 behind, for anything new that touches the log: **a read whose cost grows with an identity's
 history needs a watermark, a cursor, or a named reason it is bounded.** `imaol` now enforces
 the third case rather than trusting it (`service_reads_whole`).
+
 ## The visit ladder still cancels exchanges mid-flight (noted 2026-08-22)
 
 The slice-1 build established that aborting a sync mid-exchange mints zombie connection
@@ -69,42 +70,11 @@ node the winner just used. If mirror-fetch flakiness ever clusters around busy p
 with many live candidates, convert the also-rans to detach (drop the JoinSet without
 abort_all, let them run out) before suspecting anything deeper.
 
-## The edge re-mirror fires at posting cadence, not dial-mint cadence (noted 2026-08-23)
+## The body-arrival race tail (noted 2026-08-23, residual)
 
-`edgegraph::refresh_from` rides `after_public_move`, which fires on EVERY public move - and
-the hook cannot see which service moved. So any post by a persona with a follows-public
-chain re-mirrors their whole published edge set and then re-runs the full memo choreography
-(`subscriptions::refresh_root`: ledger read, subscriptions rewrite, implicit fold, demand
-rollup, publish reconcile - a user-db open per reader) for every local reader holding any
-dial on them. The function's own header argues "a friend's follows-public chain moves at
-dial-mint cadence", which is true of the chain and false of the trigger: the trigger is the
-posts chain too. Costed 2026-08-23 while diagnosing CI: the busy-suite churn this generates
-was a contributor to the keyset-cursor test crossing its 5s budget on CI hardware (the
-publish.cjs scar). The fix shape, when it's earned: a fold mark per author (the
-`journal_marks` idiom) storing the FOLLOWS_PUBLIC frontier last mirrored, so a posts-only
-move costs one primary-key read and the choreography runs only when the edges chain
-actually moved.
-
-## "Any sharer will do" can only name sharers the reader follows (diagnosed 2026-08-23)
-
-The cascade intermittent ("any sharer will do", red in roughly half of runs since 2026-08-22),
-run to ground with per-candidate sweep logging and a live ledger probe: at four hops, Rae
-follows exactly one sharer, the recorded origin IS that sharer, and when the test darkens
-that node the heal candidate union - `fragments.origins_of` + `fanout::sharers_of_author`,
-both derived from what Rae's own ledger names - resolves to dark endpoints only. The node
-that PHYSICALLY DELIVERED the revised header (Sam's, alive, holding the bytes, provably one
-connection away) is remembered nowhere: in the caught red run the sweep tried the dark
-endpoint 165 times and the eager heal fired 431 times at the dark origin's three endpoints,
-while charlie's endpoint appears in neither list even once. Green runs are the attribution
-path getting lucky at intake. Production shape of the same gap: a reader one follow away
-from a share tree cannot heal bodies from sharers they don't follow, exactly when the one
-they do follow goes dark - the case the doctrine was written for.
-
-The fix shape (slice 1's own idiom, `speculative_fetches.last_via` applied to fragments):
-stamp the endpoint that served each fragment at intake, make it a heal rung in
-`net::bodies::sweep` and the eager `heal_soon` target. Whoever handed over the header holds,
-or knows who holds, the bytes it names. Costs a schema gen bump (fragments table).
-Related smaller findings from the same hunt: journalfill.cjs and trust.cjs flake in the same
-silent-failure-under-load family; the sweep's per-root `tries+1` ages fresh rows for old
-rows' failures; a persona-leaf hex can still reach the sweep's candidate list and be dialed
-as an endpoint (the garbage-dial rule, not yet applied to this walk).
+What remains after the deliverer rung: roughly one red per two suite runs, a different test
+each time, one shape - a fold or publish racing body arrival under load. Faces seen:
+`cascade.cjs seedToCleo` (share fold latency to the third hop), `publish` 400 "this note's
+words haven't arrived" (also journalfill.cjs on CI). Down from the pre-fix rate and no
+longer clustered; the diagnosis idiom that cracked the cascade bug (speak-on-failure logs +
+the outside-the-suite /test/sql probe) applies directly when this earns its dig.

@@ -1183,7 +1183,7 @@ const SWEEP_CAP: i64 = 16;
 /// Revalidating against the ORIGIN rather than the author is what keeps this cheap: the origin
 /// is a node we already have a reason to talk to, so the cascade runs over edges that exist.
 /// The cost is per-hop staleness, which is the trade the design took deliberately.
-pub async fn sweep(state: crate::AppState) -> Result<()> {
+async fn revalidate_due_fragments(state: &crate::AppState) -> Result<()> {
     // Jittered, because the author is asked FIRST and a viral post means every holder asking the
     // same node. Without a spread, ten thousand readers knock on the same second, every interval,
     // forever - a thundering herd this design would otherwise create on exactly the people whose
@@ -1231,7 +1231,7 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
         if held(&state.node_db, &author_hex, &doc_hex).await?.is_none() {
             continue;
         }
-        match crate::net::fragment::revalidate(&state, &origin_root, &author, &doc_id).await {
+        match crate::net::fragment::revalidate(state, &origin_root, &author, &doc_id).await {
             crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
                 tracing::debug!(
                     author = %author_hex, doc = %doc_hex, origin = %origin_root,
@@ -1267,10 +1267,10 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
                 if let Some(ep) = &served_by {
                     let _ = note_deliverer(&state.node_db, &author_hex, ep).await;
                 }
-                heal_soon(&state, &author_hex, &origin_root);
+                heal_soon(state, &author_hex, &origin_root);
                 // An edit can change what a post embeds; the reconcile inside drops covers
                 // the new refs no longer name and releases orphaned media.
-                cover_refs(&state, &origin_root, &author_hex, &doc_hex, &verified.header.refs)
+                cover_refs(state, &origin_root, &author_hex, &doc_hex, &verified.header.refs)
                     .await;
             }
             crate::net::fragment::Fetched::Gone { entry, auth_path } => {
@@ -1297,7 +1297,18 @@ pub async fn sweep(state: crate::AppState) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
 
+/// One maintenance beat over everything fragment-shaped: four named jobs sharing a cadence
+/// because each is retry-work the others create - a revalidation notices an edit and mints a
+/// want, a drained want journals a share whose covers then need healing, and the reap's
+/// cursors advance over whatever the dials above learned. One beat, four jobs, each honest
+/// about its own errors; the order is the dependency order.
+pub async fn sweep(state: crate::AppState) -> Result<()> {
+    // Edit freshness on the young end of the shelf: per-document dials, origin-first.
+    revalidate_due_fragments(&state).await?;
+    // The recovery half of the share fold: fragments whose first ask failed.
     drain_wants(&state).await?;
     // Media the cover walk could not finish - the same recovery posture as the wants drain,
     // on its own ledger so an image can never be journaled as a post.

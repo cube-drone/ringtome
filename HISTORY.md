@@ -6440,3 +6440,30 @@ from a healthy one. Instrumentation landed first, findings second:
 Also from the hunt: the diagnosis rides a probe idiom worth keeping - `/test/sql` polled
 from OUTSIDE the suite while it runs (Content-Type: application/json required), which turns
 any intermittent into a time series without touching the code under test.
+
+## 2026-08-23 (evening): the deliverer rung and the fold gate - the flake tail cut down
+
+The two fixes the day's diagnosis called for, built and soaked:
+
+- **`fragment_deliverers`** (node gen 26): `Fetched::Have` now carries WHO SERVED the
+  fragment - the endpoint that answered, captured in `fragment::ask`, the one place it is
+  definitively known - and every intake arm stamps it per author (the
+  `speculative_fetches.last_via` idiom). Both heal walks dial the deliverers first among the
+  share rungs: already endpoint-shaped, no resolution ladder, no unresolved-key dial. This
+  closes the diagnosed gap where a reader one follow deep held only dark candidates while
+  the node that handed over the header was remembered nowhere.
+- **The edge fold gates on the follows-public frontier's change mark**
+  (`frontier::service_mark` + the sweep marks, equality-compared - a fingerprint is not
+  ordered, and `held_at_ms` cannot tell two moves in one millisecond apart): a posts-only
+  public move now costs one primary-key read where it re-mirrored the whole edge set and
+  re-ran the per-reader fold. The suite's wall clock came back down with it.
+  One self-inflicted lesson en route: the gate first recorded its mark BEFORE the fold, so a
+  transient fold error on a loaded CI runner became edges missing until the chain's next
+  unrelated move - trust.cjs red on CI, green locally, twice. **A mark that gates an
+  event-riding fold with no backstop beat must move only on success**; a failed fold leaves
+  it unmoved and the next hook retries at the pre-gate cadence.
+
+Soak: four consecutive full-suite runs post-fix - two fully green (the first all day), two
+with a single red each, neither in the heal-candidate family that previously failed every
+other run. What remains is the body-arrival race tail, recorded in REFACTOR.md with the
+diagnosis idiom that will crack it when it earns the dig.
