@@ -165,10 +165,13 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     }
     // **Not "nobody follows them" - "nobody here wants them at all".** A reader can hold no
     // interest in this author whatsoever and still be owed their documents, because someone
-    // that reader DOES follow shared one. Returning early on direct followers alone would make
-    // sharing an unfollowed author's post journal to nobody, forever, which is most of what
-    // sharing is for.
-    if readers.is_empty() && !anyone_shares(state, author_root).await? {
+    // that reader DOES follow shared one - or because their trust graph vouches for the
+    // author (DISCOVERY slice 2: the demand rollup is the THIRD reader criterion beside
+    // followers and share-followers). Returning early on direct followers alone would make
+    // both arrival paths journal to nobody, forever.
+    let mut wanting = crate::speculative::wanting_readers(&state.node_db, author_root).await?;
+    wanting.retain(|(reader, _)| !readers.contains(reader));
+    if readers.is_empty() && wanting.is_empty() && !anyone_shares(state, author_root).await? {
         return Ok(0); // the common case, and it costs one query per index
     }
     let mark = journal_mark(&state.node_db, author_root).await?;
@@ -186,11 +189,19 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let mut cursor: Option<(i64, [u8; 16])> = None;
     let mut fresh: Vec<JournalRow> = Vec::new();
     let mut newest: Option<i64> = None;
+    // The newest page whole, for the speculative readers below: their rows are the
+    // burst-to-bound with no year dig - the history courtesy belongs to chosen
+    // relationships (DISCOVERY stage 3) - so however deep the mark-driven walk goes for
+    // the real readers, speculation journals from this page alone.
+    let mut first_page: Vec<JournalRow> = Vec::new();
     loop {
         let page = shelf_page(state, author_root, cursor).await?;
         let Some(last) = page.last() else {
             break; // the shelf ends (or was empty: the move was profile/keys, not posts)
         };
+        if first_page.is_empty() {
+            first_page = page.clone();
+        }
         newest = newest.max(page.iter().map(|r| r.updated_ms).max());
         let bottom = last.published_ms;
         cursor = last.cursor();
@@ -212,6 +223,18 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     if !readers.is_empty() {
         journal_rows(&state.node_db, author_root, &readers, &fresh, None).await?;
     }
+    // The third criterion's rows: marked, bylined with each pair's introducer, newest page
+    // only, and never touching a row that already exists (journal_rows_suggested's DO
+    // NOTHING is the whole precedence ladder). Best-effort beside the real writes - a
+    // speculative miss is the next move's to retry, not this journal's to fail.
+    if !wanting.is_empty() && !first_page.is_empty() {
+        let suggested: Vec<&JournalRow> = first_page.iter().collect();
+        if let Err(e) =
+            journal_rows_suggested(&state.node_db, author_root, &wanting, &suggested).await
+        {
+            tracing::warn!(author = %author_root, error = ?e, "journaling speculative rows failed");
+        }
+    }
     // The same rows, to the people who follow whoever shared these documents.
     if let Err(e) = journal_shares_of(state, author_root, &fresh).await {
         tracing::warn!(author = %author_root, error = ?e, "journaling shares of this author failed");
@@ -221,7 +244,7 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     if let Some(newest) = newest {
         record_journal_mark(&state.node_db, author_root, newest).await?;
     }
-    Ok(readers.len())
+    Ok(readers.len() + wanting.len())
 }
 
 /// One public page of the author's shelf, shaped for journaling - the one user-DB open on
@@ -343,7 +366,8 @@ async fn journal_rows(
                      WHEN excluded.via_root IS NULL THEN NULL
                      WHEN feed_journal.via_root IS NULL THEN NULL
                      ELSE feed_journal.via_root
-                 END",
+                 END,
+                 suggested_via = NULL",
             placeholders.join(",")
         );
         let params: Vec<turso::Value> = chunk
@@ -372,6 +396,70 @@ async fn journal_rows(
     }
     if let Some(via) = via_root {
         remember_sharer(node_db, author_root, readers, rows, via, now).await?;
+    }
+    Ok(())
+}
+
+/// The speculative twin of [`journal_rows`] (DISCOVERY slice 2): rows for readers whose
+/// trust graph admits the author, marked with `suggested_via` - the introducer whose vouch
+/// journaled them, `via_root`'s sibling and the same kind of fact about the past.
+///
+/// `ON CONFLICT DO NOTHING` is the whole precedence ladder in one clause: a row that
+/// already exists is never touched, whichever kind it is. Real beats speculative (a
+/// follow's or share's row keeps its standing when speculation arrives late), and between
+/// two introducers the first keeps the byline - the same first-sighting rule `via_root`
+/// settled on, for the same reason: the byline is a fact about how the document reached
+/// you, not a slot for whoever vouched most recently. Conversion runs the other way in
+/// [`journal_rows`]: any real arrival clears the marking in place.
+async fn journal_rows_suggested(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    wanting: &[(String, String)],
+    rows: &[&JournalRow],
+) -> Result<()> {
+    let now = now_ms();
+    let pairs: Vec<(&String, &String, &&JournalRow)> = wanting
+        .iter()
+        .flat_map(|(reader, introducer)| rows.iter().map(move |row| (reader, introducer, row)))
+        .collect();
+    for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
+        let placeholders: Vec<String> = (0..chunk.len())
+            .map(|i| {
+                let b = i * 9;
+                format!(
+                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{})",
+                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9
+                )
+            })
+            .collect();
+        let sql = format!(
+            "INSERT INTO feed_journal
+               (reader_root, author_root, doc_id, title, format,
+                published_ms, updated_ms, arrived_ms, suggested_via)
+             VALUES {}
+             ON CONFLICT (reader_root, author_root, doc_id) DO NOTHING",
+            placeholders.join(",")
+        );
+        let params: Vec<turso::Value> = chunk
+            .iter()
+            .flat_map(|(reader, introducer, row)| {
+                [
+                    turso::Value::Text((*reader).clone()),
+                    turso::Value::Text(author_root.to_string()),
+                    turso::Value::Text(row.doc_id_hex.clone()),
+                    turso::Value::Text(row.title.clone()),
+                    turso::Value::Text(row.format.clone()),
+                    turso::Value::Integer(row.published_ms),
+                    turso::Value::Integer(row.updated_ms),
+                    turso::Value::Integer(now),
+                    turso::Value::Text((*introducer).clone()),
+                ]
+            })
+            .collect();
+        node_db
+            .execute(&sql, turso::params_from_iter(params))
+            .await
+            .context("journaling speculative rows")?;
     }
     Ok(())
 }
@@ -1163,6 +1251,9 @@ pub struct FeedRow {
     /// Who shared this into the reader's feed, if it arrived by rebroadcast rather than by a
     /// follow. `None` is the ordinary case and means "you follow this author".
     pub via_root: Option<String>,
+    /// The introducer whose vouch journaled this row speculatively (DISCOVERY slice 2);
+    /// `None` is every real row. Mutually exclusive with `via_root` by construction.
+    pub suggested_via: Option<String>,
     pub doc_id: String,
     pub title: String,
     pub format: Option<String>,
@@ -1282,7 +1373,7 @@ pub async fn feed_page(
     before: Option<(i64, String)>,
     limit: i64,
 ) -> Result<Vec<FeedRow>> {
-    type Row = (String, Option<String>, String, String, Option<String>, i64, i64, i64);
+    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64);
     // Text only, twice over: the shelf read upstream no longer journals media documents at
     // all (`public_docs` filters them - they're ingredients, not posts), and this clause
     // makes journals written BEFORE that filter harmless rather than a page of raw bytes
@@ -1290,7 +1381,7 @@ pub async fn feed_page(
     let rows: Vec<Row> = match before {
         None => node_db
             .fetch_all(
-                "SELECT author_root, via_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
+                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
@@ -1302,7 +1393,7 @@ pub async fn feed_page(
         // "bind index 5 out of bounds"... only on the cursor branch, which no test paged.
         Some((ms, doc)) => node_db
             .fetch_all(
-                "SELECT author_root, via_root, doc_id, title, format, published_ms, updated_ms, arrived_ms
+                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
@@ -1315,9 +1406,10 @@ pub async fn feed_page(
     Ok(rows
         .into_iter()
         .map(
-            |(author_root, via_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)| FeedRow {
+            |(author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms)| FeedRow {
                 author_root,
                 via_root,
+                suggested_via,
                 doc_id,
                 title,
                 format,
@@ -1404,6 +1496,51 @@ mod tests {
             vec!["mine"],
             "the shared row goes; a row we hold on our own account is untouched"
         );
+    }
+
+    /// The precedence ladder, both directions (DISCOVERY slice 2): a real arrival converts
+    /// a speculative row in place - same primary key, marking shed - and a speculative
+    /// write never touches an existing row of any kind. Planted red against a version
+    /// without `suggested_via = NULL` in the real upsert before it was trusted.
+    #[tokio::test]
+    async fn real_arrivals_convert_speculative_rows_and_never_the_reverse() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let reader = "bb".repeat(32);
+        let introducer = "cc".repeat(32);
+        let row = JournalRow {
+            doc_id_hex: "11".repeat(16),
+            title: "the-unasked-for-post".into(),
+            format: "plaintext".into(),
+            published_ms: 1,
+            updated_ms: 1,
+        };
+        let rows = [&row];
+        let wanting = [(reader.clone(), introducer.clone())];
+
+        // Speculative first: the row lands marked.
+        journal_rows_suggested(&db, &author, &wanting, &rows).await.unwrap();
+        let marked: Vec<(Option<String>,)> = db
+            .fetch_all("SELECT suggested_via FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(marked, vec![(Some(introducer.clone()),)], "the row lands marked");
+
+        // A real (follow) arrival converts in place: one row, marking shed.
+        journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, None).await.unwrap();
+        let converted: Vec<(Option<String>, Option<String>)> = db
+            .fetch_all("SELECT suggested_via, via_root FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(converted, vec![(None, None)], "one row, real, marking gone");
+
+        // And never the reverse: a late speculative write leaves the real row untouched.
+        journal_rows_suggested(&db, &author, &wanting, &rows).await.unwrap();
+        let still: Vec<(Option<String>,)> = db
+            .fetch_all("SELECT suggested_via FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(still, vec![(None,)], "speculation never downgrades a real row");
     }
 
     /// The `via_root IS NOT NULL` guard, from the other side. A document we hold BOTH ways -

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 454 phrases across 43 files.
+// 455 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -361,6 +361,7 @@ export default {
     'postentry.stop-sharing-this-with-your': 'stop sharing this with your network',
     'postentry.pass-this-along-to-your': 'pass this along to your network',
     'postentry.passed-this-along': 'passed this along',
+    'postentry.vouches-for-this-author': 'vouches for this author',
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.edit': 'edit',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",

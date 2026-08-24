@@ -518,6 +518,21 @@ async fn last_fetch(node_db: &Db, target_root: &str) -> Result<Option<(i64, Opti
     Ok(row)
 }
 
+/// Every hosted reader whose rollup admits this author, with each pair's best introducer -
+/// the feed journal's THIRD reader criterion (DISCOVERY slice 2, stage 3), asked per author
+/// per public move exactly like `followers_of`, off the by-target index built for the
+/// acquisition pass's identical question.
+pub async fn wanting_readers(node_db: &Db, target_root: &str) -> Result<Vec<(String, String)>> {
+    let rows: Vec<(String, String)> = node_db
+        .fetch_all(
+            "SELECT reader_root, introducer_root FROM speculative_demand WHERE target_root = ?1",
+            (target_root,),
+        )
+        .await
+        .context("reading who wants this author speculatively")?;
+    Ok(rows)
+}
+
 /// One row of the People page's suggested shelf, byline attached.
 #[derive(Debug, serde::Serialize)]
 pub struct Suggested {

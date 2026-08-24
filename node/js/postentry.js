@@ -529,6 +529,26 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                 <${ViaOthers} item=${item} current=${current} />
                 ${t('postentry.passed-this-along', 'passed this along')}
             </p>`}
+            ${/* The speculative sibling: nobody you follow brought this - your trust graph
+                did (DISCOVERY slice 2). Same seat, same quiet voice, and honest about the
+                different mechanism: a vouch is not a share. Mutually exclusive with the
+                share line by construction, so the two never stack. */ ''}
+            ${!item.via &&
+            !!item.suggested_via &&
+            html`<p class="feed-entry-via">
+                <${PersonChip}
+                    root=${item.suggested_via}
+                    current=${current}
+                    size="mini"
+                    profile=${{
+                        fields: [
+                            item.suggested_via_name && { field: 'name', value: item.suggested_via_name },
+                        ].filter(Boolean),
+                        via: [],
+                    }}
+                />
+                ${t('postentry.vouches-for-this-author', 'vouches for this author')}
+            </p>`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
                 the face-plus-names row says who at a glance where the mini hexagon made you
                 hover. The when and - for your own posts - the unlock ride its actions slot. */ ''}

@@ -174,6 +174,41 @@ const base58 = async (host) => {
         assert.ok(row.lane === "trust" || row.lane === "taste", "the winning lane rides along");
     });
 
+    it("the vouched-for author's post reaches cora's feed, marked and bylined", async function () {
+        // DISCOVERY slice 2, stage 3: journaling with provenance. The mirror from slice 1
+        // becomes a FEED row - marked speculative, carrying the introducer - without cora
+        // following anyone. The row exists because trust vouches for it, and it says so.
+        const row = await settle(async () => {
+            const res = await cora(`api/identity/${coraRoot}/feed`);
+            if (res.status !== 200) return null;
+            const { items } = await res.json();
+            const r = (items || []).find(
+                (i) => i.author === authorRoot && i.title === "the-unasked-for-post"
+            );
+            return r && r.suggested_via ? r : null;
+        });
+        assert.ok(row, "the speculative row landed in cora's feed, marked");
+        assert.equal(row.suggested_via, friendRoot, "the provenance names the introducer");
+        assert.ok(!row.via, "suggested is not shared - the two bylines never mix");
+
+        // Promotion converts IN PLACE: cora turns a real dial on the author, the follow's
+        // backfill journals from the (already-held) shelf, and the same primary key sheds
+        // its speculative marking rather than duplicating the row.
+        const coraDial = dialOn(cora, coraRoot);
+        await coraDial(authorRoot, "interest", "high");
+        assert.ok(
+            await settle(async () => {
+                const res = await cora(`api/identity/${coraRoot}/feed`);
+                if (res.status !== 200) return null;
+                const rows = ((await res.json()).items || []).filter(
+                    (i) => i.author === authorRoot && i.title === "the-unasked-for-post"
+                );
+                return rows.length === 1 && !rows[0].suggested_via ? true : null;
+            }),
+            "the real dial converted the row in place - one row, marking shed"
+        );
+    });
+
     it("a withdrawn vouch recedes from the demand memo (the mirror waits for slice 4)", async function () {
         // The friend takes the vouch back; the graph row sweeps (trust.cjs proves that leg),
         // and the rollup built on it must recede with its inputs. The mirror itself stays -

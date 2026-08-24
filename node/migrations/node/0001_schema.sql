@@ -243,6 +243,13 @@ CREATE TABLE feed_journal (
                                      --   NULL means the reader follows author_root directly.
                                      --   A direct arrival always clears this (it is the stronger
                                      --   claim: you follow them, you are not being shown a share)
+    suggested_via TEXT,              -- via_root's SPECULATIVE sibling (DISCOVERY slice 2,
+                                     --   2026-08-24): the introducer whose vouch journaled this
+                                     --   row when the reader neither follows the author nor any
+                                     --   sharer. NULL means the row is real. Any real arrival
+                                     --   (follow or share) clears it in place - same primary
+                                     --   key, marking shed, never a duplicate - and speculative
+                                     --   writes never touch an existing row of any kind.
     PRIMARY KEY (reader_root, author_root, doc_id)
 );
 CREATE INDEX feed_journal_by_reader ON feed_journal (reader_root, published_ms);

@@ -618,6 +618,13 @@ struct FeedItem {
     /// person shared it, which keeps the ordinary single-sharer row byte-identical to before.
     #[serde(skip_serializing_if = "Option::is_none")]
     via_count: Option<usize>,
+    /// The introducer whose vouch journaled this row speculatively (DISCOVERY slice 2) -
+    /// mutually exclusive with `via`, absent on every real row so old clients render
+    /// unchanged. The name rides beside it for the byline, same discipline as the sharer's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggested_via: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggested_via_name: Option<String>,
 }
 
 /// One of the other people who passed a document along, dressed like the lead sharer so the
@@ -675,6 +682,7 @@ async fn feed_handler(
     // become twelve queries.
     let mut authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
     authors.extend(rows.iter().filter_map(|r| r.via_root.clone()));
+    authors.extend(rows.iter().filter_map(|r| r.suggested_via.clone()));
     authors.extend(sharers.values().flatten().cloned());
     let bylines = crate::profiles::bylines(&state.node_db, &authors)
         .await
@@ -727,6 +735,11 @@ async fn feed_handler(
                     }
                 })
                 .collect();
+            let suggested_via_name = r
+                .suggested_via
+                .as_ref()
+                .and_then(|v| bylines.get(v))
+                .and_then(|b| b.name.clone());
             FeedItem {
                 mine,
                 author_name: byline.name,
@@ -743,6 +756,8 @@ async fn feed_handler(
                 via_avatar,
                 via_others,
                 via_count,
+                suggested_via: r.suggested_via,
+                suggested_via_name,
             }
         })
         .collect();

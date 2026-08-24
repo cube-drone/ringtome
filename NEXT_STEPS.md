@@ -31,7 +31,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Posts link to a post-specific page (each post has its own location)
 * Search my posts
 * Search my feed
-* Posts can be annotated with tags, emoji, description, buckets
+* Posts can be annotated with tags, emoji, description, buckets (triggering a notification)
 * Make a whole bucket public in one fell swoop.
 * Rebroadcast
   * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
@@ -136,7 +136,7 @@ the slice order. Below is the short worklist.
 * ~~speculative rollup + the speculative pass at posts depth (DISCOVERY slice 1)~~ built 2026-08-22
   (`speculative.rs`, node gen 25); the day's field findings - the freshness-contract predicate, the
   garbage-dial rule, detach-never-cancel - are in HISTORY and folded into DISCOVERY's invariants
-* speculative journal rows + provenance (slice 2), then the slider (slice 3), then mirror eviction (slice 4)
+* ~~speculative journal rows + provenance (slice 2)~~ built 2026-08-24 (`feed_journal.suggested_via`, node gen 27); then the slider (slice 3), then mirror eviction (slice 4)
 * the headers depth (slice 5): scoped sync Hello, non-resident mirrors, the weighted-random lane, the reciprocal door
 * ~~surface implicit edges in the UI (people page: "suggested via..."), with banded promiscuity discounts and explicit-dial precedence at read~~ built 2026-08-24: the People page's suggested shelf (`/api/identity/{root}/suggested` - the demand rollup filtered to landed mirrors, discounts and explicit-dial exclusion inherited from the rollup itself)
 * advogato-style joint flow calculation to determine how much we trust a person who we've never met, but exists somewhere in our trust graph

@@ -6526,3 +6526,25 @@ vouched-for author via the friend) ran red on the absent endpoint before the end
 existed, and the unit cop (`suggestions_require_a_landed_mirror`) pins the join that makes
 the shelf honest. Ownership gate is `store::open`, same as `implicit` - the rollup composed
 through the reader's private dials, so only the reader reads it.
+
+## 2026-08-24 (later): DISCOVERY slice 2 - speculative rows reach the feed, provenance attached
+
+The bytes slice 1 acquired become feed rows (`feed_journal.suggested_via`, node gen 27):
+`journal_for` grew its third reader criterion - the demand rollup, asked per author off the
+same by-target index the acquisition pass uses - and speculative readers journal from the
+NEWEST PAGE ONLY, however deep the mark-driven walk goes for real followers; the history
+courtesy belongs to chosen relationships. The precedence ladder is two SQL clauses: the
+speculative writer's `ON CONFLICT DO NOTHING` (a row that exists is never touched - real
+beats speculative, and between two introducers the first keeps the byline, via_root's own
+rule) and `suggested_via = NULL` in the real upsert (any follow or share arrival converts
+the row in place - same primary key, marking shed, never a duplicate). The feed API ships
+`suggested_via` + name beside the share byline fields, absent on every real row so old
+clients render unchanged, and the post card wears "«chip» vouches for this author" in the
+share line's seat - mutually exclusive with it by construction.
+
+Red-first at both layers: the acceptance test (cora's feed carries the unasked-for post
+marked and bylined, then her real dial sheds the marking in place) ran red on the
+pre-slice binary; the conversion cop (`real_arrivals_convert_speculative_rows_and_never_the_reverse`)
+was planted red against an upsert without the clearing clause before it was trusted.
+Withdrawn vouches leave journal rows standing on purpose - hiding them is the slider's job
+(slice 3) and deleting them is eviction's (slice 4).

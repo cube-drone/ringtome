@@ -222,9 +222,17 @@ intent against storage-management surfaces that do not exist yet.
    unresolved identity key**, and **deadlines detach, never cancel** — an aborted exchange
    leaves zombie connection state that starves the fan-out behind it. Full ledger in
    HISTORY, 2026-08-21/22.
-2. **Speculative journal rows + provenance column.** The third reader criterion, the
-   marked rows, the introducer byline. Acceptance: the row exists, is marked, names the
-   introducer; an explicit dial converts it in place.
+2. ~~**Speculative journal rows + provenance column.**~~ Built 2026-08-24
+   (`feed_journal.suggested_via`, node gen 27; acceptance green in `speculative.cjs`,
+   red-first, the conversion cop planted-red in `fanout::tests`). The third reader
+   criterion rides `journal_for` beside followers and share-followers; speculative rows
+   take the NEWEST PAGE ONLY (the history courtesy belongs to chosen relationships);
+   `ON CONFLICT DO NOTHING` is the whole precedence ladder one way and
+   `suggested_via = NULL` in the real upsert is the other - any real arrival converts in
+   place, speculation never downgrades, and between two introducers the first keeps the
+   byline (via_root's own first-sighting rule). The feed shows the rows with a
+   "vouches for this author" line pending the slider; withdrawn vouches leave rows
+   standing for slices 3-4 to hide and evict.
 3. **The slider.** UI + read-time filtering (the six stops, Explorer default for new
    users). Depends on 1–2 for anything to show.
 4. **Mirror eviction.** The retention edge this pipeline makes real for the first time:
