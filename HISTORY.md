@@ -6639,3 +6639,24 @@ stored - in both arms that had the re-read (`journalable`'s tail and the wants d
 arrival). Nothing needs the database to repeat what the arm is holding. The
 hung-30s-exchange question (REFACTOR) stays open as its own mystery; the body-arrival tail
 entry retires with this.
+
+## 2026-08-24 (late): DISCOVERY slice 4 - mirror eviction; retention becomes real
+
+Nothing ever evicted a mirrored persona before this: every chain that arrived stayed
+forever, invisible while every mirror was asked for, a leak the moment speculation minted
+mirrors on hunches that recede. `eviction.rs` is the retention edge: an hourly sweep whose
+one judgment - a mirror nobody wants is holding chains nobody asked to keep - is a pure
+conjunction of keepers (hosted, any dial, member-fetched, fragments standing, demand
+standing, an open handle, the mtime grace), each individually pinned by the keeper cop.
+Eviction takes the files (db, WAL, raw-entry journal, sealed key - the keystore grew
+`remove` for exactly this) and every bookkeeping trace, each through its table's owner;
+blobs stay the reaper's by refcount. Safe by the same shape that makes promotion clean:
+every door that could re-mint a mirror acts only on the relationships whose absence
+admitted the eviction, so if one returns, the mirror refetches with it - an eviction is
+never a loss, only a release.
+
+Acceptance red-first in the speculative family's own choreography: the withdrawn vouch plus
+cora's cleared dial leaves the author wanted by nobody; the sweep empties the fetch
+registry and the byline cache, the profile door answers 404, and the friend's followed
+mirror survives the same sweep untouched. The slice-1 test's "the mirror waits for slice 4"
+finally has its answer.

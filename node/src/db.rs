@@ -821,6 +821,30 @@ impl UserDbManager {
         Ok(roots)
     }
 
+    /// Evict one MIRRORED persona's database from this node: close the cached handle and
+    /// delete the file, its WAL, its raw-entry journal, and its sealed key (DISCOVERY slice
+    /// 4 - the retention edge). The caller owns the judgment that nobody wants this persona;
+    /// this function owns only the mechanics, and it is safe to call for a root that holds
+    /// nothing (idempotent - eviction is cleanup, not assertion). A clone of the handle
+    /// still held by an in-flight task keeps its file descriptors and dies quietly with
+    /// them; the caller's open-handle grace makes that window rare, and a mirror's data is
+    /// by definition re-fetchable from the network that minted it.
+    pub async fn evict_mirror(&self, root_pubkey: &str) -> Result<()> {
+        self.handles.invalidate(root_pubkey).await;
+        let path = self.path_for(root_pubkey);
+        let wal = path.with_extension("db-wal");
+        let journal = self.journal_path_for(root_pubkey);
+        for f in [&path, &wal, &journal] {
+            match std::fs::remove_file(f) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e).with_context(|| format!("evicting {}", f.display())),
+            }
+        }
+        self.keystore.remove(&db_key_name(root_pubkey))?;
+        Ok(())
+    }
+
     pub async fn held(&self, root_pubkey: &str) -> Result<Db> {
         self.get(root_pubkey)
             .await?

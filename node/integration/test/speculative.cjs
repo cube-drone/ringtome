@@ -229,4 +229,41 @@ const base58 = async (host) => {
             "the demand row receded with the vouch that justified it"
         );
     });
+
+    it("a mirror nobody wants is evicted, traces and all (DISCOVERY slice 4)", async function () {
+        // The retention edge, made real: with the vouch withdrawn (above) and cora's own
+        // dial cleared (below), NOBODY wants the author on cora's node - not hosted, no
+        // subscription, never member-fetched, no fragment rows, no demand. The eviction
+        // sweep must take the mirror and every bookkeeping trace; the author keeps living
+        // on their own node and the friend's (who still follows), untouched.
+        await dialOn(cora, coraRoot)(authorRoot, "interest", "");
+
+        // The quiet registry empties - the sweep's own bookkeeping goes with the mirror.
+        assert.ok(
+            await settle(async () => {
+                const { rows } = await sql(
+                    `SELECT 1 AS present FROM speculative_fetches WHERE target_root = '${authorRoot}'`,
+                    HOST_C
+                );
+                return rows.length === 0 ? true : null;
+            }),
+            "the speculative fetch registry forgot the evicted mirror"
+        );
+
+        // The byline cache too: a face the node no longer holds must not keep a name.
+        const { rows: bylines } = await sql(
+            `SELECT 1 AS present FROM persona_profiles WHERE root_pubkey = '${authorRoot}'`,
+            HOST_C
+        );
+        assert.equal(bylines.length, 0, "the byline cache forgot them");
+
+        // And the member surface answers honestly: nothing of theirs is held here any more.
+        const gone = await cora(`api/id/${authorRoot}/profile`);
+        assert.equal(gone.status, 404, "the profile door says nothing of theirs is held");
+
+        // The friend's node still follows the author: their mirror must survive the same
+        // sweep - eviction is for chains NOBODY wants, and a subscription is wanting.
+        const profile = await friend(`api/id/${authorRoot}/profile`);
+        assert.equal(profile.status, 200, "a followed mirror is never evicted");
+    });
 });

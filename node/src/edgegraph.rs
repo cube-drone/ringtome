@@ -380,6 +380,19 @@ pub struct ImplicitRow {
 
 /// A persona's implicit set, per-introducer rows in stable order. The one sanctioned read of
 /// `implicit_edges` (tests/conventions.rs owns the SQL to this module).
+/// Forget an evicted author's mirrored edges - the graph is a cache of public speech read
+/// off a chain this node no longer holds; the statements survive wherever the chain does.
+pub async fn forget_author(node_db: &crate::db::Db, author_root: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM edge_graph WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("forgetting an evicted author's edges")?;
+    Ok(())
+}
+
 pub async fn implicit_of(db: &Db) -> Result<Vec<ImplicitRow>> {
     type Row = (String, String, String, i64, String, i64);
     let rows: Vec<Row> = db

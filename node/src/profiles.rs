@@ -73,6 +73,19 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
 
 /// The bylines for a whole list at once - the query a roster or a feed makes instead of
 /// opening a database per face.
+/// Forget an evicted persona's byline - a face the node no longer holds must not keep a
+/// name in the cache (DISCOVERY slice 4).
+pub async fn forget(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM persona_profiles WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("forgetting an evicted byline")?;
+    Ok(())
+}
+
 pub async fn bylines(node_db: &Db, roots: &[String]) -> Result<std::collections::BTreeMap<String, Byline>> {
     let mut out = std::collections::BTreeMap::new();
     if roots.is_empty() {

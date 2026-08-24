@@ -243,11 +243,16 @@ intent against storage-management surfaces that do not exist yet.
    as the path rung's input. Today's one speculative pool means 'highly speculative' and
    'Explorer' differ from 'speculative' only by path strength; the deeper stops light up
    as their pools land, as designed.
-4. **Mirror eviction.** The retention edge this pipeline makes real for the first time:
-   nothing today evicts a mirrored persona, ever. Scoped sweep: a mirror with no
-   subscription, no fragment ledger row, and no rollup row is holding chains nobody wants.
-   Predates this work as a gap; becomes load-bearing here. First customer: "non-resident
-   with no supporting tier-2 edge."
+4. ~~**Mirror eviction.**~~ Built 2026-08-24 (`eviction.rs`; acceptance green in
+   `speculative.cjs`, red-first; the keeper cop planted-red). The sweep's judgment grew two
+   keepers beyond the design sketch - MEMBER-FETCHED (the freshness contract is wanting)
+   and the two graces (an open handle, an mtime rest) - and eviction takes files (db, WAL,
+   journal, sealed key) plus every trace through each table's owner: fetch registry,
+   speculative feed rows, byline, frontier memo, mirrored edges, deliverer stamps, wants,
+   body wants. Blobs stay the reaper's by refcount. Recreation is demand-driven, so an
+   eviction is never a loss - if any relationship returns, the mirror refetches with it.
+   The slice-5 customer ("non-resident with no supporting tier-2 edge") slots in as one
+   more keeper when non-resident mirrors exist.
 5. **The headers depth** (order-independent of 2–3; pairs with 4; gates on the scoped sync
    Hello). Non-resident mirrors, the weighted-random lane, the reciprocal door.
    Acceptance: a friend-of-a-friend cora never dialed shows a claimed name and avatar on

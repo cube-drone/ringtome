@@ -41,6 +41,7 @@ mod record;
 mod request_context;
 mod seal;
 mod semver;
+mod eviction;
 mod speculative;
 mod idface;
 mod identicon;
@@ -500,6 +501,20 @@ async fn main() -> anyhow::Result<()> {
         state.clone(),
         db::checkpoint_pass,
     );
+    // Mirror eviction (eviction::evict_pass): the retention edge - a mirrored persona nobody
+    // wants (not hosted, no dial, not member-fetched, no fragments, no demand) leaves, files
+    // and traces. Slow on purpose: retention is not urgent, and the grace inside the pass is
+    // what carries the safety.
+    let evict_beat = if state.config.local_test {
+        std::env::var("RINGTOME_TEST_EVICT_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(3600))
+    } else {
+        std::time::Duration::from_secs(3600)
+    };
+    loops::periodic("mirror-eviction", evict_beat, state.clone(), eviction::evict_pass);
     loops::periodic(
         "sync-anti-entropy",
         std::time::Duration::from_secs(state.config.resync_interval_secs),

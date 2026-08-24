@@ -411,6 +411,21 @@ async fn journal_rows(
 /// settled on, for the same reason: the byline is a fact about how the document reached
 /// you, not a slot for whoever vouched most recently. Conversion runs the other way in
 /// [`journal_rows`]: any real arrival clears the marking in place.
+/// Excise an evicted author's SPECULATIVE feed rows, every reader at once (DISCOVERY slice
+/// 4): rows a vouch journaled and no dial ever claimed go with the mirror that backed them.
+/// Real rows are untouched by construction - an author with real rows has a subscription or
+/// a share standing, and the eviction sweep never reaches them.
+pub async fn excise_suggested(node_db: &crate::db::Db, author_root: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM feed_journal WHERE author_root = ?1 AND suggested_via IS NOT NULL",
+            (author_root,),
+        )
+        .await
+        .context("excising an evicted author's speculative rows")?;
+    Ok(())
+}
+
 async fn journal_rows_suggested(
     node_db: &crate::db::Db,
     author_root: &str,

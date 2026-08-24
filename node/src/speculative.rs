@@ -522,6 +522,32 @@ async fn last_fetch(node_db: &Db, target_root: &str) -> Result<Option<(i64, Opti
 /// the feed journal's THIRD reader criterion (DISCOVERY slice 2, stage 3), asked per author
 /// per public move exactly like `followers_of`, off the by-target index built for the
 /// acquisition pass's identical question.
+/// Does ANY reader's rollup still admit this target? The eviction sweep's demand-side
+/// keeper - one probe on the by-target index.
+pub async fn demand_exists(node_db: &Db, target_root: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM speculative_demand WHERE target_root = ?1 LIMIT 1",
+            (target_root,),
+        )
+        .await
+        .context("probing the demand memo")?;
+    Ok(row.is_some())
+}
+
+/// Forget an evicted mirror's fetch bookkeeping - the quiet registry's row goes with the
+/// chains it recorded.
+pub async fn forget_fetch(node_db: &Db, target_root: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM speculative_fetches WHERE target_root = ?1",
+            (target_root,),
+        )
+        .await
+        .context("forgetting a speculative fetch record")?;
+    Ok(())
+}
+
 pub async fn wanting_readers(node_db: &Db, target_root: &str) -> Result<Vec<(String, String)>> {
     let rows: Vec<(String, String)> = node_db
         .fetch_all(

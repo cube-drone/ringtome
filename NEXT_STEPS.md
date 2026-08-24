@@ -136,7 +136,7 @@ the slice order. Below is the short worklist.
 * ~~speculative rollup + the speculative pass at posts depth (DISCOVERY slice 1)~~ built 2026-08-22
   (`speculative.rs`, node gen 25); the day's field findings - the freshness-contract predicate, the
   garbage-dial rule, detach-never-cancel - are in HISTORY and folded into DISCOVERY's invariants
-* ~~speculative journal rows + provenance (slice 2)~~ built 2026-08-24 (`feed_journal.suggested_via`, node gen 27); ~~then the slider (slice 3)~~ built 2026-08-24 (`pure/selectivity.js` + the feed's slider; position a persona-level private register); then mirror eviction (slice 4)
+* ~~speculative journal rows + provenance (slice 2)~~ built 2026-08-24 (`feed_journal.suggested_via`, node gen 27); ~~then the slider (slice 3)~~ built 2026-08-24 (`pure/selectivity.js` + the feed's slider; position a persona-level private register); ~~then mirror eviction (slice 4)~~ built 2026-08-24 (`eviction.rs`: the hourly sweep; a mirror stays for any of hosted / dialed / member-fetched / fragments / demand / open handle / grace)
 * the headers depth (slice 5): scoped sync Hello, non-resident mirrors, the weighted-random lane, the reciprocal door
 * ~~surface implicit edges in the UI (people page: "suggested via..."), with banded promiscuity discounts and explicit-dial precedence at read~~ built 2026-08-24: the People page's suggested shelf (`/api/identity/{root}/suggested` - the demand rollup filtered to landed mirrors, discounts and explicit-dial exclusion inherited from the rollup itself)
 * advogato-style joint flow calculation to determine how much we trust a person who we've never met, but exists somewhere in our trust graph

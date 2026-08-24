@@ -821,6 +821,46 @@ pub async fn blob_refs(node_db: &Db) -> Result<Vec<[u8; 32]>> {
 /// dark, the candidate walk holds only dark endpoints while the node that physically handed
 /// over the header (provably alive, provably holding or knowing who holds the bytes) was
 /// remembered nowhere. The `speculative_fetches.last_via` idiom, applied to fragments.
+/// Does ANY fragment row stand behind this author here? The eviction sweep's share-side
+/// keeper (DISCOVERY slice 4): a fragment is a reader-facing promise, and a chain mirror
+/// with fragments beside it stays until the shares themselves retire.
+pub async fn any_for_author(node_db: &Db, author_root: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM fragments WHERE author_root = ?1 LIMIT 1",
+            (author_root,),
+        )
+        .await
+        .context("probing an author's fragment shelf")?;
+    Ok(row.is_some())
+}
+
+/// Forget an evicted author's deliverer stamps - endpoints that served chains this node no
+/// longer holds are no longer heal candidates for anything.
+pub async fn forget_deliverers(node_db: &Db, author_root: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM fragment_deliverers WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("forgetting an evicted author's deliverers")?;
+    Ok(())
+}
+
+/// Forget an evicted author's outstanding fragment wants - a want is a promise to keep
+/// asking, and eviction is the decision that nobody is owed the answer.
+pub async fn forget_wants(node_db: &Db, author_root: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM fragment_wants WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("forgetting an evicted author's wants")?;
+    Ok(())
+}
+
 pub async fn note_deliverer(node_db: &Db, author_root: &str, endpoint_id: &str) -> Result<()> {
     node_db
         .execute(

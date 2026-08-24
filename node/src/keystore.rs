@@ -93,6 +93,18 @@ impl Keystore {
             .with_context(|| format!("writing key file {name}"))
     }
 
+    /// Delete the key file named `name`. For keys whose SUBJECT is gone - an evicted
+    /// mirror's database key has nothing left to open, and a keyfile outliving its file is
+    /// the confusing half of the "database with no key" refusal, inverted. Missing is fine:
+    /// removal is idempotent, and the caller is cleaning up, not asserting.
+    pub fn remove(&self, name: &str) -> Result<()> {
+        match std::fs::remove_file(self.key_path(name)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e).with_context(|| format!("removing key file {name}")),
+        }
+    }
+
     /// Whether a key file with this name exists (no decryption attempted). Callers use this to
     /// distinguish "not yet created" (generate one) from "exists but won't open" (corrupt or
     /// wrong envelope key - fail loudly, never silently regenerate).

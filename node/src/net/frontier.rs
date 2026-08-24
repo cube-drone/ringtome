@@ -91,11 +91,6 @@ pub async fn note_head(
 // memo heals on the sweep's beat, and the wire is never wrong because `local_frontiers` reads
 // the entries table directly.)
 
-/// Does this persona have ANY chain on the given service, per the memo? A node.db probe on
-/// the chain_heads primary key - what lets a fold hook that fires on every frontier move
-/// answer "nothing to fold here" without opening the author's encrypted database
-/// (notifications::refresh_from is the consumer; measured 2026-08-09 beside the minting
-/// amplifier).
 /// An opaque CHANGE MARK for one service's frontier, off the memo: the held fingerprint
 /// folded to an i64, `None` when no such chain is held at all. Compare by EQUALITY (a
 /// different frontier is a different mark), never by ordering - a hash is not monotonic, and
@@ -119,6 +114,23 @@ pub async fn service_mark(node_db: &Db, root_hex: &str, service: u32) -> Result<
     }))
 }
 
+/// Forget every frontier row for an evicted persona - the memo of chains no longer held.
+pub async fn forget_persona(node_db: &Db, root_hex: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM persona_frontiers WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("forgetting an evicted persona's frontiers")?;
+    Ok(())
+}
+
+/// Does this persona have ANY chain on the given service, per the memo? A node.db probe on
+/// the chain_heads primary key - what lets a fold hook that fires on every frontier move
+/// answer "nothing to fold here" without opening the author's encrypted database
+/// (notifications::refresh_from is the consumer; measured 2026-08-09 beside the minting
+/// amplifier).
 pub async fn has_service_chain(node_db: &Db, root_hex: &str, service: u32) -> Result<bool> {
     let row: Option<(i64,)> = node_db
         .fetch_optional(
