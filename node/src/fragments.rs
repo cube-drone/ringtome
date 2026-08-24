@@ -1013,7 +1013,12 @@ pub async fn journalable(
     doc_id: &[u8; 16],
 ) -> Option<crate::fanout::JournalRow> {
     let doc_hex = hex::encode(doc_id);
+    // Every branch below SPEAKS (2026-08-24, the residual-tail dig): a pointer that stalls
+    // for a minute at this function used to be indistinguishable from one that resolved -
+    // held-hit, entomb-skip, and each fetch outcome were all silent, and the dig burned its
+    // hours proving healthy layers healthy instead of reading which branch swallowed the doc.
     if let Ok(Some(f)) = held(&state.node_db, author_root, &doc_hex).await {
+        tracing::debug!(author = %author_root, doc = %doc_hex, "journalable: held, journaling");
         return Some(row_of(&f, &doc_hex));
     }
     // Buried already? Then there is nothing to journal and nobody worth dialling. `remember` is
@@ -1021,10 +1026,13 @@ pub async fn journalable(
     // on every frontier move they make, so without this the node would dial out for the same
     // dead document forever, and throw the answer away every time.
     if entombed(&state.node_db, author_root, doc_id).await.unwrap_or(false) {
+        tracing::debug!(author = %author_root, doc = %doc_hex, "journalable: entombed, skipping");
         return None;
     }
 
     let author = crate::pubkey::decode(author_root)?;
+    tracing::debug!(author = %author_root, doc = %doc_hex, origin = %origin_root,
+        "journalable: not held, fetching");
     match crate::net::fragment::fetch(state, origin_root, &author, doc_id).await {
         crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
             if let Err(e) = remember(

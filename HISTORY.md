@@ -6487,3 +6487,21 @@ propagation riding pushes alone. Wired to 2000ms, trust.cjs's class went green o
 run that caught sharedby was the first with a pull road beside every push). The remaining
 mystery - WHY exchanges to a live loaded node hang until something reaps them - stays in
 REFACTOR.md, one suspect thinner now that the last aborter is gone.
+
+## 2026-08-24: the tail dig's real finding - the logs had no clock
+
+The residual-tail dig set out after a stalled share pointer and instead cleared every
+suspect: the eligibility windows are sound (`fragment_wants` rows are born eligible), the
+demand ledger registers askers, pushes deliver within a second, ingest persists, folds fire
+per exchange, and the door answers honestly. The stall's mechanism remains uncaught - because
+the dig's actual blocker was forensic, not mechanical: rig logs carry five nodes' interleaved
+traffic with nothing marking where one test's choreography ends and the next begins, and the
+night's wrong turns (a phantom re-delivery loop, a phantom frontier stall) were all artifacts
+of reading the right evidence in the wrong window.
+
+So the deliverable is the suite's clock, written into the evidence: **`/test/mark`** (a
+LOCAL_TEST door that stamps a note into the node's log) and roothooks that post every test's
+title to every rig node at START and END - 1326 marks per node per run, at the cost of two
+fire-and-forget HTTP posts per test. With `journalable`'s branches also speaking now, the
+share path has no silent step left. The tail keeps its REFACTOR entry, one instruction
+shorter: read the marks first.

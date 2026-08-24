@@ -35,6 +35,22 @@ pub struct SqlResponse {
     pub rows_affected: Option<u64>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct MarkRequest {
+    pub note: String,
+}
+
+/// Stamp a caller-supplied note into this node's log - the suite's clock, written into the
+/// evidence (2026-08-24). The roothooks post every test's title here as it starts, so a rig
+/// log reads as "TEST MARK: <which test> ... its traffic ..." instead of an undifferentiated
+/// stream: the residual-tail dig spent its longest stretches mis-assigning log windows to
+/// tests, because nothing in the logs said where one test's choreography ended and the
+/// next's began. LOCAL_TEST only, like every door in this module.
+pub async fn mark(Json(req): Json<MarkRequest>) -> Json<serde_json::Value> {
+    tracing::info!(note = %req.note, "TEST MARK");
+    Json(serde_json::json!({ "ok": true }))
+}
+
 /// Execute arbitrary SQL against the node database and return the results as JSON.
 ///
 /// Tries the statement as a row-returning query first; if it returns no rows we cannot tell a

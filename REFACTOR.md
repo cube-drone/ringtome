@@ -64,15 +64,12 @@ words haven't arrived" (also journalfill.cjs on CI). Down from the pre-fix rate 
 longer clustered; the diagnosis idiom that cracked the cascade bug (speak-on-failure logs +
 the outside-the-suite /test/sql probe) applies directly when this earns its dig.
 
-## Exchanges to a live node can hang for the full 30s peer ceiling (noted 2026-08-23)
-
-Read straight from the trust.cjs CI artifact: alpha's three vouch-pushes to charlie - alive,
-serving other exchanges the whole time - each hung until `PEER_PASS_TIMEOUT` detached them,
-29.7s apiece, and the vouches never arrived by push at all. The wake-pass backstop was
-disabled by the missing `RINGTOME_TEST_FOLLOW_STALE_MS` (fixed the same day: the rig now
-sets 2000, so a pull road exists beside every push), which is what let a hung-push window
-become a red test - but the hangs themselves are unexplained and production-real: something
-on a loaded node lets an accepted-or-accepting QUIC exchange sit half-open for tens of
-seconds. Same family as the zombie-mint findings (HISTORY 2026-08-22). When it earns its
-dig: the artifact idiom applies, and `push_to_askers` still reports only reached counts -
-per-peer errors from `sync_peers` are dropped there, worth a debug line when one fails.
+The 2026-08-24 dig (the seedToCleo face) cleared the layers one by one: pushes deliver
+within a second, ingest persists, folds fire within milliseconds of every exchange, the
+fragment door answers honestly. What it could NOT do was assign log windows to tests - a
+dozen neighboring tests' choreographies are indistinguishable in an unmarked stream, and
+the dig's longest stretches went to proving healthy machinery healthy inside the wrong
+window. That hole is closed: every test now stamps START/END marks into every rig node's
+log (`/test/mark` + the roothooks), and `journalable` - the last silent branch on the share
+path - speaks on every outcome. The next red in this family, local or CI artifact, arrives
+bounded, labeled, and narrated; diagnose it from the marks before theorizing.
