@@ -1073,7 +1073,37 @@ pub async fn journalable(
     let author = crate::pubkey::decode(author_root)?;
     tracing::debug!(author = %author_root, doc = %doc_hex, origin = %origin_root,
         "journalable: not held, fetching");
-    match crate::net::fragment::fetch(state, origin_root, &author, doc_id).await {
+    // The fetch on its OWN task, the fold's wait ceilinged - deadlines bound the WAIT,
+    // never the exchange (the acquire_one idiom, brought here by the 2026-08-24 CI
+    // evidence): twice, mark-bounded artifacts showed this very await produce no outcome
+    // for 60-187 seconds while the peer's door had answered in single-digit milliseconds
+    // and the 8s per-candidate timeout inside never fired - a timer that cannot fire means
+    // the enclosing task was stuck inside a synchronous poll, i.e. something on this
+    // node blocked, and the share fold (which runs INLINE on the sync serve path) blocked
+    // with it. The cause is still hunted (REFACTOR: the hung-exchange entry); this makes
+    // the fold immune to it either way. On the ceiling the fetch is DETACHED to finish and
+    // the fold takes the Unknown road: a want is noted, and the drain's beat owns recovery
+    // in seconds instead of "whenever this sharer's chain next moves".
+    let fetch_state = state.clone();
+    let fetch_origin = origin_root.to_string();
+    let fetch_doc = *doc_id;
+    let mut pull = tokio::spawn(async move {
+        crate::net::fragment::fetch(&fetch_state, &fetch_origin, &author, &fetch_doc).await
+    });
+    let fetched = match tokio::time::timeout(JOURNALABLE_FETCH_CEILING, &mut pull).await {
+        Ok(Ok(f)) => f,
+        Ok(Err(join_error)) => {
+            tracing::debug!(author = %author_root, doc = %doc_hex,
+                "journalable fetch died: {join_error}");
+            crate::net::fragment::Fetched::Unknown
+        }
+        Err(_) => {
+            tracing::debug!(author = %author_root, doc = %doc_hex, origin = %origin_root,
+                "journalable fetch still in flight at the fold's ceiling - detached; the want ladder takes over");
+            crate::net::fragment::Fetched::Unknown
+        }
+    };
+    match fetched {
         crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
             if let Err(e) = remember(
                 &state.node_db,
@@ -1217,6 +1247,11 @@ async fn settle_want(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()
 /// outbox's give-up: an unmet want three days old is a share of something that has probably
 /// been gone longer than it was ever here.
 const WANT_GIVE_UP_MS: i64 = 3 * 24 * 60 * 60 * 1000;
+/// How long the share fold waits on one document's fetch before detaching it and taking
+/// the want road. Above the per-candidate FETCH_TIMEOUT (a healthy multi-candidate walk
+/// fits), far below a settle window - the fold runs inline on the sync serve path, and its
+/// wait is everyone's wait.
+const JOURNALABLE_FETCH_CEILING: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How long a held fragment may go unconfirmed before we ask its origin again.
 ///

@@ -6664,3 +6664,18 @@ cora's cleared dial leaves the author wanted by nobody; the sweep empties the fe
 registry and the byline cache, the profile door answers 404, and the friend's followed
 mirror survives the same sweep untouched. The slice-1 test's "the mirror waits for slice 4"
 finally has its answer.
+
+## 2026-08-24 (later still): the share fold gets a ceiling - the last unbounded inline wait
+
+The CI reds that survived the re-read fix were the OTHER face: mark-bounded artifacts twice
+showed `journalable`'s fetch produce no outcome for 60-187 seconds while the peer's door
+had answered in milliseconds and the 8-second per-candidate timeout inside never fired. A
+timer that cannot fire means the enclosing task was stuck inside a synchronous poll -
+something on the node blocks, and the share fold (inline on the sync serve path) blocked
+with it. The cause is still hunted (REFACTOR, the hung-exchange entry, now with the
+task-starvation lead); the fold is immune meanwhile: its fetch runs on its own task under a
+10-second ceiling, detached on deadline into the Unknown road, where the want ladder owns
+recovery on the drain's beat. The spawn shape is the point - the stuck section rides the
+spawned task while the fold's own task polls nothing but a timer and a join handle, so the
+ceiling can always fire. Deadlines bound the wait, never the exchange, now everywhere the
+fold touches the network.
