@@ -492,24 +492,13 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
-    // WAL maintenance (Db::checkpoint): truncate node.db's and every open user db's log on a
-    // slow beat. Turso's own auto-checkpoint bounds work, not the file - the log only shrinks
-    // on TRUNCATE, and an unbounded WAL taxes every read after it (568MB observed, 2026-08-05).
+    // WAL maintenance (db::checkpoint_pass): truncate node.db's and every open user db's log
+    // on a slow beat - the policy and its reasoning live beside Db::checkpoint.
     loops::periodic(
         "wal-checkpoint",
         std::time::Duration::from_secs(60),
         state.clone(),
-        |state: AppState| async move {
-            if let Err(e) = state.node_db.checkpoint().await {
-                tracing::warn!(error = ?e, "node.db checkpoint failed");
-            }
-            for (root, db) in state.user_dbs.open_handles() {
-                if let Err(e) = db.checkpoint().await {
-                    tracing::warn!(root = %root, error = ?e, "user db checkpoint failed");
-                }
-            }
-            Ok(())
-        },
+        db::checkpoint_pass,
     );
     loops::periodic(
         "sync-anti-entropy",

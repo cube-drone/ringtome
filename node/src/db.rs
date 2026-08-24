@@ -986,6 +986,24 @@ impl UserDbManager {
     }
 }
 
+/// One WAL-maintenance beat (registered in main.rs): truncate node.db's log and every OPEN
+/// user db's, on the slow timer. The policy lives here beside `Db::checkpoint`, whose doc
+/// carries the why (turso's auto-checkpoint bounds work, not the file; the 568MB WAL of
+/// 2026-08-05); `open_handles` carries why the walk is the warm set and not the disk.
+/// Per-database failures are absorbed - one wedged file must not cost the rest of the fleet
+/// its maintenance - and the next beat retries everything.
+pub async fn checkpoint_pass(state: crate::AppState) -> Result<()> {
+    if let Err(e) = state.node_db.checkpoint().await {
+        tracing::warn!(error = ?e, "node.db checkpoint failed");
+    }
+    for (root, db) in state.user_dbs.open_handles() {
+        if let Err(e) = db.checkpoint().await {
+            tracing::warn!(root = %root, error = ?e, "user db checkpoint failed");
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
