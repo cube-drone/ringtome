@@ -11,7 +11,12 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    # ARM (2026-08-24): same free 4-vCPU shape as ubuntu-latest, but Cobalt/Ampere hardware
+    # that is newer and less oversubscribed than the x64 pool - and the stack's daily habitat
+    # is already ARM64 (development happens on an M-series Mac), so this is the LESS exotic
+    # target, not the more. First run after this change rebuilds cold: rust-cache keys on
+    # architecture. Revert to ubuntu-latest if the aarch64 pool ever disappoints.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -54,11 +59,14 @@ jobs:
         working-directory: node
         run: just ci
         env:
-          # Double every settle window: five rig nodes on four vCPUs are legitimately slower
-          # than a dev machine, and 2026-08-23's CI-only reds were all settle windows sized
-          # for local hardware. Green settles return early, so this costs a green run almost
-          # nothing (helpers.cjs::settleWith).
-          RINGTOME_TEST_SETTLE_SCALE: "2"
+          # Triple every time budget in the suite - the settle loops (helpers.cjs::settleWith)
+          # AND mocha's per-test ceiling (.mocharc.cjs), one knob for both: five rig nodes on
+          # four vCPUs of shared, noisy-neighbor hardware are legitimately 2-4x slower than a
+          # dev machine, with fat tails, and 2026-08-23's CI-only reds were all fixed budgets
+          # sized for local hardware. Green settles return early and green tests finish when
+          # they finish, so patience costs a green run almost nothing - only failures wait
+          # longer to be declared.
+          RINGTOME_TEST_SETTLE_SCALE: "3"
 
       # The rig nodes' tracing logs, saved ONLY when the gate fails. Remote-only reds were
       # undiagnosable without these (2026-08-23: three CI-only integration failures whose
