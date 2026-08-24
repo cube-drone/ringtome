@@ -431,14 +431,25 @@ pub struct IdQuery {
 /// ordinary sync exchange (an unproven requester with empty frontiers receives exactly the
 /// public lane - the same from-empty path adoption exercises), the gate validates everything
 /// against `root`, and concurrent winners are safe (single-writer chains, duplicate-skip
-/// ingest; the also-rans are aborted). Candidates arrive base58 or hex, and each may be
+/// ingest; the also-rans are DETACHED to finish, never aborted - see below). Candidates
+/// arrive base58 or hex, and each may be
 /// either kind of key (2026-08-07, "hints become leaves"): an identity LEAF - resolved
 /// through its signed serving record, which must name OUR target root or the hint is
 /// discarded - or a bare endpoint id, the original transport-layer form. Leaves are tried as
 /// leaves first; a key that resolves no serving record falls back to being dialed as an
 /// endpoint. The resolve-a-bare-root announce backstop remains NEXT_STEPS.
 async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool {
-    let mut set = tokio::task::JoinSet::new();
+    // Detach, never cancel (2026-08-24, closing REFACTOR's visit-ladder entry): the old
+    // shape aborted the also-rans on first success (JoinSet::abort_all) and cancelled each
+    // exchange at its 8s deadline (timeout around the future), and every one of those
+    // aborts could mint zombie QUIC state against the very node the winner just used. The
+    // sharedby CI artifact caught the cluster the REFACTOR entry predicted: three share
+    // pointers took 128 seconds - the QUIC idle reaper's clearing time - to cross to a
+    // node whose wake pass was dialing their host every 4 seconds, every dial wedged
+    // behind a poisoned connection. Now each exchange runs on its own task; deadlines and
+    // winners bound the WAIT and detach the work (the `speculative::acquire_one` idiom),
+    // and a late also-ran just leaves a warmer mirror (duplicate-skip ingest).
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<(String, u64)>>(16);
     // The zeroth hint is the root itself: a founding node signs with the root AS its leaf,
     // so its serving record lives under the root key - which makes a bare root resolve with
     // no hint at all, for every persona whose founding node still publishes. (The announce
@@ -452,30 +463,40 @@ async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool
         };
         let task_state = state.clone();
         let task_root = root_hex.to_string();
-        set.spawn(async move {
+        let tx = tx.clone();
+        tokio::spawn(async move {
             let key_hex = leaf_via_to_endpoint(&task_state, &task_root, &key_hex).await;
-            let addr = crate::net::sync::dial_addr(&task_state, &key_hex).await.ok()?;
-            match tokio::time::timeout(
-                FETCH_TIMEOUT,
-                crate::net::sync::sync_with_peer(&task_state, &task_root, addr),
-            )
-            .await
-            {
-                Ok(Ok(stats)) => Some((key_hex, stats.received)),
-                Ok(Err(e)) => {
+            let Ok(addr) = crate::net::sync::dial_addr(&task_state, &key_hex).await else {
+                let _ = tx.send(None).await;
+                return;
+            };
+            let exchange_state = task_state.clone();
+            let exchange_root = task_root.clone();
+            let mut pull = tokio::spawn(async move {
+                crate::net::sync::sync_with_peer(&exchange_state, &exchange_root, addr).await
+            });
+            let outcome = match tokio::time::timeout(FETCH_TIMEOUT, &mut pull).await {
+                Ok(Ok(Ok(stats))) => Some((key_hex, stats.received)),
+                Ok(Ok(Err(e))) => {
                     tracing::debug!(root = %task_root, via = %key_hex, "foreign fetch failed: {e:#}");
                     None
                 }
-                Err(_) => {
-                    tracing::debug!(root = %task_root, via = %key_hex, "foreign fetch timed out");
+                Ok(Err(join_error)) => {
+                    tracing::debug!(root = %task_root, via = %key_hex, "foreign fetch died: {join_error}");
                     None
                 }
-            }
+                Err(_) => {
+                    tracing::debug!(root = %task_root, via = %key_hex,
+                        "foreign fetch still in flight at the deadline - detached, moving on");
+                    None
+                }
+            };
+            let _ = tx.send(outcome).await;
         });
     }
-    while let Some(joined) = set.join_next().await {
-        if let Ok(Some((key_hex, received))) = joined {
-            set.abort_all();
+    drop(tx); // the channel closes when the last candidate reports (or none were spawnable)
+    while let Some(outcome) = rx.recv().await {
+        if let Some((key_hex, received)) = outcome {
             tracing::info!(root = %root_hex, via = %key_hex, received,
                 "fetched foreign identity on member request");
             if let Err(e) = record_foreign_fetch(state, root_hex, &key_hex).await {

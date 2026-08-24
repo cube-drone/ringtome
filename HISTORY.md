@@ -6467,3 +6467,23 @@ Soak: four consecutive full-suite runs post-fix - two fully green (the first all
 with a single red each, neither in the heal-candidate family that previously failed every
 other run. What remains is the body-arrival race tail, recorded in REFACTOR.md with the
 diagnosis idiom that will crack it when it earns the dig.
+
+## 2026-08-23 (night): the visit ladder converts to detach - the last cancel falls
+
+The sharedby CI artifact delivered the cluster REFACTOR's visit-ladder entry had been
+waiting for: three share pointers took 128 seconds - QUIC-idle-reaper time - to cross to a
+node whose wake pass was dialing their host every four seconds, every dial wedged behind a
+poisoned connection, then all three landed in one burst the moment it cleared. The entry's
+own prescription applied verbatim: `idface::fetch_foreign` no longer aborts the also-rans
+on first success and no longer cancels an exchange at its deadline - each exchange rides
+its own task, deadlines and winners bound the wait and detach the work (the
+`speculative::acquire_one` idiom), and a late also-ran leaves a warmer mirror. With this,
+no exchange anywhere in the node is cancelled mid-flight.
+
+Also from the same artifact, the fix that preceded it: the rig had never set
+`RINGTOME_TEST_FOLLOW_STALE_MS`, so the wake-pass backstop was silently disabled across the
+whole suite - every followed mirror "fresh" for a production 30 minutes, all test
+propagation riding pushes alone. Wired to 2000ms, trust.cjs's class went green on CI (the
+run that caught sharedby was the first with a pull road beside every push). The remaining
+mystery - WHY exchanges to a live loaded node hang until something reaps them - stays in
+REFACTOR.md, one suspect thinner now that the last aborter is gone.
