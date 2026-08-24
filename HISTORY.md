@@ -6505,3 +6505,24 @@ title to every rig node at START and END - 1326 marks per node per run, at the c
 fire-and-forget HTTP posts per test. With `journalable`'s branches also speaking now, the
 share path has no silent step left. The tail keeps its REFACTOR entry, one instruction
 shorter: read the marks first.
+
+## 2026-08-24: the People page's suggested shelf - discovery gets a face
+
+The first UI consumer of the trust arc (NEXT_STEPS: "surface implicit edges in the UI"):
+a third shelf between "everyone you know" and "known around here" - exactly where its
+people stand. **`GET /api/identity/{root}/suggested`** serves the reader's demand rollup
+JOINED to `speculative_fetches`: a suggestion the node cannot render a face for is not yet
+a suggestion; it becomes one on the beat its pull lands. Rows carry the speakable spelling
+and bylines from the cache (one query, no database per face - the directory's discipline),
+plus the best introducer's name for the row's right-edge byline ("via mara" - the
+`PersonRow` widget grew an `aside` slot for exactly this, worn instead of a relationship
+glance a stranger cannot have). Discounts and explicit-dial precedence come free: the
+rollup already applied both, and the shelf excludes anyone on the contacts shelf besides,
+covering the beat between a dial and the fold that notices it. A suggested persona also in
+the directory shows on the suggested shelf alone - the vouch is the stronger claim.
+
+Red-first both layers: the acceptance test (speculative.cjs, the suggested shelf naming the
+vouched-for author via the friend) ran red on the absent endpoint before the endpoint
+existed, and the unit cop (`suggestions_require_a_landed_mirror`) pins the join that makes
+the shelf honest. Ownership gate is `store::open`, same as `implicit` - the rollup composed
+through the reader's private dials, so only the reader reads it.

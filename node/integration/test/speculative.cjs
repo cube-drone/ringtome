@@ -156,6 +156,24 @@ const base58 = async (host) => {
         );
     });
 
+    it("the suggested shelf names the vouched-for author, via the friend", async function () {
+        // The People page's data (NEXT_STEPS: "surface implicit edges in the UI"): the
+        // reader's demand rollup, FILTERED to targets whose chains the acquisition pass
+        // actually landed - a suggestion the node cannot render a face for is not yet a
+        // suggestion - each row carrying its best introducer for the "suggested via" byline.
+        // One read, both uses: `assert(status, await res.text())` evaluates its message arm
+        // even on success, and a consumed body makes the json() after it a TypeError.
+        const res = await cora(`api/identity/${coraRoot}/suggested`);
+        const text = await res.text();
+        assert.equal(res.status, 200, text);
+        const { suggestions } = JSON.parse(text);
+        const row = (suggestions || []).find((s) => s.root === authorRoot);
+        assert.ok(row, "the vouched-for, mirror-held author is suggested");
+        assert.equal(row.introducer_root, friendRoot, "the byline names the introducer");
+        assert.ok(row.speakable, "the row carries its speakable spelling");
+        assert.ok(row.lane === "trust" || row.lane === "taste", "the winning lane rides along");
+    });
+
     it("a withdrawn vouch recedes from the demand memo (the mirror waits for slice 4)", async function () {
         // The friend takes the vouch back; the graph row sweeps (trust.cjs proves that leg),
         // and the rollup built on it must recede with its inputs. The mirror itself stays -

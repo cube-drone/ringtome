@@ -76,6 +76,12 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/implicit",
             get(implicit_list_handler),
         )
+        // The People page's suggested shelf: the demand rollup filtered to landed mirrors,
+        // bylines attached (speculative::suggested_for - "reading is not serving").
+        .route(
+            "/api/identity/{root}/suggested",
+            get(suggested_list_handler),
+        )
         .route(
             "/api/identity/{root}/private/kv/{collection}",
             get(private_kv_list_handler),
@@ -1368,6 +1374,26 @@ async fn implicit_list_handler(
         .await
         .map_err(AppError::Internal)?;
     Ok(Json(ImplicitListResponse { edges }))
+}
+
+#[derive(serde::Serialize)]
+struct SuggestedListResponse {
+    suggestions: Vec<crate::speculative::Suggested>,
+}
+
+/// The suggested shelf: friends-of-friends this reader's rollup admits AND whose chains the
+/// acquisition pass has landed. `store::open` is the ownership gate, same as `implicit` -
+/// the rollup composed through this reader's private dials, so only this reader reads it.
+async fn suggested_list_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<SuggestedListResponse>, AppError> {
+    store::open(&state, &session.account.id, &root).await?;
+    let suggestions = crate::speculative::suggested_for(&state.node_db, &root)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(SuggestedListResponse { suggestions }))
 }
 
 async fn private_kv_list_handler(

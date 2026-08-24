@@ -206,7 +206,7 @@ export const PersonBanner = ({ root, current, profile, actions }) => {
 /// The banner's roster form: the same face and names, plus your relationship at a glance,
 /// and the WHOLE row is the link (a list is a place you click, not a place you aim). What
 /// People is made of - one component instead of a table's worth of columns.
-export const PersonRow = ({ root, current, profile }) => {
+export const PersonRow = ({ root, current, profile, aside }) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
     return html`
@@ -216,7 +216,13 @@ export const PersonRow = ({ root, current, profile }) => {
         >
             <${PersonHex} person=${person} size="small" />
             <${PersonNames} person=${person} />
-            <${RelationshipGlance} facts=${person.facts} />
+            ${/* The row's right edge: your relationship at a glance - unless the caller has a
+                better claim to the slot (the suggested shelf's "via ..." byline: a stranger
+                has no relationship to glance at, and "nothing recorded yet" would bury the
+                one fact that explains why they're on screen). */ ''}
+            ${aside
+                ? html`<span class="person-row-via">${aside}</span>`
+                : html`<${RelationshipGlance} facts=${person.facts} />`}
         </a>
     `;
 };

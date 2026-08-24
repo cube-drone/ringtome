@@ -518,9 +518,125 @@ async fn last_fetch(node_db: &Db, target_root: &str) -> Result<Option<(i64, Opti
     Ok(row)
 }
 
+/// One row of the People page's suggested shelf, byline attached.
+#[derive(Debug, serde::Serialize)]
+pub struct Suggested {
+    pub root: String,
+    /// The whole speakable spelling, server-derived like the directory's - the row is the
+    /// profile the Person widget needs, and the client filter matches on these words.
+    pub speakable: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    /// Which lane won the rollup ('trust' | 'taste').
+    pub lane: String,
+    /// Band word after the promiscuity discount - the score the shelf orders by.
+    pub level: String,
+    pub introducer_root: String,
+    /// The introducer's claimed name, for the "via mara" byline. Absent renders as "via a
+    /// friend" - the introduction is still the fact worth showing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub introducer_name: Option<String>,
+}
+
+/// The suggested shelf: one reader's demand rollup, FILTERED to targets the acquisition pass
+/// has actually landed (the `speculative_fetches` join) - a suggestion the node cannot render
+/// a face for is not yet a suggestion; it becomes one on the beat its pull completes. Bylines
+/// ride the cache like every list surface (one query, no database per face), and the rows
+/// come back best-first: band ordinal descending, root ascending, the rollup's own tiebreak.
+///
+/// Reading is not serving (the slice-1 doctrine): this surface hands a hunch-held persona to
+/// the node's OWN reader, the one relationship a quiet mirror exists for.
+pub async fn suggested_for(node_db: &Db, reader_root: &str) -> Result<Vec<Suggested>> {
+    let rows: Vec<(String, String, String, String)> = node_db
+        .fetch_all(
+            "SELECT d.target_root, d.lane, d.level, d.introducer_root
+             FROM speculative_demand d
+             JOIN speculative_fetches f ON f.target_root = d.target_root
+             WHERE d.reader_root = ?1",
+            (reader_root,),
+        )
+        .await
+        .context("reading the suggested shelf")?;
+    let mut byline_roots: Vec<String> = Vec::new();
+    for (target, _, _, introducer) in &rows {
+        if !byline_roots.contains(target) {
+            byline_roots.push(target.clone());
+        }
+        if !byline_roots.contains(introducer) {
+            byline_roots.push(introducer.clone());
+        }
+    }
+    let bylines = crate::profiles::bylines(node_db, &byline_roots).await?;
+    let band_ordinal = |word: &str| {
+        ringtome_proto::PublicEdge::BANDS
+            .iter()
+            .position(|b| *b == word)
+            .unwrap_or(0)
+    };
+    let mut out: Vec<Suggested> = rows
+        .into_iter()
+        .filter_map(|(target, lane, level, introducer_root)| {
+            let raw = crate::pubkey::decode(&target)?;
+            let byline = bylines.get(&target).cloned().unwrap_or_default();
+            let introducer_name =
+                bylines.get(&introducer_root).and_then(|b| b.name.clone());
+            Some(Suggested {
+                speakable: crate::speakable::speakable(&raw),
+                name: byline.name,
+                avatar: byline.avatar,
+                lane,
+                level,
+                introducer_root,
+                introducer_name,
+                root: target,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        band_ordinal(&b.level)
+            .cmp(&band_ordinal(&a.level))
+            .then_with(|| a.root.cmp(&b.root))
+    });
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The shelf's honesty gate: a demand row whose pull has not landed is not suggested.
+    /// Planted red against a version without the `speculative_fetches` join before trusted.
+    #[tokio::test]
+    async fn suggestions_require_a_landed_mirror() {
+        let db = crate::db::test_node_db().await;
+        let reader = "aa".repeat(32);
+        let landed = "bb".repeat(32);
+        let pending = "cc".repeat(32);
+        let introducer = "dd".repeat(32);
+        for target in [&landed, &pending] {
+            db.execute(
+                "INSERT INTO speculative_demand
+                   (reader_root, target_root, lane, introducer_root, level, updated_at_ms)
+                 VALUES (?1, ?2, 'trust', ?3, 'high', 1)",
+                (reader.as_str(), target.as_str(), introducer.as_str()),
+            )
+            .await
+            .unwrap();
+        }
+        db.execute(
+            "INSERT INTO speculative_fetches (target_root, fetched_at_ms) VALUES (?1, 2)",
+            (landed.as_str(),),
+        )
+        .await
+        .unwrap();
+        let rows = suggested_for(&db, &reader).await.unwrap();
+        assert_eq!(rows.len(), 1, "only the landed mirror is suggested");
+        assert_eq!(rows[0].root, landed);
+        assert_eq!(rows[0].introducer_root, introducer);
+        assert!(!rows[0].speakable.is_empty(), "the row carries its spelling");
+    }
 
     fn edge<'a>(
         target: &'a str,

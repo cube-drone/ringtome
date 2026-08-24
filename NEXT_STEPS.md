@@ -138,7 +138,7 @@ the slice order. Below is the short worklist.
   garbage-dial rule, detach-never-cancel - are in HISTORY and folded into DISCOVERY's invariants
 * speculative journal rows + provenance (slice 2), then the slider (slice 3), then mirror eviction (slice 4)
 * the headers depth (slice 5): scoped sync Hello, non-resident mirrors, the weighted-random lane, the reciprocal door
-* surface implicit edges in the UI (people page: "suggested via..."), with banded promiscuity discounts and explicit-dial precedence at read
+* ~~surface implicit edges in the UI (people page: "suggested via..."), with banded promiscuity discounts and explicit-dial precedence at read~~ built 2026-08-24: the People page's suggested shelf (`/api/identity/{root}/suggested` - the demand rollup filtered to landed mirrors, discounts and explicit-dial exclusion inherited from the rollup itself)
 * advogato-style joint flow calculation to determine how much we trust a person who we've never met, but exists somewhere in our trust graph
 * using trust & rebroadcast rules to surface content to users
 * using trust to make it easier to send messages to users

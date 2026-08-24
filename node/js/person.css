@@ -233,3 +233,12 @@
     gap: 0.4rem;
     width: 100%;
 }
+
+/* The suggested shelf's right-edge byline ("via mara") - the glance slot worn by a fact
+   about the introduction rather than a relationship. Same seat, same quiet voice. */
+.person-row .person-row-via {
+    margin-left: auto;
+    flex-shrink: 0;
+    color: var(--faint);
+    font-size: 0.78rem;
+}

@@ -62,6 +62,25 @@ export const PeopleLookup = ({ query, onQuery }) => {
     `;
 };
 
+// The suggested shelf: friends-of-friends whose chains the speculative pass has actually
+// landed (DISCOVERY slice 1; NEXT_STEPS "surface implicit edges in the UI"). Fetched once per
+// visit for the same reason as the directory below - the demand rollup moves on the fold's
+// beat, not the browser's - and each row carries its best introducer for the "via" byline.
+const useSuggested = (root) => {
+    const [rows, setRows] = useState(null);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/suggested`)
+            .then((r) => live && setRows((r && r.suggestions) || []))
+            .catch(() => live && setRows([]));
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    return rows;
+};
+
 // The node's directory: everyone known around here, fetched once per visit. Not the mirror -
 // this is the NODE's acquaintance (served neighbors + personas members have reached), not the
 // persona's own ledger, so it doesn't stream; a visit's snapshot is the right freshness.
@@ -99,15 +118,32 @@ export const PeopleApp = ({ current, searchQuery }) => {
     const sorted = sortContacts(filterContacts(worded, filter), sortBy);
     const visible = sorted.slice(0, shown);
 
+    // People you might know: the trust graph's suggestions, between your own shelf and the
+    // node's directory because that is exactly where they sit - closer than strangers, not
+    // yet relationships. Rows arrive server-filtered to the pair of facts that make a
+    // suggestion honest (a friend's vouch admits them AND their chains are actually held,
+    // so the row renders a real face); anyone already on your shelf is excluded here, since
+    // the rollup excludes explicit dials a beat behind the dial itself.
+    const suggestedRaw = useSuggested(root);
+    const onShelf = new Set((rows || []).map((r) => r.root));
+    const suggested = filterContacts(
+        (suggestedRaw || [])
+            .filter((s) => s.root !== root && !onShelf.has(s.root))
+            .map((s) => ({ ...s, words: s.speakable })),
+        filter
+    ).slice(0, PEOPLE_SHELF_SLICE);
+
     // Known around here, minus everyone already on your shelf above (and minus you): the
     // discovery half of the page, for the day this network stops feeling like a closed room.
     // The filter narrows it too, and it wears the same slice - the server already caps what
     // it serves, but a bound this page relies on belongs to this page.
     const directory = useDirectory();
-    const onShelf = new Set((rows || []).map((r) => r.root));
+    // A persona both suggested and known-around-here shows on the suggested shelf alone:
+    // "a friend vouches for them" is the stronger claim than "this node has met them".
+    const suggestedRoots = new Set(suggested.map((s) => s.root));
     const known = filterContacts(
         (directory || [])
-            .filter((d) => d.root !== root && !onShelf.has(d.root))
+            .filter((d) => d.root !== root && !onShelf.has(d.root) && !suggestedRoots.has(d.root))
             // Directory rows already carry their speakable spelling from the server.
             .map((d) => ({ ...d, words: d.speakable })),
         filter
@@ -145,6 +181,39 @@ export const PeopleApp = ({ current, searchQuery }) => {
             >
                 ${t('apps.people.show-more-of', 'show more ({length} of {p1})', { length: visible.length, p1: sorted.length })}
             </button>`}
+            ${suggested.length > 0 &&
+            html`<div class="people-known">
+                <div class="people-shelf-head">
+                    <span class="people-shelf-title">${t('apps.people.people-you-might-know', 'people you might know')}</span>
+                    <span class="people-known-note">
+                        ${t('apps.people.vouched-for-by-people-you', 'vouched for by people you trust - open one to say how you know them')}
+                    </span>
+                </div>
+                <div class="people-list">
+                    ${suggested.map(
+                        (s) => html`<${PersonRow}
+                            key=${s.root}
+                            root=${s.root}
+                            current=${current}
+                            profile=${/* the suggestion row IS the profile the widget needs -
+                                same zero-fetch argument as the directory below. `foreign` is
+                                always true here: a suggested persona is by definition not
+                                hosted, or the ordinary machinery would already own them. */ {
+                                fields: [
+                                    s.name && { field: 'name', value: s.name },
+                                    s.avatar && { field: 'avatar', value: s.avatar },
+                                ].filter(Boolean),
+                                hosted: false,
+                                foreign: true,
+                                via: [],
+                            }}
+                            aside=${s.introducer_name
+                                ? t('apps.people.via-name', 'via {name}', { name: s.introducer_name })
+                                : t('apps.people.via-a-friend', 'via a friend')}
+                        />`
+                    )}
+                </div>
+            </div>`}
             ${known.length > 0 &&
             html`<div class="people-known">
                 <div class="people-shelf-head">
