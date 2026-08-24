@@ -36,18 +36,21 @@ use crate::AppState;
 /// keeps the sweep from racing an in-flight pull or promotion. LOCAL_TEST may shorten it.
 const EVICTION_GRACE_MS: i64 = 60 * 60 * 1000;
 
-/// The judgment, pure: every keeper is a reason to stay. `open_handle` is the cheapest
-/// grace of all - a handle somebody holds open is a mirror somebody is touching right now.
+/// The judgment, pure: every keeper is a reason to stay. There is deliberately NO
+/// open-handle keeper: the handle cache holds any recently-touched database until LRU
+/// pressure says otherwise, so "cached" is not "in use" - the first draft kept every
+/// mirror on a quiet node forever, silently, and the acceptance test caught it on its
+/// first green-side run. Active use is what the mtime grace measures (a touched file is a
+/// rested-clock reset), and `evict_mirror` invalidates the cached handle itself.
 fn evictable(
     hosted: bool,
     dialed: bool,
     member_fetched: bool,
     has_fragments: bool,
     demanded: bool,
-    open_handle: bool,
     rested: bool,
 ) -> bool {
-    !hosted && !dialed && !member_fetched && !has_fragments && !demanded && !open_handle && rested
+    !hosted && !dialed && !member_fetched && !has_fragments && !demanded && rested
 }
 
 /// One pass of the sweep (registered in main.rs, slow beat): walk every database on disk,
@@ -76,13 +79,6 @@ pub async fn evict_pass(state: AppState) -> Result<()> {
         .collect();
     let fetched: std::collections::HashSet<String> =
         crate::idface::fetched_roots(&state.node_db).await?.into_iter().collect();
-    let open: std::collections::HashSet<String> = state
-        .user_dbs
-        .open_handles()
-        .into_iter()
-        .map(|(root, _)| root)
-        .collect();
-
     for root in corpus {
         let hosted_here = hosted.contains(&root);
         let dialed = !crate::net::subscriptions::dialed_by(&state.node_db, &root)
@@ -91,12 +87,11 @@ pub async fn evict_pass(state: AppState) -> Result<()> {
         let member_fetched = fetched.contains(&root);
         let has_fragments = crate::fragments::any_for_author(&state.node_db, &root).await?;
         let demanded = crate::speculative::demand_exists(&state.node_db, &root).await?;
-        let open_handle = open.contains(&root);
         let rested = state
             .user_dbs
             .db_mtime_ms(&root)
             .is_none_or(|mt| now - mt >= grace_ms);
-        if !evictable(hosted_here, dialed, member_fetched, has_fragments, demanded, open_handle, rested) {
+        if !evictable(hosted_here, dialed, member_fetched, has_fragments, demanded, rested) {
             continue;
         }
         if let Err(e) = evict_one(&state, &root).await {
@@ -132,14 +127,13 @@ mod tests {
     /// against an `evictable` that ignored the hosted flag before it was trusted.
     #[test]
     fn every_keeper_keeps() {
-        let gone = |h, d, m, f, de, o, r| evictable(h, d, m, f, de, o, r);
-        assert!(gone(false, false, false, false, false, false, true));
-        assert!(!gone(true, false, false, false, false, false, true), "hosted keeps");
-        assert!(!gone(false, true, false, false, false, false, true), "a dial keeps");
-        assert!(!gone(false, false, true, false, false, false, true), "member-fetched keeps");
-        assert!(!gone(false, false, false, true, false, false, true), "a fragment keeps");
-        assert!(!gone(false, false, false, false, true, false, true), "demand keeps");
-        assert!(!gone(false, false, false, false, false, true, true), "an open handle keeps");
-        assert!(!gone(false, false, false, false, false, false, false), "grace keeps");
+        let gone = |h, d, m, f, de, r| evictable(h, d, m, f, de, r);
+        assert!(gone(false, false, false, false, false, true));
+        assert!(!gone(true, false, false, false, false, true), "hosted keeps");
+        assert!(!gone(false, true, false, false, false, true), "a dial keeps");
+        assert!(!gone(false, false, true, false, false, true), "member-fetched keeps");
+        assert!(!gone(false, false, false, true, false, true), "a fragment keeps");
+        assert!(!gone(false, false, false, false, true, true), "demand keeps");
+        assert!(!gone(false, false, false, false, false, false), "grace keeps");
     }
 }

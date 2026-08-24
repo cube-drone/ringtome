@@ -246,7 +246,7 @@ intent against storage-management surfaces that do not exist yet.
 4. ~~**Mirror eviction.**~~ Built 2026-08-24 (`eviction.rs`; acceptance green in
    `speculative.cjs`, red-first; the keeper cop planted-red). The sweep's judgment grew two
    keepers beyond the design sketch - MEMBER-FETCHED (the freshness contract is wanting)
-   and the two graces (an open handle, an mtime rest) - and eviction takes files (db, WAL,
+   and the mtime grace (deliberately NOT an open-handle keeper: the handle cache holds any recently-touched db, so "cached" is not "in use" - the first draft kept every mirror on a quiet node forever, caught by the acceptance test's first run) - and eviction takes files (db, WAL,
    journal, sealed key) plus every trace through each table's owner: fetch registry,
    speculative feed rows, byline, frontier memo, mirrored edges, deliverer stamps, wants,
    body wants. Blobs stay the reaper's by refcount. Recreation is demand-driven, so an

@@ -6647,7 +6647,11 @@ forever, invisible while every mirror was asked for, a leak the moment speculati
 mirrors on hunches that recede. `eviction.rs` is the retention edge: an hourly sweep whose
 one judgment - a mirror nobody wants is holding chains nobody asked to keep - is a pure
 conjunction of keepers (hosted, any dial, member-fetched, fragments standing, demand
-standing, an open handle, the mtime grace), each individually pinned by the keeper cop.
+standing, the mtime grace), each individually pinned by the keeper cop. The first draft
+had one keeper too many - an open-handle check, which read as the cheapest in-use grace and
+was actually "cached recently", keeping every mirror on a quiet node forever; the
+acceptance test caught it on its first green-side run, which is red-first doing exactly its
+job on the OTHER side of the fence.
 Eviction takes the files (db, WAL, raw-entry journal, sealed key - the keystore grew
 `remove` for exactly this) and every bookkeeping trace, each through its table's owner;
 blobs stay the reaper's by refcount. Safe by the same shape that makes promotion clean:
