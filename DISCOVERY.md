@@ -233,8 +233,16 @@ intent against storage-management surfaces that do not exist yet.
    byline (via_root's own first-sighting rule). The feed shows the rows with a
    "vouches for this author" line pending the slider; withdrawn vouches leave rows
    standing for slices 3-4 to hide and evict.
-3. **The slider.** UI + read-time filtering (the six stops, Explorer default for new
-   users). Depends on 1–2 for anything to show.
+3. ~~**The slider.**~~ Built 2026-08-24 (`pure/selectivity.js`, spec-first in the pure
+   suite; the six stops verbatim, Explorer default; position a persona-level private
+   register - `feed_selectivity/stop` - so selectivity syncs with the person). Pure
+   attention: client-side floor over the journaled rows, network-silent both ways. The
+   effective-interest precedence (author dial → sharer dial → path band → floor) filters
+   AND sets emphasis - speculative rows arrive small and quiet whatever their path score -
+   and the feed ships `suggested_level` (the rollup's discounted band, read-time joined)
+   as the path rung's input. Today's one speculative pool means 'highly speculative' and
+   'Explorer' differ from 'speculative' only by path strength; the deeper stops light up
+   as their pools land, as designed.
 4. **Mirror eviction.** The retention edge this pipeline makes real for the first time:
    nothing today evicts a mirrored persona, ever. Scoped sweep: a mirror with no
    subscription, no fragment ledger row, and no rollup row is holding chains nobody wants.

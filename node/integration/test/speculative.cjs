@@ -190,6 +190,9 @@ const base58 = async (host) => {
         assert.ok(row, "the speculative row landed in cora's feed, marked");
         assert.equal(row.suggested_via, friendRoot, "the provenance names the introducer");
         assert.ok(!row.via, "suggested is not shared - the two bylines never mix");
+        // The slider's third precedence rung rides the row (slice 3): the demand rollup's
+        // discounted band, read-time joined, so the client can filter without a second ask.
+        assert.ok(row.suggested_level, "the path band rides the row for the slider");
 
         // Promotion converts IN PLACE: cora turns a real dial on the author, the follow's
         // backfill journals from the (already-held) shelf, and the same primary key sheds

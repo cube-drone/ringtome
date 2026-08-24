@@ -77,3 +77,23 @@ describe('the People filter (search-first: the filter finds, the slice bounds)',
         assert.ok(Number.isInteger(PEOPLE_SHELF_SLICE) && PEOPLE_SHELF_SLICE > 0);
     });
 });
+
+describe('standing on the shelf', () => {
+    let standingFacts;
+    before(async () => {
+        ({ standingFacts } = await import('../../../js/pure/people.js'));
+    });
+
+    it('a cleared ledger row has no standing - registers persist, relationships end', () => {
+        // The contact ledger is append-only LWW registers: clearing a dial writes "", it
+        // never deletes. A set-then-cleared contact (test-data's unfollow-someone, or any
+        // real change of heart) must leave "everyone you know", not haunt it saying
+        // "nothing recorded yet" (found 2026-08-24 on deck-tamer's rolodex).
+        assert.ok(!standingFacts({ interest: '', trust: '' }), 'all-cleared is no standing');
+        assert.ok(!standingFacts({}), 'no facts is no standing');
+        assert.ok(!standingFacts(undefined), 'no row is no standing');
+        assert.ok(standingFacts({ interest: 'high' }), 'a live dial stands');
+        assert.ok(standingFacts({ trust: '', nickname: 'moss' }), 'a nickname alone stands');
+        assert.ok(standingFacts({ blocked: 'yes' }), 'blocked stands - hidden would mean unfindable');
+    });
+});

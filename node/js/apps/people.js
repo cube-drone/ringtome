@@ -12,7 +12,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { parseIdReference, speakable } from '../speakable.js';
 import { PersonRow } from '../person.js';
 import { api } from '../net.js';
-import { PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts } from '../pure/people.js';
+import { PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts, standingFacts } from '../pure/people.js';
 import { t } from '../i18n.js';
 
 const html = htm.bind(h);
@@ -108,14 +108,23 @@ export const PeopleApp = ({ current, searchQuery }) => {
     const filter = searchQuery || '';
     const [shown, setShown] = useState(PEOPLE_SHELF_SLICE);
     useEffect(() => setShown(PEOPLE_SHELF_SLICE), [filter]);
-    const rows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
-    // The speakable spelling, derived once per list change (filterContacts is pure and
-    // matches `words` only when a row wears them) - never per keystroke.
-    const worded = useMemo(
-        () => (rows || []).map((r) => ({ ...r, words: speakable(r.root) })),
-        [rows]
-    );
-    const sorted = sortContacts(filterContacts(worded, filter), sortBy);
+    const allRows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
+    // Standing first, spelling second, both once per LEDGER change (the memo keys on the
+    // live rows, so neither runs per keystroke). Standing (standingFacts): a set-then-
+    // cleared relationship leaves empty registers behind - the ledger is append-only, ""
+    // is a clear - and those rows belong to the mirror (name resolution for once-known
+    // people) but not to the shelf, and not to the dedup below, so a fully-cleared person
+    // is discoverable again.
+    const { standing: rows, cleared } = useMemo(() => {
+        const standing = [];
+        const cleared = [];
+        for (const r of allRows || []) {
+            const w = { ...r, words: speakable(r.root) };
+            (standingFacts(r.facts) ? standing : cleared).push(w);
+        }
+        return { standing, cleared };
+    }, [allRows]);
+    const sorted = sortContacts(filterContacts(rows, filter), sortBy);
     const visible = sorted.slice(0, shown);
 
     // People you might know: the trust graph's suggestions, between your own shelf and the
@@ -146,6 +155,21 @@ export const PeopleApp = ({ current, searchQuery }) => {
             .filter((d) => d.root !== root && !onShelf.has(d.root) && !suggestedRoots.has(d.root))
             // Directory rows already carry their speakable spelling from the server.
             .map((d) => ({ ...d, words: d.speakable })),
+        filter
+    ).slice(0, PEOPLE_SHELF_SLICE);
+
+    // The bottom of the page: people you USED to know - a relationship created and then
+    // cleared. The ledger remembers them (append-only registers, "" is a clear), and
+    // burying them below every current shelf is the design (Curtis, 2026-08-24): you have
+    // to go looking, so idle browsing never walks you past your unfollows, but a lost
+    // pointer is one scroll away instead of gone. Deduped against every shelf above - a
+    // cleared person who is now vouched-for or node-known shows THERE, under the stronger
+    // present-tense claim.
+    const knownRoots = new Set(known.map((d) => d.root));
+    const usedToKnow = filterContacts(
+        cleared.filter(
+            (c) => c.root !== root && !suggestedRoots.has(c.root) && !knownRoots.has(c.root)
+        ),
         filter
     ).slice(0, PEOPLE_SHELF_SLICE);
 
@@ -239,6 +263,25 @@ export const PeopleApp = ({ current, searchQuery }) => {
                                 foreign: !d.hosted,
                                 via: [],
                             }}
+                        />`
+                    )}
+                </div>
+            </div>`}
+            ${usedToKnow.length > 0 &&
+            html`<div class="people-known">
+                <div class="people-shelf-head">
+                    <span class="people-shelf-title">${t('apps.people.you-used-to-know', 'you used to know')}</span>
+                    <span class="people-known-note">
+                        ${t('apps.people.relationships-you-set-and-later', 'relationships you set and later cleared')}
+                    </span>
+                </div>
+                <div class="people-list">
+                    ${usedToKnow.map(
+                        (c) => html`<${PersonRow}
+                            key=${c.root}
+                            root=${c.root}
+                            current=${current}
+                            aside=${t('apps.people.cleared', 'cleared')}
                         />`
                     )}
                 </div>

@@ -48,3 +48,13 @@ export function filterContacts(rows, query) {
 }
 
 // (The three names moved to pure/person.js with the rest of a person's look.)
+
+/// Does this contact's ledger still SAY anything? The ledger is append-only LWW registers:
+/// clearing a dial writes "", it never deletes, so a set-then-cleared relationship leaves a
+/// collection of empty registers behind (found 2026-08-24: test-data's unfollow-someone
+/// haunting the rolodex as "nothing recorded yet"). The shelf shows people with standing -
+/// any non-empty fact: a dial, a nickname, a block - and a fully-cleared person leaves it,
+/// becoming eligible for the discovery shelves again, which is what "cleared" means.
+export function standingFacts(facts) {
+    return Object.values(facts || {}).some((v) => v !== '' && v !== undefined && v !== null);
+}

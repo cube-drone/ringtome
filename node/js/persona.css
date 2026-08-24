@@ -1438,3 +1438,21 @@
 .bake-item-failed {
     color: var(--coral);
 }
+
+/* The selectivity slider (DISCOVERY slice 3): one control at the top of the feed, its title
+   changing as it moves. Quiet by design - it curates, it doesn't decorate. */
+.feed-selectivity {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.feed-selectivity input[type='range'] {
+    width: 7rem;
+    accent-color: var(--teal);
+}
+.feed-selectivity-label {
+    color: var(--faint);
+    font-size: 0.78rem;
+    min-width: 8.5rem;
+}

@@ -625,6 +625,11 @@ struct FeedItem {
     suggested_via: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     suggested_via_name: Option<String>,
+    /// The demand rollup's discounted band for this author, read-time joined - the slider's
+    /// `path` provenance rung. Absent on real rows and on suggested rows whose demand has
+    /// since receded (which the slider treats as the weakest path, honestly).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggested_level: Option<String>,
 }
 
 /// One of the other people who passed a document along, dressed like the lead sharer so the
@@ -687,6 +692,15 @@ async fn feed_handler(
     let bylines = crate::profiles::bylines(&state.node_db, &authors)
         .await
         .map_err(AppError::Internal)?;
+    // The path bands, only when a page actually carries suggested rows - the common page
+    // costs nothing new.
+    let levels = if rows.iter().any(|r| r.suggested_via.is_some()) {
+        crate::speculative::levels_for(&state.node_db, &root)
+            .await
+            .map_err(AppError::Internal)?
+    } else {
+        Default::default()
+    };
 
     let items: Vec<FeedItem> = rows
         .into_iter()
@@ -740,6 +754,10 @@ async fn feed_handler(
                 .as_ref()
                 .and_then(|v| bylines.get(v))
                 .and_then(|b| b.name.clone());
+            let suggested_level = r
+                .suggested_via
+                .as_ref()
+                .and_then(|_| levels.get(&r.author_root).cloned());
             FeedItem {
                 mine,
                 author_name: byline.name,
@@ -756,6 +774,7 @@ async fn feed_handler(
                 via_avatar,
                 via_others,
                 via_count,
+                suggested_level,
                 suggested_via: r.suggested_via,
                 suggested_via_name,
             }

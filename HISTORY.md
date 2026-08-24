@@ -6548,3 +6548,46 @@ pre-slice binary; the conversion cop (`real_arrivals_convert_speculative_rows_an
 was planted red against an upsert without the clearing clause before it was trusted.
 Withdrawn vouches leave journal rows standing on purpose - hiding them is the slider's job
 (slice 3) and deleting them is eviction's (slice 4).
+
+## 2026-08-24 (evening): DISCOVERY slice 3 - the slider; attention becomes a choice
+
+The pipeline's fourth stage (PROJECT_PLAN: "one slider, two budgets", built as designed):
+six stops with their titles verbatim, Explorer the default, one control at the top of the
+feed whose position is a persona-level private register (`feed_selectivity/stop`) - a fact
+about the person's feed that syncs with them, unlike the per-device seal prefs. Pure
+attention by construction: the filter is `pure/selectivity.js` running client-side over
+rows already journaled, so moving the slider is instant, reversible, and network-silent in
+both directions, and nothing about it ever changes what syncs.
+
+The brain went in spec-first: the pure suite's `selectivity.cjs` (seven cases - the stop
+ladder, the provenance precedence, silence-vs-none, promotion seen from the read side) ran
+red before the module existed. The precedence (author dial → sharer rebroadcast dial →
+path band → floor) both filters and sets emphasis - a speculative row arrives small and
+quiet whatever its path score, because the path admits it without entitling it to size -
+and the feed API ships `suggested_level` (the demand rollup's discounted band, read-time
+joined only on pages that carry suggested rows) as the path rung's input. A reader's own
+posts bypass the floor: the slider curates other people's claims on attention, and hiding
+your words from yourself would read as loss. When the floor hides everything, the empty
+state says so and points at Explorer, instead of claiming an empty network.
+
+With slices 1-3 standing, the discovery arc is END-TO-END: vouch → quiet acquisition →
+suggested shelf → marked feed rows → a slider the reader owns. Remaining: eviction (4) and
+the headers depth (5), both order-independent maintenance.
+
+## 2026-08-24 (night): cleared relationships stop haunting the rolodex
+
+Found by Curtis on deck-tamer's People page: contacts with no trust or interest standing on
+"everyone you know". The mechanism is the ledger's own shape - contact registers are
+append-only LWW, clearing a dial writes "" and deletes nothing - so any set-then-cleared
+relationship (test-data's `unfollow-someone`, or a real change of heart) left a collection
+of empty registers that the mirror faithfully shipped and the shelf faithfully showed as
+"nothing recorded yet". The fix is a shelf rule, not a mirror change: `standingFacts`
+(pure/people.js, spec-first) keeps rows with ANY non-empty fact - a dial, a nickname, a
+block - and the mirror keeps the cleared rows for what they are still good for (resolving a
+once-known name). Cleared people land in their own bin instead of vanishing: "you used to
+know", BELOW every current shelf (Curtis's call - you have to go looking, so idle browsing
+never walks you past your unfollows, but a lost pointer is one scroll away instead of gone;
+a persona's address is a key nobody writes down). The bin dedups against every shelf above
+it: a cleared person who is now vouched-for or node-known shows there instead, under the
+stronger present-tense claim - "cleared" means no opinion, and no opinion is exactly what
+the discovery shelves are for.

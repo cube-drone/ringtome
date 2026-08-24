@@ -533,6 +533,24 @@ pub async fn wanting_readers(node_db: &Db, target_root: &str) -> Result<Vec<(Str
     Ok(rows)
 }
 
+/// The reader's discounted path bands, keyed by target - the feed read's join for the
+/// slider's `path` provenance (PROJECT_PLAN's effective-interest precedence: the derived
+/// path score is third, behind the author and sharer dials). Budget-bounded by
+/// construction, so the map is at most `SPECULATIVE_BUDGET` entries.
+pub async fn levels_for(
+    node_db: &Db,
+    reader_root: &str,
+) -> Result<std::collections::HashMap<String, String>> {
+    let rows: Vec<(String, String)> = node_db
+        .fetch_all(
+            "SELECT target_root, level FROM speculative_demand WHERE reader_root = ?1",
+            (reader_root,),
+        )
+        .await
+        .context("reading the reader's path bands")?;
+    Ok(rows.into_iter().collect())
+}
+
 /// One row of the People page's suggested shelf, byline attached.
 #[derive(Debug, serde::Serialize)]
 pub struct Suggested {

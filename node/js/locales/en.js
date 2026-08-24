@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 455 phrases across 43 files.
+// 460 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -21,7 +21,9 @@ export default {
     'apps.feed.1-update': '1 update',
     'apps.feed.refresh': '· refresh',
     'apps.feed.the-feed': 'the feed',
+    'apps.feed.how-far-past-the-people': 'how far past the people you chose this feed may reach',
     'apps.feed.nothing-here-yet---follow': 'nothing here yet - follow someone, or write something on the left.',
+    'apps.feed.nothing-at-this-selectivity': 'nothing at this selectivity - slide toward Explorer to widen the feed.',
     'apps.feed.reading-further-back': 'reading further back…',
     'apps.feed.couldnt-reach-further-back--': "couldn't reach further back - try again",
     'apps.feed.further-back': 'further back',
@@ -87,6 +89,9 @@ export default {
     'apps.people.via-a-friend': 'via a friend',
     'apps.people.known-around-here': 'known around here',
     'apps.people.personas-this-node-hosts-or': 'personas this node hosts or has reached - open one to say how you know them',
+    'apps.people.you-used-to-know': 'you used to know',
+    'apps.people.relationships-you-set-and-later': 'relationships you set and later cleared',
+    'apps.people.cleared': 'cleared',
 
     // --- node/js/auth.js ---
     'auth.ringtome': 'ringtome',

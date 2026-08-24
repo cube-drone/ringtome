@@ -48,6 +48,7 @@ import {
     feedCursor,
 } from '../pure/feed.js';
 import { api } from '../net.js';
+import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
@@ -255,10 +256,54 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [more, loading, items]);
 
-    const interestOf = (author) => {
-        const row = (contacts || []).find((c) => c.root === author);
-        return row && row.facts ? row.facts.interest : undefined;
+    // The slider (PROJECT_PLAN: one slider, two budgets; DISCOVERY slice 3). Pure
+    // attention: a read-time floor over rows already journaled, network-silent both ways.
+    // The position is a PERSONA-level private register - selectivity is a fact about the
+    // person's feed and syncs with them, unlike the per-device seal prefs - read once per
+    // mount, written on every move. null until the read lands, so the first render filters
+    // at the persisted stop rather than flashing Explorer and narrowing.
+    const [stop, setStop] = useState(null);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/private/kv/feed_selectivity`)
+            .then((r) => {
+                if (!live) return;
+                const saved = ((r && r.values) || []).find((v) => v.key === 'stop');
+                const known = saved && SELECTIVITY_STOPS.some((s) => s.key === saved.value);
+                setStop(known ? saved.value : DEFAULT_STOP);
+            })
+            .catch(() => live && setStop(DEFAULT_STOP));
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    const moveStop = (key) => {
+        setStop(key);
+        api(`/api/identity/${root}/private/kv/feed_selectivity/stop`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: key }),
+        }).catch(() => {});
     };
+
+    const factsByRoot = {};
+    for (const c of contacts || []) factsByRoot[c.root] = c.facts || {};
+
+    // Emphasis rides the EFFECTIVE level (the slider's own precedence): an explicit dial -
+    // author's or sharer's - carries its band; a speculative row arrives small and quiet by
+    // construction, whatever its path score, because the path admits it without entitling
+    // it to size. Your own posts bypass in PostEntry, as before.
+    const emphasisBand = (item) => {
+        const eff = effectiveInterest(item, factsByRoot);
+        if (eff.kind === 'author-dial' || eff.kind === 'sharer-dial') return eff.band;
+        return item.suggested_via ? 'low' : undefined;
+    };
+
+    const stopKey = stop || DEFAULT_STOP;
+    // Your own posts always show: the slider curates OTHER people's claims on your
+    // attention, and hiding your words from yourself at "high interest only" would read as
+    // loss, not selectivity.
+    const visible = items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot));
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
@@ -273,12 +318,23 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
                 arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''}
             <div class="feed-stream-head">
                 <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
+                ${stop !== null &&
+                html`<label class="feed-selectivity" title=${t('apps.feed.how-far-past-the-people', 'how far past the people you chose this feed may reach')}>
+                    <input
+                        type="range"
+                        min="0"
+                        max=${SELECTIVITY_STOPS.length - 1}
+                        value=${SELECTIVITY_STOPS.findIndex((s) => s.key === stopKey)}
+                        onInput=${(e) => moveStop(SELECTIVITY_STOPS[Number(e.currentTarget.value)].key)}
+                    />
+                    <span class="feed-selectivity-label">${(SELECTIVITY_STOPS.find((s) => s.key === stopKey) || {}).label}</span>
+                </label>`}
             </div>
-            ${items.map(
+            ${visible.map(
                 (item) => html`<${PostEntry}
                     key=${`${item.author}:${item.doc_id}`}
                     item=${item}
-                    interest=${interestOf(item.author)}
+                    interest=${emphasisBand(item)}
                     current=${current}
                     editing=${item.mine ? editingFor(item.doc_id) : null}
                 />`
@@ -287,6 +343,12 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
             !loading &&
             html`<p class="null-sub">
                 ${t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
+            </p>`}
+            ${items.length > 0 &&
+            visible.length === 0 &&
+            !loading &&
+            html`<p class="null-sub">
+                ${t('apps.feed.nothing-at-this-selectivity', 'nothing at this selectivity - slide toward Explorer to widen the feed.')}
             </p>`}
             ${more &&
             html`<button class="feed-more" disabled=${loading} onClick=${() => loadPage(feedCursor(items))}>
