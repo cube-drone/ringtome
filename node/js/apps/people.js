@@ -210,7 +210,7 @@ export const PeopleApp = ({ current, searchQuery }) => {
                 <div class="people-shelf-head">
                     <span class="people-shelf-title">${t('apps.people.people-you-might-know', 'people you might know')}</span>
                     <span class="people-known-note">
-                        ${t('apps.people.vouched-for-by-people-you', 'vouched for by people you trust - open one to say how you know them')}
+                        ${t('apps.people.vouched-for-by-people-you', 'vouched for by people you trust')}
                     </span>
                 </div>
                 <div class="people-list">
@@ -243,7 +243,7 @@ export const PeopleApp = ({ current, searchQuery }) => {
                 <div class="people-shelf-head">
                     <span class="people-shelf-title">${t('apps.people.known-around-here', 'known around here')}</span>
                     <span class="people-known-note">
-                        ${t('apps.people.personas-this-node-hosts-or', 'personas this node hosts or has reached - open one to say how you know them')}
+                        ${t('apps.people.personas-this-node-hosts-or', 'personas this node hosts or has reached')}
                     </span>
                 </div>
                 <div class="people-list">
