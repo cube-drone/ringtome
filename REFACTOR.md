@@ -55,21 +55,3 @@ behind, for anything new that touches the log: **a read whose cost grows with an
 history needs a watermark, a cursor, or a named reason it is bounded.** `imaol` now enforces
 the third case rather than trusting it (`service_reads_whole`).
 
-## The body-arrival race tail (noted 2026-08-23, residual)
-
-What remains after the deliverer rung: roughly one red per two suite runs, a different test
-each time, one shape - a fold or publish racing body arrival under load. Faces seen:
-`cascade.cjs seedToCleo` (share fold latency to the third hop), `publish` 400 "this note's
-words haven't arrived" (also journalfill.cjs on CI). Down from the pre-fix rate and no
-longer clustered; the diagnosis idiom that cracked the cascade bug (speak-on-failure logs +
-the outside-the-suite /test/sql probe) applies directly when this earns its dig.
-
-The 2026-08-24 dig (the seedToCleo face) cleared the layers one by one: pushes deliver
-within a second, ingest persists, folds fire within milliseconds of every exchange, the
-fragment door answers honestly. What it could NOT do was assign log windows to tests - a
-dozen neighboring tests' choreographies are indistinguishable in an unmarked stream, and
-the dig's longest stretches went to proving healthy machinery healthy inside the wrong
-window. That hole is closed: every test now stamps START/END marks into every rig node's
-log (`/test/mark` + the roothooks), and `journalable` - the last silent branch on the share
-path - speaks on every outcome. The next red in this family, local or CI artifact, arrives
-bounded, labeled, and narrated; diagnose it from the marks before theorizing.

@@ -6614,3 +6614,28 @@ address's key must ROUND-TRIP** - decode then re-encode equals input - because k
 ever come from `toBase58`, so everything canonical round-trips and nothing partial can. The
 lenient decoders stay for the `?via=` hint path, where hints are dirty by doctrine and the
 resolution ladder validates; the /id parse, which acts unasked, demands the round-trip.
+
+## 2026-08-24 (later): the residual tail, caught with its mouth open - and closed
+
+The instrumentation built for exactly this moment paid out in one read: a CI artifact whose
+TEST MARKs bounded the failing window to the second, and a share path narrated at every
+step. The story it told: sam's pointer reached rex's node in milliseconds; `journalable`
+fetched the fragment from bravo in NINE milliseconds (bravo's door answered "have" 4ms
+after the ask; the revalidation sweep confirms the fragment held from that moment on) - and
+then the feed row didn't mint for 187 seconds, arriving on the next unrelated fold, 700ms
+after the settle died.
+
+The bug was the arm's last line: `held(...).await.ok()??` - a DATABASE RE-READ of the
+fragment the arm had just stored, whose `.ok()??` swallowed a transient busy error on a
+loaded node into "nothing to journal". Silently, and uniquely without retry: the want
+ledger only mints on the Unknown arm, so a SUCCESSFUL fetch whose re-read hiccupped
+stranded the row until the sharer's chain happened to move again. Every face of the tail
+fits it - near-miss reds arriving all-at-once on a later fold, always under load, never
+reproducible at leisure.
+
+The fix removes the failure point instead of handling it: `row_of_verified` builds the
+journal row from the verified fragment still in hand - the same bytes `remember` just
+stored - in both arms that had the re-read (`journalable`'s tail and the wants drain's
+arrival). Nothing needs the database to repeat what the arm is holding. The
+hung-30s-exchange question (REFACTOR) stays open as its own mystery; the body-arrival tail
+entry retires with this.

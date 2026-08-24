@@ -1065,8 +1065,7 @@ pub async fn journalable(
             // The implicit rebroadcast: what this post's signed header covers travels with
             // it, from the same origin, before any reader asks.
             cover_refs(state, origin_root, author_root, &doc_hex, &verified.header.refs).await;
-            let f = held(&state.node_db, author_root, &doc_hex).await.ok()??;
-            Some(row_of(&f, &doc_hex))
+            Some(row_of_verified(&verified, &doc_hex))
         }
         crate::net::fragment::Fetched::Gone { entry, auth_path } => {
             // The author withdrew it while it was being fetched. Drop whatever we held and do
@@ -1095,6 +1094,32 @@ pub async fn journalable(
             }
             None
         }
+    }
+}
+
+/// The same row, from the VERIFIED fragment still in hand - for the two arms that just
+/// stored it. They used to re-read `held()` to build this, and the re-read was a failure
+/// point with no failure story: `journalable`'s tail swallowed it entirely (`.ok()??`), so
+/// a transient busy error on a loaded node turned a SUCCESSFUL fetch into "nothing to
+/// journal" - silently, with no retry, because wants only mint on the Unknown arm. The row
+/// then waited for an unrelated future fold: 187 seconds in the CI artifact that finally
+/// caught it narrated end to end (2026-08-24, the residual tail's actual face, read
+/// straight from the TEST MARK window). The fragment in hand is the same bytes `remember`
+/// just stored; nothing needs the database to repeat them.
+fn row_of_verified(
+    verified: &ringtome_proto::fragment::VerifiedFragment,
+    doc_hex: &str,
+) -> crate::fanout::JournalRow {
+    let now = now_ms();
+    crate::fanout::JournalRow {
+        doc_id_hex: doc_hex.to_string(),
+        title: verified.header.title.clone(),
+        format: crate::record::documents::Format::from_wire(verified.header.format)
+            .as_str()
+            .to_string(),
+        // Placeholders the caller REPLACES, exactly as `row_of` documents.
+        published_ms: now,
+        updated_ms: now,
     }
 }
 
@@ -1400,15 +1425,13 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
                     .await;
                 settle_want(&state.node_db, &author_hex, &doc_hex).await?;
                 tracing::info!(author = %author_hex, doc = %doc_hex, "a wanted fragment arrived");
-                if let Some(f) = held(&state.node_db, &author_hex, &doc_hex).await? {
-                    crate::fanout::journal_late_share(
-                        state,
-                        &origin_root,
-                        &author_hex,
-                        &row_of(&f, &doc_hex),
-                    )
-                    .await;
-                }
+                crate::fanout::journal_late_share(
+                    state,
+                    &origin_root,
+                    &author_hex,
+                    &row_of_verified(&verified, &doc_hex),
+                )
+                .await;
             }
             crate::net::fragment::Fetched::Gone { entry, auth_path } => {
                 entomb(&state.node_db, &author_hex, &doc_hex, &entry, &auth_path).await?;
