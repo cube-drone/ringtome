@@ -79,3 +79,29 @@ describe('the speakable identicon', () => {
         assert.deepEqual(wordsFor(root), wordsFor(root));
     });
 });
+
+describe('the strict key rule', () => {
+    let parseSpeakable, toBase58;
+    before(async () => {
+        ({ parseSpeakable, toBase58 } = await import('../../../js/speakable.js'));
+    });
+
+    it('a partial base58 string is typing, not an address', () => {
+        // fromBase58 left-pads, so "y" used to decode as the near-zero root and the People
+        // lookup teleported a filter keystroke to apple-fifth-1111…1y (2026-08-24). A key
+        // must round-trip through toBase58 - only canonical mints qualify.
+        assert.equal(parseSpeakable('y'), null);
+        assert.equal(parseSpeakable('yy'), null);
+        assert.equal(parseSpeakable('apple-fifth-y'), null, 'a short key never earns "did you mean"');
+    });
+
+    it('a canonical key still parses, and lying words still get the truth', () => {
+        const root = 'ab'.repeat(32);
+        const key = toBase58(root);
+        assert.deepEqual(parseSpeakable(key), { ok: true, root });
+        const lied = parseSpeakable(`wrong-words-${key}`);
+        assert.equal(lied.ok, false);
+        assert.equal(lied.root, root);
+        assert.ok(lied.expected.includes('-'), 'the true words ride the refusal');
+    });
+});

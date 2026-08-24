@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 460 phrases across 43 files.
+// 457 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -75,10 +75,7 @@ export default {
 
     // --- node/js/apps/people.js ---
     'apps.people.filter-or-paste-an-address': 'filter, or paste an address…',
-    'apps.people.that-doesnt-look-like-a': "that doesn't look like a persona's address - it should have two words and a key, like sway-broke-AwTy…",
     'apps.people.type-to-narrow-the-shelf': 'search or paste an address',
-    'apps.people.go-to-this-persona': 'go to this persona',
-    'apps.people.look-up': 'look up',
     'apps.people.everyone-you-know': 'everyone you know',
     'apps.people.nobody-matches---try-fewer': 'nobody matches "{filter}" - try fewer letters, or their address words.',
     'apps.people.nobody-yet---open-someones': "nobody yet - open someone's page and set your relationship, and they'll appear here.",

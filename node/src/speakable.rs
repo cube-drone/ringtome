@@ -111,9 +111,9 @@ pub fn parse(segment: &str) -> Option<Parsed> {
     }
     let parts: Vec<&str> = s.split('-').collect();
     match parts.as_slice() {
-        [bare] => from_base58(bare).map(Parsed::Ok),
+        [bare] => key_from_base58(bare).map(Parsed::Ok),
         [a, b, key] => {
-            let root = from_base58(key)?;
+            let root = key_from_base58(key)?;
             let (ea, eb) = words_for(&root);
             if *a == ea && *b == eb {
                 Some(Parsed::Ok(root))
@@ -126,6 +126,18 @@ pub fn parse(segment: &str) -> Option<Parsed> {
         }
         _ => None,
     }
+}
+
+/// A base58 KEY, strictly: it must round-trip - decode then re-encode equals the input -
+/// because an address's key is only ever minted by `to_base58`, so anything canonical
+/// round-trips and anything partial cannot. `from_base58` below stays a faithful, lenient
+/// decoder (the `?via=` hint path keeps it - hints are dirty by doctrine and the resolution
+/// ladder validates them), but an ADDRESS left-padded from a fragment is a phantom: the JS
+/// twin's People lookup teleported a single typed "y" to the near-zero root
+/// apple-fifth-1111…1y (found live, 2026-08-24), and this door is the same door.
+fn key_from_base58(s: &str) -> Option<[u8; 32]> {
+    let root = from_base58(s)?;
+    (to_base58(&root) == s).then_some(root)
 }
 
 /// Base58 back to 32 bytes, or None if the string isn't clean base58 for exactly that size.
@@ -201,6 +213,23 @@ mod tests {
         }
         assert_eq!(from_base58("0OIl"), None, "confusables are not in the alphabet");
         assert_eq!(from_base58(&"z".repeat(60)), None, "overlong refuses");
+    }
+
+    /// The strict key rule, in lockstep with the JS twin's spec (pure/speakable.cjs): a
+    /// partial base58 string is typing, not an address - `from_base58` left-pads, so "y"
+    /// decoded as the near-zero root until parse demanded the round-trip.
+    #[test]
+    fn a_partial_key_is_typing_not_an_address() {
+        assert!(parse("y").is_none());
+        assert!(parse("yy").is_none());
+        assert!(parse("apple-fifth-y").is_none(), "a short key never earns 'did you mean'");
+        let root = [0xab; 32];
+        let key = to_base58(&root);
+        assert!(matches!(parse(&key), Some(Parsed::Ok(r)) if r == root));
+        assert!(
+            matches!(parse(&format!("wrong-words-{key}")), Some(Parsed::Mismatch { root: r, .. }) if r == root),
+            "lying words over a full key still get the truth"
+        );
     }
 
     #[test]

@@ -111,14 +111,26 @@ export function parseSpeakable(segment) {
     if (HEX64.test(s)) return { ok: true, root: s };
     const parts = s.split('-');
     if (parts.length === 1) {
-        const root = fromBase58(s);
+        const root = keyFromBase58(s);
         return root ? { ok: true, root } : null;
     }
     if (parts.length !== 3) return null;
     const [a, b, key] = parts;
-    const root = fromBase58(key);
+    const root = keyFromBase58(key);
     if (!root) return null;
     const [ea, eb] = wordsFor(root);
     if (a === ea && b === eb) return { ok: true, root };
     return { ok: false, root, expected: `${ea}-${eb}` };
+}
+
+/// A base58 KEY, strictly: it must round-trip - decode then re-encode equals the input -
+/// because an address's key is only ever minted by `toBase58`, so anything canonical
+/// round-trips and anything partial cannot. Without this, `fromBase58` (a faithful decoder,
+/// kept lenient for its other callers) left-pads ANY base58 string to 32 bytes: a single
+/// typed "y" parsed as the near-zero root apple-fifth-1111…1y and, once the People lookup
+/// navigated on parse alone, teleported a filter keystroke to a phantom persona
+/// (found live, 2026-08-24). Short keys are not addresses; they are typing.
+function keyFromBase58(s) {
+    const root = fromBase58(s);
+    return root && toBase58(root) === s ? root : null;
 }

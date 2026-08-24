@@ -9,7 +9,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
-import { parseIdReference, speakable } from '../speakable.js';
+import { parseIdReference, parseSpeakable, speakable } from '../speakable.js';
 import { PersonRow } from '../person.js';
 import { api } from '../net.js';
 import { PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts, standingFacts } from '../pure/people.js';
@@ -18,46 +18,38 @@ import { t } from '../i18n.js';
 const html = htm.bind(h);
 
 /// People's answer to the search bar, riding the same header slot as every other app's -
-/// and since 2026-08-08 it does both of the bar's jobs at once: TYPING filters the shelf
-/// live (the query is lifted to the shell, like every searchable app's), and SUBMIT is the
-/// lookup - paste an address in any dress (a shared URL, an /id/ path, a bare address), hit
-/// the button, and go there. The button keeps its moment of commitment because the lookup
-/// completes somewhere else; the filter needs no commitment at all. A submit that doesn't
-/// parse flags red - it means "that's not an address", never "that's a bad filter": the
-/// filter is already applied, and the flag clears on the next keystroke.
+/// one field, two jobs, told apart by the INPUT rather than a button (Curtis, 2026-08-24,
+/// retiring the "look up" button as redundant): typing filters the shelf live (the query
+/// is lifted to the shell, like every searchable app's), and pasting a complete address -
+/// a shared URL, an /id/ path, a bare key - navigates immediately. The commitment moment
+/// the button used to provide is now the STRICT parse: `parseIdReference` alone is loose
+/// (anything hyphenated passes, so "sway-bro" mid-type would match), and only a segment
+/// whose key actually decodes (`parseSpeakable`) is unambiguous enough to act on unasked.
+/// A decodable key with LYING words still navigates - the /id lens owns that refusal and
+/// says "did you mean" better than a search box could.
 export const PeopleLookup = ({ query, onQuery }) => {
     const loc = useLocation();
-    const [bad, setBad] = useState(false);
 
-    const go = (e) => {
-        e.preventDefault();
-        const ref = parseIdReference(query || '');
-        if (!ref) {
-            setBad(true); // the input says so itself; the header band has no room for a line
+    const take = (value) => {
+        const ref = parseIdReference(value || '');
+        if (ref && parseSpeakable(ref.seg)) {
+            onQuery(''); // the address was a destination, never a filter to come back to
+            loc.route(`/id/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`);
             return;
         }
-        setBad(false);
-        loc.route(`/id/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`);
+        onQuery(value);
     };
 
     return html`
-        <form class="app-header-search-box" onSubmit=${go}>
+        <form class="app-header-search-box" onSubmit=${(e) => e.preventDefault()}>
             <input
-                class=${bad ? 'app-header-search people-lookup-bad' : 'app-header-search'}
+                class="app-header-search"
                 type="search"
                 placeholder=${t('apps.people.filter-or-paste-an-address', 'filter, or paste an address…')}
-                title=${bad
-                    ? t('apps.people.that-doesnt-look-like-a', "that doesn't look like a persona's address - it should have two words and a key, like sway-broke-AwTy…")
-                    : t('apps.people.type-to-narrow-the-shelf', 'search or paste an address')}
+                title=${t('apps.people.type-to-narrow-the-shelf', 'search or paste an address')}
                 value=${query || ''}
-                onInput=${(e) => {
-                    onQuery(e.currentTarget.value);
-                    setBad(false);
-                }}
+                onInput=${(e) => take(e.currentTarget.value)}
             />
-            <button class="people-lookup-go" type="submit" title=${t('apps.people.go-to-this-persona', 'go to this persona')}>
-                ${t('apps.people.look-up', 'look up')}
-            </button>
         </form>
     `;
 };

@@ -783,29 +783,6 @@
 }
 
 
-/* People's lookup button: the search bar's own height (the shell's shared token), sitting
-   flush beside it like the search-options funnel does in the document apps. */
-.people-lookup-go {
-    height: var(--search-h);
-    flex-shrink: 0;
-    background: var(--surface);
-    border: 0;
-    border-radius: 6px;
-    padding: 0 0.7rem;
-    font: inherit;
-    font-size: 0.8rem;
-    color: var(--sea);
-    cursor: pointer;
-}
-
-.people-lookup-go:hover {
-    color: var(--teal);
-}
-
-.people-lookup-bad {
-    outline: 1px solid var(--coral);
-}
-
 /* Feed: the app that writes in public. One stream, newest first - Journal's shape, sealed by
    publication rather than by the calendar. */
 .feed-app {

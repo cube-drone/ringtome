@@ -6591,3 +6591,26 @@ a persona's address is a key nobody writes down). The bin dedups against every s
 it: a cleared person who is now vouched-for or node-known shows there instead, under the
 stronger present-tense claim - "cleared" means no opinion, and no opinion is exactly what
 the discovery shelves are for.
+
+## 2026-08-24 (night, cont.): the People search loses its button
+
+One field, two jobs, told apart by the input instead of a click: typing filters the shelf,
+and pasting a COMPLETE address navigates immediately - the "look up" button retired as
+redundant (Curtis's call). The commitment moment the button provided moved into the parse:
+`parseIdReference` alone is loose by design (anything hyphenated passes, so "sway-bro"
+mid-type would have navigated out from under the typist), and only a segment whose key
+actually decodes (`parseSpeakable`) is unambiguous enough to act on unasked. A decodable
+key with lying words still navigates - the /id lens owns that refusal and says "did you
+mean" better than a search box could. The address clears the query on its way out (it was
+a destination, never a filter to come back to), and the dead-CSS cop caught the button's
+orphaned styles on the first gate run, which is the cop working.
+
+The first live keystroke found the deeper hole: typing "y" teleported to
+apple-fifth-1111…1y, because BOTH twins' base58 decoders left-pad any fragment to 32 bytes -
+"y" is a valid near-zero root if you let it be - and the JS strict gate trusted
+`parseSpeakable`, whose bare branch trusted the decoder. The rule that fixes it is minted
+into both languages in lockstep (pure/speakable.cjs and speakable.rs's parity test): **an
+address's key must ROUND-TRIP** - decode then re-encode equals input - because keys only
+ever come from `toBase58`, so everything canonical round-trips and nothing partial can. The
+lenient decoders stay for the `?via=` hint path, where hints are dirty by doctrine and the
+resolution ladder validates; the /id parse, which acts unasked, demands the round-trip.
