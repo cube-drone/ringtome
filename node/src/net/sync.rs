@@ -87,6 +87,17 @@ pub fn service_allows_suffix(svc: u32) -> bool {
 /// is verified against the log once per persona per process at database open; `frontier::
 /// memo_chains` carries the full "lags but never leads" argument. The scan survives as the
 /// fallback for handles with no memo attached - bare test databases, and `node.db` itself.
+/// A frontier list narrowed to a Hello's scope - empty scope means everything, unchanged.
+fn scoped_frontiers(frontiers: Vec<Frontier>, wanted: &[u32]) -> Vec<Frontier> {
+    if wanted.is_empty() {
+        return frontiers;
+    }
+    frontiers
+        .into_iter()
+        .filter(|f| wanted.contains(&f.service))
+        .collect()
+}
+
 pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Frontier>> {
     let rows: Vec<(String, u32, u64, u64, [u8; 32])> = match (db.memo(), db.root()) {
         (Some(memo), Some(root)) => crate::net::frontier::memo_chains(memo, root).await?,
@@ -151,9 +162,10 @@ async fn send_missing(
     peer_frontiers: &[Frontier],
     send: &mut SendStream,
     include_private: bool,
+    wanted: &[u32],
 ) -> Result<u64> {
     let mut sent = 0u64;
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private).await?;
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted).await?;
     while let Some(bytes) = missing.next().await? {
         write_frame(send, &SyncMessage::Entry(bytes)).await?;
         sent += 1;
@@ -198,10 +210,13 @@ impl<'a> MissingEntries<'a> {
         db: &'a Db,
         peer_frontiers: &[Frontier],
         include_private: bool,
+        wanted: &[u32],
     ) -> Result<MissingEntries<'a>> {
         Ok(MissingEntries {
             db,
-            chains: missing_plan(db, peer_frontiers, include_private).await?.into_iter(),
+            chains: missing_plan(db, peer_frontiers, include_private, wanted)
+                .await?
+                .into_iter(),
             current: None,
             page: VecDeque::new(),
             more: false,
@@ -263,6 +278,7 @@ async fn missing_plan(
     db: &Db,
     peer_frontiers: &[Frontier],
     include_private: bool,
+    wanted: &[u32],
 ) -> Result<Vec<ChainSend>> {
     let peer: HashMap<([u8; 32], u32), (u64, [u8; 32])> = peer_frontiers
         .iter()
@@ -302,6 +318,13 @@ async fn missing_plan(
     let mut plan = Vec::new();
     for (author_hex, svc) in chains {
         if !include_private && is_private_service(svc as u32) {
+            continue;
+        }
+        // The scope (proto::sync Hello `wanted`, empty = everything): a chain outside a
+        // scoped exchange is not sent - and this filter is load-bearing in BOTH directions,
+        // because a chain the peer's scoped frontiers never mentioned would otherwise read
+        // as "peer lacks everything" and ship whole.
+        if !wanted.is_empty() && !wanted.contains(&(svc as u32)) {
             continue;
         }
         let author = pubkey::decode(&author_hex)
@@ -374,9 +397,10 @@ pub(crate) async fn missing_for_peer(
     db: &Db,
     peer_frontiers: &[Frontier],
     include_private: bool,
+    wanted: &[u32],
 ) -> Result<Vec<Vec<u8>>> {
     let mut out = Vec::new();
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private).await?;
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted).await?;
     while let Some(bytes) = missing.next().await? {
         out.push(bytes);
     }
@@ -1251,6 +1275,21 @@ pub async fn sync_with_peer(
     root_hex: &str,
     addr: EndpointAddr,
 ) -> Result<ExchangeStats> {
+    sync_with_peer_scoped(state, root_hex, addr, &[]).await
+}
+
+/// The scoped form (2026-08-25, DISCOVERY's headers depth): `wanted` names the services
+/// this exchange is about - empty is the ordinary full sync. The scope governs the WHOLE
+/// exchange, both directions: our Hello claims only scoped frontiers, both sides send only
+/// scoped chains, and the chase-verdict bookkeeping is skipped outright (a partial view is
+/// not a comparison - an unscoped fingerprint judged against scoped claims would read as
+/// Unresolvable forever).
+pub async fn sync_with_peer_scoped(
+    state: &AppState,
+    root_hex: &str,
+    addr: EndpointAddr,
+    wanted: &[u32],
+) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
     let conn = crate::net::p2p::dial(
         &state.unplugged,
@@ -1277,12 +1316,14 @@ pub async fn sync_with_peer(
         Some(db) => local_frontiers(db, false).await?,
         None => Vec::new(),
     };
+    let frontiers = scoped_frontiers(frontiers, wanted);
     write_frame(
         &mut send,
         &SyncMessage::Hello {
             root,
             frontiers,
             proof: our_member_proof(state, root, &our_id, &peer_id).await,
+            wanted: wanted.to_vec(),
         },
     )
     .await?;
@@ -1293,6 +1334,7 @@ pub async fn sync_with_peer(
             root: peer_root,
             frontiers,
             proof,
+            wanted: _, // the responder echoes our scope; our own `wanted` is authoritative
         }) => {
             if peer_root != root {
                 bail!("peer answered for a different identity");
@@ -1308,10 +1350,14 @@ pub async fn sync_with_peer(
     // said, which must not be coloured by what we did with it.
     let claimed = crate::net::frontier::claimed_fingerprint(&peer_frontiers);
     let peer_hex = hex::encode(peer_id);
-    if let Err(e) =
-        crate::net::frontier::record_claim(&state.node_db, root_hex, &peer_hex, claimed).await
-    {
-        tracing::debug!(error = ?e, "recording a peer frontier claim failed");
+    // A scoped exchange records no claim and (below) no verdict: the peer's scoped
+    // frontier list is a deliberate partial view, and fingerprints only compare whole.
+    if wanted.is_empty() {
+        if let Err(e) =
+            crate::net::frontier::record_claim(&state.node_db, root_hex, &peer_hex, claimed).await
+        {
+            tracing::debug!(error = ?e, "recording a peer frontier claim failed");
+        }
     }
 
     // The empty handshake ends here, shelf unminted: we hold nothing and they claim nothing,
@@ -1365,13 +1411,13 @@ pub async fn sync_with_peer(
     let (received, rejected) = (outcome.received, outcome.rejected);
 
     // Now send what the peer lacks - private chains only to a proven member.
-    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
+    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
     // directly whether the serve's connection saw the write (a diff/claim question) or did
     // not (a read-freshness question). One line, only on the empty-send path.
-    if sent == 0 {
+    if sent == 0 && wanted.is_empty() {
         let our_heads: Vec<String> = local_frontiers(&db, peer_proven)
             .await
             .unwrap_or_default()
@@ -1454,12 +1500,16 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
     let peer_id: [u8; 32] = *conn.remote_id().as_bytes();
 
-    let (root, peer_frontiers, peer_proof) = match read_frame(&mut recv).await? {
+    // `scope` is the requester's service scope (Hello `wanted`, empty = everything) -
+    // distinct from the serve-consent `wanted` gate below, which answers a different
+    // question ("do we serve this persona at all").
+    let (root, peer_frontiers, peer_proof, scope) = match read_frame(&mut recv).await? {
         Some(SyncMessage::Hello {
             root,
             frontiers,
             proof,
-        }) => (root, frontiers, proof),
+            wanted,
+        }) => (root, frontiers, proof, wanted),
         other => bail!("expected Hello, got {other:?}"),
     };
     let root_hex = hex::encode(root);
@@ -1486,6 +1536,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
                 root,
                 frontiers: vec![],
                 proof: None,
+                wanted: scope.clone(),
             },
         )
         .await?;
@@ -1534,18 +1585,21 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         &mut send,
         &SyncMessage::Hello {
             root,
-            frontiers: local_frontiers(&db, peer_proven).await?,
+            // Scoped to the requester's ask: a scoped exchange discloses no frontier
+            // metadata beyond the services it named.
+            frontiers: scoped_frontiers(local_frontiers(&db, peer_proven).await?, &scope),
             proof: our_member_proof(&state, root, &our_id, &peer_id).await,
+            wanted: scope.clone(),
         },
     )
     .await?;
-    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
+    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
     // directly whether the serve's connection saw the write (a diff/claim question) or did
     // not (a read-freshness question). One line, only on the empty-send path.
-    if sent == 0 {
+    if sent == 0 && scope.is_empty() {
         let our_heads: Vec<String> = local_frontiers(&db, peer_proven)
             .await
             .unwrap_or_default()
@@ -2206,7 +2260,7 @@ mod tests {
         assert_eq!(ingest(&db, root_chain.pk(), &written).await.0, count as u64);
 
         // A peer holding nothing lacks everything: the identity chain first, then every post.
-        let sent = missing_for_peer(&db, &[], false).await.unwrap();
+        let sent = missing_for_peer(&db, &[], false, &[]).await.unwrap();
         let mut expected = vec![authorize.bytes().to_vec()];
         expected.extend(written.iter().map(|e| e.bytes().to_vec()));
         assert_eq!(sent.len(), expected.len(), "no entry lost or doubled at the page seam");
@@ -2215,9 +2269,50 @@ mod tests {
         // Resuming mid-chain pages from the right place too (the ordinary catch-up).
         let caught_up = local_frontiers(&db, false).await.unwrap();
         assert!(
-            missing_for_peer(&db, &caught_up, false).await.unwrap().is_empty(),
+            missing_for_peer(&db, &caught_up, false, &[]).await.unwrap().is_empty(),
             "a peer at our head lacks nothing"
         );
+    }
+
+    /// The scoped Hello's serve half (2026-08-25, DISCOVERY's headers depth): a plan built
+    /// under a scope sends ONLY the named services - and the case that makes the filter
+    /// load-bearing is a chain the peer never claimed at all, which an unscoped plan reads
+    /// as "peer lacks everything" and ships whole.
+    #[tokio::test]
+    async fn a_scoped_plan_sends_only_the_named_services() {
+        let db = test_db().await;
+        let mut root_chain = Chain::new(41, service::IDENTITY_PUBLIC);
+        let mut posts = Chain::new(42, service::POSTS);
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize {
+                child: posts.pk(),
+                usurpers: vec![root_chain.pk()],
+                enc_pubkey: None,
+            }
+            .encode()
+            .unwrap(),
+        );
+        let written: Vec<SignedEntry> = (0..3)
+            .map(|n| posts.append(entry_type::POST, vec![0xa0, n as u8]))
+            .collect();
+        assert_eq!(ingest(&db, root_chain.pk(), std::slice::from_ref(&authorize)).await, (1, 0));
+        assert_eq!(ingest(&db, root_chain.pk(), &written).await.0, 3);
+
+        // Scoped to identity: the posts chain - "lacked entirely" by this empty-handed
+        // peer - stays home.
+        let sent = missing_for_peer(&db, &[], false, &[service::IDENTITY_PUBLIC])
+            .await
+            .unwrap();
+        assert_eq!(
+            sent,
+            vec![authorize.bytes().to_vec()],
+            "the identity chain alone crosses a headers-scoped exchange"
+        );
+
+        // The empty scope is the unscoped exchange, unchanged.
+        let all = missing_for_peer(&db, &[], false, &[]).await.unwrap();
+        assert_eq!(all.len(), 4, "no scope, whole shelf");
     }
 
     /// The property the receiver's bounded batching rests on: for well-ordered input, the
@@ -2758,8 +2853,8 @@ mod tests {
         // head-hash mismatch makes each side send its head entry - the proof crosses.
         let b_frontiers = local_frontiers(&b, false).await.unwrap();
         let c_frontiers = local_frontiers(&c, false).await.unwrap();
-        let b_sends = missing_for_peer(&b, &c_frontiers, false).await.unwrap();
-        let c_sends = missing_for_peer(&c, &b_frontiers, false).await.unwrap();
+        let b_sends = missing_for_peer(&b, &c_frontiers, false, &[]).await.unwrap();
+        let c_sends = missing_for_peer(&c, &b_frontiers, false, &[]).await.unwrap();
         assert_eq!(b_sends, vec![left.bytes().to_vec()], "B offers its head as proof");
         assert_eq!(c_sends, vec![right.bytes().to_vec()], "C offers its head as proof");
 
@@ -2989,8 +3084,8 @@ mod tests {
                 .map(|c| (c.author_hex.clone(), c.service, c.from_seq))
                 .collect()
         };
-        let from_memo = missing_plan(&memoed, &[], true).await.unwrap();
-        let from_scan = missing_plan(&bare, &[], true).await.unwrap();
+        let from_memo = missing_plan(&memoed, &[], true, &[]).await.unwrap();
+        let from_scan = missing_plan(&bare, &[], true, &[]).await.unwrap();
 
         assert!(!from_memo.is_empty(), "the memo knows which chains we hold");
         assert_eq!(

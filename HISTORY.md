@@ -6846,3 +6846,37 @@ its readers before anything publishes (the belt), and the contact-dial PUT itsel
 the fold lane before answering (the fix) - a 200 on a `contact:` register now MEANS the
 dial counts, read-your-writes at the API, for the person who follows someone and opens
 their feed in the same breath. Every other private register keeps the fast path.
+
+## 2026-08-25 (cont. 9): the depth boundary - this arc stops at friend-of-friend, for now
+
+Scope decision, recorded where slice 5 will be built from: DISCOVERY's arc goes no deeper
+than depth 2 for now. The reasoning, written into the doc's boundary note: a vouch's
+signal decays per hop faster than the machinery's cost does (depth 3 is strangers vouched
+by strangers, min() across three hops, a K-cubed pile, and every quiet-mirror invariant
+re-proven for another class), while rebroadcasts already carry discovery to any depth with
+a human choice and a legible byline at every hop. Not a repeal - the farther horizon
+stands as a horizon, parked pieces are named as parked (the reciprocal door,
+follows-public at headers depth, the non-resident class), and the scoped sync Hello ships
+in slice 5 regardless, so any future deeper lane finds its protocol piece waiting. Slice 5
+itself trims to a days-shaped slice: two kilobyte-chains through the existing introducer
+ladder into the existing speculative regime, the two-lane quota split, the byline fill,
+one eviction predicate.
+
+## 2026-08-25 (cont. 10): the scoped sync Hello - the wire learns the partition storage always had
+
+Slice 5's gating piece, built ahead of the slice: Hello grows a `wanted` service list
+(arity 5 on the wire, empty = everything; arity-4 frames still decode as unscoped), and a
+scoped exchange is scoped WHOLE - both sides claim and send only the named services, the
+reply's frontier metadata discloses nothing beyond the ask, and the chase-verdict
+bookkeeping (claims, verdicts, the stale-serve instrument) is skipped outright, because a
+partial view is not a comparison and an unscoped fingerprint judged against scoped claims
+would read Unresolvable forever. The filter's load-bearing case is pinned red-first
+(`a_scoped_plan_sends_only_the_named_services`): a chain the peer's scoped frontiers never
+mentioned reads as "lacks everything" unscoped and would ship whole - in BOTH directions,
+which is why the requester's push-back leg filters too. What it buys, per the doc: headers
+depth stops being fiction (a visit costs what the memo budgeted, not what the target
+wrote), askers control their own budget, shallow-sync surfaces stop overpaying, and any
+future deeper lane finds its protocol piece waiting. `sync_with_peer_scoped` is the door;
+slice 5's pass is its first caller. Scoping only ever narrows what an unscoped exchange
+would have carried - the consent gates, member proofs and quiet-mirror rules sit exactly
+where they were.

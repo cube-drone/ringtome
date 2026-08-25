@@ -37,6 +37,10 @@ pub const MAX_SYNC_FRAME_BYTES: usize = 256 * 1024;
 /// center is single digits).
 pub const MAX_FRONTIERS: usize = 4096;
 
+/// Cap on a Hello's `wanted` service list - generous against the registry's real size
+/// (single digits), tight against a frame stuffed with garbage.
+pub const MAX_WANTED_SERVICES: usize = 32;
+
 const TAG_HELLO: u64 = 0;
 const TAG_ENTRY: u64 = 1;
 const TAG_DONE: u64 = 2;
@@ -126,6 +130,13 @@ pub enum SyncMessage {
         root: [u8; 32],
         frontiers: Vec<Frontier>,
         proof: Option<MemberProof>,
+        /// The scope: which services this EXCHANGE is about (2026-08-25, the scoped sync
+        /// Hello - DISCOVERY's headers depth). Empty means every service, which is both
+        /// the pre-scoping wire shape (arity-4 Hellos decode to empty) and the ordinary
+        /// full sync. Non-empty scopes the whole exchange, both directions: each side
+        /// serves and claims only the named services - scoping only ever NARROWS what the
+        /// unscoped exchange would have carried, never widens it.
+        wanted: Vec<u32>,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -141,11 +152,15 @@ impl SyncMessage {
                 root,
                 frontiers,
                 proof,
+                wanted,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
                 }
-                w.array(4);
+                if wanted.len() > MAX_WANTED_SERVICES {
+                    return Err(ProtoError::BadEntry("too many wanted services"));
+                }
+                w.array(5);
                 w.uint(TAG_HELLO);
                 w.bytes(root);
                 w.array(frontiers.len() as u64);
@@ -168,6 +183,11 @@ impl SyncMessage {
                         w.bytes(&p.leaf);
                         w.bytes(&p.sig);
                     }
+                }
+                // The scope slot: empty array = every service (the proof slot's idiom).
+                w.array(wanted.len() as u64);
+                for service in wanted {
+                    w.uint(u64::from(*service));
                 }
             }
             SyncMessage::Entry(bytes) => {
@@ -193,7 +213,7 @@ impl SyncMessage {
         let mut r = Reader::new(bytes);
         let arity = r.array()?;
         let msg = match (r.uint()?, arity) {
-            (TAG_HELLO, 4) => {
+            (TAG_HELLO, arity @ (4 | 5)) => {
                 let root = r.bytes_fixed::<32>()?;
                 let n = r.array()?;
                 if n > MAX_FRONTIERS as u64 {
@@ -231,10 +251,29 @@ impl SyncMessage {
                     }),
                     _ => return Err(ProtoError::BadEntry("proof must be [] or [leaf, sig]")),
                 };
+                // Arity 4 is the pre-scoping shape: an unscoped Hello. Kept decodable so
+                // old frames and captures still read; encode always writes arity 5.
+                let wanted = if arity == 5 {
+                    let n = r.array()?;
+                    if n > MAX_WANTED_SERVICES as u64 {
+                        return Err(ProtoError::BadEntry("too many wanted services"));
+                    }
+                    let mut wanted = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        wanted.push(
+                            u32::try_from(r.uint()?)
+                                .map_err(|_| ProtoError::BadEntry("service id out of range"))?,
+                        );
+                    }
+                    wanted
+                } else {
+                    Vec::new()
+                };
                 SyncMessage::Hello {
                     root,
                     frontiers,
                     proof,
+                    wanted,
                 }
             }
             (TAG_ENTRY, 2) => {
@@ -277,6 +316,7 @@ mod tests {
                 },
             ],
             proof: None,
+            wanted: vec![],
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -285,14 +325,57 @@ mod tests {
                 leaf: [9u8; 32],
                 sig: [1u8; 64],
             }),
+            wanted: vec![],
+        };
+        let scoped = SyncMessage::Hello {
+            root: [7u8; 32],
+            frontiers: vec![],
+            proof: None,
+            wanted: vec![0, 2],
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
 
-        for msg in [hello, proven, entry, done] {
+        for msg in [hello, proven, scoped, entry, done] {
             let bytes = msg.encode().unwrap();
             assert_eq!(SyncMessage::decode(&bytes).unwrap(), msg);
         }
+    }
+
+    /// The pre-scoping Hello (arity 4, no wanted slot) still decodes - as unscoped, which
+    /// is exactly what it always meant. Encode now always writes arity 5.
+    #[test]
+    fn an_arity_four_hello_decodes_as_unscoped() {
+        let mut w = Writer::new();
+        w.array(4);
+        w.uint(0); // TAG_HELLO
+        w.bytes(&[7u8; 32]);
+        w.array(0); // no frontiers
+        w.array(0); // anonymous
+        let msg = SyncMessage::decode(&w.into_bytes()).unwrap();
+        assert_eq!(
+            msg,
+            SyncMessage::Hello {
+                root: [7u8; 32],
+                frontiers: vec![],
+                proof: None,
+                wanted: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn a_stuffed_wanted_list_is_rejected() {
+        let msg = SyncMessage::Hello {
+            root: [7u8; 32],
+            frontiers: vec![],
+            proof: None,
+            wanted: (0..(MAX_WANTED_SERVICES as u32 + 1)).collect(),
+        };
+        assert_eq!(
+            msg.encode(),
+            Err(ProtoError::BadEntry("too many wanted services"))
+        );
     }
 
     #[test]
@@ -326,6 +409,7 @@ mod tests {
                 head_hash: [0u8; 32],
             }],
             proof: None,
+            wanted: vec![],
         };
         assert!(bad.encode().is_err());
 

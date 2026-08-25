@@ -105,6 +105,14 @@ dial → sharer dial → path score → floor.
 *(Merged design, 2026-08-21. One mechanism replaces two would-be schedulers — stage-2
 acquisition for posts, and a separate slow header sync for tier-2 legibility.)*
 
+*(Depth boundary, 2026-08-25: **depth 2 is as far as this arc goes for now** — the value
+of vouches decays per hop faster than the machinery's cost does, and rebroadcasts already
+carry discovery to any depth with a human choice at every hop. Nothing below is repealed;
+the pieces that exist only to feed deeper lanes — the reciprocal door, follows-public at
+headers depth, the non-resident class as a distinct state — are parked with the farther
+horizon, and slice 5 carries the trimmed scope. The door stays on its hinges: the scoped
+Hello is the protocol piece any deeper lane would need, and it ships regardless.)*
+
 Two appetites want the same door. The pipeline spends its acquisition budget on content —
 recent posts for the top-K strangers a reader plausibly wants to *read*. But most of
 tier-2 will never crack the top-K, and the node knows nothing about them beyond an edge
@@ -187,9 +195,13 @@ not the stranger's.
 **Promotion is the same clean exit.** A real dial flips non-resident (or speculative) to
 an ordinary subscription; the persona leaves this regime entirely.
 
-Two build-time honesty notes: the `wanted` gate answering a *scoped* Hello is new code
-(the gate exists, the scoping does not), and "excluded from hosted-persona counts" states
-intent against storage-management surfaces that do not exist yet.
+Two build-time honesty notes: ~~the `wanted` gate answering a *scoped* Hello is new code
+(the gate exists, the scoping does not)~~ (built 2026-08-25: Hello carries a `wanted`
+service list, empty = everything; the scope governs the whole exchange both directions,
+scoping only ever narrows, and scoped exchanges skip the chase-verdict bookkeeping - a
+partial view is not a comparison; `sync_with_peer_scoped` is the door, awaiting slice 5's
+pass as its first caller), and "excluded from hosted-persona counts" states intent against
+storage-management surfaces that do not exist yet.
 
 ## Invariants (the doctrine, restated as checks)
 
@@ -245,7 +257,9 @@ intent against storage-management surfaces that do not exist yet.
    as their pools land, as designed.
 4. ~~**Mirror eviction.**~~ Built 2026-08-24 (`eviction.rs`; acceptance green in
    `speculative.cjs`, red-first; the keeper cop planted-red). The sweep's judgment grew two
-   keepers beyond the design sketch - MEMBER-FETCHED (the freshness contract is wanting)
+   keepers beyond the design sketch - MEMBER-FETCHED (since removed, 2026-08-25: the
+   ageless visit registry made every once-viewed mirror immortal, and a fetch is a WRITE,
+   so the mtime grace already is the visit's freshness protection - eviction.rs)
    and the mtime grace (deliberately NOT an open-handle keeper: the handle cache holds any recently-touched db, so "cached" is not "in use" - the first draft kept every mirror on a quiet node forever, caught by the acceptance test's first run) - and eviction takes files (db, WAL,
    journal, sealed key) plus every trace through each table's owner: fetch registry,
    speculative feed rows, byline, frontier memo, mirrored edges, deliverer stamps, wants,
@@ -253,14 +267,30 @@ intent against storage-management surfaces that do not exist yet.
    eviction is never a loss - if any relationship returns, the mirror refetches with it.
    The slice-5 customer ("non-resident with no supporting tier-2 edge") slots in as one
    more keeper when non-resident mirrors exist.
-5. **The headers depth** (order-independent of 2–3; pairs with 4; gates on the scoped sync
-   Hello). Non-resident mirrors, the weighted-random lane, the reciprocal door.
-   Acceptance: a friend-of-a-friend cora never dialed shows a claimed name and avatar on
-   the people page; their published follows land in `edge_graph`; a reciprocal ask against
-   a speculative or non-resident mirror returns nothing; withdrawing the friend's vouch
-   ages the mirror out; at no point does the stranger's node learn cora's node exists.
+5. **The headers depth** (pairs with 4; gates on the scoped sync Hello). **Scoped to
+   depth 2** (decision 2026-08-25): the slice serves legibility and proof for the tier-2
+   pile that exists, and the depth-3 fuel it would have hauled is PARKED with its horizon,
+   not rejected - see the boundary note under the merged design. What builds: the scoped
+   sync Hello ("only these services" - the one new protocol piece); headers depth as
+   identity-public + PROFILE_PUBLIC, two chains, pulled through the existing introducer
+   ladder into the existing speculative quiet-mirror regime under a `depth` marker (no
+   separate non-resident class - slice 1's regime already has every property the sketch
+   gave it); the two-lane quota split in the acquire pass (deterministic top-K by
+   staleness, weighted-random tail at headers depth); the byline-cache fill; the eviction
+   predicate ("headers-held with no supporting tier-2 edge" ages out). Parked with the
+   depth boundary: the reciprocal door (an efficiency play whose probeability guardrails
+   are its whole cost - no door, no question), FOLLOWS_PUBLIC at headers depth (nothing
+   needs a stranger's follows until a depth-3 consumer or a mutuals feature asks; the
+   scoped Hello makes adding the third service a one-line change that day), and
+   `edge_graph` ingestion of mirrored strangers' edges. Acceptance: a friend-of-a-friend
+   cora never dialed shows a claimed name and avatar on the people page; withdrawing the
+   friend's vouch ages the mirror out; the quiet mirror stays invisible to every outward
+   door; at no point does the stranger's node learn cora's node exists.
 
 ## The farther horizon
+
+*(All of this is parked, not planned (2026-08-25): depth 2 is the working boundary until
+lived use argues otherwise. Kept because the shapes are worth not re-deriving.)*
 
 - **Depth 3+: the edges-only appetite.** Friend-of-friend-of-friend needs FOLLOWS_PUBLIC
   chains of people nobody here syncs. Two candidate shapes, both precedented: a scoped
