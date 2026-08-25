@@ -1378,6 +1378,14 @@ async fn private_kv_put_handler(
         .private_registers(&collection)
         .set(&key, &req.value)
         .await?;
+    // A contact dial's 200 means the dial COUNTS (2026-08-25): the memo derives from this
+    // write asynchronously (the nudged sweep), and "follow, then open your feed" raced it -
+    // on a slow machine a publish could fire into a follower list that did not yet name the
+    // person who just followed. Drain the fold lane before answering, for exactly the
+    // memo-bearing collections; every other private register keeps the fast path.
+    if collection.starts_with("contact:") {
+        crate::fold::fold_now(&state, &root).await;
+    }
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),

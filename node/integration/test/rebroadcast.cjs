@@ -98,6 +98,9 @@ const base58 = async (host) => {
         // posts, and she has never heard of Alice. This is the relationship under test.
         if ((await cleo(`api/id/${bobRoot}/profile?via=${viaBob}`)).status !== 200) this.skip();
         await dial(cleo, cleoRoot, bobRoot, "interest_rebroadcasts", "high");
+        // Reader memos current before anything publishes (the fanout.cjs barrier).
+        await beat(HOST_B, "fold", bobRoot);
+        await beat(HOST_C, "fold", cleoRoot);
 
         // Alice posts, and it reaches Bob.
         const doc = await createDoc(alice, aliceRoot, "worth passing on", "words from alice");

@@ -145,6 +145,11 @@ async function setLane(mode) {
 
         if ((await dana(`api/id/${cleoRoot}/profile?via=${viaCleo}`)).status !== 200) this.skip();
         await dial(dana, danaRoot, cleoRoot, "interest_rebroadcasts", "high");
+
+        // Reader memos current before any publish - the fanout.cjs barrier, per cast.
+        await beat(HOST_B, "fold", bobRoot);
+        await beat(HOST_C, "fold", cleoRoot);
+        await beat(HOST_E, "fold", danaRoot);
     });
 
     /// The first three hops: Alice publishes, Bob shares, and the return value arrives only once
@@ -1114,6 +1119,10 @@ async function setLane(mode) {
             await dial(rae, raeRoot, boRoot, "interest_rebroadcasts", "high");
             if ((await rae(`api/id/${samRoot}/profile?via=${viaSam}`)).status !== 200) this.skip();
             await dial(rae, raeRoot, samRoot, "interest_rebroadcasts", "high");
+
+            await beat(HOST_B, "fold", boRoot);
+            await beat(HOST_C, "fold", samRoot);
+            await beat(HOST_E, "fold", raeRoot);
         });
 
         const setLaneOn = async (host, mode) => {
@@ -1482,6 +1491,8 @@ async function setLane(mode) {
             if ((await cora(`api/id/${sharerRoot}/profile?via=${viaSharer}`)).status !== 200)
                 this.skip();
             await dial(cora, coraRoot, sharerRoot, "interest_rebroadcasts", "high");
+            await beat(HOST_B, "fold", sharerRoot);
+            await beat(HOST_C, "fold", coraRoot);
 
             // Cora's SECOND node: a fresh account on echo adopts the persona (the daisychain
             // ceremony), and the ledger sync carries the rebroadcast-follow across - settle

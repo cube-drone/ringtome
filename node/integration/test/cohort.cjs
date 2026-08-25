@@ -75,6 +75,8 @@ const base58 = async (host) => {
                 method: "PUT",
                 body: JSON.stringify({ value: "high" }),
             });
+            // The follow in the memo before anything publishes (the fanout.cjs barrier).
+            await beat(HOST_C, "fold", coraRoot);
 
             // Cora's second node, by the real ceremony - and settled until echo's own
             // subscriptions memo knows the follow, proving the cohort input paths carry the

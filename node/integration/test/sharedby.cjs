@@ -99,6 +99,14 @@ const unshare = (fetcher, mine, author, docId) =>
             await dial(rex, rexRoot, root, "interest_rebroadcasts", "high");
         }
 
+        // Every reader's dial must be IN the subscriptions memo before anything publishes,
+        // or the fold fires into a shorter follower list (fanout.cjs's documented barrier;
+        // the dial's own nudged sweep is asynchronous and a slow runner let a publish
+        // outrun sky's memo - the one CI red of 2026-08-25's shake).
+        for (const { root } of sharers) {
+            await beat(HOST_B, "fold", root);
+        }
+        await beat(HOST_C, "fold", rexRoot);
     });
 
     /// A fresh post, passed along by all three in a KNOWN order - sam first and alone, so "the

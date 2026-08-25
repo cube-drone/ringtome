@@ -6831,3 +6831,18 @@ grace (600s - the beat is the eviction driver in tests), and `evict_one`'s owner
 walk now drops the visit row so the sync door and directory never claim a persona whose
 database is gone. Retention-semantics change worth a look on review: a bare visit's claim
 is now exactly one quiet grace window.
+
+## 2026-08-25 (cont. 8): "the dial counts" - the last barrier class closes at the source
+
+The next CI red ("the post reached sky, who follows ava", sharedby seed hop ONE, on a
+4-minute runner) was not the share machinery at all: a dial's subscriptions-memo row is
+derived ASYNCHRONOUSLY from the dial's own 200 (the nudged sweep), and a publish on a slow
+box outran sky's memo - the fold then fired into a follower list two names long, and
+nothing owed sky a row until ava's next move. fanout.cjs had documented the barrier
+("the follow must be in the memo BEFORE the post") since its conversion; sharedby's,
+cascade's, rebroadcast's and cohort's cast setups never got it because the settle era
+absorbed the lag inside the feed settle. Two fixes, one class: every cast setup now folds
+its readers before anything publishes (the belt), and the contact-dial PUT itself drains
+the fold lane before answering (the fix) - a 200 on a `contact:` register now MEANS the
+dial counts, read-your-writes at the API, for the person who follows someone and opens
+their feed in the same breath. Every other private register keeps the fast path.
