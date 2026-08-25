@@ -81,11 +81,10 @@ pub async fn beat(
             Ok(())
         }
         ("fold", Some(r)) => {
-            let _ = crate::net::frontier::refresh(&state, r).await;
-            crate::fanout::after_public_move(&state, r).await;
-            crate::notifications::refresh_from(&state, r).await;
-            crate::rebroadcast::refresh_from(&state, r).await;
-            crate::net::subscriptions::refresh_root(&state, r).await;
+            // The fold lane's drainable form: nudge (ledger leg included) and await the
+            // run - the chain itself now lives in fold::run_chain, serialized per root,
+            // so this beat can never race a concurrent arrival's fold.
+            crate::fold::fold_now(&state, r).await;
             Ok(())
         }
         ("eager-push", Some(r)) => {
@@ -167,7 +166,11 @@ pub async fn beat(
             crate::speculative::reset_attempt_stamps();
             crate::speculative::acquire_pass(state.clone()).await
         }
-        ("evict", _) => crate::eviction::evict_pass(state.clone()).await,
+        ("evict", _) => {
+            // Grace ZERO: a rung eviction gates on claims (hosted, dials, fragments,
+            // demand), never on clocks - the forced-due posture of every sweep beat.
+            crate::eviction::evict_pass_with_grace(state.clone(), 0).await
+        }
         (other, _) => {
             return Err(AppError::BadRequest(crate::msg!(
                 "test.beat.unknown-pass",

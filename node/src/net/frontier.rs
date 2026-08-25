@@ -547,16 +547,10 @@ pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
         } else if let Some(mt) = state.user_dbs.db_mtime_ms(&root) {
             state.sweep_marks.record("frontier", &root, mt);
         }
-        match refresh(&state, &root).await {
-            Ok(true) => {
-                tracing::info!(root = %root, "public frontier moved");
-                crate::fanout::after_public_move(&state, &root).await;
-                crate::notifications::refresh_from(&state, &root).await;
-                crate::rebroadcast::refresh_from(&state, &root).await;
-            }
-            Ok(false) => {}
-            Err(e) => tracing::warn!(root = %root, error = ?e, "frontier refresh failed"),
-        }
+        // The chain itself is the fold lane's (fold.rs) - the sweep's job ends at
+        // detecting that this root's files moved and nudging. `refresh` runs inside the
+        // lane's chain, serialized, so its verdict cannot be raced into silence here.
+        crate::fold::nudge(&state, &root);
     }
     Ok(())
 }

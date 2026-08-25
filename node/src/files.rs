@@ -32,7 +32,15 @@ use crate::record::private::{decrypt_file, encrypt_file, EpochKeys};
 /// The armed reaper: the mark source plus the store handle its tag hygiene needs.
 type ArmedGc = std::sync::Arc<std::sync::OnceLock<(LiveSource, Store)>>;
 /// Recently touched blobs, protected while their referencing rows land.
-type RecentRing = std::sync::Arc<std::sync::Mutex<Vec<(Hash, std::time::Instant)>>>;
+/// Ring entries carry the put's [`iroh_blobs::api::TempTag`] when there is one (puts; a
+/// fetched blob's protection is the fetch machinery's own). A LIVE temp tag is the one
+/// protection the reaper's mark phase reads AFTER `clear_protected` - the hash set alone
+/// closes every window except the put that lands between the protect snapshot and the
+/// clear, and that window ate a 75ms-old body on CI (2026-08-25, journalfill). Entries
+/// prune by grace on every insert and every GC round, which is what releases the tags.
+type RecentRing = std::sync::Arc<
+    std::sync::Mutex<Vec<(Hash, std::time::Instant, Option<iroh_blobs::api::TempTag>)>>,
+>;
 
 pub type LiveSource = std::sync::Arc<
     dyn Fn() -> std::pin::Pin<
@@ -159,10 +167,20 @@ impl FileStore {
     /// Note a blob as recently touched, so the reaper cannot win the race against the row
     /// that is about to reference it.
     fn note_recent(&self, hash: Hash) {
+        self.note_recent_inner(hash, None);
+    }
+
+    /// Note a fresh PUT: the hash rides the ring WITH its temp tag, so the mark phase sees
+    /// a live root even when the put landed inside the reaper's snapshot-to-clear window.
+    fn note_recent_tagged(&self, tag: iroh_blobs::api::TempTag) {
+        self.note_recent_inner(*tag.as_ref(), Some(tag));
+    }
+
+    fn note_recent_inner(&self, hash: Hash, tag: Option<iroh_blobs::api::TempTag>) {
         let mut ring = self.recent.lock().expect("recent ring poisoned");
         let cutoff = std::time::Instant::now() - recent_grace();
-        ring.retain(|(_, at)| *at > cutoff);
-        ring.push((hash, std::time::Instant::now()));
+        ring.retain(|(_, at, _)| *at > cutoff);
+        ring.push((hash, std::time::Instant::now(), tag));
     }
 
     /// The GC hook, shared by both backends: iroh-blobs runs the sweep on its own interval and
@@ -197,9 +215,13 @@ impl FileStore {
                         }
                     };
                     {
+                        // Prune, not just filter: dropping an expired entry is what
+                        // releases its temp tag, and the GC round is the one place this
+                        // runs even when no new put ever comes.
                         let cutoff = std::time::Instant::now() - recent_grace();
-                        let ring = recent.lock().expect("recent ring poisoned");
-                        keep.extend(ring.iter().filter(|(_, at)| *at > cutoff).map(|(h, _)| *h));
+                        let mut ring = recent.lock().expect("recent ring poisoned");
+                        ring.retain(|(_, at, _)| *at > cutoff);
+                        keep.extend(ring.iter().map(|(h, _, _)| *h));
                     }
                     // Tag hygiene: a tag here is `add_bytes` bookkeeping, never a reference -
                     // the ledgers are the references - and iroh's mark phase treats tags as
@@ -287,9 +309,15 @@ impl FileStore {
                 self.max_blob_bytes
             );
         }
-        let tag = self.store().add_bytes(blob).await.context("storing blob")?;
-        self.note_recent(tag.hash);
-        Ok(tag.hash)
+        let tag = self
+            .store()
+            .add_bytes(blob)
+            .temp_tag()
+            .await
+            .context("storing blob")?;
+        let hash = *tag.as_ref();
+        self.note_recent_tagged(tag);
+        Ok(hash)
     }
 
     /// Store a PUBLIC body: plaintext into the same content-addressed store, no key in the
@@ -307,10 +335,12 @@ impl FileStore {
         let tag = self
             .store()
             .add_bytes(plaintext.to_vec())
+            .temp_tag()
             .await
             .context("storing public blob")?;
-        self.note_recent(tag.hash);
-        Ok(tag.hash)
+        let hash = *tag.as_ref();
+        self.note_recent_tagged(tag);
+        Ok(hash)
     }
 
     /// What hash a public body WILL have, without storing it - the same content address
@@ -618,6 +648,33 @@ mod tests {
         assert!(
             !store_b.has(hash).await,
             "and never lands as a complete blob"
+        );
+    }
+
+    /// A put's protection must OUTLIVE the put call. The reaper's protect snapshot (the
+    /// live-set walk plus the recent ring) is taken BEFORE iroh clears write-time
+    /// protection, so a blob put between the snapshot and the clear falls through every
+    /// net - not in the walk (its referencing row is younger than the walk), not in the
+    /// ring (read at snapshot time), write-protection wiped by the clear - EXCEPT a live
+    /// TempTag, which the mark phase reads AFTER the clear. Caught 2026-08-25 on CI:
+    /// journalfill's rapid publishes met the rig's 2-second GC cadence and a 75ms-old
+    /// body died between its create and its publish ("blob not readable locally: encode
+    /// error"). The ring holds each put's TempTag for the grace window - exactly the
+    /// "referencing row is about to land" gap the ring has always stood for.
+    #[tokio::test]
+    async fn a_fresh_puts_temp_tag_outlives_the_put() {
+        let store = FileStore::memory();
+        let hash = store.put_public(b"fresh words, row still landing").await.unwrap();
+        let mut tts = store.store().tags().list_temp_tags().await.unwrap();
+        let mut held = false;
+        while let Some(tt) = tts.next().await {
+            if tt.hash == hash {
+                held = true;
+            }
+        }
+        assert!(
+            held,
+            "the put's temp tag lives on past its return - the reaper's one blind spot"
         );
     }
 

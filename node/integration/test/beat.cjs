@@ -41,12 +41,11 @@ async function pullAndFold(host, root) {
 }
 
 /// A SHARE's arrival at a reader's node, to the fragment: pull the sharer's chain, fold,
-/// drain any want a failed first ask minted - then a full second round, because the pull's
-/// own arrival hooks run detached and can interleave with the rung fold (the stale-fold-read
-/// family, REFACTOR.md): a round that starts after the first completed reads what both
-/// committed. Grew out of sharedby's seeds (run 2 of the switchover) and claimed its second
-/// victim in rebroadcast.cjs on CI - a via-less row standing in for the share row that
-/// lost the race.
+/// drain any want a failed first ask minted - then a full second round as a belt against
+/// the still-open fold-race family (REFACTOR.md's stale fold-read): a round that starts
+/// after the first completed reads what the detached arrival hooks committed. NB the CI
+/// flakes that grew this helper turned out to be mostly the journal upsert's byline bug
+/// (fanout.rs, fixed 2026-08-25) - the rung's drain covers the real first-ask misses.
 async function shareArrives(host, sharerRoot, authorRoot) {
     await pullAndFold(host, sharerRoot);
     await beat(host, "fragment-sweep", authorRoot);

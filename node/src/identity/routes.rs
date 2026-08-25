@@ -1102,7 +1102,10 @@ async fn unpublish_handler(
     }
     // The public lane moved: `retract_vanished` reconciles every reader's journal against the
     // shelf this post has just left, and every fragment holder hears `Gone` when they next ask.
-    crate::fanout::after_public_move(&state, &root).await;
+    // Through the fold lane, DRAINED: the person who pressed "take it down" reads their own
+    // feed next, and the 200 must mean the journal sweep already ran.
+    let generation = crate::fold::nudge(&state, &root);
+    crate::fold::drain(&root, generation).await;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),

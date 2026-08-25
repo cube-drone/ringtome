@@ -356,7 +356,7 @@ pub async fn sweep(state: AppState) -> Result<()> {
         }
         if healed > 0 {
             tracing::info!(root = %root, healed, "recovered missing bodies on the sweep");
-            crate::fanout::after_public_move(&state, &root).await;
+            crate::fold::nudge(&state, &root);
         } else {
             tracing::debug!(root = %root, candidates = candidates.len(),
                 "missing-body sweep: nothing healed this pass");

@@ -363,8 +363,16 @@ async fn journal_rows(
                  format = excluded.format,
                  updated_ms = excluded.updated_ms,
                  via_root = CASE
+                     -- A follow arrival outranks any byline: the reader pulls this author.
                      WHEN excluded.via_root IS NULL THEN NULL
+                     -- A share CONVERTS a speculative row - byline set, marking shed below.
+                     -- Without this branch a via-less speculative row read as \"follow row\"
+                     -- and the share's byline was dropped whenever the acquisition pass won
+                     -- the race to journal first (2026-08-25, three CI flakes' one face).
+                     WHEN feed_journal.suggested_via IS NOT NULL THEN excluded.via_root
+                     -- A genuine follow row stays a follow row, whoever shares it later.
                      WHEN feed_journal.via_root IS NULL THEN NULL
+                     -- Among sharers, the first sighted keeps the byline.
                      ELSE feed_journal.via_root
                  END,
                  suggested_via = NULL",
@@ -1565,6 +1573,66 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(still, vec![(None,)], "speculation never downgrades a real row");
+    }
+
+    /// The share-lane half of the conversion, pinned after it failed in the wild (2026-08-25,
+    /// the first post-switchover CI runs): a SHARE landing on a speculative row must convert
+    /// it into a share row - byline set, marking shed. The upsert's via CASE read "existing
+    /// `via_root IS NULL`" as "this is a follow row, and follows outrank share bylines" - but
+    /// a speculative row is ALSO via-less, so whenever the acquisition pass journaled a post
+    /// before the share fold did, the share's byline was dropped and the row was left looking
+    /// like a follow row for an author the reader does not follow. The flake wore three
+    /// tests' faces (rebroadcast's via-less row, cascade's seeds, sharedby's crowd counts)
+    /// because winning that race is a cadence coin flip.
+    #[tokio::test]
+    async fn a_share_arrival_converts_a_speculative_row_and_keeps_its_byline() {
+        let db = crate::db::test_node_db().await;
+        let author = "aa".repeat(32);
+        let reader = "bb".repeat(32);
+        let introducer = "cc".repeat(32);
+        let sharer = "dd".repeat(32);
+        let row = JournalRow {
+            doc_id_hex: "11".repeat(16),
+            title: "t".into(),
+            format: "plaintext".into(),
+            published_ms: 1,
+            updated_ms: 1,
+        };
+        let rows = [&row];
+        let wanting = [(reader.clone(), introducer.clone())];
+
+        // The race's losing order: speculation first, then the real share.
+        journal_rows_suggested(&db, &author, &wanting, &rows).await.unwrap();
+        journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, Some(&sharer))
+            .await
+            .unwrap();
+        let converted: Vec<(Option<String>, Option<String>)> = db
+            .fetch_all("SELECT suggested_via, via_root FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            converted,
+            vec![(None, Some(sharer.clone()))],
+            "a share converts a speculative row: byline set, marking shed"
+        );
+
+        // The ladder above shares still holds: a follow arrival outranks the byline...
+        journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, None)
+            .await
+            .unwrap();
+        // ...and a genuine follow row is never re-bylined by a later share.
+        journal_rows(&db, &author, std::slice::from_ref(&reader), &rows, Some(&sharer))
+            .await
+            .unwrap();
+        let follow: Vec<(Option<String>, Option<String>)> = db
+            .fetch_all("SELECT suggested_via, via_root FROM feed_journal", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            follow,
+            vec![(None, None)],
+            "a follow row outranks a share byline, still"
+        );
     }
 
     /// The `via_root IS NOT NULL` guard, from the other side. A document we hold BOTH ways -

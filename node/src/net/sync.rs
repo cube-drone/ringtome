@@ -1393,24 +1393,18 @@ pub async fn sync_with_peer(
     // ingest, so "do we still disagree" is asked of what we now hold, not what we held when
     // they spoke. A claim that delivered nothing and still differs is the only fault - and it
     // is the one that must not be chased again until it moves.
-    let moved = crate::net::frontier::refresh(state, root_hex).await;
-    if let Ok(m) = &moved {
-        tracing::debug!(root = %root_hex, moved = m, "frontier refresh verdict (requester)");
-    }
-    match moved {
-        Ok(true) => {
-            crate::fanout::after_public_move(state, root_hex).await;
-            crate::notifications::refresh_from(state, root_hex).await;
-            crate::rebroadcast::refresh_from(state, root_hex).await;
+    // Arrival hands the root to the fold lane (fold.rs): the ingest bumps the generation
+    // and one serialized worker per root runs the whole derived-state chain - the moved
+    // verdict no longer decides who fires hooks, which was the 2026-08 flake family's
+    // engine (the true-getter folded its own snapshot; every racer stayed silent). The
+    // exchange never waits on a fold. `ledger_moved` keeps its old meaning as the memo
+    // leg's cost gate, now a nudge flavor.
+    if received > 0 || outcome.ledger_moved {
+        if outcome.ledger_moved {
+            crate::fold::nudge_ledger(state, root_hex);
+        } else {
+            crate::fold::nudge(state, root_hex);
         }
-        Ok(false) => {}
-        Err(e) => tracing::debug!(error = ?e, "post-exchange frontier refresh failed"),
-    }
-    if outcome.ledger_moved {
-        // The requester ingests too (see serve's twin comment): cross-device dials arrive
-        // here - and only a batch that actually stored a general-private entry can carry
-        // one, so a batch of posts no longer triggers a full memo rewrite.
-        crate::net::subscriptions::refresh_root(state, root_hex).await;
     }
     let verdict = if received > 0 {
         crate::net::frontier::Verdict::Ahead
@@ -1443,7 +1437,7 @@ pub async fn sync_with_peer(
     // when entries also landed the caller fires the same edge and this one is a cheap
     // idempotent second pass.
     if bodies_fetched > 0 {
-        crate::fanout::after_public_move(state, root_hex).await;
+        crate::fold::nudge(state, root_hex);
     }
 
     Ok(ExchangeStats {
@@ -1582,25 +1576,13 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     // 30s sweep would find this eventually - but "eventually" is the wrong latency for the one
     // moment we KNOW something arrived, so ask directly.
     if received > 0 {
-        let moved = crate::net::frontier::refresh(&state, &root_hex).await;
-        if let Ok(m) = &moved {
-            tracing::debug!(root = %root_hex, moved = m, "frontier refresh verdict (serve)");
-        }
-        match moved {
-            Ok(true) => {
-                crate::fanout::after_public_move(&state, &root_hex).await;
-                crate::notifications::refresh_from(&state, &root_hex).await;
-                crate::rebroadcast::refresh_from(&state, &root_hex).await;
-            }
-            Ok(false) => {}
-            Err(e) => tracing::debug!(error = ?e, "post-ingest frontier refresh failed"),
-        }
-        // Private records ride the same exchange (member-proven peers), and a contact dial
-        // turned elsewhere must reach this node's memo by EVENT, not by backstop - but only
-        // a batch that stored a general-private entry can carry a dial, so a push of posts
-        // no longer triggers a full memo rewrite.
+        // The fold lane owns everything derived from this arrival (fold.rs; see the
+        // requester side's twin comment). The serve path stops running folds inline
+        // entirely - the hung-exchange family's other half.
         if outcome.ledger_moved {
-            crate::net::subscriptions::refresh_root(&state, &root_hex).await;
+            crate::fold::nudge_ledger(&state, &root_hex);
+        } else {
+            crate::fold::nudge(&state, &root_hex);
         }
         // A delivered push IS freshness for a mirrored persona - stamp it so the
         // follow-refresh sweep stays quiet while the push machinery is working.
@@ -1637,7 +1619,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
                 crate::record::documents::fetch_missing_bodies(&state, &root_hex, addr).await;
             if fetched > 0 {
                 tracing::info!(root = %root_hex, fetched, "backfilled bodies after serving sync");
-                crate::fanout::after_public_move(&state, &root_hex).await;
+                crate::fold::nudge(&state, &root_hex);
             }
         });
     }

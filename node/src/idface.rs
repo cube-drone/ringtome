@@ -350,8 +350,10 @@ async fn record_foreign_fetch(state: &AppState, root_hex: &str, via: &str) -> Re
     Ok(())
 }
 
-/// Drop a root's fetch memory - called when this node starts HOSTING it (identity.rs), the
-/// one transition that makes the record wrong rather than merely old.
+/// Drop a root's fetch memory - called when this node starts HOSTING it (identity.rs, the
+/// transition that makes the record wrong rather than merely old) and by the eviction
+/// sweep's owner-forgets walk (eviction.rs, 2026-08-25 - an evicted mirror must not leave
+/// a registry row claiming a persona whose database is gone).
 pub async fn forget_foreign_fetch(node_db: &crate::db::Db, root_hex: &str) -> Result<(), AppError> {
     node_db
         .execute("DELETE FROM foreign_fetches WHERE root_pubkey = ?1", (root_hex,))
@@ -1267,5 +1269,29 @@ mod refresh_order_tests {
                 "low-dial".to_string(),
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The visit registry answers the DOOR's question (has this node fetched-and-carried
+    /// them), agelessly; retention is the eviction grace's business, not this table's
+    /// (2026-08-25 - the aged-visit detour and its revert are in HISTORY).
+    #[tokio::test]
+    async fn the_visit_registry_is_ageless_and_the_doors() {
+        let db = crate::db::test_node_db().await;
+        let now = crate::clock::now_ms();
+        for (root, at) in [("aa11", now - 10_000), ("bb22", now - 100)] {
+            db.execute(
+                "INSERT INTO foreign_fetches (root_pubkey, fetched_at_ms) VALUES (?1, ?2)",
+                (root, at),
+            )
+            .await
+            .unwrap();
+        }
+        let all = fetched_roots(&db).await.unwrap();
+        assert_eq!(all.len(), 2, "the ageless list still serves the door's question");
     }
 }

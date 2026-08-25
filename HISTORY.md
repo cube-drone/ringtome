@@ -6755,15 +6755,79 @@ read-your-writes for every write that committed before the call. publish.cjs's "
 test also fell to the faster suite (a profile read racing the publish's fold - a latent
 flake that predates the switchover) and now folds first.
 
-## 2026-08-25 (cont. 4): the share-arrival rung earns a name
+## 2026-08-25 (cont. 4): the share-arrival rung earns a name - and then names the real bug
 
-The first post-switchover CI run caught the one hop family still riding a single round:
-rebroadcast.cjs asserted a share row and got a via-less stand-in - the taste-lane
-speculative row for the same post, standing in while the real share fold lost the
-detached-hook interleave sharedby's seeds had already met (that is also a small proof the
-convert-in-place upsert matters: two writers, one primary key, and whichever lands last
-must not erase the other's byline). sharedby's local two-round rung is now `beat.cjs`'s
-`shareArrives(host, sharer, author)` - pull, fold, drain, then a full second round - and
-every share-arrival hop in the suite rides it: rebroadcast, sharedby, and cascade's seeds,
-image hops, revenant offer, dual-sharer seeds and cohort hop. Chain-sync (follow) hops stay
-single-round: the fragment legs are what add the detached work. Full `just ci` green again.
+The first post-switchover CI runs kept biting share hops (rebroadcast's via-less row,
+cascade's seeds, sharedby's crowd counts), so the two-round arrival rung became `beat.cjs`'s
+`shareArrives(host, sharer, author)` and every share hop in the suite rides it. Then the
+next CI failure's artifact named the actual defect, and it was never a race the rung could
+outwait: `journal_rows`' upsert read an existing row's `via_root IS NULL` as "this is a
+follow row, and follows outrank share bylines" - but a SPECULATIVE row is also via-less, so
+whenever the acquisition pass journaled a post before the share fold did (a cadence coin
+flip, hence the flake's face), the real share's byline was dropped and `suggested_via`
+cleared: a row credited to nobody, for an author the reader does not follow. The CASE now
+converts a speculative row to the share's byline (marking shed) while a genuine follow row
+still outranks any later share - pinned red-first beside the existing conversion cop
+(`a_share_arrival_converts_a_speculative_row_and_keeps_its_byline`). The rung stays: its
+first round's want-drain covers real first-ask misses, and the second is a belt against the
+still-open fold-race family (REFACTOR).
+
+## 2026-08-25 (cont. 5): the reaper's blind spot eats a 75-millisecond-old body
+
+The other CI failure was journalfill's author refusing to publish its own trigger post -
+"this note's words haven't arrived on this computer yet", about words created 75ms earlier
+on that same computer ("blob not readable locally: encode error"). The artifact plus a read
+of iroh-blobs' GC settled it: the round runs our protect callback (live-set walk + recent
+ring) FIRST, then `clear_protected` (wiping write-time auto-protection), then mark, then
+sweep - so a blob put between the ring's snapshot and the clear is in no net at all, and
+the rig's 2-second GC cadence against journalfill's 55 rapid creates made the collision
+routine on a slow runner. Grace could never fix it (the ring is read at snapshot time); the
+one protection read AFTER the clear is a live TempTag, which `add_bytes` mints and our put
+paths were dropping on return. The recent ring now HOLDS each put's temp tag for the grace
+window - exactly the "referencing row is about to land" gap the ring has always stood for -
+and prunes on every GC round as well as every insert, so expired tags release even on an
+idle store (the reaper end-to-end test is the proof both ways). Pinned red-first:
+`a_fresh_puts_temp_tag_outlives_the_put`. Production exposure was real but rare (30-minute
+rounds); a user posting at the wrong moment could lose the body their header names.
+
+## 2026-08-25 (cont. 6): the fold lane - the ownership model the flake family was about
+
+The structural fix the whole 2026-08 dig argued for (and the settle switchover kept
+re-proving one variant at a time): derived-state work is now serialized, generation-based
+and drainable, per root (`fold.rs`). Every arrival path - both ends of a sync exchange, the
+frontier backstop sweep, the body heal, the takedown - stops running the hook chain itself
+and stops branching on `frontier::refresh`'s moved verdict, which under concurrency let one
+caller fold its own snapshot while every racer stayed silent ("the data arrived, but the
+derived state did not update until something unrelated moved"). Arrivals now `nudge` (bump
+the root's generation; `nudge_ledger` when general-private entries landed, keeping the old
+`ledger_moved` memo-cost gate as a nudge flavor); one single-flight worker per root runs
+the chain - frontier memo, feed journal + edge graph + demand push, notifications, share
+fold, subscriptions memo - snapshotting the generation before each run and looping until it
+has covered the latest, so the last run always starts after the last write it covers:
+read-your-writes, structurally, for every consumer at once. `drain` awaits "a run that
+began at or after my nudge completed" - the test beat's `fold` pass is now exactly
+`fold_now` (nudge + drain), the takedown drains before its 200, and the sync serve path no
+longer runs any fold inline (the hung-exchange family's other half). The moved verdict
+survives as an INFO log and the hooks' own cheap change gates, which serialization finally
+makes correct. State machine pinned by unit tests (overlap detector, read-your-writes,
+ledger-leg survival), violation planted and watched red per house custom.
+
+## 2026-08-25 (cont. 7): the fold lane's shake run finds the immortal mirror
+
+A repeat integration run over the fold lane went 678/1 - the speculative eviction test,
+1-in-4 - and the rig log named it in minutes (what the deterministic suite is FOR):
+`evictable`'s member-visit input read the ageless `foreign_fetches` list, and the
+follow-refresh pass mints a visit row for any briefly-followed persona, so whenever that
+cadence coin flip landed during the test's promotion phase, "cleared the dial" could never
+evict - in the test or in production, where one profile view made a mirror immortal and
+defeated DISCOVERY slice 4's whole premise. The first fix (age the visit by the eviction
+grace) promptly failed the other way: the rig's zero grace made visits protect NOTHING and
+the background evict loop ate freshly-visited mirrors in the fetch->dial gap (six reds in
+one ci run). Where it landed: the member-visit input leaves the gate entirely - a fetch is
+a WRITE, so the mtime grace already is the visit's freshness protection, without the
+immortality - the evict BEAT forces grace zero ("evict NOW" gates on claims, never on
+clocks, the forced-due posture of every sweep beat), the rig's background loop gets a real
+grace (600s - the beat is the eviction driver in tests), and `evict_one`'s owner-forgets
+walk now drops the visit row so the sync door and directory never claim a persona whose
+database is gone. Retention-semantics change worth a look on review: a bare visit's claim
+is now exactly one quiet grace window.

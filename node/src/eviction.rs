@@ -9,8 +9,6 @@
 //!
 //!   - not HOSTED (an agented persona is this node's own charge, never evicted),
 //!   - no SUBSCRIPTION (nobody's dial names them - follow, rebroadcast, or trust),
-//!   - not MEMBER-FETCHED (`foreign_fetches` is the member-visit registry, and
-//!     member-fetched is a freshness contract - the slice-1 doctrine),
 //!   - no FRAGMENT rows (a fragment is a reader-facing promise; shares retire on their own
 //!     schedule and keep the mirror while they stand),
 //!   - no DEMAND row (no reader's rollup admits them - the withdrawn-vouch case this sweep
@@ -42,15 +40,20 @@ const EVICTION_GRACE_MS: i64 = 60 * 60 * 1000;
 /// mirror on a quiet node forever, silently, and the acceptance test caught it on its
 /// first green-side run. Active use is what the mtime grace measures (a touched file is a
 /// rested-clock reset), and `evict_mirror` invalidates the cached handle itself.
+/// A member VISIT is deliberately absent from this conjunction (2026-08-25): the ageless
+/// visit registry made every once-viewed mirror immortal, and an aged one collapsed to
+/// nothing under the rig's zero grace - the visit's real retention claim is the mtime
+/// grace itself (a fetch writes the file, and a mirror is only evictable once it has sat
+/// QUIET for the whole window). `evict_one` still forgets the visit row, so the door
+/// registry never outlives the database it points at.
 fn evictable(
     hosted: bool,
     dialed: bool,
-    member_fetched: bool,
     has_fragments: bool,
     demanded: bool,
     rested: bool,
 ) -> bool {
-    !hosted && !dialed && !member_fetched && !has_fragments && !demanded && rested
+    !hosted && !dialed && !has_fragments && !demanded && rested
 }
 
 /// One pass of the sweep (registered in main.rs, slow beat): walk every database on disk,
@@ -66,6 +69,13 @@ pub async fn evict_pass(state: AppState) -> Result<()> {
     } else {
         EVICTION_GRACE_MS
     };
+    evict_pass_with_grace(state, grace_ms).await
+}
+
+/// The pass with the grace in hand - the test beat's door (`/test/beat` "evict" rings it
+/// with grace ZERO: "evict NOW" gates on claims, never on clocks, the same posture as
+/// every forced-due sweep beat).
+pub async fn evict_pass_with_grace(state: AppState, grace_ms: i64) -> Result<()> {
     let now = crate::clock::now_ms();
 
     let corpus = state.user_dbs.held_roots()?;
@@ -77,21 +87,18 @@ pub async fn evict_pass(state: AppState) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("{e}"))?
         .into_iter()
         .collect();
-    let fetched: std::collections::HashSet<String> =
-        crate::idface::fetched_roots(&state.node_db).await?.into_iter().collect();
     for root in corpus {
         let hosted_here = hosted.contains(&root);
         let dialed = !crate::net::subscriptions::dialed_by(&state.node_db, &root)
             .await?
             .is_empty();
-        let member_fetched = fetched.contains(&root);
         let has_fragments = crate::fragments::any_for_author(&state.node_db, &root).await?;
         let demanded = crate::speculative::demand_exists(&state.node_db, &root).await?;
         let rested = state
             .user_dbs
             .db_mtime_ms(&root)
             .is_none_or(|mt| now - mt >= grace_ms);
-        if !evictable(hosted_here, dialed, member_fetched, has_fragments, demanded, rested) {
+        if !evictable(hosted_here, dialed, has_fragments, demanded, rested) {
             continue;
         }
         if let Err(e) = evict_one(&state, &root).await {
@@ -109,6 +116,9 @@ pub async fn evict_pass(state: AppState) -> Result<()> {
 async fn evict_one(state: &AppState, root: &str) -> Result<()> {
     state.user_dbs.evict_mirror(root).await?;
     crate::speculative::forget_fetch(&state.node_db, root).await?;
+    crate::idface::forget_foreign_fetch(&state.node_db, root)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     crate::fanout::excise_suggested(&state.node_db, root).await?;
     crate::profiles::forget(&state.node_db, root).await?;
     crate::net::frontier::forget_persona(&state.node_db, root).await?;
@@ -127,13 +137,13 @@ mod tests {
     /// against an `evictable` that ignored the hosted flag before it was trusted.
     #[test]
     fn every_keeper_keeps() {
-        let gone = |h, d, m, f, de, r| evictable(h, d, m, f, de, r);
-        assert!(gone(false, false, false, false, false, true));
-        assert!(!gone(true, false, false, false, false, true), "hosted keeps");
-        assert!(!gone(false, true, false, false, false, true), "a dial keeps");
-        assert!(!gone(false, false, true, false, false, true), "member-fetched keeps");
-        assert!(!gone(false, false, false, true, false, true), "a fragment keeps");
-        assert!(!gone(false, false, false, false, true, true), "demand keeps");
-        assert!(!gone(false, false, false, false, false, false), "grace keeps");
+        let gone = |h, d, f, de, r| evictable(h, d, f, de, r);
+        assert!(gone(false, false, false, false, true));
+        assert!(!gone(true, false, false, false, true), "hosted keeps");
+        assert!(!gone(false, true, false, false, true), "a dial keeps");
+        assert!(!gone(false, false, true, false, true), "a fragment keeps");
+        assert!(!gone(false, false, false, true, true), "demand keeps");
+        assert!(!gone(false, false, false, false, false), "grace keeps - the member-visit
+            protection too, since a fetch is a write and a written file is not rested");
     }
 }

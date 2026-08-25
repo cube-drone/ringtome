@@ -20,6 +20,7 @@ mod error;
 mod fanout;
 mod fragments;
 mod files;
+mod fold;
 mod identity;
 mod inbox;
 mod ingest;

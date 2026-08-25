@@ -56,32 +56,17 @@ history needs a watermark, a cursor, or a named reason it is bounded.** `imaol` 
 the third case rather than trusting it (`service_reads_whole`).
 
 
-## The stale fold-read (open, 2026-08-25): entries land, the fold reads the past
+## Storage read visibility (open, 2026-08-25): one narrated occurrence still wanted
 
-The flake family's root, cornered twice and INVERTED by its own instrument: the "stale
-serve" theory died when the serve's log showed its heads advancing (10:1 -> 10:3) while it
-sent 0 - the requester's claims covered the entries, meaning the PULLING node has them.
-The stale read is on the reader's side: charlie ingests the sharer's entries (claims prove
-it), the frontier memo moves (hooks fire), and the share fold's read of the sharer's USER
-database returns the pre-write state - stale pointer counts in fold narrations all along -
-until "the next write" to that db resets whatever view is pinned. Suspect space: two
-connections on one encrypted file (the 2026-08-22 coalescing fixed CREATE, but any second
-handle would explain cross-connection WAL invisibility), or a pinned read snapshot on the
-shared connection (fetch error paths now drain-then-fail; the CANCELLATION hole remains -
-a dropped fetch future skips the drain; don't wrap `fetch_*` in timeouts). The instrument
-now logs BOTH sides' heads on every empty serve ("served nothing - our heads at serve
-time", claimed= vs ours=): next occurrence, read that line, then check whether the reader's
-fold narration shows a stale pointer count against its own claimed head - that one
-comparison names the guilty connection. The journalable fold ceiling and the want ladder
-keep suites green meanwhile.
-
-New evidence (2026-08-25, the settle switchover's rung mint): the same shape caught
-red-handed WITHOUT the network - a rung `subscriptions::refresh` one millisecond behind a
-dial's own write nudge read a contacts set missing the just-committed entry, while the
-nudge-driven refresh (concurrent, same root, same shared user-db handle) read it fine
-milliseconds later. Same file, same handle, two concurrent folds over the same
-private-register watermarks - which leans the suspect space toward the interleaved-fold /
-pinned-snapshot side and away from second-connection WAL invisibility.
-`subscriptions::refresh` is now serialized per root (read-your-writes for any write that
-committed before the call); the OTHER fold paths (the share fold above included) still
-race their own concurrent instances, so the narrated-occurrence plan stands.
+What remains of the stale fold-read dig after the fold lane (fold.rs) landed. The verdict
+race - one arrival's true-getter folding a stale snapshot while racers stayed silent - is
+structurally gone: folds are serialized per root and every ingest guarantees a fold that
+STARTS after it. That also means a genuine storage-visibility bug (a pinned read snapshot
+on the shared handle, or cross-connection WAL invisibility - the two suspects the
+instrument narrowed to) would now be MASKED rather than fixed: the fold lane re-reads
+after every write by construction. The mint-window evidence (a refresh 1ms behind a
+committed dial reading the pre-write ledger, subscriptions.rs gate doc) says something
+real was there. Standing ask: if any "read the past" line ever shows again - a fold
+narration's stale pointer count against its own claimed head, a beat that read pre-write
+state - capture the window; the drain-then-fail rules and the CANCELLATION hole ("don't
+wrap `fetch_*` in timeouts") remain the constraints on any storage-layer dig.
