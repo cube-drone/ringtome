@@ -39,7 +39,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
+const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
 
 
 const createDoc = async (fetch, root, title, body) => {
@@ -131,7 +131,7 @@ const base58 = async (host) => {
     });
 
     it("a rebroadcast-only follower receives a post from an author they never followed", async () => {
-        await pullAndFold(HOST_C, bobRoot);
+        await shareArrives(HOST_C, bobRoot, aliceRoot);
         const row = (await feedOf(cleoRoot, HOST_C)).find((r) => r.title === "worth passing on");
         assert.ok(row, "the shared post reached a reader who follows only the sharer");
         assert.equal(row.author_root, aliceRoot, "credited to its author, not to the sharer");

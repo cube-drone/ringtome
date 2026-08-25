@@ -30,19 +30,10 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
+const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
 
-// One reader-side arrival round on charlie: fold the sharer's chain move, then
-// drain any want a failed first ask minted (the fold's own recovery rung).
-const arriveOnC = async (sharerRoot, authorRoot) => {
-    await pullAndFold(HOST_C, sharerRoot);
-    await beat(HOST_C, "fragment-sweep", authorRoot);
-    // Second round: the pull's own arrival hooks run detached and can interleave with
-    // the rung fold (the stale-fold-read family) - a round that starts after the first
-    // completed reads what both committed.
-    await beat(HOST_C, "fold", sharerRoot);
-    await beat(HOST_C, "fragment-sweep", authorRoot);
-};
+// One reader-side share arrival on charlie - beat.cjs's two-round rung.
+const arriveOnC = (sharerRoot, authorRoot) => shareArrives(HOST_C, sharerRoot, authorRoot);
 
 
 const base58 = async (host) => {

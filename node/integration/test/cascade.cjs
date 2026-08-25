@@ -40,7 +40,7 @@ dns.setDefaultResultOrder("ipv4first");
 const { sql, HOST, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 const { unplug, plugIn } = require("./unplug.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
+const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
 
 const settle = require("./helpers.cjs").settleWith(240);
 
@@ -176,7 +176,7 @@ async function setLane(mode) {
         });
         assert.equal(bobShared.status, 200, await bobShared.text());
 
-        await pullAndFold(HOST_C, bobRoot);
+        await shareArrives(HOST_C, bobRoot, aliceRoot);
         assert.ok(
             (await feedOf(cleoRoot, HOST_C)).some(
                 (r) => r.doc_id === post && r.via_root === bobRoot
@@ -202,7 +202,7 @@ async function setLane(mode) {
         });
         assert.equal(cleoShared.status, 200, await cleoShared.text());
 
-        await pullAndFold(HOST_E, cleoRoot);
+        await shareArrives(HOST_E, cleoRoot, aliceRoot);
         assert.ok(
             (await feedOf(danaRoot, HOST_E)).some(
                 (r) => r.doc_id === post && r.via_root === cleoRoot
@@ -630,8 +630,7 @@ async function setLane(mode) {
             // Ring every road the corpse could ride back in: the share fold from Cleo's
             // chain, the fragment machinery, and the journal fill - each provably ran, and
             // each provably had to lose the argument with the tombstone.
-            await pullAndFold(HOST_E, cleoRoot);
-            await beat(HOST_E, "fragment-sweep", aliceRoot);
+            await shareArrives(HOST_E, cleoRoot, aliceRoot);
             await beat(HOST_E, "journal-fill");
 
             // All three facts in one assertion, on purpose: they fail in different combinations
@@ -880,8 +879,7 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: aliceRoot, doc_id: post }),
             });
             assert.equal(bobShared.status, 200, await bobShared.text());
-            await pullAndFold(HOST_C, bobRoot);
-            await beat(HOST_C, "fragment-sweep", aliceRoot);
+            await shareArrives(HOST_C, bobRoot, aliceRoot);
             await beat(HOST_C, "body-heal", aliceRoot);
             await beat(HOST_C, "bodies-sweep");
             const served = await servedBody(aliceRoot, post, HOST_C);
@@ -916,8 +914,7 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: aliceRoot, doc_id: post }),
             });
             assert.equal(onward.status, 200, await onward.text());
-            await pullAndFold(HOST_E, cleoRoot);
-            await beat(HOST_E, "fragment-sweep", aliceRoot);
+            await shareArrives(HOST_E, cleoRoot, aliceRoot);
             await beat(HOST_E, "body-heal", aliceRoot);
             await beat(HOST_E, "bodies-sweep");
             assert.equal(
@@ -1189,7 +1186,7 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: allyRoot, doc_id: post }),
             });
             assert.equal(boShared.status, 200, await boShared.text());
-            await pullAndFold(HOST_E, boRoot);
+            await shareArrives(HOST_E, boRoot, allyRoot);
             assert.ok(
                 (await fragmentsOf(allyRoot, HOST_E)).some((r) => r.doc_id === post),
                 `seedDual(${title}): Rae holds the fragment via Bo`
@@ -1200,7 +1197,7 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: allyRoot, doc_id: post }),
             });
             assert.equal(samShared.status, 200, await samShared.text());
-            await pullAndFold(HOST_E, samRoot);
+            await shareArrives(HOST_E, samRoot, allyRoot);
             {
                 const { rows } = await sql(
                     `SELECT via_root FROM feed_shares WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
@@ -1551,8 +1548,7 @@ async function setLane(mode) {
             assert.equal(shared.status, 200, await shared.text());
 
             // The last stop loads up: charlie holds the row, the fragment, the words.
-            await pullAndFold(HOST_C, sharerRoot);
-            await beat(HOST_C, "fragment-sweep", authorRoot);
+            await shareArrives(HOST_C, sharerRoot, authorRoot);
             await beat(HOST_C, "body-heal", authorRoot);
             await beat(HOST_C, "bodies-sweep");
             {

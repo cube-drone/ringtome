@@ -6754,3 +6754,16 @@ the sending side and self-healing in the free-running loops, which is why it hid
 read-your-writes for every write that committed before the call. publish.cjs's "dated"
 test also fell to the faster suite (a profile read racing the publish's fold - a latent
 flake that predates the switchover) and now folds first.
+
+## 2026-08-25 (cont. 4): the share-arrival rung earns a name
+
+The first post-switchover CI run caught the one hop family still riding a single round:
+rebroadcast.cjs asserted a share row and got a via-less stand-in - the taste-lane
+speculative row for the same post, standing in while the real share fold lost the
+detached-hook interleave sharedby's seeds had already met (that is also a small proof the
+convert-in-place upsert matters: two writers, one primary key, and whichever lands last
+must not erase the other's byline). sharedby's local two-round rung is now `beat.cjs`'s
+`shareArrives(host, sharer, author)` - pull, fold, drain, then a full second round - and
+every share-arrival hop in the suite rides it: rebroadcast, sharedby, and cascade's seeds,
+image hops, revenant offer, dual-sharer seeds and cohort hop. Chain-sync (follow) hops stay
+single-round: the fragment legs are what add the detached work. Full `just ci` green again.
