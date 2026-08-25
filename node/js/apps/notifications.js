@@ -1,9 +1,9 @@
-// Notifications: the derived-events surface (PROJECT_PLAN, Arrival and Attention - the
-// follow-edge rule's derived side). Every row is a fact folded from chains this node already
-// syncs because you follow their author - today, one kind: someone you follow published
-// their relationship with you (a public-edge statement). Strangers cannot appear here by
-// construction; reaching someone who doesn't follow you is the future inbox path, gates and
-// all, not this list.
+// Notifications: one bell, both roads (PROJECT_PLAN, Arrival and Attention). Derived rows
+// are facts folded from chains this node already syncs because you follow their author;
+// delivered rows arrived at your door by envelope (the inbox path, gates and all) and wear
+// the stranger mark. Two kinds today: someone published their relationship with you (a
+// public-edge statement), and someone shared one of your posts (a rebroadcast - a murmur,
+// which is why it reads quietly).
 //
 // The rows come from the node's notifications memo over HTTP (the memo collapses one row per
 // (author, kind), so this list is your social circle, not your history). Seen-state is a
@@ -46,6 +46,19 @@ const Subject = ({ row }) => {
 };
 
 const sentence = (r) => {
+    // The share kind first: it carries no bands, and the public-edge ladder below would
+    // otherwise dress it as "publishes their trust in you" - the exact miscopy that hid
+    // share notifications in plain sight (2026-08-25: the row rendered, wearing the wrong
+    // words). Derived rows name the document; a delivered murmur cannot (the pool
+    // collapses per sender), and the words stay honest about that difference.
+    if (r.kind === 'rebroadcast') {
+        return r.doc_id
+            ? t('apps.notifications.shared-one-of-your-posts', 'shared one of your posts')
+            : t(
+                  'apps.notifications.shared-something-of-yours',
+                  'shared something of yours'
+              );
+    }
     const follows = !!r.interest;
     const vouches = r.trust === 'max';
     if (follows && vouches)
@@ -169,6 +182,13 @@ export const NotificationsApp = ({ current }) => {
                                           is the exact inversion this design is trying to avoid. */ ''}
                                       <${Subject} row=${r} />
                                       ${sentence(r)}
+                                      ${r.kind === 'rebroadcast' &&
+                                      r.doc_id &&
+                                      html` <a
+                                          class="notif-doc-link"
+                                          href=${`/id/${root}/docs/${r.doc_id}/body`}
+                                          >${t('apps.notifications.see-the-post', 'see the post')}</a
+                                      >`}
                                       ${r.stranger &&
                                       html`<span
                                           class="notif-stranger"

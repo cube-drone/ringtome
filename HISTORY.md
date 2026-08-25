@@ -6931,3 +6931,31 @@ existed and watched fail on exactly "the follow notice STOOD"): one stranger fol
 share notices past the rig's keep - the murmur ring turns, murmurs pay for murmurs, and
 the follow stands. The sender-half of the classifier remains the flow computation's to
 replace, unchanged. Future low-stakes kinds (reactions, quotes) have their tier waiting.
+
+## 2026-08-25 (cont. 14): the share notification was there all along, wearing the wrong words
+
+Field report from the dev network (runny-fact publishes, penny-fade shares, no notification
+visible) ran ahead of the machinery and caught the UI instead: the bell's `sentence()` was
+written when the list had one kind ("today, one kind", its own header said so) and dressed
+every row in the public-edge ladder - so a rebroadcast row RENDERED, reading "publishes
+their trust in you", a miscopy that hid share notifications in plain sight. En route, the
+everyday case got its missing acceptance (rebroadcast.cjs: a FOLLOWED sharer's share
+arrives by the derived path, document named, no envelope crossed - the gate's
+AlreadyPulled drop plus the derived fold, the design working as designed), which also
+established that `stranger` serializes only when true. The bell now speaks the share kind
+- "shared one of your posts" when the row names the document (derived), "shared something
+of yours" when it cannot (a delivered murmur collapses per sender) - and its header tells
+the truth about both roads.
+
+## 2026-08-25 (cont. 15): a murmur names its post
+
+"Shared something of yours" was honest and useless - and needlessly so, because the
+envelope's EVIDENCE is the sharer's own signed rebroadcast entry, which names the document;
+only the view dropped it. `verify_claim` already carried the doc id (signed claim, never a
+hint), so: user gen 16 adds `inbox_notices.doc_id`, the fold denormalizes it beside the
+bands (reads never fold), the delivered mapping stops blanking it - the per-(sender, kind)
+collapse is unchanged, a murmur simply names its MOST RECENT share - and the bell links
+"see the post" on every share row that names one, derived and delivered alike. Red-first:
+the envelope test now asserts the delivered row's doc id, watched fail against the
+pre-column binary. User-db schema note: gen 15 -> 16, another `just clean` before the next
+dev boot.

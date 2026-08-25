@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 458 phrases across 43 files.
+// 461 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -59,6 +59,8 @@ export default {
 
     // --- node/js/apps/notifications.js ---
     'apps.notifications.what-they-call-themselves-unverified': 'what they call themselves - an unverified claim, not a name this computer has checked',
+    'apps.notifications.shared-one-of-your-posts': 'shared one of your posts',
+    'apps.notifications.shared-something-of-yours': 'shared something of yours',
     'apps.notifications.follows-you-publicly-and-vouches': 'follows you publicly, and vouches for you - they say you two have met',
     'apps.notifications.follows-you-publicly-and-publishes': 'follows you publicly, and publishes their trust in you',
     'apps.notifications.follows-you-publicly': 'follows you, publicly',
@@ -67,6 +69,7 @@ export default {
     'apps.notifications.just-now': 'just now',
     'apps.notifications.mark-all-read': 'mark all read',
     'apps.notifications.nothing-yet-when-someone-you': 'nothing yet - when someone you follow makes their relationship with you public, it lands here',
+    'apps.notifications.see-the-post': 'see the post',
     'apps.notifications.you-dont-follow-them-so': "you don't follow them, so this arrived at your door - their name and picture stay unfetched until you answer",
     'apps.notifications.a-stranger': 'a stranger',
     'apps.notifications.dial-trust': 'trust',

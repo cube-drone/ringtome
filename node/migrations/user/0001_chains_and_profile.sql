@@ -284,6 +284,11 @@ CREATE TABLE inbox_notices (
     envelope      BLOB    NOT NULL,  -- the delivered envelope, verbatim, re-verifiable
     trust         TEXT,              -- the published bands the evidence carried
     interest      TEXT,
+    doc_id        TEXT,              -- which document the evidence names, for kinds that name
+                                     -- one (rebroadcast): off the sender's own signed claim,
+                                     -- denormalized at fold time like everything here. The
+                                     -- per-(sender, kind) collapse means a murmur names its
+                                     -- MOST RECENT share - "which post" beats "some post".
     -- What the sender CLAIMS to be called. Unverified and unverifiable at any sane price (see
     -- deliver::Envelope::display_name); denormalized here at fold time rather than decoded out
     -- of the envelope on every bell read, because reads never fold. Rendered as an annotation

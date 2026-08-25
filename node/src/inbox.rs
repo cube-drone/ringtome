@@ -125,6 +125,9 @@ pub struct Notice {
     pub display_name: Option<String>,
     pub trust: Option<String>,
     pub interest: Option<String>,
+    /// Which document of the reader's the evidence names, hex - `Some` for kinds that name
+    /// one (rebroadcast). Off the sender's own signed claim, never the envelope's word.
+    pub doc_id: Option<String>,
     /// The transcribing node's claimed time - the recipient's own clock, not the sender's.
     pub timestamp_ms: i64,
     /// Which tier chain the winning notice sits on.
@@ -411,8 +414,8 @@ async fn fold_notice(
     db.execute(
         "INSERT INTO inbox_notices
            (sender_root, kind, service, author_pubkey, envelope, trust, interest,
-            display_name, timestamp_ms, seq, entry_hash)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            display_name, doc_id, timestamp_ms, seq, entry_hash)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?12, ?9, ?10, ?11)
          ON CONFLICT(sender_root, kind) DO UPDATE SET
            service = excluded.service,
            author_pubkey = excluded.author_pubkey,
@@ -420,6 +423,7 @@ async fn fold_notice(
            trust = excluded.trust,
            interest = excluded.interest,
            display_name = excluded.display_name,
+           doc_id = excluded.doc_id,
            timestamp_ms = excluded.timestamp_ms,
            seq = excluded.seq,
            entry_hash = excluded.entry_hash
@@ -439,6 +443,7 @@ async fn fold_notice(
             signed.entry().timestamp_ms,
             signed.entry().seq as i64,
             signed.hash().as_slice(),
+            claim.doc_id.map(hex::encode),
         ),
     )
     .await
@@ -462,11 +467,20 @@ pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
 /// codebase, the fold happens on read, because sync ingest deliberately holds no epoch keys.
 pub async fn page(db: &Db, keys: &EpochKeys, limit: u32) -> Result<Vec<Notice>, AppError> {
     catch_up(db, keys).await.map_err(AppError::Internal)?;
-    /// `(sender_root, kind, trust, interest, timestamp_ms, service, display_name)`.
-    type Row = (String, String, Option<String>, Option<String>, i64, i64, Option<String>);
+    /// `(sender_root, kind, trust, interest, doc_id, timestamp_ms, service, display_name)`.
+    type Row = (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        i64,
+        Option<String>,
+    );
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT sender_root, kind, trust, interest, timestamp_ms, service, display_name
+            "SELECT sender_root, kind, trust, interest, doc_id, timestamp_ms, service, display_name
              FROM inbox_notices
              ORDER BY timestamp_ms DESC LIMIT ?1",
             (i64::from(limit),),
@@ -477,14 +491,17 @@ pub async fn page(db: &Db, keys: &EpochKeys, limit: u32) -> Result<Vec<Notice>, 
     Ok(rows
         .into_iter()
         .map(
-            |(sender_root, kind, trust, interest, timestamp_ms, service, display_name)| Notice {
-                sender_root,
-                kind,
-                display_name,
-                trust,
-                interest,
-                timestamp_ms,
-                service: service as u32,
+            |(sender_root, kind, trust, interest, doc_id, timestamp_ms, service, display_name)| {
+                Notice {
+                    sender_root,
+                    kind,
+                    display_name,
+                    trust,
+                    interest,
+                    doc_id,
+                    timestamp_ms,
+                    service: service as u32,
+                }
             },
         )
         .collect())

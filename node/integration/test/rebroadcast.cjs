@@ -170,6 +170,12 @@ const base58 = async (host) => {
         const items = (r.items || []).filter((i) => i.kind === "rebroadcast");
         assert.ok(items.length, "the author was told their post was shared");
         assert.equal(items[0].author, bobRoot, "by whom");
+        assert.equal(
+            items[0].doc_id,
+            post,
+            "and WHICH post: the doc rides the envelope's own signed evidence, so even a " +
+                "murmur names its most recent share"
+        );
     });
 
     it("a FOLLOWED sharer's share arrives by the derived path, doc named, no envelope", async () => {

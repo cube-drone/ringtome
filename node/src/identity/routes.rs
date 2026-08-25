@@ -887,10 +887,10 @@ async fn notifications_handler(
         seen: n.timestamp_ms <= watermark,
         stranger: true,
         // The delivered path's inbox rows collapse per (sender, kind) by design - a bounded
-        // pool cannot key on every object a stranger might mention - so a delivered share says
-        // "they shared something of yours" without naming which. The derived row above does
-        // name it, which is one more thing answering the door buys you.
-        doc_id: String::new(),
+        // pool cannot key on every object a stranger might mention - but the evidence names
+        // its document, so a murmur carries its MOST RECENT share's doc (2026-08-25):
+        // "which post" beats "some post", and the collapse semantics are unchanged.
+        doc_id: n.doc_id.unwrap_or_default(),
         // The one thing a stranger's row now says out loud - and the ONLY name on it, since
         // author_name stays None: nothing has been fetched about them.
         claimed_name: n.display_name,
@@ -3696,6 +3696,7 @@ mod notification_dedup_tests {
             kind: kind.to_string(),
             trust: None,
             interest: None,
+            doc_id: None,
             timestamp_ms: 1,
             display_name: None,
             service: ringtome_proto::registry::service::INBOX_STRANGER,
