@@ -6880,3 +6880,15 @@ future deeper lane finds its protocol piece waiting. `sync_with_peer_scoped` is 
 slice 5's pass is its first caller. Scoping only ever narrows what an unscoped exchange
 would have carried - the consent gates, member proofs and quiet-mirror rules sit exactly
 where they were.
+
+## 2026-08-25 (cont. 11): the slider's bottom stops earn their keep
+
+The depth boundary left 'highly speculative' and 'Explorer' as twins - both were
+`return true`, reserved seats for deeper pools that are now parked. The three speculative
+stops are now a path-strength gradient over the one pool that exists: 'speculative' wants
+a high path band, 'highly speculative' at least medium, Explorer alone admits everything
+(a bandless path is the weakest path, so it shows nowhere narrower). Each stop now asks
+"how strong a vouch do I require?" - meaningful today because the rollup's discounted band
+genuinely spreads rows across the ladder - and the six titles keep their design shape, so
+deeper pools would slot into the same gradient if they ever arrive. Spec-first in the pure
+suite, red before the change.

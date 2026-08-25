@@ -252,9 +252,11 @@ storage-management surfaces that do not exist yet.
    effective-interest precedence (author dial → sharer dial → path band → floor) filters
    AND sets emphasis - speculative rows arrive small and quiet whatever their path score -
    and the feed ships `suggested_level` (the rollup's discounted band, read-time joined)
-   as the path rung's input. Today's one speculative pool means 'highly speculative' and
-   'Explorer' differ from 'speculative' only by path strength; the deeper stops light up
-   as their pools land, as designed.
+   as the path rung's input. The three speculative stops became a
+   path-strength gradient (2026-08-25, after the depth boundary): 'speculative' wants a
+   high path band, 'highly speculative' at least medium, Explorer admits everything -
+   each stop asks "how strong a vouch do I require?" of the one pool that exists, instead
+   of holding reserved seats for pools now parked.
 4. ~~**Mirror eviction.**~~ Built 2026-08-24 (`eviction.rs`; acceptance green in
    `speculative.cjs`, red-first; the keeper cop planted-red). The sweep's judgment grew two
    keepers beyond the design sketch - MEMBER-FETCHED (since removed, 2026-08-25: the

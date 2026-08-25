@@ -19,6 +19,8 @@ describe("feed selectivity", () => {
     const shared = { author: "a".repeat(64), via: "b".repeat(64) };
     const suggested = { author: "a".repeat(64), suggested_via: "c".repeat(64), suggested_level: "high" };
     const suggestedWeak = { author: "a".repeat(64), suggested_via: "c".repeat(64), suggested_level: "low" };
+    const suggestedMedium = { author: "a".repeat(64), suggested_via: "c".repeat(64), suggested_level: "medium" };
+    const suggestedBandless = { author: "a".repeat(64), suggested_via: "c".repeat(64) };
     const facts = (root, f) => ({ [root]: f });
 
     it("carries the six stops, widest first, Explorer the default", () => {
@@ -63,12 +65,23 @@ describe("feed selectivity", () => {
         assert.ok(!visibleAt("interest", suggested, {}));
     });
 
-    it("the speculative stops admit by path strength, Explorer admits everything", () => {
+    it("the speculative stops are a path-strength gradient; only Explorer admits all", () => {
+        // The gradient (2026-08-25, after the depth-2 boundary): the bottom stops were
+        // reserved seats for deeper pools that are now parked, so each stop instead asks
+        // "how strong a vouch do I require?" of the one pool that exists - and every stop
+        // does something. speculative >= high, highly-speculative >= medium, Explorer all.
         assert.ok(visibleAt("speculative", suggested, {}), "a strong path clears 'speculative'");
-        assert.ok(!visibleAt("speculative", suggestedWeak, {}), "a weak path waits");
-        assert.ok(visibleAt("highly-speculative", suggestedWeak, {}));
-        assert.ok(visibleAt("explorer", suggestedWeak, {}));
+        assert.ok(!visibleAt("speculative", suggestedMedium, {}), "a medium path waits there");
+        assert.ok(visibleAt("highly-speculative", suggestedMedium, {}), "and clears 'highly speculative'");
+        assert.ok(!visibleAt("highly-speculative", suggestedWeak, {}), "a weak path waits there too");
+        assert.ok(visibleAt("explorer", suggestedWeak, {}), "Explorer admits the weakest path");
+        assert.ok(
+            !visibleAt("highly-speculative", suggestedBandless, {}),
+            "no measurable path is the weakest path - Explorer only"
+        );
+        assert.ok(visibleAt("explorer", suggestedBandless, {}));
         assert.ok(visibleAt("speculative", real, {}), "wider stops keep every narrower row");
+        assert.ok(visibleAt("highly-speculative", real, {}), "real rows clear every speculative stop");
     });
 
     it("a real dial on a suggested row's author outranks its path everywhere", () => {

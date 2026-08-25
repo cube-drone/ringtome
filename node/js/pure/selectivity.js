@@ -13,9 +13,11 @@
 import { bandOrdinal } from './contact.js';
 
 /// The six stops, widest first - the titles are Curtis's design, verbatim, worn by the
-/// slider as it moves. The bottom pools light up as they land: today one speculative pool
-/// exists (depth-2, DISCOVERY slices 1-2), so 'highly-speculative' and 'explorer' differ
-/// from 'speculative' only by path strength until the deeper pools arrive.
+/// slider as it moves. The three speculative stops are a PATH-STRENGTH gradient over the
+/// one pool that exists (2026-08-25, after the depth-2 boundary parked the deeper pools
+/// these seats were reserved for): each stop asks "how strong a vouch do I require?" -
+/// 'speculative' wants a high path band, 'highly speculative' at least medium, Explorer
+/// admits everything the node can honestly surface, weakest and bandless paths included.
 export const SELECTIVITY_STOPS = [
     { key: 'explorer', label: 'Explorer' },
     { key: 'highly-speculative', label: 'highly speculative' },
@@ -49,8 +51,9 @@ export function effectiveInterest(item, factsByRoot) {
 
 /// Does this row clear the slider's current stop? The strict stops want an EXPLICIT dial at
 /// height; 'interest' is every real row (a follow or a share is itself an explicit act);
-/// the speculative stops admit marked rows by path strength; Explorer admits everything the
-/// node can honestly surface.
+/// the speculative stops admit marked rows by path strength on a gradient (high, then
+/// medium); Explorer alone admits everything the node can honestly surface - a bandless
+/// path is the weakest path, so it shows nowhere narrower.
 export function visibleAt(stopKey, item, factsByRoot) {
     const eff = effectiveInterest(item, factsByRoot);
     const explicit = eff.kind === 'author-dial' || eff.kind === 'sharer-dial';
@@ -65,6 +68,7 @@ export function visibleAt(stopKey, item, factsByRoot) {
         case 'speculative':
             return !item.suggested_via || (ord !== null && ord >= 3);
         case 'highly-speculative':
+            return !item.suggested_via || (ord !== null && ord >= 2);
         case 'explorer':
         default:
             return true;
