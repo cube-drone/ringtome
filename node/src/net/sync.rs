@@ -1366,6 +1366,25 @@ pub async fn sync_with_peer(
 
     // Now send what the peer lacks - private chains only to a proven member.
     let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
+    // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
+    // NOTHING for a persona, record what its own read of the entries table held - the next
+    // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
+    // directly whether the serve's connection saw the write (a diff/claim question) or did
+    // not (a read-freshness question). One line, only on the empty-send path.
+    if sent == 0 {
+        let our_heads: Vec<String> = local_frontiers(&db, peer_proven)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|f| format!("{}:{}", f.service, f.head))
+            .collect();
+        let claimed_heads: Vec<String> = peer_frontiers
+            .iter()
+            .map(|f| format!("{}:{}", f.service, f.head))
+            .collect();
+        tracing::debug!(root = %root_hex, claimed = %claimed_heads.join(","),
+            ours = %our_heads.join(","), "served nothing - our heads at serve time");
+    }
     write_frame(&mut send, &SyncMessage::Done).await?;
     send.finish().ok();
     conn.closed().await; // responder closes once it has ingested our stream
@@ -1374,7 +1393,11 @@ pub async fn sync_with_peer(
     // ingest, so "do we still disagree" is asked of what we now hold, not what we held when
     // they spoke. A claim that delivered nothing and still differs is the only fault - and it
     // is the one that must not be chased again until it moves.
-    match crate::net::frontier::refresh(state, root_hex).await {
+    let moved = crate::net::frontier::refresh(state, root_hex).await;
+    if let Ok(m) = &moved {
+        tracing::debug!(root = %root_hex, moved = m, "frontier refresh verdict (requester)");
+    }
+    match moved {
         Ok(true) => {
             crate::fanout::after_public_move(state, root_hex).await;
             crate::notifications::refresh_from(state, root_hex).await;
@@ -1523,6 +1546,25 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     )
     .await?;
     let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven).await?;
+    // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
+    // NOTHING for a persona, record what its own read of the entries table held - the next
+    // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
+    // directly whether the serve's connection saw the write (a diff/claim question) or did
+    // not (a read-freshness question). One line, only on the empty-send path.
+    if sent == 0 {
+        let our_heads: Vec<String> = local_frontiers(&db, peer_proven)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|f| format!("{}:{}", f.service, f.head))
+            .collect();
+        let claimed_heads: Vec<String> = peer_frontiers
+            .iter()
+            .map(|f| format!("{}:{}", f.service, f.head))
+            .collect();
+        tracing::debug!(root = %root_hex, claimed = %claimed_heads.join(","),
+            ours = %our_heads.join(","), "served nothing - our heads at serve time");
+    }
     write_frame(&mut send, &SyncMessage::Done).await?;
 
     // Then ingest the requester's half of the exchange, in bounded batches - this side takes
@@ -1540,7 +1582,11 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     // 30s sweep would find this eventually - but "eventually" is the wrong latency for the one
     // moment we KNOW something arrived, so ask directly.
     if received > 0 {
-        match crate::net::frontier::refresh(&state, &root_hex).await {
+        let moved = crate::net::frontier::refresh(&state, &root_hex).await;
+        if let Ok(m) = &moved {
+            tracing::debug!(root = %root_hex, moved = m, "frontier refresh verdict (serve)");
+        }
+        match moved {
             Ok(true) => {
                 crate::fanout::after_public_move(&state, &root_hex).await;
                 crate::notifications::refresh_from(&state, &root_hex).await;

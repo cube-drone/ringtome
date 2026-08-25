@@ -127,8 +127,15 @@ impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 
 
 /// One open database: the Turso handle plus a shared connection. Cheap to clone. All statements
 /// on one `Db` share one connection; the `fetch_*` helpers always run their statement to
-/// completion before returning, because an open statement (a half-read RETURNING above all)
-/// blocks further writes on the connection.
+/// completion before returning - on the SUCCESS and ERROR paths both (the error half was the
+/// 2026-08-24 stale-serve bug) - because an open statement (a half-read RETURNING above all)
+/// blocks further writes on the connection and pins a read snapshot every later read repeats.
+///
+/// **The remaining hole is CANCELLATION** (REFACTOR: the storage dig): a `fetch_*` future
+/// dropped mid-iteration - a caller timeout, an aborted HTTP handler - exits without the
+/// drain, and whether the statement is finalized then depends on turso's `Rows` Drop. Until
+/// that is verified-or-fixed, do not wrap `fetch_*` calls in timeouts, and treat "reads on
+/// one persona went stale until the next write" as this hazard's signature.
 #[derive(Clone)]
 pub struct Db {
     /// Kept so the database outlives any moment where no query is in flight.
@@ -268,10 +275,24 @@ impl Db {
         let _guard = self.stmt_lock.lock().await;
         let mut rows = self.conn.query(sql, params).await?;
         let mut out = Vec::new();
+        // Drain FULLY even when a row refuses to decode - the open-statement rule's error
+        // path (found 2026-08-24, the stale-serve dig): an early `?` here left the statement
+        // open on the SHARED connection, pinning a read snapshot that made every later read
+        // on this Db see pre-write data until the next write reset the transaction - the
+        // "arrives on the next chain move" signature every face of the flake family wore.
+        let mut decode_err: Option<anyhow::Error> = None;
         while let Some(row) = rows.next().await? {
-            out.push(T::from_row(&row)?);
+            if decode_err.is_none() {
+                match T::from_row(&row) {
+                    Ok(v) => out.push(v),
+                    Err(e) => decode_err = Some(e),
+                }
+            }
         }
-        Ok(out)
+        match decode_err {
+            Some(e) => Err(e),
+            None => Ok(out),
+        }
     }
 
     /// The first row (if any), extracted into `T`. Drains the statement either way - see the
@@ -283,12 +304,15 @@ impl Db {
     ) -> Result<Option<T>> {
         let _guard = self.stmt_lock.lock().await;
         let mut rows = self.conn.query(sql, params).await?;
-        let first = match rows.next().await? {
-            Some(row) => Some(T::from_row(&row)?),
-            None => None,
-        };
+        // Decode AFTER the drain reaches the row, never `?` before it - same error-path
+        // rule as `fetch_all` above.
+        let first = rows.next().await?.map(|row| T::from_row(&row));
         while rows.next().await?.is_some() {}
-        Ok(first)
+        match first {
+            Some(Ok(v)) => Ok(Some(v)),
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
     }
 
     /// Exactly one row, extracted into `T`; errors if the query returns none.
@@ -1030,6 +1054,41 @@ pub async fn checkpoint_pass(state: crate::AppState) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    /// The open-statement rule's ERROR path (2026-08-24, the stale-serve dig): a fetch whose
+    /// row refuses to decode must still drain rather than early-`?` out. Honesty note: the
+    /// violation was planted and this cop stayed GREEN - on the in-memory test db, turso's
+    /// `Rows` drop finalizes the statement, so the early return did not wedge here. The
+    /// drain-then-fail shape is kept as the module's stated rule (the historic half-read-
+    /// RETURNING wedge was observed on DISK databases, whose WAL semantics this test does
+    /// not exercise), and the stale-serve cause remains open in REFACTOR with its next
+    /// instrument. This cop pins the rule's contract, not the historic bug.
+    #[tokio::test]
+    async fn a_decode_error_still_drains_the_statement() {
+        let db = crate::db::test_node_db().await;
+        db.execute(
+            "INSERT INTO boot_timestamps (booted_at_ms, app_version) VALUES (1, 'a'), (2, 'b')",
+            (),
+        )
+        .await
+        .unwrap();
+        // Ask for the TEXT column as an integer: decode fails on row one, rows remain.
+        let wrong: anyhow::Result<Vec<(i64,)>> =
+            db.fetch_all("SELECT app_version FROM boot_timestamps", ()).await;
+        assert!(wrong.is_err(), "the decode error still surfaces");
+        // The connection must be immediately writable and the write immediately visible.
+        db.execute(
+            "INSERT INTO boot_timestamps (booted_at_ms, app_version) VALUES (3, 'c')",
+            (),
+        )
+        .await
+        .expect("the statement was drained; the write must not wedge");
+        let n: (i64,) = db
+            .fetch_one("SELECT COUNT(*) FROM boot_timestamps", ())
+            .await
+            .unwrap();
+        assert_eq!(n.0, 3, "the read sees the post-error write - no pinned snapshot");
+    }
+
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 

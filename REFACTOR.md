@@ -55,3 +55,22 @@ behind, for anything new that touches the log: **a read whose cost grows with an
 history needs a watermark, a cursor, or a named reason it is bounded.** `imaol` now enforces
 the third case rather than trusting it (`service_reads_whole`).
 
+
+## The stale fold-read (open, 2026-08-25): entries land, the fold reads the past
+
+The flake family's root, cornered twice and INVERTED by its own instrument: the "stale
+serve" theory died when the serve's log showed its heads advancing (10:1 -> 10:3) while it
+sent 0 - the requester's claims covered the entries, meaning the PULLING node has them.
+The stale read is on the reader's side: charlie ingests the sharer's entries (claims prove
+it), the frontier memo moves (hooks fire), and the share fold's read of the sharer's USER
+database returns the pre-write state - stale pointer counts in fold narrations all along -
+until "the next write" to that db resets whatever view is pinned. Suspect space: two
+connections on one encrypted file (the 2026-08-22 coalescing fixed CREATE, but any second
+handle would explain cross-connection WAL invisibility), or a pinned read snapshot on the
+shared connection (fetch error paths now drain-then-fail; the CANCELLATION hole remains -
+a dropped fetch future skips the drain; don't wrap `fetch_*` in timeouts). The instrument
+now logs BOTH sides' heads on every empty serve ("served nothing - our heads at serve
+time", claimed= vs ours=): next occurrence, read that line, then check whether the reader's
+fold narration shows a stale pointer count against its own claimed head - that one
+comparison names the guilty connection. The journalable fold ceiling and the want ladder
+keep suites green meanwhile.

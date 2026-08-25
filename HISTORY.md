@@ -6679,3 +6679,44 @@ recovery on the drain's beat. The spawn shape is the point - the stuck section r
 spawned task while the fold's own task polls nothing but a timer and a join handle, so the
 ceiling can always fire. Deadlines bound the wait, never the exchange, now everywhere the
 fold touches the network.
+
+## 2026-08-25: the stale serve, cornered in the storage layer - and honestly not yet caught
+
+The CI artifact for the persisting sharedby red, read by its marks: the share write landed
+with a 200 and an in-handler frontier move, charlie pulled the sharer every four seconds,
+and bravo - the sharer's own host - answered `sent=0` for three minutes, going fresh at
+exactly the next write to that database. `send_missing` plans off the entries table, so
+this is the node's own read of its own hosted chain being stale: the flake family's every
+"arrives on the next chain move" face, compressed into one storage-layer question.
+
+The fetch helpers' error paths were found breaking the module's own open-statement rule
+(an early `?` on a decode error exits without draining) and fixed drain-then-fail - but the
+planted violation left the new cop GREEN on the test database, so that hole is a rule fix,
+not a proven cause: turso's Rows drop finalizes there, and whether disk-WAL connections or
+the CANCELLATION path (a dropped fetch future skips any drain) behave the same is exactly
+what the dig must answer next. The decisive instrument is in place - the serve logs its own
+frontier heads whenever it sends nothing - so the next stale-serve occurrence names its
+branch in one line. The fold ceiling from earlier keeps green runs green meanwhile.
+
+## 2026-08-25 (cont.): the instrument flips the verdict - the reader, not the server
+
+One local recurrence with the serve instrument aboard settled what three days of theory
+could not: bravo's serve-side heads ADVANCED across the failing window (10:1 -> 10:3) while
+every serve sent 0 - the puller's claims covered the entries. Charlie has them. The stale
+read is the reader's own share-fold view of the sharer's user database: entries ingested,
+memo moved, fold reading the past - the stale pointer counts that appeared in every fold
+narration were the bug showing itself all along. REFACTOR's entry is rewritten around the
+inverted diagnosis, the instrument now carries both sides' heads, and the suspect space is
+down to two: a second connection on one encrypted file (cross-connection WAL visibility),
+or a pinned read snapshot surviving on the shared handle. One more narrated occurrence
+should convict one of them.
+
+## 2026-08-25 (cont. 2): narrowed to the verdict race
+
+The completed instrument exonerated storage reads entirely: claims lockstep with the server
+end to end, and the 62-second fold gap held zero frontier-moved verdicts across eight
+successful ingests - unsticking in a burst when a posts-chain arrival forced a true. The
+flake family's residue now lives in one place: `frontier::refresh`'s moved verdict under
+concurrent exchanges, where the true-getter fires the hooks and every racer gets a silent
+false. Verdicts now log with caller attribution; one more narrated window names the winner
+whose hooks didn't cover the entry.
