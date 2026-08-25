@@ -252,6 +252,98 @@ describe("the stranger pool is a ring, and friends are not in it", function () {
     });
 });
 
+/*
+    The murmurs tier (2026-08-25): "person X shared your post" is real signal and barely
+    matters, and on a ring-buffered inbox those two facts collide - share-noise landing in
+    the stranger pool SPENDS the flood surface's slots, so a burst of shares could evict a
+    stranger's follow notice, which is the highest-value thing the pool holds. Kind now
+    outranks sender for tier placement: rebroadcast notices ride their own chain with their
+    own keep, whoever sent them, and the only thing share-noise can ever drown is other
+    share-noise.
+*/
+(HOST_B ? describe : describe.skip)("share-noise is a murmur, and murmurs cannot drown a follow", function () {
+    this.timeout(180000);
+
+    it("a burst of share notices evicts only older share notices - the follow stands", async function () {
+        const host = await makeUserFetch({ prefix: "murmurhost" });
+        const hostRoot = (await (await host("api/identity", { method: "POST" })).json())
+            .root_pubkey;
+        await host(`api/identity/${hostRoot}/serve`, { method: "POST" });
+        const endpoint = (await (await host("api/node")).json()).endpoint_id;
+        const { toBase58 } = await import("../../js/speakable.js");
+        const via = toBase58(endpoint);
+
+        // Something worth sharing.
+        const made = await (
+            await host(`api/identity/${hostRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({ title: "murmured-about", body: "words", format: "plaintext" }),
+            })
+        ).json();
+        const pub = await host(`api/identity/${hostRoot}/docs/${made.doc_id}/publish`, {
+            method: "POST",
+        });
+        const post = JSON.parse(await pub.text()).post_id;
+
+        // ONE stranger follow - the high-value notice the flood must not touch.
+        const fan = await makeUserFetch({ prefix: "murmurfan", host: HOST_B });
+        const fanRoot = (await (await fan("api/identity", { method: "POST" })).json())
+            .root_pubkey;
+        if ((await fan(`api/id/${hostRoot}/profile?via=${via}`)).status !== 200) this.skip();
+        await dial(fan, fanRoot, hostRoot, "interest", "high");
+        await beat(HOST_B, "mint", fanRoot);
+        assert.ok(
+            (await bell(host, hostRoot)).some(
+                (i) => i.author === fanRoot && i.kind === "public-edge"
+            ),
+            "the follow notice landed first"
+        );
+
+        // Then a burst of shares past the ring's depth (keep=4 on the rig): five sharers
+        // who never dialed the host - a profile visit mirrors the post, the share is real.
+        const sharers = [];
+        for (let n = 0; n < 5; n++) {
+            const s = await makeUserFetch({ prefix: `murmurer${n}`, host: HOST_B });
+            const root = (await (await s("api/identity", { method: "POST" })).json())
+                .root_pubkey;
+            sharers.push(root);
+            assert.equal((await s(`api/id/${hostRoot}/profile?via=${via}`)).status, 200);
+            const shared = await s(`api/identity/${root}/rebroadcasts`, {
+                method: "POST",
+                body: JSON.stringify({ author: hostRoot, doc_id: post }),
+            });
+            assert.equal(shared.status, 200, await shared.text());
+            // Land THIS knock before the next: the test is about the ring turning in order.
+            await beat(HOST_B, "outbox");
+            assert.ok(
+                (await bell(host, hostRoot)).some(
+                    (i) => i.author === root && i.kind === "rebroadcast"
+                ),
+                `share notice ${n} was transcribed`
+            );
+        }
+
+        const items = await bell(host, hostRoot);
+        const shareRows = items.filter((i) => sharers.includes(i.author));
+        assert.ok(
+            shareRows.length <= 4,
+            `the murmur ring holds its depth (saw ${shareRows.length} share rows)`
+        );
+        assert.ok(
+            shareRows.some((i) => i.author === sharers[4]),
+            "the newest share notice is present"
+        );
+        assert.ok(
+            !shareRows.some((i) => i.author === sharers[0]),
+            "the oldest share notice aged off - murmurs pay for murmurs"
+        );
+        assert.ok(
+            items.some((i) => i.author === fanRoot && i.kind === "public-edge"),
+            "and the follow notice STOOD - share-noise never spends the follow's slot"
+        );
+    });
+});
+
 (HOST_B ? describe : describe.skip)("a pruned inbox survives adoption", function () {
     this.timeout(180000);
 

@@ -6913,3 +6913,21 @@ posts hauled, nothing disclosed to the stranger's node), the depth-line rollup c
 red-first in unit tests, the rig pinning the posts budget at one so the case is reachable
 with two personas. Schema note: gen 27 -> 28 means dev data directories need `just clean`
 before the next boot.
+
+## 2026-08-25 (cont. 13): the murmurs tier - kind outranks sender at the inbox door
+
+Curtis's third chain, built the day it was argued for: "person X shared your post" is real
+signal that barely matters, and on a ring-buffered inbox those two facts collide -
+share-noise landing in the stranger pool SPENT the flood surface's slots, so a burst of
+shares could evict a stranger's follow notice, the highest-value thing the pool holds. The
+classifier is now kind-aware and KIND outranks sender: rebroadcast notices ride
+`inbox-murmurs` (service 11, keep 512 - the stranger pool's depth: collapse means depth
+buys distinct murmurers, and a popular post can murmur widely) whoever sent them - a trusted
+friend's share is still a murmur, and the relationship still shows on the row via the
+ledger join. Retention and the read fold walk all three chains; the tier seam stays
+invisible to the bell, whose `stranger` flag always meant delivered-not-derived and needed
+no change. Acceptance red-first the natural way (inbox.cjs, written BEFORE the tier
+existed and watched fail on exactly "the follow notice STOOD"): one stranger follow, five
+share notices past the rig's keep - the murmur ring turns, murmurs pay for murmurs, and
+the follow stands. The sender-half of the classifier remains the flow computation's to
+replace, unchanged. Future low-stakes kinds (reactions, quotes) have their tier waiting.

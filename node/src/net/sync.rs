@@ -53,6 +53,7 @@ pub fn is_private_service(svc: u32) -> bool {
         || svc == service::DOC_META_PRIVATE
         || svc == service::INBOX_TRUSTED
         || svc == service::INBOX_STRANGER
+        || svc == service::INBOX_MURMURS
 }
 
 /// Services whose chains may be admitted as a SUFFIX - starting above seq 0, or jumping past a

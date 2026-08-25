@@ -171,4 +171,50 @@ const base58 = async (host) => {
         assert.ok(items.length, "the author was told their post was shared");
         assert.equal(items[0].author, bobRoot, "by whom");
     });
+
+    it("a FOLLOWED sharer's share arrives by the derived path, doc named, no envelope", async () => {
+        // The gate drops envelopes from senders the author already pulls (AlreadyPulled),
+        // so for a trusted-and-followed sharer the derived fold is the ONLY road - and it
+        // owes the better row: derived shares name the document, murmurs cannot. This is
+        // the everyday case ("my friend shared my post") and it had no acceptance until
+        // 2026-08-25, when it was observed missing on a dev network running the old
+        // verdict-raced fold.
+        await dial(alice, aliceRoot, bobRoot, "interest", "high");
+        await beat(undefined, "fold", aliceRoot); // her follow in the memo first
+
+        const made = await (
+            await alice(`api/identity/${aliceRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "shared by a friend",
+                    body: "words a friend passes on",
+                    format: "plaintext",
+                }),
+            })
+        ).json();
+        const pub = await alice(`api/identity/${aliceRoot}/docs/${made.doc_id}/publish`, {
+            method: "POST",
+        });
+        const second = JSON.parse(await pub.text()).post_id;
+        await pullAndFold(HOST_B, aliceRoot);
+        const shared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
+            method: "POST",
+            body: JSON.stringify({ author: aliceRoot, doc_id: second }),
+        });
+        assert.equal(shared.status, 200, await shared.text());
+
+        // Alice's node pulls the sharer she follows and folds: the derived road, rung.
+        await pullAndFold(undefined, bobRoot);
+        const page = await (await alice(`api/identity/${aliceRoot}/notifications`)).json();
+        const row = (page.items || []).find(
+            (i) => i.kind === "rebroadcast" && i.doc_id === second
+        );
+        assert.ok(row, "the share derived into the author's bell, document named");
+        assert.equal(row.author, bobRoot, "credited to the sharer");
+        assert.equal(
+            row.stranger,
+            undefined,
+            "derived, not delivered - no envelope crossed (the flag serializes only when true)"
+        );
+    });
 });

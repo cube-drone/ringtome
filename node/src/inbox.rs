@@ -44,6 +44,10 @@ use crate::AppState;
 /// thing a flood can ever evict is other strangers, because the tiers are different chains.
 pub const TRUSTED_KEEP: u64 = 2048;
 pub const STRANGER_KEEP: u64 = 512;
+/// The murmurs tier matches the stranger pool's depth: its kinds barely matter one at a
+/// time, but per-(sender, kind) collapse means depth buys distinct murmurers, and a
+/// popular post can murmur widely.
+pub const MURMUR_KEEP: u64 = 512;
 
 /// The keep depth for one tier, with a test override: real depths make eviction untestable
 /// (nobody transcribes two thousand notices in a suite), so under RINGTOME_LOCAL_TEST the
@@ -59,6 +63,7 @@ fn keep_depth(service_id: u32) -> u64 {
     }
     match service_id {
         service::INBOX_STRANGER => STRANGER_KEEP,
+        service::INBOX_MURMURS => MURMUR_KEEP,
         _ => TRUSTED_KEEP,
     }
 }
@@ -70,6 +75,9 @@ fn keep_depth(service_id: u32) -> u64 {
 pub enum Tier {
     Trusted,
     Stranger,
+    /// Low-stakes kinds, whoever sent them (2026-08-25, the third chain): share-noise must
+    /// never spend the slots follow notices compete for.
+    Murmur,
 }
 
 impl Tier {
@@ -77,6 +85,7 @@ impl Tier {
         match self {
             Self::Trusted => service::INBOX_TRUSTED,
             Self::Stranger => service::INBOX_STRANGER,
+            Self::Murmur => service::INBOX_MURMURS,
         }
     }
 }
@@ -186,7 +195,7 @@ pub async fn accept(
     if facts_say_blocked(&facts) {
         return Ok(Verdict::Blocked);
     }
-    let tier = classify(&facts);
+    let tier = classify(claim.kind, &facts);
 
     // Idempotence: the same envelope delivered twice - or to a sibling node, then synced here -
     // is already this notice. Transcribing again would be a second chain entry saying the same
@@ -250,10 +259,16 @@ fn facts_say_blocked(facts: &std::collections::BTreeMap<String, String>) -> bool
     facts.get(BLOCKED).map(String::as_str) == Some("yes")
 }
 
-/// The pre-Trust classifier: any recorded relationship - a trust band or an interest band -
-/// puts a sender in the trusted tier. Everyone else is a stranger. When the flow computation
-/// arrives this becomes "clears my floor", and nothing around it changes.
-fn classify(facts: &std::collections::BTreeMap<String, String>) -> Tier {
+/// The classifier. KIND outranks sender (2026-08-25, the murmurs tier): a low-stakes kind
+/// rides the murmurs chain whoever sent it - "shared your post" from your closest friend
+/// is still a murmur, and the relationship still shows on the row via the ledger join.
+/// Then the pre-Trust sender rule: any recorded relationship - a trust band or an interest
+/// band - earns the trusted tier; everyone else waits in the stranger pool. When the flow
+/// computation arrives it replaces the SENDER half, and nothing around it changes.
+fn classify(kind: u32, facts: &std::collections::BTreeMap<String, String>) -> Tier {
+    if kind == ringtome_proto::deliver::notice_kind::REBROADCAST {
+        return Tier::Murmur;
+    }
     let has = |k: &str| facts.get(k).is_some_and(|v| !v.is_empty() && v != "none");
     if has(TRUST) || has(INTEREST) {
         Tier::Trusted
@@ -282,7 +297,11 @@ async fn held_envelope(db: &Db, sender_hex: &str, kind: &str) -> Result<Option<V
 /// what is actually stored, so the memo heals on its own beat. What peers see meanwhile is
 /// `local_frontiers`, which reads the entries table directly and is correct immediately.
 async fn enforce_retention(db: &Db) -> Result<()> {
-    for service_id in [service::INBOX_TRUSTED, service::INBOX_STRANGER] {
+    for service_id in [
+        service::INBOX_TRUSTED,
+        service::INBOX_STRANGER,
+        service::INBOX_MURMURS,
+    ] {
         let keep = keep_depth(service_id);
         for (author_hex, head_seq, len) in crate::record::imaol::chain_spans(db, service_id)
             .await
@@ -319,7 +338,11 @@ async fn enforce_retention(db: &Db) -> Result<()> {
 /// is that evidence crosses wires while opinions stay home. A notice whose claim no longer
 /// checks out is skipped, not stored.
 pub(crate) async fn catch_up(db: &Db, keys: &EpochKeys) -> Result<()> {
-    for service_id in [service::INBOX_TRUSTED, service::INBOX_STRANGER] {
+    for service_id in [
+        service::INBOX_TRUSTED,
+        service::INBOX_STRANGER,
+        service::INBOX_MURMURS,
+    ] {
         let entries =
             crate::record::imaol::entries_past_watermarks(db, service_id, entry_type::INBOX_NOTICE)
                 .await
@@ -478,26 +501,52 @@ mod tests {
             .collect()
     }
 
+    use ringtome_proto::deliver::notice_kind;
+
     #[test]
     fn a_recorded_relationship_earns_the_trusted_tier() {
-        assert_eq!(classify(&facts(&[("interest", "low")])), Tier::Trusted);
-        assert_eq!(classify(&facts(&[("trust", "medium")])), Tier::Trusted);
+        assert_eq!(
+            classify(notice_kind::PUBLIC_EDGE, &facts(&[("interest", "low")])),
+            Tier::Trusted
+        );
+        assert_eq!(
+            classify(notice_kind::PUBLIC_EDGE, &facts(&[("trust", "medium")])),
+            Tier::Trusted
+        );
+    }
+
+    /// Kind outranks sender (2026-08-25, the third chain): a share notice is a murmur from
+    /// your closest friend and from a stranger alike - the point is which ring's slots it
+    /// spends, and share-noise must only ever spend the murmur ring's.
+    #[test]
+    fn a_share_notice_is_a_murmur_whoever_sent_it() {
+        assert_eq!(
+            classify(notice_kind::REBROADCAST, &facts(&[("trust", "max")])),
+            Tier::Murmur,
+            "a trusted friend's share is still a murmur"
+        );
+        assert_eq!(
+            classify(notice_kind::REBROADCAST, &facts(&[])),
+            Tier::Murmur,
+            "a stranger's share never touches the stranger pool"
+        );
     }
 
     #[test]
     fn an_unknown_sender_waits_in_the_stranger_pool() {
-        assert_eq!(classify(&facts(&[])), Tier::Stranger);
+        let kind = notice_kind::PUBLIC_EDGE;
+        assert_eq!(classify(kind, &facts(&[])), Tier::Stranger);
         assert_eq!(
-            classify(&facts(&[("nickname", "Bee")])),
+            classify(kind, &facts(&[("nickname", "Bee")])),
             Tier::Stranger,
             "a name is not a relationship"
         );
         assert_eq!(
-            classify(&facts(&[("interest", "none"), ("trust", "none")])),
+            classify(kind, &facts(&[("interest", "none"), ("trust", "none")])),
             Tier::Stranger,
             "dials turned to their bottom stop are an opinion, but not a welcome"
         );
-        assert_eq!(classify(&facts(&[("interest", "")])), Tier::Stranger);
+        assert_eq!(classify(kind, &facts(&[("interest", "")])), Tier::Stranger);
     }
 
     #[test]
@@ -508,10 +557,13 @@ mod tests {
     }
 
     #[test]
-    fn the_tiers_are_two_distinct_chains() {
+    fn the_tiers_are_three_distinct_chains() {
         assert_ne!(Tier::Trusted.service(), Tier::Stranger.service());
-        // Both must be gated as private, or an inbox syncs to strangers.
+        assert_ne!(Tier::Trusted.service(), Tier::Murmur.service());
+        assert_ne!(Tier::Stranger.service(), Tier::Murmur.service());
+        // All must be gated as private, or an inbox syncs to strangers.
         assert!(crate::net::sync::is_private_service(Tier::Trusted.service()));
         assert!(crate::net::sync::is_private_service(Tier::Stranger.service()));
+        assert!(crate::net::sync::is_private_service(Tier::Murmur.service()));
     }
 }

@@ -41,6 +41,12 @@ pub mod service {
     /// The inbox, stranger tier: notices from senders with no edge to the recipient. Bounded,
     /// prunable, and the only tier a flood can ever evict from.
     pub const INBOX_STRANGER: u32 = 9;
+    /// The inbox, murmurs tier (2026-08-25): low-stakes KINDS - "shared your post" today -
+    /// whoever sent them. Kind outranks sender for tier placement, because the stranger
+    /// pool is the flood surface and a follow notice is the highest-value thing it holds:
+    /// share-noise spending those slots let a burst of shares evict a stranger's follow.
+    /// Its own chain, its own keep - the only thing a murmur can drown is another murmur.
+    pub const INBOX_MURMURS: u32 = 11;
     /// Rebroadcasts: signed pointers at other people's documents (PROJECT_PLAN, Rebroadcast:
     /// Pointer Plus Pinned Replica), LWW per `(author, doc_id)`.
     ///
@@ -71,6 +77,7 @@ pub mod service {
             FOLLOWS_PUBLIC => "follows-public",
             INBOX_TRUSTED => "inbox-trusted",
             INBOX_STRANGER => "inbox-stranger",
+            INBOX_MURMURS => "inbox-murmurs",
             REBROADCASTS => "rebroadcasts",
             GENERAL_PRIVATE => "general-private",
             DOCUMENTS_PRIVATE => "documents-private",
