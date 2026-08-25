@@ -24,9 +24,9 @@ dns.setDefaultResultOrder("ipv4first");
 const { sql, HOST, HOST_C, HOST_E } = require("./fetch.cjs");
 const { makeFetch } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat, pullAndFold } = require("./beat.cjs");
 const { unplug, plugIn } = require("./unplug.cjs");
 
-const settle = require("./helpers.cjs").settleWith(240);
 
 const feedOf = async (reader, host) => {
     const { rows } = await sql(
@@ -88,16 +88,14 @@ const base58 = async (host) => {
                 body: JSON.stringify({ code: request.code }),
             });
             assert.equal(granted.status, 200, await granted.text());
-            assert.ok(
-                await settle(async () => {
-                    const { rows } = await sql(
-                        `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${authorRoot}'`,
-                        HOST_E
-                    );
-                    return rows.length ? true : null;
-                }),
-                "the sibling learned the follow from the synced ledger"
-            );
+            await pullAndFold(HOST_E, coraRoot);
+            {
+                const { rows } = await sql(
+                    `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${authorRoot}'`,
+                    HOST_E
+                );
+                assert.ok(rows.length, "the sibling learned the follow from the synced ledger");
+            }
         });
 
         afterEach(async () => {
@@ -127,11 +125,9 @@ const base58 = async (host) => {
             const post = JSON.parse(pubText).post_id;
 
             // ...while the 24x7 sibling hears everything.
+            await pullAndFold(HOST_C, authorRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await feedOf(coraRoot, HOST_C);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }),
+                (await feedOf(coraRoot, HOST_C)).some((r) => r.doc_id === post),
                 "the awake sibling journaled the post"
             );
 
@@ -142,13 +138,15 @@ const base58 = async (host) => {
             // logs: "io: connection lost" on charlie's backfill, the author darkened ~100ms
             // after the header landed). With the words never reaching the sibling, nobody
             // reachable held them and the property under test could not hold for anyone.
-            assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(authorRoot, post, HOST_C);
-                    return body && body.includes("gossiped") ? true : null;
-                }),
-                "the awake sibling holds the words, not just the header"
-            );
+            await beat(HOST_C, "body-heal", authorRoot);
+            await beat(HOST_C, "bodies-sweep");
+            {
+                const body = await servedBody(authorRoot, post, HOST_C);
+                assert.ok(
+                    body && body.includes("gossiped"),
+                    "the awake sibling holds the words, not just the header"
+                );
+            }
 
             // The author leaves, forever. No sharer exists; no fragment machinery is in
             // play; the ONLY copy of this chain outside the departed is the sibling's.
@@ -161,23 +159,25 @@ const base58 = async (host) => {
             // only possible carrier is the cohort session, because the author answers nobody
             // and nothing else holds the chain. Today this settle times out: echo's sync
             // candidates for the author are the author's own dead endpoints.
+            // The wake, rung by hand: the pull walks the whole candidate ladder, whose
+            // cohort rung (the sibling on charlie) is the only living holder.
+            await pullAndFold(HOST_E, authorRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await feedOf(coraRoot, HOST_E);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }, 160),
+                (await feedOf(coraRoot, HOST_E)).some((r) => r.doc_id === post),
                 "the sibling's frontier gossip carried the followed author's post"
             );
 
             // THE PROPERTY (blob half): the words serve from the waking node's own door,
             // which needs the body blob to have healed from the cohort too.
-            assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(authorRoot, post, HOST_E);
-                    return body && body.includes("gossiped") ? true : null;
-                }, 80),
-                "and the words healed from the sibling that stayed up"
-            );
+            await beat(HOST_E, "body-heal", authorRoot);
+            await beat(HOST_E, "bodies-sweep");
+            {
+                const body = await servedBody(authorRoot, post, HOST_E);
+                assert.ok(
+                    body && body.includes("gossiped"),
+                    "and the words healed from the sibling that stayed up"
+                );
+            }
         });
     }
 );

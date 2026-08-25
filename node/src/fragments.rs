@@ -1408,6 +1408,48 @@ async fn revalidate_due_fragments(state: &crate::AppState) -> Result<()> {
     Ok(())
 }
 
+/// Make every fragment (and unmet want) due NOW - the test beat's lever
+/// (test_endpoints, the settle switchover): the sweep's queries select by elapsed time,
+/// so a rung sweep would otherwise revalidate nothing. Scoped to one author when given.
+pub(crate) async fn force_due(node_db: &Db, author_root: Option<&str>) -> Result<()> {
+    match author_root {
+        Some(author) => {
+            node_db
+                .execute(
+                    "UPDATE fragments SET checked_ms = 0 WHERE author_root = ?1",
+                    (author,),
+                )
+                .await?;
+            node_db
+                .execute(
+                    "UPDATE fragment_wants SET last_tried_ms = 0 WHERE author_root = ?1",
+                    (author,),
+                )
+                .await?;
+        }
+        None => {
+            node_db.execute("UPDATE fragments SET checked_ms = 0", ()).await?;
+            node_db
+                .execute("UPDATE fragment_wants SET last_tried_ms = 0", ())
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+/// Every distinct origin the shelf holds for one author - the test beat's body-heal walks
+/// the eager heal from each, awaited (test_endpoints).
+pub(crate) async fn origins_of_author(node_db: &Db, author_root: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT DISTINCT origin_root FROM fragments WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("listing an author's fragment origins")?;
+    Ok(rows.into_iter().map(|(o,)| o).collect())
+}
+
 /// One maintenance beat over everything fragment-shaped: four named jobs sharing a cadence
 /// because each is retry-work the others create - a revalidation notices an edit and mints a
 /// want, a drained want journals a share whose covers then need healing, and the reap's

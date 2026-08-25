@@ -6,8 +6,8 @@
 const assert = require("node:assert");
 const { makeFetch, HOST_B } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(60);
 
 describe("the directory", () => {
     let member, dark, darkRoot, served, servedRoot;
@@ -41,10 +41,9 @@ describe("the directory", () => {
     });
 
     it("lists a SERVED persona, wearing its cached byline", async () => {
-        const row = await settle(async () => {
-            const list = await (await member("api/directory")).json();
-            return list.find((r) => r.root === servedRoot && r.name === "Proudly Listed") || null;
-        });
+        await beat(undefined, "fold", servedRoot);
+        const list = await (await member("api/directory")).json();
+        const row = list.find((r) => r.root === servedRoot && r.name === "Proudly Listed");
         assert.ok(row, "serving is the consent that lists you");
         assert.equal(row.hosted, true);
         assert.match(row.speakable, /^[a-z]+-[a-z]+-/, "with the address a human can carry");
@@ -78,10 +77,9 @@ describe("the directory", () => {
         const visit = await local(`api/id/${farRoot}/profile?via=${viaB}`);
         assert.equal(visit.status, 200, await visit.text());
 
-        const row = await settle(async () => {
-            const list = await (await local("api/directory")).json();
-            return list.find((r) => r.root === farRoot) || null;
-        });
+        await beat(undefined, "fold", farRoot);
+        const list = await (await local("api/directory")).json();
+        const row = list.find((r) => r.root === farRoot);
         assert.ok(row, "someone here met them, so the node knows them");
         assert.equal(row.hosted, false, "known around here, not living here");
         assert.equal(row.name, "Distant Friend", "byline from the cache, no db per face");

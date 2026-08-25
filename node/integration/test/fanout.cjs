@@ -10,8 +10,8 @@
 const assert = require("node:assert");
 const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch, decodeCode } = require("./helpers.cjs");
+const { beat, pullAndFold } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(80);
 
 const journalOf = async (reader, host) => {
     const { rows } = await sql(
@@ -41,15 +41,15 @@ describe("fan-out: the arrival journal", () => {
     it("a post lands in the journal of a local follower, unasked", async () => {
         await follow(reader, readerRoot, authorRoot, "high");
         // The follow must be in the subscription memo BEFORE the post, or the edge fires into
-        // an empty follower list.
-        const subscribed = await settle(async () => {
+        // an empty follower list - so ring the reader's fold, which refreshes the memo.
+        await beat(undefined, "fold", readerRoot);
+        {
             const { rows } = await sql(
                 `SELECT 1 FROM subscriptions WHERE local_root = '${readerRoot}'
                  AND foreign_root = '${authorRoot}'`
             );
-            return rows.length ? true : null;
-        });
-        assert.ok(subscribed, "the follow reached the memo");
+            assert.ok(rows.length, "the follow reached the memo");
+        }
 
         const d = await (
             await author(`api/identity/${authorRoot}/docs`, {
@@ -62,11 +62,9 @@ describe("fan-out: the arrival journal", () => {
         });
         const postId = JSON.parse(await pub.text()).post_id;
 
-        const rows = await settle(async () => {
-            const j = await journalOf(readerRoot);
-            return j.length ? j : null;
-        });
-        assert.ok(rows, "the journal row arrived without the reader doing anything");
+        await beat(undefined, "fold", authorRoot);
+        const rows = await journalOf(readerRoot);
+        assert.ok(rows.length, "the journal row arrived without the reader doing anything");
         assert.equal(rows[0].author_root, authorRoot);
         assert.equal(rows[0].doc_id, postId, "the PUBLIC post, never the private note");
         assert.equal(rows[0].title, "First");
@@ -90,11 +88,9 @@ describe("fan-out: the arrival journal", () => {
         });
         await author(`api/identity/${authorRoot}/docs/${mine.doc_id}/publish`, { method: "POST" });
 
-        const updated = await settle(async () => {
-            const j = await journalOf(readerRoot);
-            return j[0].updated_ms > before[0].updated_ms ? j : null;
-        });
-        assert.ok(updated, "the row noticed the new words");
+        await beat(undefined, "fold", authorRoot);
+        const updated = await journalOf(readerRoot);
+        assert.ok(updated[0].updated_ms > before[0].updated_ms, "the row noticed the new words");
         assert.equal(updated.length, before.length, "saying it better is not saying it again");
         assert.equal(updated[0].published_ms, before[0].published_ms, "and it kept its date");
         assert.equal(updated[0].arrived_ms, before[0].arrived_ms, "and its arrival");
@@ -105,12 +101,7 @@ describe("fan-out: the arrival journal", () => {
         const shunRoot = (await (await shunner("api/identity", { method: "POST" })).json())
             .root_pubkey;
         await follow(shunner, shunRoot, authorRoot, "none");
-        await settle(async () => {
-            const { rows } = await sql(
-                `SELECT 1 FROM subscriptions WHERE local_root = '${shunRoot}'`
-            );
-            return rows.length ? true : null;
-        });
+        await beat(undefined, "fold", shunRoot);
         const d = await (
             await author(`api/identity/${authorRoot}/docs`, {
                 method: "POST",
@@ -118,13 +109,10 @@ describe("fan-out: the arrival journal", () => {
             })
         ).json();
         await author(`api/identity/${authorRoot}/docs/${d.doc_id}/publish`, { method: "POST" });
-        // The follower at 75 hears about it; the zero does not. Settling on the follower's
-        // journal growing proves the pass RAN, so the shunner's silence is a decision, not lag.
-        const grew = await settle(async () => {
-            const j = await journalOf(readerRoot);
-            return j.length >= 2 ? j : null;
-        });
-        assert.ok(grew, "the real follower's journal grew");
+        // The fold beat IS the pass, run to completion - so the shunner's silence below is
+        // a decision, not lag. The follower's growth proves the same pass delivered.
+        await beat(undefined, "fold", authorRoot);
+        assert.ok((await journalOf(readerRoot)).length >= 2, "the real follower's journal grew");
         assert.deepEqual(await journalOf(shunRoot), [], "the zero-interest reader heard nothing");
     });
 
@@ -136,11 +124,10 @@ describe("fan-out: the arrival journal", () => {
         const lateRoot = (await (await late("api/identity", { method: "POST" })).json())
             .root_pubkey;
         await follow(late, lateRoot, authorRoot, "medium");
-        const rows = await settle(async () => {
-            const j = await journalOf(lateRoot);
-            return j.length >= 2 ? j : null;
-        });
-        assert.ok(rows, "the existing posts reached the new follower, unprompted");
+        await beat(undefined, "fold", lateRoot);
+        await beat(undefined, "journal-fill");
+        const rows = await journalOf(lateRoot);
+        assert.ok(rows.length >= 2, "the existing posts reached the new follower, unprompted");
         assert.deepEqual(
             rows.map((r) => r.title),
             ["First", "Second"],
@@ -165,17 +152,19 @@ describe("fan-out: the arrival journal", () => {
             })
         ).json();
         await reader(`api/identity/${readerRoot}/docs/${mine.doc_id}/publish`, { method: "POST" });
-        await settle(async () => {
-            const j = await journalOf(readerRoot);
-            return j.some((r) => r.title === "Mine stays") ? true : null;
-        });
+        await beat(undefined, "fold", readerRoot);
+        assert.ok(
+            (await journalOf(readerRoot)).some((r) => r.title === "Mine stays"),
+            "the reader's own post journaled"
+        );
 
         await follow(reader, readerRoot, authorRoot, "none");
-        const after = await settle(async () => {
-            const j = await journalOf(readerRoot);
-            return j.some((r) => r.author_root === authorRoot) ? null : j;
-        });
-        assert.ok(after, "the unfollowed author's rows are gone");
+        await beat(undefined, "fold", readerRoot);
+        const after = await journalOf(readerRoot);
+        assert.ok(
+            !after.some((r) => r.author_root === authorRoot),
+            "the unfollowed author's rows are gone"
+        );
         assert.ok(
             after.some((r) => r.title === "Mine stays"),
             "the reader's own post survived the excision"
@@ -183,11 +172,12 @@ describe("fan-out: the arrival journal", () => {
 
         // And nothing was lost that anyone owns: a re-follow backfills them right back.
         await follow(reader, readerRoot, authorRoot, "medium");
-        const back = await settle(async () => {
-            const j = await journalOf(readerRoot);
-            return j.some((r) => r.author_root === authorRoot) ? j : null;
-        });
-        assert.ok(back, "a change of heart re-earns the page");
+        await beat(undefined, "fold", readerRoot);
+        await beat(undefined, "journal-fill");
+        assert.ok(
+            (await journalOf(readerRoot)).some((r) => r.author_root === authorRoot),
+            "a change of heart re-earns the page"
+        );
     });
 });
 
@@ -213,15 +203,15 @@ describe("fan-out: the arrival journal", () => {
         assert.equal(first.status, 200, await first.text());
         // ...and follows them.
         await follow(fan, fanRoot, far, "max");
-        const ready = await settle(async () => {
+        await beat(HOST_B, "fold", fanRoot);
+        {
             const { rows } = await sql(
                 `SELECT 1 FROM subscriptions WHERE local_root = '${fanRoot}'
                  AND foreign_root = '${far}'`,
                 HOST_B
             );
-            return rows.length ? true : null;
-        });
-        assert.ok(ready, "the follow reached B's memo");
+            assert.ok(rows.length, "the follow reached B's memo");
+        }
 
         // NOW the author posts, on A. Nothing on B asks for anything after this line.
         const d = await (
@@ -235,11 +225,13 @@ describe("fan-out: the arrival journal", () => {
         });
         const postId = JSON.parse(await pub.text()).post_id;
 
-        const rows = await settle(async () => {
-            const j = await journalOf(fanRoot, HOST_B);
-            return j.length ? j : null;
-        });
-        assert.ok(rows, "the post crossed nodes because A pushed, not because B polled");
+        // A's push, rung by hand: fold on A (journals + queues), then the demand-record
+        // push AWAITED - the direction the test pins. B then folds what arrived.
+        await beat(undefined, "fold", far);
+        await beat(undefined, "demand-push", far);
+        await beat(HOST_B, "fold", far);
+        const rows = await journalOf(fanRoot, HOST_B);
+        assert.ok(rows.length, "the post crossed nodes because A pushed, not because B polled");
         assert.equal(rows[0].author_root, far);
         assert.equal(rows[0].doc_id, postId);
         assert.equal(rows[0].title, "Across");
@@ -264,12 +256,7 @@ describe("the feed endpoint", () => {
         me = await makeUserFetch({ prefix: "feedme" });
         myRoot = (await (await me("api/identity", { method: "POST" })).json()).root_pubkey;
         await follow(me, myRoot, voiceRoot, "high");
-        await settle(async () => {
-            const { rows } = await sql(
-                `SELECT 1 FROM subscriptions WHERE local_root = '${myRoot}'`
-            );
-            return rows.length ? true : null;
-        });
+        await beat(undefined, "fold", myRoot);
         const d = await (
             await voice(`api/identity/${voiceRoot}/docs`, {
                 method: "POST",
@@ -277,16 +264,14 @@ describe("the feed endpoint", () => {
             })
         ).json();
         await voice(`api/identity/${voiceRoot}/docs/${d.doc_id}/publish`, { method: "POST" });
+        await beat(undefined, "fold", voiceRoot);
     });
 
     it("serves a page with the byline joined and seen honest", async () => {
-        const page = await settle(async () => {
-            const resp = await me(`api/identity/${myRoot}/feed`);
-            if (resp.status !== 200) return null;
-            const body = await resp.json();
-            return body.items.length ? body : null;
-        });
-        assert.ok(page, "the followed voice reached my feed");
+        const resp = await me(`api/identity/${myRoot}/feed`);
+        assert.equal(resp.status, 200);
+        const page = await resp.json();
+        assert.ok(page.items.length, "the followed voice reached my feed");
         const item = page.items.find((i) => i.author === voiceRoot);
         assert.equal(item.title, "Heard");
         assert.equal(item.author_name, "A Voice", "byline from the cache, no db per face");
@@ -306,10 +291,9 @@ describe("the feed endpoint", () => {
             })
         ).json();
         await me(`api/identity/${myRoot}/docs/${d.doc_id}/publish`, { method: "POST" });
-        const item = await settle(async () => {
-            const page = await (await me(`api/identity/${myRoot}/feed`)).json();
-            return page.items.find((i) => i.author === myRoot) || null;
-        });
+        await beat(undefined, "fold", myRoot);
+        const page = await (await me(`api/identity/${myRoot}/feed`)).json();
+        const item = page.items.find((i) => i.author === myRoot);
         assert.ok(item, "my own post landed in my own feed");
         assert.equal(item.mine, true);
     });
@@ -326,11 +310,9 @@ describe("the feed endpoint", () => {
             ).json();
             await voice(`api/identity/${voiceRoot}/docs/${d.doc_id}/publish`, { method: "POST" });
         }
-        const first = await settle(async () => {
-            const page = await (await me(`api/identity/${myRoot}/feed`)).json();
-            return page.more ? page : null;
-        });
-        assert.ok(first, "a full first page, with more behind it");
+        await beat(undefined, "fold", voiceRoot);
+        const first = await (await me(`api/identity/${myRoot}/feed`)).json();
+        assert.ok(first.more, "a full first page, with more behind it");
         const last = first.items[first.items.length - 1];
         const resp = await me(
             `api/identity/${myRoot}/feed?before_ms=${last.published_ms}&before_doc=${last.doc_id}`
@@ -366,15 +348,6 @@ describe("the feed endpoint", () => {
 (HOST_B && HOST_C ? describe : describe.skip)("fan-out: the two-hop body", function () {
     this.timeout(120000);
 
-    const settle = async (fn, tries = 120) => {
-        for (let i = 0; i < tries; i++) {
-            const got = await fn();
-            if (got) return got;
-            await new Promise((r) => setTimeout(r, 250));
-        }
-        return null;
-    };
-
     it("a secondary device's post reaches a remote follower with its body", async () => {
         // Alice: senior device on A, second device on B (the adopt ceremony).
         const a1 = await makeUserFetch({ prefix: "hopsenior" });
@@ -400,17 +373,15 @@ describe("the feed endpoint", () => {
         const bobRoot = (await (await bob("api/identity", { method: "POST" })).json()).root_pubkey;
         assert.equal((await bob(`api/id/${root}/profile?via=${viaA1}`)).status, 200);
         await follow(bob, bobRoot, root, "high");
-        assert.ok(
-            await settle(async () => {
-                const { rows } = await sql(
-                    `SELECT 1 FROM subscriptions WHERE local_root = '${bobRoot}'
-                     AND foreign_root = '${root}'`,
-                    HOST_C
-                );
-                return rows.length ? true : null;
-            }),
-            "the follow reached C's memo"
-        );
+        await beat(HOST_C, "fold", bobRoot);
+        {
+            const { rows } = await sql(
+                `SELECT 1 FROM subscriptions WHERE local_root = '${bobRoot}'
+                 AND foreign_root = '${root}'`,
+                HOST_C
+            );
+            assert.ok(rows.length, "the follow reached C's memo");
+        }
 
         // The post, from the SECOND device. After this line: no manual syncs, no second
         // post, nothing on Bob's node asks for anything. Two hops on their own.
@@ -427,22 +398,30 @@ describe("the feed endpoint", () => {
         const pub = await a2(`api/identity/${root}/docs/${d.doc_id}/publish`, { method: "POST" });
         const postId = JSON.parse(await pub.text()).post_id;
 
-        const rows = await settle(async () => {
-            const j = await journalOf(bobRoot, HOST_C);
-            return j.length ? j : null;
-        });
-        assert.ok(rows, "the post crossed both hops into the follower's journal");
+        // The two hops rung in the race's WORST order, deterministically: headers pushed
+        // B -> A -> C before A ever backfills the body from the authoring device - so C's
+        // dial-back for bytes provably meets a node that does not have them yet, and the
+        // heal beats afterwards are what close the gap. The property, forced every run.
+        await beat(HOST_B, "eager-push", root);
+        await beat(undefined, "fold", root);
+        await beat(undefined, "demand-push", root);
+        await beat(HOST_C, "fold", root);
+        const rows = await journalOf(bobRoot, HOST_C);
+        assert.ok(rows.length, "the post crossed both hops into the follower's journal");
         assert.equal(rows.length, 1, "exactly one feed row - no duplicates from the re-rides");
         assert.equal(rows[0].doc_id, postId);
         assert.equal(rows[0].title, "Two Hops");
 
         // And the WORDS arrive - resolved through the same route the feed UI reads, from
         // Bob's own node. This is the assertion the direct-path test never made.
-        const body = await settle(async () => {
-            const resp = await bob(`id/${root}/docs/${postId}/body`);
-            if (resp.status !== 200) return null;
-            return await resp.text();
-        });
-        assert.equal(body, "written on the second device", "the body itself crossed both hops");
+        await beat(undefined, "bodies-sweep"); // A heals from the authoring device...
+        await beat(HOST_C, "bodies-sweep"); // ...and C heals from A.
+        const resp = await bob(`id/${root}/docs/${postId}/body`);
+        assert.equal(resp.status, 200, "the body route answers at the follower's node");
+        assert.equal(
+            await resp.text(),
+            "written on the second device",
+            "the body itself crossed both hops"
+        );
     });
 });

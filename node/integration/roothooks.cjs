@@ -39,11 +39,14 @@ const markAll = (note) => {
 
 exports.mochaHooks = {
     async beforeEach() {
-        await markAll(`START ${this.currentTest.fullTitle()}`);
+        // The client clock rides the note: marks are fire-and-forget, and on a loaded
+        // runner they land seconds after the test actually started - window forensics kept
+        // mis-bounding tests until the note carried its own timestamp (2026-08-25).
+        await markAll(`START @${Date.now()} ${this.currentTest.fullTitle()}`);
     },
     async afterEach() {
         await markAll(
-            `END(${this.currentTest.state || "unknown"}) ${this.currentTest.fullTitle()}`
+            `END(${this.currentTest.state || "unknown"}) @${Date.now()} ${this.currentTest.fullTitle()}`
         );
         await replugTouched();
     },

@@ -210,6 +210,14 @@ pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
 /// One pass of the rounds. For every persona with due rows: guess who might have the bytes,
 /// run the ordinary body walk at each candidate (the walk itself reconciles the ledger as
 /// bodies land), and mark whatever remains as tried so the backoff ladder advances.
+/// Zero the healer's backoff stamps - the test beat's "try again NOW" (test_endpoints).
+pub(crate) async fn force_due(node_db: &crate::db::Db) -> Result<()> {
+    node_db
+        .execute("UPDATE missing_bodies SET last_tried_ms = 0", ())
+        .await?;
+    Ok(())
+}
+
 pub async fn sweep(state: AppState) -> Result<()> {
     let rows: Vec<(String, i64, i64)> = state
         .node_db

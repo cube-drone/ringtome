@@ -36,6 +36,151 @@ pub struct SqlResponse {
 }
 
 #[derive(serde::Deserialize)]
+pub struct BeatRequest {
+    /// Which background pass to ring - see the match below for the vocabulary.
+    #[serde(rename = "pass")]
+    pub pass_name: String,
+    /// The root the pass concerns, for the per-root passes. Ignored by the fleet sweeps.
+    #[serde(default)]
+    pub root: Option<String>,
+}
+
+/// Ring one background pass, NOW, and return when it has completed - the test suite's
+/// deterministic-sequencing primitive (2026-08-25, ending the settle era). Every loop in
+/// main's inventory is a plain one-pass function by design (loops.rs); this door lets a
+/// test drive the pipeline hop by hop - act, ring, assert - instead of racing timers under
+/// load, which is what three days of CI flakes were. `peerderive.cjs`'s `/test/derive`
+/// pioneered the pattern; this generalizes it. LOCAL_TEST only, like every door here.
+///
+/// The `fold` pass rings the whole post-arrival hook chain UNCONDITIONALLY - no frontier
+/// verdict gate - because a test that just made something arrive wants the folds run, not
+/// an argument about whether the memo noticed. Every hook is idempotent by design.
+pub async fn beat(
+    State(state): State<AppState>,
+    Json(req): Json<BeatRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let root = req.root.as_deref();
+    let outcome: anyhow::Result<()> = match (req.pass_name.as_str(), root) {
+        ("pull", Some(r)) => {
+            // The reader-driven fetch ladder, synchronously - widened the way
+            // `spawn_revalidate` widens it, so the beat walks the SAME candidate list a
+            // background revalidation would: stored tree leaves first, then the cohort
+            // rung (our own personas' sibling nodes - the only candidate left when the
+            // followed persona's whole machinery is dark).
+            let mut via = crate::idface::stored_tree_leaves(&state, r).await;
+            for endpoint in crate::net::sync::cohort_endpoints(&state)
+                .await
+                .unwrap_or_default()
+            {
+                if !via.contains(&endpoint) {
+                    via.push(endpoint);
+                }
+            }
+            let fetched = crate::idface::fetch_foreign(&state, r, &via).await;
+            tracing::info!(root = %r, fetched, "TEST BEAT: pull");
+            Ok(())
+        }
+        ("fold", Some(r)) => {
+            let _ = crate::net::frontier::refresh(&state, r).await;
+            crate::fanout::after_public_move(&state, r).await;
+            crate::notifications::refresh_from(&state, r).await;
+            crate::rebroadcast::refresh_from(&state, r).await;
+            crate::net::subscriptions::refresh_root(&state, r).await;
+            Ok(())
+        }
+        ("eager-push", Some(r)) => {
+            // FORCED, not the loop's pass: eager_root's debounce (resync.observe) reads
+            // "nothing new since my last push" as quiet and declines - correct for a
+            // free-running loop, and exactly the no-op race a rung beat cannot afford
+            // (run 2 of the settle switchover: five tests failed on a beat that had
+            // silently declined). A rung push means push NOW, decision be damned.
+            if crate::identity::is_agented(&state.node_db, r)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?
+            {
+                let peers = crate::net::sync::peers_for(&state.node_db, r).await?;
+                let results = crate::net::sync::sync_peers(&state, r, &peers).await?;
+                let ok = results.iter().filter(|x| x.ok).count();
+                tracing::info!(root = %r, peers = results.len(), ok, "TEST BEAT: eager-push");
+            }
+            Ok(())
+        }
+        ("eager-push", None) => crate::net::resync::eager_pass(state.clone(), None).await,
+        ("demand-push", Some(r)) => {
+            // The fold's OTHER push half, awaited: `after_public_move` spawns
+            // `push_to_askers` detached, so a fold beat alone cannot sequence a
+            // demand-record push (author's node -> a follower's node that once asked).
+            crate::fanout::push_to_askers_now(&state, r).await;
+            Ok(())
+        }
+        ("mint", r) => {
+            // The authoring-side subscription sweep: memo refresh WITH minting allowed, so
+            // a freshly-turned dial becomes its public-edge statement - then the knock,
+            // AWAITED: the mint's own eager delivery is a detached spawn
+            // (subscriptions::refresh), so without this second leg the beat returns while
+            // the envelope is still in the air (run 2 of the settle switchover: two inbox
+            // tests failed on exactly that). The whole sending half, run to completion.
+            crate::net::subscriptions::sweep(state.clone(), r.map(String::from)).await?;
+            crate::outbox::sweep(state.clone()).await
+        }
+        ("outbox", _) => {
+            // Retry every queued knock NOW: the sweep's backoff ladder gates by
+            // last_tried_ms, so zero the stamps first - a test ringing this means
+            // "knock again", not "knock if due".
+            crate::outbox::force_due(&state.node_db).await?;
+            crate::outbox::sweep(state.clone()).await
+        }
+        ("fragment-sweep", scope) => {
+            // Force due-ness first: the sweep's queries select by elapsed time
+            // (`checked_ms`/`last_tried_ms` older than the revalidation interval), so ringing
+            // it right after an act would revalidate nothing and the beat would be a shrug.
+            // A test ringing this pass means "revalidate NOW" - zero the stamps, then sweep.
+            // Scoped to the author when given, fleet-wide otherwise. The frozen-fragment
+            // exclusion (edit window) is untouched: it is a property, not a schedule.
+            crate::fragments::force_due(&state.node_db, scope).await?;
+            crate::fragments::sweep(state.clone()).await
+        }
+        ("bodies-sweep", _) => {
+            // Same posture as fragment-sweep: the healer backs off per-root
+            // (`last_tried_ms` + exponential backoff), so a beat means "try again NOW".
+            crate::net::bodies::force_due(&state.node_db).await?;
+            crate::net::bodies::sweep(state.clone()).await
+        }
+        ("body-heal", Some(author)) => {
+            // The eager body heal, awaited. Fragment intake spawns this DETACHED
+            // (fragments::heal_soon), so no count of forced sweeps can deterministically
+            // land a fragment's bytes - the noting is synchronous but the heal races. A
+            // test that just made headers arrive rings this to walk the heal's whole
+            // candidate ladder (deliverers first, then each origin's resolution) to
+            // completion before asserting the served body.
+            for origin in crate::fragments::origins_of_author(&state.node_db, author).await? {
+                crate::net::bodies::heal_from(&state, author, &origin).await;
+            }
+            Ok(())
+        }
+        ("journal-fill", _) => crate::fanout::fill_pass(state.clone()).await,
+        ("follow-refresh", _) => crate::idface::refresh_followed_pass(state.clone()).await,
+        ("speculative-acquire", _) => {
+            // Clear the pass's in-memory attempt stamps first: the cooldown rotation would
+            // otherwise skip a target the background pass tried moments ago, and a rung
+            // beat means "acquire NOW", not "acquire unless recently attempted".
+            crate::speculative::reset_attempt_stamps();
+            crate::speculative::acquire_pass(state.clone()).await
+        }
+        ("evict", _) => crate::eviction::evict_pass(state.clone()).await,
+        (other, _) => {
+            return Err(AppError::BadRequest(crate::msg!(
+                "test.beat.unknown-pass",
+                "unknown pass: {other}",
+                other = other
+            )))
+        }
+    };
+    outcome.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(serde::Deserialize)]
 pub struct MarkRequest {
     pub note: String,
 }

@@ -16,8 +16,8 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { sql, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(240);
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -75,24 +75,23 @@ const base58 = async (host) => {
         await coraDial(friendRoot, "interest", "high");
         await coraDial(friendRoot, "interest_rebroadcasts", "low");
 
-        // The node half: the graph holds the friend's published statements.
-        assert.ok(
-            await settle(async () => {
-                const { rows } = await sql(
-                    `SELECT subject_root, trust, interest FROM edge_graph WHERE author_root = '${friendRoot}'`,
-                    HOST_C
-                );
-                return rows.length >= 3 ? rows : null;
-            }),
-            "the friend's published edges assembled into the node-level graph"
-        );
+        // The node half: the friend's node mints the statements and pushes; cora's node
+        // folds them into the graph.
+        await beat(undefined, "mint", friendRoot);
+        await beat(undefined, "demand-push", friendRoot);
+        await beat(HOST_C, "fold", friendRoot);
+        {
+            const { rows } = await sql(
+                `SELECT subject_root, trust, interest FROM edge_graph WHERE author_root = '${friendRoot}'`,
+                HOST_C
+            );
+            assert.ok(rows.length >= 3, "the friend's published edges assembled into the node-level graph");
+        }
 
         // The user half: the compositions, each capped by its weaker side.
-        const rows = await settle(async () => {
-            const got = await implicitRows();
-            return got.length >= 3 ? got : null;
-        });
-        assert.ok(rows, "the implicit fold produced rows");
+        await beat(HOST_C, "fold", coraRoot);
+        const rows = await implicitRows();
+        assert.ok(rows.length >= 3, "the implicit fold produced rows");
         const find = (t, lane) => rows.find((r) => r.target_root === t && r.lane === lane);
 
         const strong = find(target, "trust");
@@ -117,17 +116,21 @@ const base58 = async (host) => {
         // Withdrawal: the friend takes the low vouch back. The retraction mints, the graph
         // row sweeps, and the composition built on it recedes from cora's set.
         await friendDial(targetLow, "trust", "");
-        assert.ok(
-            await settle(async () => {
-                const { rows: graph } = await sql(
-                    `SELECT 1 AS present FROM edge_graph WHERE author_root = '${friendRoot}' AND subject_root = '${targetLow}' AND trust IS NOT NULL`,
-                    HOST_C
-                );
-                if (graph.length) return null;
-                const implicit = await implicitRows();
-                return implicit.some((r) => r.target_root === targetLow) ? null : true;
-            }),
-            "a withdrawn vouch recedes from the graph and from the implicit set"
-        );
+        await beat(undefined, "mint", friendRoot);
+        await beat(undefined, "demand-push", friendRoot);
+        await beat(HOST_C, "fold", friendRoot);
+        await beat(HOST_C, "fold", coraRoot);
+        {
+            const { rows: graph } = await sql(
+                `SELECT 1 AS present FROM edge_graph WHERE author_root = '${friendRoot}' AND subject_root = '${targetLow}' AND trust IS NOT NULL`,
+                HOST_C
+            );
+            assert.equal(graph.length, 0, "the withdrawn vouch left the graph");
+            const implicit = await implicitRows();
+            assert.ok(
+                !implicit.some((r) => r.target_root === targetLow),
+                "a withdrawn vouch recedes from the implicit set"
+            );
+        }
     });
 });

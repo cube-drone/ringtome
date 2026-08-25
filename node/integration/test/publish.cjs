@@ -9,6 +9,7 @@
 const assert = require("node:assert");
 const { makeFetch } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
 const anon = makeFetch();
 
@@ -134,6 +135,7 @@ describe("publication", () => {
             ids.push(d.doc_id);
             await new Promise((r) => setTimeout(r, 1100)); // distinct claimed stamps
         }
+        await beat(undefined, "fold", who); // the publish's fold, run to completion
         const before = await (await owner3(`api/id/${who}/profile`)).json();
         assert.deepEqual(
             before.posts.map((p) => p.title),
@@ -156,6 +158,7 @@ describe("publication", () => {
         const again = await owner3(`api/identity/${who}/docs/${ids[0]}/publish`, { method: "POST" });
         assert.equal(again.status, 200, await again.text());
 
+        await beat(undefined, "fold", who);
         const after = await (await owner3(`api/id/${who}/profile`)).json();
         assert.deepEqual(
             after.posts.map((p) => p.title),

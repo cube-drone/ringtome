@@ -24,9 +24,9 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { sql, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat, pullAndFold } = require("./beat.cjs");
 const { unplug, plugIn } = require("./unplug.cjs");
 
-const settle = require("./helpers.cjs").settleWith(240);
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -90,9 +90,13 @@ const base58 = async (host) => {
             body: JSON.stringify({ value: "high" }),
         });
 
-        // THE LATE FOLLOW: all 30 in the feed - the dig reached below the window.
+        // THE LATE FOLLOW: all 30 in the feed - the dig reached below the window. The
+        // fill pass digs one page per beat behind its persisted mark, so ring it until
+        // the whole shelf is walked - each beat provably digs, no clock anywhere.
+        await beat(HOST_C, "fold", coraRoot);
+        for (let i = 0; i < 4; i++) await beat(HOST_C, "journal-fill");
         assert.ok(
-            await settle(async () => ((await feedRows()).length >= 30 ? true : null)),
+            (await feedRows()).length >= 30,
             "the history dig extended the feed to the whole held shelf"
         );
         const titles = (await feedRows()).map((r) => r.title);
@@ -107,8 +111,12 @@ const base58 = async (host) => {
         // missed entry in one exchange; the persisted mark makes the walk page down to all of
         // them, where the boot-reset mark used to cap this at the newest twenty.
         await publish("the-trigger");
+        await beat(undefined, "fold", authorRoot);
+        await beat(undefined, "demand-push", authorRoot);
+        await beat(HOST_C, "fold", authorRoot);
+        for (let i = 0; i < 4; i++) await beat(HOST_C, "journal-fill");
         assert.ok(
-            await settle(async () => ((await feedRows()).length >= 56 ? true : null)),
+            (await feedRows()).length >= 56,
             "every post from the dark stretch journaled - the gap is exact, not one page"
         );
         const after = (await feedRows()).map((r) => r.title);

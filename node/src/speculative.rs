@@ -56,6 +56,12 @@ const DEMAND_CHUNK_ROWS: usize = 150;
 static SPECULATIVE_ATTEMPTS: std::sync::Mutex<Option<HashMap<String, i64>>> =
     std::sync::Mutex::new(None);
 
+/// Forget the attempt stamps, so the next `acquire_pass` retries every target - the test
+/// beat's "acquire NOW" (test_endpoints); the boot-reset semantics, on demand.
+pub fn reset_attempt_stamps() {
+    *SPECULATIVE_ATTEMPTS.lock().expect("attempt marks poisoned") = None;
+}
+
 /// One composed implicit edge, as the implicit fold hands it to the rollup - the same five
 /// facts `implicit_edges` stores, still in hand as values (STYLE: name the tuple).
 pub struct ComposedEdge<'a> {

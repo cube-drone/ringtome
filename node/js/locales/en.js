@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 457 phrases across 43 files.
+// 458 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -542,6 +542,7 @@ export default {
     'record.store.placing-this-list-here-would': 'placing this list here would create a cycle: the destination is already inside it (directly or through nested lists)',
 
     // --- node/src/test_endpoints.rs ---
+    'test.beat.unknown-pass': 'unknown pass: {other}',
     'test_endpoints.sql-error-e': 'sql error: {e}',
     'test_endpoints.unplug-unknown-alpn': 'no such protocol {name}; this node speaks {known}',
     'test_endpoints.unplug-bad-direction': 'no such direction {other}; use both, inbound or outbound',

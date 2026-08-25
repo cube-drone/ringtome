@@ -21,8 +21,8 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeFetch, sql, HOST, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(240);
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -97,42 +97,43 @@ const base58 = async (host) => {
         await friendDial(authorRoot, "interest", "high");
         await friendDial(authorRoot, "trust", "high");
 
-        // Stage 1, demand: the implicit row (cora's trust x the friend's published band)
-        // rolls up into the node-level speculative-demand memo, best introducer alongside.
-        const demand = await settle(async () => {
-            const { rows } = await sql(
-                `SELECT introducer_root, level FROM speculative_demand
-                 WHERE reader_root = '${coraRoot}' AND target_root = '${authorRoot}'`,
-                HOST_C
-            );
-            return rows.length ? rows[0] : null;
-        });
+        // Stage 1, demand, rung hop by hop: the friend's node mints the vouch statement
+        // and pushes the chain move; cora's node folds it (edge graph included), her own
+        // dials fold too, and the rollup runs inside the acquisition pass.
+        await beat(HOST_B, "mint", friendRoot);
+        await beat(HOST_B, "demand-push", friendRoot);
+        await beat(HOST_C, "fold", friendRoot);
+        await beat(HOST_C, "fold", coraRoot);
+        await beat(HOST_C, "speculative-acquire");
+        const { rows: demandRows } = await sql(
+            `SELECT introducer_root, level FROM speculative_demand
+             WHERE reader_root = '${coraRoot}' AND target_root = '${authorRoot}'`,
+            HOST_C
+        );
+        const demand = demandRows[0];
         assert.ok(demand, "the speculative rollup admitted the vouched-for author");
         assert.equal(demand.introducer_root, friendRoot, "the best introducer rides the memo");
 
         // Stage 2, acquisition: the quiet pull through the introducer's endpoints. The post
         // appears on cora's node without cora following anyone.
-        assert.ok(
-            await settle(async () => {
-                const { rows } = await sql(
-                    `SELECT fetched_at_ms FROM speculative_fetches WHERE target_root = '${authorRoot}'`,
-                    HOST_C
-                );
-                return rows.length ? true : null;
-            }),
-            "the acquisition pass minted a quiet mirror of the author"
-        );
+        await beat(HOST_C, "speculative-acquire");
+        {
+            const { rows } = await sql(
+                `SELECT fetched_at_ms FROM speculative_fetches WHERE target_root = '${authorRoot}'`,
+                HOST_C
+            );
+            assert.ok(rows.length, "the acquisition pass minted a quiet mirror of the author");
+        }
 
         // The post still serves - to cora, from her own node, with the author's machinery
         // unreachable (it always was: no serving record, no hint ever handed to this node).
-        const profile = await settle(async () => {
-            const res = await cora(`api/id/${authorRoot}/profile`);
-            if (res.status !== 200) return null;
-            const body = await res.json();
-            const titles = (body.posts || []).map((p) => p.title);
-            return titles.includes("the-unasked-for-post") ? body : null;
-        });
-        assert.ok(profile, "the mirrored post serves to the reader whose trust admitted it");
+        const res = await cora(`api/id/${authorRoot}/profile`);
+        assert.equal(res.status, 200, "the mirrored profile serves");
+        const profile = await res.json();
+        assert.ok(
+            (profile.posts || []).map((p) => p.title).includes("the-unasked-for-post"),
+            "the mirrored post serves to the reader whose trust admitted it"
+        );
 
         // Quiet means quiet: the mirror is not in foreign_fetches (the member-visit registry
         // that opens the sync door and the directory) - speculative mirrors serve nobody.
@@ -178,16 +179,13 @@ const base58 = async (host) => {
         // DISCOVERY slice 2, stage 3: journaling with provenance. The mirror from slice 1
         // becomes a FEED row - marked speculative, carrying the introducer - without cora
         // following anyone. The row exists because trust vouches for it, and it says so.
-        const row = await settle(async () => {
-            const res = await cora(`api/identity/${coraRoot}/feed`);
-            if (res.status !== 200) return null;
-            const { items } = await res.json();
-            const r = (items || []).find(
-                (i) => i.author === authorRoot && i.title === "the-unasked-for-post"
-            );
-            return r && r.suggested_via ? r : null;
-        });
-        assert.ok(row, "the speculative row landed in cora's feed, marked");
+        await beat(HOST_C, "journal-fill");
+        const feedRes = await cora(`api/identity/${coraRoot}/feed`);
+        assert.equal(feedRes.status, 200);
+        const row = (((await feedRes.json()).items) || []).find(
+            (i) => i.author === authorRoot && i.title === "the-unasked-for-post"
+        );
+        assert.ok(row && row.suggested_via, "the speculative row landed in cora's feed, marked");
         assert.equal(row.suggested_via, friendRoot, "the provenance names the introducer");
         assert.ok(!row.via, "suggested is not shared - the two bylines never mix");
         // The slider's third precedence rung rides the row (slice 3): the demand rollup's
@@ -199,17 +197,19 @@ const base58 = async (host) => {
         // its speculative marking rather than duplicating the row.
         const coraDial = dialOn(cora, coraRoot);
         await coraDial(authorRoot, "interest", "high");
-        assert.ok(
-            await settle(async () => {
-                const res = await cora(`api/identity/${coraRoot}/feed`);
-                if (res.status !== 200) return null;
-                const rows = ((await res.json()).items || []).filter(
-                    (i) => i.author === authorRoot && i.title === "the-unasked-for-post"
-                );
-                return rows.length === 1 && !rows[0].suggested_via ? true : null;
-            }),
-            "the real dial converted the row in place - one row, marking shed"
-        );
+        await beat(HOST_C, "fold", coraRoot);
+        await beat(HOST_C, "journal-fill");
+        {
+            const res2 = await cora(`api/identity/${coraRoot}/feed`);
+            assert.equal(res2.status, 200);
+            const rows = (((await res2.json()).items) || []).filter(
+                (i) => i.author === authorRoot && i.title === "the-unasked-for-post"
+            );
+            assert.ok(
+                rows.length === 1 && !rows[0].suggested_via,
+                "the real dial converted the row in place - one row, marking shed"
+            );
+        }
     });
 
     it("a withdrawn vouch recedes from the demand memo (the mirror waits for slice 4)", async function () {
@@ -217,17 +217,18 @@ const base58 = async (host) => {
         // and the rollup built on it must recede with its inputs. The mirror itself stays -
         // nothing today evicts a mirrored persona; that gap is DISCOVERY slice 4, on purpose.
         await dialOn(friend, friendRoot)(authorRoot, "trust", "");
-        assert.ok(
-            await settle(async () => {
-                const { rows } = await sql(
-                    `SELECT 1 AS present FROM speculative_demand
-                     WHERE reader_root = '${coraRoot}' AND target_root = '${authorRoot}'`,
-                    HOST_C
-                );
-                return rows.length === 0 ? true : null;
-            }),
-            "the demand row receded with the vouch that justified it"
-        );
+        await beat(HOST_B, "mint", friendRoot);
+        await beat(HOST_B, "demand-push", friendRoot);
+        await beat(HOST_C, "fold", friendRoot);
+        await beat(HOST_C, "speculative-acquire");
+        {
+            const { rows } = await sql(
+                `SELECT 1 AS present FROM speculative_demand
+                 WHERE reader_root = '${coraRoot}' AND target_root = '${authorRoot}'`,
+                HOST_C
+            );
+            assert.equal(rows.length, 0, "the demand row receded with the vouch that justified it");
+        }
     });
 
     it("a mirror nobody wants is evicted, traces and all (DISCOVERY slice 4)", async function () {
@@ -237,18 +238,17 @@ const base58 = async (host) => {
         // sweep must take the mirror and every bookkeeping trace; the author keeps living
         // on their own node and the friend's (who still follows), untouched.
         await dialOn(cora, coraRoot)(authorRoot, "interest", "");
+        await beat(HOST_C, "fold", coraRoot);
+        await beat(HOST_C, "evict");
 
         // The quiet registry empties - the sweep's own bookkeeping goes with the mirror.
-        assert.ok(
-            await settle(async () => {
-                const { rows } = await sql(
-                    `SELECT 1 AS present FROM speculative_fetches WHERE target_root = '${authorRoot}'`,
-                    HOST_C
-                );
-                return rows.length === 0 ? true : null;
-            }),
-            "the speculative fetch registry forgot the evicted mirror"
-        );
+        {
+            const { rows } = await sql(
+                `SELECT 1 AS present FROM speculative_fetches WHERE target_root = '${authorRoot}'`,
+                HOST_C
+            );
+            assert.equal(rows.length, 0, "the speculative fetch registry forgot the evicted mirror");
+        }
 
         // The byline cache too: a face the node no longer holds must not keep a name.
         const { rows: bylines } = await sql(

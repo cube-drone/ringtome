@@ -12,6 +12,7 @@
 const assert = require("node:assert");
 const { sql } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
 const settle = require("./helpers.cjs").settleWith(60);
 
@@ -42,11 +43,9 @@ describe("the subscription memo", () => {
     it("records a follow as routing, without being asked", async () => {
         const r = await dial("interest", "high");
         assert.equal(r.status, 200, await r.text());
-        const rows = await settle(async () => {
-            const got = await rowsFor(root);
-            return got.length ? got : null;
-        });
-        assert.ok(rows, "the sweep found the new edge on its own");
+        await beat(undefined, "fold", root);
+        const rows = await rowsFor(root);
+        assert.ok(rows.length, "the memo refresh found the new edge");
         assert.equal(rows[0].foreign_root, THEM);
         assert.equal(rows[0].eagerness, 3, "the interest dial IS the sync-cadence dial (band ordinal)");
         assert.equal(rows[0].trust, null);
@@ -54,41 +53,39 @@ describe("the subscription memo", () => {
 
     it("carries rebroadcast interest alongside it", async () => {
         await dial("interest_rebroadcasts", "low");
-        const rows = await settle(async () => {
-            const got = await rowsFor(root);
-            return got[0] && got[0].rebroadcast === 1 ? got : null;
-        });
-        assert.ok(rows, "the second routing dial lands too");
+        await beat(undefined, "fold", root);
+        const rows = await rowsFor(root);
+        assert.ok(rows[0] && rows[0].rebroadcast === 1, "the second routing dial lands too");
         assert.equal(rows[0].eagerness, 3, "and the first one is still there");
     });
 
     it("carries a trust edge by default - publication is the resting state", async () => {
         await dial("trust", "max");
-        const rows = await settle(async () => {
-            const got = await rowsFor(root);
-            return got[0] && got[0].trust !== null ? got : null;
-        });
-        assert.ok(rows, "an unset visibility register publishes (settled 2026-08-09)");
+        await beat(undefined, "fold", root);
+        const rows = await rowsFor(root);
+        assert.ok(
+            rows[0] && rows[0].trust !== null,
+            "an unset visibility register publishes (settled 2026-08-09)"
+        );
         assert.equal(rows[0].trust, 4, "the band as set, ordinal on the ladder");
     });
 
     it("WITHHOLDS it the moment its author says no - the reason trust is allowed here at all", async () => {
         await dial("edges_public", "no");
-        const rows = await settle(async () => {
-            const got = await rowsFor(root);
-            return got[0] && got[0].trust === null ? got : null;
-        });
-        assert.ok(rows, "a withheld assessment never leaves the persona's own database");
+        await beat(undefined, "fold", root);
+        const rows = await rowsFor(root);
+        assert.ok(
+            rows[0] && rows[0].trust === null,
+            "a withheld assessment never leaves the persona's own database"
+        );
         assert.equal(rows[0].eagerness, 3, "and leaves the routing facts alone");
     });
 
     it("carries it again when the author changes their mind back", async () => {
         await dial("edges_public", "yes");
-        const rows = await settle(async () => {
-            const got = await rowsFor(root);
-            return got[0] && got[0].trust !== null ? got : null;
-        });
-        assert.ok(rows, "the switch works in both directions");
+        await beat(undefined, "fold", root);
+        const rows = await rowsFor(root);
+        assert.ok(rows[0] && rows[0].trust !== null, "the switch works in both directions");
         assert.equal(rows[0].trust, 4);
     });
 
@@ -108,11 +105,8 @@ describe("the subscription memo", () => {
 
         // The dials above already put THEM on the roster; prove the memo actually ran (so
         // the assertion below can't pass by arriving before the backfill path did).
-        const rows = await settle(async () => {
-            const got = await rowsFor(root);
-            return got.length ? got : null;
-        });
-        assert.ok(rows, "the memo refresh has run for this contact");
+        await beat(undefined, "fold", root);
+        assert.ok((await rowsFor(root)).length, "the memo refresh has run for this contact");
         assert.ok(
             !fs.existsSync(dbPath),
             "a persona we hold nothing of gets no database minted for them"
@@ -124,11 +118,12 @@ describe("the subscription memo", () => {
         await dial("interest", "");
         await dial("interest_rebroadcasts", "");
         await dial("trust", "");
-        const gone = await settle(async () => {
-            const got = await rowsFor(root);
-            return got.length === 0 ? true : null;
-        });
-        assert.ok(gone, "a subscription nobody holds must not keep routing");
+        await beat(undefined, "fold", root);
+        assert.equal(
+            (await rowsFor(root)).length,
+            0,
+            "a subscription nobody holds must not keep routing"
+        );
     });
 });
 
@@ -226,11 +221,9 @@ describe("the byline cache", () => {
             method: "POST",
             body: JSON.stringify({ field: "name", value: "Cache Me" }),
         });
-        const row = await settle(async () => {
-            const r = await cacheRow(whoRoot);
-            return r && r.name === "Cache Me" ? r : null;
-        });
-        assert.ok(row, "the rename reached the cache unasked");
+        await beat(undefined, "fold", whoRoot);
+        const row = await cacheRow(whoRoot);
+        assert.ok(row && row.name === "Cache Me", "the rename reached the cache unasked");
     });
 
     it("follows a rename, and updated_at_ms means the CLAIM moved", async () => {
@@ -239,11 +232,9 @@ describe("the byline cache", () => {
             method: "POST",
             body: JSON.stringify({ field: "name", value: "Cache Me Again" }),
         });
-        const after = await settle(async () => {
-            const r = await cacheRow(whoRoot);
-            return r && r.name === "Cache Me Again" ? r : null;
-        });
-        assert.ok(after, "the new name landed");
+        await beat(undefined, "fold", whoRoot);
+        const after = await cacheRow(whoRoot);
+        assert.ok(after && after.name === "Cache Me Again", "the new name landed");
         assert.ok(after.updated_at_ms >= before.updated_at_ms, "and the claim-stamp moved");
     });
 

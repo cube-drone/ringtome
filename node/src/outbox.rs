@@ -314,6 +314,14 @@ async fn mark_tried(node_db: &Db, sender_root: &str, recipient_root: &str, kind:
     Ok(())
 }
 
+/// Zero the knock backoff - the test beat's "knock again NOW" (test_endpoints).
+pub(crate) async fn force_due(node_db: &Db) -> Result<()> {
+    node_db
+        .execute("UPDATE outbound_notices SET last_tried_ms = 0", ())
+        .await?;
+    Ok(())
+}
+
 /// One pass of the rounds: take the due envelopes, knock once each, and retire whatever landed
 /// or was refused. Only "nobody answered" earns another turn on the ladder.
 pub async fn sweep(state: AppState) -> Result<()> {

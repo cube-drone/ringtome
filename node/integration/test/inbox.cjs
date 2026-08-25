@@ -21,8 +21,8 @@
 const assert = require("node:assert");
 const { sql, sql: sqlOn, HOST_B } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(80);
 
 const dial = (fetcher, mine, theirs, key, value) =>
     fetcher(`api/identity/${mine}/private/kv/contact:${theirs}/${key}`, {
@@ -62,10 +62,11 @@ const bell = async (fetcher, root) =>
 
     it("the envelope lands, and the bell shows it as a stranger", async () => {
         await dial(stranger, strangerRoot, hostRoot, "interest", "high");
-        const row = await settle(async () => {
-            const items = await bell(host, hostRoot);
-            return items.find((i) => i.author === strangerRoot) || null;
-        });
+        // The sending half, run to completion: memo, statement mint, eager knock. The
+        // recipient's transcription is the deliver door's own synchronous work.
+        await beat(HOST_B, "mint", strangerRoot);
+        const items = await bell(host, hostRoot);
+        const row = items.find((i) => i.author === strangerRoot);
         assert.ok(row, "a notice from someone we do not sync reached the inbox");
         assert.equal(row.kind, "public-edge");
         assert.equal(row.interest, "high", "carrying the band the sender published");
@@ -85,14 +86,11 @@ const bell = async (fetcher, root) =>
         UNREACHABLE recipient leaves a row that climbs the ladder (below).
     */
     it("the knock is retired once it lands - a delivered notice is not redelivered", async () => {
-        const gone = await settle(async () => {
-            const { rows } = await sqlOn(
-                `SELECT COUNT(*) AS n FROM outbound_notices WHERE sender_root = '${strangerRoot}'`,
-                HOST_B
-            );
-            return rows[0] && rows[0].n === 0 ? true : null;
-        });
-        assert.ok(gone, "an answered knock leaves the ledger");
+        const { rows } = await sqlOn(
+            `SELECT COUNT(*) AS n FROM outbound_notices WHERE sender_root = '${strangerRoot}'`,
+            HOST_B
+        );
+        assert.equal(rows[0].n, 0, "an answered knock leaves the ledger");
     });
 
     it("the recipient's own node signed the notice - the sender never wrote the chain", async () => {
@@ -136,8 +134,9 @@ const bell = async (fetcher, root) =>
 
     it("a blocked sender's notice is dropped, and they are told nothing about it", async () => {
         await dial(blocked, blockedRoot, hostRoot, "interest", "max");
-        // Give the eager delivery a real chance to have happened and been dropped.
-        await new Promise((r) => setTimeout(r, 6000));
+        // The delivery, run to completion and provably dropped - a rung beat is a stronger
+        // "it really happened and was refused" than any sleep was.
+        await beat(HOST_B, "mint", blockedRoot);
         const items = await bell(host, hostRoot);
         assert.equal(
             items.filter((i) => i.author === blockedRoot).length,
@@ -148,14 +147,11 @@ const bell = async (fetcher, root) =>
         // than climbing the backoff ladder forever. Note that this assertion passes identically
         // for a transcribed notice - which is the property, not a weakness of the test. What
         // separates the two cases is the bell row above, visible only to the recipient.
-        const done = await settle(async () => {
-            const { rows } = await sqlOn(
-                `SELECT COUNT(*) AS n FROM outbound_notices WHERE sender_root = '${blockedRoot}'`,
-                HOST_B
-            );
-            return rows[0] && rows[0].n === 0 ? true : null;
-        });
-        assert.ok(done, "an answered knock is retired, never retried");
+        const { rows } = await sqlOn(
+            `SELECT COUNT(*) AS n FROM outbound_notices WHERE sender_root = '${blockedRoot}'`,
+            HOST_B
+        );
+        assert.equal(rows[0].n, 0, "an answered knock is retired, never retried");
     });
 });
 
@@ -172,28 +168,22 @@ describe("an undeliverable notice waits", function () {
         const nowhere = "ab".repeat(32);
 
         await dial(sender, senderRoot, nowhere, "interest", "medium");
-        // Stage the wait: the dial has to become a subscription row, then a minted statement,
-        // then a queued envelope - four background hops, each on its own beat. Polling only for
-        // the end of the chain flaked twice on a loaded box (REFACTOR, 2026-08-11): one slow hop
-        // exhausted the whole window. Waiting for the first hop separately means each settle
-        // times one stage, and a failure names which stage stalled instead of shrugging.
-        assert.ok(
-            await settle(async () => {
-                const { rows } = await sql(
-                    `SELECT 1 FROM subscriptions
-                     WHERE local_root = '${senderRoot}' AND foreign_root = '${nowhere}'`
-                );
-                return rows.length ? true : null;
-            }),
-            "the dial became a subscription row"
-        );
-        const row = await settle(async () => {
+        // One beat rings the whole sending half - memo, mint, queue, the doomed knock -
+        // where four background hops used to race a settle window (the staged-wait era,
+        // REFACTOR 2026-08-11; the beat retires the staging too).
+        await beat(undefined, "mint", senderRoot);
+        {
             const { rows } = await sql(
-                `SELECT recipient_root, kind, tries FROM outbound_notices
-                 WHERE sender_root = '${senderRoot}' AND recipient_root = '${nowhere}'`
+                `SELECT 1 FROM subscriptions
+                 WHERE local_root = '${senderRoot}' AND foreign_root = '${nowhere}'`
             );
-            return rows.length ? rows[0] : null;
-        }, 160);
+            assert.ok(rows.length, "the dial became a subscription row");
+        }
+        const { rows: queued } = await sql(
+            `SELECT recipient_root, kind, tries FROM outbound_notices
+             WHERE sender_root = '${senderRoot}' AND recipient_root = '${nowhere}'`
+        );
+        const row = queued[0];
         assert.ok(row, "the envelope is waiting for a door to open");
         assert.equal(row.kind, "public-edge");
         assert.ok(row.tries >= 1, "and the eager attempt already counted against the backoff");
@@ -221,10 +211,8 @@ describe("the stranger pool is a ring, and friends are not in it", function () {
             .root_pubkey;
         await dial(host, hostRoot, friendRoot, "trust", "high");
         await dial(friend, friendRoot, hostRoot, "interest", "high");
-        const friendRow = await settle(async () => {
-            const items = await bell(host, hostRoot);
-            return items.find((i) => i.author === friendRoot) || null;
-        });
+        await beat(undefined, "mint", friendRoot);
+        const friendRow = (await bell(host, hostRoot)).find((i) => i.author === friendRoot);
         assert.ok(friendRow, "the friend's notice landed, in the trusted tier");
 
         // Now seven strangers, one after another - the pool holds four.
@@ -234,13 +222,13 @@ describe("the stranger pool is a ring, and friends are not in it", function () {
             const root = (await (await s("api/identity", { method: "POST" })).json()).root_pubkey;
             strangers.push(root);
             await dial(s, root, hostRoot, "interest", "medium");
-            // Wait for THIS notice to land before sending the next: the test is about the
-            // ring turning, not about racing seven eager sweeps.
-            const landed = await settle(async () => {
-                const items = await bell(host, hostRoot);
-                return items.some((i) => i.author === root) ? true : null;
-            });
-            assert.ok(landed, `stranger ${n} was transcribed`);
+            // Land THIS notice before sending the next: the test is about the ring
+            // turning, not about racing seven eager sweeps - the beat sequences them.
+            await beat(undefined, "mint", root);
+            assert.ok(
+                (await bell(host, hostRoot)).some((i) => i.author === root),
+                `stranger ${n} was transcribed`
+            );
         }
 
         const items = await bell(host, hostRoot);
@@ -284,11 +272,11 @@ describe("the stranger pool is a ring, and friends are not in it", function () {
                 .root_pubkey;
             strangers.push(sRoot);
             await dial(s, sRoot, root, "interest", "low");
-            const landed = await settle(async () => {
-                const items = await bell(onA, root);
-                return items.some((i) => i.author === sRoot) ? true : null;
-            });
-            assert.ok(landed, `stranger ${n} was transcribed`);
+            await beat(undefined, "mint", sRoot);
+            assert.ok(
+                (await bell(onA, root)).some((i) => i.author === sRoot),
+                `stranger ${n} was transcribed`
+            );
         }
 
         // The adoption ceremony: the persona grows a second device on node B.
@@ -308,11 +296,15 @@ describe("the stranger pool is a ring, and friends are not in it", function () {
 
         // The new device must see the surviving notices - which requires its gate to have
         // admitted an inbox chain that starts at the floor A pruned to.
-        const seen = await settle(async () => {
-            const items = await bell(onB, root);
-            return items.some((i) => i.author === strangers[5]) ? items : null;
-        }, 120);
-        assert.ok(seen, "the pruned chain crossed to the new device as a suffix");
+        // The pruned chain crosses by ordinary sync: A pushes the persona to its new
+        // sibling, B folds what arrived.
+        await beat(undefined, "eager-push", root);
+        await beat(HOST_B, "fold", root);
+        const seen = await bell(onB, root);
+        assert.ok(
+            seen.some((i) => i.author === strangers[5]),
+            "the pruned chain crossed to the new device as a suffix"
+        );
         assert.ok(
             !seen.some((i) => i.author === strangers[0]),
             "and what aged off the floor stayed gone - pruning is not a per-device opinion"
@@ -336,21 +328,15 @@ describe("the follow-edge rule, from the delivered side", function () {
 
         // The reader follows the author: now the author's chains are pulled here.
         await dial(reader, readerRoot, authorRoot, "interest", "high");
-        await settle(async () => {
-            const { rows } = await sql(
-                `SELECT 1 AS ok FROM subscriptions
-                 WHERE local_root = '${readerRoot}' AND foreign_root = '${authorRoot}'`
-            );
-            return rows.length ? true : null;
-        });
+        await beat(undefined, "fold", readerRoot);
 
         // Now the author publishes an edge naming the reader.
         await dial(author, authorRoot, readerRoot, "interest", "max");
-
-        const derived = await settle(async () => {
-            const items = await bell(reader, readerRoot);
-            return items.find((i) => i.author === authorRoot) || null;
-        });
+        // Mint the author's statement, then fold their chain move: the reader's derived
+        // notification is the fold's own work - no envelope anywhere in this path.
+        await beat(undefined, "mint", authorRoot);
+        await beat(undefined, "fold", authorRoot);
+        const derived = (await bell(reader, readerRoot)).find((i) => i.author === authorRoot);
         assert.ok(derived, "the reader hears about it - by the DERIVED path");
         assert.equal(
             derived.stranger,

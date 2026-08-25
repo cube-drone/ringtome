@@ -14,8 +14,8 @@
 const assert = require("node:assert");
 const { sql } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(60);
 
 const dial = (fetcher, mine, theirs, key, value) =>
     fetcher(`api/identity/${mine}/private/kv/contact:${theirs}/${key}`, {
@@ -54,13 +54,13 @@ describe("edge publication and its notification", () => {
         await dial(author, authorRoot, readerRoot, "trust", "max");
         await dial(author, authorRoot, readerRoot, "interest", "medium");
 
-        const rows = await settle(async () => {
-            const got = await notificationRows(readerRoot);
-            return got.length && got[0].trust === "max" && got[0].interest === "medium"
-                ? got
-                : null;
-        });
-        assert.ok(rows, "the published edge became a notification row");
+        await beat(undefined, "mint", authorRoot);
+        await beat(undefined, "fold", authorRoot);
+        const rows = await notificationRows(readerRoot);
+        assert.ok(
+            rows.length && rows[0].trust === "max" && rows[0].interest === "medium",
+            "the published edge became a notification row"
+        );
         assert.equal(rows.length, 1, "collapse by (sender, kind): one row per author");
         assert.equal(rows[0].author_root, authorRoot);
         assert.equal(rows[0].kind, "public-edge");
@@ -70,11 +70,13 @@ describe("edge publication and its notification", () => {
 
     it("a dial turned while consented updates the row in place", async () => {
         await dial(author, authorRoot, readerRoot, "trust", "high");
-        const rows = await settle(async () => {
-            const got = await notificationRows(readerRoot);
-            return got.length === 1 && got[0].trust === "high" ? got : null;
-        });
-        assert.ok(rows, "the statement was re-published and the row updated, never stacked");
+        await beat(undefined, "mint", authorRoot);
+        await beat(undefined, "fold", authorRoot);
+        const rows = await notificationRows(readerRoot);
+        assert.ok(
+            rows.length === 1 && rows[0].trust === "high",
+            "the statement was re-published and the row updated, never stacked"
+        );
     });
 
     it("the endpoint dresses the row, and the watermark makes it seen everywhere", async () => {
@@ -104,7 +106,9 @@ describe("edge publication and its notification", () => {
         // The statement mints regardless (publication is the author's act; who reads it is
         // not the mint's business) - proven by the follower case above. What must NOT happen
         // is a row for someone who never chose to sync this author.
-        await new Promise((r) => setTimeout(r, 3000));
+        // The pass, provably run and provably silent for the bystander - no sleep needed.
+        await beat(undefined, "mint", authorRoot);
+        await beat(undefined, "fold", authorRoot);
         assert.deepEqual(
             await notificationRows(bystanderRoot),
             [],
@@ -114,10 +118,12 @@ describe("edge publication and its notification", () => {
 
     it("going private retracts the statement and the notification with it", async () => {
         await dial(author, authorRoot, readerRoot, "edges_public", "no");
-        const gone = await settle(async () => {
-            const got = await notificationRows(readerRoot);
-            return got.length === 0 ? true : null;
-        });
-        assert.ok(gone, "a retraction is an absence, not a notification");
+        await beat(undefined, "mint", authorRoot);
+        await beat(undefined, "fold", authorRoot);
+        assert.equal(
+            (await notificationRows(readerRoot)).length,
+            0,
+            "a retraction is an absence, not a notification"
+        );
     });
 });

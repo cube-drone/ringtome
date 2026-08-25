@@ -39,8 +39,8 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat, pullAndFold } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(100);
 
 const createDoc = async (fetch, root, title, body) => {
     const r = await (
@@ -110,11 +110,9 @@ const base58 = async (host) => {
         post = JSON.parse(await published.text()).post_id;
         assert.ok(post, "publish returned a public post id");
 
-                assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(bobRoot, HOST_B);
-                return rows.some((r) => r.title === "worth passing on") ? rows : null;
-            }),
+        await pullAndFold(HOST_B, aliceRoot);
+        assert.ok(
+            (await feedOf(bobRoot, HOST_B)).some((r) => r.title === "worth passing on"),
             "precondition: the post crossed to Bob, who follows Alice"
         );
     });
@@ -133,10 +131,8 @@ const base58 = async (host) => {
     });
 
     it("a rebroadcast-only follower receives a post from an author they never followed", async () => {
-        const row = await settle(async () => {
-            const rows = await feedOf(cleoRoot, HOST_C);
-            return rows.find((r) => r.title === "worth passing on") || null;
-        });
+        await pullAndFold(HOST_C, bobRoot);
+        const row = (await feedOf(cleoRoot, HOST_C)).find((r) => r.title === "worth passing on");
         assert.ok(row, "the shared post reached a reader who follows only the sharer");
         assert.equal(row.author_root, aliceRoot, "credited to its author, not to the sharer");
         assert.equal(row.via_root, bobRoot, "and bylined with who passed it along");
@@ -166,12 +162,10 @@ const base58 = async (host) => {
     it("the author hears about it, across a graph they have no edge in", async () => {
         // Alice does not follow Bob, so the derived fold cannot speak for her: this had to
         // arrive as a delivered envelope through the inbox (notice_kind::REBROADCAST).
-        const items = await settle(async () => {
-            const r = await (await alice(`api/identity/${aliceRoot}/notifications`)).json();
-            const found = (r.items || []).filter((i) => i.kind === "rebroadcast");
-            return found.length ? found : null;
-        });
-        assert.ok(items, "the author was told their post was shared");
+        await beat(HOST_B, "outbox"); // knock again NOW, in case the eager knock raced
+        const r = await (await alice(`api/identity/${aliceRoot}/notifications`)).json();
+        const items = (r.items || []).filter((i) => i.kind === "rebroadcast");
+        assert.ok(items.length, "the author was told their post was shared");
         assert.equal(items[0].author, bobRoot, "by whom");
     });
 });

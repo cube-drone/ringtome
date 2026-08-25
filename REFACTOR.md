@@ -74,3 +74,14 @@ time", claimed= vs ours=): next occurrence, read that line, then check whether t
 fold narration shows a stale pointer count against its own claimed head - that one
 comparison names the guilty connection. The journalable fold ceiling and the want ladder
 keep suites green meanwhile.
+
+New evidence (2026-08-25, the settle switchover's rung mint): the same shape caught
+red-handed WITHOUT the network - a rung `subscriptions::refresh` one millisecond behind a
+dial's own write nudge read a contacts set missing the just-committed entry, while the
+nudge-driven refresh (concurrent, same root, same shared user-db handle) read it fine
+milliseconds later. Same file, same handle, two concurrent folds over the same
+private-register watermarks - which leans the suspect space toward the interleaved-fold /
+pinned-snapshot side and away from second-connection WAL invisibility.
+`subscriptions::refresh` is now serialized per root (read-your-writes for any write that
+committed before the call); the OTHER fold paths (the share fold above included) still
+race their own concurrent instances, so the narrated-occurrence plan stands.

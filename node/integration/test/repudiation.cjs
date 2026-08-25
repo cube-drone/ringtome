@@ -30,6 +30,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { HOST_B, HOST_C, sql } = require("./fetch.cjs");
 const { makeUserFetch, decodeCode } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
 // --- world-building helpers -----------------------------------------------------------------
 
@@ -344,7 +345,6 @@ const listIds = async (fetch, root) =>
 (HOST_B && HOST_C ? describe : describe.skip)("a repudiation reaches the feeds", function () {
     this.timeout(120000);
 
-    const settle = require("./helpers.cjs").settleWith(120);
     const feedTitles = async (reader, host) => {
         const { rows } = await sql(
             `SELECT title FROM feed_journal WHERE reader_root = '${reader}'`,
@@ -368,17 +368,15 @@ const listIds = async (fetch, root) =>
             method: "PUT",
             body: JSON.stringify({ value: "high" }),
         });
-        assert.ok(
-            await settle(async () => {
-                const { rows } = await sql(
-                    `SELECT 1 FROM subscriptions WHERE local_root = '${bobRoot}'
-                     AND foreign_root = '${root}'`,
-                    HOST_C
-                );
-                return rows.length ? true : null;
-            }),
-            "the follow reached C's memo"
-        );
+        await beat(HOST_C, "fold", bobRoot);
+        {
+            const { rows } = await sql(
+                `SELECT 1 FROM subscriptions WHERE local_root = '${bobRoot}'
+                 AND foreign_root = '${root}'`,
+                HOST_C
+            );
+            assert.ok(rows.length, "the follow reached C's memo");
+        }
 
         // The honest post from the senior device; the doomed one from the device that will
         // be repudiated. Both must actually arrive in Bob's journal before the strike, or
@@ -392,16 +390,17 @@ const listIds = async (fetch, root) =>
         const doomedPost = JSON.parse(await doomedPub.text()).post_id;
         await b(`api/identity/${root}/sync`, { method: "POST" });
 
-        const delivered = await settle(async () => {
-            const t = await feedTitles(bobRoot, HOST_C);
-            return t.includes("honest-post") && t.includes("doomed-post") ? t : null;
-        });
-        assert.ok(delivered, "both posts crossed into the follower's journal before the strike");
+        await beat(undefined, "fold", root);
+        await beat(undefined, "demand-push", root);
+        await beat(HOST_C, "fold", root);
+        const delivered = await feedTitles(bobRoot, HOST_C);
+        assert.ok(
+            delivered.includes("honest-post") && delivered.includes("doomed-post"),
+            "both posts crossed into the follower's journal before the strike"
+        );
+        await beat(undefined, "fold", root);
         assert.deepEqual(
-            await settle(async () => {
-                const t = await feedTitles(root);
-                return t.length >= 2 ? t : null;
-            }),
+            await feedTitles(root),
             ["doomed-post", "honest-post"],
             "and into Alice's own feed at home"
         );
@@ -413,30 +412,24 @@ const listIds = async (fetch, root) =>
         });
 
         // Alice's own node first: eviction refolds the views, and the retraction must sweep
-        // the journal on the same edge.
-        // Wait for the SETTLED state, not merely for the doomed title to be absent. Eviction
-        // clears the document views whole-table and lets the watermarks refold them, so there
-        // is a window where this query legitimately returns nothing at all - and `[]` is
-        // truthy in JS, so a callback that returns `t` the moment "doomed" is missing latches
-        // onto that window and reports an empty feed as the final answer. That window is
-        // shorter than one 250ms poll on a fast machine and reliably sampled on a slow one,
-        // which is precisely how this passed locally and failed twice on the CI runner.
+        // the journal on the same edge. The fold beat runs that whole edge to completion,
+        // which also retires this test's ugliest era: the settle here used to have to
+        // dodge a mid-refold window where the views were legitimately empty (the [] latch
+        // that passed locally and failed twice on CI).
+        await beat(undefined, "fold", root);
+        await beat(undefined, "journal-fill");
         assert.deepEqual(
-            await settle(async () => {
-                const t = await feedTitles(root);
-                return !t.includes("doomed-post") && t.includes("honest-post") ? t : null;
-            }),
+            await feedTitles(root),
             ["honest-post"],
-            "the disowned post left Alice's own feed; the honest one stands (null here means \
-the honest post never came back, which is the collateral-damage bug, not the poll race)"
+            "the disowned post left Alice's own feed; the honest one stands"
         );
 
         // Then the follower's node, which hears by push (Bob asked A once; A remembers).
+        await beat(undefined, "fold", root);
+        await beat(undefined, "demand-push", root);
+        await beat(HOST_C, "fold", root);
         assert.deepEqual(
-            await settle(async () => {
-                const t = await feedTitles(bobRoot, HOST_C);
-                return !t.includes("doomed-post") && t.includes("honest-post") ? t : null;
-            }),
+            await feedTitles(bobRoot, HOST_C),
             ["honest-post"],
             "the follower's journal retracted it too - a delivery memo cannot launder disproven content"
         );
@@ -445,10 +438,9 @@ the honest post never came back, which is the collateral-damage bug, not the pol
         // is gone AND the document under it is gone, on a node Alice never touched directly.
         const body = await bob(`id/${root}/docs/${doomedPost}/body`);
         assert.equal(body.status, 404, "the disproven document does not serve");
-        const honestStill = await settle(async () => {
-            const t = await feedTitles(bobRoot, HOST_C);
-            return t.includes("honest-post") ? true : null;
-        });
-        assert.ok(honestStill, "and the honest post was never collateral");
+        assert.ok(
+            (await feedTitles(bobRoot, HOST_C)).includes("honest-post"),
+            "and the honest post was never collateral"
+        );
     });
 });

@@ -11,8 +11,8 @@
 const assert = require("node:assert");
 const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(120);
 
 const adopt = async (haver, joiner, root) => {
     const request = await (await joiner("api/identity/adopt/begin", { method: "POST" })).json();
@@ -42,23 +42,34 @@ const adopt = async (haver, joiner, root) => {
 
         // A and C shared no ceremony; the derive sweep must teach each about the other,
         // and bind the rows to leaves (the serving record names the leaf that signed it).
-        const meshed = await settle(async () => {
+        // Two rung rounds of the derive pass on every node: round one teaches each node
+        // its ceremony partner's records, round two closes the triangle (A learns C
+        // through B's rows, and C learns A) - the sweep's own convergence, sequenced.
+        for (let round = 0; round < 2; round++) {
+            // The records cross by ordinary sync; each node then derives from what landed.
+            await beat(undefined, "eager-push", root);
+            await beat(HOST_B, "eager-push", root);
+            await beat(HOST_C, "eager-push", root);
+            for (const node of [a, b, c]) {
+                const rung = await node("test/derive", { method: "POST" });
+                assert.equal(rung.status, 200, "the derive pass rings on demand");
+            }
+        }
+        {
             const { rows } = await sql(
                 `SELECT COUNT(*) AS n FROM identity_peers
                  WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL`
             );
-            return rows[0].n >= 2 ? true : null;
-        });
-        assert.ok(meshed, "A learned both siblings, leaf-bound, without meeting C");
-        const cAlso = await settle(async () => {
+            assert.ok(rows[0].n >= 2, "A learned both siblings, leaf-bound, without meeting C");
+        }
+        {
             const { rows } = await sql(
                 `SELECT COUNT(*) AS n FROM identity_peers
                  WHERE root_pubkey = '${root}' AND leaf_pubkey IS NOT NULL`,
                 HOST_C
             );
-            return rows[0].n >= 2 ? true : null;
-        });
-        assert.ok(cAlso, "and C learned A the same way");
+            assert.ok(rows[0].n >= 2, "and C learned A the same way");
+        }
 
         // Revocation reaches routing: repudiate C's leaf from A; the derive sweep must drop
         // the row - before this existed, NOTHING removed a repudiated device's row and the
@@ -87,13 +98,16 @@ const adopt = async (haver, joiner, root) => {
         // out (or globally shortening, which races other strike tests) the real cadence.
         const derived = await a("test/derive", { method: "POST" });
         assert.equal(derived.status, 200, "the derive pass can be rung on demand");
-        const pruned = await settle(async () => {
+        {
             const { rows } = await sql(
                 `SELECT 1 FROM identity_peers
                  WHERE root_pubkey = '${root}' AND leaf_pubkey = '${cLeaf}'`
             );
-            return rows.length === 0 ? true : null;
-        });
-        assert.ok(pruned, "the repudiated device left A's dial list on the next derive");
+            assert.equal(
+                rows.length,
+                0,
+                "the repudiated device left A's dial list on the rung derive"
+            );
+        }
     });
 });

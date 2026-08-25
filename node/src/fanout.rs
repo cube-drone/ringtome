@@ -1228,6 +1228,19 @@ pub async fn excise_unfollowed(
 /// The persona's own devices are excluded: the eager loop already keeps them current on its
 /// own debounce, and dialing them twice buys nothing but a no-op exchange.
 async fn push_to_askers(state: &AppState, root_hex: &str) {
+    let state = state.clone();
+    let root = root_hex.to_string();
+    // Detached: no fold should wait on a network round trip it only benefits from. The
+    // awaited body stands alone so the test beat ("demand-push") can run the same push to
+    // completion - a rung push a test then asserts on cannot be a spawn.
+    tokio::spawn(async move {
+        push_to_askers_now(&state, &root).await;
+    });
+}
+
+/// The push itself, awaited: dial every asker (demand ledger, devices excluded) with this
+/// persona's chains. See `push_to_askers` for why the fold hook wraps this in a spawn.
+pub(crate) async fn push_to_askers_now(state: &AppState, root_hex: &str) {
     let askers = match crate::net::demand::askers_of(&state.node_db, root_hex, PUSH_DIAL_CAP).await
     {
         Ok(a) => a,
@@ -1245,18 +1258,14 @@ async fn push_to_askers(state: &AppState, root_hex: &str) {
     if targets.is_empty() {
         return;
     }
-    let state = state.clone();
-    let root = root_hex.to_string();
-    tokio::spawn(async move {
-        match crate::net::sync::sync_peers(&state, &root, &targets).await {
-            Ok(results) => {
-                let reached = results.iter().filter(|r| r.ok).count();
-                tracing::info!(root = %root, reached, of = results.len(),
-                    "pushed a public move to the nodes that asked");
-            }
-            Err(e) => tracing::debug!(root = %root, error = ?e, "fanout push failed"),
+    match crate::net::sync::sync_peers(state, root_hex, &targets).await {
+        Ok(results) => {
+            let reached = results.iter().filter(|r| r.ok).count();
+            tracing::info!(root = %root_hex, reached, of = results.len(),
+                "pushed a public move to the nodes that asked");
         }
-    });
+        Err(e) => tracing::debug!(root = %root_hex, error = ?e, "fanout push failed"),
+    }
 }
 
 /// One row of a reader's feed, as the journal holds it.

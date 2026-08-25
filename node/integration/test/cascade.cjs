@@ -40,6 +40,7 @@ dns.setDefaultResultOrder("ipv4first");
 const { sql, HOST, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 const { unplug, plugIn } = require("./unplug.cjs");
+const { beat, pullAndFold } = require("./beat.cjs");
 
 const settle = require("./helpers.cjs").settleWith(240);
 
@@ -164,11 +165,9 @@ async function setLane(mode) {
         assert.equal(published.status, 200, pubBody);
         const post = JSON.parse(pubBody).post_id;
 
+        await pullAndFold(HOST_B, aliceRoot);
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(bobRoot, HOST_B);
-                return rows.some((r) => r.doc_id === post) ? true : null;
-            }),
+            (await feedOf(bobRoot, HOST_B)).some((r) => r.doc_id === post),
             `seed(${title}): the post reached Bob`
         );
         const bobShared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
@@ -177,18 +176,19 @@ async function setLane(mode) {
         });
         assert.equal(bobShared.status, 200, await bobShared.text());
 
+        await pullAndFold(HOST_C, bobRoot);
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(cleoRoot, HOST_C);
-                return rows.some((r) => r.doc_id === post && r.via_root === bobRoot) ? true : null;
-            }),
+            (await feedOf(cleoRoot, HOST_C)).some(
+                (r) => r.doc_id === post && r.via_root === bobRoot
+            ),
             `seed(${title}): Bob's share reached Cleo as a fragment`
         );
+        await beat(HOST_C, "fragment-sweep", aliceRoot);
+        await beat(HOST_C, "body-heal", aliceRoot);
+        await beat(HOST_C, "bodies-sweep");
+        const cleoWords = await servedBody(aliceRoot, post, HOST_C);
         assert.ok(
-            await settle(async () => {
-                const body = await servedBody(aliceRoot, post, HOST_C);
-                return body && body.includes(title) ? true : null;
-            }),
+            cleoWords && cleoWords.includes(title),
             `seed(${title}): Cleo's own node serves the words to her browser`
         );
         return { post, draft: made.doc_id, version: made.version };
@@ -202,18 +202,19 @@ async function setLane(mode) {
         });
         assert.equal(cleoShared.status, 200, await cleoShared.text());
 
+        await pullAndFold(HOST_E, cleoRoot);
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(danaRoot, HOST_E);
-                return rows.some((r) => r.doc_id === post && r.via_root === cleoRoot) ? true : null;
-            }),
+            (await feedOf(danaRoot, HOST_E)).some(
+                (r) => r.doc_id === post && r.via_root === cleoRoot
+            ),
             `seed(${label}): Cleo's share reached Dana - the fourth hop`
         );
+        await beat(HOST_E, "fragment-sweep", aliceRoot);
+        await beat(HOST_E, "body-heal", aliceRoot);
+        await beat(HOST_E, "bodies-sweep");
+        const danaWords = await servedBody(aliceRoot, post, HOST_E);
         assert.ok(
-            await settle(async () => {
-                const body = await servedBody(aliceRoot, post, HOST_E);
-                return body && body.includes(label) ? true : null;
-            }),
+            danaWords && danaWords.includes(label),
             `seed(${label}): the end device serves the words - the pipeline reaches the screen`
         );
     }
@@ -243,6 +244,16 @@ async function setLane(mode) {
         return version;
     }
 
+    /// One deterministic round of the tree's whole propagation machinery, A through D:
+    /// Bob pulls the author's chain and folds, then each deeper hop revalidates NOW
+    /// (the beat forces due-ness). Safe with the author dark - the pull is a bounded
+    /// no-op and the sweeps walk their fallback ladders, which is the point.
+    async function ringTheTree() {
+        await pullAndFold(HOST_B, aliceRoot);
+        await beat(HOST_C, "fragment-sweep", aliceRoot);
+        await beat(HOST_E, "fragment-sweep", aliceRoot);
+    }
+
     /// The four shapes, shared verbatim between the two lanes: the asserted STATES are identical
     /// - what differs is who answered, and each lane's describe pins that in its own before().
     function scenarios(tag) {
@@ -250,19 +261,19 @@ async function setLane(mode) {
         const { post, draft, version } = await seed(`edit-once-${tag}`);
         await editAndRepublish(draft, version, `edit-once-${tag}, revised`);
 
-        const row = await settle(async () => {
-            const rows = await feedOf(danaRoot, HOST_E);
-            const r = rows.find((x) => x.doc_id === post);
-            return r && r.title.includes("revised") ? r : null;
-        });
-        assert.ok(row, "the revision travelled A->B by sync, B->C and C->D by revalidation");
+        await ringTheTree();
+        const row = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
+        assert.ok(
+            row && row.title.includes("revised"),
+            "the revision travelled A->B by sync, B->C and C->D by revalidation"
+        );
         assert.equal(row.author_root, aliceRoot, "still Alice's words");
         assert.equal(row.via_root, cleoRoot, "still bylined via Cleo");
+        await beat(HOST_E, "body-heal", aliceRoot);
+        await beat(HOST_E, "bodies-sweep");
+        const revised = await servedBody(aliceRoot, post, HOST_E);
         assert.ok(
-            await settle(async () => {
-                const body = await servedBody(aliceRoot, post, HOST_E);
-                return body && body.includes("revised") ? true : null;
-            }),
+            revised && revised.includes("revised"),
             "and the SERVED words at the end device are the revision, not a stale blob"
         );
     });
@@ -270,22 +281,20 @@ async function setLane(mode) {
     it(`edits stack: the fourth hop converges on the newest [${tag}]`, async () => {
         const { post, draft, version } = await seed(`edit-twice-${tag}`);
         const v2 = await editAndRepublish(draft, version, `edit-twice-${tag}, second thoughts`);
+        await ringTheTree();
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(danaRoot, HOST_E);
-                const r = rows.find((x) => x.doc_id === post);
-                return r && r.title.includes("second thoughts") ? true : null;
-            }),
+            (await feedOf(danaRoot, HOST_E)).find(
+                (x) => x.doc_id === post && x.title.includes("second thoughts")
+            ),
             "the first revision arrived before the second was made"
         );
         await editAndRepublish(draft, v2, `edit-twice-${tag}, final say`);
 
+        await ringTheTree();
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(danaRoot, HOST_E);
-                const r = rows.find((x) => x.doc_id === post);
-                return r && r.title.includes("final say") ? true : null;
-            }),
+            (await feedOf(danaRoot, HOST_E)).find(
+                (x) => x.doc_id === post && x.title.includes("final say")
+            ),
             "the fourth hop converges on the newest version, not whichever arrived"
         );
     });
@@ -298,7 +307,8 @@ async function setLane(mode) {
             method: "DELETE",
         });
         assert.equal(draftGone.status, 200, await draftGone.text());
-        await new Promise((r) => setTimeout(r, 4000));
+        // Ring the machinery that would wrongly carry it - stronger than any sleep.
+        await ringTheTree();
         assert.ok(
             (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
             "deleting the draft left the published post standing at hop four"
@@ -308,11 +318,9 @@ async function setLane(mode) {
         const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
         assert.equal(down.status, 200, await down.text());
 
+        await ringTheTree();
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(danaRoot, HOST_E);
-                return rows.some((r) => r.doc_id === post) ? null : true;
-            }),
+            !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
             "the takedown reached the fourth hop"
         );
         // The mechanism, not just the outcome: C dropped the words and kept the FACT, and that
@@ -344,22 +352,19 @@ async function setLane(mode) {
     it(`an edit followed by a delete lands as deleted, everywhere [${tag}]`, async () => {
         const { post, draft, version } = await seed(`edited-then-doomed-${tag}`);
         await editAndRepublish(draft, version, `edited-then-doomed-${tag}, revised`);
+        await ringTheTree();
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(danaRoot, HOST_E);
-                const r = rows.find((x) => x.doc_id === post);
-                return r && r.title.includes("revised") ? true : null;
-            }),
+            (await feedOf(danaRoot, HOST_E)).find(
+                (x) => x.doc_id === post && x.title.includes("revised")
+            ),
             "the edit landed at hop four first"
         );
 
         const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
         assert.equal(down.status, 200, await down.text());
+        await ringTheTree();
         assert.ok(
-            await settle(async () => {
-                const rows = await feedOf(danaRoot, HOST_E);
-                return rows.some((r) => r.doc_id === post) ? null : true;
-            }),
+            !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
             "and then the takedown overtook it"
         );
         assert.equal(
@@ -437,11 +442,11 @@ async function setLane(mode) {
             assert.equal(held.title, "dark-serve", "with the author's title intact");
             // And her BROWSER can read them, from her own node, with the author dark: the
             // whole point of holding a copy is that the screen shows it when nobody answers.
+            await beat(HOST_E, "body-heal", aliceRoot);
+            await beat(HOST_E, "bodies-sweep");
+            const darkWords = await servedBody(aliceRoot, post, HOST_E);
             assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(aliceRoot, post, HOST_E);
-                    return body && body.includes("dark-serve") ? true : null;
-                }),
+                darkWords && darkWords.includes("dark-serve"),
                 "the words are served to the end device while the author is unreachable"
             );
             assert.equal(
@@ -461,9 +466,13 @@ async function setLane(mode) {
             assert.ok(before, "precondition: Dana holds it");
 
             await unplug(HOST);
-            // Long enough for many rounds at both hops - the revalidation interval here is 500ms
-            // and the sweep beat 1.5s, so this is a dozen or more chances to get it wrong.
-            await new Promise((r) => setTimeout(r, 12000));
+            // Forced revalidation rounds at both hops: each beat provably asks, provably gets
+            // silence, and provably must not read it as a takedown - stronger than the wall
+            // clock ever was, because every chance to get it wrong is guaranteed to run.
+            for (let i = 0; i < 4; i++) {
+                await beat(HOST_C, "fragment-sweep", aliceRoot);
+                await beat(HOST_E, "fragment-sweep", aliceRoot);
+            }
 
             const after = (await fragmentsOf(aliceRoot, HOST_E)).find((r) => r.doc_id === post);
             assert.ok(after, "Dana still holds the fragment after the author stopped answering");
@@ -489,21 +498,23 @@ async function setLane(mode) {
             await unplug(HOST, { alpns: ["fragment"] });
             await editAndRepublish(draft, version, "dark-edit, revised");
 
+            await pullAndFold(HOST_B, aliceRoot);
+            await beat(HOST_C, "fragment-sweep", aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    const r = (await feedOf(cleoRoot, HOST_C)).find((x) => x.doc_id === post);
-                    return r && r.title.includes("revised") ? true : null;
-                }),
+                (await feedOf(cleoRoot, HOST_C)).find(
+                    (x) => x.doc_id === post && x.title.includes("revised")
+                ),
                 "the revision crossed A->B by chain sync and B->C by revalidation, not from Alice"
             );
 
             // Phase two: the author's node is gone entirely. The last hop is on its own.
             await unplug(HOST);
-            const row = await settle(async () => {
-                const r = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
-                return r && r.title.includes("revised") ? r : null;
-            });
-            assert.ok(row, "the revision reached the fourth hop with the author's node dark");
+            await beat(HOST_E, "fragment-sweep", aliceRoot);
+            const row = (await feedOf(danaRoot, HOST_E)).find((x) => x.doc_id === post);
+            assert.ok(
+                row && row.title.includes("revised"),
+                "the revision reached the fourth hop with the author's node dark"
+            );
             assert.equal(row.author_root, aliceRoot, "still Alice's words");
             assert.equal(row.via_root, cleoRoot, "still bylined via Cleo");
             assert.equal(
@@ -524,24 +535,18 @@ async function setLane(mode) {
             const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
             assert.equal(down.status, 200, await down.text());
 
+            await pullAndFold(HOST_B, aliceRoot);
+            await beat(HOST_C, "fragment-sweep", aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    const gone = !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post);
-                    const entombed = (await tombstonesOf(aliceRoot, HOST_C)).some(
-                        (r) => r.doc_id === post
-                    );
-                    return gone && entombed ? true : null;
-                }),
+                !(await feedOf(cleoRoot, HOST_C)).some((r) => r.doc_id === post) &&
+                    (await tombstonesOf(aliceRoot, HOST_C)).some((r) => r.doc_id === post),
                 "Cleo heard `Gone` from Bob, who holds the author's chain - and kept the fact"
             );
 
             await unplug(HOST);
+            await beat(HOST_E, "fragment-sweep", aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    return (await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post)
-                        ? null
-                        : true;
-                }),
+                !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post),
                 "the takedown reached the fourth hop with the author's node dark"
             );
             assert.equal(
@@ -596,14 +601,11 @@ async function setLane(mode) {
             const down = await alice(`api/identity/${aliceRoot}/posts/${post}`, { method: "DELETE" });
             assert.equal(down.status, 200, await down.text());
 
+            await pullAndFold(HOST_B, aliceRoot);
+            await beat(HOST_E, "fragment-sweep", aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    const gone = !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post);
-                    const entombed = (await tombstonesOf(aliceRoot, HOST_E)).some(
-                        (r) => r.doc_id === post
-                    );
-                    return gone && entombed ? true : null;
-                }),
+                !(await feedOf(danaRoot, HOST_E)).some((r) => r.doc_id === post) &&
+                    (await tombstonesOf(aliceRoot, HOST_E)).some((r) => r.doc_id === post),
                 "Dana heard the takedown and buried it"
             );
 
@@ -625,8 +627,12 @@ async function setLane(mode) {
             });
             assert.equal(again.status, 200, await again.text());
 
-            // Several sweeps' worth: the fold, the fetch and the journal each get many chances.
-            await new Promise((r) => setTimeout(r, 8000));
+            // Ring every road the corpse could ride back in: the share fold from Cleo's
+            // chain, the fragment machinery, and the journal fill - each provably ran, and
+            // each provably had to lose the argument with the tombstone.
+            await pullAndFold(HOST_E, cleoRoot);
+            await beat(HOST_E, "fragment-sweep", aliceRoot);
+            await beat(HOST_E, "journal-fill");
 
             // All three facts in one assertion, on purpose: they fail in different combinations
             // and the combination is the diagnosis. A fragment back WITHOUT the feed row means
@@ -696,13 +702,14 @@ async function setLane(mode) {
 
             // Bob holds Alice's chain, so his death log grows by the fold's mirror - the rows
             // Cleo's one ask will read.
-            assert.ok(
-                await settle(async () => {
-                    const rows = await tombstonesOf(aliceRoot, HOST_B);
-                    return seeded.every((p) => rows.some((r) => r.doc_id === p)) ? true : null;
-                }),
-                "Bob's log carries all three deaths, proofs attached"
-            );
+            await pullAndFold(HOST_B, aliceRoot);
+            {
+                const rows = await tombstonesOf(aliceRoot, HOST_B);
+                assert.ok(
+                    seeded.every((p) => rows.some((r) => r.doc_id === p)),
+                    "Bob's log carries all three deaths, proofs attached"
+                );
+            }
 
             await reapOn(HOST_C);
             const tombs = (await tombstonesOf(aliceRoot, HOST_C)).filter((r) =>
@@ -745,11 +752,9 @@ async function setLane(mode) {
             });
             assert.equal(down.status, 200, await down.text());
 
+            await pullAndFold(HOST_B, aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await tombstonesOf(aliceRoot, HOST_B);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }),
+                (await tombstonesOf(aliceRoot, HOST_B)).some((r) => r.doc_id === post),
                 "Bob's log carries the death"
             );
 
@@ -783,11 +788,9 @@ async function setLane(mode) {
                 method: "DELETE",
             });
             assert.equal(down.status, 200, await down.text());
+            await pullAndFold(HOST_B, aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await tombstonesOf(aliceRoot, HOST_B);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }),
+                (await tombstonesOf(aliceRoot, HOST_B)).some((r) => r.doc_id === post),
                 "Bob's log carries the death"
             );
             await unplug(HOST);
@@ -867,11 +870,9 @@ async function setLane(mode) {
 
             // 3. Bob shares; the post reaches Cleo as a fragment, words servable (the
             //    established claims), and the SERVED body names the public twin.
+            await pullAndFold(HOST_B, aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await feedOf(bobRoot, HOST_B);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }),
+                (await feedOf(bobRoot, HOST_B)).some((r) => r.doc_id === post),
                 "the post reached Bob"
             );
             const bobShared = await bob(`api/identity/${bobRoot}/rebroadcasts`, {
@@ -879,11 +880,15 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: aliceRoot, doc_id: post }),
             });
             assert.equal(bobShared.status, 200, await bobShared.text());
-            const served = await settle(async () => {
-                const body = await servedBody(aliceRoot, post, HOST_C);
-                return body && body.includes("/docs/") ? body : null;
-            });
-            assert.ok(served, "Cleo's node serves the shared post's words");
+            await pullAndFold(HOST_C, bobRoot);
+            await beat(HOST_C, "fragment-sweep", aliceRoot);
+            await beat(HOST_C, "body-heal", aliceRoot);
+            await beat(HOST_C, "bodies-sweep");
+            const served = await servedBody(aliceRoot, post, HOST_C);
+            assert.ok(
+                served && served.includes("/docs/"),
+                "Cleo's node serves the shared post's words"
+            );
             const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
             assert.ok(twin, `the served body names the baked twin: ${served}`);
             assert.notEqual(twin, post, "the twin is its own public document");
@@ -891,18 +896,16 @@ async function setLane(mode) {
             // 4. The implicit rebroadcast: the twin's FRAGMENT arrived with the post's, and
             //    the IMAGE BYTES serve from Cleo's own node - the reader's renderer asks this
             //    exact URL.
+            await beat(HOST_C, "fragment-sweep", aliceRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await fragmentsOf(aliceRoot, HOST_C);
-                    return rows.some((r) => r.doc_id === twin) ? true : null;
-                }),
+                (await fragmentsOf(aliceRoot, HOST_C)).some((r) => r.doc_id === twin),
                 "the media twin rode the share as its own fragment"
             );
-            assert.ok(
-                await settle(async () => {
-                    const res = await makeFetch(HOST_C)(`id/${aliceRoot}/docs/${twin}/body`);
-                    return res.status === 200 ? true : null;
-                }),
+            await beat(HOST_C, "body-heal", aliceRoot);
+            await beat(HOST_C, "bodies-sweep");
+            assert.equal(
+                (await makeFetch(HOST_C)(`id/${aliceRoot}/docs/${twin}/body`)).status,
+                200,
                 "and the image bytes serve from Cleo's node, to Cleo's browser"
             );
 
@@ -913,11 +916,13 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: aliceRoot, doc_id: post }),
             });
             assert.equal(onward.status, 200, await onward.text());
-            assert.ok(
-                await settle(async () => {
-                    const res = await makeFetch(HOST_E)(`id/${aliceRoot}/docs/${twin}/body`);
-                    return res.status === 200 ? true : null;
-                }),
+            await pullAndFold(HOST_E, cleoRoot);
+            await beat(HOST_E, "fragment-sweep", aliceRoot);
+            await beat(HOST_E, "body-heal", aliceRoot);
+            await beat(HOST_E, "bodies-sweep");
+            assert.equal(
+                (await makeFetch(HOST_E)(`id/${aliceRoot}/docs/${twin}/body`)).status,
+                200,
                 "the image serves at the deepest hop"
             );
 
@@ -945,14 +950,13 @@ async function setLane(mode) {
                 method: "DELETE",
             });
             assert.equal(down.status, 200, await down.text());
+            await pullAndFold(HOST_B, aliceRoot);
+            await beat(HOST_C, "fragment-sweep", aliceRoot);
+            await beat(HOST_E, "fragment-sweep", aliceRoot);
             for (const [who, host] of [["Cleo", HOST_C], ["Dana", HOST_E]]) {
+                const rows = await fragmentsOf(aliceRoot, host);
                 assert.ok(
-                    await settle(async () => {
-                        const rows = await fragmentsOf(aliceRoot, host);
-                        const postGone = !rows.some((r) => r.doc_id === post);
-                        const twinGone = !rows.some((r) => r.doc_id === twin);
-                        return postGone && twinGone ? true : null;
-                    }),
+                    !rows.some((r) => r.doc_id === post) && !rows.some((r) => r.doc_id === twin),
                     `${who} dropped the post AND the image it alone justified`
                 );
             }
@@ -1171,12 +1175,11 @@ async function setLane(mode) {
             assert.equal(pub.status, 200, pubText);
             const post = JSON.parse(pubText).post_id;
 
+            await pullAndFold(HOST_B, allyRoot);
+            await pullAndFold(HOST_C, allyRoot);
             for (const [who, root, host] of [["Bo", boRoot, HOST_B], ["Sam", samRoot, HOST_C]]) {
                 assert.ok(
-                    await settle(async () => {
-                        const rows = await feedOf(root, host);
-                        return rows.some((r) => r.doc_id === post) ? true : null;
-                    }),
+                    (await feedOf(root, host)).some((r) => r.doc_id === post),
                     `seedDual(${title}): the post reached ${who}'s chain copy`
                 );
             }
@@ -1186,11 +1189,9 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: allyRoot, doc_id: post }),
             });
             assert.equal(boShared.status, 200, await boShared.text());
+            await pullAndFold(HOST_E, boRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await fragmentsOf(allyRoot, HOST_E);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }),
+                (await fragmentsOf(allyRoot, HOST_E)).some((r) => r.doc_id === post),
                 `seedDual(${title}): Rae holds the fragment via Bo`
             );
 
@@ -1199,17 +1200,18 @@ async function setLane(mode) {
                 body: JSON.stringify({ author: allyRoot, doc_id: post }),
             });
             assert.equal(samShared.status, 200, await samShared.text());
-            assert.ok(
-                await settle(async () => {
-                    const { rows } = await sql(
-                        `SELECT via_root FROM feed_shares WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
-                        HOST_E
-                    );
-                    const vias = rows.map((r) => r.via_root);
-                    return vias.includes(boRoot) && vias.includes(samRoot) ? true : null;
-                }),
-                `seedDual(${title}): the ledger knows both sharers`
-            );
+            await pullAndFold(HOST_E, samRoot);
+            {
+                const { rows } = await sql(
+                    `SELECT via_root FROM feed_shares WHERE author_root = '${allyRoot}' AND doc_id = '${post}'`,
+                    HOST_E
+                );
+                const vias = rows.map((r) => r.via_root);
+                assert.ok(
+                    vias.includes(boRoot) && vias.includes(samRoot),
+                    `seedDual(${title}): the ledger knows both sharers`
+                );
+            }
 
             // THE PREMISE, pinned: one recorded origin (Bo, deterministically - he served
             // first), two known sharers.
@@ -1226,13 +1228,16 @@ async function setLane(mode) {
             const { post, draft, version } = await seedDual("anyorigin-edit");
             // Words settled at Rae first, so the edit assertion below is a CHANGE, not a first
             // arrival.
-            assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(allyRoot, post, HOST_E);
-                    return body && body.includes("anyorigin-edit") ? true : null;
-                }),
-                "precondition: the original words serve at Rae's node"
-            );
+            await beat(HOST_E, "fragment-sweep", allyRoot);
+            await beat(HOST_E, "body-heal", allyRoot);
+            await beat(HOST_E, "bodies-sweep");
+            {
+                const body = await servedBody(allyRoot, post, HOST_E);
+                assert.ok(
+                    body && body.includes("anyorigin-edit"),
+                    "precondition: the original words serve at Rae's node"
+                );
+            }
 
             // The choreography that forces the mechanism: the author's FRAGMENT door shuts
             // (her sync door stays open - Sam's chain copy must keep updating), the recorded
@@ -1256,21 +1261,27 @@ async function setLane(mode) {
             });
             assert.equal(rep.status, 200, await rep.text());
 
-            assert.ok(
-                await settle(async () => {
-                    const rows = await fragmentsOf(allyRoot, HOST_E);
-                    const r = rows.find((x) => x.doc_id === post);
-                    return r && r.title.includes("revised") ? true : null;
-                }),
-                "the revision reached Rae - only Sam could have carried it"
-            );
-            assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(allyRoot, post, HOST_E);
-                    return body && body.includes("revised") ? true : null;
-                }),
-                "and the revised WORDS serve - the blob walked the same fallback"
-            );
+            // Sam's chain copy learns v2 first - his door is the only one left standing.
+            await pullAndFold(HOST_C, allyRoot);
+            // Three forced rounds: one revalidation can mint a want the NEXT drain satisfies,
+            // so the ladder (author dark -> origin dark -> the other sharer) gets full walks.
+            for (let i = 0; i < 3; i++) {
+                await beat(HOST_E, "fragment-sweep", allyRoot);
+                await beat(HOST_E, "body-heal", allyRoot);
+                await beat(HOST_E, "bodies-sweep");
+            }
+            {
+                const r = (await fragmentsOf(allyRoot, HOST_E)).find((x) => x.doc_id === post);
+                assert.ok(
+                    r && r.title.includes("revised"),
+                    "the revision reached Rae - only Sam could have carried it"
+                );
+                const body = await servedBody(allyRoot, post, HOST_E);
+                assert.ok(
+                    body && body.includes("revised"),
+                    "and the revised WORDS serve - the blob walked the same fallback"
+                );
+            }
         });
 
         it("the words and the image arrive when the origin dies between header and body", async () => {
@@ -1281,18 +1292,24 @@ async function setLane(mode) {
             const { post } = await seedDual("anyorigin-bytes", { image: true });
             await unplug(HOST_B);
 
-            const served = await settle(async () => {
-                const body = await servedBody(allyRoot, post, HOST_E);
-                return body && body.includes("anyorigin-bytes") ? body : null;
-            });
-            assert.ok(served, "the post's words healed from the other sharer");
+            for (let i = 0; i < 3; i++) {
+                await beat(HOST_E, "fragment-sweep", allyRoot);
+                await beat(HOST_E, "body-heal", allyRoot);
+                await beat(HOST_E, "bodies-sweep");
+            }
+            const served = await servedBody(allyRoot, post, HOST_E);
+            assert.ok(
+                served && served.includes("anyorigin-bytes"),
+                "the post's words healed from the other sharer"
+            );
             const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
             assert.ok(twin, `the served body names the twin: ${served}`);
-            assert.ok(
-                await settle(async () => {
-                    const res = await makeFetch(HOST_E)(`id/${allyRoot}/docs/${twin}/body`);
-                    return res.status === 200 ? true : null;
-                }),
+            await beat(HOST_E, "fragment-sweep", allyRoot);
+            await beat(HOST_E, "body-heal", allyRoot);
+            await beat(HOST_E, "bodies-sweep");
+            assert.equal(
+                (await makeFetch(HOST_E)(`id/${allyRoot}/docs/${twin}/body`)).status,
+                200,
                 "and the image's bytes healed from the other sharer too"
             );
         });
@@ -1331,13 +1348,13 @@ async function setLane(mode) {
                 method: "POST",
             });
             assert.equal(rep2.status, 200, await rep2.text());
+            await pullAndFold(HOST_B, allyRoot);
+            await beat(HOST_E, "fragment-sweep", allyRoot); // fast lane: straight from the author
             for (const [who, root, host] of [["Bo", boRoot, HOST_B], ["Rae", raeRoot, HOST_E]]) {
                 assert.ok(
-                    await settle(async () => {
-                        const rows = await feedOf(root, host);
-                        const r = rows.find((x) => x.doc_id === post);
-                        return r && r.title === "rollback-two" ? true : null;
-                    }),
+                    (await feedOf(root, host)).find(
+                        (x) => x.doc_id === post && x.title === "rollback-two"
+                    ),
                     `v2 reached ${who}`
                 );
             }
@@ -1360,12 +1377,11 @@ async function setLane(mode) {
                 method: "POST",
             });
             assert.equal(rep3.status, 200, await rep3.text());
+            await beat(HOST_E, "fragment-sweep", allyRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await fragmentsOf(allyRoot, HOST_E);
-                    const r = rows.find((x) => x.doc_id === post);
-                    return r && r.title === "rollback-three" ? true : null;
-                }),
+                (await fragmentsOf(allyRoot, HOST_E)).find(
+                    (x) => x.doc_id === post && x.title === "rollback-three"
+                ),
                 "Rae reached v3 straight from the author"
             );
             // The staleness pin: Bo provably still believes v2.
@@ -1379,11 +1395,11 @@ async function setLane(mode) {
             // The author goes dark; the fossil answers every revalidation from here.
             await unplug(HOST, { alpns: ["fragment"] });
 
-            // The property: across many sweep beats of Bo serving v2, Rae's copy never goes
-            // backward. Sampled, not settled - the failure mode IS a transition, and one
-            // sighting of v2 is the defect demonstrated.
-            for (let i = 0; i < 12; i++) {
-                await new Promise((r) => setTimeout(r, 700));
+            // The property: across many revalidations against Bo serving v2, Rae's copy never
+            // goes backward. Each beat FORCES one - so every iteration is a guaranteed chance
+            // to get it wrong, and one sighting of v2 is the defect demonstrated.
+            for (let i = 0; i < 8; i++) {
+                await beat(HOST_E, "fragment-sweep", allyRoot);
                 const rows = await fragmentsOf(allyRoot, HOST_E);
                 const r = rows.find((x) => x.doc_id === post);
                 assert.ok(r, "the fragment stands throughout");
@@ -1398,20 +1414,26 @@ async function setLane(mode) {
 
         it("every source dark is silence, not loss - and not overreach", async () => {
             const { post } = await seedDual("anyorigin-silence");
-            assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(allyRoot, post, HOST_E);
-                    return body && body.includes("anyorigin-silence") ? true : null;
-                }),
-                "precondition: fully arrived before the world goes dark"
-            );
+            await beat(HOST_E, "fragment-sweep", allyRoot);
+            await beat(HOST_E, "body-heal", allyRoot);
+            await beat(HOST_E, "bodies-sweep");
+            {
+                const body = await servedBody(allyRoot, post, HOST_E);
+                assert.ok(
+                    body && body.includes("anyorigin-silence"),
+                    "precondition: fully arrived before the world goes dark"
+                );
+            }
             const before = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
 
             await unplug(HOST, { alpns: ["fragment"] });
             await unplug(HOST_B);
             await unplug(HOST_C);
-            // Many sweep beats: every candidate the fallback walk could try refuses.
-            await new Promise((r) => setTimeout(r, 8000));
+            // Forced beats: every candidate the fallback walk could try provably refuses,
+            // every round, and exhaustion must still not be news.
+            for (let i = 0; i < 4; i++) {
+                await beat(HOST_E, "fragment-sweep", allyRoot);
+            }
 
             const after = (await fragmentsOf(allyRoot, HOST_E)).find((r) => r.doc_id === post);
             assert.ok(after, "the fragment stands");
@@ -1477,16 +1499,17 @@ async function setLane(mode) {
                 body: JSON.stringify({ code: request.code }),
             });
             assert.equal(granted.status, 200, await granted.text());
-            assert.ok(
-                await settle(async () => {
-                    const { rows } = await sql(
-                        `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${sharerRoot}' AND rebroadcast IS NOT NULL`,
-                        HOST_E
-                    );
-                    return rows.length ? true : null;
-                }),
-                "the sibling learned the rebroadcast-follow from the synced ledger"
-            );
+            await pullAndFold(HOST_E, coraRoot);
+            {
+                const { rows } = await sql(
+                    `SELECT 1 AS ok FROM subscriptions WHERE local_root = '${coraRoot}' AND foreign_root = '${sharerRoot}' AND rebroadcast IS NOT NULL`,
+                    HOST_E
+                );
+                assert.ok(
+                    rows.length,
+                    "the sibling learned the rebroadcast-follow from the synced ledger"
+                );
+            }
         });
 
         afterEach(async () => {
@@ -1516,11 +1539,9 @@ async function setLane(mode) {
             assert.equal(pub.status, 200, pubText);
             const post = JSON.parse(pubText).post_id;
 
+            await pullAndFold(HOST_B, authorRoot);
             assert.ok(
-                await settle(async () => {
-                    const rows = await feedOf(sharerRoot, HOST_B);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }),
+                (await feedOf(sharerRoot, HOST_B)).some((r) => r.doc_id === post),
                 "the post reached the sharer"
             );
             const shared = await sharer(`api/identity/${sharerRoot}/rebroadcasts`, {
@@ -1530,13 +1551,17 @@ async function setLane(mode) {
             assert.equal(shared.status, 200, await shared.text());
 
             // The last stop loads up: charlie holds the row, the fragment, the words.
-            assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(authorRoot, post, HOST_C);
-                    return body && body.includes("laststop") ? true : null;
-                }),
-                "the awake node holds and serves the share"
-            );
+            await pullAndFold(HOST_C, sharerRoot);
+            await beat(HOST_C, "fragment-sweep", authorRoot);
+            await beat(HOST_C, "body-heal", authorRoot);
+            await beat(HOST_C, "bodies-sweep");
+            {
+                const body = await servedBody(authorRoot, post, HOST_C);
+                assert.ok(
+                    body && body.includes("laststop"),
+                    "the awake node holds and serves the share"
+                );
+            }
 
             // The rest of the world leaves, forever.
             await unplug(HOST);
@@ -1548,20 +1573,26 @@ async function setLane(mode) {
             // THE PROPERTY: the share reaches the sibling - feed row, fragment, served
             // words - with charlie the only live source. Today every candidate list points
             // at the departed, and this settle times out.
+            // The wake, rung by hand: the sibling pulls the followed sharer's chain (the
+            // candidate walk is where the cohort lane earns its keep - everyone else is
+            // gone), folds, and heals the fragment and the bytes from the same cohort.
+            await pullAndFold(HOST_E, sharerRoot);
+            for (let i = 0; i < 3; i++) {
+                await beat(HOST_E, "fragment-sweep", authorRoot);
+                await beat(HOST_E, "body-heal", authorRoot);
+                await beat(HOST_E, "bodies-sweep");
+            }
             assert.ok(
-                await settle(async () => {
-                    const rows = await feedOf(coraRoot, HOST_E);
-                    return rows.some((r) => r.doc_id === post) ? true : null;
-                }, 160),
+                (await feedOf(coraRoot, HOST_E)).some((r) => r.doc_id === post),
                 "the share's feed row reached the waking sibling"
             );
-            assert.ok(
-                await settle(async () => {
-                    const body = await servedBody(authorRoot, post, HOST_E);
-                    return body && body.includes("laststop") ? true : null;
-                }, 80),
-                "and the sibling serves the words its cohort preserved"
-            );
+            {
+                const body = await servedBody(authorRoot, post, HOST_E);
+                assert.ok(
+                    body && body.includes("laststop"),
+                    "and the sibling serves the words its cohort preserved"
+                );
+            }
         });
     });
 

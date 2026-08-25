@@ -132,12 +132,39 @@ pub enum Minting {
 /// pattern), and the removal half is the stamp sweep below, never a list. Rows for contacts
 /// whose last dial went back to nothing are deleted, because a subscription nobody holds
 /// must not keep routing.
+/// Per-root serialization for [`refresh`]. The write-nudged sweep, the backstop tick and the
+/// test beat can all name the same root within a millisecond of a dial turning, and two
+/// refreshes folding the same private-register watermarks CONCURRENTLY can interleave into a
+/// stale ledger read: one fold advances the watermark while the other's register read lands
+/// between the advance and the view write, and the second refresh mints from a contacts set
+/// that is missing the entry the nudge was for. Caught 2026-08-24 by the settle-switchover's
+/// rung mint beat (inbox.cjs, ~1ms behind the dial's own nudge): the beat's sweep minted
+/// nothing, the nudged one minted 3ms after the beat returned, and the knock the test was
+/// sequencing on had not happened when it asserted. Self-healing in the free-running loops
+/// (the next nudge or tick re-reads), which is why it hid for as long as folds were only
+/// ever raced by other folds on a schedule. Serializing per root makes any caller's refresh
+/// read-your-writes for every write that committed before it was called.
+fn refresh_gate(root_hex: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    static GATES: std::sync::Mutex<
+        Option<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+    > = std::sync::Mutex::new(None);
+    GATES
+        .lock()
+        .expect("refresh gates poisoned")
+        .get_or_insert_with(Default::default)
+        .entry(root_hex.to_string())
+        .or_default()
+        .clone()
+}
+
 pub async fn refresh(
     state: &AppState,
     root_hex: &str,
     account_id: &uuid::Uuid,
     minting: Minting,
 ) -> Result<()> {
+    let gate = refresh_gate(root_hex);
+    let _held = gate.lock().await;
     let store = crate::record::store::open(state, account_id, root_hex)
         .await
         .map_err(|e| anyhow::anyhow!("opening {root_hex} to read its ledger: {e}"))?;

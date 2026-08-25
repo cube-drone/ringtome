@@ -6720,3 +6720,37 @@ flake family's residue now lives in one place: `frontier::refresh`'s moved verdi
 concurrent exchanges, where the true-getter fires the hooks and every racer gets a silent
 false. Verdicts now log with caller attribution; one more narrated window names the winner
 whose hooks didn't cover the entry.
+
+## 2026-08-25 (cont. 3): the settle era ends - 133 waits become rung beats
+
+The switchover the flake war argued for: `/test/beat` rings any background pass NOW and
+returns when it has completed, and the whole integration suite now sequences act -> ring ->
+assert instead of racing timers under load. 133 propagation settles across 15 files became
+explicit hops; seven remain, each because the WAIT is the property (two transcode jobs, the
+iroh-blobs GC whose schedule is the library's, the edit-window freeze, frontiers'
+stale-while-revalidate trigger, the demand-record serve-side write, and the cross-device
+memo test that exists to prove the post-ingest hook fires unprompted). Blind sleeps died
+with them - cascade's rollback sampling is now eight FORCED revalidations, every iteration a
+guaranteed chance to get it wrong. The suite runs in 2 minutes, green, exit 0.
+
+The beat vocabulary earned by four adjudication runs: `pull` (the fetch ladder, widened with
+the cohort rung the way spawn_revalidate widens it), `fold` (the whole post-arrival hook
+chain, unconditional), `eager-push` (FORCED - the loop's debounce reads "nothing new" as
+quiet and a rung beat cannot afford that), `demand-push` (push_to_askers awaited - the fold
+spawns it detached), `mint` (the delivered path's whole sending half: memo, statement,
+knock, awaited end to end), `outbox`, `body-heal` (the eager body heal awaited - intake
+spawns it detached, and no count of forced sweeps could deterministically land a fragment's
+bytes), `fragment-sweep`/`bodies-sweep` (due-ness forced first: stamps zeroed, then swept),
+`journal-fill`, `follow-refresh`, `speculative-acquire` (attempt stamps cleared first),
+`evict`.
+
+The catch of the day rode run 3: a rung mint one millisecond behind a dial's own write
+nudge minted NOTHING - its contacts read missed the just-committed entry - while the
+nudged sweep minted it three milliseconds after the beat returned. Two concurrent refreshes
+folding the same private-register watermarks can interleave into a stale ledger read: the
+same stale-fold-read family the verdict-race dig has been circling, caught red-handed on
+the sending side and self-healing in the free-running loops, which is why it hid.
+`subscriptions::refresh` now serializes per root, which makes any caller's refresh
+read-your-writes for every write that committed before the call. publish.cjs's "dated"
+test also fell to the faster suite (a profile read racing the publish's fold - a latent
+flake that predates the switchover) and now folds first.

@@ -30,8 +30,20 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat, pullAndFold } = require("./beat.cjs");
 
-const settle = require("./helpers.cjs").settleWith(240);
+// One reader-side arrival round on charlie: fold the sharer's chain move, then
+// drain any want a failed first ask minted (the fold's own recovery rung).
+const arriveOnC = async (sharerRoot, authorRoot) => {
+    await pullAndFold(HOST_C, sharerRoot);
+    await beat(HOST_C, "fragment-sweep", authorRoot);
+    // Second round: the pull's own arrival hooks run detached and can interleave with
+    // the rung fold (the stale-fold-read family) - a round that starts after the first
+    // completed reads what both committed.
+    await beat(HOST_C, "fold", sharerRoot);
+    await beat(HOST_C, "fragment-sweep", authorRoot);
+};
+
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -118,35 +130,35 @@ const unshare = (fetcher, mine, author, docId) =>
         assert.equal(published.status, 200, body);
         const post = JSON.parse(body).post_id;
 
+        // Beat-driven (2026-08-25, the settle switchover): the sharers' node pulls ava's
+        // chain and folds ONCE - all three live there - then each feed is asserted plainly.
+        await pullAndFold(HOST_B, avaRoot);
         for (const [label, who, root] of [
             ["sam", sam, samRoot],
             ["sid", sid, sidRoot],
             ["sky", sky, skyRoot],
         ]) {
+            const { items } = await (await who(`api/identity/${root}/feed`)).json();
             assert.ok(
-                await settle(async () => {
-                    const { items } = await (await who(`api/identity/${root}/feed`)).json();
-                    return (items || []).some((i) => i.doc_id === post) ? true : null;
-                }),
+                (items || []).some((i) => i.doc_id === post),
                 `seed(${title}): the post reached ${label}, who follows ava`
             );
         }
 
         assert.equal((await share(sam, samRoot, avaRoot, post)).status, 200);
+        await arriveOnC(samRoot, avaRoot);
+        const first = await feedRow(rex, rexRoot, post);
         assert.ok(
-            await settle(async () => {
-                const r = await feedRow(rex, rexRoot, post);
-                return r && r.via === samRoot ? r : null;
-            }),
+            first && first.via === samRoot,
             `seed(${title}): sam's share reached rex, who has never heard of ava`
         );
         assert.equal((await share(sid, sidRoot, avaRoot, post)).status, 200);
         assert.equal((await share(sky, skyRoot, avaRoot, post)).status, 200);
+        await arriveOnC(sidRoot, avaRoot);
+        await arriveOnC(skyRoot, avaRoot);
+        const crowd = await feedRow(rex, rexRoot, post);
         assert.ok(
-            await settle(async () => {
-                const r = await feedRow(rex, rexRoot, post);
-                return r && r.via_count === 3 ? r : null;
-            }),
+            crowd && crowd.via_count === 3,
             `seed(${title}): all three shares reached rex`
         );
         return post;
@@ -182,11 +194,9 @@ const unshare = (fetcher, mine, author, docId) =>
         const post = await seedThreeShares("introducer-leaves");
         assert.equal((await unshare(sam, samRoot, avaRoot, post)).status, 200);
 
-        const row = await settle(async () => {
-            const r = await feedRow(rex, rexRoot, post);
-            return r && r.via === sidRoot ? r : null;
-        });
-        assert.ok(row, "the lead moved to the earliest sharer still standing behind it");
+        await arriveOnC(samRoot, avaRoot); // sam's chain moved: the retraction
+        const row = await feedRow(rex, rexRoot, post);
+        assert.ok(row && row.via === sidRoot, "the lead moved to the earliest sharer still standing behind it");
         assert.equal(row.via_count, 2, "and the crowd is the two who remain");
         assert.deepEqual(
             (row.via_others || []).map((o) => o.root),
@@ -199,10 +209,9 @@ const unshare = (fetcher, mine, author, docId) =>
         // the alternative rule - "whoever brought it, ever" - is what the journal's own column does
         // and is exactly the claim this test says a byline must not make.
         assert.equal((await share(sam, samRoot, avaRoot, post)).status, 200);
-        const back = await settle(async () => {
-            const r = await feedRow(rex, rexRoot, post);
-            return r && r.via_count === 3 ? r : null;
-        });
+        await arriveOnC(samRoot, avaRoot);
+        const back = await feedRow(rex, rexRoot, post);
+        assert.equal(back.via_count, 3, "sam's re-share rejoined the crowd");
         assert.equal(back.via, sidRoot, "sid has stood behind it longest, so sid still leads");
         assert.deepEqual(
             (back.via_others || []).map((o) => o.root),
@@ -218,11 +227,9 @@ const unshare = (fetcher, mine, author, docId) =>
         const post = await seedThreeShares("unfollowed-sharer");
         await dial(rex, rexRoot, skyRoot, "interest_rebroadcasts", "none");
         try {
-            const row = await settle(async () => {
-                const r = await feedRow(rex, rexRoot, post);
-                return r && r.via_count === 2 ? r : null;
-            });
-            assert.ok(row, "the count follows the reader's own dials");
+            await beat(HOST_C, "fold", rexRoot); // the reader's own memo, refolded
+            const row = await feedRow(rex, rexRoot, post);
+            assert.ok(row && row.via_count === 2, "the count follows the reader's own dials");
             assert.deepEqual(
                 (row.via_others || []).map((o) => o.root),
                 [sidRoot],
@@ -240,11 +247,10 @@ const unshare = (fetcher, mine, author, docId) =>
         assert.equal((await unshare(sid, sidRoot, avaRoot, post)).status, 200);
         assert.equal((await unshare(sky, skyRoot, avaRoot, post)).status, 200);
 
-        const row = await settle(async () => {
-            const r = await feedRow(rex, rexRoot, post);
-            return r && r.via_count === undefined ? r : null;
-        });
-        assert.ok(row, "back to one sharer, and back to saying nothing about a crowd");
+        await arriveOnC(sidRoot, avaRoot);
+        await arriveOnC(skyRoot, avaRoot);
+        const row = await feedRow(rex, rexRoot, post);
+        assert.ok(row && row.via_count === undefined, "back to one sharer, and back to saying nothing about a crowd");
         assert.deepEqual(row.via_others || [], [], "nobody else is named");
         assert.equal(row.via, samRoot, "sam introduced it and sam is still sharing it");
         assert.equal(row.title, "down-to-one", "the words are untouched throughout");

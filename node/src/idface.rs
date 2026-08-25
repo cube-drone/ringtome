@@ -438,7 +438,7 @@ pub struct IdQuery {
 /// discarded - or a bare endpoint id, the original transport-layer form. Leaves are tried as
 /// leaves first; a key that resolves no serving record falls back to being dialed as an
 /// endpoint. The resolve-a-bare-root announce backstop remains NEXT_STEPS.
-async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool {
+pub(crate) async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool {
     // Detach, never cancel (2026-08-24, closing REFACTOR's visit-ladder entry): the old
     // shape aborted the also-rans on first success (JoinSet::abort_all) and cancelled each
     // exchange at its 8s deadline (timeout around the future), and every one of those

@@ -13,6 +13,7 @@
 const assert = require("node:assert");
 const { sql } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
 // The loop's cadence is 30s, but it is NUDGED by every local write, so a pass follows a write
 // within a moment. Poll rather than sleep a fixed time.
@@ -40,11 +41,9 @@ before(async () => {
 
 describe("the public frontier map", () => {
     it("learns a persona without being asked", async () => {
-        const rows = await settle(async () => {
-            const r = await frontiers(root);
-            return r.length ? r : null;
-        });
-        assert.ok(rows, "the sweep found the new persona on its own");
+        await beat(undefined, "fold", root);
+        const rows = await frontiers(root);
+        assert.ok(rows.length, "the frontier refresh found the new persona");
         // A brand-new persona has written its key tree (IDENTITY_PUBLIC = 0) and its profile
         // registers; every row is a PUBLIC service.
         for (const r of rows) {
@@ -103,14 +102,15 @@ describe("the public frontier map", () => {
         });
         assert.equal(pub.status, 200, await pub.text());
 
-        const after = await settle(async () => {
-            const rows = await frontiers(root);
-            const posts = rows.find((r) => r.service === 3);
-            if (!posts) return null;
-            if (postsBefore && posts.fp === postsBefore.fp) return null;
-            return rows;
-        });
-        assert.ok(after, "the POSTS fingerprint moved after a publication");
+        await beat(undefined, "fold", root);
+        const after = await frontiers(root);
+        {
+            const posts = after.find((r) => r.service === 3);
+            assert.ok(
+                posts && !(postsBefore && posts.fp === postsBefore.fp),
+                "the POSTS fingerprint moved after a publication"
+            );
+        }
         const posts = after.find((r) => r.service === 3);
         assert.equal(posts.chains, 1, "one computer has written this persona's posts");
 
@@ -179,27 +179,27 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
             );
             return rows.filter((r) => r.seen);
         };
-        const seenOnA = await settle(async () => {
-            const r = await claims(undefined);
-            return r.length ? r : null;
-        }, 80);
-        assert.ok(seenOnA, "node A recorded what node B claims about their shared persona");
+        // One exchange each way, rung by hand, and each side has the other's claim.
+        await beat(undefined, "eager-push", shared);
+        await beat(HOST_B, "eager-push", shared);
+        const seenOnA = await claims(undefined);
+        assert.ok(seenOnA.length, "node A recorded what node B claims about their shared persona");
 
         // The claim is comparable with our own holdings by construction, so once the two have
         // exchanged, what B claims IS what A holds - the same digest over the same heads.
-        const converged = await settle(async () => {
-            const { rows } = await sqlOn(
-                `SELECT hex(seen_fp) AS seen, verdict FROM identity_peers
-                 WHERE root_pubkey = '${shared}' AND seen_fp IS NOT NULL`
-            );
-            const ours = await frontiers(shared);
-            if (!rows.length || !ours.length) return null;
-            // Not asserting WHICH verdict: which side was ahead depends on who dialled first,
-            // and both 'ahead' and 'behind' are the system working. Only 'unresolvable' is a
-            // fault, and it must not appear between two honest nodes.
-            return rows.every((r) => r.verdict !== "unresolvable") ? rows : null;
-        }, 80);
-        assert.ok(converged, "no honest exchange ever reads as unresolvable");
+        const { rows: verdicts } = await sqlOn(
+            `SELECT hex(seen_fp) AS seen, verdict FROM identity_peers
+             WHERE root_pubkey = '${shared}' AND seen_fp IS NOT NULL`
+        );
+        const ours = await frontiers(shared);
+        assert.ok(verdicts.length && ours.length, "both sides hold comparable claims");
+        // Not asserting WHICH verdict: which side was ahead depends on who dialled first,
+        // and both 'ahead' and 'behind' are the system working. Only 'unresolvable' is a
+        // fault, and it must not appear between two honest nodes.
+        assert.ok(
+            verdicts.every((r) => r.verdict !== "unresolvable"),
+            "no honest exchange ever reads as unresolvable"
+        );
     });
 });
 
