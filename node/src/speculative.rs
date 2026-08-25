@@ -37,6 +37,30 @@ use crate::AppState;
 /// friends' vouching gets. A cap, not a pacing suggestion: it holds under adversarial
 /// vouching because the rollup ranks by best-single-path, never by path count.
 const SPECULATIVE_BUDGET: usize = 16;
+
+/// The headers-depth tail's bound (DISCOVERY slice 5, depth-2 scoped): how many tier-2
+/// targets past the posts budget each reader may keep at headers depth - identity and
+/// profile chains only, kilobytes each, for legibility and proof. Same Sybil posture as
+/// the posts budget: a cap per reader, MAX-composed paths, never sums.
+const HEADERS_BUDGET: usize = 128;
+
+/// The headers lane's per-beat dial cap, beside `SPECULATIVE_FETCH_CAP` for the posts
+/// lane - two lanes so the long tail's cheap visits never starve behind the expensive
+/// ones, and vice versa.
+const HEADERS_FETCH_CAP: usize = 4;
+
+/// The posts budget, test-overridable so a suite can force the SECOND vouched target past
+/// it and watch the headers depth work without minting seventeen personas.
+fn posts_budget(state: &AppState) -> usize {
+    if state.config.local_test {
+        std::env::var("RINGTOME_TEST_SPECULATIVE_BUDGET")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(SPECULATIVE_BUDGET)
+    } else {
+        SPECULATIVE_BUDGET
+    }
+}
 /// Pulls started per pass - below `idface::FOLLOW_REFRESH_CAP`, because real follows are
 /// chosen relationships and this pool is a hunch.
 const SPECULATIVE_FETCH_CAP: usize = 4;
@@ -102,6 +126,10 @@ struct DemandRow {
     introducer: String,
     /// Band ordinal after the discount - the score the budget ranks by.
     level: i64,
+    /// 'posts' for the top-of-budget targets (headers plus the newest posts), 'headers'
+    /// for the tail (identity + profile only). Depth comes from the memo, never the dice:
+    /// the budget decides what is held, whatever order the pass visits in.
+    depth: &'static str,
 }
 
 /// The rollup itself, pure: composed rows in, the budgeted demand set out.
@@ -114,7 +142,12 @@ struct DemandRow {
 /// "none" is an opinion speculation must not overrule. Ties break deterministically
 /// (higher raw level, then introducer, then lane) so two folds over the same inputs write
 /// the same memo.
-fn rollup(composed: &[ComposedEdge<'_>], explicit: &HashSet<&str>, budget: usize) -> Vec<DemandRow> {
+fn rollup(
+    composed: &[ComposedEdge<'_>],
+    explicit: &HashSet<&str>,
+    budget: usize,
+    headers_budget: usize,
+) -> Vec<DemandRow> {
     let mut best: HashMap<&str, (i64, i64, &str, &str)> = HashMap::new(); // target -> (discounted, raw, introducer, lane)
     for edge in composed {
         if explicit.contains(edge.target) {
@@ -143,10 +176,17 @@ fn rollup(composed: &[ComposedEdge<'_>], explicit: &HashSet<&str>, budget: usize
             lane: lane.to_string(),
             introducer: introducer.to_string(),
             level: discounted,
+            depth: "headers",
         })
         .collect();
     rows.sort_by(|a, b| b.level.cmp(&a.level).then(a.target.cmp(&b.target)));
-    rows.truncate(budget);
+    // The budget line IS the depth line (DISCOVERY slice 5): the strongest paths earn
+    // posts, the rest of the tier-2 pile keeps headers - names, keys, proof - and nothing
+    // past the headers budget is remembered at all.
+    rows.truncate(budget + headers_budget);
+    for row in rows.iter_mut().take(budget) {
+        row.depth = "posts";
+    }
     rows
 }
 
@@ -161,22 +201,26 @@ pub async fn refresh_demand(
     explicit: &HashSet<&str>,
 ) -> Result<()> {
     let now = now_ms();
-    let rows = rollup(composed, explicit, SPECULATIVE_BUDGET);
+    let rows = rollup(composed, explicit, posts_budget(state), HEADERS_BUDGET);
     for chunk in rows.chunks(DEMAND_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 6;
-                format!("(?{},?{},?{},?{},?{},?{})", b + 1, b + 2, b + 3, b + 4, b + 5, b + 6)
+                let b = i * 7;
+                format!(
+                    "(?{},?{},?{},?{},?{},?{},?{})",
+                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7
+                )
             })
             .collect();
         let sql = format!(
             "INSERT INTO speculative_demand
-               (reader_root, target_root, lane, introducer_root, level, updated_at_ms)
+               (reader_root, target_root, lane, introducer_root, level, depth, updated_at_ms)
              VALUES {}
              ON CONFLICT (reader_root, target_root) DO UPDATE SET
                  lane = excluded.lane,
                  introducer_root = excluded.introducer_root,
                  level = excluded.level,
+                 depth = excluded.depth,
                  updated_at_ms = excluded.updated_at_ms",
             placeholders.join(",")
         );
@@ -189,6 +233,7 @@ pub async fn refresh_demand(
                     turso::Value::Text(row.lane.clone()),
                     turso::Value::Text(row.introducer.clone()),
                     turso::Value::Text(band_word(row.level).to_string()),
+                    turso::Value::Text(row.depth.to_string()),
                     turso::Value::Integer(now),
                 ]
             })
@@ -261,13 +306,22 @@ pub async fn fetched_at(node_db: &Db, target_root: &str) -> Result<Option<i64>> 
     Ok(row.map(|(at,)| at))
 }
 
-async fn record_fetch(node_db: &Db, target_root: &str, via: &str) -> Result<()> {
+async fn record_fetch(node_db: &Db, target_root: &str, via: &str, depth: &str) -> Result<()> {
     node_db
         .execute(
-            "INSERT INTO speculative_fetches (target_root, fetched_at_ms, last_via)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT (target_root) DO UPDATE SET fetched_at_ms = ?2, last_via = ?3",
-            (target_root, now_ms(), via),
+            // Depth records what the mirror HOLDS, so 'posts' is never downgraded: a
+            // later headers-lane refresh of a posts-held mirror updates freshness and via,
+            // and the fuller shelf keeps its standing.
+            "INSERT INTO speculative_fetches (target_root, fetched_at_ms, last_via, depth)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (target_root) DO UPDATE SET
+                 fetched_at_ms = ?2,
+                 last_via = ?3,
+                 depth = CASE
+                     WHEN speculative_fetches.depth = 'posts' THEN 'posts'
+                     ELSE ?4
+                 END",
+            (target_root, now_ms(), via, depth),
         )
         .await
         .context("recording a speculative fetch")?;
@@ -284,6 +338,9 @@ struct AcquireCandidate {
     introducers: BTreeSet<String>,
     /// COALESCE(fetched_at_ms, 0) - never-fetched sorts stalest.
     fetched_at: i64,
+    /// The MAX across every reader's demand for this target: any one reader's posts-depth
+    /// admission earns the fuller pull.
+    depth: &'static str,
 }
 
 /// Priority for the pass's budget: strongest demand first, stalest first within a tie -
@@ -322,10 +379,10 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
     };
     let now = now_ms();
 
-    let demand: Vec<(String, String, String)> = state
+    let demand: Vec<(String, String, String, String)> = state
         .node_db
         .fetch_all(
-            "SELECT target_root, introducer_root, level FROM speculative_demand",
+            "SELECT target_root, introducer_root, level, depth FROM speculative_demand",
             (),
         )
         .await
@@ -352,21 +409,35 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
         .await?
         .into_iter()
         .collect();
-    let stamps: HashMap<String, i64> = state
+    let stamps: HashMap<String, (i64, String)> = state
         .node_db
-        .fetch_all("SELECT target_root, fetched_at_ms FROM speculative_fetches", ())
+        .fetch_all(
+            "SELECT target_root, fetched_at_ms, depth FROM speculative_fetches",
+            (),
+        )
         .await?
         .into_iter()
-        .map(|(target, at): (String, i64)| (target, at))
+        .map(|(target, at, held_depth): (String, i64, String)| (target, (at, held_depth)))
         .collect();
 
     let mut by_target: HashMap<String, AcquireCandidate> = HashMap::new();
-    for (target, introducer, level) in demand {
+    for (target, introducer, level, depth) in demand {
         if hosted.contains(&target) || followed.contains(&target) || member_fetched.contains(&target)
         {
             continue;
         }
-        let fetched_at = stamps.get(&target).copied().unwrap_or(0);
+        let (fetched_at, held_depth) = match stamps.get(&target) {
+            Some((at, held)) => (*at, held.as_str()),
+            None => (0, ""),
+        };
+        // The upgrade case: a mirror held at headers depth that some reader's rollup now
+        // admits at posts depth is treated as never-fetched - the fuller pull should not
+        // wait out a freshness clock the shallow one wound.
+        let fetched_at = if depth == "posts" && held_depth == "headers" {
+            0
+        } else {
+            fetched_at
+        };
         if now - fetched_at < stale_ms {
             continue;
         }
@@ -384,18 +455,34 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
             level: 0,
             introducers: BTreeSet::new(),
             fetched_at,
+            depth: "headers",
         });
         entry.level = entry.level.max(ordinal);
+        if depth == "posts" {
+            entry.depth = "posts";
+        }
         entry.introducers.insert(introducer);
     }
     if by_target.is_empty() {
         return Ok(());
     }
 
-    let started: Vec<AcquireCandidate> = order_acquisition(by_target.into_values().collect())
+    // Two lanes, one dialer (DISCOVERY slice 5): the posts lane keeps its cap for the
+    // expensive pulls; the headers lane services the tier-2 tail's cheap visits under its
+    // own cap, stalest first, so the long tail cycles fairly and neither lane starves the
+    // other. (The design sketch's weighted-random draw is deliberately simplified to
+    // staleness round-robin at the depth-2 boundary: every introducer is a friend, and
+    // oldest-first visits everyone without dice.)
+    let (posts, headers): (Vec<AcquireCandidate>, Vec<AcquireCandidate>) = by_target
+        .into_values()
+        .partition(|c| c.depth == "posts");
+    let mut headers = headers;
+    headers.sort_by(|a, b| a.fetched_at.cmp(&b.fetched_at).then(a.target.cmp(&b.target)));
+    let mut started: Vec<AcquireCandidate> = order_acquisition(posts)
         .into_iter()
         .take(SPECULATIVE_FETCH_CAP)
         .collect();
+    started.extend(headers.into_iter().take(HEADERS_FETCH_CAP));
     {
         let mut marks = SPECULATIVE_ATTEMPTS.lock().expect("attempt marks poisoned");
         let map = marks.get_or_insert_with(Default::default);
@@ -473,9 +560,20 @@ async fn acquire_one(state: &AppState, candidate: &AcquireCandidate) -> bool {
         let task_state = state.clone();
         let task_target = target.clone();
         let task_via = via.clone();
+        // Depth is the scope (the scoped sync Hello): a headers visit asks for the
+        // identity trio's two working chains - kilobytes, whatever the target wrote -
+        // and a posts visit is the ordinary full pull.
+        let scope: &'static [u32] = if candidate.depth == "headers" {
+            &[
+                ringtome_proto::registry::service::IDENTITY_PUBLIC,
+                ringtome_proto::registry::service::PROFILE_PUBLIC,
+            ]
+        } else {
+            &[]
+        };
         let mut pull = tokio::spawn(async move {
             let addr = crate::net::sync::dial_addr(&task_state, &task_via).await?;
-            crate::net::sync::sync_with_peer(&task_state, &task_target, addr).await
+            crate::net::sync::sync_with_peer_scoped(&task_state, &task_target, addr, scope).await
         });
         match tokio::time::timeout(SPECULATIVE_FETCH_TIMEOUT, &mut pull).await {
             Ok(Ok(Ok(stats))) => {
@@ -483,11 +581,11 @@ async fn acquire_one(state: &AppState, candidate: &AcquireCandidate) -> bool {
                 if !held {
                     continue; // a polite empty exchange - they hold nothing of the target
                 }
-                if let Err(e) = record_fetch(&state.node_db, target, &via).await {
+                if let Err(e) = record_fetch(&state.node_db, target, &via, candidate.depth).await {
                     tracing::warn!(target = %target, "could not record a speculative fetch: {e:#}");
                 }
                 tracing::info!(target = %target, via = %via, received = stats.received,
-                    "speculative pull landed");
+                    depth = %candidate.depth, "speculative pull landed");
                 return true;
             }
             Ok(Ok(Err(e))) => {
@@ -683,8 +781,8 @@ mod tests {
         for target in [&landed, &pending] {
             db.execute(
                 "INSERT INTO speculative_demand
-                   (reader_root, target_root, lane, introducer_root, level, updated_at_ms)
-                 VALUES (?1, ?2, 'trust', ?3, 'high', 1)",
+                   (reader_root, target_root, lane, introducer_root, level, depth, updated_at_ms)
+                 VALUES (?1, ?2, 'trust', ?3, 'high', 'posts', 1)",
                 (reader.as_str(), target.as_str(), introducer.as_str()),
             )
             .await
@@ -723,7 +821,7 @@ mod tests {
                 edge("stranger", "trust", "otto", 2, 5),
             ],
             &HashSet::new(),
-            16,
+            16, HEADERS_BUDGET,
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].level, 2, "MAX across introducers, never sums");
@@ -740,7 +838,7 @@ mod tests {
                 edge("gone", "trust", "collector", 2, 400),
             ],
             &HashSet::new(),
-            16,
+            16, HEADERS_BUDGET,
         );
         let level = |t: &str| rows.iter().find(|r| r.target == t).map(|r| r.level);
         assert_eq!(level("close"), Some(3), "scarce vouches keep their weight");
@@ -756,7 +854,7 @@ mod tests {
                 edge("stranger", "trust", "careful", 3, 10),      // stays 3 - the best path
             ],
             &HashSet::new(),
-            16,
+            16, HEADERS_BUDGET,
         );
         assert_eq!(rows[0].level, 3);
         assert_eq!(rows[0].introducer, "careful", "the memo names the winning path's introducer");
@@ -767,26 +865,37 @@ mod tests {
         // Promotion is clean: any real dial on the target - including an explicit "none" -
         // excludes the pair from speculation entirely.
         let explicit: HashSet<&str> = ["dialed"].into();
-        let rows = rollup(&[edge("dialed", "trust", "mara", 4, 5)], &explicit, 16);
+        let rows = rollup(&[edge("dialed", "trust", "mara", 4, 5)], &explicit, 16, HEADERS_BUDGET);
         assert!(rows.is_empty(), "an explicit dial beats every implicit row");
     }
 
     #[test]
-    fn the_budget_is_a_cap_and_the_order_is_stable() {
+    fn the_budget_is_the_depth_line_and_the_order_is_stable() {
+        // Since the headers depth (DISCOVERY slice 5): the acquisition budget no longer
+        // truncates the memo - it draws the DEPTH line. The strongest paths earn posts,
+        // the tail keeps headers, and only the headers budget drops anyone entirely.
         let composed: Vec<ComposedEdge> = vec![
             edge("aa", "trust", "mara", 2, 5),
             edge("bb", "trust", "mara", 3, 5),
             edge("cc", "trust", "mara", 1, 5),
         ];
-        let rows = rollup(&composed, &HashSet::new(), 2);
-        assert_eq!(rows.len(), 2, "the acquisition budget bounds the memo");
-        assert_eq!(rows[0].target, "bb", "strongest demand survives the cap first");
+        let rows = rollup(&composed, &HashSet::new(), 2, HEADERS_BUDGET);
+        assert_eq!(rows.len(), 3, "the tail survives, at headers depth");
+        assert_eq!(rows[0].target, "bb", "strongest demand takes the posts seats first");
+        assert_eq!(rows[0].depth, "posts");
         assert_eq!(rows[1].target, "aa");
+        assert_eq!(rows[1].depth, "posts");
+        assert_eq!(rows[2].target, "cc", "the overflow keeps a name and a key");
+        assert_eq!(rows[2].depth, "headers");
+
+        let none_past = rollup(&composed, &HashSet::new(), 2, 0);
+        assert_eq!(none_past.len(), 2, "a zero headers budget is the old truncation");
     }
 
     #[test]
     fn acquisition_orders_by_demand_then_staleness() {
         let cand = |target: &str, level: i64, fetched_at: i64| AcquireCandidate {
+            depth: "posts",
             target: target.into(),
             level,
             introducers: BTreeSet::new(),

@@ -269,25 +269,23 @@ storage-management surfaces that do not exist yet.
    eviction is never a loss - if any relationship returns, the mirror refetches with it.
    The slice-5 customer ("non-resident with no supporting tier-2 edge") slots in as one
    more keeper when non-resident mirrors exist.
-5. **The headers depth** (pairs with 4; gates on the scoped sync Hello). **Scoped to
-   depth 2** (decision 2026-08-25): the slice serves legibility and proof for the tier-2
-   pile that exists, and the depth-3 fuel it would have hauled is PARKED with its horizon,
-   not rejected - see the boundary note under the merged design. What builds: the scoped
-   sync Hello ("only these services" - the one new protocol piece); headers depth as
-   identity-public + PROFILE_PUBLIC, two chains, pulled through the existing introducer
-   ladder into the existing speculative quiet-mirror regime under a `depth` marker (no
-   separate non-resident class - slice 1's regime already has every property the sketch
-   gave it); the two-lane quota split in the acquire pass (deterministic top-K by
-   staleness, weighted-random tail at headers depth); the byline-cache fill; the eviction
-   predicate ("headers-held with no supporting tier-2 edge" ages out). Parked with the
-   depth boundary: the reciprocal door (an efficiency play whose probeability guardrails
-   are its whole cost - no door, no question), FOLLOWS_PUBLIC at headers depth (nothing
-   needs a stranger's follows until a depth-3 consumer or a mutuals feature asks; the
-   scoped Hello makes adding the third service a one-line change that day), and
-   `edge_graph` ingestion of mirrored strangers' edges. Acceptance: a friend-of-a-friend
-   cora never dialed shows a claimed name and avatar on the people page; withdrawing the
-   friend's vouch ages the mirror out; the quiet mirror stays invisible to every outward
-   door; at no point does the stranger's node learn cora's node exists.
+5. ~~**The headers depth**~~ Built 2026-08-25, at the depth-2 scope (node gen 28;
+   acceptance red-first in `speculative.cjs`, the depth-line cop red-first in
+   `speculative::tests`). As trimmed by the boundary decision: the scoped sync Hello
+   shipped first (its own entry below); headers depth is identity-public + PROFILE_PUBLIC
+   through the existing introducer ladder into the existing speculative regime under
+   `depth` columns on both memos - the acquisition budget stopped TRUNCATING the rollup
+   and now draws the depth line (strongest paths earn posts, the tail keeps a name and a
+   key, only the headers budget drops anyone); a posts-held mirror is never downgraded,
+   and a headers-held mirror a rollup later admits at posts depth reads as never-fetched
+   so the upgrade skips the shallow pull's freshness clock. Two lanes, one dialer, both
+   STALENESS-ordered under separate caps - the sketch's weighted-random draw simplified
+   away at this scale (every introducer is a friend; oldest-first cycles everyone without
+   dice), revisit if the tail ever grows teeth. The byline fills on the pull's own fold
+   (profiles::refresh rides the fold lane), which is the People-page payoff; eviction came
+   free (the demand row IS the tier-2 edge support and already recedes with the vouch).
+   Parked with the depth boundary, unchanged: the reciprocal door, FOLLOWS_PUBLIC at
+   headers depth, `edge_graph` ingestion of mirrored strangers' edges.
 
 ## The farther horizon
 

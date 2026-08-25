@@ -699,6 +699,9 @@ CREATE TABLE speculative_demand (
     lane            TEXT    NOT NULL,  -- which lane won the rollup ('trust' | 'taste')
     introducer_root TEXT    NOT NULL,  -- the best path's introducer: acquisition dials THEIR node
     level           TEXT    NOT NULL,  -- band word, after the promiscuity discount
+    depth           TEXT    NOT NULL,  -- 'posts' (under the acquisition budget) | 'headers'
+                                       -- (the tier-2 tail: identity + profile only - the
+                                       -- headers depth, DISCOVERY slice 5, depth-2 scoped)
     updated_at_ms   INTEGER NOT NULL,
     PRIMARY KEY (reader_root, target_root)
 );
@@ -714,5 +717,7 @@ CREATE INDEX speculative_demand_by_target ON speculative_demand (target_root);
 CREATE TABLE speculative_fetches (
     target_root   TEXT    PRIMARY KEY,
     fetched_at_ms INTEGER NOT NULL,  -- last successful pull; the pass's staleness clock
-    last_via      TEXT               -- the endpoint that answered: the next pull's first rung
+    last_via      TEXT,              -- the endpoint that answered: the next pull's first rung
+    depth         TEXT    NOT NULL DEFAULT 'posts' -- what the mirror HOLDS: a posts-depth
+                                       -- pull supersedes headers and is never downgraded
 );

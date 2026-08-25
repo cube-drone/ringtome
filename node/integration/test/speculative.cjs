@@ -32,7 +32,7 @@ const base58 = async (host) => {
 (HOST_B && HOST_C ? describe : describe.skip)("the speculative pass at posts depth", function () {
     this.timeout(1200000);
 
-    let author, authorRoot, friend, friendRoot, cora, coraRoot;
+    let author, authorRoot, friend, friendRoot, cora, coraRoot, author2, author2Root;
 
     const dialOn = (who, root) => async (subject, register, value) =>
         who(`api/identity/${root}/private/kv/contact:${subject}/${register}`, {
@@ -173,6 +173,93 @@ const base58 = async (host) => {
         assert.equal(row.introducer_root, friendRoot, "the byline names the introducer");
         assert.ok(row.speakable, "the row carries its speakable spelling");
         assert.ok(row.lane === "trust" || row.lane === "taste", "the winning lane rides along");
+    });
+
+    it("a second vouch past the budget lands at HEADERS depth - a name, a key, no posts", async function () {
+        // DISCOVERY slice 5, depth-2 scoped. The rig pins the posts budget at ONE
+        // (RINGTOME_TEST_SPECULATIVE_BUDGET), so the friend's stronger vouch above holds
+        // the only posts seat and this weaker one must land at headers depth: identity
+        // and profile chains through the introducer - a name and a face for the People
+        // page, proof for the gate - and none of the posts the author wrote.
+        author2 = await makeUserFetch({ prefix: "specauthor2" });
+        author2Root = (await (await author2("api/identity", { method: "POST" })).json()).root_pubkey;
+        await author2(`api/identity/${author2Root}/profile`, {
+            method: "POST",
+            body: JSON.stringify({ field: "name", value: "Deep Cut" }),
+        });
+        const made = await (
+            await author2(`api/identity/${author2Root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "past-the-budget",
+                    body: "words the headers depth must NOT haul",
+                    format: "plaintext",
+                }),
+            })
+        ).json();
+        const pub = await author2(`api/identity/${author2Root}/docs/${made.doc_id}/publish`, {
+            method: "POST",
+        });
+        assert.equal(pub.status, 200, await pub.text());
+
+        // The friend meets them (mirroring their chains - the introducer door's stock)
+        // and vouches LOW, so the rollup's one posts seat stays with the stronger vouch.
+        const viaAuthor2 = await base58(author2);
+        if ((await friend(`api/id/${author2Root}/profile?via=${viaAuthor2}`)).status !== 200)
+            this.skip();
+        await dialOn(friend, friendRoot)(author2Root, "trust", "low");
+
+        await beat(HOST_B, "mint", friendRoot);
+        await beat(HOST_B, "demand-push", friendRoot);
+        await beat(HOST_C, "fold", friendRoot);
+        await beat(HOST_C, "fold", coraRoot);
+        await beat(HOST_C, "speculative-acquire");
+        // Drain the pull's own fold (the byline cache fills on the fold chain).
+        await beat(HOST_C, "fold", author2Root);
+
+        // The memo drew the depth line...
+        const { rows: demand } = await sql(
+            `SELECT depth FROM speculative_demand WHERE target_root = '${author2Root}'`,
+            HOST_C
+        );
+        assert.equal(demand.length, 1, "the tail target is in the memo");
+        assert.equal(demand[0].depth, "headers", "past the budget means headers depth");
+        // ...the pull recorded what it holds...
+        const { rows: fetched } = await sql(
+            `SELECT depth FROM speculative_fetches WHERE target_root = '${author2Root}'`,
+            HOST_C
+        );
+        assert.equal(fetched.length, 1, "the headers pull landed a quiet mirror");
+        assert.equal(fetched[0].depth, "headers");
+        // ...the byline is the payoff...
+        const { rows: byline } = await sql(
+            `SELECT name FROM persona_profiles WHERE root_pubkey = '${author2Root}'`,
+            HOST_C
+        );
+        assert.equal(byline[0] && byline[0].name, "Deep Cut", "the claimed name landed");
+        // ...the suggested shelf can render them...
+        const shelf = await (await cora(`api/identity/${coraRoot}/suggested`)).json();
+        const row = (shelf.suggestions || []).find((x) => x.root === author2Root);
+        assert.ok(row, "a headers-held mirror is a renderable suggestion");
+        assert.equal(row.introducer_root, friendRoot, "bylined via the friend");
+        // ...and the posts stayed home: no feed rows, because no posts chain crossed.
+        const { rows: journaled } = await sql(
+            `SELECT COUNT(*) AS n FROM feed_journal WHERE author_root = '${author2Root}'`,
+            HOST_C
+        );
+        assert.equal(journaled[0].n, 0, "headers depth hauls no posts");
+
+        // Disclosure: the pull went through the introducer - the stranger's own node
+        // never learned cora's node exists.
+        const coraEndpoint = (await (await makeFetch(HOST_C)("api/node")).json()).endpoint_id;
+        const { rows: asks } = await sql(
+            `SELECT endpoint_id FROM identity_demand WHERE root_pubkey = '${author2Root}'`,
+            HOST
+        );
+        assert.ok(
+            !asks.some((r) => r.endpoint_id === coraEndpoint),
+            "the headers visit disclosed nothing to the stranger's node"
+        );
     });
 
     it("the vouched-for author's post reaches cora's feed, marked and bylined", async function () {

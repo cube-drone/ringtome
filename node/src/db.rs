@@ -40,7 +40,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 27; // 27: feed_journal.suggested_via - speculative rows with provenance (2026-08-24)
+const NODE_SCHEMA_GENERATION: i64 = 28; // 28: speculative depth columns - the headers depth, DISCOVERY slice 5 (2026-08-25)
 const USER_SCHEMA_GENERATION: i64 = 15; // 15: implicit_edges - the friend-of-friend fold (2026-08-16)
 
 /// How long a write waits on a busy connection before failing.

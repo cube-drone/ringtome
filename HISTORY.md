@@ -6892,3 +6892,24 @@ a high path band, 'highly speculative' at least medium, Explorer alone admits ev
 genuinely spreads rows across the ladder - and the six titles keep their design shape, so
 deeper pools would slot into the same gradient if they ever arrive. Spec-first in the pure
 suite, red before the change.
+
+## 2026-08-25 (cont. 12): the headers depth - the DISCOVERY arc completes at depth 2
+
+Slice 5, in the boundary-trimmed shape, and with it the arc: node gen 28 adds `depth` to
+both speculative memos, and the acquisition budget stops truncating the rollup and draws
+the DEPTH LINE instead - the strongest paths earn posts, the rest of the tier-2 pile keeps
+identity + profile (a name, a face, proof - kilobytes through the introducer ladder, the
+scoped Hello's first real caller), and only the headers budget (128/reader) drops anyone
+entirely. Two lanes, one dialer, both staleness-ordered under separate caps; the sketch's
+weighted-random draw is deliberately simplified away at depth-2 scale (every introducer is
+a friend, oldest-first cycles everyone without dice) - noted in DISCOVERY for revisit if
+the tail grows. A posts-held mirror is never downgraded; a headers-held mirror admitted at
+posts depth reads as never-fetched so the upgrade skips the shallow pull's freshness
+clock. The byline fills on the pull's own fold-lane nudge, which is the whole People-page
+payoff, and eviction came free: the demand row is the tier-2 edge support and already
+recedes with the vouch. Acceptance red-first in `speculative.cjs` (a second vouch past the
+budget lands at headers depth: memo line, held depth, byline, renderable suggestion, ZERO
+posts hauled, nothing disclosed to the stranger's node), the depth-line rollup cop
+red-first in unit tests, the rig pinning the posts budget at one so the case is reachable
+with two personas. Schema note: gen 27 -> 28 means dev data directories need `just clean`
+before the next boot.
