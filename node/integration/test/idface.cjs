@@ -9,6 +9,7 @@
 const assert = require("node:assert");
 const { makeFetch, sql } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
+const { beat } = require("./beat.cjs");
 
 // The anonymous fetch: no cookie jar entries, just a stranger with a URL.
 const anon = makeFetch();
@@ -135,6 +136,86 @@ describe("the /id face", () => {
     Ephemerality: the fetch never touches B's identities table, so B's anonymous face still
     tombstones the root (the shelf grows only through durable demand).
 */
+/*
+    The post permalink's read (2026-08-25): one post by id, under the same shelf rule as
+    the page - and one honest 404 for never-was, private, and taken-down alike, because
+    "which of those" is exactly what a stranger must not be able to distinguish.
+*/
+describe("the single-post read", () => {
+    let owner, root, post, draft;
+
+    before(async () => {
+        owner = await makeUserFetch({ prefix: "permalink" });
+        root = (await (await owner("api/identity", { method: "POST" })).json()).root_pubkey;
+        await owner(`api/identity/${root}/serve`, { method: "POST" });
+        const made = await (
+            await owner(`api/identity/${root}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "the addressed post",
+                    body: "words with a home",
+                    format: "plaintext",
+                }),
+            })
+        ).json();
+        const pub = await owner(`api/identity/${root}/docs/${made.doc_id}/publish`, {
+            method: "POST",
+        });
+        post = JSON.parse(await pub.text()).post_id;
+        // A private draft, never published: its id must answer exactly like nothing.
+        draft = (
+            await (
+                await owner(`api/identity/${root}/docs`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title: "the unspoken draft",
+                        body: "words with no public home",
+                        format: "plaintext",
+                    }),
+                })
+            ).json()
+        ).doc_id;
+        // Fold the owner's private views: without this read the draft has no doc_heads row
+        // at all, and the draft-404 below would pass by ABSENCE rather than by the lane
+        // filter - the first plant run proved exactly that (the dropped filter stayed
+        // green). A listed draft is a materialized row, and now the filter is what stands
+        // between it and the anonymous surface.
+        await owner(`api/identity/${root}/docs`);
+    });
+
+    it("serves one post, anonymously, at its own address", async () => {
+        const anon = makeFetch();
+        const resp = await anon(`api/id/${root}/posts/${post}`);
+        assert.equal(resp.status, 200, await resp.clone().text());
+        const p = await resp.json();
+        assert.equal(p.doc_id, post, "the post it asked for");
+        assert.equal(p.title, "the addressed post");
+        assert.ok(p.published_ms > 0, "dated by when it was first said");
+    });
+
+    it("a private draft is not a post - one honest 404", async () => {
+        const anon = makeFetch();
+        assert.equal((await anon(`api/id/${root}/posts/${draft}`)).status, 404);
+    });
+
+    it("garbage is a bad request, not a missing post", async () => {
+        const anon = makeFetch();
+        assert.equal((await anon(`api/id/${root}/posts/not-a-doc-id`)).status, 400);
+    });
+
+    it("a takedown leaves this surface too", async () => {
+        const down = await owner(`api/identity/${root}/posts/${post}`, { method: "DELETE" });
+        assert.equal(down.status, 200, await down.text());
+        await beat(undefined, "fold", root);
+        const anon = makeFetch();
+        assert.equal(
+            (await anon(`api/id/${root}/posts/${post}`)).status,
+            404,
+            "what was said and unsaid is not at its address any more"
+        );
+    });
+});
+
 const { HOST_B } = require("./fetch.cjs");
 
 (HOST_B ? describe : describe.skip)("fetch-and-serve (A's persona through B)", function () {

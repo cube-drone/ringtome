@@ -160,7 +160,8 @@ fn user_db_opens_are_deliberate() {
     let expected: BTreeMap<&str, usize> = BTreeMap::from([
         ("fanout.rs", 2),          // journal_page + retract_vanished: ONE author per public-move edge
         ("identity.rs", 4),
-        ("idface.rs", 5),          // + stored_tree_leaves: ONE mirror per revalidation
+        ("idface.rs", 6),          // + stored_tree_leaves: ONE mirror per revalidation;
+                                   // + id_post: one open per permalink request (2026-08-25)
         ("ingest.rs", 1),
         ("profiles.rs", 1),        // refresh: ONE persona per claim-change edge
         ("notifications.rs", 1),   // refresh_from: ONE author per frontier-move edge

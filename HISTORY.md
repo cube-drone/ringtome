@@ -6959,3 +6959,25 @@ collapse is unchanged, a murmur simply names its MOST RECENT share - and the bel
 the envelope test now asserts the delivered row's doc id, watched fail against the
 pre-column binary. User-db schema note: gen 15 -> 16, another `just clean` before the next
 dev boot.
+
+## 2026-08-25 (cont. 16): posts get their own address
+
+The gap the share notification exposed by asking first: a post rendered inline in the feed
+and on its author's page, and nowhere ELSE - no permalink, nothing to link to, nothing to
+paste. Now: `/id/{who}/post/{doc}` (postpage.js), inside the persona's namespace because a
+post is something a person said - the page is their byline over one `PostEntry`, unchanged
+("one component for 'a post, shown' everywhere a post is shown", the 2026-08-06 ruling
+earning its keep), with the address's `?via=` hints riding through so a pasted permalink
+resolves the way the person's own page does (profile visit first, shelf read behind it).
+The read is `GET /api/id/{who}/posts/{doc}` beside the page it joins, under the SAME shelf
+rule (`shelf_readable`, factored out of the paged read): hosted personas anonymously,
+members read what the node already reached, speculative mirrors stay members-only - and
+one honest 404 covers never-was, private, and taken-down alike, because "which of those"
+is exactly what a stranger must not distinguish. Acceptance in idface.cjs (serve, draft-404,
+garbage-400, takedown leaves the surface), the lane filter planted red to prove the draft
+case bites. The feed's own links took the address the next morning: a post's title - and the
+untitled entry's "from X's page" foot line - now open the post's page rather than the
+author's, retiring postentry.js's "the item page will take this href over when it exists"
+comment on the day it came true; the author's page stays one click away via the
+permalink's byline. Next: the notification's "see the post" points here, and the
+mini-card rides.

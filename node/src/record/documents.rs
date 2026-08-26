@@ -817,6 +817,46 @@ pub async fn blob_refs(db: &Db, keys: Option<&EpochKeys>) -> Result<Vec<[u8; 32]
     Ok(out)
 }
 
+/// One post off the public shelf, by id - the permalink's read (2026-08-25). Same filters
+/// as the page: public lane only (a draft is not a post), text formats, retractions leave
+/// this surface too, and a quarantined persona answers nothing. `None` is "no such post
+/// HERE", which deliberately covers never-was, private, and taken-down alike.
+pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>, AppError> {
+    catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok(None);
+    }
+    let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
+    let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
+    type Row = (Vec<u8>, String, Option<i64>, i64, i64, Option<Vec<u8>>);
+    let row: Option<Row> = db
+        .fetch_optional(
+            &format!(
+                "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash FROM doc_heads
+                 WHERE lane = 'public' AND doc_id = ? AND {text_only} AND {not_retracted}"
+            ),
+            (doc_id.to_vec(),),
+        )
+        .await
+        .map_err(AppError::Internal)?;
+    match row {
+        None => Ok(None),
+        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash)) => Ok(Some(PublicDoc {
+            doc_id: doc_id
+                .try_into()
+                .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?,
+            title,
+            format: format.map(|f| f as u64),
+            genesis_ms,
+            head_ms,
+            thumb_hash: match thumb_hash {
+                Some(t) => Some(hash32(&t)?),
+                None => None,
+            },
+        })),
+    }
+}
+
 pub async fn public_docs(
     db: &Db,
     after: Option<(i64, [u8; 16])>,

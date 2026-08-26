@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 461 phrases across 43 files.
+// 468 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -230,6 +230,7 @@ export default {
     'index.rotates-all-files-only-documents': 'rotates: all files / only documents / only media',
     'index.looking-that-up': 'looking that up…',
     'index.back-to-people': 'back to People',
+    'index.back-to-their-page': 'back to their page',
     'index.close': 'close',
     'index.search': 'search…',
     'index.back-to-the-list': 'back to the list',
@@ -371,9 +372,13 @@ export default {
     'postentry.edit': 'edit',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
     'postentry.the-whole-thing': 'the whole thing',
-    'postentry.from': 'from',
-    'postentry.someone': 'someone',
-    'postentry.s-page': "'s page",
+    'postentry.link': 'link',
+
+    // --- node/js/postpage.js ---
+    'postpage.a-post': 'a post',
+    'postpage.that-isnt-an-address': "that isn't an address this app knows how to read",
+    'postpage.looking-for-the-post': 'looking for the post…',
+    'postpage.no-such-post-is-held': 'no such post is held here - it may be private, taken down, or its author unreachable',
 
     // --- node/js/posts.js ---
     'posts.recent-posts': 'recent posts',
@@ -480,6 +485,10 @@ export default {
     'idface.no-such-persona-here-2': 'no such persona here',
     'idface.no-such-persona-here-3': 'no such persona here',
     'idface.that-cursor-isnt-a-document': "that cursor isn't a document id",
+    'idface.no-such-persona-here-8': 'no such persona here',
+    'idface.no-such-persona-here-9': 'no such persona here',
+    'idface.that-isnt-a-document-id': "that isn't a document id",
+    'idface.no-such-post-here': 'no such post here',
     'idface.no-such-persona-here-4': 'no such persona here',
     'idface.no-such-persona-here-5': 'no such persona here',
     'idface.not-carried-here-and-none': "not carried here, and none of the address's computers answered",

@@ -479,9 +479,11 @@ export const PostEntry = ({ item, current, interest, editing }) => {
         minute: '2-digit',
     });
     // The item's link: the title when there is one, a quiet line at the foot when not. It
-    // goes to the author's page for now - which fresh-syncs them on arrival, most of what the
-    // eventual per-item page owes - and the item page will take this href over when it exists.
-    const href = `/id/${speakable(item.author)}`;
+    // goes to the post's OWN page (postpage.js) - the per-item page this comment spent
+    // months promising took the href over on 2026-08-26, the day after it was built. The
+    // permalink's profile-visit-first load keeps the fresh-sync the author-page link used
+    // to buy.
+    const href = `/id/${speakable(item.author)}/post/${item.doc_id}`;
     // The words as shown: after an in-place edit, the buffer the user just confirmed - not a
     // refetch of what they typed. The item prop's copies are snapshots; a page refresh
     // reconciles everything against the canonical fold anyway.
@@ -627,10 +629,14 @@ export const PostEntry = ({ item, current, interest, editing }) => {
                               ${t('postentry.the-whole-thing', 'the whole thing')}
                           </button>`}
                       </div>`}`}
+            ${/* An untitled entry's foot line is just "link" (Curtis, 2026-08-26): it goes
+                to the post's own page now, so naming the author here restated the byline -
+                and the old "from someone's page" showed exactly what a copy without a
+                fetched name degrades to. */ ''}
             ${!open &&
             !title &&
             html`<p class="feed-entry-foot">
-                <a href=${href}>${t('postentry.from', 'from')} ${item.author_name || t('postentry.someone', 'someone')}${t('postentry.s-page', "'s page")}</a>
+                <a href=${href}>${t('postentry.link', 'link')}</a>
             </p>`}
         </article>
     `;

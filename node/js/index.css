@@ -37,3 +37,15 @@
 @import "./apps/notifications.css"; /* the bell: derived events from people you follow */
 @import "./modal.css";        /* the house modal */
 @import "./doc/upload.css";   /* the upload flow inside it */
+
+/* The post permalink (postpage.js): one entry under its author's byline. */
+.postpage {
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+.postpage-loading,
+.postpage-missing {
+    color: var(--muted);
+    font-style: italic;
+}

@@ -1020,6 +1020,29 @@ pub struct PostsQuery {
 /// nothing else. A member may page a foreign persona too, but only one this node has already
 /// reached - paging is a continuation of a visit, so it reads what an earlier fetch brought
 /// home rather than reaching across the network again per page turn.
+/// The shelf rule, shared by the paged and single-post reads: anonymous callers get personas
+/// this node HOSTS, and nothing else. A member may also read a foreign persona this node has
+/// already reached - a visit's continuation, never a fresh reach - and a SPECULATIVELY held
+/// one (speculative.rs): the quiet mirror serves nobody over the network, but its own node's
+/// members reading it was never serving - that is the whole reason it was pulled.
+async fn shelf_readable(
+    state: &AppState,
+    session: &Option<Session>,
+    root_hex: &str,
+) -> Result<bool, AppError> {
+    if hosted_here(state, root_hex).await? {
+        return Ok(true);
+    }
+    if session.is_none() {
+        return Ok(false);
+    }
+    Ok(foreign_fetch_row(state, root_hex).await?.is_some()
+        || crate::speculative::fetched_at(&state.node_db, root_hex)
+            .await
+            .map_err(AppError::Internal)?
+            .is_some())
+}
+
 pub async fn id_posts(
     session: Option<Session>,
     State(state): State<AppState>,
@@ -1031,17 +1054,7 @@ pub async fn id_posts(
     };
     let root_hex = hex::encode(root);
     let missing = || AppError::NotFound(crate::msg!("idface.no-such-persona-here-3", "no such persona here"));
-    // A member may also page a SPECULATIVELY held persona (speculative.rs): the quiet mirror
-    // serves nobody over the network, but its own node's members reading it was never
-    // serving - that is the whole reason it was pulled.
-    if !hosted_here(&state, &root_hex).await?
-        && (session.is_none()
-            || (foreign_fetch_row(&state, &root_hex).await?.is_none()
-                && crate::speculative::fetched_at(&state.node_db, &root_hex)
-                    .await
-                    .map_err(AppError::Internal)?
-                    .is_none()))
-    {
+    if !shelf_readable(&state, &session, &root_hex).await? {
         return Err(missing());
     }
     // A cursor that doesn't parse is a bad REQUEST, and says so: answering "no such persona"
@@ -1085,6 +1098,37 @@ fn post_json(p: &crate::record::documents::PublicDoc) -> serde_json::Value {
         "updated_ms": p.head_ms,
         "thumb": p.thumb_hash.map(hex::encode),
     })
+}
+
+/// GET `/api/id/{root}/posts/{doc}` - one post, by id: the permalink's read (2026-08-25).
+/// The same shelf rule as the page, and the same honest 404 for never-was, private, and
+/// taken-down alike - a post that is not on the public shelf is not a post here.
+pub async fn id_post(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path((seg, doc)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-8", "no such persona here")));
+    };
+    let root_hex = hex::encode(root);
+    if !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-9", "no such persona here")));
+    }
+    let doc_id: [u8; 16] = hex::decode(&doc)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| {
+            AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id", "that isn't a document id"))
+        })?;
+    let post = match state.user_dbs.get(&root_hex).await {
+        Ok(Some(db)) => crate::record::documents::public_doc(&db, &doc_id).await?,
+        _ => None,
+    };
+    match post {
+        Some(p) => Ok(axum::Json(post_json(&p)).into_response()),
+        None => Err(AppError::NotFound(crate::msg!("idface.no-such-post-here", "no such post here"))),
+    }
 }
 
 pub async fn id_profile(

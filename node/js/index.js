@@ -29,6 +29,7 @@ import { DocsApp } from './apps/notes.js';
 import { JournalApp } from './apps/journal.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
+import { PostPage } from './postpage.js';
 import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
 import { FeedApp } from './apps/feed.js';
@@ -266,6 +267,12 @@ const Inside = ({ session }) => {
     // the left, back/close on the right - so no app draws its own top bar. Back appears only
     // inside a document (return to the app's list); close leaves the app for the launcher. Absent
     // for persona/not-found (appHere null), which carry their own heads.
+    // On a post's page, back climbs ONE level - to the post's author - not all the way out
+    // to People: the id namespace nests (/id/:seg/post/:doc), and back walks the nesting.
+    const idBack = (() => {
+        const m = loc.path.match(/^(\/id\/[^/]+)\/post\//);
+        return m ? m[1] : '/home/people';
+    })();
     const idHeader =
         inId &&
         html`<header class="app-header">
@@ -275,8 +282,10 @@ const Inside = ({ session }) => {
             <span class="app-header-actions">
                 <button
                     class="app-header-btn"
-                    title=${t('index.back-to-people', 'back to People')}
-                    onClick=${() => loc.route('/home/people')}
+                    title=${idBack === '/home/people'
+                        ? t('index.back-to-people', 'back to People')
+                        : t('index.back-to-their-page', 'back to their page')}
+                    onClick=${() => loc.route(idBack)}
                 ><${Icons.back} /></button>
                 <button
                     class="app-header-btn app-header-btn-square"
@@ -384,6 +393,7 @@ const Inside = ({ session }) => {
             <${FeedApp} path="/home/feed" current=${persona.current} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
+            <${PostPage} path="/id/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg/*" current=${persona.current} onTitle=${setIdTitle} />
             <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
