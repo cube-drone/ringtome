@@ -49,3 +49,22 @@
     color: var(--muted);
     font-style: italic;
 }
+
+/* The mini-post card (postentry.js MiniPost): a referenced post as a dressed link. */
+.minipost {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    text-decoration: none;
+}
+.minipost-title {
+    font-weight: 600;
+}
+.minipost-when {
+    font-size: 0.8em;
+    color: var(--muted);
+}

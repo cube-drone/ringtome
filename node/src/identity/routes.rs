@@ -796,6 +796,15 @@ struct NotificationItem {
     trust: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     interest: Option<String>,
+    /// The referenced post's title and date, joined server-side for the bell's mini-card
+    /// (2026-08-26): the doc is the READER's own post, so their open store answers in one
+    /// read - no client fan-out, and the bell renders instantly. Absent when the row names
+    /// no doc, or the post has since left the public shelf (the card degrades to a bare
+    /// link whose 404 is the honest answer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    doc_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    doc_published_ms: Option<i64>,
     updated_ms: i64,
     /// Above or below the reader's seen-watermark - their private-chain fact, so read-on-the-
     /// phone is read-on-the-laptop.
@@ -871,6 +880,8 @@ async fn notifications_handler(
                 stranger: false,
                 claimed_name: None,
                 doc_id: r.doc_id,
+                doc_title: None,
+                doc_published_ms: None,
                 author_name: byline.name,
                 author_avatar: byline.avatar,
                 author: r.author_root,
@@ -900,10 +911,27 @@ async fn notifications_handler(
         kind: n.kind,
         trust: n.trust,
         interest: n.interest,
+        doc_title: None,
+        doc_published_ms: None,
         updated_ms: n.timestamp_ms,
     }));
     items.sort_by_key(|i| std::cmp::Reverse(i.updated_ms));
     items.truncate(NOTIFICATIONS_PAGE as usize);
+
+    // The mini-card join: every row that names a doc names one of the READER's own posts,
+    // and their store is already open - one shelf read per doc'd row, page-bounded.
+    for item in items.iter_mut().filter(|i| !i.doc_id.is_empty()) {
+        let Some(doc_id) = hex::decode(&item.doc_id)
+            .ok()
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        else {
+            continue;
+        };
+        if let Some(p) = crate::record::documents::public_doc(data.db(), &doc_id).await? {
+            item.doc_title = Some(p.title);
+            item.doc_published_ms = Some(p.genesis_ms);
+        }
+    }
 
     Ok(Json(serde_json::json!({ "items": items, "watermark": watermark })))
 }
@@ -3679,6 +3707,8 @@ mod notification_dedup_tests {
             author: author.to_string(),
             kind: kind.to_string(),
             doc_id: String::new(),
+            doc_title: None,
+            doc_published_ms: None,
             claimed_name: None,
             trust: None,
             interest: None,

@@ -176,6 +176,11 @@ const base58 = async (host) => {
             "and WHICH post: the doc rides the envelope's own signed evidence, so even a " +
                 "murmur names its most recent share"
         );
+        assert.equal(
+            items[0].doc_title,
+            "worth passing on",
+            "the mini-card's title joins server-side - the reader's own post, their own db"
+        );
     });
 
     it("a FOLLOWED sharer's share arrives by the derived path, doc named, no envelope", async () => {
@@ -216,6 +221,7 @@ const base58 = async (host) => {
             (i) => i.kind === "rebroadcast" && i.doc_id === second
         );
         assert.ok(row, "the share derived into the author's bell, document named");
+        assert.equal(row.doc_title, "shared by a friend", "titled for the mini-card");
         assert.equal(row.author, bobRoot, "credited to the sharer");
         assert.equal(
             row.stranger,

@@ -6981,3 +6981,17 @@ author's, retiring postentry.js's "the item page will take this href over when i
 comment on the day it came true; the author's page stays one click away via the
 permalink's byline. Next: the notification's "see the post" points here, and the
 mini-card rides.
+
+## 2026-08-26 (cont.): the mini-post card - a referenced post, dressed
+
+The bell's share rows now carry the post itself in miniature: title and date in a small
+clickable card opening the permalink, replacing the bare "see the post" anchor (phrase
+retired). The title joins SERVER-side in the notifications handler - the referenced doc is
+the reader's own post and their store is already open, one shelf read per doc'd row,
+page-bounded - so the bell renders instantly with no client fan-out; a post that has left
+the public shelf joins nothing and the card degrades to the feed's own word for an
+untitled reference, "link", whose click 404s honestly. `MiniPost` lives in postentry.js
+beside `PostEntry` but is deliberately NOT a compact PostEntry: the one-component ruling
+covers "a post, shown", and this shows nothing of the post's body - it is a dressed link.
+Red-first both roads (rebroadcast.cjs: the derived row's title and the murmur's, watched
+fail before the join existed).

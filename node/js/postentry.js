@@ -421,6 +421,25 @@ const ShareButton = ({ item, current }) => {
     </button>`;
 };
 
+/// A post, REFERRED to - the mini-card (2026-08-26): title and date in a small clickable
+/// footprint, for surfaces that mention a post rather than show it (the bell's rebroadcast
+/// rows first). Not a compact PostEntry on purpose: the one-component ruling covers "a
+/// post, shown", and this shows nothing of the post's body - it is a dressed link, and a
+/// missing title degrades to the feed's own word for that, "link".
+export const MiniPost = ({ author, doc_id, title, published_ms }) => {
+    const when =
+        published_ms &&
+        new Date(published_ms).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        });
+    return html`<a class="minipost" href=${`/id/${speakable(author)}/post/${doc_id}`}>
+        <span class="minipost-title">${title || t('postentry.link', 'link')}</span>
+        ${when && html`<span class="minipost-when">${when}</span>`}
+    </a>`;
+};
+
 export const PostEntry = ({ item, current, interest, editing }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);

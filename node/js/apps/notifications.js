@@ -17,6 +17,7 @@ import { api } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
+import { MiniPost } from '../postentry.js';
 import { agoUnit } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
 
@@ -52,8 +53,11 @@ const sentence = (r) => {
     // words). Derived rows name the document; a delivered murmur cannot (the pool
     // collapses per sender), and the words stay honest about that difference.
     if (r.kind === 'rebroadcast') {
+        // With the mini-card right there, "one of your posts" restated the card - the
+        // sentence is just the verb, and the card is the object. The wordier form
+        // survives only for a row that names no post to show.
         return r.doc_id
-            ? t('apps.notifications.shared-one-of-your-posts', 'shared one of your posts')
+            ? t('apps.notifications.shared', 'shared')
             : t(
                   'apps.notifications.shared-something-of-yours',
                   'shared something of yours'
@@ -182,13 +186,18 @@ export const NotificationsApp = ({ current }) => {
                                           is the exact inversion this design is trying to avoid. */ ''}
                                       <${Subject} row=${r} />
                                       ${sentence(r)}
+                                      ${/* The mini-card: the referenced post as a dressed
+                                          link to its own page - title joined server-side
+                                          (the reader's own post), degrading to a bare
+                                          "link" when the post has left the shelf. */ ''}
                                       ${r.kind === 'rebroadcast' &&
                                       r.doc_id &&
-                                      html` <a
-                                          class="notif-doc-link"
-                                          href=${`/id/${root}/docs/${r.doc_id}/body`}
-                                          >${t('apps.notifications.see-the-post', 'see the post')}</a
-                                      >`}
+                                      html`<${MiniPost}
+                                          author=${root}
+                                          doc_id=${r.doc_id}
+                                          title=${r.doc_title}
+                                          published_ms=${r.doc_published_ms}
+                                      />`}
                                       ${r.stranger &&
                                       html`<span
                                           class="notif-stranger"

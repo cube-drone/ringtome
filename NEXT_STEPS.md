@@ -22,43 +22,18 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   * Produce a list of media files that aren't linked anywhere
 * mp3 tags -> annotations (keep things like album artist)
 
-### People
-
-* Search my people / all visible people
-
 ### Public posts and fan-out
 
-* Posts link to a post-specific page (each post has its own location)
 * Search my posts
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets (triggering a notification)
 * Make a whole bucket public in one fell swoop.
-* Rebroadcast
-  * **An orphaned share row**: when every sharer a reader follows has withdrawn, the feed row
-    stays, bylined with whoever brought it. Arguably it should retire instead - the pointer was
-    the only reason it was ever there. A question for the retraction rules, not the read path
-    (which currently falls back to `feed_journal.via_root` and says so in a comment).
-  * **Feed convergence across a persona's own nodes** (design conversation 2026-08-15; the
-    divergence classes and fixes argued there). Two slices, holes before amnesia:
-    * ~~**Journal watermarks + background history fill - the window amnesia.**~~ Built
-      2026-08-16, posts lane (`journal_marks` + `journal_fill`, schema gen 23): the
-      persisted per-author mark makes the forward catch-up exact (pages down until the gap
-      closes, bounded by the year horizon), and the history dig extends each follow edge's
-      feed backward a page per beat to the horizon - the follow point is the guarantee,
-      genesis is not (Curtis: one year). Remaining from that design:
-      * **The share lane's history dig**: an old share needs its fragment fetched to
-        journal at all - a network walk per row against possibly-dark authors - so it wants
-        its own harder pacing and skip-and-retry on the same `journal_fill` cursor idiom.
-      * Lower priority: attribution keys (`feed_shares.shared_ms`, the crowd's introducer)
-        are local-arrival facts, so converged membership can still disagree about the LEAD
-        sharer - converge them on the pointer's claimed share stamp, the version-ordering
-        move applied to bylines.
-  * Then replies (rebroadcast + comment, parent-plus-root pinning leaning), and "share this
-    user to my network" after that.
+* Rebroadcast replies
+* Disable comments/rebroadcasts
 * Save to bucket
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")
-
+* more granular or time-limited blocks? ("block for 6 months")
 
 ### Inbox
 
@@ -68,7 +43,7 @@ format and its offline verification, the `ringtome/deliver/0` ALPN, the gate at 
 both tiered inbox chains, the outbox with its backoff ladder, and the bell showing delivered
 beside derived. What is left:
 
-* **More notice kinds**: commented on / tagged / rebroadcast your post - each needs its own
+* **More notice kinds**: commented on / tagged your post - each needs its own
   evidence rule in `deliver::verify_claim`; and first-contact, the one bare-claim kind, which
   needs the capped greeting surfaced and its own smaller pool.
 * **Sealed-envelope relays**: a friend's always-on node holding a notice for a phone that is
@@ -128,23 +103,7 @@ Does a mutual follow+trust make a "friend"?
 *  a mp3 browser
 
 ### Trust
-
-The arc lives in [DISCOVERY.md](DISCOVERY.md) — the four-stage pipeline, its invariants, and
-the slice order. Below is the short worklist.
-
-* ~~node-level edge graph + per-user implicit edges (depth 2)~~ built 2026-08-16 (PROJECT_PLAN: *Implicit edges*); consumers below still open
-* ~~speculative rollup + the speculative pass at posts depth (DISCOVERY slice 1)~~ built 2026-08-22
-  (`speculative.rs`, node gen 25); the day's field findings - the freshness-contract predicate, the
-  garbage-dial rule, detach-never-cancel - are in HISTORY and folded into DISCOVERY's invariants
-* ~~speculative journal rows + provenance (slice 2)~~ built 2026-08-24 (`feed_journal.suggested_via`, node gen 27); ~~then the slider (slice 3)~~ built 2026-08-24 (`pure/selectivity.js` + the feed's slider; position a persona-level private register); ~~then mirror eviction (slice 4)~~ built 2026-08-24 (`eviction.rs`: the hourly sweep; a mirror stays for any of hosted / dialed / member-fetched / fragments / demand / grace)
-* ~~the headers depth (slice 5, scoped to depth 2)~~ built 2026-08-25 - the DISCOVERY
-  arc is complete at the depth-2 boundary; the farther horizon stays parked
-* ~~surface implicit edges in the UI (people page: "suggested via..."), with banded promiscuity discounts and explicit-dial precedence at read~~ built 2026-08-24: the People page's suggested shelf (`/api/identity/{root}/suggested` - the demand rollup filtered to landed mirrors, discounts and explicit-dial exclusion inherited from the rollup itself)
-* advogato-style joint flow calculation to determine how much we trust a person who we've never met, but exists somewhere in our trust graph
-* using trust & rebroadcast rules to surface content to users
-* using trust to make it easier to send messages to users
-* adversarial simulation
-
+* Users in your extended trust network get access to the higher-priority higher-tier messages bucket?
 
 ### Desktop
 * tray sidecar, autostart, app-mode window
@@ -162,8 +121,13 @@ the slice order. Below is the short worklist.
 * idk defer defer
 * does this connect to a federated node or fully run the protocol in rust?
 
+### Real-Time Chat
+* The "seed" is shared, like a Post would be, and can be rebroadcast, also like a post would be
+
 ### Weird Ideas
 * Anki-Style Flashcards
 * Minesweeper/Solitaire
 * VN Engine
 * Whiteboard/shared board
+* Post Signatures
+
