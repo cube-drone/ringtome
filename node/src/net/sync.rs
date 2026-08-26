@@ -2816,6 +2816,8 @@ mod tests {
                 preview_hash: None,
                 refs: Vec::new(),
                 genesis_ms: None,
+                reply_to: None,
+                thread_root: None,
             };
             chain.append(entry_type::DOC_HEADER, header.encode().unwrap())
         }

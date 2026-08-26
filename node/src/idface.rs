@@ -1088,7 +1088,13 @@ pub async fn id_posts(
 
 /// One post, as every surface reports it.
 fn post_json(p: &crate::record::documents::PublicDoc) -> serde_json::Value {
+    let link = |l: &Option<(String, String)>| {
+        l.as_ref()
+            .map(|(author, doc)| serde_json::json!({ "author": author, "doc_id": doc }))
+    };
     serde_json::json!({
+        "reply_to": link(&p.reply_to),
+        "thread_root": link(&p.thread_root),
         "doc_id": hex::encode(p.doc_id),
         "title": p.title,
         "format": crate::record::documents::Format::from_wire(p.format).as_str(),

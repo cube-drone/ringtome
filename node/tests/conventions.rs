@@ -205,7 +205,8 @@ fn user_db_opens_are_deliberate() {
         ("record/documents.rs", 1),
         ("record/store.rs", 2),
         ("identity/adoption.rs", 2),
-        ("identity/routes.rs", 5),
+        ("identity/routes.rs", 6),
+                                   // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
     ]);
 
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

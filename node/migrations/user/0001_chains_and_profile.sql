@@ -102,9 +102,13 @@ CREATE TABLE doc_versions (
     timestamp_ms  INTEGER NOT NULL,     -- the entry's claimed stamp (display/LWW only)
     seq           INTEGER NOT NULL,     -- position on the author's chain
     author_pubkey TEXT    NOT NULL,     -- hex leaf key that signed the version (device attribution)
-    lane          TEXT    NOT NULL DEFAULT 'private' -- which world: 'private' (DOCUMENTS_PRIVATE,
+    lane          TEXT    NOT NULL DEFAULT 'private', -- which world: 'private' (DOCUMENTS_PRIVATE,
                                         -- encrypted headers/bodies) or 'public' (POSTS, plaintext).
                                         -- A document lives wholly in one lane; crossing is a copy.
+    reply_to_root    TEXT,              -- the thread links, per version, off the signed header
+    reply_to_doc     TEXT,              -- (COMMENTS.md slice 1) - folded out so the heads memo
+    thread_root_root TEXT,              -- and every reconstruction round-trips the claim
+    thread_root_doc  TEXT
 );
 CREATE INDEX doc_versions_by_doc ON doc_versions (doc_id);
 
@@ -133,8 +137,12 @@ CREATE TABLE doc_heads (
     heads_fp      BLOB    NOT NULL,     -- BLAKE3 over the sorted logical-head hashes: the head
                                         -- SET as one comparable value (raced resolutions rotate
                                         -- the set without moving the count - the lookout lesson)
-    head_bodies   BLOB    NOT NULL      -- the logical heads' body hashes, sorted+concatenated:
+    head_bodies   BLOB    NOT NULL,     -- the logical heads' body hashes, sorted+concatenated:
                                         -- what the search index checks blob presence against
+    reply_to_root    TEXT,              -- the thread link, off the signed header (COMMENTS.md
+    reply_to_doc     TEXT,              -- slice 1): parent author root + doc id, hex; NULL =
+    thread_root_root TEXT,              -- not a reply. Root beside parent - parent-plus-root,
+    thread_root_doc  TEXT               -- never the ancestor path.
 );
 
 -- The search index: one token-bag row per document, derived from title + resolved body +

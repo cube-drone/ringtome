@@ -1059,22 +1059,106 @@ struct PublishResponse {
 
 /// Publish a note: mint (or extend) its public post. The deliberate act the whole membrane
 /// rests on - there is no flag to set, only this call to make.
+/// A reply's target, as the publish request names it (COMMENTS.md slice 1).
+#[derive(serde::Deserialize, Default)]
+struct PublishRequest {
+    reply_to: Option<ReplyRef>,
+}
+
+#[derive(serde::Deserialize)]
+struct ReplyRef {
+    author: String,
+    doc_id: String,
+}
+
+/// Resolve a reply's links from the PARENT's own held header: the mirror's public shelf
+/// first (a followed or visited persona), the fragment shelf second (a post met as a
+/// share). The thread root is the parent's own claim when the parent is itself a reply,
+/// else the parent - parent-plus-root, never the ancestor path. A parent this computer
+/// does not hold refuses with words: a reply minted blind could neither copy the root
+/// claim nor honor the pin.
+async fn resolve_reply_link(
+    state: &AppState,
+    parent: &ReplyRef,
+) -> Result<crate::record::documents::ReplyLinks, AppError> {
+    let author = hex_fixed::<32>(&parent.author, "reply author root")?;
+    let doc = hex_fixed::<16>(&parent.doc_id, "reply doc id")?;
+    let author_hex = hex::encode(author);
+    let doc_hex = hex::encode(doc);
+    let header = match state.user_dbs.get(&author_hex).await {
+        Ok(Some(db)) => match crate::record::documents::public_header_entry(&db, &doc).await? {
+            Some(entry) => match &entry.entry().payload {
+                ringtome_proto::Payload::Inline(payload) => {
+                    ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()
+                }
+                _ => None,
+            },
+            None => None,
+        },
+        _ => None,
+    };
+    let header = match header {
+        Some(h) => Some(h),
+        None => crate::fragments::held_header(&state.node_db, &author_hex, &doc_hex)
+            .await
+            .map_err(AppError::Internal)?,
+    };
+    let Some(header) = header else {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.cant-reply-to-a-post",
+            "can't reply to a post this computer doesn't hold - visit it first"
+        )));
+    };
+    let parent_link = (author, doc);
+    let root_link = header.thread_root.unwrap_or(parent_link);
+    Ok((parent_link, root_link))
+}
+
 async fn publish_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
+    body: Option<Json<PublishRequest>>,
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
+    let reply = match body.and_then(|Json(b)| b.reply_to) {
+        Some(parent) => Some(resolve_reply_link(&state, &parent).await?),
+        None => None,
+    };
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    match crate::record::bake::publish(&state, &data, &root, &doc_id).await? {
-        crate::record::bake::Outcome::Posted(post_id) => Ok(Json(PublishResponse {
-            post_id: Some(hex::encode(post_id)),
-            baking: None,
-        })
-        .into_response()),
+    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply).await? {
+        crate::record::bake::Outcome::Posted(post_id) => {
+            // The pins: a reply IS a recommendation (COMMENTS.md, Curtis's ruling) - the
+            // parent and the thread root are shared outright, ordinary pointers, crowd
+            // counts and all. Deduped when the parent is the root; your OWN posts pin
+            // nothing (they are already yours to serve, and a persona does not rebroadcast
+            // itself). Best-effort: the reply is on the chain either way, and a failed pin
+            // is re-mintable by sharing - a pin failure must not unsay the words.
+            if let Some((parent, root_link)) = reply {
+                let self_root = hex_fixed::<32>(&root, "root")?;
+                let mut pins = vec![parent];
+                if root_link != parent {
+                    pins.push(root_link);
+                }
+                for (author, doc) in pins {
+                    if author == self_root {
+                        continue;
+                    }
+                    if let Err(e) = share_one(&state, &data, &root, author, doc).await {
+                        tracing::warn!(author = %hex::encode(author), error = ?e,
+                            "a reply's pin did not mint; the reply stands, share by hand");
+                    }
+                }
+            }
+            Ok(Json(PublishResponse {
+                post_id: Some(hex::encode(post_id)),
+                baking: None,
+            })
+            .into_response())
+        }
         crate::record::bake::Outcome::Baking(items) => Ok((
             axum::http::StatusCode::ACCEPTED,
             Json(PublishResponse {
@@ -1115,7 +1199,37 @@ async fn unpublish_handler(
             "that post isn't on your public shelf - it may already be taken down"
         )));
     }
+    // The pin lives and dies with the comment (COMMENTS.md): read the post's own thread
+    // links BEFORE the tombstone lands, so a deleted reply retracts the pointers it
+    // minted. Retraction is the silent pointer write, exactly like un-sharing by hand -
+    // and it IS un-sharing: one pointer per (author, doc), so a manual share of the same
+    // parent goes with it, a named consequence of "a reply is a recommendation".
+    let reply_pins = crate::record::documents::public_doc(data.db(), &post_id)
+        .await?
+        .map(|p| (p.reply_to, p.thread_root));
     let signed = data.documents().retract_public(&post_id).await?;
+    if let Some((reply_to, thread_root)) = reply_pins {
+        let mut pins: Vec<(String, String)> = Vec::new();
+        pins.extend(reply_to);
+        pins.extend(thread_root);
+        pins.dedup();
+        for (author_hex, doc_hex) in pins {
+            let (Some(author), Ok(doc)) = (
+                crate::pubkey::decode(&author_hex),
+                hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())),
+            ) else {
+                continue;
+            };
+            let Ok(doc) = doc else { continue };
+            if author_hex == root {
+                continue; // your own posts were never pinned
+            }
+            if let Err(e) = data.rebroadcasts().share(&author, &doc, None).await {
+                tracing::debug!(author = %author_hex, error = ?e,
+                    "a deleted reply's pin retraction failed; un-share by hand");
+            }
+        }
+    }
     // Release the note that claimed this post. A tombstone is final for the POST's id, and the
     // recourse for a typo is delete-and-repost under a new one - but `publish` reuses whatever
     // id `published_as` names, so leaving the annotation standing made the canonical recourse
@@ -1178,6 +1292,57 @@ struct RebroadcastItem {
 /// `fragments`, so the ordinary path can only share a document this node already holds and can
 /// already serve on the fragment ALPN. A reader no longer needs the author's chain to resolve a
 /// share, which is the whole of *Pointer Plus Pinned Replica* and the reason a fourth hop exists.
+/// One share, end to end: resolve the held version, append the pointer, tell the author,
+/// journal to the sharer's rebroadcast-followers, knock eagerly. The rebroadcast POST's
+/// core and the reply pin's (COMMENTS.md: a reply IS a recommendation, so a pin is this
+/// exact act - one pointer kind, one semantics).
+async fn share_one(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    author: [u8; 32],
+    doc_id: [u8; 16],
+) -> Result<(), AppError> {
+    let version = crate::fragments::current_version(state, &author, &doc_id)
+        .await
+        .ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.this-computer-doesnt-have-that-post-2",
+                "this computer doesn't have that post yet - it can't share what it hasn't read"
+            ))
+        })?;
+    let entry = data.rebroadcasts().share(&author, &doc_id, Some(version)).await?;
+    let author_hex = hex::encode(author);
+    match data
+        .notices()
+        .seal(
+            &author,
+            &entry,
+            ringtome_proto::deliver::notice_kind::REBROADCAST,
+            state.config.pow_requested_bits,
+        )
+        .await
+    {
+        Ok(envelope) => {
+            if let Err(e) = crate::outbox::queue(&state.node_db, root, &author_hex, &envelope).await
+            {
+                tracing::warn!(author = %author_hex, error = ?e, "could not queue a share notice");
+            }
+        }
+        Err(e) => tracing::warn!(author = %author_hex, error = ?e, "could not seal a share notice"),
+    }
+    crate::fanout::backfill_share(state, root, &author_hex, &doc_id).await;
+    // Knock NOW rather than at the next backstop beat (the eager-knock idiom). Spawned:
+    // the sharer should not wait on a stranger's node to answer.
+    let eager = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::outbox::sweep(eager).await {
+            tracing::debug!(error = ?e, "eager share-notice delivery failed");
+        }
+    });
+    Ok(())
+}
+
 async fn rebroadcast_handler(
     session: Session,
     State(state): State<AppState>,
@@ -3609,6 +3774,8 @@ mod media_info_tests {
                 preview_hash,
                 refs: Vec::new(),
                 genesis_ms: None,
+                reply_to: None,
+                thread_root: None,
             },
         }
     }

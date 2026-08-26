@@ -6995,3 +6995,37 @@ beside `PostEntry` but is deliberately NOT a compact PostEntry: the one-componen
 covers "a post, shown", and this shows nothing of the post's body - it is a dressed link.
 Red-first both roads (rebroadcast.cjs: the derived row's title and the murmur's, watched
 fail before the join existed).
+
+## 2026-08-26 (cont. 2): the comments arc - rulings pinned, COMMENTS.md is canon
+
+PROJECT_PLAN's "replies are rebroadcast plus a comment" pulled forward into its own arc
+doc (COMMENTS.md, the DISCOVERY mold), its open questions ruled in one sitting: the reply
+link lives on the comment's signed header (reply_to + thread_root, the refs precedent);
+pins are parent-plus-root, never the path; **a reply IS a recommendation** (Curtis,
+overruling the draft's pin-flavor split - one pointer kind, share-fold and crowd counts
+included: commenting on a thing spreads it, and that is the social contract); replies are
+ordinary posts in followers' feeds with quoted-parent context; comment notices are
+first-class, never murmurs; assembly is honest-partial ("replies known here",
+cursor-paged); the pin covers the parent's media. One derived rule worth its bold: the
+pin lives and dies with the comment. Five slices queued in NEXT_STEPS; the runway this
+section spent months calling "deliberately after" - rebroadcast whole, tombstones, the
+edit window, covers, the murmurs tier, the permalink - is the month's work it lands on.
+
+## 2026-08-26 (cont. 3): comments slice 1 - the wire and the mint
+
+A reply is now a real thing on the wire: `reply_to` + `thread_root` on the signed header
+(additive map keys, the `refs` precedent; the codec refuses a root without a parent both
+ways), carried forward on re-publication like genesis so an edit can never re-parent a
+conversation, and round-tripped through the whole storage path - `doc_versions` and
+`doc_heads` grew the columns (user gen 17), because the heads memo reconstructs headers
+from columns and the first green-side run showed the pin minting while the header came
+back bare. Publishing with `reply_to` resolves the parent from its held header (mirror
+shelf, then fragment shelf; a blind reply refuses with words), copies the root from the
+parent's own claim, and mints parent-plus-root pins through the exact share act the
+rebroadcast button uses (`share_one`, factored from the handler) - a reply IS a
+recommendation, so rio the taste-follower receives the parent bylined via the replier,
+crowd machinery untouched. The pin lives and dies with the comment: the takedown reads
+its own links before the tombstone lands and retracts the pointers. Acceptance in
+comments.cjs (header stamps, pin-as-share witnessed by a follower, nested root-copy with
+both pins, blind-reply refusal, deletion retraction), the root-copy planted red. Schema
+note: user gen 16 -> 17, `just clean` again before the next dev boot.

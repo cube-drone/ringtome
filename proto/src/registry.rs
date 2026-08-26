@@ -550,6 +550,20 @@ pub struct DocHeaderPlain {
     /// absent on the wire. Capped at [`Self::MAX_REFS`] - a document embedding more is not a
     /// document, it is a Taxonomy wearing one's clothes (the media-budget argument, counted).
     pub refs: Vec<[u8; 16]>,
+    /// This post replies to another (COMMENTS.md, 2026-08-26): the parent's author root and
+    /// doc id, the author's own signed claim - no relay can mint, alter, or re-parent a
+    /// reply. On the header rather than the rebroadcast pointer because the link must
+    /// travel with every fragment and share, resolvable offline (the `refs` precedent),
+    /// and because the comment stays an ordinary post - tombstones, the edit window and
+    /// freezing apply with zero new cases. Carried forward verbatim on re-publication,
+    /// like `genesis_ms`.
+    pub reply_to: Option<([u8; 32], [u8; 16])>,
+    /// The thread's root - equal to `reply_to` when replying to a top-level post, copied
+    /// from the parent's own claim otherwise, so a depth-N reply pins parent-plus-root and
+    /// never the ancestor path. A lied-about root is self-scoped: the reply renders under
+    /// the wrong thread, and any holder of the parent sees the mismatch. Requires
+    /// `reply_to`: a root claim without a parent is not a shape this codec carries.
+    pub thread_root: Option<([u8; 32], [u8; 16])>,
 }
 
 impl DocHeaderPlain {
@@ -594,7 +608,12 @@ impl DocHeaderPlain {
             + self.thumb_hash.is_some() as u64
             + self.preview_hash.is_some() as u64
             + !self.refs.is_empty() as u64
-            + self.genesis_ms.is_some() as u64;
+            + self.genesis_ms.is_some() as u64
+            + self.reply_to.is_some() as u64
+            + self.thread_root.is_some() as u64;
+        if self.thread_root.is_some() && self.reply_to.is_none() {
+            return Err(ProtoError::BadEntry("a thread root without a parent"));
+        }
         w.map(n);
         w.uint(0);
         w.bytes(&self.doc_id);
@@ -647,6 +666,18 @@ impl DocHeaderPlain {
             w.uint(12);
             w.uint(g as u64);
         }
+        if let Some((author, doc)) = &self.reply_to {
+            w.uint(13);
+            w.array(2);
+            w.bytes(author);
+            w.bytes(doc);
+        }
+        if let Some((author, doc)) = &self.thread_root {
+            w.uint(14);
+            w.array(2);
+            w.bytes(author);
+            w.bytes(doc);
+        }
         Ok(w.into_bytes())
     }
 
@@ -659,6 +690,8 @@ impl DocHeaderPlain {
             (None, None, None, None, None);
         let mut refs: Vec<[u8; 16]> = Vec::new();
         let mut genesis_ms: Option<i64> = None;
+        let mut reply_to: Option<([u8; 32], [u8; 16])> = None;
+        let mut thread_root: Option<([u8; 32], [u8; 16])> = None;
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -708,6 +741,18 @@ impl DocHeaderPlain {
                         refs.push(map.bytes_fixed::<16>()?);
                     }
                 }
+                13 => {
+                    if map.array()? != 2 {
+                        return Err(ProtoError::BadEntry("reply_to must be [author, doc]"));
+                    }
+                    reply_to = Some((map.bytes_fixed::<32>()?, map.bytes_fixed::<16>()?));
+                }
+                14 => {
+                    if map.array()? != 2 {
+                        return Err(ProtoError::BadEntry("thread_root must be [author, doc]"));
+                    }
+                    thread_root = Some((map.bytes_fixed::<32>()?, map.bytes_fixed::<16>()?));
+                }
                 _ => map.skip_value()?,
             }
         }
@@ -726,9 +771,14 @@ impl DocHeaderPlain {
             preview_hash,
             refs,
             genesis_ms,
+            reply_to,
+            thread_root,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
+        }
+        if out.thread_root.is_some() && out.reply_to.is_none() {
+            return Err(ProtoError::BadEntry("a thread root without a parent"));
         }
         Ok(out)
     }
@@ -1363,6 +1413,49 @@ mod tests {
     /// The realized reserved key: refs round-trip, empty stays absent on the wire (byte-equal
     /// to a pre-refs encoding), and the cap refuses at BOTH doors - an encoder cannot mint an
     /// over-count header and a decoder refuses one minted by other code.
+    /// COMMENTS.md slice 1: the thread links ride the header, round-trip, are wire-absent
+    /// for a non-reply (pre-reply readers and entries agree byte for byte), and a root
+    /// claim without a parent is not a shape this codec carries - either way round.
+    #[test]
+    fn doc_header_reply_links_round_trip_and_pair() {
+        let base = DocHeaderPlain {
+            doc_id: [9u8; 16],
+            parents: vec![[1u8; 32]],
+            file_hash: [3u8; 32],
+            body_hash: [4u8; 32],
+            title: "a reply".into(),
+            format: None,
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
+            preview_hash: None,
+            refs: Vec::new(),
+            genesis_ms: Some(7),
+            reply_to: None,
+            thread_root: None,
+        };
+        let reply = DocHeaderPlain {
+            reply_to: Some(([5u8; 32], [6u8; 16])),
+            thread_root: Some(([7u8; 32], [8u8; 16])),
+            ..base.clone()
+        };
+        assert_eq!(DocHeaderPlain::decode(&reply.encode().unwrap()).unwrap(), reply);
+
+        let plain = DocHeaderPlain::decode(&base.encode().unwrap()).unwrap();
+        assert_eq!(plain.reply_to, None);
+        assert_eq!(plain.thread_root, None);
+
+        let orphan = DocHeaderPlain {
+            thread_root: Some(([7u8; 32], [8u8; 16])),
+            ..base
+        };
+        assert_eq!(
+            orphan.encode(),
+            Err(ProtoError::BadEntry("a thread root without a parent"))
+        );
+    }
+
     #[test]
     fn doc_header_refs_round_trip_and_cap() {
         let base = DocHeaderPlain {
@@ -1379,6 +1472,8 @@ mod tests {
             preview_hash: None,
             refs: vec![[7u8; 16], [8u8; 16]],
             genesis_ms: None,
+            reply_to: None,
+            thread_root: None,
         };
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
@@ -1440,6 +1535,8 @@ mod tests {
                 preview_hash: None,
                 refs: Vec::new(),
                 genesis_ms: None,
+                reply_to: None,
+                thread_root: None,
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -1458,6 +1555,8 @@ mod tests {
             preview_hash: None,
             refs: Vec::new(),
             genesis_ms: None,
+            reply_to: None,
+            thread_root: None,
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -1475,6 +1574,8 @@ mod tests {
             preview_hash: None,
             refs: Vec::new(),
             genesis_ms: None,
+            reply_to: None,
+            thread_root: None,
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
@@ -1492,6 +1593,8 @@ mod tests {
             preview_hash: Some([8u8; 32]),
             refs: Vec::new(),
             genesis_ms: None,
+            reply_to: None,
+            thread_root: None,
         };
         assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
@@ -1512,6 +1615,8 @@ mod tests {
             preview_hash: None,
             refs: Vec::new(),
             genesis_ms: None,
+            reply_to: None,
+            thread_root: None,
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {

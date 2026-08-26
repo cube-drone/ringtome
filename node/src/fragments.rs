@@ -938,6 +938,31 @@ pub async fn entombed(node_db: &Db, author_root: &str, doc_id: &[u8; 16]) -> Res
 }
 
 /// One held fragment, if we have it.
+/// The held fragment's SIGNED header, decoded - the reply resolver's fragment rung
+/// (COMMENTS.md slice 1): replying to a post you met as a share needs its header's own
+/// thread claims, and the stored entry carries them verbatim.
+pub async fn held_header(
+    node_db: &Db,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<Option<ringtome_proto::registry::DocHeaderPlain>> {
+    let row: Option<(Vec<u8>,)> = node_db
+        .fetch_optional(
+            "SELECT entry FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_id),
+        )
+        .await
+        .context("reading a fragment's entry")?;
+    let Some((entry,)) = row else { return Ok(None) };
+    let Ok(signed) = ringtome_proto::SignedEntry::decode(&entry) else {
+        return Ok(None);
+    };
+    let ringtome_proto::Payload::Inline(payload) = &signed.entry().payload else {
+        return Ok(None);
+    };
+    Ok(ringtome_proto::registry::DocHeaderPlain::decode(payload).ok())
+}
+
 pub async fn held(node_db: &Db, author_root: &str, doc_id: &str) -> Result<Option<Fragment>> {
     let row: Option<(String, Option<String>, Vec<u8>, String)> = node_db
         .fetch_optional(
@@ -1630,6 +1655,8 @@ mod tests {
                 preview_hash: None,
                 refs: Vec::new(),
                 genesis_ms,
+                reply_to: None,
+                thread_root: None,
             },
         }
     }
