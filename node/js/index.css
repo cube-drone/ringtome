@@ -68,3 +68,27 @@
     font-size: 0.8em;
     color: var(--muted);
 }
+
+/* The thread below a post (postpage.js Thread): nested one indent per level. */
+.thread {
+    margin-top: 1.25rem;
+}
+.thread-head {
+    font-size: 0.95rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.25rem;
+}
+.thread-empty,
+.thread-deeper {
+    color: var(--muted);
+    font-style: italic;
+}
+.thread-reply {
+    margin-top: 0.75rem;
+}
+.thread-reply .thread-level {
+    margin-left: 1.25rem;
+    border-left: 2px solid var(--border);
+    padding-left: 0.75rem;
+}

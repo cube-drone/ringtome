@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 469 phrases across 44 files.
+// 475 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -378,6 +378,9 @@ export default {
     'postpage.that-isnt-an-address': "that isn't an address this app knows how to read",
     'postpage.looking-for-the-post': 'looking for the post…',
     'postpage.no-such-post-is-held': 'no such post is held here - it may be private, taken down, or its author unreachable',
+    'postpage.replies-known-here': 'replies known here',
+    'postpage.none-known-yet': 'none known here yet',
+    'postpage.continue-this-thread': 'continue this thread',
 
     // --- node/js/posts.js ---
     'posts.recent-posts': 'recent posts',
@@ -490,6 +493,9 @@ export default {
     'idface.no-such-persona-here-9': 'no such persona here',
     'idface.that-isnt-a-document-id': "that isn't a document id",
     'idface.no-such-post-here': 'no such post here',
+    'idface.no-such-persona-here-10': 'no such persona here',
+    'idface.no-such-persona-here-11': 'no such persona here',
+    'idface.that-isnt-a-document-id-2': "that isn't a document id",
     'idface.no-such-persona-here-4': 'no such persona here',
     'idface.no-such-persona-here-5': 'no such persona here',
     'idface.not-carried-here-and-none': "not carried here, and none of the address's computers answered",

@@ -151,6 +151,27 @@ const base58 = async (host) => {
         assert.match(out.text, /doesn't hold/);
     });
 
+    it("the replies memo knows the thread where the chains are held (slice 2)", async () => {
+        // HOST_C holds bea's chain (rio's rebroadcast-follow syncs it) and cal's own -
+        // so ITS memo knows both links; ada's node, which holds neither replier's chain,
+        // honestly knows nothing yet (slice 6's door is how it learns). Assembly is
+        // honest-partial, and this asserts both halves.
+        await beat(HOST_C, "fold", beaRoot);
+        await beat(HOST_C, "fold", calRoot);
+        const onC = await (
+            await cal(`api/id/${adaRoot}/posts/${op}/replies`)
+        ).json();
+        assert.equal(onC.replies.length, 1, "one direct reply known to C");
+        assert.equal(onC.replies[0].author, beaRoot);
+        assert.equal(onC.more, false);
+        // The next level: the nested reply hangs off bea's reply, not off the root.
+        const level2 = await (
+            await cal(`api/id/${beaRoot}/posts/${reply}/replies`)
+        ).json();
+        assert.equal(level2.replies.length, 1, "the nested reply, one level down");
+        assert.equal(level2.replies[0].author, calRoot);
+    });
+
     it("deleting the reply retracts the pin - it lives and dies with the comment", async () => {
         const down = await bea(`api/identity/${beaRoot}/posts/${reply}`, { method: "DELETE" });
         assert.equal(down.status, 200, await down.text());
@@ -158,6 +179,16 @@ const base58 = async (host) => {
         assert.ok(
             !shares.some((s) => s.author === adaRoot && s.doc_id === op),
             "the deleted reply's pointer is withdrawn"
+        );
+        // And the memo recedes with the shelf (slice 2): bea's own node folds her chain,
+        // sees the reply's header gone, and the row goes with it.
+        await beat(HOST_B, "fold", beaRoot);
+        const onB = await (
+            await bea(`api/id/${adaRoot}/posts/${op}/replies`)
+        ).json();
+        assert.ok(
+            !onB.replies.some((r) => r.author === beaRoot),
+            "a deleted reply leaves the thread on the fold that noticed"
         );
     });
 });

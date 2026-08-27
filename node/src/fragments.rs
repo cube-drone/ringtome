@@ -163,6 +163,11 @@ pub async fn remember(
         )
         .await
         .context("remembering a fragment")?;
+    // A reply fragment's link joins the replies memo (COMMENTS.md slice 2); the fragment
+    // lifecycle owns the row - `forget_one` is the other half.
+    if let Err(e) = crate::replies::note_reply(node_db, author_root, verified).await {
+        tracing::debug!(author = %author_root, error = ?e, "noting a reply fragment failed");
+    }
     Ok(())
 }
 
@@ -195,6 +200,9 @@ async fn forget_one(node_db: &Db, author_root: &str, doc_id: &str) -> Result<()>
         )
         .await
         .context("forgetting a fragment")?;
+    if let Err(e) = crate::replies::forget_reply(node_db, author_root, doc_id).await {
+        tracing::debug!(author = %author_root, error = ?e, "forgetting a reply link failed");
+    }
     crate::fanout::excise_shared(node_db, author_root, doc_id).await
 }
 

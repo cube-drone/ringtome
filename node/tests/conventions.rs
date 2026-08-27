@@ -28,6 +28,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("boot_timestamps", vec!["db.rs"]),
         ("ingest_job", vec!["ingest.rs"]),
         ("foreign_fetches", vec!["idface.rs"]),
+        ("post_replies", vec!["replies.rs"]),
         ("persona_frontiers", vec!["net/frontier.rs"]),
         ("chain_heads", vec!["net/frontier.rs"]),
         ("media_bakes", vec!["record/bake.rs"]),
@@ -207,6 +208,8 @@ fn user_db_opens_are_deliberate() {
         ("identity/adoption.rs", 2),
         ("identity/routes.rs", 6),
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
+        ("replies.rs", 1),         // refresh_inner: ONE shelf open per fold-lane hook, for the
+                                  // root being folded - serialized per root, never a persona loop (2026-08-26)
     ]);
 
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

@@ -708,6 +708,25 @@ CREATE TABLE speculative_demand (
 -- The acquisition pass asks "who wants this target" across every reader at once.
 CREATE INDEX speculative_demand_by_target ON speculative_demand (target_root);
 
+-- The replies memo: "replies known here", per post (COMMENTS.md slice 2 - assembly is
+-- honest-partial by ruling). One row per VERIFIED reply link this node holds evidence
+-- for: chain-held rows ride the fold lane and stamp-sweep with their author's shelf;
+-- fragment-held rows live and die with their fragment. The permalink's thread read pages
+-- this, and slice 6's author door serves from the same well.
+CREATE TABLE post_replies (
+    parent_author TEXT    NOT NULL,  -- hex root of the post replied to (the IMMEDIATE parent)
+    parent_doc    TEXT    NOT NULL,  -- hex doc id
+    reply_author  TEXT    NOT NULL,
+    reply_doc     TEXT    NOT NULL,
+    root_author   TEXT    NOT NULL,  -- the thread root, as the reply's header claims it
+    root_doc      TEXT    NOT NULL,
+    claimed_ms    INTEGER NOT NULL,  -- the reply's claimed stamp: ordering, replay-stable
+    noted_ms      INTEGER NOT NULL,  -- the memo's own stamp: the whole-slice sweep's clock
+    PRIMARY KEY (parent_author, parent_doc, reply_author, reply_doc)
+);
+-- Slice 6's door asks by thread root ("everything in Q's conversation") in one read.
+CREATE INDEX post_replies_by_root ON post_replies (root_author, root_doc);
+
 -- The quiet twin of `foreign_fetches`: when the acquisition pass last reached each speculative
 -- target, and through whom. A SEPARATE table because the two registries have opposite
 -- consequences: a `foreign_fetches` row opens the sync door (`serve`'s wanted gate) and seats

@@ -1137,6 +1137,42 @@ pub async fn id_post(
     }
 }
 
+/// GET `/api/id/{root}/posts/{doc}/replies` - one page of the post's DIRECT replies as
+/// this node knows them (COMMENTS.md slice 2: assembly is honest-partial, and the copy
+/// says "replies known here"). Same shelf rule as the post itself; keyset by
+/// (claimed_ms, reply_doc), oldest first.
+pub async fn id_post_replies(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path((seg, doc)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<RepliesQuery>,
+) -> Result<Response, AppError> {
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-10", "no such persona here")));
+    };
+    let root_hex = hex::encode(root);
+    if !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-11", "no such persona here")));
+    }
+    if hex::decode(&doc).map(|b| b.len()) != Ok(16) {
+        return Err(AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id-2", "that isn't a document id")));
+    }
+    let after = match (query.after_ms, query.after_doc) {
+        (Some(ms), Some(d)) => Some((ms, d)),
+        _ => None,
+    };
+    let (replies, more) = crate::replies::replies_of(&state.node_db, &root_hex, &doc, after)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(axum::Json(serde_json::json!({ "replies": replies, "more": more })).into_response())
+}
+
+#[derive(serde::Deserialize)]
+pub struct RepliesQuery {
+    pub after_ms: Option<i64>,
+    pub after_doc: Option<String>,
+}
+
 pub async fn id_profile(
     session: Option<Session>,
     State(state): State<AppState>,

@@ -65,10 +65,9 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
   the pair; the journal stays honest about both rows.
 - The author of a hot post hears every reply as a first-class notice, gated by the same
   door as follows — flow ranking (Trust) is where reply-flood pressure goes when it comes.
-- A stranger's reply reaches the author by envelope only; the author's node holds the
-  reply's evidence and can render it. Whether it joins the public "replies known here"
-  memo before the author engages is slice 4's judgment call, leaning no (an unadmitted
-  stranger's words appear to the AUTHOR, not to the author's readers).
+- A stranger's reply reaches the author by envelope only; whether it joins the visible
+  conversation is the AUTHOR's call - the nod, slice 6's curation model (ruled
+  2026-08-26, superseding an earlier "leaning no").
 
 ## Invariants
 
@@ -81,6 +80,10 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
 - No read grows with history unbounded: the replies memo pages by cursor.
 - The rebroadcast chain's semantics are untouched: one pointer kind, recommendation
   included.
+- **The feed never assembles a tree** (Curtis, 2026-08-26): replies land as separate
+  reverse-chron entries, each wearing its quoted-parent context - browsing meets "C to B",
+  then "B to A", then "A", and that is correct. The post's own page is where the visible
+  tree assembles, and the only place.
 
 ## Slices, in order
 
@@ -100,10 +103,19 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
    (the words must not fail with a pointer); a deleted reply retracts its pins
    (`unpublish`, reading its own links before the tombstone lands). The single-post JSON
    serves both links, so slice 2's thread rendering has its data waiting.
-2. **Assembly + the thread.** The replies memo (node-level, folded on the fold lane),
-   the cursor-paged replies read on the single-post surface, and the permalink rendering
-   the thread: parent context above, replies below, "replies known here" honesty in the
-   copy.
+2. ~~**Assembly + the thread.**~~ Built 2026-08-26 (node gen 29; acceptance in
+   `comments.cjs`, the sweep planted red). The `post_replies` memo (`replies.rs`, node-
+   level): two sources, two lifecycles - chain-held rows ride the fold lane
+   (`refresh_from` in `fold::run_chain`, stamp-swept per replier so a deleted reply
+   recedes on the fold that noticed) and fragment-held rows live and die with the
+   fragment (`note_reply` at intake, `forget_reply` on the drop path, deferring to the
+   chain sweep when the chain is also held). The cursor-paged read
+   (`GET /api/id/{author}/posts/{doc}/replies`, keyset by claimed_ms + doc, oldest first,
+   twenty a page) serves DIRECT replies per level; the permalink recurses per level to a
+   depth cap with "continue this thread" beyond it, under a "replies known here" header
+   and an honest "none known here yet" empty state. Honest-partial proven both ways in
+   acceptance: the node holding the repliers' chains knows the thread; the author's node,
+   holding neither, honestly knows nothing until slice 6's door.
 3. **The composer and the feed.** Reply box on the permalink; the feed's quote-card
    rendering of replies (and the share/reply pair collapsed).
 4. **Comment notices.** `notice_kind::COMMENT` both roads (derived for followed repliers,
@@ -111,6 +123,24 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
 5. **Polish and the named edges.** Parent-media covers proven; hollow rendering ("in reply
    to a retracted post"); the double-presence collapse audited; retraction-of-reply
    retracting its pins proven at depth.
+6. **The author's thread door** (rulings 2026-08-26). The author is structurally the
+   best-informed node about their own post's thread - every reply anywhere announces
+   itself to them, by sync or by envelope - so their node serves a reply INDEX to anyone
+   who asks: `WantReplies(post, cursor)` / `Replies` on the fragment ALPN, the
+   death-cursor idiom verbatim - cursor-paged, answering with the repliers' own SIGNED
+   evidence (header entries naming the parent), verifiable offline; the reader fetches the
+   words through ordinary machinery. The author serves claims, never redistributes words.
+   **Curation is the same bit as display**: trusted-tier replies are served automatically;
+   an anonymous reply waits for the author's explicit "approve comment" nod before it
+   joins the conversation - and a per-author client setting flips the default to
+   auto-share-all, turning the choice into suppressing specific comments instead. Honest
+   limit, stated: suppression mutes the author's amplification, never the reply's
+   existence on its own author's chain. The "no comments" switch (NEXT_STEPS) is
+   suppress-all. **Reading side**: visiting the permalink IS the demand - the node asks
+   the author's door behind the render (the stale-while-revalidate idiom, budget-capped),
+   the thread UI shows a quiet "looking for more of the conversation" indicator while the
+   ask is in flight, and a refresh affordance re-asks on demand, because a hot thread is
+   worth a second glance.
 
 ## What this deliberately is not
 

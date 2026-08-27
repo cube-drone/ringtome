@@ -904,6 +904,44 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
     }
 }
 
+/// The public shelf's REPLY rows only - the replies memo's fold input (replies.rs).
+/// Bounded O(this author's replies): the reply columns select, nothing pages, and the
+/// consumer is a whole-slice memo rewrite in the subscriptions mold.
+pub async fn public_replies(
+    db: &Db,
+) -> Result<Vec<([u8; 16], (String, String), (String, String), i64)>, AppError> {
+    catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok(Vec::new());
+    }
+    type Row = (Vec<u8>, i64, String, String, Option<String>, Option<String>);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT doc_id, genesis_ms, reply_to_root, reply_to_doc,
+                    thread_root_root, thread_root_doc
+             FROM doc_heads
+             WHERE lane = 'public' AND reply_to_root IS NOT NULL
+               AND doc_id NOT IN (SELECT doc_id FROM public_retractions)",
+            (),
+        )
+        .await
+        .context("listing public replies")
+        .map_err(AppError::Internal)?;
+    let mut out = Vec::new();
+    for (doc_id, genesis_ms, pa, pd, tr, td) in rows {
+        let doc_id: [u8; 16] = doc_id
+            .try_into()
+            .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?;
+        let parent = (pa, pd);
+        let root = match (tr, td) {
+            (Some(r), Some(d)) => (r, d),
+            _ => parent.clone(),
+        };
+        out.push((doc_id, parent, root, genesis_ms));
+    }
+    Ok(out)
+}
+
 pub async fn public_docs(
     db: &Db,
     after: Option<(i64, [u8; 16])>,

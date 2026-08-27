@@ -20,6 +20,7 @@ import { useLocation } from 'preact-iso';
 import { api } from './net.js';
 import { parseSpeakable } from './speakable.js';
 import { PostEntry } from './postentry.js';
+import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
@@ -84,6 +85,86 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                 )}
             </p>`}
             ${item && html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} />`}
+            ${item &&
+            html`<section class="thread">
+                <h2 class="thread-head">
+                    ${t('postpage.replies-known-here', 'replies known here')}
+                </h2>
+                <${Thread} author=${root} doc=${doc} current=${current} depth=${0} />
+            </section>`}
         </div>
     `;
+};
+
+/// The visible tree below one post: this node's replies memo, one level per fetch, the
+/// UI recursing with a depth cap (COMMENTS.md slice 2 - "replies known here", honest and
+/// partial by ruling; slice 6's author door widens the well, not this shape). The feed
+/// never assembles a tree - this page is the only place one forms.
+const THREAD_DEPTH_CAP = 6;
+
+const Thread = ({ author, doc, current, depth }) => {
+    const [page, setPage] = useState(null);
+    useEffect(() => {
+        let live = true;
+        api(`/api/id/${author}/posts/${doc}/replies`)
+            .then((p) => live && setPage(p))
+            .catch(() => live && setPage({ replies: [] }));
+        return () => {
+            live = false;
+        };
+    }, [author, doc]);
+    const replies = (page && page.replies) || [];
+    if (!replies.length) {
+        return depth === 0 && page
+            ? html`<p class="thread-empty">
+                  ${t('postpage.none-known-yet', 'none known here yet')}
+              </p>`
+            : null;
+    }
+    return html`<div class="thread-level">
+        ${replies.map(
+            (r) => html`<${ThreadReply}
+                key=${`${r.author}:${r.doc_id}`}
+                author=${r.author}
+                doc=${r.doc_id}
+                current=${current}
+                depth=${depth}
+            />`
+        )}
+    </div>`;
+};
+
+const ThreadReply = ({ author, doc, current, depth }) => {
+    // undefined = loading, null = not readable here (the memo knew it, the shelf moved -
+    // a takedown between fold and render), object = the reply's header.
+    const [post, setPost] = useState(undefined);
+    useEffect(() => {
+        let live = true;
+        api(`/api/id/${author}/posts/${doc}`)
+            .then((p) => live && setPost(p))
+            .catch(() => live && setPost(null));
+        return () => {
+            live = false;
+        };
+    }, [author, doc]);
+    if (post === undefined || post === null) return null;
+    const item = {
+        author,
+        doc_id: post.doc_id,
+        title: post.title,
+        format: post.format,
+        published_ms: post.published_ms,
+        mine: !!(current && current.root === author),
+    };
+    return html`<div class="thread-reply">
+        <${PostEntry} key=${post.doc_id} item=${item} current=${current} editing=${null} />
+        ${depth + 1 < THREAD_DEPTH_CAP &&
+        html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} />`}
+        ${depth + 1 >= THREAD_DEPTH_CAP &&
+        html`<p class="thread-deeper">
+            <a href=${`/id/${speakable(author)}/post/${doc}`}>
+                ${t('postpage.continue-this-thread', 'continue this thread')}
+            </a>
+        </p>`}
+    </div>`;
 };

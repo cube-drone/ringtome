@@ -37,6 +37,7 @@ mod pubkey;
 mod publish;
 mod rate_limit;
 mod rebroadcast;
+mod replies;
 mod reaper;
 mod record;
 mod request_context;
@@ -548,6 +549,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/id/{seg}/profile", get(idface::id_profile))
         .route("/api/id/{seg}/posts", get(idface::id_posts))
         .route("/api/id/{seg}/posts/{doc}", get(idface::id_post))
+        .route("/api/id/{seg}/posts/{doc}/replies", get(idface::id_post_replies))
         .route("/api/directory", get(idface::directory))
         .route("/home/{*wildcard}", get(ui::homepage))
         // Versioned static assets (CDN cache-safe)

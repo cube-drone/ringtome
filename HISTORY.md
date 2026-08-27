@@ -1467,6 +1467,29 @@ address…" / "where this persona lives on the web") are gone. The address is it
 document; a label that explains it is a label that doubts it. One row, both pages
 (/home/persona and the id lens), no per-audience label bending.
 
+## Can't-tell is not goodbye (2026-08-02)
+
+Field report from the schema migration: logging into an adopted computer showed "this
+computer has left the persona" with nobody repudiated or retired. Root cause, in two
+halves. The farewell fired on the ABSENCE of good news: a rebuilt-empty user db yields an
+empty key tree, Crown honestly answers Unknown for a leaf it has never heard of, and the
+persona screen's branch treated everything-not-active as departed. And the migration's own
+promise - "per-user data replays from its journal" - was never wired: rebuild_from_journal
+existed with zero production callers. Both fixed. The farewell now requires AFFIRMATIVE
+removal (isDeparted in pure/removal.js: retired/repudiated/invalid, vectored; "unknown"
+opens the persona and lets sync heal - both the boot-time list and the live revoked-signer
+path gate on it). And the user-db open path gained the journal invariant's other direction:
+an empty entries table under a non-empty journal replays every frame through the ordinary
+validated ingest (the gate re-checks every signature, so a tampered journal injects
+nothing). Field-proven in four shapes: single-node wipe heals from the journal (profile,
+note, and active standing all through the rebuild); adopted-node wipe heals from its PEER
+before you can blink (identity_peers survives in node.db and the resync loop dials on
+boot - the false-farewell window was always exactly "no peer reachable", which is why
+migrating both dev nodes together hit it); peer-down total wipe now reads "unknown", opens
+to the console, and waits; and one instrument scar - a probe that deleted files under a
+still-running node's open handles got them flushed back at shutdown, which is not a bug but
+a reminder that rm is not a message to a process.
+
 ## The profile learns to count, and to wait (2026-08-02)
 
 Two field findings on the profile editor, one fix. The invisible 400: a too-large bio hit
@@ -7029,3 +7052,40 @@ its own links before the tombstone lands and retracts the pointers. Acceptance i
 comments.cjs (header stamps, pin-as-share witnessed by a follower, nested root-copy with
 both pins, blind-reply refusal, deletion retraction), the root-copy planted red. Schema
 note: user gen 16 -> 17, `just clean` again before the next dev boot.
+
+## 2026-08-26 (cont. 4): the author's thread door - rulings pinned
+
+The design conversation behind slice 2 produced a sixth slice: the author is structurally
+the best-informed node about their own post's thread (every reply announces itself to
+them, by sync or envelope), so their node will serve a reply index to anyone who asks -
+`WantReplies`/`Replies` on the fragment ALPN, the death-cursor idiom verbatim, answering
+with the repliers' own signed evidence, claims never words. Curation ruled: display and
+serve are the same bit; trusted-tier replies flow automatically, an anonymous reply waits
+for the author's "approve comment" nod, and a client setting flips the default to
+auto-share-all (the choice becomes suppressing, not approving) - moderation as the
+author's amplification, never anyone's erasure, with NEXT_STEPS' "disable comments" as
+suppress-all. Reading side: visiting the permalink is the demand (SWR behind the render),
+with an in-flight indicator and a refresh affordance for hot threads. Also pinned as an
+invariant: the FEED never assembles a tree - replies are separate reverse-chron entries
+with quoted context, and the post's own page is the only place the visible tree forms.
+
+## 2026-08-26 (cont. 5): comments slice 2 - assembly and the thread
+
+The thread assembles where it is held. The `post_replies` memo (node gen 29, `replies.rs`
+owning the SQL) folds every reply link the node can verify from what it already has, by
+two sources with two lifecycles: chain-held rows ride the fold lane - `refresh_from` in
+`run_chain` rewrites one replier's slice from their public shelf (a bounded replies-only
+read, `documents::public_replies`) and stamp-sweeps what the rewrite no longer sees, so a
+deleted reply recedes on the fold that noticed - while fragment-held rows are noted at
+intake from the verified header and forgotten when the fragment dies, unless the chain is
+also held, in which case the shelf is the truth and the sweep owns the row. The read is
+`GET /api/id/{author}/posts/{doc}/replies`: direct replies only, keyset-paged by
+(claimed_ms, doc) oldest first - a conversation reads downward, and a thread is a read
+whose cost grows with history, so it ships with a cursor or not at all. The permalink
+renders it recursively per level (depth-capped, "continue this thread" past the cap)
+under "replies known here", with "none known here yet" as the honest empty state.
+Acceptance extends comments.cjs: the node holding the repliers' chains serves the
+two-level thread; deletion recedes the row after the fold; the sweep planted red. One
+test lesson kept in the unit test's comment: the sweep's cutoff comes BEFORE the rewrite
+(production's order) - the first draft took it after and flaked on a shared millisecond.
+Schema note: node gen 28 -> 29, `just clean` before the next dev boot.

@@ -218,6 +218,7 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool) {
     crate::fanout::after_public_move(state, root).await;
     crate::notifications::refresh_from(state, root).await;
     crate::rebroadcast::refresh_from(state, root).await;
+    crate::replies::refresh_from(state, root).await;
     if ledger {
         crate::net::subscriptions::refresh_root(state, root).await;
     }
