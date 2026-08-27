@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 492 phrases across 44 files.
+// 494 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -385,6 +385,7 @@ export default {
     'postpage.replies-known-here': 'replies known here',
     'postpage.ask-the-author-again': "ask the author's computer again - a hot thread is worth a second glance",
     'postpage.refresh': 'refresh',
+    'postpage.in-reply-to-unreadable': 'in reply to a post that is no longer readable here',
     'postpage.in-reply-to': 'in reply to',
     'postpage.held-for-your-nod': 'replies from people you donu2019t follow, held for your nod',
     'postpage.approve-comment': 'approve comment',
@@ -396,6 +397,7 @@ export default {
     'postpage.reply': 'reply',
     'postpage.looking-for-more': 'looking for more of the conversation…',
     'postpage.none-known-yet': 'none known here yet',
+    'postpage.a-reply-that-isnt-readable': "a reply that isn't readable here - deleted, or its words still on their way",
     'postpage.continue-this-thread': 'continue this thread',
 
     // --- node/js/posts.js ---

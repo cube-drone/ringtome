@@ -7174,3 +7174,28 @@ conversation, keep-quiet mutes the author's amplification and never the reply's 
 on its own author's chain, proven in acceptance on a blank fifth-node persona end to end.
 The door planted shut. Schema note: node gen 30 -> 31, `just clean` before the next dev
 boot.
+
+## 2026-08-27 (cont. 3): comments slice 5 - polish, the named edges, and the arc complete
+
+The comments arc closes. Deep retraction proven: a nested reply's death withdraws both
+pins - parent and root, read off the reply's own held copy, so the retraction works even
+after the parent itself is dead (the root pin planted forgotten; the depth claim caught
+it). Parent-media settled by composition: a pin IS `share_one`, cascade's "the image
+rides the share" already owns the fragment-path cover-and-release proof for that exact
+act, and the new acceptance pins what holds on every topology - the pin journals the
+parent whole to the taste-follower and their node serves its image bytes. The chase that
+got there was the day's real lesson: the claim first failed as a copy of cascade's
+fragment assertions, passed cleanly on scratch nodes, and turned out to be a TEST-SHAPE
+bug, not a product bug - rio's node mirrors the parent's author (a housemate's old
+visit), and the share fold deliberately journals off a live mirror without minting a
+fragment, because the obligation is "able to answer", never "hold a second copy". Hollow
+rendering landed both places it was owed: a memo-known reply whose header cannot be read
+is an honest hollow row rather than an omission from "replies known here", and the
+permalink's parent line says "in reply to a post that is no longer readable here". The
+collapse audit pinned the lead-only rule as its own pure claim. Two operational scars
+worth keeping: a backgrounded compound command ran its file edit from a reset working
+directory and died on the relative path, so the gate that followed tested the UNEDITED
+tree - same-line-number failures across two runs were the tell, and absolute paths in
+background edits are the rule; and suites run in PARALLEL, so single-shot beat rounds
+race sibling load - convergence loops with bounded rounds are the shape for multi-stage
+pipelines. All six slices of COMMENTS.md are struck.

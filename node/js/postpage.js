@@ -136,17 +136,20 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
 /// gets its link - "in reply to: link" is the honest hollow rendering.
 const ParentContext = ({ link }) => {
     const [head, setHead] = useState(null);
+    const [gone, setGone] = useState(false);
     useEffect(() => {
         let live = true;
         api(`/api/id/${link.author}/posts/${link.doc_id}`)
             .then((p) => live && setHead(p))
-            .catch(() => {});
+            .catch(() => live && setGone(true));
         return () => {
             live = false;
         };
     }, [link.author, link.doc_id]);
     return html`<p class="postpage-parent">
-        ${t('postpage.in-reply-to', 'in reply to')}
+        ${gone
+            ? t('postpage.in-reply-to-unreadable', 'in reply to a post that is no longer readable here')
+            : t('postpage.in-reply-to', 'in reply to')}
         <${MiniPost}
             author=${link.author}
             doc_id=${link.doc_id}
@@ -370,7 +373,18 @@ const ThreadReply = ({ author, doc, current, depth }) => {
             live = false;
         };
     }, [author, doc]);
-    if (post === undefined || post === null) return null;
+    if (post === undefined) return null;
+    if (post === null) {
+        // The memo knows the claim; the shelf cannot answer for it right now - deleted
+        // between fold and render, or a door-learned reply whose words are still in
+        // flight. The hollow row is the honest render: the thread's shape stands, the
+        // words degrade (COMMENTS.md - "in reply to a retracted post" composes).
+        return html`<div class="thread-reply">
+            <p class="thread-hollow">
+                ${t('postpage.a-reply-that-isnt-readable', "a reply that isn't readable here - deleted, or its words still on their way")}
+            </p>
+        </div>`;
+    }
     const item = {
         author,
         doc_id: post.doc_id,

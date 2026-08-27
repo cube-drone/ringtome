@@ -151,9 +151,22 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
    the deleted-reply case): a delivered row from a sender the reader now PULLS never
    shows, twin present or not - the derived path owns the fact's absence too, and a stale
    stranger envelope must not resurrect a deleted reply.
-5. **Polish and the named edges.** Parent-media covers proven; hollow rendering ("in reply
-   to a retracted post"); the double-presence collapse audited; retraction-of-reply
-   retracting its pins proven at depth.
+5. ~~**Polish and the named edges.**~~ Built 2026-08-27 (the root pin planted forgotten).
+   Deep retraction proven: deleting a nested reply withdraws BOTH pins - parent and root,
+   read off the reply's own held copy, so it works even after the parent itself is dead.
+   Parent-media proven by composition plus the reply path's own claims: a pin IS
+   `share_one`, and cascade.cjs ("the image rides the share") owns the fragment-path
+   cover/release proof for that exact act; comments.cjs pins what holds on every topology
+   - the pin journals the parent whole to the taste-follower, bylined via the replier,
+   and their node serves the parent's image bytes. One topology finding worth its
+   sentence: a node that already MIRRORS the parent's author journals a pin off the
+   mirror and mints no fragment, deliberately - the obligation is "able to answer", not
+   "hold a second copy". Hollow rendering: a memo-known reply whose header cannot be read
+   renders as an honest hollow row ("deleted, or its words still on their way") instead
+   of vanishing from "replies known here", and the permalink's parent line degrades to
+   "in reply to a post that is no longer readable here". The collapse audited and its
+   lead-only rule pinned as a pure claim: a replier in the supporting crowd never hides
+   the row, because the row is on screen as the LEAD's recommendation.
 6. ~~**The author's thread door**~~ Built 2026-08-27 (node gen 31; the door planted
    shut). `WantReplies(author, doc, since)` / `Replies(proofs, cursor)` on the fragment
    ALPN, the death-cursor idiom - the door pages its replies memo by rowid, resolving each

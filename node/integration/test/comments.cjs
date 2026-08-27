@@ -14,7 +14,9 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { sql, HOST, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
-const { beat, shareArrives } = require("./beat.cjs");
+const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
+const { makeFetch } = require("./fetch.cjs");
+const settle = require("./helpers.cjs").settleWith(240);
 
 const base58 = async (host) => {
     const { toBase58 } = await import("../../js/speakable.js");
@@ -392,5 +394,120 @@ const base58 = async (host) => {
             !(bell.items || []).some((i) => i.author === beaRoot && i.kind === "comment"),
             "a deleted reply stops being a conversation in the bell"
         );
+    });
+
+    // ------------------------------------------------------------------------------------
+    // Slice 5: the named edges, proven.
+
+    it("deleting a nested reply retracts BOTH its pins - parent and root, at depth (slice 5)", async function () {
+        // cal's nested reply owed two pointers (parent-plus-root). Its death owes two
+        // retractions - even now that its PARENT (bea's reply) is itself already dead:
+        // the links were read off cal's own held copy, not resolved through the parent.
+        if (!reply) this.skip();
+        const nested = (await sharesOf(cal, calRoot)).filter(
+            (s) =>
+                (s.author === beaRoot && s.doc_id === reply) ||
+                (s.author === adaRoot && s.doc_id === op)
+        );
+        if (nested.length !== 2) this.skip(); // the nested-reply test skipped upstream
+        const calsReply = (
+            await (await cal(`api/id/${beaRoot}/posts/${reply}/replies`)).json()
+        ).replies.find((r) => r.author === calRoot);
+        assert.ok(calsReply, "precondition: the nested reply is known");
+        const down = await cal(`api/identity/${calRoot}/posts/${calsReply.doc_id}`, {
+            method: "DELETE",
+        });
+        assert.equal(down.status, 200, await down.text());
+        const after = await sharesOf(cal, calRoot);
+        assert.ok(
+            !after.some((s) => s.author === beaRoot && s.doc_id === reply),
+            "the parent pin is withdrawn"
+        );
+        assert.ok(
+            !after.some((s) => s.author === adaRoot && s.doc_id === op),
+            "and the root pin - a depth-N death owes exactly what its mint owed"
+        );
+    });
+
+    it("the pin recommends the parent whole - words, image, and all (slice 5)", async function () {
+        this.timeout(1200000);
+        // Ruling 7's mechanics ARE the share's mechanics: a pin is `share_one`, the exact
+        // act cascade.cjs proves end to end ("the image rides the share": the fragment,
+        // the covered media twin, the refcount, the release on death). What THIS suite
+        // pins is the reply path composing with it on this suite's own topology - where
+        // rio's node happens to hold ada's MIRROR (cal visited her), so the share fold
+        // journals off the mirror and mints no fragment, deliberately: the node can
+        // already answer for the post. The claims that hold on EVERY topology: the pin
+        // journals the parent to the taste-follower, and their node serves the parent's
+        // image bytes to their browser.
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const webp = fs.readFileSync(
+            path.join(__dirname, "..", "..", "..", "sample_media", "its_webp.webp")
+        );
+        const up = await ada(`api/identity/${adaRoot}/docs/binary?title=cat&parents=`, {
+            method: "POST",
+            body: webp,
+        });
+        const upText = await up.text();
+        assert.ok(up.status === 200 || up.status === 202, upText);
+        const mediaId = JSON.parse(upText).doc_id;
+        assert.ok(
+            await settle(async () => {
+                const r = await ada(`api/identity/${adaRoot}/docs/${mediaId}`);
+                return r.status === 200 ? true : null;
+            }),
+            "the upload transcoded"
+        );
+        const made = await (
+            await ada(`api/identity/${adaRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "cat post",
+                    body: `behold:\n\n![cat](/api/identity/${adaRoot}/docs/${mediaId}/body/cat.webp)\n`,
+                    format: "marquee",
+                }),
+            })
+        ).json();
+        const pub = await ada(`api/identity/${adaRoot}/docs/${made.doc_id}/publish`, {
+            method: "POST",
+        });
+        const pubText = await pub.text();
+        assert.equal(pub.status, 200, pubText);
+        const mpost = JSON.parse(pubText).post_id;
+
+        // bea sees it and replies; the pin recommends it to rio.
+        await pullAndFold(HOST_B, adaRoot);
+        const out = await publish(bea, beaRoot, "nice-cat", { author: adaRoot, doc_id: mpost });
+        assert.equal(out.status, 200, out.text);
+        let row = null;
+        for (let i = 0; i < 30 && !row; i++) {
+            await shareArrives(HOST_C, beaRoot, adaRoot);
+            const { rows } = await sql(
+                `SELECT via_root FROM feed_journal WHERE reader_root = '${rioRoot}' AND doc_id = '${mpost}'`,
+                HOST_C
+            );
+            row = rows.length ? rows[0] : null;
+        }
+        assert.ok(row, "the parent reached the taste-follower's feed through the pin");
+        assert.equal(row.via_root, beaRoot, "bylined via the replier");
+
+        // The image: the served body names the baked twin, and the twin's bytes serve
+        // from rio's own node - whichever shelf (mirror here, fragment on a node that
+        // holds nothing else of ada's) backs the answer.
+        await beat(HOST_C, "body-heal", adaRoot);
+        await beat(HOST_C, "bodies-sweep");
+        const servedRes = await makeFetch(HOST_C)(`id/${adaRoot}/docs/${mpost}/body`);
+        assert.equal(servedRes.status, 200, "the parent's words serve on rio's node");
+        const served = await servedRes.text();
+        const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+        assert.ok(twin, `the served body names the baked twin: ${served.slice(0, 200)}`);
+        let imageOk = false;
+        for (let i = 0; i < 30 && !imageOk; i++) {
+            await beat(HOST_C, "body-heal", adaRoot);
+            await beat(HOST_C, "bodies-sweep");
+            imageOk = (await makeFetch(HOST_C)(`id/${adaRoot}/docs/${twin}/body`)).status === 200;
+        }
+        assert.ok(imageOk, "the parent's image bytes serve from the taste-follower's node");
     });
 });

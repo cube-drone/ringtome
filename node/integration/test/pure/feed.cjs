@@ -344,4 +344,18 @@ describe('the share/reply pair, collapsed at render', () => {
     it('collapses nothing when the reply is not loaded - both rows honestly render', () => {
         assert.deepEqual(collapseReplyPairs([parent]), [parent]);
     });
+
+    it('keys on the LEAD sharer only - a replier in the supporting crowd never hides the row', () => {
+        // The lead carries the byline; the crowd behind it ("and four others") includes
+        // bea, but the row is on screen AS cal's recommendation, and cal did not reply.
+        // Collapsing it would erase cal's claim to make room for bea's - audited and
+        // pinned as deliberate (COMMENTS.md slice 5).
+        const crowd = {
+            author: 'ada',
+            doc_id: 'p1',
+            via: 'cal',
+            via_others: [{ root: 'bea' }],
+        };
+        assert.deepEqual(collapseReplyPairs([reply, crowd]), [reply, crowd]);
+    });
 });
