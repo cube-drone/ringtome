@@ -7136,3 +7136,14 @@ never sealed; "the comment notice landed" caught it). Acceptance: stranger envel
 the quiet pin, the nested split (comment to the parent's author, share murmur to the
 root's), the derived single row for a followed replier, and deletion receding the bell row
 end to end.
+
+## 2026-08-27 (cont.): the generator learns to talk back
+
+`just test-data` grew `reply-to-something` (weight 12): answer a post the feed brought,
+by the reply box's own three acts - mint plaintext, file in the feed bucket, publish with
+`reply_to` - biased toward posts that are themselves replies so threads deepen instead of
+stubbing at one level. Proven on scratch nodes: 6 personas x 80 actions seeded 58 reply
+links (31 nested) into one node's memo and 11 derived comment rows into bells, zero
+failures. One operational note for the harness: `RINGTOME_TESTDATA_PORTS` is
+comma-separated, and a space-separated list fails the aliveness probe with the misleading
+"no nodes are up".

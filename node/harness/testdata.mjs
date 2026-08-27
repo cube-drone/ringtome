@@ -277,6 +277,35 @@ const ACTIONS = [
         },
     },
     {
+        // A reply is rebroadcast plus your own words (COMMENTS.md): answer something the
+        // feed brought, the way the permalink's reply box does - the same three acts, so
+        // the seeded network exercises the pins, the comment notices, the quote-cards, and
+        // the thread pages all at once. Biased toward posts that are THEMSELVES replies
+        // once those exist: a thread is the shape under test, and uniform draws make a
+        // network of one-deep stubs where the nested case (root-copy, the second pin, the
+        // root author's share murmur) never fires. Early rounds mostly find an empty feed
+        // and return silently, like the share action above; a rare blind-reply 400 (a row
+        // whose header left between journal and answer) is a logged failure and fine.
+        name: 'reply-to-something',
+        weight: 12,
+        run: async (ctx, p, rng) => {
+            const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
+            const theirs = (feed.items || []).filter((i) => i.author !== p.root);
+            const inThread = theirs.filter((i) => i.reply_to);
+            const item = ctx.pick(rng, inThread.length && rng() < 0.4 ? inThread : theirs);
+            if (!item) return;
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: '',
+                body: ctx.lorem(rng, 1),
+                format: 'plaintext',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+            await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {
+                reply_to: { author: item.author, doc_id: item.doc_id },
+            });
+        },
+    },
+    {
         // Standing behind a post is a claim in the present tense, so somebody has to stop
         // making it. Rare on purpose - withdrawal is the unusual act - but not absent, because
         // it is the only thing that seeds a feed row whose lead sharer has to be recomputed
