@@ -944,7 +944,23 @@ async fn notifications_handler(
         .collect();
     // `items` is exactly the derived rows at this point, which is what the dedup keys off.
     let delivered = undelivered_twice(&items, delivered);
-    items.extend(delivered.into_iter().map(|n| NotificationItem {
+    // The follow-edge rule, applied at READ (2026-08-27, caught by the deleted-reply case):
+    // for a sender the reader now pulls, the derived path owns every fact - including a
+    // fact's ABSENCE. A delivered row transcribed back when they were a stranger must not
+    // resurface just because its derived twin receded; the twin receding IS the news (the
+    // reply was deleted, the edge withdrawn), and the stale envelope would resurrect it.
+    // Same sentence as the gate's own ("a second surface for a fact the pull path owns"),
+    // applied to the copies that got in before the follow began.
+    let mut delivered_unowned = Vec::new();
+    for n in delivered {
+        if !crate::net::subscriptions::follows(&state.node_db, &root, &n.sender_root)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            delivered_unowned.push(n);
+        }
+    }
+    items.extend(delivered_unowned.into_iter().map(|n| NotificationItem {
         seen: n.timestamp_ms <= watermark,
         stranger: true,
         // The delivered path's inbox rows collapse per (sender, kind) by design - a bounded
@@ -1189,18 +1205,71 @@ async fn publish_handler(
             // is re-mintable by sharing - a pin failure must not unsay the words.
             if let Some((parent, root_link)) = reply {
                 let self_root = hex_fixed::<32>(&root, "root")?;
-                let mut pins = vec![parent];
-                if root_link != parent {
-                    pins.push(root_link);
-                }
-                for (author, doc) in pins {
-                    if author == self_root {
+                // The parent pin is QUIET (announce: false): the comment notice below is
+                // the same act said properly. The root pin - the nested case's second
+                // pointer - announces as an ordinary share, because for the root's author
+                // the news IS "your post got passed along", not "somebody answered you".
+                for (author, doc, announce) in
+                    [(parent.0, parent.1, false), (root_link.0, root_link.1, true)]
+                {
+                    if author == self_root || (announce && (author, doc) == parent) {
                         continue;
                     }
-                    if let Err(e) = share_one(&state, &data, &root, author, doc).await {
+                    if let Err(e) = share_one(&state, &data, &root, author, doc, announce).await {
                         tracing::warn!(author = %hex::encode(author), error = ?e,
                             "a reply's pin did not mint; the reply stands, share by hand");
                     }
+                }
+                // The comment notice (COMMENTS.md slice 4): first-class, to the PARENT's
+                // author, carrying the reply's own signed header as evidence - the claim
+                // verify_claim checks against the recipient's name. Best-effort like the
+                // pins: the reply is on the chain either way. The follow-edge gate at the
+                // recipient drops this when they already pull us (the derived fold speaks
+                // there), so queueing unconditionally is correct, not chatty.
+                if parent.0 != self_root {
+                    match crate::record::documents::public_header_entry(data.db(), &post_id).await {
+                        Ok(Some(entry)) => {
+                            let parent_hex = hex::encode(parent.0);
+                            match data
+                                .notices()
+                                .seal(
+                                    &parent.0,
+                                    &entry,
+                                    ringtome_proto::deliver::notice_kind::COMMENT,
+                                    state.config.pow_requested_bits,
+                                )
+                                .await
+                            {
+                                Ok(envelope) => {
+                                    if let Err(e) = crate::outbox::queue(
+                                        &state.node_db,
+                                        &root,
+                                        &parent_hex,
+                                        &envelope,
+                                    )
+                                    .await
+                                    {
+                                        tracing::warn!(author = %parent_hex, error = ?e,
+                                            "could not queue a comment notice");
+                                    }
+                                }
+                                Err(e) => tracing::warn!(author = %parent_hex, error = ?e,
+                                    "could not seal a comment notice"),
+                            }
+                        }
+                        Ok(None) => tracing::warn!(
+                            "the reply's own header is not readable; no comment notice"
+                        ),
+                        Err(e) => tracing::warn!(error = ?e,
+                            "could not read the reply's header for its comment notice"),
+                    }
+                    // Knock now, the share path's eager idiom.
+                    let eager = state.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = crate::outbox::sweep(eager).await {
+                            tracing::debug!(error = ?e, "eager comment-notice delivery failed");
+                        }
+                    });
                 }
             }
             Ok(Json(PublishResponse {
@@ -1352,6 +1421,7 @@ async fn share_one(
     root: &str,
     author: [u8; 32],
     doc_id: [u8; 16],
+    announce: bool,
 ) -> Result<(), AppError> {
     let version = crate::fragments::current_version(state, &author, &doc_id)
         .await
@@ -1363,23 +1433,30 @@ async fn share_one(
         })?;
     let entry = data.rebroadcasts().share(&author, &doc_id, Some(version)).await?;
     let author_hex = hex::encode(author);
-    match data
-        .notices()
-        .seal(
-            &author,
-            &entry,
-            ringtome_proto::deliver::notice_kind::REBROADCAST,
-            state.config.pow_requested_bits,
-        )
-        .await
-    {
-        Ok(envelope) => {
-            if let Err(e) = crate::outbox::queue(&state.node_db, root, &author_hex, &envelope).await
-            {
-                tracing::warn!(author = %author_hex, error = ?e, "could not queue a share notice");
+    // `announce: false` is the reply's PARENT pin (COMMENTS.md slice 4): the COMMENT notice
+    // minted beside it says everything "shared your post" would and more, so the murmur
+    // stays unminted rather than arriving as the same act said twice. The share itself is
+    // identical either way - only the envelope differs.
+    if announce {
+        match data
+            .notices()
+            .seal(
+                &author,
+                &entry,
+                ringtome_proto::deliver::notice_kind::REBROADCAST,
+                state.config.pow_requested_bits,
+            )
+            .await
+        {
+            Ok(envelope) => {
+                if let Err(e) =
+                    crate::outbox::queue(&state.node_db, root, &author_hex, &envelope).await
+                {
+                    tracing::warn!(author = %author_hex, error = ?e, "could not queue a share notice");
+                }
             }
+            Err(e) => tracing::warn!(author = %author_hex, error = ?e, "could not seal a share notice"),
         }
-        Err(e) => tracing::warn!(author = %author_hex, error = ?e, "could not seal a share notice"),
     }
     crate::fanout::backfill_share(state, root, &author_hex, &doc_id).await;
     // Knock NOW rather than at the next backstop beat (the eager-knock idiom). Spawned:

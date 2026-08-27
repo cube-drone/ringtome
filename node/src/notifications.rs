@@ -28,6 +28,12 @@ pub const KIND_PUBLIC_EDGE: &str = "public-edge";
 /// author already syncs the sharer this fold is the only thing that speaks.
 pub const KIND_REBROADCAST: &str = "rebroadcast";
 
+/// "Someone you follow replied to your post." The derived twin of
+/// `deliver::notice_kind::COMMENT` (COMMENTS.md slice 4) - first-class by ruling, tiered by
+/// sender like the public edge, and the row's doc is the PARENT: the reader's own post,
+/// where the thread assembles and the bell's mini-card points.
+pub const KIND_COMMENT: &str = "comment";
+
 /// One notification, as the endpoint serves it.
 #[derive(Debug, serde::Serialize)]
 pub struct NotificationRow {
@@ -65,7 +71,10 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
     let has_shares =
         crate::net::frontier::has_service_chain(&state.node_db, author_root, service::REBROADCASTS)
             .await?;
-    if !has_edges && !has_shares {
+    let has_posts =
+        crate::net::frontier::has_service_chain(&state.node_db, author_root, service::POSTS)
+            .await?;
+    if !has_edges && !has_shares && !has_posts {
         return Ok(());
     }
     // ONE database open for both folds, the fold edge's allowance (the same shape as
@@ -93,8 +102,15 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
     } else {
         Vec::new()
     };
+    let replies = if has_posts {
+        crate::record::documents::public_replies(&db)
+            .await
+            .map_err(|e| anyhow::anyhow!("folding {author_root}'s replies: {e}"))?
+    } else {
+        Vec::new()
+    };
     drop(db);
-    if published.is_empty() && shared.is_empty() {
+    if published.is_empty() && shared.is_empty() && replies.is_empty() {
         return Ok(());
     }
 
@@ -109,8 +125,21 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
     // AUTHOR, not a follower of the sharer - which is the whole difference between this fold and
     // the feed's. Same follow-edge rule as below: we only speak about authors this reader chose
     // to sync, because reaching someone who does not follow you is the inbox path's job.
+    // Which (author, doc) pairs this author's replies answer: their parent pins. A pin's
+    // share row must not ALSO murmur "shared your post" at the parent's author - the
+    // comment row below is the same act said properly (the envelope road applies the same
+    // rule by never minting the parent pin's notice). The ROOT pin of a nested reply is
+    // not in this set, deliberately: for the root's author the news really is a share.
+    let answered: std::collections::BTreeSet<(String, String)> = replies
+        .iter()
+        .map(|(_, parent, _, _)| (parent.0.clone(), parent.1.clone()))
+        .collect();
+
     for row in &shared {
         if !hosted.contains(&row.author_root) || row.author_root == author_root {
+            continue;
+        }
+        if answered.contains(&(row.author_root.clone(), hex::encode(row.doc_id))) {
             continue;
         }
         if !crate::net::subscriptions::follows(&state.node_db, &row.author_root, author_root).await?
@@ -171,6 +200,48 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
                 row.received_at_ms,
             )
             .await?;
+        }
+    }
+
+    // "Someone you follow replied to your post." The reader is the PARENT's author, the
+    // row's doc is the parent (their own post - the thread's address), and the stamp is the
+    // reply's own claim, replay-stable like the shelf it folds from. Same follow-edge rule
+    // as everything above. Deletion has no retraction entry to read - a deleted reply's
+    // header simply leaves the shelf - so the fold diffs: rows this author no longer backs
+    // recede with the pass that noticed (the replies memo's sweep, one table over).
+    let mut fresh: std::collections::BTreeSet<(String, String)> = Default::default();
+    for (_, parent, _, claimed_ms) in &replies {
+        if !hosted.contains(&parent.0) || parent.0 == author_root {
+            continue;
+        }
+        if !crate::net::subscriptions::follows(&state.node_db, &parent.0, author_root).await? {
+            continue;
+        }
+        fresh.insert((parent.0.clone(), parent.1.clone()));
+        upsert_row(
+            &state.node_db,
+            &parent.0,
+            author_root,
+            KIND_COMMENT,
+            &parent.1,
+            None,
+            None,
+            *claimed_ms,
+        )
+        .await?;
+    }
+    let standing: Vec<(String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT reader_root, doc_id FROM notifications
+             WHERE author_root = ?1 AND kind = ?2",
+            (author_root, KIND_COMMENT),
+        )
+        .await
+        .context("reading standing comment rows")?;
+    for (reader, doc) in standing {
+        if !fresh.contains(&(reader.clone(), doc.clone())) {
+            delete_row(&state.node_db, &reader, author_root, KIND_COMMENT, &doc).await?;
         }
     }
     Ok(())

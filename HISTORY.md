@@ -7112,3 +7112,27 @@ its pin. Two lookup indexes (`by_reply`, `by_replier`) landed so the feed join, 
 fragment drop, and the fold sweep stop scanning; the links join planted red (the feed
 forgot what replies were; the quote-card acceptance caught it). Schema note: node gen
 29 -> 30, `just clean` before the next dev boot.
+
+## 2026-08-27: comments slice 4 - comment notices, both roads
+
+A comment on your post is conversation, and now it rings the bell as one.
+`notice_kind::COMMENT` (proto 3): the envelope's evidence is the reply's own signed doc
+header, `verify_claim` binding its `reply_to` to the recipient's name, the claim's doc the
+PARENT - your post, where the thread assembles and the mini-card points. Both roads:
+publish-with-reply seals the envelope to the parent's author (best-effort, eager knock),
+and the notifications fold derives the twin from followed repliers' shelves - a third read
+on the same database open, receding by diff when the reply leaves the shelf. One act, one
+notice, enforced on both roads: the parent pin goes quiet (`share_one` grew `announce`,
+and the derived shares leg skips parent-pin rows) because the comment says everything
+"shared your post" would, while a nested reply's ROOT pin still announces as the share it
+genuinely is. The classifier needed no new arm - comment is simply not in the murmur
+match, so it tiers by sender, trusted or stranger, exactly as ruling 5 asked. The two
+roads dedupe on machinery that already existed (the gate's follow-edge refusal, the bell's
+undelivered_twice), plus one rule the deleted-reply case forced into being: a delivered
+row from a sender the reader now PULLS is never shown, derived twin or no - the pull path
+owns a fact's absence as much as its presence, and the stale stranger envelope from before
+the follow must not resurrect a deleted reply. The mint planted red (the comment notice
+never sealed; "the comment notice landed" caught it). Acceptance: stranger envelope with
+the quiet pin, the nested split (comment to the parent's author, share murmur to the
+root's), the derived single row for a followed replier, and deletion receding the bell row
+end to end.

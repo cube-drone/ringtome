@@ -133,8 +133,24 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
    collapses, and the journal stays honest about both rows by ruling. Two lookup indexes
    landed with it (`post_replies_by_reply`, `post_replies_by_replier`) so the feed join,
    the fragment drop, and the fold sweep all walk an index.
-4. **Comment notices.** `notice_kind::COMMENT` both roads (derived for followed repliers,
-   envelope for strangers), first-class tier, mini-card in the bell linking to the thread.
+4. ~~**Comment notices.**~~ Built 2026-08-27 (the mint planted red). `notice_kind::
+   COMMENT` (3), both roads. Envelope: publish-with-reply seals the notice to the PARENT's
+   author with the reply's own signed header as evidence - `verify_claim` checks the
+   header's `reply_to` names the recipient, and the claim's doc is the PARENT (the
+   reader's post, where the thread assembles and the bell's mini-card points). Derived:
+   the notifications fold reads the replier's public replies beside their edges and shares
+   (same single open) and upserts a `comment` row for hosted parent-authors who follow
+   them, receding by diff when the reply leaves the shelf. **One act, one notice**: the
+   reply's parent pin goes QUIET on both roads (`share_one` grew `announce`; the derived
+   shares leg skips parent-pin rows) - the comment says everything "shared your post"
+   would; the nested reply's ROOT pin still announces as the share it genuinely is. The
+   tier fell out of the classifier unchanged: comment is not in the murmur arm, so it
+   tiers by sender - trusted/stranger - exactly as ruled. The roads dedupe free: the
+   gate's follow-edge rule refuses envelopes from followed senders, and the bell hides
+   delivered copies for owned senders. One read-side rule landed with the slice (caught by
+   the deleted-reply case): a delivered row from a sender the reader now PULLS never
+   shows, twin present or not - the derived path owns the fact's absence too, and a stale
+   stranger envelope must not resurrect a deleted reply.
 5. **Polish and the named edges.** Parent-media covers proven; hollow rendering ("in reply
    to a retracted post"); the double-presence collapse audited; retraction-of-reply
    retracting its pins proven at depth.

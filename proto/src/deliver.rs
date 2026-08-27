@@ -97,11 +97,19 @@ pub mod notice_kind {
     /// PROJECT_PLAN's Rebroadcast: the share is a public act on the sharer's chain, and this is
     /// how the person whose work was shared finds out when they do not follow the sharer.
     pub const REBROADCAST: u32 = 2;
+    /// "I replied to your post" - evidence is the sender's own signed DOC HEADER whose
+    /// `reply_to` names the recipient as the parent's author (COMMENTS.md slice 4). The
+    /// claim's `doc_id` is the PARENT - the recipient's own post, which is what the bell's
+    /// mini-card shows and where the thread assembles. First-class by ruling: a comment on
+    /// your post is conversation, so the classifier tiers it by sender like a public edge,
+    /// never as a murmur.
+    pub const COMMENT: u32 = 3;
 
     pub fn name(id: u32) -> &'static str {
         match id {
             PUBLIC_EDGE => "public-edge",
             REBROADCAST => "rebroadcast",
+            COMMENT => "comment",
             _ => "unknown-kind",
         }
     }
@@ -581,6 +589,34 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
             }
             (None, None, Some(pointer.doc_id))
         }
+        notice_kind::COMMENT => {
+            if evidence.entry().chain.service != crate::registry::service::POSTS
+                || evidence.entry().entry_type != crate::registry::entry_type::DOC_HEADER
+            {
+                return Err(ProtoError::ChainViolation(
+                    "a comment notice needs the reply's own doc header",
+                ));
+            }
+            let crate::Payload::Inline(payload) = &evidence.entry().payload else {
+                return Err(ProtoError::BadEntry("doc-header payload must be inline"));
+            };
+            let header = crate::registry::DocHeaderPlain::decode(payload)?;
+            // The binding: the header's own reply link must name the RECIPIENT as the
+            // parent's author - the same discipline as the rebroadcast pointer. A header
+            // with no link is a post, not a comment; a link to somebody else's post is
+            // news for somebody else's door.
+            let Some((parent_author, parent_doc)) = header.reply_to else {
+                return Err(ProtoError::ChainViolation(
+                    "the evidence header is not a reply",
+                ));
+            };
+            if parent_author != envelope.recipient_root {
+                return Err(ProtoError::ChainViolation(
+                    "the reply answers somebody else's post",
+                ));
+            }
+            (None, None, Some(parent_doc))
+        }
         _ => return Err(ProtoError::BadEntry("unknown notice kind")),
     };
 
@@ -893,6 +929,100 @@ mod tests {
             display_name: None,
         };
         SignedEnvelope::create(&envelope, leaf).unwrap()
+    }
+
+    /// One doc-header entry on `signer`'s POSTS chain, replying (or not) to a parent.
+    fn header_entry(
+        signer: &SigningKey,
+        reply_to: Option<([u8; 32], [u8; 16])>,
+    ) -> SignedEntry {
+        let payload = crate::registry::DocHeaderPlain {
+            doc_id: [9u8; 16],
+            parents: vec![[1u8; 32]],
+            file_hash: [3u8; 32],
+            body_hash: [4u8; 32],
+            title: "a reply".into(),
+            format: None,
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
+            preview_hash: None,
+            refs: Vec::new(),
+            genesis_ms: Some(7),
+            reply_to,
+            thread_root: reply_to,
+        }
+        .encode()
+        .unwrap();
+        SignedEntry::create(
+            &Entry {
+                v: ENTRY_VERSION,
+                entry_type: entry_type::DOC_HEADER,
+                chain: ChainId {
+                    author: pubkey(signer),
+                    service: service::POSTS,
+                },
+                seq: 0,
+                prev_hash: ZERO_HASH,
+                timestamp_ms: 1_700_000_070_000,
+                payload: Payload::Inline(payload),
+            },
+            signer,
+        )
+        .unwrap()
+    }
+
+    fn comment_notice(
+        root: &SigningKey,
+        leaf: &SigningKey,
+        recipient: [u8; 32],
+        evidence: SignedEntry,
+    ) -> SignedEnvelope {
+        let envelope = Envelope {
+            sender_root: pubkey(root),
+            signer: pubkey(leaf),
+            recipient_root: recipient,
+            kind: notice_kind::COMMENT,
+            auth_path: vec![authorize(root, leaf, 0).bytes().to_vec()],
+            evidence: Some(evidence.bytes().to_vec()),
+            greeting: None,
+            stamp: None,
+            display_name: None,
+        };
+        SignedEnvelope::create(&envelope, leaf).unwrap()
+    }
+
+    /// COMMENTS.md slice 4: the comment notice's evidence is the reply's own signed header,
+    /// and the claim's doc is the PARENT - the recipient's post, where the thread lives.
+    #[test]
+    fn a_comment_notice_verifies_and_names_the_parent() {
+        let root = key(1);
+        let leaf = key(2);
+        let recipient = [7u8; 32];
+        let parent_doc = [6u8; 16];
+        let notice = comment_notice(
+            &root,
+            &leaf,
+            recipient,
+            header_entry(&leaf, Some((recipient, parent_doc))),
+        );
+        let claim = verify_claim(&notice).unwrap();
+        assert_eq!(claim.kind, notice_kind::COMMENT);
+        assert_eq!(claim.doc_id, Some(parent_doc), "the parent, the recipient's own post");
+
+        // A reply to SOMEBODY ELSE's post is news for somebody else's door.
+        let wrong = comment_notice(
+            &root,
+            &leaf,
+            recipient,
+            header_entry(&leaf, Some(([8u8; 32], parent_doc))),
+        );
+        assert!(verify_claim(&wrong).is_err(), "mis-addressed comment must refuse");
+
+        // A header with no reply link is a post, not a comment.
+        let bare = comment_notice(&root, &leaf, recipient, header_entry(&leaf, None));
+        assert!(verify_claim(&bare).is_err(), "a non-reply header proves nothing");
     }
 
     #[test]

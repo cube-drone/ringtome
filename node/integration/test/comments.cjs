@@ -12,7 +12,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { sql, HOST_B, HOST_C } = require("./fetch.cjs");
+const { sql, HOST, HOST_B, HOST_C } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, shareArrives } = require("./beat.cjs");
 
@@ -190,6 +190,73 @@ const base58 = async (host) => {
         assert.equal(level2.replies[0].author, calRoot);
     });
 
+    it("a comment notice reaches the parent's author - first-class, by envelope (slice 4)", async () => {
+        // ada does not follow bea, so the news arrives at her door: kind comment, tiered to
+        // the STRANGER pool (conversation, never a murmur), naming HER post - the thread's
+        // address, dressed with its title for the bell's mini-card. And the parent pin is
+        // QUIET: bea's share of op must not ALSO murmur "shared your post" - the comment is
+        // the same act said properly.
+        await beat(HOST_B, "outbox");
+        const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+        const fromBea = (bell.items || []).filter((i) => i.author === beaRoot);
+        const comment = fromBea.find((i) => i.kind === "comment");
+        assert.ok(comment, "the comment notice landed");
+        assert.equal(comment.stranger, true, "ada does not follow bea: the stranger pool");
+        assert.equal(comment.doc_id, op, "the row names the PARENT - the reader's own post");
+        assert.equal(comment.doc_title, "the-op", "dressed for the mini-card");
+        assert.ok(
+            !fromBea.some((i) => i.kind === "rebroadcast"),
+            "the parent pin stays quiet - one act, one notice"
+        );
+    });
+
+    it("a nested reply: comment to the parent's author, ordinary share murmur to the root's", async function () {
+        // cal answered BEA, so bea hears conversation; ada's post got passed along by the
+        // ROOT pin, so ada hears exactly what that is - a share.
+        const bea2 = await (await bea(`api/id/${beaRoot}/posts/${reply}`)).json();
+        if (!bea2 || !reply) this.skip();
+        await beat(HOST_C, "outbox");
+        const bell = await (await bea(`api/identity/${beaRoot}/notifications`)).json();
+        const comment = (bell.items || []).find(
+            (i) => i.author === calRoot && i.kind === "comment"
+        );
+        assert.ok(comment, "the nested reply's comment notice reached bea");
+        assert.equal(comment.doc_id, reply, "naming bea's reply - the parent, not the root");
+        const adasBell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+        const fromCal = (adasBell.items || []).filter((i) => i.author === calRoot);
+        assert.ok(
+            fromCal.some((i) => i.kind === "rebroadcast"),
+            "the root pin announces as the share it is"
+        );
+        assert.ok(
+            !fromCal.some((i) => i.kind === "comment"),
+            "no comment claim on the root - cal answered bea, not ada"
+        );
+    });
+
+    it("a followed replier's comment derives locally - and the delivered copy yields (slice 4)", async function () {
+        // ada follows bea: the visit first (the suite's own idiom - the via hint is how
+        // her node learns the route), then the dial. Her node then pulls the chain the
+        // reply lives on, the fold derives the comment row (not a stranger - a byline),
+        // and the follow-edge rule hides the envelope's copy. One conversation, one row.
+        const viaBea = await base58(bea);
+        if ((await ada(`api/id/${beaRoot}/profile?via=${viaBea}`)).status !== 200) this.skip();
+        await ada(`api/identity/${adaRoot}/private/kv/contact:${beaRoot}/interest`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "high" }),
+        });
+        await beat(HOST, "fold", adaRoot);
+        await beat(HOST, "pull", adaRoot);
+        await beat(HOST, "fold", beaRoot);
+        const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+        const comments = (bell.items || []).filter(
+            (i) => i.author === beaRoot && i.kind === "comment"
+        );
+        assert.equal(comments.length, 1, "one conversation, one row - the roads dedupe");
+        assert.ok(!comments[0].stranger, "derived from a followed chain, not a stranger");
+        assert.equal(comments[0].doc_id, op);
+    });
+
     it("deleting the reply retracts the pin - it lives and dies with the comment", async () => {
         const down = await bea(`api/identity/${beaRoot}/posts/${reply}`, { method: "DELETE" });
         assert.equal(down.status, 200, await down.text());
@@ -207,6 +274,15 @@ const base58 = async (host) => {
         assert.ok(
             !onB.replies.some((r) => r.author === beaRoot),
             "a deleted reply leaves the thread on the fold that noticed"
+        );
+        // And the derived comment row recedes on ada's node: her next pull sees bea's
+        // shelf without the reply, and the fold's diff takes the bell row with it.
+        await beat(HOST, "pull", adaRoot);
+        await beat(HOST, "fold", beaRoot);
+        const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+        assert.ok(
+            !(bell.items || []).some((i) => i.author === beaRoot && i.kind === "comment"),
+            "a deleted reply stops being a conversation in the bell"
         );
     });
 });

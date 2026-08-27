@@ -549,6 +549,18 @@ mod tests {
         );
     }
 
+    /// A comment is conversation, never a murmur (COMMENTS.md ruling 5): it tiers by
+    /// sender exactly as a public edge does - trusted when any relationship is recorded,
+    /// the stranger pool otherwise.
+    #[test]
+    fn a_comment_notice_is_first_class_and_tiers_by_sender() {
+        assert_eq!(
+            classify(notice_kind::COMMENT, &facts(&[("interest", "high")])),
+            Tier::Trusted
+        );
+        assert_eq!(classify(notice_kind::COMMENT, &facts(&[])), Tier::Stranger);
+    }
+
     #[test]
     fn an_unknown_sender_waits_in_the_stranger_pool() {
         let kind = notice_kind::PUBLIC_EDGE;

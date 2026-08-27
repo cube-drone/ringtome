@@ -52,6 +52,14 @@ const sentence = (r) => {
     // share notifications in plain sight (2026-08-25: the row rendered, wearing the wrong
     // words). Derived rows name the document; a delivered murmur cannot (the pool
     // collapses per sender), and the words stay honest about that difference.
+    // A comment is conversation, first-class by ruling (COMMENTS.md slice 4): the verb,
+    // and the mini-card - YOUR post, whose permalink is where the thread assembles - as
+    // the object. Same sentence shape as the share, different weight by tier.
+    if (r.kind === 'comment') {
+        return r.doc_id
+            ? t('apps.notifications.replied-on', 'replied on')
+            : t('apps.notifications.replied-to-one-of-your', 'replied to one of your posts');
+    }
     if (r.kind === 'rebroadcast') {
         // With the mini-card right there, "one of your posts" restated the card - the
         // sentence is just the verb, and the card is the object. The wordier form
@@ -190,7 +198,7 @@ export const NotificationsApp = ({ current }) => {
                                           link to its own page - title joined server-side
                                           (the reader's own post), degrading to a bare
                                           "link" when the post has left the shelf. */ ''}
-                                      ${r.kind === 'rebroadcast' &&
+                                      ${(r.kind === 'rebroadcast' || r.kind === 'comment') &&
                                       r.doc_id &&
                                       html`<${MiniPost}
                                           author=${root}
