@@ -121,10 +121,14 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
  * `onBaking(items | null)` drives the modal: items while preparing, null when done or failed
  * out. Resolves to the response with `post_id`, or throws after a failed bake round.
  */
-export async function publishWithBaking(root, privDocId, onBaking) {
+export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
     for (;;) {
+        // `extraBody` rides every round (a reply's `reply_to` - COMMENTS.md): the re-POST
+        // is the idempotent "how's it going?", and the links must be there whichever
+        // round finally lands the post.
         const resp = await api(`/api/identity/${root}/docs/${privDocId}/publish`, {
             method: 'POST',
+            ...(extraBody ? { body: JSON.stringify(extraBody) } : {}),
         });
         if (resp.post_id) {
             onBaking(null);

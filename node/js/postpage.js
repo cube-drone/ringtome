@@ -19,8 +19,9 @@ import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
 import { FEED_STYLE } from './pure/feed.js';
+import { useRef } from 'preact/hooks';
 import { parseSpeakable } from './speakable.js';
-import { PostEntry, MiniPost } from './postentry.js';
+import { PostEntry, MiniPost, Composer, publishWithBaking, BakeModal } from './postentry.js';
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 
@@ -187,7 +188,7 @@ const HeldReplies = ({ root, doc }) => {
     if (!rows || !rows.length) return null;
     return html`<div class="held-replies">
         <p class="held-replies-head">
-            ${t('postpage.held-for-your-nod', 'replies from people you don\u2019t follow, held for your nod')}
+            ${t('postpage.held-for-your-nod', 'replies from people you don’t follow, held for your nod')}
         </p>
         ${rows.map(
             (r) => html`<div class="held-reply" key=${`${r.author}:${r.doc_id}`}>
@@ -234,56 +235,83 @@ const HeldReplyBody = ({ author, doc }) => {
     return html`<${PostEntry} key=${post.doc_id} item=${item} current=${null} editing=${null} quote=${false} />`;
 };
 
-/// The reply box (COMMENTS.md slice 3): your words, under the post they answer. A reply is
-/// an ordinary post - this mints a real document (filed in the feed bucket, so it shows up
-/// among your posts to edit like any other) and publishes it with `reply_to`, which stamps
-/// the thread links and pins the parent into your network. Plaintext deliberately: the box
-/// is for saying something, and the feed app's full composer is there for a reply that
-/// grows into an essay.
+/// The reply box (COMMENTS.md slice 3; grown to the FULL authoring surface 2026-08-27):
+/// your words under the post they answer, in the same editor every other surface uses -
+/// marquee, media embeds, the bake and all - because a reply is an ordinary post and
+/// deserves the ordinary pen. The box opens INERT ("write a reply") and the first click
+/// mints the draft - the feed app's hard-won mint discipline: a composer mounted on every
+/// permalink visit would mint an empty document per view, and a mint behind a click is
+/// ref-guarded so a double-click cannot mint two. An abandoned draft lands in the feed
+/// app's own "older drafts" stack, editable like any other.
 const ReplyBox = ({ current, parent, onReplied }) => {
-    const [words, setWords] = useState('');
-    const [busy, setBusy] = useState(false);
+    const [draftId, setDraftId] = useState(null);
+    const [posting, setPosting] = useState(false);
+    const [baking, setBaking] = useState(null);
     const [error, setError] = useState(null);
-    const say = async () => {
-        if (busy || !words.trim()) return;
-        setBusy(true);
+    const minting = useRef(false);
+    const root = current.root;
+
+    const openBox = async () => {
+        if (minting.current || draftId) return;
+        minting.current = true;
         setError(null);
         try {
-            const root = current.root;
             const made = await api(`/api/identity/${root}/docs`, {
                 method: 'POST',
-                body: JSON.stringify({ title: '', body: words, format: 'plaintext' }),
+                body: JSON.stringify({ title: '', body: '', format: 'marquee' }),
             });
-            await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(FEED_STYLE)}`, {
-                method: 'PUT',
-            });
-            const pub = await api(`/api/identity/${root}/docs/${made.doc_id}/publish`, {
-                method: 'POST',
-                body: JSON.stringify({ reply_to: { author: parent.author, doc_id: parent.doc_id } }),
-            });
-            setWords('');
-            onReplied({ author: root, doc_id: pub.post_id });
+            await api(
+                `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(FEED_STYLE)}`,
+                { method: 'PUT' }
+            );
+            setDraftId(made.doc_id);
         } catch (e) {
-            // The words stay in the box - a refused reply is a draft, not a loss.
+            setError(e.message);
+            minting.current = false; // a failed mint may be retried; a successful one never
+        }
+    };
+
+    const say = async () => {
+        if (posting || !draftId) return;
+        setPosting(true);
+        setError(null);
+        try {
+            const made = await publishWithBaking(root, draftId, setBaking, {
+                reply_to: { author: parent.author, doc_id: parent.doc_id },
+            });
+            onReplied({ author: root, doc_id: made.post_id });
+            // Said: the box returns to rest, ready to mint a fresh page for the next
+            // thought - the posted document is done and lives with your other posts.
+            setDraftId(null);
+            minting.current = false;
+        } catch (e) {
+            // The words stay in the editor - a refused reply is a draft, not a loss.
             setError(e.message);
         }
-        setBusy(false);
+        setPosting(false);
     };
+
     return html`<div class="replybox">
-        <textarea
-            class="replybox-words"
-            placeholder=${t('postpage.say-something-back', 'say something back')}
-            value=${words}
-            onInput=${(e) => setWords(e.currentTarget.value)}
-        ></textarea>
-        <div class="replybox-foot">
-            <span class="feed-note">
-                ${t('postpage.replying-is-public-and-shares', 'replying is public - and shares this post with your own followers')}
-            </span>
-            <button class="replybox-send" disabled=${busy || !words.trim()} onClick=${say}>
-                ${busy ? t('postpage.replying', 'replying…') : t('postpage.reply', 'reply')}
-            </button>
-        </div>
+        <${BakeModal} items=${baking} />
+        ${draftId &&
+        html`<p class="replybox-note">
+            ${t('postpage.replying-is-public-and-shares', 'replying is public - and shares this post with your own followers')}
+        </p>`}
+        ${draftId
+            ? html`<${Composer}
+                  root=${root}
+                  docId=${draftId}
+                  published=${false}
+                  onPost=${say}
+                  posting=${posting}
+                  onDeleted=${() => {
+                      setDraftId(null);
+                      minting.current = false;
+                  }}
+              />`
+            : html`<button class="replybox-open" onClick=${openBox}>
+                  ${t('postpage.write-a-reply', 'write a reply…')}
+              </button>`}
         ${error && html`<p class="form-error">${error}</p>`}
     </div>`;
 };

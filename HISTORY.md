@@ -7199,3 +7199,24 @@ tree - same-line-number failures across two runs were the tell, and absolute pat
 background edits are the rule; and suites run in PARALLEL, so single-shot beat rounds
 race sibling load - convergence loops with bounded rounds are the shape for multi-stage
 pipelines. All six slices of COMMENTS.md are struck.
+
+## 2026-08-27 (cont. 4): the reply box grows the whole pen
+
+Comments were plaintext only in exactly one place - the box. Everything below it already
+treated a reply as an ordinary post, so the growth was three UI moves and no backend at
+all: `publishWithBaking` carries an optional body (the reply's `reply_to`, repeated on
+every round of the bake loop, because the links must be there whichever round lands the
+post); the permalink's reply box mounts the SHARED `Composer` - marquee, media embeds,
+the bake modal, the same pen as every other surface; and the box opens INERT ("write a
+reply"), minting its draft on the first click behind a ref guard - the feed app's
+hard-won mint discipline, because a composer mounted per permalink visit would mint an
+empty document per view. An abandoned draft lands in the feed app's own "older drafts"
+stack, editable like any other. The reply-specific honesty line stays above the editor:
+replying is public, and shares this post with your own followers. Acceptance: bea
+answers with marquee words embedding her own image - the twin bakes inline, the thread
+links ride the same signed header as the media, and the reply's own image serves. One
+field fix from Curtis's screen: never `\uXXXX` escapes inside a t() literal - the
+strings sweep extracts at regex level (the backslash drops, "write a replyu2026"), the
+catalog wins over the runtime fallback, and the sweep rewrites call sites FROM the
+catalog, so the mangling round-trips until both sides are fixed by hand. Real characters
+in source are the rule.

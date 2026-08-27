@@ -510,4 +510,70 @@ const base58 = async (host) => {
         }
         assert.ok(imageOk, "the parent's image bytes serve from the taste-follower's node");
     });
+
+    it("a reply can be rich - marquee, media embed, the bake, the links (slice 3 grown)", async function () {
+        this.timeout(1200000);
+        // The reply box now runs the full authoring surface, so the reply path must carry
+        // everything an ordinary post does: bea answers with marquee words embedding her
+        // OWN image - the bake mints the public twin inline, the publish stamps the
+        // thread links on the SAME header, and her twin serves. One act, whole post.
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const webp = fs.readFileSync(
+            path.join(__dirname, "..", "..", "..", "sample_media", "its_webp.webp")
+        );
+        const up = await bea(`api/identity/${beaRoot}/docs/binary?title=mine&parents=`, {
+            method: "POST",
+            body: webp,
+        });
+        const upText = await up.text();
+        assert.ok(up.status === 200 || up.status === 202, upText);
+        const mediaId = JSON.parse(upText).doc_id;
+        assert.ok(
+            await settle(async () => {
+                const r = await bea(`api/identity/${beaRoot}/docs/${mediaId}`);
+                return r.status === 200 ? true : null;
+            }),
+            "bea's upload transcoded"
+        );
+        const made = await (
+            await bea(`api/identity/${beaRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "look at this",
+                    body: `see:\n\n![mine](/api/identity/${beaRoot}/docs/${mediaId}/body/mine.webp)\n`,
+                    format: "marquee",
+                }),
+            })
+        ).json();
+        // The UI's own flow: POST publish with reply_to until the answer is a post id
+        // (private embeds bake inline, so the first answer is it - but the loop is the
+        // contract publishWithBaking rides, body repeated every round).
+        let richReply = null;
+        for (let i = 0; i < 40 && !richReply; i++) {
+            const pub = await bea(`api/identity/${beaRoot}/docs/${made.doc_id}/publish`, {
+                method: "POST",
+                body: JSON.stringify({ reply_to: { author: adaRoot, doc_id: op } }),
+            });
+            const body = JSON.parse(await pub.text());
+            if (body.post_id) richReply = body.post_id;
+            else await new Promise((r) => setTimeout(r, 300));
+        }
+        assert.ok(richReply, "the rich reply published");
+        const head = await (await bea(`api/id/${beaRoot}/posts/${richReply}`)).json();
+        assert.deepEqual(
+            head.reply_to,
+            { author: adaRoot, doc_id: op },
+            "the thread links rode the same signed header as the media"
+        );
+        // Her post's served body names the baked twin, and the twin's bytes serve.
+        const served = await (await bea(`id/${beaRoot}/docs/${richReply}/body`)).text();
+        const twin = (served.match(/\/docs\/([0-9a-f]{32})\/body/) || [])[1];
+        assert.ok(twin, `the served body names the baked twin: ${served.slice(0, 200)}`);
+        assert.equal(
+            (await bea(`id/${beaRoot}/docs/${twin}/body`)).status,
+            200,
+            "the reply's own image serves - a reply is an ordinary post, media and all"
+        );
+    });
 });
