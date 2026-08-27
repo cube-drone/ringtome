@@ -29,7 +29,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Posts can be annotated with tags, emoji, description, buckets (triggering a notification)
 * Make a whole bucket public in one fell swoop.
 * Rebroadcast replies — the comments arc, rulings pinned and sliced in [COMMENTS.md](COMMENTS.md) (2026-08-26)
-* Disable comments/rebroadcasts
+* Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - COMMENTS.md)
 * Save to bucket
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")

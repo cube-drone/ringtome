@@ -70,6 +70,52 @@
 }
 
 /* The thread below a post (postpage.js Thread): nested one indent per level. */
+/* The thread door's reading side: the quiet seek line and the refresh affordance. */
+.thread-seeking {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+.thread-refresh {
+    margin-left: 0.75rem;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.6rem;
+}
+
+/* The author's curation surface: strangers' replies held for the nod. */
+.held-replies {
+    border: 1px dashed var(--border-strong);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    margin: 0.5rem 0 1rem;
+}
+.held-replies-head {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+}
+.held-reply {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+}
+.held-reply-hollow {
+    font-size: 0.85rem;
+    color: var(--faint);
+}
+.held-reply-acts {
+    display: flex;
+    gap: 0.6rem;
+}
+.held-approve,
+.held-suppress {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.7rem;
+}
+
 /* The quoted context on a reply (COMMENTS.md slice 3): "in reply to" + the mini-card,
    in the feed entry and atop the permalink. */
 .feed-entry-replyto,

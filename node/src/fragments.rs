@@ -342,6 +342,72 @@ async fn cover_refs_inner(
     Ok(())
 }
 
+/// One held fragment's proof, as stored: the author's exact signed bytes and the packed
+/// delegation path - what the thread door serves for a reply that arrived as a share
+/// (COMMENTS.md slice 6).
+pub async fn held_proof(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    doc_hex: &str,
+) -> Result<Option<(Vec<u8>, Vec<Vec<u8>>)>> {
+    let row: Option<(Vec<u8>, Vec<u8>)> = node_db
+        .fetch_optional(
+            "SELECT entry, auth_path FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_hex),
+        )
+        .await
+        .context("reading a held fragment's proof")?;
+    Ok(row.map(|(entry, packed)| (entry, unpack_path(&packed))))
+}
+
+/// Fetch one door-learned reply and remember it - `fetch_cover`'s shape for a post: the
+/// replier's own public document, wanted from the replier themself, remembered on the
+/// fragment shelf (whose intake notes the reply link) with its words wanted behind it.
+/// No feed row - a door-learned reply is thread context, not an arrival in anyone's river.
+pub async fn fetch_post(
+    state: &crate::AppState,
+    origin_root: &str,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) {
+    let author_root = hex::encode(author);
+    if let Ok(Some(_)) = held(&state.node_db, &author_root, &hex::encode(doc_id)).await {
+        return; // already on the shelf; the memo already knows it
+    }
+    match crate::net::fragment::fetch(state, origin_root, author, doc_id).await {
+        crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
+            if let Err(e) = remember(
+                &state.node_db,
+                origin_root,
+                &author_root,
+                &verified,
+                &entry,
+                &auth_path,
+            )
+            .await
+            {
+                tracing::debug!(author = %author_root, error = ?e,
+                    "could not store a door-learned reply");
+                return;
+            }
+            let _ = crate::net::bodies::want(&state.node_db, &author_root, &verified.header.file_hash).await;
+            if let Some(ep) = &served_by {
+                let _ = note_deliverer(&state.node_db, &author_root, ep).await;
+            }
+            heal_soon(state, &author_root, origin_root);
+        }
+        crate::net::fragment::Fetched::Gone { entry, auth_path } => {
+            let doc_hex = hex::encode(doc_id);
+            let _ = entomb(&state.node_db, &author_root, &doc_hex, &entry, &auth_path).await;
+            let _ = forget_one(&state.node_db, &author_root, &doc_hex).await;
+        }
+        crate::net::fragment::Fetched::Unknown => {
+            // The replier's node is dark; the claim stands in the memo and the row renders
+            // hollow until somebody who holds the words answers.
+        }
+    }
+}
+
 /// Fetch one covered media document from an origin and remember it - the media half of what
 /// `journalable` does for the post, minus the feed row an image must never become.
 async fn fetch_cover(

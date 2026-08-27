@@ -7147,3 +7147,30 @@ links (31 nested) into one node's memo and 11 derived comment rows into bells, z
 failures. One operational note for the harness: `RINGTOME_TESTDATA_PORTS` is
 comma-separated, and a space-separated list fails the aliveness probe with the misleading
 "no nodes are up".
+
+## 2026-08-27 (cont. 2): comments slice 6 - the author's thread door
+
+The author is structurally the best-informed node about their own post's thread - every
+reply anywhere announces itself to them, by sync or by envelope - and now their node
+serves that knowledge: `WantReplies`/`Replies` on the fragment ALPN (node gen 31), the
+death-cursor idiom, each page carrying the repliers' OWN signed proofs resolved from
+whichever shelf holds them - the COMMENT envelope's evidence (now kept servable at the
+gate), the fragment shelf, or the replier's mirror - and `verify_reply` binding every
+proof to the exact parent asked about, so a lying door can withhold but never re-parent.
+Claims, never words: the asker notes what it verified and fetches the words through the
+ordinary Want machinery, whose intake notes the fragment like any other. Curation is the
+same bit as display: private `comments` registers folded node-side on the ledger leg (the
+subscriptions idiom, because the door answers peers with no session to unseal with), the
+kv PUT draining the fold so approve's 200 means the door speaks it. Two findings the
+acceptance forced, both worth their sentence: the no-comments switch is ABSOLUTE (an
+approved verdict must not survive mode `none` - "no comments except the ones there
+already were" is nobody's meaning), and the cursor idiom has exactly one mismatch with a
+mutable bit - a withheld row advances the cursor, so a resume can never see it approved
+later; the human's refresh therefore re-reads the whole index from zero, upsert-free.
+Reading side: visiting the permalink IS the demand (cooldown-budgeted, `seeking` in the
+answer, the quiet "looking for more of the conversation" line, the refresh button), and
+the author's own page grew the held-for-your-nod section - approve joins the
+conversation, keep-quiet mutes the author's amplification and never the reply's existence
+on its own author's chain, proven in acceptance on a blank fifth-node persona end to end.
+The door planted shut. Schema note: node gen 30 -> 31, `just clean` before the next dev
+boot.

@@ -252,6 +252,397 @@ pub async fn replies_of(
     Ok((out, more))
 }
 
+// ---------------------------------------------------------------------------------------------
+// The author's thread door (COMMENTS.md slice 6). The author is structurally the
+// best-informed node about their own post's thread - every reply anywhere announces itself
+// to them, by sync or by envelope - so their node serves a reply INDEX to anyone who asks:
+// the repliers' own signed evidence, claims never words, curated by the author's own bit.
+
+/// Proofs per `Replies` page - the deaths page's size, for the deaths page's reason.
+const DOOR_PAGE: i64 = 8;
+
+/// How long a visit-driven ask stays answered before the next visit may dial again.
+const ASK_COOLDOWN_MS: i64 = 30_000;
+
+pub const MODE_TRUSTED: &str = "trusted";
+pub const MODE_ALL: &str = "all";
+pub const MODE_NONE: &str = "none";
+pub const VERDICT_APPROVED: &str = "approved";
+pub const VERDICT_SUPPRESSED: &str = "suppressed";
+
+/// Keep one envelope's evidence servable: the reply's signed header and the delegation path
+/// that arrived with it. Written at the COMMENT gate (`inbox::accept`), read by the door.
+pub async fn keep_evidence(
+    node_db: &Db,
+    reply_author: &str,
+    reply_doc: &str,
+    entry: &[u8],
+    auth_path: &[Vec<u8>],
+) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO reply_evidence (reply_author, reply_doc, entry, auth_path)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (reply_author, reply_doc) DO UPDATE SET
+                 entry = excluded.entry, auth_path = excluded.auth_path",
+            (
+                reply_author,
+                reply_doc,
+                entry.to_vec(),
+                crate::fragments::pack_path(auth_path),
+            ),
+        )
+        .await
+        .context("keeping a reply's evidence")?;
+    Ok(())
+}
+
+/// One COMMENT envelope's evidence, kept and noted in a single act: decode the header for
+/// the reply's identity and links, keep the exact bytes for the door, note the claim into
+/// the memo so the author's own thread view shows the stranger's reply (pending the nod).
+pub async fn keep_claim(
+    node_db: &Db,
+    reply_author: &str,
+    evidence: &[u8],
+    auth_path: &[Vec<u8>],
+) -> Result<()> {
+    let signed = ringtome_proto::SignedEntry::decode(evidence)
+        .map_err(|e| anyhow::anyhow!("decoding kept evidence: {e}"))?;
+    let ringtome_proto::Payload::Inline(payload) = &signed.entry().payload else {
+        anyhow::bail!("evidence header not inline");
+    };
+    let header = ringtome_proto::registry::DocHeaderPlain::decode(payload)
+        .map_err(|e| anyhow::anyhow!("decoding evidence header: {e}"))?;
+    let Some((pa, pd)) = header.reply_to else {
+        anyhow::bail!("evidence is not a reply"); // verify_claim already refused this
+    };
+    let parent = (hex::encode(pa), hex::encode(pd));
+    let root = match header.thread_root {
+        Some((ra, rd)) => (hex::encode(ra), hex::encode(rd)),
+        None => parent.clone(),
+    };
+    let doc_hex = hex::encode(header.doc_id);
+    keep_evidence(node_db, reply_author, &doc_hex, evidence, auth_path).await?;
+    note(
+        node_db,
+        &parent,
+        &root,
+        reply_author,
+        &doc_hex,
+        signed.entry().timestamp_ms,
+    )
+    .await
+}
+
+async fn evidence_for(
+    node_db: &Db,
+    reply_author: &str,
+    reply_doc: &str,
+) -> Result<Option<(Vec<u8>, Vec<Vec<u8>>)>> {
+    let row: Option<(Vec<u8>, Vec<u8>)> = node_db
+        .fetch_optional(
+            "SELECT entry, auth_path FROM reply_evidence
+             WHERE reply_author = ?1 AND reply_doc = ?2",
+            (reply_author, reply_doc),
+        )
+        .await
+        .context("reading kept reply evidence")?;
+    Ok(row.map(|(entry, packed)| (entry, crate::fragments::unpack_path(&packed))))
+}
+
+/// Re-fold one hosted persona's curation registers into the node memo - the subscriptions
+/// idiom: the truth lives on the persona's own encrypted ledger (collection `comments`:
+/// key `default` for the mode, `{replier}:{reply_doc}` for a verdict) and syncs with them;
+/// the memo exists because the door answers peers, and a peer has no session to unseal
+/// with. Rides the fold lane's ledger leg.
+pub async fn curation_refresh_root(state: &AppState, root_hex: &str) {
+    if let Err(e) = curation_refresh_inner(state, root_hex).await {
+        tracing::debug!(root = %root_hex, error = ?e, "curation memo refresh failed");
+    }
+}
+
+async fn curation_refresh_inner(state: &AppState, root_hex: &str) -> Result<()> {
+    use anyhow::anyhow;
+    let Some(leaf) =
+        crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+    else {
+        return Ok(()); // not agented here: nothing to unseal, nothing to serve
+    };
+    let leaf_pub = leaf.verifying_key().to_bytes();
+    let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))
+        .map_err(|e| anyhow!("{e}"))?;
+    let db = state.user_dbs.held(root_hex).await?;
+    let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc)
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
+    let (rows, _) = crate::record::private::collection_registers(
+        &db,
+        &keys,
+        ringtome_proto::registry::service::GENERAL_PRIVATE,
+        "comments",
+    )
+    .await
+    .map_err(|e| anyhow!("{e}"))?;
+    drop(db);
+    state
+        .node_db
+        .execute("DELETE FROM comment_curation WHERE root = ?1", (root_hex,))
+        .await
+        .context("clearing the curation memo")?;
+    for row in rows {
+        if row.value.is_empty() {
+            continue; // a cleared register is the absence of an opinion
+        }
+        let (replier, doc) = if row.key == "default" {
+            (String::new(), String::new())
+        } else {
+            match row.key.split_once(':') {
+                Some((a, d)) => (a.to_string(), d.to_string()),
+                None => continue,
+            }
+        };
+        state
+            .node_db
+            .execute(
+                "INSERT INTO comment_curation (root, reply_author, reply_doc, verdict)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (root, reply_author, reply_doc) DO UPDATE SET
+                     verdict = excluded.verdict",
+                (root_hex, replier.as_str(), doc.as_str(), row.value.as_str()),
+            )
+            .await
+            .context("writing the curation memo")?;
+    }
+    Ok(())
+}
+
+async fn curation_row(node_db: &Db, root: &str, replier: &str, doc: &str) -> Option<String> {
+    node_db
+        .fetch_optional(
+            "SELECT verdict FROM comment_curation
+             WHERE root = ?1 AND reply_author = ?2 AND reply_doc = ?3",
+            (root, replier, doc),
+        )
+        .await
+        .ok()
+        .flatten()
+        .map(|(v,): (String,)| v)
+}
+
+/// One reply's explicit verdict, if the author has given one.
+pub async fn curation_verdict(
+    node_db: &Db,
+    root: &str,
+    replier: &str,
+    reply_doc: &str,
+) -> Option<String> {
+    curation_row(node_db, root, replier, reply_doc).await
+}
+
+/// The author's curation mode: 'trusted' unless their ledger says otherwise.
+pub async fn curation_mode(node_db: &Db, root: &str) -> String {
+    curation_row(node_db, root, "", "")
+        .await
+        .unwrap_or_else(|| MODE_TRUSTED.to_string())
+}
+
+/// The bit itself: does this author's node SPEAK about this reply - to the door, and on
+/// every public read of their post's thread. An explicit verdict outranks the mode; the
+/// trusted default serves followed repliers and holds strangers for the nod; 'all' flips
+/// the choice into suppressing; 'none' is the "no comments" switch. Suppression mutes the
+/// author's amplification, never the reply's existence on its own author's chain.
+pub async fn servable(state: &AppState, root: &str, replier: &str, reply_doc: &str) -> bool {
+    let verdict = curation_row(&state.node_db, root, replier, reply_doc).await;
+    if verdict.as_deref() == Some(VERDICT_SUPPRESSED) {
+        return false;
+    }
+    // The switch is absolute (caught by its own acceptance, 2026-08-27): "no comments"
+    // silences the whole thread, PAST approvals included - anything less and the switch
+    // would be "no comments except the ones there already were", which nobody means by it.
+    match curation_mode(&state.node_db, root).await.as_str() {
+        MODE_NONE => false,
+        MODE_ALL => true,
+        _ => {
+            verdict.as_deref() == Some(VERDICT_APPROVED)
+                || crate::net::subscriptions::follows(&state.node_db, root, replier)
+                    .await
+                    .unwrap_or(false)
+        }
+    }
+}
+
+/// One page of the door's index for one post: rowid-cursored over the replies memo (an
+/// upsert keeps its rowid, so a re-noted reply is not re-served; a new one appears; a
+/// receded one vanishes), each row resolved to the replier's own signed proof from
+/// whichever shelf holds it - kept envelope evidence, the fragment shelf, or the replier's
+/// mirrored chain. Rows the curation bit withholds still advance the cursor - the page
+/// walks the index, the bit decides what speaks.
+pub async fn door_page(
+    state: &AppState,
+    parent_author: &str,
+    parent_doc: &str,
+    since: u64,
+) -> (Vec<ringtome_proto::fragment::ReplyProof>, u64) {
+    let hosted = crate::identity::hosted_roots(&state.node_db)
+        .await
+        .unwrap_or_default();
+    if !hosted.iter().any(|r| r == parent_author) {
+        return (Vec::new(), since); // not this node's author, not this node's door
+    }
+    let rows: Vec<(i64, String, String)> = match state
+        .node_db
+        .fetch_all(
+            "SELECT rowid, reply_author, reply_doc FROM post_replies
+             WHERE parent_author = ?1 AND parent_doc = ?2 AND rowid > ?3
+             ORDER BY rowid LIMIT ?4",
+            (parent_author, parent_doc, since as i64, DOOR_PAGE),
+        )
+        .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::debug!(error = ?e, "door index read failed");
+            return (Vec::new(), since);
+        }
+    };
+    let mut cursor = since;
+    let mut proofs = Vec::new();
+    for (rowid, replier_hex, doc_hex) in rows {
+        cursor = rowid as u64;
+        if !servable(state, parent_author, &replier_hex, &doc_hex).await {
+            continue;
+        }
+        let Some(replier) = crate::pubkey::decode(&replier_hex) else {
+            continue;
+        };
+        if let Some((entry, auth_path)) = resolve_proof(state, &replier_hex, &doc_hex).await {
+            proofs.push(ringtome_proto::fragment::ReplyProof {
+                replier,
+                entry,
+                auth_path,
+            });
+        }
+    }
+    (proofs, cursor)
+}
+
+/// The proof for one reply, from whichever shelf holds it. Cheapest first: the kept
+/// envelope evidence and the fragment shelf are node.db reads; the mirror is a database
+/// open and pays last.
+async fn resolve_proof(
+    state: &AppState,
+    replier_hex: &str,
+    doc_hex: &str,
+) -> Option<(Vec<u8>, Vec<Vec<u8>>)> {
+    if let Ok(Some(found)) = evidence_for(&state.node_db, replier_hex, doc_hex).await {
+        return Some(found);
+    }
+    if let Ok(Some(found)) = crate::fragments::held_proof(&state.node_db, replier_hex, doc_hex).await
+    {
+        return Some(found);
+    }
+    let doc_bytes = hex::decode(doc_hex).ok()?;
+    let doc_id = <[u8; 16]>::try_from(doc_bytes.as_slice()).ok()?;
+    let db = state.user_dbs.get(replier_hex).await.ok().flatten()?;
+    let entry = crate::record::documents::public_header_entry(&db, &doc_id)
+        .await
+        .ok()
+        .flatten()?;
+    let path = crate::record::documents::auth_path_for(&db, replier_hex, &entry)
+        .await
+        .ok()?;
+    Some((entry.bytes().to_vec(), path))
+}
+
+/// The reading side's budget: whether a visit may dial the author's door now, and from
+/// which cursor. `force` is the refresh affordance - a human asking again on purpose.
+pub async fn should_ask(
+    node_db: &Db,
+    parent_author: &str,
+    parent_doc: &str,
+    force: bool,
+) -> Option<u64> {
+    let row: Option<(i64, i64)> = node_db
+        .fetch_optional(
+            "SELECT cursor, asked_ms FROM reply_cursors
+             WHERE parent_author = ?1 AND parent_doc = ?2",
+            (parent_author, parent_doc),
+        )
+        .await
+        .ok()
+        .flatten();
+    let (cursor, asked_ms) = row.unwrap_or((0, 0));
+    if force {
+        // The deliberate re-ask starts over. The cursor idiom's one mismatch with a
+        // MUTABLE bit (caught by the nod's own acceptance, 2026-08-27): a withheld row
+        // advances the cursor, so a resume can never see it approved later - the human's
+        // refresh re-reads the whole index, and the note() upsert makes the repeats free.
+        return Some(0);
+    }
+    if now_ms() - asked_ms < ASK_COOLDOWN_MS {
+        return None;
+    }
+    Some(cursor as u64)
+}
+
+/// Record an ask's outcome: the door's new cursor, and the stamp the cooldown reads.
+pub async fn record_ask(
+    node_db: &Db,
+    parent_author: &str,
+    parent_doc: &str,
+    cursor: u64,
+) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO reply_cursors (parent_author, parent_doc, cursor, asked_ms)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (parent_author, parent_doc) DO UPDATE SET
+                 cursor = excluded.cursor, asked_ms = excluded.asked_ms",
+            (parent_author, parent_doc, cursor as i64, now_ms()),
+        )
+        .await
+        .context("recording a door ask")?;
+    Ok(())
+}
+
+/// Learn one verified page: note each claim into the memo (the thread shows the reply, by
+/// name at least, on the next read) and go fetch the words through the ordinary machinery -
+/// the replier's own public post, wanted from the replier themself. Claims teach WHICH
+/// documents exist; `Want` fetches them; intake notes the fragment like any other.
+pub async fn learn(
+    state: &AppState,
+    parent_author: &str,
+    parent_doc: &str,
+    verified: Vec<(ringtome_proto::fragment::ReplyProof, [u8; 16], i64)>,
+) {
+    let parent = (parent_author.to_string(), parent_doc.to_string());
+    for (proof, reply_doc, claimed_ms) in verified {
+        let replier_hex = hex::encode(proof.replier);
+        let doc_hex = hex::encode(reply_doc);
+        // The root link is not in hand here (the proof pins the parent); parent-as-root is
+        // the honest default and the fragment intake corrects it from the full header.
+        if let Err(e) = note(
+            &state.node_db,
+            &parent,
+            &parent,
+            &replier_hex,
+            &doc_hex,
+            claimed_ms,
+        )
+        .await
+        {
+            tracing::debug!(error = ?e, "could not note a door-learned reply");
+            continue;
+        }
+        let state = state.clone();
+        tokio::spawn(async move {
+            crate::fragments::fetch_post(&state, &replier_hex, &proof.replier, &reply_doc).await;
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

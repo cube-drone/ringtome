@@ -12,7 +12,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { sql, HOST, HOST_B, HOST_C } = require("./fetch.cjs");
+const { sql, HOST, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, shareArrives } = require("./beat.cjs");
 
@@ -25,7 +25,7 @@ const base58 = async (host) => {
     this.timeout(1200000);
 
     let ada, adaRoot, bea, beaRoot, cal, calRoot, rio, rioRoot;
-    let op, reply;
+    let op, reply, rioReply, eve;
 
     const publish = async (who, root, title, replyTo) => {
         const made = await (
@@ -255,6 +255,114 @@ const base58 = async (host) => {
         assert.equal(comments.length, 1, "one conversation, one row - the roads dedupe");
         assert.ok(!comments[0].stranger, "derived from a followed chain, not a stranger");
         assert.equal(comments[0].doc_id, op);
+    });
+
+    // ------------------------------------------------------------------------------------
+    // The author's thread door (slice 6). ada's node is the best-informed about op's
+    // thread - bea's reply reached it by envelope-then-sync, rio's by envelope alone - and
+    // serves the index to anyone who asks, curated by ada's own bit.
+
+    it("a stranger's reply is held for the nod - known to the author, served to nobody (slice 6)", async function () {
+        // rio answers op. rio and ada have no relationship: the reply reaches ada's node
+        // as a COMMENT envelope whose evidence is kept and noted - so ada SEES it (her
+        // own session view, pending), but her node does not SPEAK it (the public read,
+        // and the door, hold it back until she nods).
+        const out = await publish(rio, rioRoot, "the-strangers-reply", {
+            author: adaRoot,
+            doc_id: op,
+        });
+        assert.equal(out.status, 200, out.text);
+        rioReply = out.post;
+        await beat(HOST_C, "outbox");
+        const own = await (
+            await ada(`api/identity/${adaRoot}/posts/${op}/replies`)
+        ).json();
+        const held = (own.replies || []).find((r) => r.author === rioRoot);
+        assert.ok(held, "the author's own view knows the stranger's reply");
+        assert.equal(held.served, false, "held for the nod, not yet spoken");
+        const pub = await (await ada(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.ok(
+            !(pub.replies || []).some((r) => r.author === rioRoot),
+            "the public read holds it back - curation is the same bit as display"
+        );
+        assert.ok(
+            (pub.replies || []).some((r) => r.author === beaRoot),
+            "the followed replier speaks automatically - the trusted default"
+        );
+    });
+
+    it("a blank node learns the thread from the author's door (slice 6)", async function () {
+        if (!HOST_E) this.skip();
+        // eve's node holds nothing of this thread. Visiting the permalink IS the demand:
+        // the first read answers what it has (nothing) and says it is seeking; the door's
+        // page arrives behind it, claims first, words fetched through ordinary machinery.
+        eve = await makeUserFetch({ prefix: "cmteve", host: HOST_E });
+        const eveRoot = (await (await eve("api/identity", { method: "POST" })).json()).root_pubkey;
+        const viaAda = await base58(ada);
+        if ((await eve(`api/id/${adaRoot}/profile?via=${viaAda}`)).status !== 200) this.skip();
+        const first = await (await eve(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.equal(first.seeking, true, "the visit kicked the ask, and said so");
+        // SWR: timing IS the property here - the ask is behind the render by design.
+        let listed = [];
+        for (let i = 0; i < 40 && !listed.some((r) => r.author === beaRoot); i++) {
+            await new Promise((r) => setTimeout(r, 300));
+            listed = (await (await eve(`api/id/${adaRoot}/posts/${op}/replies`)).json()).replies || [];
+        }
+        assert.ok(
+            listed.some((r) => r.author === beaRoot),
+            "the followed replier's claim arrived through the door"
+        );
+        assert.ok(
+            !listed.some((r) => r.author === rioRoot),
+            "the held stranger stayed unserved - a door withholds what the bit says"
+        );
+    });
+
+    it("the nod opens the door - approve, and the reply joins the conversation (slice 6)", async function () {
+        if (!eve) this.skip();
+        // The nod is one private register - persona-owned, synced with her - and the 200
+        // means the memo agrees (the kv PUT drains the fold for the comments collection).
+        await ada(`api/identity/${adaRoot}/private/kv/comments/${rioRoot}:${rioReply}`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "approved" }),
+        });
+        const pub = await (await ada(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.ok(
+            (pub.replies || []).some((r) => r.author === rioRoot),
+            "approved: the author's node now speaks it"
+        );
+        // And the door serves it to the blank node on the deliberate re-ask.
+        await eve(`api/id/${adaRoot}/posts/${op}/replies?refresh=1`);
+        let listed = [];
+        for (let i = 0; i < 40 && !listed.some((r) => r.author === rioRoot); i++) {
+            await new Promise((r) => setTimeout(r, 300));
+            listed = (await (await eve(`api/id/${adaRoot}/posts/${op}/replies`)).json()).replies || [];
+        }
+        assert.ok(
+            listed.some((r) => r.author === rioRoot),
+            "the refresh re-asked the door and the approved reply came through"
+        );
+    });
+
+    it("suppress-all is the no-comments switch - and only mutes the author's amplification (slice 6)", async () => {
+        await ada(`api/identity/${adaRoot}/private/kv/comments/default`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "none" }),
+        });
+        const pub = await (await ada(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.equal(pub.replies.length, 0, "mode none: the author's node says nothing");
+        // The honest limit: bea's reply still stands on HER chain and HER node's memo -
+        // suppression never reaches the reply's existence.
+        const onB = await (await bea(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.ok(
+            (onB.replies || []).some((r) => r.author === beaRoot),
+            "the reply's existence is not the author's to erase"
+        );
+        // Back to the default so the claims below read the ordinary world.
+        await ada(`api/identity/${adaRoot}/private/kv/comments/default`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "" }),
+        });
     });
 
     it("deleting the reply retracts the pin - it lives and dies with the comment", async () => {

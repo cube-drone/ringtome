@@ -239,6 +239,27 @@ pub async fn accept(
     // Fold our own write immediately, so the reader sees it without waiting for a read to
     // catch up (and so the quota count above is honest on the next delivery).
     catch_up(&db, &keys).await?;
+
+    // A COMMENT's evidence is the reply's own signed header - keep it servable and note the
+    // claim (COMMENTS.md slice 6): this is how a stranger's reply enters the author's
+    // thread door and their own thread view, held for the nod. Best-effort beside the
+    // transcription: the notice is on the chain either way.
+    if claim.kind == ringtome_proto::deliver::notice_kind::COMMENT {
+        let envelope = signed.envelope();
+        if let Some(evidence) = &envelope.evidence {
+            if let Err(e) = crate::replies::keep_claim(
+                &state.node_db,
+                &sender_hex,
+                evidence,
+                &envelope.auth_path,
+            )
+            .await
+            {
+                tracing::debug!(sender = %sender_hex, error = ?e,
+                    "could not keep a comment's evidence for the door");
+            }
+        }
+    }
     Ok(Verdict::Transcribed)
 }
 

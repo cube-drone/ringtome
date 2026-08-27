@@ -154,7 +154,24 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
 5. **Polish and the named edges.** Parent-media covers proven; hollow rendering ("in reply
    to a retracted post"); the double-presence collapse audited; retraction-of-reply
    retracting its pins proven at depth.
-6. **The author's thread door** (rulings 2026-08-26). The author is structurally the
+6. ~~**The author's thread door**~~ Built 2026-08-27 (node gen 31; the door planted
+   shut). `WantReplies(author, doc, since)` / `Replies(proofs, cursor)` on the fragment
+   ALPN, the death-cursor idiom - the door pages its replies memo by rowid, resolving each
+   row to the replier's own signed proof from whichever shelf holds it (the COMMENT
+   envelope's kept evidence, the fragment shelf, the replier's mirror), and `verify_reply`
+   binds every proof to the exact parent asked, so a lying door can withhold but never
+   re-parent. Curation: private `comments` registers (persona-owned, synced) folded to a
+   node memo on the ledger leg, the subscriptions idiom; `servable` = suppressed always
+   loses, mode `none` silences everything (the switch is absolute - past approvals
+   included, a finding its own acceptance forced), then approved, then mode `all`, then
+   the trusted default (followed repliers). The kv PUT drains the fold, so approve's 200
+   means the door speaks the new bit. Reading side: visiting the permalink IS the demand -
+   cooldown-budgeted ask behind the render (`seeking`), claims noted, words fetched by the
+   ordinary `Want` (intake notes the fragment like any other); `refresh=1` re-reads the
+   whole index from zero, because the cursor idiom's one mismatch with a MUTABLE bit is
+   that a resume can never see a withheld row approved later. UI: the seek line, the
+   refresh affordance, and the author's held-for-the-nod section with approve/keep-quiet.
+   Original rulings for the record: The author is structurally the
    best-informed node about their own post's thread - every reply anywhere announces
    itself to them, by sync or by envelope - so their node serves a reply INDEX to anyone
    who asks: `WantReplies(post, cursor)` / `Replies` on the fragment ALPN, the

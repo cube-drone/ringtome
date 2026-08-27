@@ -221,6 +221,7 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool) {
     crate::replies::refresh_from(state, root).await;
     if ledger {
         crate::net::subscriptions::refresh_root(state, root).await;
+        crate::replies::curation_refresh_root(state, root).await;
     }
 }
 

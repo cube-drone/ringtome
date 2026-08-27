@@ -91,7 +91,20 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             answer_for(&state, &author, &doc_id).await
         }
         Some(FragmentMessage::WantDeaths { since }) => deaths_page(&state, since).await,
-        _ => return Err(anyhow!("expected a Want or WantDeaths")),
+        Some(FragmentMessage::WantReplies { author, doc_id, since }) => {
+            // The author's thread door (COMMENTS.md slice 6): claims, never words, curated
+            // by the author's own bit. A node that does not host this author answers an
+            // empty page rather than an error - "nothing to say" is a fact, not a fault.
+            let (proofs, cursor) = crate::replies::door_page(
+                &state,
+                &hex::encode(author),
+                &hex::encode(doc_id),
+                since,
+            )
+            .await;
+            FragmentMessage::Replies { proofs, cursor }
+        }
+        _ => return Err(anyhow!("expected a Want, WantDeaths, or WantReplies")),
     };
     write_frame(&mut send, &answer).await?;
     send.finish().ok();
@@ -518,6 +531,85 @@ pub async fn fetch_deaths_at(
             None
         }
     }
+}
+
+/// Ask an author's door for a page of their post's reply index, verifying every proof at
+/// this edge before a claim is believed - `verify_reply` binds each entry to the exact
+/// parent asked about, so a lying door can withhold but never re-parent. Returns the
+/// verified proofs (with each reply's identity and stamp, read from inside the signature)
+/// and the door's new cursor.
+pub async fn fetch_replies(
+    state: &AppState,
+    parent_author: &[u8; 32],
+    parent_doc: &[u8; 16],
+    since: u64,
+) -> Option<(Vec<(ringtome_proto::fragment::ReplyProof, [u8; 16], i64)>, u64)> {
+    let author_hex = hex::encode(parent_author);
+    for candidate in crate::net::deliver::candidates(state, &author_hex).await {
+        let endpoint_id = crate::idface::leaf_via_to_endpoint(state, &author_hex, &candidate).await;
+        let asked = tokio::time::timeout(
+            FETCH_TIMEOUT,
+            ask_replies(state, &endpoint_id, parent_author, parent_doc, since),
+        )
+        .await;
+        match asked {
+            Ok(Ok(answer)) => return Some(answer),
+            Ok(Err(e)) => {
+                tracing::debug!(author = %author_hex, error = ?e, "reply index ask failed")
+            }
+            Err(_) => tracing::debug!(author = %author_hex, "reply index ask timed out"),
+        }
+    }
+    None
+}
+
+async fn ask_replies(
+    state: &AppState,
+    endpoint_id: &str,
+    parent_author: &[u8; 32],
+    parent_doc: &[u8; 16],
+    since: u64,
+) -> Result<(Vec<(ringtome_proto::fragment::ReplyProof, [u8; 16], i64)>, u64)> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for the reply index: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(
+        &mut send,
+        &FragmentMessage::WantReplies {
+            author: *parent_author,
+            doc_id: *parent_doc,
+            since,
+        },
+    )
+    .await?;
+    send.finish().ok();
+    let answer = read_frame(&mut recv).await?;
+    conn.close(0u8.into(), b"done");
+    let Some(FragmentMessage::Replies { proofs, cursor }) = answer else {
+        return Err(anyhow!("unexpected answer to a reply index ask: {answer:?}"));
+    };
+    let verified = proofs
+        .into_iter()
+        .filter_map(|p| {
+            match ringtome_proto::fragment::verify_reply(
+                p.replier,
+                *parent_author,
+                *parent_doc,
+                &p.entry,
+                &p.auth_path,
+            ) {
+                Ok((doc, stamp)) => Some((p, doc, stamp)),
+                Err(e) => {
+                    tracing::warn!(replier = %hex::encode(p.replier), error = ?e,
+                        "a reply in the index failed its own proof - skipped");
+                    None
+                }
+            }
+        })
+        .collect();
+    Ok((verified, cursor))
 }
 
 async fn ask_deaths(

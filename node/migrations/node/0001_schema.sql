@@ -733,6 +733,46 @@ CREATE INDEX post_replies_by_reply ON post_replies (reply_doc, reply_author);
 -- otherwise grow with every reply this node knows about anyone.
 CREATE INDEX post_replies_by_replier ON post_replies (reply_author, noted_ms);
 
+-- The author's thread door, three tables (COMMENTS.md slice 6).
+--
+-- A stranger's reply reaches its parent's author as a COMMENT notice whose evidence is the
+-- reply's own signed header; the door serves that exact proof onward - the author serves
+-- claims, never words - so the bytes are kept, one proof per reply, packed like a
+-- fragment's path (fragments::pack_path).
+CREATE TABLE reply_evidence (
+    reply_author TEXT NOT NULL,
+    reply_doc    TEXT NOT NULL,
+    entry        BLOB NOT NULL,
+    auth_path    BLOB NOT NULL,
+    PRIMARY KEY (reply_author, reply_doc)
+);
+
+-- The curation memo: the persona's own private registers (approve/suppress per reply, and
+-- the default mode), folded node-side on the ledger leg exactly as subscriptions are -
+-- because the door answers peers, and a peer has no session to unseal with. Curation is
+-- the same bit as display; suppression mutes the author's amplification, never the reply's
+-- existence on its own author's chain. The mode row is the sentinel ('','') per root:
+-- 'trusted' (default - followed repliers serve, strangers wait for the nod), 'all'
+-- (auto-share; the choice becomes suppressing), 'none' (the "no comments" switch).
+CREATE TABLE comment_curation (
+    root         TEXT NOT NULL,
+    reply_author TEXT NOT NULL,
+    reply_doc    TEXT NOT NULL,
+    verdict      TEXT NOT NULL,
+    PRIMARY KEY (root, reply_author, reply_doc)
+);
+
+-- The reading side's budget: one cursor per thread this node has asked an author's door
+-- about (the death-cursor discipline: the cursor is THEIR log's, opaque here), plus the
+-- last ask's stamp so a visit-driven ask cannot become a hammer.
+CREATE TABLE reply_cursors (
+    parent_author TEXT NOT NULL,
+    parent_doc    TEXT NOT NULL,
+    cursor        INTEGER NOT NULL DEFAULT 0,
+    asked_ms      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (parent_author, parent_doc)
+);
+
 -- The quiet twin of `foreign_fetches`: when the acquisition pass last reached each speculative
 -- target, and through whom. A SEPARATE table because the two registries have opposite
 -- consequences: a `foreign_fetches` row opens the sync door (`serve`'s wanted gate) and seats

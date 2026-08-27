@@ -88,6 +88,18 @@ pub enum FragmentMessage {
     /// `cursor` is where the next ask resumes; a page shorter than the server's page size means
     /// the log is drained.
     Deaths { proofs: Vec<DeathProof>, cursor: u64 },
+    /// The author's thread door (COMMENTS.md slice 6): every reply anywhere announces
+    /// itself to its parent's author - by sync or by envelope - so the author's node is
+    /// structurally the best-informed about the thread, and serves a reply INDEX to anyone
+    /// who asks. The death-cursor idiom verbatim: `since` is the SERVER's opaque monotonic
+    /// cursor, and the steady-state answer is an empty page.
+    WantReplies { author: [u8; 32], doc_id: [u8; 16], since: u64 },
+    /// One page of the index: the repliers' own SIGNED evidence - each proof is the
+    /// replier's doc-header entry naming the parent, with the delegation path that ties its
+    /// signer to their root, verifiable offline exactly as a fragment is. Claims, never
+    /// words: the asker fetches the words through the ordinary `Want` machinery. A page
+    /// shorter than the server's page size means the index is drained.
+    Replies { proofs: Vec<ReplyProof>, cursor: u64 },
 }
 
 /// One death in a batch: whose document, which document, and the author's signed word for it.
@@ -99,6 +111,19 @@ pub struct DeathProof {
     pub auth_path: Vec<Vec<u8>>,
 }
 
+/// One reply in the index: who answered, and their signed word for it. The reply's own
+/// doc id and stamp live INSIDE the entry - the proof carries nothing the signature does
+/// not cover.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyProof {
+    pub replier: [u8; 32],
+    pub entry: Vec<u8>,
+    pub auth_path: Vec<Vec<u8>>,
+}
+
+/// Cap on reply proofs per page, the deaths cap's twin.
+pub const MAX_REPLIES_PER_PAGE: usize = 32;
+
 /// Cap on proofs per page, enforced at decode. The encoder pages far below this (frame budget);
 /// the decoder refuses anything a well-behaved encoder could not have sent.
 pub const MAX_DEATHS_PER_PAGE: usize = 32;
@@ -109,6 +134,8 @@ const TAG_GONE: u64 = 2;
 const TAG_UNKNOWN: u64 = 3;
 const TAG_WANT_DEATHS: u64 = 4;
 const TAG_DEATHS: u64 = 5;
+const TAG_WANT_REPLIES: u64 = 6;
+const TAG_REPLIES: u64 = 7;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -155,6 +182,28 @@ impl FragmentMessage {
                     w.array(4);
                     w.bytes(&p.author);
                     w.bytes(&p.doc_id);
+                    w.bytes(&p.entry);
+                    w.array(p.auth_path.len() as u64);
+                    for rung in &p.auth_path {
+                        w.bytes(rung);
+                    }
+                }
+                w.uint(*cursor);
+            }
+            Self::WantReplies { author, doc_id, since } => {
+                w.array(4);
+                w.uint(TAG_WANT_REPLIES);
+                w.bytes(author);
+                w.bytes(doc_id);
+                w.uint(*since);
+            }
+            Self::Replies { proofs, cursor } => {
+                w.array(3);
+                w.uint(TAG_REPLIES);
+                w.array(proofs.len() as u64);
+                for p in proofs {
+                    w.array(3);
+                    w.bytes(&p.replier);
                     w.bytes(&p.entry);
                     w.array(p.auth_path.len() as u64);
                     for rung in &p.auth_path {
@@ -213,6 +262,34 @@ impl FragmentMessage {
                     });
                 }
                 Self::Deaths {
+                    proofs,
+                    cursor: r.uint()?,
+                }
+            }
+            (TAG_WANT_REPLIES, 4) => Self::WantReplies {
+                author: r.bytes_fixed::<32>()?,
+                doc_id: r.bytes_fixed::<16>()?,
+                since: r.uint()?,
+            },
+            (TAG_REPLIES, 3) => {
+                let count = r.array()?;
+                if count > MAX_REPLIES_PER_PAGE as u64 {
+                    return Err(ProtoError::BadEntry("replies page too large"));
+                }
+                let mut proofs = Vec::new();
+                for _ in 0..count {
+                    if r.array()? != 3 {
+                        return Err(ProtoError::BadEntry("malformed reply proof"));
+                    }
+                    let replier = r.bytes_fixed::<32>()?;
+                    let (entry, auth_path) = Self::entry_and_path(&mut r)?;
+                    proofs.push(ReplyProof {
+                        replier,
+                        entry,
+                        auth_path,
+                    });
+                }
+                Self::Replies {
                     proofs,
                     cursor: r.uint()?,
                 }
@@ -314,6 +391,44 @@ pub fn verify_fragment(
 /// the author's LAST word. It proves "the author retracted this document", which under
 /// retraction finality (*Retraction, edits, and what a node must remember forever*: a tombstone
 /// is final for its doc_id, republishing mints a new one) is the whole question.
+/// Verify one reply proof offline: the entry is a real doc header, signed by a key the
+/// delegation path ties to `replier`, and its own `reply_to` names exactly the parent that
+/// was asked about. Returns the reply's doc id and claimed stamp - both read from INSIDE
+/// the signature, never from the wire's framing. The door's twin of [`verify_retraction`]:
+/// the author serves claims, and every claim proves itself against ITS author.
+pub fn verify_reply(
+    replier: [u8; 32],
+    parent_author: [u8; 32],
+    parent_doc: [u8; 16],
+    entry_bytes: &[u8],
+    auth_path: &[Vec<u8>],
+) -> Result<([u8; 16], i64), ProtoError> {
+    let signed = SignedEntry::decode(entry_bytes)?;
+    signed.verify()?;
+    let entry = signed.entry();
+
+    if entry.chain.service != service::POSTS || entry.entry_type != entry_type::DOC_HEADER {
+        return Err(ProtoError::ChainViolation(
+            "a reply proof must be a doc header",
+        ));
+    }
+    crate::deliver::walk_auth_path(replier, auth_path, entry.chain.author)?;
+
+    let Payload::Inline(payload) = &entry.payload else {
+        return Err(ProtoError::BadEntry("a reply header must be inline"));
+    };
+    let header = crate::registry::DocHeaderPlain::decode(payload)?;
+    let Some((pa, pd)) = header.reply_to else {
+        return Err(ProtoError::ChainViolation("the proof's header is not a reply"));
+    };
+    if (pa, pd) != (parent_author, parent_doc) {
+        return Err(ProtoError::ChainViolation(
+            "the reply answers a different post than the one asked about",
+        ));
+    }
+    Ok((header.doc_id, entry.timestamp_ms))
+}
+
 pub fn verify_retraction(
     author: [u8; 32],
     doc_id: [u8; 16],
@@ -371,6 +486,23 @@ mod tests {
                 auth_path: Vec::new(),
             },
             FragmentMessage::Unknown,
+            FragmentMessage::WantReplies {
+                author: [1u8; 32],
+                doc_id: [2u8; 16],
+                since: 99,
+            },
+            FragmentMessage::Replies {
+                proofs: vec![ReplyProof {
+                    replier: [3u8; 32],
+                    entry: vec![4, 5],
+                    auth_path: vec![vec![6]],
+                }],
+                cursor: 12,
+            },
+            FragmentMessage::Replies {
+                proofs: Vec::new(),
+                cursor: 0,
+            },
             FragmentMessage::WantDeaths { since: 0 },
             FragmentMessage::WantDeaths { since: 4_321 },
             FragmentMessage::Deaths {
@@ -462,6 +594,78 @@ mod tests {
             payload: Payload::Inline(crate::PostRetraction { doc_id }.encode()),
         };
         SignedEntry::create(&entry, key).unwrap().bytes().to_vec()
+    }
+
+    /// A root-signed reply header (empty path): the door's proof in miniature.
+    fn reply_entry(
+        key: &crate::SigningKey,
+        doc_id: [u8; 16],
+        reply_to: Option<([u8; 32], [u8; 16])>,
+    ) -> Vec<u8> {
+        let header = crate::registry::DocHeaderPlain {
+            doc_id,
+            parents: vec![[1u8; 32]],
+            file_hash: [3u8; 32],
+            body_hash: [4u8; 32],
+            title: "an answer".into(),
+            format: None,
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
+            preview_hash: None,
+            refs: Vec::new(),
+            genesis_ms: Some(9),
+            reply_to,
+            thread_root: reply_to,
+        };
+        let entry = crate::Entry {
+            v: crate::ENTRY_VERSION,
+            entry_type: entry_type::DOC_HEADER,
+            chain: crate::ChainId {
+                author: key.verifying_key().to_bytes(),
+                service: service::POSTS,
+            },
+            seq: 5,
+            prev_hash: crate::ZERO_HASH,
+            timestamp_ms: 1_700_000_111_000,
+            payload: Payload::Inline(header.encode().unwrap()),
+        };
+        SignedEntry::create(&entry, key).unwrap().bytes().to_vec()
+    }
+
+    /// COMMENTS.md slice 6: a reply proof verifies offline against the exact parent asked
+    /// about, yields the reply's identity from inside the signature, and refuses both the
+    /// mis-parented claim and the header that is not a reply at all.
+    #[test]
+    fn a_reply_proof_verifies_against_its_parent_and_only_its_parent() {
+        let key = author_key();
+        let replier = key.verifying_key().to_bytes();
+        let parent = ([2u8; 32], [3u8; 16]);
+        let entry = reply_entry(&key, [8u8; 16], Some(parent));
+        let (doc, stamp) = verify_reply(replier, parent.0, parent.1, &entry, &[]).unwrap();
+        assert_eq!(doc, [8u8; 16], "the reply's identity, off the signed header");
+        assert_eq!(stamp, 1_700_000_111_000);
+
+        assert!(
+            verify_reply(replier, [9u8; 32], parent.1, &entry, &[]).is_err(),
+            "a different parent author refuses"
+        );
+        assert!(
+            verify_reply(replier, parent.0, [9u8; 16], &entry, &[]).is_err(),
+            "a different parent doc refuses"
+        );
+        let bare = reply_entry(&key, [8u8; 16], None);
+        assert!(
+            verify_reply(replier, parent.0, parent.1, &bare, &[]).is_err(),
+            "a header that is not a reply proves nothing"
+        );
+        let stranger = crate::SigningKey::from_bytes(&[9u8; 32]);
+        let forged = reply_entry(&stranger, [8u8; 16], Some(parent));
+        assert!(
+            verify_reply(replier, parent.0, parent.1, &forged, &[]).is_err(),
+            "signed by a key the path does not tie to the replier"
+        );
     }
 
     #[test]

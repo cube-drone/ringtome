@@ -1161,16 +1161,63 @@ pub async fn id_post_replies(
         (Some(ms), Some(d)) => Some((ms, d)),
         _ => None,
     };
-    let (replies, more) = crate::replies::replies_of(&state.node_db, &root_hex, &doc, after)
+    let (mut replies, more) = crate::replies::replies_of(&state.node_db, &root_hex, &doc, after)
         .await
         .map_err(AppError::Internal)?;
-    Ok(axum::Json(serde_json::json!({ "replies": replies, "more": more })).into_response())
+
+    // Curation is the same bit as display (COMMENTS.md slice 6): when the post's author
+    // lives HERE, this public read speaks with the author's own voice, so it holds back
+    // exactly what the door would - a stranger's reply waits for the nod, a suppressed one
+    // stays quiet. The author's own view (session-owned, routes.rs) sees everything,
+    // pending marked; other nodes' memos only ever learned what some door already served.
+    let hosted = hosted_here(&state, &root_hex).await?;
+    if hosted {
+        let mut served = Vec::with_capacity(replies.len());
+        for r in replies {
+            if crate::replies::servable(&state, &root_hex, &r.author, &r.doc_id).await {
+                served.push(r);
+            }
+        }
+        replies = served;
+    }
+
+    // The reading side (slice 6): visiting the permalink IS the demand. For a foreign
+    // author, ask their door behind this render - budget-capped by the cursor table's
+    // cooldown, `refresh=1` the human's deliberate re-ask - and say so, so the UI can show
+    // its quiet "looking for more of the conversation" and look again.
+    let mut seeking = false;
+    if !hosted && session.is_some() {
+        let force = query.refresh.unwrap_or(0) != 0;
+        if let Some(since) =
+            crate::replies::should_ask(&state.node_db, &root_hex, &doc, force).await
+        {
+            seeking = true;
+            let state = state.clone();
+            let (author_hex, doc_hex) = (root_hex.clone(), doc.clone());
+            tokio::spawn(async move {
+                let Ok(doc_bytes) = hex::decode(&doc_hex) else { return };
+                let Ok(doc_id) = <[u8; 16]>::try_from(doc_bytes.as_slice()) else { return };
+                if let Some((verified, cursor)) =
+                    crate::net::fragment::fetch_replies(&state, &root, &doc_id, since).await
+                {
+                    crate::replies::learn(&state, &author_hex, &doc_hex, verified).await;
+                    let _ =
+                        crate::replies::record_ask(&state.node_db, &author_hex, &doc_hex, cursor)
+                            .await;
+                }
+            });
+        }
+    }
+    Ok(axum::Json(serde_json::json!({ "replies": replies, "more": more, "seeking": seeking }))
+        .into_response())
 }
 
 #[derive(serde::Deserialize)]
 pub struct RepliesQuery {
     pub after_ms: Option<i64>,
     pub after_doc: Option<String>,
+    /// The refresh affordance: a human asking the author's door again on purpose.
+    pub refresh: Option<u8>,
 }
 
 pub async fn id_profile(

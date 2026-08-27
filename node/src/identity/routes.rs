@@ -125,6 +125,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         // Pin a document to the top of its list (PUT) or release it (DELETE) - a doc-meta flag,
         // like delete but opposite in effect.
         .route(
+            "/api/identity/{root}/posts/{post_id}/replies",
+            get(own_post_replies_handler),
+        )
+        .route(
             "/api/identity/{root}/docs/{doc_id}/pin",
             put(pin_put_handler).delete(pin_delete_handler),
         )
@@ -1289,6 +1293,55 @@ async fn publish_handler(
     }
 }
 
+/// GET `/api/identity/{root}/posts/{post_id}/replies` - the AUTHOR's view of their own
+/// post's thread index (COMMENTS.md slice 6): every reply this node knows, including the
+/// strangers' held for the nod, each row carrying `served` - the curation bit as it stands.
+/// The public read (idface) shows only what `served` is true of; this surface exists so the
+/// author can see what is waiting and nod it in (a `comments` register PUT, which drains
+/// the fold so the door speaks the new bit on the next ask).
+async fn own_post_replies_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, post_id)): Path<(String, String)>,
+    axum::extract::Query(q): axum::extract::Query<OwnRepliesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _owned = store::open(&state, &session.account.id, &root).await?;
+    if hex::decode(&post_id).map(|b| b.len()) != Ok(16) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.that-isnt-a-document-id",
+            "that isn't a document id"
+        )));
+    }
+    let after = match (q.after_ms, q.after_doc) {
+        (Some(ms), Some(d)) => Some((ms, d)),
+        _ => None,
+    };
+    let (replies, more) = crate::replies::replies_of(&state.node_db, &root, &post_id, after)
+        .await
+        .map_err(AppError::Internal)?;
+    let mut rows = Vec::with_capacity(replies.len());
+    for r in replies {
+        let served = crate::replies::servable(&state, &root, &r.author, &r.doc_id).await;
+        let verdict =
+            crate::replies::curation_verdict(&state.node_db, &root, &r.author, &r.doc_id).await;
+        rows.push(serde_json::json!({
+            "author": r.author,
+            "doc_id": r.doc_id,
+            "claimed_ms": r.claimed_ms,
+            "served": served,
+            "verdict": verdict,
+        }));
+    }
+    let mode = crate::replies::curation_mode(&state.node_db, &root).await;
+    Ok(Json(serde_json::json!({ "replies": rows, "more": more, "mode": mode })))
+}
+
+#[derive(Deserialize)]
+struct OwnRepliesQuery {
+    after_ms: Option<i64>,
+    after_doc: Option<String>,
+}
+
 /// DELETE `/api/identity/{root}/posts/{post_id}` - take a published post back off the network.
 ///
 /// **The public counterpart to deleting a note, and deliberately its own gesture.** A note and
@@ -1703,7 +1756,7 @@ async fn private_kv_put_handler(
     // on a slow machine a publish could fire into a follower list that did not yet name the
     // person who just followed. Drain the fold lane before answering, for exactly the
     // memo-bearing collections; every other private register keeps the fast path.
-    if collection.starts_with("contact:") {
+    if collection.starts_with("contact:") || collection == "comments" {
         crate::fold::fold_now(&state, &root).await;
     }
     Ok(Json(PrivateWriteResponse {

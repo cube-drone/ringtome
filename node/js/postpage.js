@@ -39,6 +39,9 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
     // fold lane's next pass, so the thread read may not list it yet - the view runs ahead
     // of the stream without disagreeing with it (the feed's own overlay idiom).
     const [said, setSaid] = useState([]);
+    // The refresh affordance's counter: bumping it re-mounts the thread's read with
+    // refresh=1, the deliberate re-ask past the door's cooldown.
+    const [refreshKey, setRefreshKey] = useState(0);
 
     useEffect(() => {
         if (!root || !doc) return;
@@ -100,7 +103,14 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
             html`<section class="thread">
                 <h2 class="thread-head">
                     ${t('postpage.replies-known-here', 'replies known here')}
+                    ${!item.mine &&
+                    html`<button
+                        class="thread-refresh"
+                        title=${t('postpage.ask-the-author-again', "ask the author's computer again - a hot thread is worth a second glance")}
+                        onClick=${() => setRefreshKey((k) => k + 1)}
+                    >${t('postpage.refresh', 'refresh')}</button>`}
                 </h2>
+                ${item.mine && html`<${HeldReplies} root=${root} doc=${doc} />`}
                 ${current &&
                 current.root &&
                 html`<${ReplyBox}
@@ -108,7 +118,14 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                     parent=${{ author: root, doc_id: doc }}
                     onReplied=${(mint) => setSaid((have) => [...have, mint])}
                 />`}
-                <${Thread} author=${root} doc=${doc} current=${current} depth=${0} extra=${said} />
+                <${Thread}
+                    author=${root}
+                    doc=${doc}
+                    current=${current}
+                    depth=${0}
+                    extra=${said}
+                    refreshKey=${refreshKey}
+                />
             </section>`}
         </div>
     `;
@@ -137,6 +154,81 @@ const ParentContext = ({ link }) => {
             published_ms=${head && head.published_ms}
         />
     </p>`;
+};
+
+/// The author's curation surface (COMMENTS.md slice 6): strangers' replies this node holds
+/// for the nod. Curation is the same bit as display - "approve comment" makes the reply
+/// join the visible conversation here AND start being served from the author's door;
+/// "keep quiet" suppresses it. The honest limit, on the surface that exercises it:
+/// suppression mutes YOUR amplification, never the reply's existence on its own author's
+/// chain.
+const HeldReplies = ({ root, doc }) => {
+    const [rows, setRows] = useState(null);
+    const [gen, setGen] = useState(0);
+    useEffect(() => {
+        let live = true;
+        api(`/api/identity/${root}/posts/${doc}/replies`)
+            .then((p) => live && setRows((p.replies || []).filter((r) => !r.served && !r.verdict)))
+            .catch(() => live && setRows([]));
+        return () => {
+            live = false;
+        };
+    }, [root, doc, gen]);
+    const nod = async (r, verdict) => {
+        await api(`/api/identity/${root}/private/kv/comments/${r.author}:${r.doc_id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: verdict }),
+        }).catch(() => {});
+        setGen((g) => g + 1);
+    };
+    if (!rows || !rows.length) return null;
+    return html`<div class="held-replies">
+        <p class="held-replies-head">
+            ${t('postpage.held-for-your-nod', 'replies from people you don\u2019t follow, held for your nod')}
+        </p>
+        ${rows.map(
+            (r) => html`<div class="held-reply" key=${`${r.author}:${r.doc_id}`}>
+                <${HeldReplyBody} author=${r.author} doc=${r.doc_id} />
+                <div class="held-reply-acts">
+                    <button class="held-approve" onClick=${() => nod(r, 'approved')}>
+                        ${t('postpage.approve-comment', 'approve comment')}
+                    </button>
+                    <button class="held-suppress" onClick=${() => nod(r, 'suppressed')}>
+                        ${t('postpage.keep-quiet', 'keep quiet')}
+                    </button>
+                </div>
+            </div>`
+        )}
+    </div>`;
+};
+
+/// The held reply itself, when its words are readable here - the evidence names the post,
+/// and the fragment fetch may still be in flight, so a bare byline is the honest fallback.
+const HeldReplyBody = ({ author, doc }) => {
+    const [post, setPost] = useState(undefined);
+    useEffect(() => {
+        let live = true;
+        api(`/api/id/${author}/posts/${doc}`)
+            .then((p) => live && setPost(p))
+            .catch(() => live && setPost(null));
+        return () => {
+            live = false;
+        };
+    }, [author, doc]);
+    if (post === undefined) return html`<p class="null-sub">…</p>`;
+    if (post === null)
+        return html`<p class="held-reply-hollow">
+            ${t('postpage.a-reply-whose-words-havent', "a reply whose words haven't reached this computer yet")}
+        </p>`;
+    const item = {
+        author,
+        doc_id: post.doc_id,
+        title: post.title,
+        format: post.format,
+        published_ms: post.published_ms,
+        mine: false,
+    };
+    return html`<${PostEntry} key=${post.doc_id} item=${item} current=${null} editing=${null} quote=${false} />`;
 };
 
 /// The reply box (COMMENTS.md slice 3): your words, under the post they answer. A reply is
@@ -199,31 +291,60 @@ const ReplyBox = ({ current, parent, onReplied }) => {
 /// never assembles a tree - this page is the only place one forms.
 const THREAD_DEPTH_CAP = 6;
 
-const Thread = ({ author, doc, current, depth, extra }) => {
+const Thread = ({ author, doc, current, depth, extra, refreshKey }) => {
     const [page, setPage] = useState(null);
     useEffect(() => {
         let live = true;
-        api(`/api/id/${author}/posts/${doc}/replies`)
-            .then((p) => live && setPage(p))
-            .catch(() => live && setPage({ replies: [] }));
+        // refreshKey > 0 is the human's deliberate re-ask: it rides `refresh=1` past the
+        // node's cooldown so the door actually gets dialed again.
+        const force = depth === 0 && refreshKey > 0 ? '?refresh=1' : '';
+        const look = () =>
+            api(`/api/id/${author}/posts/${doc}/replies${force}`)
+                .then((p) => {
+                    if (!live) return;
+                    setPage(p);
+                    // "Looking for more of the conversation": the node said it is asking
+                    // the author's door behind this render (slice 6's SWR) - look once
+                    // more after the ask has had a moment, then rest until refreshed.
+                    if (depth === 0 && p.seeking) {
+                        setTimeout(() => {
+                            if (!live) return;
+                            api(`/api/id/${author}/posts/${doc}/replies`)
+                                .then((p2) => live && setPage({ ...p2, seeking: false }))
+                                .catch(() => {});
+                        }, 2500);
+                    }
+                })
+                .catch(() => live && setPage({ replies: [] }));
+        look();
         return () => {
             live = false;
         };
-    }, [author, doc]);
+    }, [author, doc, depth, refreshKey]);
     const fetched = (page && page.replies) || [];
     const have = new Set(fetched.map((r) => `${r.author}:${r.doc_id}`));
     const replies = [
         ...fetched,
         ...(extra || []).filter((r) => !have.has(`${r.author}:${r.doc_id}`)),
     ];
+    const seekingLine =
+        depth === 0 &&
+        page &&
+        page.seeking &&
+        html`<p class="thread-seeking">
+            <span class="waiting-dot"></span>
+            ${t('postpage.looking-for-more', 'looking for more of the conversation…')}
+        </p>`;
     if (!replies.length) {
         return depth === 0 && page
-            ? html`<p class="thread-empty">
+            ? html`${seekingLine ||
+              html`<p class="thread-empty">
                   ${t('postpage.none-known-yet', 'none known here yet')}
-              </p>`
+              </p>`}`
             : null;
     }
     return html`<div class="thread-level">
+        ${seekingLine}
         ${replies.map(
             (r) => html`<${ThreadReply}
                 key=${`${r.author}:${r.doc_id}`}

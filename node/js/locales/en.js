@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 484 phrases across 44 files.
+// 492 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -383,11 +383,18 @@ export default {
     'postpage.looking-for-the-post': 'looking for the post…',
     'postpage.no-such-post-is-held': 'no such post is held here - it may be private, taken down, or its author unreachable',
     'postpage.replies-known-here': 'replies known here',
+    'postpage.ask-the-author-again': "ask the author's computer again - a hot thread is worth a second glance",
+    'postpage.refresh': 'refresh',
     'postpage.in-reply-to': 'in reply to',
+    'postpage.held-for-your-nod': 'replies from people you donu2019t follow, held for your nod',
+    'postpage.approve-comment': 'approve comment',
+    'postpage.keep-quiet': 'keep quiet',
+    'postpage.a-reply-whose-words-havent': "a reply whose words haven't reached this computer yet",
     'postpage.say-something-back': 'say something back',
     'postpage.replying-is-public-and-shares': 'replying is public - and shares this post with your own followers',
     'postpage.replying': 'replying…',
     'postpage.reply': 'reply',
+    'postpage.looking-for-more': 'looking for more of the conversation…',
     'postpage.none-known-yet': 'none known here yet',
     'postpage.continue-this-thread': 'continue this thread',
 
@@ -447,6 +454,7 @@ export default {
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
+    'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.this-computer-doesnt-have-that-post-2': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.rebroadcast-is-for-other-peoples-documents': "a persona rebroadcasts other people's documents; publish your own",
