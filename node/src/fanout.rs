@@ -1380,6 +1380,38 @@ pub async fn followed_sharers(
     Ok(out)
 }
 
+/// What the reader's own journal knows about these posts - title and stamp, for dressing a
+/// reply row's quote-card with its PARENT (COMMENTS.md slice 3). Page-scoped: one indexed
+/// read under the journal's leading `reader_root`, the `followed_sharers` shape. Best-effort
+/// by design - a parent the journal never met dresses as a bare "link", which is the
+/// mini-card's own degraded case.
+pub async fn journal_cards(
+    node_db: &crate::db::Db,
+    reader_root: &str,
+    posts: &[(String, String)],
+) -> Result<std::collections::HashMap<(String, String), (String, i64)>> {
+    let docs = hex_in_list(posts.iter().map(|(_, d)| d));
+    if docs.is_empty() {
+        return Ok(Default::default());
+    }
+    let rows: Vec<(String, String, String, i64)> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT author_root, doc_id, title, published_ms FROM feed_journal
+                 WHERE reader_root = ?1 AND doc_id IN ({})",
+                docs.join(",")
+            ),
+            (reader_root,),
+        )
+        .await
+        .context("dressing quote-cards from the journal")?;
+    Ok(rows
+        .into_iter()
+        .filter(|(a, d, _, _)| posts.contains(&(a.clone(), d.clone())))
+        .map(|(a, d, title, ms)| ((a, d), (title, ms)))
+        .collect())
+}
+
 /// A quoted hex IN-list, the belt-and-braces `profiles::bylines` uses: anything that is not hex
 /// cannot name a row these tables hold, so the list can carry nothing else.
 fn hex_in_list<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {

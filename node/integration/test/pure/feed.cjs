@@ -3,11 +3,11 @@ const assert = require('node:assert');
 
 let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor,
     emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN;
+    postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs;
 before(async () => {
     ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts,
         postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
-        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN } = await import(
+        postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs } = await import(
         '../../../js/pure/feed.js'
     ));
 });
@@ -315,5 +315,33 @@ describe('postImageCap (how big a picture may draw)', () => {
             assert.ok(cap > previous, `${band} did not climb`);
             previous = cap;
         }
+    });
+});
+
+describe('the share/reply pair, collapsed at render', () => {
+    const parent = { author: 'ada', doc_id: 'p1', via: 'bea' };
+    const reply = { author: 'bea', doc_id: 'r1', reply_to: { author: 'ada', doc_id: 'p1' } };
+
+    it('drops the pinned parent when its sharer\'s reply is on screen', () => {
+        assert.deepEqual(collapseReplyPairs([reply, parent]), [reply]);
+    });
+
+    it('keeps a via-less parent - a direct follow is a first-class row', () => {
+        const followed = { author: 'ada', doc_id: 'p1' };
+        assert.deepEqual(collapseReplyPairs([reply, followed]), [reply, followed]);
+    });
+
+    it('keeps a share whose sharer is NOT the replier on screen', () => {
+        const otherShare = { author: 'ada', doc_id: 'p1', via: 'cal' };
+        assert.deepEqual(collapseReplyPairs([reply, otherShare]), [reply, otherShare]);
+    });
+
+    it('keeps your own rows no matter what', () => {
+        const mine = { author: 'ada', doc_id: 'p1', via: 'bea', mine: true };
+        assert.deepEqual(collapseReplyPairs([reply, mine]), [reply, mine]);
+    });
+
+    it('collapses nothing when the reply is not loaded - both rows honestly render', () => {
+        assert.deepEqual(collapseReplyPairs([parent]), [parent]);
     });
 });

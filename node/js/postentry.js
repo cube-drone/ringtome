@@ -440,7 +440,7 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
     </a>`;
 };
 
-export const PostEntry = ({ item, current, interest, editing }) => {
+export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);
     const [open, setOpen] = useState(false);
@@ -604,6 +604,23 @@ export const PostEntry = ({ item, current, interest, editing }) => {
             ${!open &&
             !!title &&
             html`<h2 class="feed-entry-title"><a href=${href}>${title}</a></h2>`}
+            ${/* The quoted context (COMMENTS.md slice 3): this post is a REPLY, and the
+                mini-card names what it answers - which is the whole reason context-free
+                "@rando, I disagree" cannot happen here. Suppressed on the thread page
+                (quote=false), where nesting under the parent already says it. */ ''}
+            ${!!item.reply_to &&
+            quote !== false &&
+            html`<p class="feed-entry-replyto">
+                ${item.reply_to.name
+                    ? t('postentry.in-reply-to-name', 'in reply to {name}', { name: item.reply_to.name })
+                    : t('postentry.in-reply-to', 'in reply to')}
+                <${MiniPost}
+                    author=${item.reply_to.author}
+                    doc_id=${item.reply_to.doc_id}
+                    title=${item.reply_to.title}
+                    published_ms=${item.reply_to.published_ms}
+                />
+            </p>`}
             ${open
                 ? html`<${Composer}
                       root=${editing.root}

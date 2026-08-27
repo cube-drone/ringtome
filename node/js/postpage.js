@@ -18,8 +18,9 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
+import { FEED_STYLE } from './pure/feed.js';
 import { parseSpeakable } from './speakable.js';
-import { PostEntry } from './postentry.js';
+import { PostEntry, MiniPost } from './postentry.js';
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 
@@ -34,6 +35,10 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
     const via = (loc.query && loc.query.via) || '';
     // undefined = loading, null = not held here, object = the post
     const [post, setPost] = useState(undefined);
+    // Replies said from THIS page, ahead of the fold: the memo notes a fresh reply on the
+    // fold lane's next pass, so the thread read may not list it yet - the view runs ahead
+    // of the stream without disagreeing with it (the feed's own overlay idiom).
+    const [said, setSaid] = useState([]);
 
     useEffect(() => {
         if (!root || !doc) return;
@@ -84,16 +89,108 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                     'no such post is held here - it may be private, taken down, or its author unreachable'
                 )}
             </p>`}
-            ${item && html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} />`}
+            ${/* The parent, when this post is itself a reply: the conversation it belongs
+                to, one hop up (COMMENTS.md slice 3 - "parent context above, replies
+                below"). The card degrades to a bare "link" when the parent's header is not
+                readable here - the hollow case, honestly. */ ''}
+            ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
+            ${item &&
+            html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} />`}
             ${item &&
             html`<section class="thread">
                 <h2 class="thread-head">
                     ${t('postpage.replies-known-here', 'replies known here')}
                 </h2>
-                <${Thread} author=${root} doc=${doc} current=${current} depth=${0} />
+                ${current &&
+                current.root &&
+                html`<${ReplyBox}
+                    current=${current}
+                    parent=${{ author: root, doc_id: doc }}
+                    onReplied=${(mint) => setSaid((have) => [...have, mint])}
+                />`}
+                <${Thread} author=${root} doc=${doc} current=${current} depth=${0} extra=${said} />
             </section>`}
         </div>
     `;
+};
+
+/// One hop up: the post this page's post replies to, as a mini-card. The title comes from
+/// the parent's own held header when this node can read it; a parent not held here still
+/// gets its link - "in reply to: link" is the honest hollow rendering.
+const ParentContext = ({ link }) => {
+    const [head, setHead] = useState(null);
+    useEffect(() => {
+        let live = true;
+        api(`/api/id/${link.author}/posts/${link.doc_id}`)
+            .then((p) => live && setHead(p))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [link.author, link.doc_id]);
+    return html`<p class="postpage-parent">
+        ${t('postpage.in-reply-to', 'in reply to')}
+        <${MiniPost}
+            author=${link.author}
+            doc_id=${link.doc_id}
+            title=${head && head.title}
+            published_ms=${head && head.published_ms}
+        />
+    </p>`;
+};
+
+/// The reply box (COMMENTS.md slice 3): your words, under the post they answer. A reply is
+/// an ordinary post - this mints a real document (filed in the feed bucket, so it shows up
+/// among your posts to edit like any other) and publishes it with `reply_to`, which stamps
+/// the thread links and pins the parent into your network. Plaintext deliberately: the box
+/// is for saying something, and the feed app's full composer is there for a reply that
+/// grows into an essay.
+const ReplyBox = ({ current, parent, onReplied }) => {
+    const [words, setWords] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const say = async () => {
+        if (busy || !words.trim()) return;
+        setBusy(true);
+        setError(null);
+        try {
+            const root = current.root;
+            const made = await api(`/api/identity/${root}/docs`, {
+                method: 'POST',
+                body: JSON.stringify({ title: '', body: words, format: 'plaintext' }),
+            });
+            await api(`/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(FEED_STYLE)}`, {
+                method: 'PUT',
+            });
+            const pub = await api(`/api/identity/${root}/docs/${made.doc_id}/publish`, {
+                method: 'POST',
+                body: JSON.stringify({ reply_to: { author: parent.author, doc_id: parent.doc_id } }),
+            });
+            setWords('');
+            onReplied({ author: root, doc_id: pub.post_id });
+        } catch (e) {
+            // The words stay in the box - a refused reply is a draft, not a loss.
+            setError(e.message);
+        }
+        setBusy(false);
+    };
+    return html`<div class="replybox">
+        <textarea
+            class="replybox-words"
+            placeholder=${t('postpage.say-something-back', 'say something back')}
+            value=${words}
+            onInput=${(e) => setWords(e.currentTarget.value)}
+        ></textarea>
+        <div class="replybox-foot">
+            <span class="feed-note">
+                ${t('postpage.replying-is-public-and-shares', 'replying is public - and shares this post with your own followers')}
+            </span>
+            <button class="replybox-send" disabled=${busy || !words.trim()} onClick=${say}>
+                ${busy ? t('postpage.replying', 'replying…') : t('postpage.reply', 'reply')}
+            </button>
+        </div>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </div>`;
 };
 
 /// The visible tree below one post: this node's replies memo, one level per fetch, the
@@ -102,7 +199,7 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
 /// never assembles a tree - this page is the only place one forms.
 const THREAD_DEPTH_CAP = 6;
 
-const Thread = ({ author, doc, current, depth }) => {
+const Thread = ({ author, doc, current, depth, extra }) => {
     const [page, setPage] = useState(null);
     useEffect(() => {
         let live = true;
@@ -113,7 +210,12 @@ const Thread = ({ author, doc, current, depth }) => {
             live = false;
         };
     }, [author, doc]);
-    const replies = (page && page.replies) || [];
+    const fetched = (page && page.replies) || [];
+    const have = new Set(fetched.map((r) => `${r.author}:${r.doc_id}`));
+    const replies = [
+        ...fetched,
+        ...(extra || []).filter((r) => !have.has(`${r.author}:${r.doc_id}`)),
+    ];
     if (!replies.length) {
         return depth === 0 && page
             ? html`<p class="thread-empty">
@@ -157,7 +259,7 @@ const ThreadReply = ({ author, doc, current, depth }) => {
         mine: !!(current && current.root === author),
     };
     return html`<div class="thread-reply">
-        <${PostEntry} key=${post.doc_id} item=${item} current=${current} editing=${null} />
+        <${PostEntry} key=${post.doc_id} item=${item} current=${current} editing=${null} quote=${false} />
         ${depth + 1 < THREAD_DEPTH_CAP &&
         html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} />`}
         ${depth + 1 >= THREAD_DEPTH_CAP &&

@@ -7089,3 +7089,26 @@ two-level thread; deletion recedes the row after the fold; the sweep planted red
 test lesson kept in the unit test's comment: the sweep's cutoff comes BEFORE the rewrite
 (production's order) - the first draft took it after and flaked on a shared millisecond.
 Schema note: node gen 28 -> 29, `just clean` before the next dev boot.
+
+## 2026-08-26 (cont. 6): comments slice 3 - the composer and the feed
+
+Replies now read and write where people actually live. Reading: the feed joins the
+replies memo per page (`replies::links_for` + `fanout::journal_cards`, two page-scoped
+node reads in the sharers-read discipline) and dresses each reply row with its parent -
+the quote-card, "in reply to" plus the mini-card, which is the whole reason context-free
+"@rando, I disagree" cannot happen here; the card is exactly as partial as the memo and
+degrades to a bare "link" when the reader's journal never met the parent. The permalink
+gained the same card one hop UP (parent context above the post) and suppresses it in the
+thread, where nesting already says it. Writing: the reply box on the permalink - plaintext
+on purpose (the feed app's full composer is there for a reply that grows into an essay),
+minting a real feed-bucketed document and publishing it with `reply_to`, so a reply is
+editable, shareable, and deletable like the ordinary post it is; refused words stay in the
+box, and the fresh reply joins the thread ahead of the fold by the view-runs-ahead idiom.
+The share/reply pair collapses at render (`collapseReplyPairs`, pure, five unit claims):
+narrow by design - only a share-journaled row whose lead sharer authored an on-screen
+reply yields, a direct follow never collapses, and only within the loaded window, because
+the journal orders by the PARENT's publish time and a reply to an old post sits pages from
+its pin. Two lookup indexes (`by_reply`, `by_replier`) landed so the feed join, the
+fragment drop, and the fold sweep stop scanning; the links join planted red (the feed
+forgot what replies were; the quote-card acceptance caught it). Schema note: node gen
+29 -> 30, `just clean` before the next dev boot.

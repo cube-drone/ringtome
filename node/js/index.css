@@ -70,6 +70,45 @@
 }
 
 /* The thread below a post (postpage.js Thread): nested one indent per level. */
+/* The quoted context on a reply (COMMENTS.md slice 3): "in reply to" + the mini-card,
+   in the feed entry and atop the permalink. */
+.feed-entry-replyto,
+.postpage-parent {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+/* The reply box: your words, under the post they answer. */
+.replybox {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.75rem 0 1rem;
+}
+.replybox-words {
+    min-height: 4.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    resize: vertical;
+}
+.replybox-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+.replybox-send {
+    padding: 0.35rem 1rem;
+}
+
 .thread {
     margin-top: 1.25rem;
 }

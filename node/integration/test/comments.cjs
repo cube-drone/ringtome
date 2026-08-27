@@ -151,6 +151,24 @@ const base58 = async (host) => {
         assert.match(out.text, /doesn't hold/);
     });
 
+    it("the feed dresses a reply with its parent - the quote-card's payload (slice 3)", async () => {
+        // Bea follows herself by hosting, so her own reply is a feed row on HOST_B - and
+        // the handler joins the replies memo to say what it answers. The card carries the
+        // link always; the title only when the reader's journal met the parent (bea never
+        // followed ada, so hers degrades to the bare link - the mini-card's honest case).
+        await beat(HOST_B, "fold", beaRoot);
+        const page = await (await bea(`api/identity/${beaRoot}/feed`)).json();
+        const row = (page.items || []).find((i) => i.doc_id === reply);
+        assert.ok(row, "the reply is a feed row of her own");
+        assert.deepEqual(
+            { author: row.reply_to.author, doc_id: row.reply_to.doc_id },
+            { author: adaRoot, doc_id: op },
+            "the quote-card names the parent from the memo"
+        );
+        const plain = (page.items || []).find((i) => i.doc_id === op);
+        assert.ok(!plain || !plain.reply_to, "a non-reply row carries no card");
+    });
+
     it("the replies memo knows the thread where the chains are held (slice 2)", async () => {
         // HOST_C holds bea's chain (rio's rebroadcast-follow syncs it) and cal's own -
         // so ITS memo knows both links; ada's node, which holds neither replier's chain,

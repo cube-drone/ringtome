@@ -215,6 +215,32 @@ export function leadOf(body, emphasis) {
 /// AUTHORS can in principle mint colliding doc ids, so the key is the pair.
 export const feedKey = (item) => `${item.author}:${item.doc_id}`;
 
+/**
+ * The share/reply pair, collapsed at render (COMMENTS.md: a reply pins its parent, so a
+ * follower of the replier meets the thread twice - the parent journaled by the pin's share,
+ * bylined via the replier, and the reply as the replier's own post). When BOTH are on
+ * screen, the reply's quote-card already says everything the share row says, so the share
+ * row yields. Render-only by ruling: the journal stays honest about both rows.
+ *
+ * The rule is deliberately narrow: only a row that is HERE BY SHARE (has a lead sharer),
+ * is not the reader's own, and whose lead sharer authored a loaded reply to it. A parent
+ * the reader follows directly journals via-less and never collapses - it is a first-class
+ * post in its own right. And only within the loaded window: the journal orders by the
+ * PARENT's original publish time, so a reply to an old post sits pages away from its pin's
+ * row, and both honestly render - collapsing across pages would need server-side memory of
+ * what the client has shown, which is machinery this rule is not worth.
+ */
+export function collapseReplyPairs(items) {
+    const replied = new Set(
+        items
+            .filter((i) => i.reply_to)
+            .map((i) => `${i.author}:${i.reply_to.author}:${i.reply_to.doc_id}`)
+    );
+    return items.filter(
+        (i) => i.mine || !i.via || !replied.has(`${i.via}:${i.author}:${i.doc_id}`)
+    );
+}
+
 /// A page of feed items joined onto the ones already read - mergePosts' rule (first sighting
 /// wins, newest first) under the feed's composite key.
 export function mergeFeed(seen, page) {

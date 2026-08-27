@@ -46,6 +46,7 @@ import {
     mergeFeed,
     feedKey,
     feedCursor,
+    collapseReplyPairs,
 } from '../pure/feed.js';
 import { api } from '../net.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
@@ -303,7 +304,11 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
     // Your own posts always show: the slider curates OTHER people's claims on your
     // attention, and hiding your words from yourself at "high interest only" would read as
     // loss, not selectivity.
-    const visible = items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot));
+    // The share/reply pair collapses at render (pure/feed.js): when a reply and the
+    // parent row its pin journaled are both on screen, the quote-card says it once.
+    const visible = collapseReplyPairs(
+        items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot))
+    );
 
     return html`
         <main class="feed-stream" ref=${streamRef}>

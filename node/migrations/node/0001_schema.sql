@@ -726,6 +726,12 @@ CREATE TABLE post_replies (
 );
 -- Slice 6's door asks by thread root ("everything in Q's conversation") in one read.
 CREATE INDEX post_replies_by_root ON post_replies (root_author, root_doc);
+-- The reply-side lookups: the feed dresses a page's rows by (reply_doc IN ...) and the
+-- fragment drop path deletes one (reply_author, reply_doc) pair; both walk this.
+CREATE INDEX post_replies_by_reply ON post_replies (reply_doc, reply_author);
+-- The fold sweep: DELETE per replier below a stamp, every fold - a scan that would
+-- otherwise grow with every reply this node knows about anyone.
+CREATE INDEX post_replies_by_replier ON post_replies (reply_author, noted_ms);
 
 -- The quiet twin of `foreign_fetches`: when the acquisition pass last reached each speculative
 -- target, and through whom. A SEPARATE table because the two registries have opposite

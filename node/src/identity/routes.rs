@@ -630,6 +630,26 @@ struct FeedItem {
     /// since receded (which the slider treats as the weakest path, honestly).
     #[serde(skip_serializing_if = "Option::is_none")]
     suggested_level: Option<String>,
+    /// This post is a REPLY, and this is its parent - the quote-card's whole payload
+    /// (COMMENTS.md slice 3). From the node's replies memo, so it is exactly as partial as
+    /// the thread view: a reply whose link this node never verified renders as an ordinary
+    /// post, honestly. Absent on every non-reply so old clients render unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply_to: Option<ReplyCard>,
+}
+
+/// A reply row's parent, dressed for the mini-card: the link always, the trimmings when the
+/// reader's own journal or the byline cache happens to know them.
+#[derive(Serialize)]
+struct ReplyCard {
+    author: String,
+    doc_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    published_ms: Option<i64>,
 }
 
 /// One of the other people who passed a document along, dressed like the lead sharer so the
@@ -681,11 +701,28 @@ async fn feed_handler(
         .await
         .map_err(AppError::Internal)?;
 
+    // Which of the page's rows are replies, and each parent's journal dressing - two
+    // page-scoped node.db reads, the sharers read's discipline (never per row).
+    let reply_links = crate::replies::links_for(
+        &state.node_db,
+        &rows
+            .iter()
+            .map(|r| (r.author_root.clone(), r.doc_id.clone()))
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    let parents: Vec<(String, String)> = reply_links.values().cloned().collect();
+    let parent_cards = crate::fanout::journal_cards(&state.node_db, &root, &parents)
+        .await
+        .map_err(AppError::Internal)?;
+
     // Bylines for authors AND sharers: "X shared Y's post" needs two names, and asking for
     // them in one lookup beats a second round of database opens at render time. The other
     // sharers ride the same lookup for the same reason - a hover list of twelve faces must not
     // become twelve queries.
     let mut authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
+    authors.extend(reply_links.values().map(|(pa, _)| pa.clone()));
     authors.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     authors.extend(rows.iter().filter_map(|r| r.suggested_via.clone()));
     authors.extend(sharers.values().flatten().cloned());
@@ -758,6 +795,18 @@ async fn feed_handler(
                 .suggested_via
                 .as_ref()
                 .and_then(|_| levels.get(&r.author_root).cloned());
+            let reply_to = reply_links.get(&(r.author_root.clone(), r.doc_id.clone())).map(
+                |(pa, pd)| {
+                    let card = parent_cards.get(&(pa.clone(), pd.clone()));
+                    ReplyCard {
+                        author: pa.clone(),
+                        doc_id: pd.clone(),
+                        name: bylines.get(pa).and_then(|b| b.name.clone()),
+                        title: card.map(|(t, _)| t.clone()).filter(|t| !t.is_empty()),
+                        published_ms: card.map(|(_, ms)| *ms),
+                    }
+                },
+            );
             FeedItem {
                 mine,
                 author_name: byline.name,
@@ -777,6 +826,7 @@ async fn feed_handler(
                 suggested_level,
                 suggested_via: r.suggested_via,
                 suggested_via_name,
+                reply_to,
             }
         })
         .collect();

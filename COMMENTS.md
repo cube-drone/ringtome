@@ -116,8 +116,23 @@ gone. (The comment doc's tombstone and the pointer retractions mint together.)
    and an honest "none known here yet" empty state. Honest-partial proven both ways in
    acceptance: the node holding the repliers' chains knows the thread; the author's node,
    holding neither, honestly knows nothing until slice 6's door.
-3. **The composer and the feed.** Reply box on the permalink; the feed's quote-card
-   rendering of replies (and the share/reply pair collapsed).
+3. ~~**The composer and the feed.**~~ Built 2026-08-26 (node gen 30; the links join
+   planted red). The feed dresses reply rows from the replies memo - `replies::links_for`
+   (which of this page's rows are replies) joined with `fanout::journal_cards` (the
+   parent's title and stamp from the reader's own journal), two page-scoped node reads,
+   never per row - so a reply carries `reply_to: {author, doc_id, name?, title?,
+   published_ms?}` and renders with the quote-card ("in reply to" + the mini-card),
+   exactly as partial as the memo and degrading to a bare "link". The permalink grew
+   parent context above the post (same card, one hop up) and the reply box: plaintext,
+   mints a real feed-bucketed document and publishes it with `reply_to` - a reply is an
+   ordinary post, so it is editable in the feed app like any other - with the words
+   staying in the box on refusal, and the fresh reply joining the thread ahead of the
+   fold (the view-runs-ahead idiom). The share/reply pair collapses at render
+   (`collapseReplyPairs`, pure and unit-tested): only a share-journaled row whose lead
+   sharer's reply is on screen yields - a direct-follow row is first-class and never
+   collapses, and the journal stays honest about both rows by ruling. Two lookup indexes
+   landed with it (`post_replies_by_reply`, `post_replies_by_replier`) so the feed join,
+   the fragment drop, and the fold sweep all walk an index.
 4. **Comment notices.** `notice_kind::COMMENT` both roads (derived for followed repliers,
    envelope for strangers), first-class tier, mini-card in the bell linking to the thread.
 5. **Polish and the named edges.** Parent-media covers proven; hollow rendering ("in reply

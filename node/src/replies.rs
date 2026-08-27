@@ -167,6 +167,45 @@ async fn refresh_inner(state: &AppState, author_root: &str) -> Result<()> {
     Ok(())
 }
 
+/// Which of these posts are replies, and to what: the feed page's quote-card read
+/// (COMMENTS.md slice 3). Page-scoped by construction - one IN query over the page's doc
+/// ids (`post_replies_by_reply`), pairs re-checked in Rust like `fanout`'s share read, so
+/// the query shape stays portable. A post with no row here is not a reply, honestly:
+/// the memo holds every reply this node journals a feed row FROM (both arrive by the same
+/// chain or fragment), so absence means absence.
+pub async fn links_for(
+    node_db: &Db,
+    posts: &[(String, String)],
+) -> Result<std::collections::HashMap<(String, String), (String, String)>> {
+    let docs: Vec<String> = posts
+        .iter()
+        .map(|(_, d)| d)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|d| format!("'{d}'"))
+        .collect();
+    if docs.is_empty() {
+        return Ok(Default::default());
+    }
+    let rows: Vec<(String, String, String, String)> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT reply_author, reply_doc, parent_author, parent_doc
+                 FROM post_replies WHERE reply_doc IN ({})",
+                docs.join(",")
+            ),
+            (),
+        )
+        .await
+        .context("reading which posts are replies")?;
+    Ok(rows
+        .into_iter()
+        .filter(|(a, d, _, _)| posts.contains(&(a.clone(), d.clone())))
+        .map(|(a, d, pa, pd)| ((a, d), (pa, pd)))
+        .collect())
+}
+
 /// The thread read: one page of a post's DIRECT replies, oldest first, keyset by
 /// (claimed_ms, reply_doc). The UI recurses per level, depth-capped - a thousand-reply
 /// tree is a read whose cost grows with history, so it pages or it does not ship.
