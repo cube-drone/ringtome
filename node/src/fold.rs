@@ -182,7 +182,7 @@ fn nudge_inner(state: &AppState, root: &str, ledger: bool) -> u64 {
             worker_loop(root.clone(), move |ledger| {
                 let state = state.clone();
                 let root = root.clone();
-                async move { run_chain(&state, &root, ledger).await }
+                async move { run_chain(&state, &root, ledger, false).await }
             })
             .await;
         });
@@ -206,23 +206,94 @@ pub async fn fold_now(state: &AppState, root: &str) {
     drain(root, generation).await;
 }
 
+/// The test beat's fold: every leg, movement or not - the vocabulary promises
+/// "unconditionally", and a test that planted state by hand has no frontier move to show
+/// for it. Production paths never force: the moved gate below is the whole cure for the
+/// quadratic fold (2026-08-28).
+pub async fn fold_now_forced(state: &AppState, root: &str) {
+    run_chain(state, root, true, true).await;
+}
+
 /// The derived-state chain, in dependency order - the one place it runs. Every hook keeps
 /// its own cheap change gates (correct now that no two runs race), and every hook absorbs
 /// its own errors: a fold must always complete, or the generation ratchet stalls.
-async fn run_chain(state: &AppState, root: &str, ledger: bool) {
-    match crate::net::frontier::refresh(state, root).await {
-        Ok(true) => tracing::info!(root = %root, "public frontier moved"),
-        Ok(false) => {}
-        Err(e) => tracing::debug!(root = %root, error = ?e, "frontier refresh failed"),
+async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
+    // Per-leg timing, kept at debug: the fold is the app's hottest write path, and when
+    // per-action cost creeps (the 2026-08-28 test-data quadratic hunt), THIS line is the
+    // attribution - which leg grew, on whose fold, without reaching for a profiler.
+    let t0 = std::time::Instant::now();
+    // The moved gate (2026-08-28, the test-data quadratic): the four public legs below
+    // derive ONLY from this root's public chains, and `refresh` answers exactly "did any
+    // of those move since the last fold" (memo anchors vs stored fingerprints - local
+    // appends included, since every entry writer notes the tip at write time). Unmoved
+    // means their inputs are byte-identical to the last pass, so re-running them was pure
+    // waste - and the waste grew with history (each leg re-derives from the full shelf),
+    // which is how per-action cost went quadratic under test-data. Work that depends on
+    // OTHER inputs has its own road: a new follower's history is `fanout`'s backfill, the
+    // ledger legs ride the `ledger` flag below, fragment arrivals note their own memos at
+    // intake.
+    use ringtome_proto::registry::service;
+    const EVERYTHING: [u32; 5] = [
+        service::IDENTITY_PUBLIC,
+        service::PROFILE_PUBLIC,
+        service::POSTS,
+        service::FOLLOWS_PUBLIC,
+        service::REBROADCASTS,
+    ];
+    let moved: Vec<u32> = match crate::net::frontier::refresh_moved(state, root).await {
+        Ok(m) => {
+            if !m.is_empty() {
+                tracing::info!(root = %root, services = ?m, "public frontier moved");
+            }
+            m
+        }
+        Err(e) => {
+            tracing::debug!(root = %root, error = ?e, "frontier refresh failed");
+            // A refresh that cannot answer must not silence the legs: stale is worse
+            // than slow, and the error path is rare.
+            EVERYTHING.to_vec()
+        }
+    };
+    let moved: Vec<u32> = if force { EVERYTHING.to_vec() } else { moved };
+    let has = |s: u32| moved.contains(&s);
+    let t_frontier = t0.elapsed();
+    let t = std::time::Instant::now();
+    if !moved.is_empty() {
+        crate::fanout::after_public_move(state, root, &moved, force).await;
     }
-    crate::fanout::after_public_move(state, root).await;
-    crate::notifications::refresh_from(state, root).await;
-    crate::rebroadcast::refresh_from(state, root).await;
-    crate::replies::refresh_from(state, root).await;
+    let t_journal = t.elapsed();
+    let t = std::time::Instant::now();
+    if has(service::POSTS) || has(service::FOLLOWS_PUBLIC) || has(service::REBROADCASTS) {
+        crate::notifications::refresh_parts(state, root, &moved, force).await;
+    }
+    let t_notif = t.elapsed();
+    let t = std::time::Instant::now();
+    if has(service::REBROADCASTS) {
+        crate::rebroadcast::refresh_from(state, root, force).await;
+    }
+    let t_shares = t.elapsed();
+    let t = std::time::Instant::now();
+    if has(service::POSTS) {
+        crate::replies::refresh_from(state, root, force).await;
+    }
+    let t_replies = t.elapsed();
+    let t = std::time::Instant::now();
     if ledger {
         crate::net::subscriptions::refresh_root(state, root).await;
         crate::replies::curation_refresh_root(state, root).await;
     }
+    let t_ledger = t.elapsed();
+    tracing::debug!(
+        root = %root,
+        total_ms = t0.elapsed().as_millis() as u64,
+        frontier_ms = t_frontier.as_millis() as u64,
+        journal_ms = t_journal.as_millis() as u64,
+        notifications_ms = t_notif.as_millis() as u64,
+        shares_ms = t_shares.as_millis() as u64,
+        replies_ms = t_replies.as_millis() as u64,
+        ledger_ms = t_ledger.as_millis() as u64,
+        "fold legs"
+    );
 }
 
 #[cfg(test)]

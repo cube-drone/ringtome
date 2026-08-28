@@ -162,7 +162,8 @@ fn sql_stays_in_its_owning_module() {
 #[test]
 fn user_db_opens_are_deliberate() {
     let expected: BTreeMap<&str, usize> = BTreeMap::from([
-        ("fanout.rs", 2),          // journal_page + retract_vanished: ONE author per public-move edge
+        ("fanout.rs", 3),          // journal_page + retract_vanished: ONE author per public-move edge
+                                  // + shelf_updated_since: the journal delta, one open per POSTS move (2026-08-28)
         ("identity.rs", 4),
         ("idface.rs", 6),          // + stored_tree_leaves: ONE mirror per revalidation;
                                    // + id_post: one open per permalink request (2026-08-25)

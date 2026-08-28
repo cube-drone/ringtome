@@ -84,7 +84,7 @@ pub async fn beat(
             // The fold lane's drainable form: nudge (ledger leg included) and await the
             // run - the chain itself now lives in fold::run_chain, serialized per root,
             // so this beat can never race a concurrent arrival's fold.
-            crate::fold::fold_now(&state, r).await;
+            crate::fold::fold_now_forced(&state, r).await;
             Ok(())
         }
         ("eager-push", Some(r)) => {

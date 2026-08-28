@@ -327,7 +327,11 @@ pub fn persona_fingerprint(rows: &[Held]) -> [u8; 32] {
 ///
 /// Rows for services that no longer have chains are deleted rather than left stale: this table
 /// says what we hold NOW, and a fingerprint nobody deleted is worse than no fingerprint.
-pub async fn refresh(state: &AppState, root_hex: &str) -> Result<bool> {
+/// The frontier refresh, answering WHICH public services moved (2026-08-28, the quadratic fold): the
+/// fold lane routes each derived-state leg to the service it reads from, so a post does
+/// not rescan the share chain and a share does not re-journal the shelf. Empty means
+/// nothing moved. A service whose chain vanished counts as moved (its fingerprint went).
+pub async fn refresh_moved(state: &AppState, root_hex: &str) -> Result<Vec<u32>> {
     // From the MEMO, never the per-user file: every writer of `entries` notes the tip at
     // write time (Db::memo), so the answer is already in node.db. The sweep reconciles the
     // rare crash-window drift; nothing else ever needs the encrypted file for this.
@@ -341,15 +345,16 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<bool> {
     // happened - and it makes `held_at_ms` mean "when we last looked", which nobody wants.
     // Skipping the no-ops makes it mean "when this changed", which is the fact fan-out needs.
     let was = held(&state.node_db, root_hex).await?;
-    let before = persona_fingerprint(&was);
     let stored: std::collections::HashMap<u32, [u8; 32]> =
         was.into_iter().map(|h| (h.service, h.fp)).collect();
     let now = now_ms();
+    let mut moved: Vec<u32> = Vec::new();
     for service in &services {
         let (fp, chains) = fingerprint(&anchors, *service);
         if stored.get(service) == Some(&fp) {
             continue;
         }
+        moved.push(*service);
         state
             .node_db
             .execute(
@@ -378,7 +383,14 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<bool> {
         )
         .await
         .context("clearing stale persona frontiers")?;
-    Ok(persona_fingerprint(&held(&state.node_db, root_hex).await?) != before)
+    for (service, _) in stored {
+        if !services.contains(&service) {
+            moved.push(service);
+        }
+    }
+    moved.sort_unstable();
+    moved.dedup();
+    Ok(moved)
 }
 
 /// What we hold of this persona, newest computation first read.

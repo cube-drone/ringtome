@@ -98,6 +98,9 @@ Does a mutual follow+trust make a "friend"?
 * sync-request floods: malicious nodes can DDoS with sync-requests, probably?
 
 ### Sync
+* Frontier refresh grew 4 -> 27ms per fold across an 8x80 test-data run (2026-08-28's
+  quadratic hunt left it as the one unexamined tail): `memo_public_anchors` or the
+  fingerprint walk scales with something - find which, with the "fold legs" line.
 * Shallow sync: our first sync from a dense user is yuuuuge
 * Detected equivocation kills the key that generated it
  * After a restore-from-backup, try to sync with ANYONE ELSE to make sure we aren't accidentally equivocating

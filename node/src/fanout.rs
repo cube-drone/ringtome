@@ -96,47 +96,79 @@ const JOURNAL_CHUNK_ROWS: usize = 100;
 pub fn after_public_move<'a>(
     state: &'a AppState,
     root_hex: &'a str,
+    moved: &'a [u32],
+    force: bool,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
-    Box::pin(after_public_move_inner(state, root_hex))
+    Box::pin(after_public_move_inner(state, root_hex, moved, force))
 }
 
-async fn after_public_move_inner(state: &AppState, root_hex: &str) {
+/// `moved` names the public services whose fingerprints changed (frontier::refresh_moved);
+/// each act below reads exactly one of them, and runs only when that one moved (2026-08-28,
+/// the quadratic fold: a share used to re-journal the whole shelf, a post re-mirror every
+/// edge). The push is the exception - it carries the persona's whole lane, so any move
+/// rings it.
+async fn after_public_move_inner(state: &AppState, root_hex: &str, moved: &[u32], force: bool) {
+    use ringtome_proto::registry::service;
+    let has = |s: u32| moved.contains(&s);
     // The byline cache rides the same edge: a rename is PROFILE_PUBLIC moving, which is
     // exactly what fired this. Refreshing here (not per-render) is what lets every list on
     // the node answer "who is this?" without opening this persona's database.
-    if let Err(e) = crate::profiles::refresh(state, root_hex).await {
-        tracing::debug!(root = %root_hex, error = ?e, "byline refresh failed");
-    }
-    match journal_for(state, root_hex).await {
-        Ok(readers) if readers > 0 => {
-            tracing::info!(root = %root_hex, readers, "journaled a public move");
+    if has(service::PROFILE_PUBLIC) || has(service::IDENTITY_PUBLIC) {
+        if let Err(e) = crate::profiles::refresh(state, root_hex).await {
+            tracing::debug!(root = %root_hex, error = ?e, "byline refresh failed");
         }
-        Ok(_) => {}
-        Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed journal write failed"),
     }
-    match retract_vanished(state, root_hex).await {
-        Ok(n) if n > 0 => {
-            tracing::info!(root = %root_hex, rows = n, "retracted vanished documents from feeds");
+    if has(service::POSTS) {
+        // Sub-act timing at debug, the fold-legs line one level down (2026-08-28): when
+        // the journal leg grows, this says which act.
+        let t = std::time::Instant::now();
+        match journal_for(state, root_hex).await {
+            Ok(readers) if readers > 0 => {
+                tracing::info!(root = %root_hex, readers, "journaled a public move");
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed journal write failed"),
         }
-        Ok(_) => {}
-        Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed retraction failed"),
+        let t_journal = t.elapsed();
+        let t = std::time::Instant::now();
+        match retract_vanished(state, root_hex, force).await {
+            Ok(n) if n > 0 => {
+                tracing::info!(root = %root_hex, rows = n, "retracted vanished documents from feeds");
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!(root = %root_hex, error = ?e, "feed retraction failed"),
+        }
+        let t_retract = t.elapsed();
+        let t = std::time::Instant::now();
+        // The same event, mirrored into the death log: `retract_vanished` reconciles this
+        // node's FEEDS against the author's shelf; this makes the deaths this node just
+        // learned SERVABLE, proofs attached, to anyone who asks "what died since N?"
+        // (fragments::deaths_since). Both ride the public move because both are
+        // consequences of exactly it.
+        crate::fragments::mirror_retractions(state, root_hex).await;
+        tracing::debug!(
+            root = %root_hex,
+            journal_for_ms = t_journal.as_millis() as u64,
+            retract_ms = t_retract.as_millis() as u64,
+            mirror_ms = t.elapsed().as_millis() as u64,
+            "journal acts"
+        );
     }
-    // The same event, mirrored into the death log: `retract_vanished` reconciles this node's
-    // FEEDS against the author's shelf; this makes the deaths this node just learned SERVABLE,
-    // proofs attached, to anyone who asks "what died since N?" (fragments::deaths_since). Both
-    // ride the public move because both are consequences of exactly it.
-    crate::fragments::mirror_retractions(state, root_hex).await;
     // The edge graph rides the same move: if the mover publishes edges, re-mirror them into
     // the node-level graph (probe-gated inside - a persona with no follows-public chain
     // costs one primary-key read).
-    crate::edgegraph::refresh_from(state, root_hex).await;
+    if has(service::FOLLOWS_PUBLIC) {
+        crate::edgegraph::refresh_from(state, root_hex).await;
+    }
     // Push onward only for personas this node authors. Relaying someone ELSE's lane onward is
     // rebroadcast - a consent question, not a routing one - and waits for its own design.
+    let t = std::time::Instant::now();
     match crate::identity::is_agented(&state.node_db, root_hex).await {
         Ok(true) => push_to_askers(state, root_hex).await,
         Ok(false) => {}
         Err(e) => tracing::debug!(error = ?e, "agented check failed in fanout"),
     }
+    tracing::debug!(root = %root_hex, push_ms = t.elapsed().as_millis() as u64, "push act");
 }
 
 /// One journal row per (reader who follows them) x (post that moved past the watermark).
@@ -153,6 +185,7 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str) {
 /// (no mark) the single newest page - the new-follow burst-to-bound, with everything older
 /// left to the history dig's pace (`fill_pass`).
 async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
+    let t_all = std::time::Instant::now();
     let mut readers = crate::net::subscriptions::followers_of(&state.node_db, author_root).await?;
     // Your own posts appear in your own feed, as if you had written them - which you did
     // (Curtis, 2026-08-05). The author follows nobody to get this; being hosted is enough.
@@ -169,12 +202,17 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     // author (PROJECT_PLAN's Discovery, slice 2: the demand rollup is the THIRD reader criterion beside
     // followers and share-followers). Returning early on direct followers alone would make
     // both arrival paths journal to nobody, forever.
+    let t_readers = t_all.elapsed();
+    let t = std::time::Instant::now();
     let mut wanting = crate::speculative::wanting_readers(&state.node_db, author_root).await?;
     wanting.retain(|(reader, _)| !readers.contains(reader));
+    let t_wanting = t.elapsed();
     if readers.is_empty() && wanting.is_empty() && !anyone_shares(state, author_root).await? {
         return Ok(0); // the common case, and it costs one query per index
     }
+    let t = std::time::Instant::now();
     let mark = journal_mark(&state.node_db, author_root).await?;
+    let t_mark = t.elapsed();
     // Where the walk may stop paging. A missing mark (first move ever for this author) means
     // the newest page alone - `i64::MAX` stops the walk after one page. Otherwise the walk
     // owes every row whose updated_ms could pass the filter below, and pages are keyed by
@@ -186,43 +224,45 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
             m.saturating_sub(crate::record::documents::edit_window_ms())
         })
         .max(now_ms() - FILL_HORIZON_MS);
-    let mut cursor: Option<(i64, [u8; 16])> = None;
-    let mut fresh: Vec<JournalRow> = Vec::new();
-    let mut newest: Option<i64> = None;
-    // The newest page whole, for the speculative readers below: their rows are the
-    // burst-to-bound with no year dig - the history courtesy belongs to chosen
-    // relationships (PROJECT_PLAN's Discovery stage 3) - so however deep the mark-driven walk goes for
-    // the real readers, speculation journals from this page alone.
-    let mut first_page: Vec<JournalRow> = Vec::new();
-    loop {
-        let page = shelf_page(state, author_root, cursor).await?;
-        let Some(last) = page.last() else {
-            break; // the shelf ends (or was empty: the move was profile/keys, not posts)
-        };
-        if first_page.is_empty() {
-            first_page = page.clone();
+    // `fresh` is what the real readers get; `first_page` is the newest page whole, for the
+    // speculative readers below - their rows are the burst-to-bound with no year dig (the
+    // history courtesy belongs to chosen relationships, PROJECT_PLAN's Discovery stage 3),
+    // so however deep the real readers' delta reaches, speculation journals from that page.
+    let t = std::time::Instant::now();
+    let (fresh, first_page): (Vec<JournalRow>, Vec<JournalRow>) = match mark {
+        // The DELTA, by its own stamp (2026-08-28): everything whose head moved at or past
+        // the mark, one indexed read. This replaced a keyset walk back to `mark -
+        // edit_window` - correct, but a day's worth of posts re-paged per move, which under
+        // test-data's cadence was the author's whole history every time. The horizon still
+        // floors it, and `>=` at the boundary keeps the same-millisecond sibling.
+        Some(m) => {
+            let delta = shelf_updated_since(state, author_root, m.max(floor)).await?;
+            let first = if wanting.is_empty() {
+                Vec::new()
+            } else {
+                shelf_page(state, author_root, None).await?
+            };
+            (delta, first)
         }
-        newest = newest.max(page.iter().map(|r| r.updated_ms).max());
-        let bottom = last.published_ms;
-        cursor = last.cursor();
-        // `>=` at the boundary, not `>`: two posts sharing the boundary millisecond but
-        // arriving across two exchanges would slip a strict filter forever; re-upserting one
-        // boundary row per move costs a fraction of a chunk.
-        fresh.extend(
-            page.into_iter()
-                .filter(|r| mark.is_none_or(|m| r.updated_ms >= m)),
-        );
-        if bottom < floor || cursor.is_none() {
-            break; // the gap is closed (or a corrupt id ended the keyset - the dig's backstop)
+        // First move ever for this author: the newest page alone - the new-follow
+        // burst-to-bound, everything older left to the history dig's pace (`fill_pass`).
+        None => {
+            let page = shelf_page(state, author_root, None).await?;
+            (page.clone(), page)
         }
-    }
+    };
+    let newest: Option<i64> = fresh.iter().map(|r| r.updated_ms).max();
+    let t_delta = t.elapsed();
     if fresh.is_empty() {
         return Ok(0);
     }
     let fresh: Vec<&JournalRow> = fresh.iter().collect();
+    let t = std::time::Instant::now();
     if !readers.is_empty() {
         journal_rows(&state.node_db, author_root, &readers, &fresh, None).await?;
     }
+    let t_rows = t.elapsed();
+    let t = std::time::Instant::now();
     // The third criterion's rows: marked, bylined with each pair's introducer, newest page
     // only, and never touching a row that already exists (journal_rows_suggested's DO
     // NOTHING is the whole precedence ladder). Best-effort beside the real writes - a
@@ -239,11 +279,24 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     if let Err(e) = journal_shares_of(state, author_root, &fresh).await {
         tracing::warn!(author = %author_root, error = ?e, "journaling shares of this author failed");
     }
+    let t_shares = t.elapsed();
     // Advance only after the write landed: a failed write leaves the mark behind, and the
     // next move re-journals the same delta (idempotent) instead of skipping it forever.
     if let Some(newest) = newest {
         record_journal_mark(&state.node_db, author_root, newest).await?;
     }
+    tracing::debug!(
+        author = %author_root,
+        readers = readers.len(), fresh = fresh.len(),
+        readers_ms = t_readers.as_millis() as u64,
+        wanting_ms = t_wanting.as_millis() as u64,
+        mark_ms = t_mark.as_millis() as u64,
+        delta_ms = t_delta.as_millis() as u64,
+        rows_ms = t_rows.as_millis() as u64,
+        shares_ms = t_shares.as_millis() as u64,
+        total_ms = t_all.elapsed().as_millis() as u64,
+        "journal_for steps"
+    );
     Ok(readers.len() + wanting.len())
 }
 
@@ -282,6 +335,47 @@ async fn shelf_page(
         })
         .collect())
 }
+
+/// The shelf's delta since a stamp, shaped for journaling - `shelf_page`'s twin for the
+/// mark-driven move. Bounded by `JOURNAL_DELTA_CAP`; a delta that fills it is a node dark
+/// through more posts than a person writes in a season, and the log says so - the next
+/// move takes the rest, since the mark advances only past what was written.
+async fn shelf_updated_since(
+    state: &AppState,
+    author_root: &str,
+    since_ms: i64,
+) -> Result<Vec<JournalRow>> {
+    let Some(db) = state
+        .user_dbs
+        .get(author_root)
+        .await
+        .with_context(|| format!("opening {author_root} to read its shelf delta"))?
+    else {
+        return Ok(Vec::new());
+    };
+    let posts =
+        crate::record::documents::public_docs_updated_since(&db, since_ms, JOURNAL_DELTA_CAP)
+            .await?;
+    if posts.len() as i64 >= JOURNAL_DELTA_CAP {
+        tracing::warn!(author = %author_root, cap = JOURNAL_DELTA_CAP,
+            "a journal delta hit its cap; the remainder rides the next move");
+    }
+    Ok(posts
+        .into_iter()
+        .map(|p| JournalRow {
+            doc_id_hex: hex::encode(p.doc_id),
+            title: p.title,
+            format: crate::record::documents::Format::from_wire(p.format)
+                .as_str()
+                .to_string(),
+            published_ms: p.genesis_ms,
+            updated_ms: p.head_ms,
+        })
+        .collect())
+}
+
+/// Rows per journal delta read. Generous: the common move is one post.
+const JOURNAL_DELTA_CAP: i64 = 1000;
 
 /// One post's journalable facts, computed once per move rather than once per (reader x post).
 #[derive(Clone)]
@@ -1073,7 +1167,35 @@ async fn dig_one(
 /// in the room under a politer name. Runs on the same edge as journaling and reconciles ALL
 /// readers' rows for this author at once; the empty-journal early return keeps the common
 /// case (nobody here ever heard of them) at one indexed query.
-async fn retract_vanished(state: &AppState, author_root: &str) -> Result<u64> {
+async fn retract_vanished(state: &AppState, author_root: &str, force: bool) -> Result<u64> {
+    let Some(db) = state
+        .user_dbs
+        .get(author_root)
+        .await
+        .with_context(|| format!("opening {author_root} to check its public lane"))?
+    else {
+        return Ok(0); // nothing of theirs held: nothing to reconcile against
+    };
+    // The vanish gate (2026-08-28, the quadratic fold): this reconcile diffs every journaled
+    // id against every live id, and it used to run on every POSTS move - a new post paid
+    // for a takedown that never happened, at a cost that grew with both lists. Nothing can
+    // have vanished unless the live count DROPPED or the retraction count ROSE since the
+    // last look (a takedown does both, a repudiation's genesis cut does the first), so two
+    // counts answer the common move for free. Boot-reset marks (loops::FreshnessMarks) make
+    // the first fold after a restart reconcile once, unconditionally - the catch-up. A new
+    // post landing in the same move as a cut is the one shape the counts can hide, and the
+    // next cut or the boot reconcile takes it.
+    let alive = crate::record::documents::public_doc_count(&db).await?;
+    let dead = crate::record::documents::retracted_doc_ids(&db).await?.len() as i64;
+    let seen_alive = state.sweep_marks.last("vanish-alive", author_root);
+    let seen_dead = state.sweep_marks.last("vanish-dead", author_root);
+    state.sweep_marks.record("vanish-alive", author_root, alive);
+    state.sweep_marks.record("vanish-dead", author_root, dead);
+    if let (Some(a), Some(d), false) = (seen_alive, seen_dead, force) {
+        if alive >= a && dead == d {
+            return Ok(0);
+        }
+    }
     let journaled: Vec<(String,)> = state
         .node_db
         .fetch_all(
@@ -1085,14 +1207,6 @@ async fn retract_vanished(state: &AppState, author_root: &str) -> Result<u64> {
     if journaled.is_empty() {
         return Ok(0);
     }
-    let Some(db) = state
-        .user_dbs
-        .get(author_root)
-        .await
-        .with_context(|| format!("opening {author_root} to check its public lane"))?
-    else {
-        return Ok(0); // nothing of theirs held: nothing to reconcile against
-    };
     // **Serialized against eviction, because this is the one reader that DESTROYS state based
     // on what it sees.** `drop_views_fed_by` clears the document views and their watermarks in
     // separate statements, and `Db::execute` takes `stmt_lock` per statement - so between the

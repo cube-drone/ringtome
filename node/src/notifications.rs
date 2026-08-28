@@ -54,26 +54,52 @@ pub struct NotificationRow {
 /// follow them. Best-effort at every call site (a missed pass is caught by the next frontier
 /// move or sweep, the memo way) - so this logs instead of erroring.
 pub async fn refresh_from(state: &AppState, author_root: &str) {
-    if let Err(e) = refresh_from_inner(state, author_root).await {
+    use ringtome_proto::registry::service;
+    // Forced: this caller's trigger is not a chain move (a new follow reshaping who the
+    // rows are for), so no fingerprint may stand in its way.
+    refresh_parts(
+        state,
+        author_root,
+        &[service::FOLLOWS_PUBLIC, service::REBROADCASTS, service::POSTS],
+        true,
+    )
+    .await;
+}
+
+/// The fold, restricted to the legs whose source chain is in `moved` (2026-08-28): edges
+/// read FOLLOWS_PUBLIC, the share murmurs read REBROADCASTS, the comment rows read POSTS -
+/// and a post must not re-walk every share ever made. `refresh_from` is all three, for the
+/// callers whose trigger is not a chain move (a new follow reshaping who the rows are for).
+pub async fn refresh_parts(state: &AppState, author_root: &str, moved: &[u32], force: bool) {
+    if let Err(e) = refresh_from_inner(state, author_root, moved, force).await {
         tracing::debug!(author = %author_root, error = ?e, "notification fold failed");
     }
 }
 
-async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
+async fn refresh_from_inner(
+    state: &AppState,
+    author_root: &str,
+    moved: &[u32],
+    force: bool,
+) -> Result<()> {
     use ringtome_proto::registry::service;
+    let wants = |s: u32| moved.contains(&s);
 
     // The cheap gates first: most authors have published no edges and shared nothing, and this
     // hook fires on every public frontier move - so ask the chain_heads memo (node.db probes)
-    // before paying for a user-database open.
-    let has_edges =
-        crate::net::frontier::has_service_chain(&state.node_db, author_root, service::FOLLOWS_PUBLIC)
+    // before paying for a user-database open. A leg whose chain did not move is off, whatever
+    // the memo says it holds.
+    let has_edges = wants(service::FOLLOWS_PUBLIC)
+        && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::FOLLOWS_PUBLIC)
             .await?;
-    let has_shares =
-        crate::net::frontier::has_service_chain(&state.node_db, author_root, service::REBROADCASTS)
+    let has_shares = wants(service::REBROADCASTS)
+        && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::REBROADCASTS)
             .await?;
-    let has_posts =
-        crate::net::frontier::has_service_chain(&state.node_db, author_root, service::POSTS)
+    let has_posts = wants(service::POSTS)
+        && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::POSTS)
             .await?;
+    // Reads below open the database once for whichever legs run; the comment leg then asks
+    // the reply-set fingerprint (replies::replies_moved) and steps aside for a plain post.
     if !has_edges && !has_shares && !has_posts {
         return Ok(());
     }
@@ -102,7 +128,14 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
     } else {
         Vec::new()
     };
-    let replies = if has_posts {
+    // The replies list serves two legs: the comment rows (POSTS) and the share leg's
+    // parent-pin suppression (REBROADCASTS) - read it when either runs. The comment leg
+    // itself runs only when the reply SET moved (the fingerprint, 2026-08-28) - a plain
+    // post is a POSTS move that touched no reply, and must not re-walk every comment row.
+    let comment_leg = has_posts
+        && (crate::replies::replies_moved(state, &db, author_root, "comment-notices").await?
+            || force);
+    let replies = if comment_leg || has_shares {
         crate::record::documents::public_replies(&db)
             .await
             .map_err(|e| anyhow::anyhow!("folding {author_root}'s replies: {e}"))?
@@ -209,6 +242,9 @@ async fn refresh_from_inner(state: &AppState, author_root: &str) -> Result<()> {
     // as everything above. Deletion has no retraction entry to read - a deleted reply's
     // header simply leaves the shelf - so the fold diffs: rows this author no longer backs
     // recede with the pass that noticed (the replies memo's sweep, one table over).
+    if !comment_leg {
+        return Ok(()); // the comment leg below is reply-set-sourced; its diff must not run blind
+    }
     let mut fresh: std::collections::BTreeSet<(String, String)> = Default::default();
     for (_, parent, _, claimed_ms) in &replies {
         if !hosted.contains(&parent.0) || parent.0 == author_root {

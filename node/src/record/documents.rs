@@ -998,25 +998,129 @@ pub async fn public_docs(
     }
     .context("listing public documents")
     .map_err(AppError::Internal)?;
-    let mut out = Vec::with_capacity(rows.len());
-    for (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td) in rows {
-        out.push(PublicDoc {
-            reply_to: rr.zip(rd),
-            thread_root: tr.zip(td),
-            doc_id: doc_id
-                .try_into()
-                .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?,
-            title,
-            format: format.map(|f| f as u64),
-            genesis_ms,
-            head_ms,
-            thumb_hash: match thumb_hash {
-                Some(t) => Some(hash32(&t)?),
-                None => None,
-            },
-        });
+    rows.into_iter().map(public_doc_from_row).collect()
+}
+
+/// One `doc_heads` row as the shelf reports it - shared by every shelf read so the column
+/// list and its decoding cannot drift apart.
+type PublicDocRow = (
+    Vec<u8>,
+    String,
+    Option<i64>,
+    i64,
+    i64,
+    Option<Vec<u8>>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn public_doc_from_row(row: PublicDocRow) -> Result<PublicDoc, AppError> {
+    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td) = row;
+    Ok(PublicDoc {
+        reply_to: rr.zip(rd),
+        thread_root: tr.zip(td),
+        doc_id: doc_id
+            .try_into()
+            .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_heads")))?,
+        title,
+        format: format.map(|f| f as u64),
+        genesis_ms,
+        head_ms,
+        thumb_hash: match thumb_hash {
+            Some(t) => Some(hash32(&t)?),
+            None => None,
+        },
+    })
+}
+
+/// The public shelf's DELTA: every live text post whose head moved at or past `since_ms`
+/// (2026-08-28, the quadratic fold). `journal_for` used to page the whole shelf back to
+/// `mark - edit_window` on every move - a day's worth of posts re-read per post, which is
+/// the whole history under test-data's cadence. This is the same rows by their own
+/// updated stamp, one indexed read the size of the delta. Ordered like the shelf so the
+/// journal's rows land in the same order they would have.
+pub async fn public_docs_updated_since(
+    db: &Db,
+    since_ms: i64,
+    limit: i64,
+) -> Result<Vec<PublicDoc>, AppError> {
+    catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok(Vec::new());
     }
-    Ok(out)
+    let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
+    let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
+    type Row = (
+        Vec<u8>,
+        String,
+        Option<i64>,
+        i64,
+        i64,
+        Option<Vec<u8>>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
+                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc";
+    let rows: Vec<Row> = db
+        .fetch_all(
+            &format!(
+                "SELECT {columns} FROM doc_heads
+                 WHERE lane = 'public' AND {text_only} AND {not_retracted}
+                   AND head_ms >= ?
+                 ORDER BY genesis_ms DESC, doc_id LIMIT ?"
+            ),
+            (since_ms, limit),
+        )
+        .await
+        .context("reading the shelf's delta")
+        .map_err(AppError::Internal)?;
+    rows.into_iter().map(public_doc_from_row).collect()
+}
+
+/// How many live text posts the public shelf holds - the vanish gate's number
+/// (`fanout::retract_vanished`): a shelf that only grew has nothing to reconcile.
+pub async fn public_doc_count(db: &Db) -> Result<i64, AppError> {
+    catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok(0);
+    }
+    let row: Option<(i64,)> = db
+        .fetch_optional(
+            "SELECT COUNT(*) FROM doc_heads
+             WHERE lane = 'public' AND doc_id NOT IN (SELECT doc_id FROM public_retractions)",
+            (),
+        )
+        .await
+        .context("counting the public shelf")
+        .map_err(AppError::Internal)?;
+    Ok(row.map_or(0, |(n,)| n))
+}
+
+/// The reply set's fingerprint - (how many live replies, newest head stamp) - so the two
+/// folds that rewrite from it (the replies memo, the comment notices) can skip a POSTS
+/// move that touched no reply (2026-08-28). A deletion drops the count; an edit moves the
+/// stamp; a new reply does both.
+pub async fn public_replies_fingerprint(db: &Db) -> Result<(i64, i64), AppError> {
+    catch_up_public_lane(db).await?;
+    if quarantined(db).await? {
+        return Ok((0, 0));
+    }
+    let row: Option<(i64, Option<i64>)> = db
+        .fetch_optional(
+            "SELECT COUNT(*), MAX(head_ms) FROM doc_heads
+             WHERE lane = 'public' AND reply_to_root IS NOT NULL
+               AND doc_id NOT IN (SELECT doc_id FROM public_retractions)",
+            (),
+        )
+        .await
+        .context("fingerprinting the reply set")
+        .map_err(AppError::Internal)?;
+    Ok(row.map_or((0, 0), |(n, ms)| (n, ms.unwrap_or(0))))
 }
 
 /// Every public document's id, as the fold currently knows them - hex, because the one

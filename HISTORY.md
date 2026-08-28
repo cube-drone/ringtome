@@ -7268,3 +7268,41 @@ bare-word replace mangled `RINGTOME_DISCOVERY` and `RINGTOME_TEST_DISCOVERY_DIR`
 nine files - env names are words too, and a doc-reference sweep wants word boundaries or
 an audit pass; caught by the audit, repaired before the gate, and the full `just ci`
 (not the docs-change compile shortcut) is the gate BECAUSE the mangle touched recipes.
+
+## 2026-08-28: the quadratic action - the fold lane's waste, and the WAL underneath it
+
+Curtis's field report: `just test-data 10 100` on a fresh checkout climbed 55 -> 843ms per
+action over forty rounds - the shape of something re-reading history on every act.
+Reproduced on scratch (94 -> 800ms; 546s for 8x80), then attributed rather than guessed:
+`run_chain` grew a permanent per-leg timing line at debug ("fold legs"), and the numbers
+named the disease. Every derived-state leg re-derived from the FULL shelf on every fold,
+and the fold fired on every nudge whether or not its inputs had moved: shares 2 -> 131ms,
+journal 17 -> 94, notifications 5 -> 85, replies 3 -> 49 per fold by the run's end. Six
+cuts, each measured: (1) the moved gate - `frontier::refresh` already answered "did any
+public chain move", and `run_chain` now believes it (the test beat keeps its promised
+"unconditionally" through `fold_now_forced`); 546s -> 148s. (2) Service routing -
+`refresh_moved` says WHICH chains moved, and each leg runs only for its own: POSTS for
+the journal, the replies memo and the comment notices; REBROADCASTS for the share fold;
+FOLLOWS_PUBLIC for the edge graph; PROFILE for the byline. A post stopped rescanning
+every share. (3) The share fold went incremental by `received_at_ms` mark (in-memory,
+boot-reset - one full pass after a restart is the catch-up, not a bug); shares 131 -> 27ms.
+(4) `journal_for` reads the shelf's DELTA by head stamp (`public_docs_updated_since`)
+instead of paging back to `mark - edit_window` - a day, which under the generator's
+cadence was the author's whole history every move. (5) `retract_vanished` gained the
+vanish gate: nothing can have vanished unless the live count dropped or the retraction
+count rose, two cheap counts per move instead of a full diff. (6) The replies memo and the
+comment-notice leg share a reply-set fingerprint (count, newest head) and step aside for a
+plain post. After all six the fold was 79s of a 133s run - and STILL climbing, with even a
+single-row primary-key read growing 0 -> 3ms. That was the tell: not an algorithm, the
+database. node.db's WAL stood at 43MB against a 2.7MB file: the 60s checkpoint beat was
+outpaced by ~1MB/s of frames, and every statement paid for every frame since the last
+truncate - the 2026-08-05 pathology (a 568MB WAL) back at a cadence the beat could not
+catch. `Db::execute` now truncates by VOLUME, every 256 statements, beside the time beat;
+`checkpoint` reports a busy answer instead of swallowing it. Result: 36 -> 53ms per action
+flat across 8x80, 69s total (7.9x), the WAL sawtoothing under 2MB. Kept for next time,
+all at debug: "fold legs", "journal acts", "journal_for steps". One gate bug the
+acceptance caught on the way (five comments.cjs reds at once): the reply-set fingerprint
+was ONE mark shared by two consumers, so whichever leg asked first consumed the change
+and the replies memo never rewrote - marks are per consumer now, and `force` (the test
+beat's "unconditionally", and the new-follow road) reaches every gate. Residual tail, named: the
+frontier refresh itself grew 4 -> 27ms per fold across a run (memo anchors), unexamined.

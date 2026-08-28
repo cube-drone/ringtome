@@ -138,6 +138,10 @@ impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 
 /// drain, and whether the statement is finalized then depends on turso's `Rows` Drop. Until
 /// that is verified-or-fixed, do not wrap `fetch_*` calls in timeouts, and treat "reads on
 /// one persona went stale until the next write" as this hazard's signature.
+/// Statements between volume-triggered WAL truncations (see `Db::execute`). Sized so a
+/// storm's log stays around a megabyte: ~1MB/s of frames was ~250 statements/s.
+const CHECKPOINT_EVERY: u64 = 256;
+
 #[derive(Clone)]
 pub struct Db {
     /// Kept so the database outlives any moment where no query is in flight.
@@ -150,6 +154,12 @@ pub struct Db {
     /// completion, and releases; safe to hold across the whole helper because the `fetch_*`
     /// helpers always drain before returning (the open-statement rule above).
     stmt_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    /// Statements executed through this handle, for the volume-triggered checkpoint
+    /// (2026-08-28): under a write storm the WAL grew ~1MB/s between the 60s beats, and
+    /// every read paid for every frame - the per-statement cost that made test-data
+    /// quadratic once the derived-state folds themselves were tamed. Shared by clones,
+    /// like the locks: the count is the connection's.
+    writes: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// One sync-gate ingest at a time (see [`Db::lock_ingest`]). Distinct from `stmt_lock`,
     /// which serializes single statements: this serializes a whole validate-and-store batch.
     ingest_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
@@ -232,8 +242,25 @@ pub async fn await_write_nudge(
 impl Db {
     /// Execute one statement to completion; returns rows affected.
     pub async fn execute(&self, sql: &str, params: impl IntoParams) -> Result<u64> {
-        let _guard = self.stmt_lock.lock().await;
-        Ok(self.conn.execute(sql, params).await?)
+        let n = {
+            let _guard = self.stmt_lock.lock().await;
+            self.conn.execute(sql, params).await?
+        };
+        // The volume trigger: every CHECKPOINT_EVERY statements, truncate the log - after
+        // the guard is released, so the checkpoint takes the lock like any statement. A
+        // busy answer (a reader mid-snapshot) is a no-op and the next window retries;
+        // the 60s beat (`checkpoint_pass`) still covers the idle tail. Cheap when
+        // frequent: the truncate's cost is the frames since the last one.
+        let count = self
+            .writes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        if count.is_multiple_of(CHECKPOINT_EVERY) {
+            if let Err(e) = self.checkpoint().await {
+                tracing::debug!(error = ?e, "volume checkpoint failed");
+            }
+        }
+        Ok(n)
     }
 
     /// Run a script of semicolon-separated statements.
@@ -338,10 +365,21 @@ impl Db {
     /// and the open-statement rule says drain it - an undrained statement wedges the shared
     /// connection.
     pub async fn checkpoint(&self) -> Result<()> {
-        let _rows: Vec<(i64, i64, i64)> = self
+        let rows: Vec<(i64, i64, i64)> = self
             .fetch_all("PRAGMA wal_checkpoint(TRUNCATE)", ())
             .await
             .context("truncating the WAL")?;
+        // The answer row is (busy, log frames, checkpointed frames). Busy means a reader
+        // held the log open and the truncate did NOT happen - silent until 2026-08-28,
+        // when a 43MB WAL under test-data asked whether the beat was failing or merely
+        // outpaced. Say which.
+        if let Some((busy, log, done)) = rows.first() {
+            if *busy != 0 {
+                tracing::debug!(log, done, "WAL checkpoint answered busy - the log stands");
+            } else {
+                tracing::trace!(log, done, "WAL checkpoint truncated");
+            }
+        }
         Ok(())
     }
 
@@ -559,6 +597,7 @@ fn connect(database: turso::Database) -> Result<Db> {
         _database: database,
         conn,
         stmt_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        writes: Default::default(),
         ingest_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         append_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         memo: None,

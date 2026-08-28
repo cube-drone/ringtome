@@ -38,13 +38,13 @@ use crate::AppState;
 ///
 /// Best-effort at every call site, the memo way: a missed pass is caught by the next frontier
 /// move or sweep, so this logs rather than erroring.
-pub async fn refresh_from(state: &AppState, sharer_root: &str) {
-    if let Err(e) = refresh_from_inner(state, sharer_root).await {
+pub async fn refresh_from(state: &AppState, sharer_root: &str, force: bool) {
+    if let Err(e) = refresh_from_inner(state, sharer_root, force).await {
         tracing::debug!(sharer = %sharer_root, error = ?e, "rebroadcast pin fold failed");
     }
 }
 
-async fn refresh_from_inner(state: &AppState, sharer_root: &str) -> Result<()> {
+async fn refresh_from_inner(state: &AppState, sharer_root: &str, force: bool) -> Result<()> {
     // The cheap gate first (the notifications-fold discipline): this hook fires on every public
     // frontier move, and almost nobody has a rebroadcast chain, so ask the chain-heads memo -
     // one node.db probe - before paying for a user-database open.
@@ -70,6 +70,28 @@ async fn refresh_from_inner(state: &AppState, sharer_root: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("folding {sharer_root}'s rebroadcasts: {e}"))?;
     drop(db);
+    // Only what moved past the mark (2026-08-28, the quadratic fold): every act below is
+    // idempotent per pointer, so re-walking the whole chain on each new share was pure
+    // cost that grew with the sharer's history - the worst leg of the fold by the end of a
+    // long test-data run. The mark is the newest `received_at_ms` this pass has folded;
+    // a withdrawal is a NEW entry with a new stamp, so it passes the filter like a share.
+    // In-memory and boot-reset (loops::FreshnessMarks): the first fold after a restart
+    // walks everything once, which is the correct catch-up, not a bug. `>=` on the
+    // boundary re-folds one row rather than risk skipping a same-millisecond sibling. A
+    // new share-follower's history is not this pass's job - `fanout::backfill_share`
+    // journals the whole standing list on the follow.
+    let mark = if force { None } else { state.sweep_marks.last("shares", sharer_root) };
+    let newest = pointers.iter().map(|r| r.received_at_ms).max();
+    let pointers: Vec<_> = match mark {
+        Some(m) => pointers
+            .into_iter()
+            .filter(|r| r.received_at_ms >= m)
+            .collect(),
+        None => pointers,
+    };
+    if let Some(n) = newest {
+        state.sweep_marks.record("shares", sharer_root, n);
+    }
     if pointers.is_empty() {
         return Ok(());
     }

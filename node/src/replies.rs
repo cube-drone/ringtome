@@ -126,16 +126,23 @@ pub async fn forget_reply(node_db: &Db, reply_author: &str, reply_doc: &str) -> 
 /// held right now. Stamp-swept like every whole-slice memo rewrite (subscriptions, the
 /// demand memo): a reply whose header left the shelf - deleted, repudiated - recedes on
 /// the same fold that noticed.
-pub async fn refresh_from(state: &AppState, author_root: &str) {
-    if let Err(e) = refresh_inner(state, author_root).await {
+pub async fn refresh_from(state: &AppState, author_root: &str, force: bool) {
+    if let Err(e) = refresh_inner(state, author_root, force).await {
         tracing::debug!(author = %author_root, error = ?e, "replies memo refresh failed");
     }
 }
 
-async fn refresh_inner(state: &AppState, author_root: &str) -> Result<()> {
+async fn refresh_inner(state: &AppState, author_root: &str, force: bool) -> Result<()> {
     let Ok(Some(db)) = state.user_dbs.get(author_root).await else {
         return Ok(()); // nothing held of them: the fragment path owns any rows
     };
+    // The fingerprint gate (2026-08-28): a POSTS move that touched no reply - the common
+    // one, a plain post - must not rewrite and re-stamp every reply row. (count, newest
+    // head) changes on every reply add, edit, or deletion, and a boot-reset mark makes the
+    // first fold after a restart rewrite once. `force` is the test beat's "unconditionally".
+    if !replies_moved(state, &db, author_root, "replies-memo").await? && !force {
+        return Ok(());
+    }
     let replies = crate::record::documents::public_replies(&db)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -251,6 +258,29 @@ pub async fn known_counts(
         }
     }
     Ok(out)
+}
+
+/// Did this author's reply set change since `consumer` last looked? Used by the memo
+/// rewrite and the comment-notice fold - both derive from exactly that set - each under
+/// its OWN mark (the first cut shared one, and whichever leg asked first consumed the
+/// change for the other; five acceptance claims caught it). Records the new fingerprint
+/// either way (a look is a look). The key is composed from the consumer, so the marks
+/// table stays one map.
+pub async fn replies_moved(
+    state: &AppState,
+    db: &Db,
+    author_root: &str,
+    consumer: &'static str,
+) -> Result<bool> {
+    let (n, ms) = crate::record::documents::public_replies_fingerprint(db)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let key = format!("{consumer}:{author_root}");
+    let seen_n = state.sweep_marks.last("replies-n", &key);
+    let seen_ms = state.sweep_marks.last("replies-ms", &key);
+    state.sweep_marks.record("replies-n", &key, n);
+    state.sweep_marks.record("replies-ms", &key, ms);
+    Ok(seen_n != Some(n) || seen_ms != Some(ms))
 }
 
 /// The thread read: one page of a post's DIRECT replies, oldest first, keyset by
