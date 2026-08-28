@@ -555,7 +555,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 ${t('postentry.passed-this-along', 'passed this along')}
             </p>`}
             ${/* The speculative sibling: nobody you follow brought this - your trust graph
-                did (DISCOVERY slice 2). Same seat, same quiet voice, and honest about the
+                did (PROJECT_PLAN's Discovery, slice 2). Same seat, same quiet voice, and honest about the
                 different mechanism: a vouch is not a share. Mutually exclusive with the
                 share line by construction, so the two never stack. */ ''}
             ${!item.via &&

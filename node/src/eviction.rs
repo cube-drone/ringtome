@@ -1,4 +1,4 @@
-//! Mirror eviction (DISCOVERY slice 4): the retention edge, made real for the first time.
+//! Mirror eviction (PROJECT_PLAN's Discovery, slice 4): the retention edge, made real for the first time.
 //!
 //! Before this sweep, nothing ever evicted a mirrored persona - every chain that arrived
 //! stayed forever, which was invisible while every mirror was asked for and became a leak

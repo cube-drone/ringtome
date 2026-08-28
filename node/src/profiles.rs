@@ -74,7 +74,7 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
 /// The bylines for a whole list at once - the query a roster or a feed makes instead of
 /// opening a database per face.
 /// Forget an evicted persona's byline - a face the node no longer holds must not keep a
-/// name in the cache (DISCOVERY slice 4).
+/// name in the cache (PROJECT_PLAN's Discovery, slice 4).
 pub async fn forget(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<()> {
     node_db
         .execute(

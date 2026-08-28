@@ -59,7 +59,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         // composition rule - my dial x their band, min of the two - must live in one place.
         ("edge_graph", vec!["edgegraph.rs"]),
         ("implicit_edges", vec!["edgegraph.rs"]),
-        // The speculative pass (DISCOVERY slice 1): demand rollup and the quiet-fetch
+        // The speculative pass (PROJECT_PLAN's Discovery, slice 1): demand rollup and the quiet-fetch
         // registry, one module - the doctrine (introducer-first, MAX-not-sum, quiet
         // mirrors) is enforced by these tables' shape, so their SQL stays in one place.
         ("speculative_demand", vec!["speculative.rs"]),

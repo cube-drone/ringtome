@@ -34,10 +34,6 @@ federated, unapologetically Old Internet.
   the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
   Also the discovery narrative for the file layer, versioned documents, and taxonomies — the
   canonical statements graduated to PROJECT_PLAN's Data Layer.
-- [`DISCOVERY.md`](DISCOVERY.md) — the working plan for trust-driven discovery: the
-  second-order feed (implicit edges → speculative acquisition → the selectivity slider), its
-  invariants and slices, and the farther horizon (edges-only depth walks, same-network
-  sketches). Settled pieces graduate to PROJECT_PLAN; this holds the arc whole.
 - [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
   language mapping.
 - [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and

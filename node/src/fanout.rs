@@ -166,7 +166,7 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     // **Not "nobody follows them" - "nobody here wants them at all".** A reader can hold no
     // interest in this author whatsoever and still be owed their documents, because someone
     // that reader DOES follow shared one - or because their trust graph vouches for the
-    // author (DISCOVERY slice 2: the demand rollup is the THIRD reader criterion beside
+    // author (PROJECT_PLAN's Discovery, slice 2: the demand rollup is the THIRD reader criterion beside
     // followers and share-followers). Returning early on direct followers alone would make
     // both arrival paths journal to nobody, forever.
     let mut wanting = crate::speculative::wanting_readers(&state.node_db, author_root).await?;
@@ -191,7 +191,7 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     let mut newest: Option<i64> = None;
     // The newest page whole, for the speculative readers below: their rows are the
     // burst-to-bound with no year dig - the history courtesy belongs to chosen
-    // relationships (DISCOVERY stage 3) - so however deep the mark-driven walk goes for
+    // relationships (PROJECT_PLAN's Discovery stage 3) - so however deep the mark-driven walk goes for
     // the real readers, speculation journals from this page alone.
     let mut first_page: Vec<JournalRow> = Vec::new();
     loop {
@@ -408,7 +408,7 @@ async fn journal_rows(
     Ok(())
 }
 
-/// The speculative twin of [`journal_rows`] (DISCOVERY slice 2): rows for readers whose
+/// The speculative twin of [`journal_rows`] (PROJECT_PLAN's Discovery, slice 2): rows for readers whose
 /// trust graph admits the author, marked with `suggested_via` - the introducer whose vouch
 /// journaled them, `via_root`'s sibling and the same kind of fact about the past.
 ///
@@ -419,7 +419,7 @@ async fn journal_rows(
 /// settled on, for the same reason: the byline is a fact about how the document reached
 /// you, not a slot for whoever vouched most recently. Conversion runs the other way in
 /// [`journal_rows`]: any real arrival clears the marking in place.
-/// Excise an evicted author's SPECULATIVE feed rows, every reader at once (DISCOVERY slice
+/// Excise an evicted author's SPECULATIVE feed rows, every reader at once (PROJECT_PLAN's Discovery, slice
 /// 4): rows a vouch journaled and no dial ever claimed go with the mirror that backed them.
 /// Real rows are untouched by construction - an author with real rows has a subscription or
 /// a share standing, and the eviction sweep never reaches them.
@@ -1283,7 +1283,7 @@ pub struct FeedRow {
     /// Who shared this into the reader's feed, if it arrived by rebroadcast rather than by a
     /// follow. `None` is the ordinary case and means "you follow this author".
     pub via_root: Option<String>,
-    /// The introducer whose vouch journaled this row speculatively (DISCOVERY slice 2);
+    /// The introducer whose vouch journaled this row speculatively (PROJECT_PLAN's Discovery, slice 2);
     /// `None` is every real row. Mutually exclusive with `via_root` by construction.
     pub suggested_via: Option<String>,
     pub doc_id: String,
@@ -1562,7 +1562,7 @@ mod tests {
         );
     }
 
-    /// The precedence ladder, both directions (DISCOVERY slice 2): a real arrival converts
+    /// The precedence ladder, both directions (PROJECT_PLAN's Discovery, slice 2): a real arrival converts
     /// a speculative row in place - same primary key, marking shed - and a speculative
     /// write never touches an existing row of any kind. Planted red against a version
     /// without `suggested_via = NULL` in the real upsert before it was trusted.

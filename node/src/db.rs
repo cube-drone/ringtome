@@ -848,7 +848,7 @@ impl UserDbManager {
     }
 
     /// Evict one MIRRORED persona's database from this node: close the cached handle and
-    /// delete the file, its WAL, its raw-entry journal, and its sealed key (DISCOVERY slice
+    /// delete the file, its WAL, its raw-entry journal, and its sealed key (PROJECT_PLAN's Discovery, slice
     /// 4 - the retention edge). The caller owns the judgment that nobody wants this persona;
     /// this function owns only the mechanics, and it is safe to call for a root that holds
     /// nothing (idempotent - eviction is cleanup, not assertion). A clone of the handle

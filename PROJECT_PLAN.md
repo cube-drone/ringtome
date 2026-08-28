@@ -3311,6 +3311,62 @@ publication, and the implicit fold are one choreography, so the memos cannot dri
 `GET /api/identity/{root}/implicit`; consumers (the slider's pool, people search, first-contact standing) are
 future work, deliberately - the fold precedes its consumers the way `subscriptions.trust` did.
 
+#### Discovery: the second-order pipeline (settled and built, 2026-08-15 → 08-25)
+
+Fan-out delivers what was asked for; discovery is the content that was NOT - the friend-of-a-friend whose taste
+keeps being vouched for. The names gap is the implicit-edges fold above; the bytes gap is a four-stage pipeline
+(full build history in HISTORY.md, 2026-08-21 → 08-25):
+
+1. **Demand** - a node-level speculative rollup over hosted readers' implicit edges: top-K targets per reader by
+   composed level (promiscuity-discounted, MAX across introducers, never sums), bounded by an acquisition
+   budget. A memo like every other: when the implicit inputs recede, the rollup row recedes and the mirror
+   stops being refreshed.
+2. **Acquisition** - quiet pulls through the INTRODUCER's node first (their node provably fronts the target, and
+   asking a friend discloses only to that friend), the target's own serving records as fallback. The mirror is
+   quiet - no serving record, no fronting, no push - and polled on a slow beat: speculative content is allowed
+   to be hours stale, which is part of what makes it cheap.
+3. **Journaling** - a third reader criterion beside followers and share-followers; rows marked speculative and
+   carrying the introducer as provenance ("suggested via Mara"), newest page only - the history courtesy
+   belongs to chosen relationships. Any real arrival converts the row in place; speculation never downgrades.
+4. **Attention** - the selectivity slider (above), pure read-time: acquisition and attention split on purpose,
+   so moving the slider re-fetches nothing.
+
+**The speculative pass** is one dialer with one per-target question - depth. The rollup's strongest paths earn
+recent POSTS; the tier-2 tail keeps a name and a key (identity-public + PROFILE_PUBLIC - legibility for the
+People page, proof for signed statements) under separate staleness-ordered lanes and caps. The wire is the
+**scoped sync Hello** ("only these services", additive, scope narrows only, both directions, no chase-verdict
+bookkeeping on a partial view) - the protocol piece any deeper lane would also need. Depth semantics: a
+posts-held mirror is never downgraded; a headers-held mirror later admitted at posts depth reads as
+never-fetched so the upgrade skips the shallow pull's freshness clock.
+
+**The depth boundary (2026-08-25): depth 2 is as far as this goes for now.** The value of vouches decays per
+hop faster than the machinery's cost does, and rebroadcasts already carry discovery to any depth with a human
+choice at every hop. Parked with it, unrepealed: the reciprocal door, FOLLOWS_PUBLIC at headers depth,
+edge_graph ingestion of mirrored strangers' edges.
+
+Invariants, restated as checks: no fronting and no push for speculative/non-resident mirrors (reciprocity is
+the test - a peer's ask against the quiet pile returns nothing, or the pile is not quiet); the dice order
+visits, the memo decides retention; disclosure stays in-relationship (never dial the target first when an
+introducer path exists); MAX across introducers, never sums - a thousand Sybil vouches are worth one best path;
+explicit beats implicit, blocked beats everything; budgets are caps, not pacing suggestions; promotion is clean
+- one real dial and the pair leaves this pipeline entirely. Field doctrine from the build: outward surfaces
+speak with a held chain's authority only under a freshness contract (hosted, member-fetched, or followed);
+beat-driven machinery never dials an unresolved identity key; deadlines detach, never cancel.
+
+The farther horizon, parked not planned - kept because the shapes are worth not re-deriving: **depth 3+** is an
+edges-only appetite (FOLLOWS_PUBLIC chains of people nobody here syncs; the scoped Hello or a fragment-door-
+style edges door, kilobytes per hop, introducer-relay logic unchanged). **Same-network detection at depth ~6**:
+bidirectional search plus published neighborhood sketches (Bloom of roots-within-k-hops, union-merged, hints
+dirty and proofs signed) - with the sociological caveat that connectivity saturates, so the useful boolean is
+its negative ("no known connection" on a stranger's knock), and the real question is path quality and
+independence (min-band, vertex-disjoint count - advogato joint flow over the gathered subgraph); natural first
+consumer, the first-contact inbox kind. **Adversarial simulation** turns the budget arguments into a
+regression test.
+
+What this deliberately is not: a recommendation engine. No engagement signals, no popularity inputs, no
+per-person sums anywhere - every surfaced item traces to named humans the reader chose to trust, and the system
+can always explain a suggestion in one sentence that names people, not scores.
+
 ### Rebroadcast: Pointer Plus Pinned Replica (settled 2026-08-10)
 
 How you share someone else's post through your network. The tension the design has to hold: copying content whole

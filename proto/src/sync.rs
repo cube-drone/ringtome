@@ -131,7 +131,7 @@ pub enum SyncMessage {
         frontiers: Vec<Frontier>,
         proof: Option<MemberProof>,
         /// The scope: which services this EXCHANGE is about (2026-08-25, the scoped sync
-        /// Hello - DISCOVERY's headers depth). Empty means every service, which is both
+        /// Hello - PROJECT_PLAN's Discovery's headers depth). Empty means every service, which is both
         /// the pre-scoping wire shape (arity-4 Hellos decode to empty) and the ordinary
         /// full sync. Non-empty scopes the whole exchange, both directions: each side
         /// serves and claims only the named services - scoping only ever NARROWS what the

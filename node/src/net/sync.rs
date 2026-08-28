@@ -1279,7 +1279,7 @@ pub async fn sync_with_peer(
     sync_with_peer_scoped(state, root_hex, addr, &[]).await
 }
 
-/// The scoped form (2026-08-25, DISCOVERY's headers depth): `wanted` names the services
+/// The scoped form (2026-08-25, PROJECT_PLAN's Discovery's headers depth): `wanted` names the services
 /// this exchange is about - empty is the ordinary full sync. The scope governs the WHOLE
 /// exchange, both directions: our Hello claims only scoped frontiers, both sides send only
 /// scoped chains, and the chase-verdict bookkeeping is skipped outright (a partial view is
@@ -2275,7 +2275,7 @@ mod tests {
         );
     }
 
-    /// The scoped Hello's serve half (2026-08-25, DISCOVERY's headers depth): a plan built
+    /// The scoped Hello's serve half (2026-08-25, PROJECT_PLAN's Discovery's headers depth): a plan built
     /// under a scope sends ONLY the named services - and the case that makes the filter
     /// load-bearing is a chain the peer never claimed at all, which an unscoped plan reads
     /// as "peer lacks everything" and ships whole.

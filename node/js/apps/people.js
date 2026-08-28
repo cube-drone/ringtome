@@ -55,7 +55,7 @@ export const PeopleLookup = ({ query, onQuery }) => {
 };
 
 // The suggested shelf: friends-of-friends whose chains the speculative pass has actually
-// landed (DISCOVERY slice 1; NEXT_STEPS "surface implicit edges in the UI"). Fetched once per
+// landed (PROJECT_PLAN's Discovery, slice 1; NEXT_STEPS "surface implicit edges in the UI"). Fetched once per
 // visit for the same reason as the directory below - the demand rollup moves on the fold's
 // beat, not the browser's - and each row carries its best introducer for the "via" byline.
 const useSuggested = (root) => {

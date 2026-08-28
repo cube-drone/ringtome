@@ -242,7 +242,7 @@ async fn from_held_chain(
     // machinery keeping it current, which a hunch-held mirror does not have - the stale
     // mirror answered "Unknown" for documents whose fragments this node actually held, and
     // served yesterday's version of edited ones - and speculative mirrors serve nobody
-    // (DISCOVERY invariants): the sync door's wanted gate already refuses them, and a door
+    // (PROJECT_PLAN's Discovery invariants): the sync door's wanted gate already refuses them, and a door
     // that answered from the quiet pile would let any peer probe out what this node
     // speculates about. Falling through leaves the tombstone and fragment shelves to
     // answer, exactly as they did before the mirror existed.

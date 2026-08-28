@@ -1,4 +1,4 @@
-//! The speculative pass at posts depth (DISCOVERY.md slice 1, 2026-08-21): demand and quiet
+//! The speculative pass at posts depth (PROJECT_PLAN's Discovery slice 1, 2026-08-21): demand and quiet
 //! acquisition for strangers a reader's trust admits but nobody here follows.
 //!
 //! Two halves, one doctrine:
@@ -14,7 +14,7 @@
 //!   - **the acquisition pass** - for each admitted target, pull their public chains through
 //!     the INTRODUCER's endpoints first (their node provably fronts everyone they follow,
 //!     and asking a friend discloses only to that friend), the target's own machinery as
-//!     fallback - never first while an introducer path exists (DISCOVERY.md invariants).
+//!     fallback - never first while an introducer path exists (PROJECT_PLAN's Discovery invariants).
 //!     The mirror is QUIET: `speculative_fetches` is deliberately not `foreign_fetches`,
 //!     because that registry opens the sync door and seats personas in the directory, and a
 //!     speculative mirror serves nobody and announces nothing. Freshness is our own slow
@@ -23,7 +23,7 @@
 //!
 //! Promotion is clean: the moment a reader turns a real dial on a surfaced persona, the
 //! rollup excludes the pair (explicit beats implicit) and the ordinary follow machinery
-//! takes over. Eviction of the mirror itself is DISCOVERY slice 4, deliberately not here.
+//! takes over. Eviction of the mirror itself is PROJECT_PLAN's Discovery, slice 4, deliberately not here.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -38,7 +38,7 @@ use crate::AppState;
 /// vouching because the rollup ranks by best-single-path, never by path count.
 const SPECULATIVE_BUDGET: usize = 16;
 
-/// The headers-depth tail's bound (DISCOVERY slice 5, depth-2 scoped): how many tier-2
+/// The headers-depth tail's bound (PROJECT_PLAN's Discovery, slice 5, depth-2 scoped): how many tier-2
 /// targets past the posts budget each reader may keep at headers depth - identity and
 /// profile chains only, kilobytes each, for legibility and proof. Same Sybil posture as
 /// the posts budget: a cap per reader, MAX-composed paths, never sums.
@@ -180,7 +180,7 @@ fn rollup(
         })
         .collect();
     rows.sort_by(|a, b| b.level.cmp(&a.level).then(a.target.cmp(&b.target)));
-    // The budget line IS the depth line (DISCOVERY slice 5): the strongest paths earn
+    // The budget line IS the depth line (PROJECT_PLAN's Discovery, slice 5): the strongest paths earn
     // posts, the rest of the tier-2 pile keeps headers - names, keys, proof - and nothing
     // past the headers budget is remembered at all.
     rows.truncate(budget + headers_budget);
@@ -266,7 +266,7 @@ pub async fn refresh_demand(
 /// by a relationship - hosted here, member-fetched (visits revalidate), followed (the wake
 /// pass) - may treat its shelf as the truth, silence included. A hunch-held mirror is
 /// allowed to be hours stale BY DESIGN, so its silence is ignorance, never retraction; and
-/// the DISCOVERY invariant is blunter still: speculative mirrors serve nobody, so a
+/// the PROJECT_PLAN's Discovery invariant is blunter still: speculative mirrors serve nobody, so a
 /// serving surface that answered from one would let any peer probe out what this node
 /// speculates about.
 pub async fn speculative_only(state: &AppState, root_hex: &str) -> Result<bool> {
@@ -357,7 +357,7 @@ fn order_acquisition(mut candidates: Vec<AcquireCandidate>) -> Vec<AcquireCandid
 }
 
 /// The acquisition pass: pull stale admitted targets' public chains through their
-/// introducers. One pass is one beat of DISCOVERY stage 2 - capped, cooldown-rotated,
+/// introducers. One pass is one beat of PROJECT_PLAN's Discovery stage 2 - capped, cooldown-rotated,
 /// sequential per target so the candidate ORDER is a guarantee (introducer paths exhaust
 /// before the target's own machinery is ever dialed).
 pub async fn acquire_pass(state: AppState) -> Result<()> {
@@ -467,7 +467,7 @@ pub async fn acquire_pass(state: AppState) -> Result<()> {
         return Ok(());
     }
 
-    // Two lanes, one dialer (DISCOVERY slice 5): the posts lane keeps its cap for the
+    // Two lanes, one dialer (PROJECT_PLAN's Discovery, slice 5): the posts lane keeps its cap for the
     // expensive pulls; the headers lane services the tier-2 tail's cheap visits under its
     // own cap, stalest first, so the long tail cycles fairly and neither lane starves the
     // other. (The design sketch's weighted-random draw is deliberately simplified to
@@ -623,7 +623,7 @@ async fn last_fetch(node_db: &Db, target_root: &str) -> Result<Option<(i64, Opti
 }
 
 /// Every hosted reader whose rollup admits this author, with each pair's best introducer -
-/// the feed journal's THIRD reader criterion (DISCOVERY slice 2, stage 3), asked per author
+/// the feed journal's THIRD reader criterion (PROJECT_PLAN's Discovery, slice 2, stage 3), asked per author
 /// per public move exactly like `followers_of`, off the by-target index built for the
 /// acquisition pass's identical question.
 /// Does ANY reader's rollup still admit this target? The eviction sweep's demand-side
@@ -871,7 +871,7 @@ mod tests {
 
     #[test]
     fn the_budget_is_the_depth_line_and_the_order_is_stable() {
-        // Since the headers depth (DISCOVERY slice 5): the acquisition budget no longer
+        // Since the headers depth (PROJECT_PLAN's Discovery, slice 5): the acquisition budget no longer
         // truncates the memo - it draws the DEPTH line. The strongest paths earn posts,
         // the tail keeps headers, and only the headers budget drops anyone entirely.
         let composed: Vec<ComposedEdge> = vec![

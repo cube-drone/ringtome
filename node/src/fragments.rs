@@ -896,7 +896,7 @@ pub async fn blob_refs(node_db: &Db) -> Result<Vec<[u8; 32]>> {
 /// over the header (provably alive, provably holding or knowing who holds the bytes) was
 /// remembered nowhere. The `speculative_fetches.last_via` idiom, applied to fragments.
 /// Does ANY fragment row stand behind this author here? The eviction sweep's share-side
-/// keeper (DISCOVERY slice 4): a fragment is a reader-facing promise, and a chain mirror
+/// keeper (PROJECT_PLAN's Discovery, slice 4): a fragment is a reader-facing promise, and a chain mirror
 /// with fragments beside it stays until the shares themselves retire.
 pub async fn any_for_author(node_db: &Db, author_root: &str) -> Result<bool> {
     let row: Option<(i64,)> = node_db

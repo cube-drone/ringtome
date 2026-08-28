@@ -7251,3 +7251,20 @@ a ruling, with the build history left to this file where it belongs. COMMENTS.md
 deleted; the nineteen source files that cited it now point at PROJECT_PLAN's Replies,
 and NEXT_STEPS keeps only what is still owed (the mode register's UI control, the
 envelope-evidence deletion road).
+
+## 2026-08-27 (cont. 7): DISCOVERY.md folds into the plan
+
+The second working doc retires the same way. PROJECT_PLAN grew "Discovery: the
+second-order pipeline" beside the selectivity and implicit-edges sections it already
+carried: the four stages (demand rollup, quiet introducer-first acquisition, provenanced
+journaling, read-time attention), the speculative pass with its one per-target question
+(depth), the scoped sync Hello, the depth-2 boundary with what it parked, the invariants
+restated as checks, the farther-horizon shapes kept because they are worth not
+re-deriving (the edges-only depth-3 appetite, same-network detection with its
+saturation caveat, adversarial simulation), and the not-a-recommendation-engine closing.
+DISCOVERY.md deleted; twenty-seven source files retargeted to PROJECT_PLAN's Discovery;
+README's map pruned. One self-inflicted scar worth its sentence: the bulk retarget's
+bare-word replace mangled `RINGTOME_DISCOVERY` and `RINGTOME_TEST_DISCOVERY_DIR` across
+nine files - env names are words too, and a doc-reference sweep wants word boundaries or
+an audit pass; caught by the audit, repaired before the gate, and the full `just ci`
+(not the docs-change compile shortcut) is the gate BECAUSE the mangle touched recipes.

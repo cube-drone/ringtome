@@ -622,7 +622,7 @@ struct FeedItem {
     /// person shared it, which keeps the ordinary single-sharer row byte-identical to before.
     #[serde(skip_serializing_if = "Option::is_none")]
     via_count: Option<usize>,
-    /// The introducer whose vouch journaled this row speculatively (DISCOVERY slice 2) -
+    /// The introducer whose vouch journaled this row speculatively (PROJECT_PLAN's Discovery, slice 2) -
     /// mutually exclusive with `via`, absent on every real row so old clients render
     /// unchanged. The name rides beside it for the byline, same discipline as the sharer's.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1300,7 +1300,7 @@ pub async fn id_profile(
             // Held by the quiet pull: serve what it brought home, exactly like a member
             // fetch. No revalidation spawns here - freshness for speculative content is the
             // acquisition pass's own slow beat, at lower priority than real follows
-            // (DISCOVERY.md), and a page view must not promote a hunch into a dial loop.
+            // (PROJECT_PLAN's Discovery), and a page view must not promote a hunch into a dial loop.
             None if speculative_at.is_some() => {
                 synced_ms = speculative_at;
             }

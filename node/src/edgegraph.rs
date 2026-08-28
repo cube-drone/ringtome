@@ -353,7 +353,7 @@ pub async fn refresh_implicit(
         .await
         .context("sweeping stale implicit edges")?;
 
-    // The demand rollup rides the same pass (DISCOVERY.md slice 1), for the same reason the
+    // The demand rollup rides the same pass (PROJECT_PLAN's Discovery slice 1), for the same reason the
     // implicit fold rides subscriptions::refresh: the composed rows exist as values exactly
     // here, so the two memos are one choreography and cannot drift. This is the ONE read of
     // the reader's private-dial-derived levels that leaves their database, and what leaves

@@ -468,7 +468,7 @@ async fn main() -> anyhow::Result<()> {
     loops::periodic("follow-refresh", follow_beat, state.clone(), idface::refresh_followed_pass);
     // Speculative acquisition (speculative::acquire_pass): the quiet pull behind the demand
     // rollup - strangers a reader's trust admits, fetched through their introducers on a slow
-    // beat at lower priority than real follows (DISCOVERY.md slice 1). Slow on purpose:
+    // beat at lower priority than real follows (PROJECT_PLAN's Discovery slice 1). Slow on purpose:
     // speculative content is allowed to be hours stale; that is part of what makes it cheap.
     let speculative_beat = if local_test {
         std::env::var("RINGTOME_TEST_SPECULATIVE_MS")

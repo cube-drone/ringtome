@@ -257,7 +257,7 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [more, loading, items]);
 
-    // The slider (PROJECT_PLAN: one slider, two budgets; DISCOVERY slice 3). Pure
+    // The slider (PROJECT_PLAN: one slider, two budgets; PROJECT_PLAN's Discovery, slice 3). Pure
     // attention: a read-time floor over rows already journaled, network-silent both ways.
     // The position is a PERSONA-level private register - selectivity is a fact about the
     // person's feed and syncs with them, unlike the per-device seal prefs - read once per

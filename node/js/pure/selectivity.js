@@ -1,5 +1,5 @@
 // The feed-selectivity slider's brain (PROJECT_PLAN: "Feed selectivity: one slider, two
-// budgets", designed 2026-08-15; DISCOVERY slice 3) - pure: rows and dial facts in, a
+// budgets", designed 2026-08-15; PROJECT_PLAN's Discovery, slice 3) - pure: rows and dial facts in, a
 // show/hide verdict out. The slider is ATTENTION only: everything here runs at read time
 // over rows already journaled, moving it is network-silent in both directions, and nothing
 // about it ever changes what syncs.

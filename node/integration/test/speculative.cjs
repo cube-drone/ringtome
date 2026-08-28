@@ -1,5 +1,5 @@
 /*
-    The speculative pass at posts depth (DISCOVERY.md slice 1, 2026-08-21).
+    The speculative pass at posts depth (PROJECT_PLAN's Discovery slice 1, 2026-08-21).
 
     The design under test: a reader's implicit edges (trust.cjs proves those) roll up into a
     node-level speculative-demand memo - top-K targets per reader, best introducer alongside -
@@ -176,7 +176,7 @@ const base58 = async (host) => {
     });
 
     it("a second vouch past the budget lands at HEADERS depth - a name, a key, no posts", async function () {
-        // DISCOVERY slice 5, depth-2 scoped. The rig pins the posts budget at ONE
+        // PROJECT_PLAN's Discovery, slice 5, depth-2 scoped. The rig pins the posts budget at ONE
         // (RINGTOME_TEST_SPECULATIVE_BUDGET), so the friend's stronger vouch above holds
         // the only posts seat and this weaker one must land at headers depth: identity
         // and profile chains through the introducer - a name and a face for the People
@@ -263,7 +263,7 @@ const base58 = async (host) => {
     });
 
     it("the vouched-for author's post reaches cora's feed, marked and bylined", async function () {
-        // DISCOVERY slice 2, stage 3: journaling with provenance. The mirror from slice 1
+        // PROJECT_PLAN's Discovery, slice 2, stage 3: journaling with provenance. The mirror from slice 1
         // becomes a FEED row - marked speculative, carrying the introducer - without cora
         // following anyone. The row exists because trust vouches for it, and it says so.
         await beat(HOST_C, "journal-fill");
@@ -302,7 +302,7 @@ const base58 = async (host) => {
     it("a withdrawn vouch recedes from the demand memo (the mirror waits for slice 4)", async function () {
         // The friend takes the vouch back; the graph row sweeps (trust.cjs proves that leg),
         // and the rollup built on it must recede with its inputs. The mirror itself stays -
-        // nothing today evicts a mirrored persona; that gap is DISCOVERY slice 4, on purpose.
+        // nothing today evicts a mirrored persona; that gap is PROJECT_PLAN's Discovery, slice 4, on purpose.
         await dialOn(friend, friendRoot)(authorRoot, "trust", "");
         await beat(HOST_B, "mint", friendRoot);
         await beat(HOST_B, "demand-push", friendRoot);
@@ -318,7 +318,7 @@ const base58 = async (host) => {
         }
     });
 
-    it("a mirror nobody wants is evicted, traces and all (DISCOVERY slice 4)", async function () {
+    it("a mirror nobody wants is evicted, traces and all (PROJECT_PLAN's Discovery, slice 4)", async function () {
         // The retention edge, made real: with the vouch withdrawn (above) and cora's own
         // dial cleared (below), NOBODY wants the author on cora's node - not hosted, no
         // subscription, never member-fetched, no fragment rows, no demand. The eviction
