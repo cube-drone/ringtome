@@ -531,6 +531,13 @@ pub async fn curation_mode(node_db: &Db, root: &str) -> String {
 /// the choice into suppressing; 'none' is the "no comments" switch. Suppression mutes the
 /// author's amplification, never the reply's existence on its own author's chain.
 pub async fn servable(state: &AppState, root: &str, replier: &str, reply_doc: &str) -> bool {
+    // The author's own reply is AUTHORING, not commenting (Curtis, 2026-08-28: a self-reply
+    // was held for the nod because nobody follows themselves). It is never curated - not
+    // held, not suppressible, and not silenced by the no-comments switch, which is about
+    // other people's words on your post.
+    if replier == root {
+        return true;
+    }
     let verdict = curation_row(&state.node_db, root, replier, reply_doc).await;
     if verdict.as_deref() == Some(VERDICT_SUPPRESSED) {
         return false;

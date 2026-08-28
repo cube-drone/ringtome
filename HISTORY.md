@@ -7304,5 +7304,20 @@ all at debug: "fold legs", "journal acts", "journal_for steps". One gate bug the
 acceptance caught on the way (five comments.cjs reds at once): the reply-set fingerprint
 was ONE mark shared by two consumers, so whichever leg asked first consumed the change
 and the replies memo never rewrote - marks are per consumer now, and `force` (the test
-beat's "unconditionally", and the new-follow road) reaches every gate. Residual tail, named: the
+beat's "unconditionally", and the new-follow road) reaches every gate. And the forced
+beat itself goes THROUGH the lane now - `force_pending` beside `ledger_pending`, drained
+by the worker's snapshot - after the first cut ran it outside, racing whatever fold was
+in flight on the root: the exact concurrency the lane was built to forbid. (A run with
+two sibling-ledger claims red in cascade and cohort, green on the very next run, is what
+prompted the review; the flake predates this work, the bypass did not.) Residual tail, named: the
 frontier refresh itself grew 4 -> 27ms per fold across a run (memo anchors), unexamined.
+
+## 2026-08-28 (cont.): the author is not a stranger on their own post
+
+Curtis, from the UI: a self-reply was held for the nod. The curation bit's trusted
+default is "does the author follow the replier", and nobody follows themselves - so the
+author's own follow-up fell into the stranger pool. Ruling folded into `servable`: the
+author's reply on their own post is AUTHORING, not commenting - never held, never
+suppressible, and not silenced by the no-comments switch, which is about other people's
+words. Acceptance: the self-reply speaks at once, the held list never names it, and it
+survives mode `none`.

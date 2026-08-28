@@ -293,6 +293,37 @@ const base58 = async (host) => {
         );
     });
 
+    it("the author's own reply is authoring, not commenting - never held for the nod", async () => {
+        // Nobody follows themselves, so the trusted default once put a self-reply in the
+        // stranger pool (Curtis, 2026-08-28). The author's words on their own post bypass
+        // curation whole: served at once, and the held list never names them.
+        const out = await publish(ada, adaRoot, "my-own-follow-up", { author: adaRoot, doc_id: op });
+        assert.equal(out.status, 200, out.text);
+        await beat(HOST, "fold", adaRoot);
+        const pub = await (await ada(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.ok(
+            (pub.replies || []).some((r) => r.author === adaRoot && r.doc_id === out.post),
+            "the author's own reply speaks immediately"
+        );
+        const own = await (await ada(`api/identity/${adaRoot}/posts/${op}/replies`)).json();
+        const mine = (own.replies || []).find((r) => r.doc_id === out.post);
+        assert.ok(mine && mine.served === true, "and is never held");
+        // Not even the no-comments switch silences the author on their own post.
+        await ada(`api/identity/${adaRoot}/private/kv/comments/default`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "none" }),
+        });
+        const muted = await (await ada(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.ok(
+            (muted.replies || []).some((r) => r.author === adaRoot),
+            "suppress-all is about other people's words"
+        );
+        await ada(`api/identity/${adaRoot}/private/kv/comments/default`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "" }),
+        });
+    });
+
     it("a blank node learns the thread from the author's door (slice 6)", async function () {
         if (!HOST_E) this.skip();
         // eve's node holds nothing of this thread. Visiting the permalink IS the demand:
@@ -352,7 +383,10 @@ const base58 = async (host) => {
             body: JSON.stringify({ value: "none" }),
         });
         const pub = await (await ada(`api/id/${adaRoot}/posts/${op}/replies`)).json();
-        assert.equal(pub.replies.length, 0, "mode none: the author's node says nothing");
+        assert.ok(
+            !(pub.replies || []).some((r) => r.author !== adaRoot),
+            "mode none: the author's node speaks nobody else's words (their own still stand)"
+        );
         // The honest limit: bea's reply still stands on HER chain and HER node's memo -
         // suppression never reaches the reply's existence.
         const onB = await (await bea(`api/id/${adaRoot}/posts/${op}/replies`)).json();
