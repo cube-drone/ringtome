@@ -1079,20 +1079,40 @@ pub async fn id_posts(
     };
     let more = posts.len() as i64 > POSTS_PAGE;
     posts.truncate(POSTS_PAGE as usize);
+    // The reply counts, one page-scoped memo read for the whole shelf page.
+    let pairs: Vec<(String, String)> = posts
+        .iter()
+        .map(|p| (root_hex.clone(), hex::encode(p.doc_id)))
+        .collect();
+    let counts = crate::replies::known_counts(&state.node_db, &pairs)
+        .await
+        .unwrap_or_default();
     Ok(axum::Json(serde_json::json!({
-        "posts": posts.iter().map(post_json).collect::<Vec<_>>(),
+        "posts": posts
+            .iter()
+            .map(|p| {
+                let n = counts
+                    .get(&(root_hex.clone(), hex::encode(p.doc_id)))
+                    .copied()
+                    .unwrap_or(0);
+                post_json(p, n)
+            })
+            .collect::<Vec<_>>(),
         "more": more,
     }))
     .into_response())
 }
 
-/// One post, as every surface reports it.
-fn post_json(p: &crate::record::documents::PublicDoc) -> serde_json::Value {
+/// One post, as every surface reports it. `replies` is the honest-partial count from
+/// this node's memo (`replies::known_counts`) - absent when zero, so a surface that knows
+/// nothing renders exactly as before.
+fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_json::Value {
     let link = |l: &Option<(String, String)>| {
         l.as_ref()
             .map(|(author, doc)| serde_json::json!({ "author": author, "doc_id": doc }))
     };
     serde_json::json!({
+        "replies": if replies > 0 { Some(replies) } else { None },
         "reply_to": link(&p.reply_to),
         "thread_root": link(&p.thread_root),
         "doc_id": hex::encode(p.doc_id),
@@ -1132,7 +1152,19 @@ pub async fn id_post(
         _ => None,
     };
     match post {
-        Some(p) => Ok(axum::Json(post_json(&p)).into_response()),
+        Some(p) => {
+            let n = crate::replies::known_counts(
+                &state.node_db,
+                &[(root_hex.clone(), hex::encode(p.doc_id))],
+            )
+            .await
+            .unwrap_or_default()
+            .values()
+            .copied()
+            .next()
+            .unwrap_or(0);
+            Ok(axum::Json(post_json(&p, n)).into_response())
+        }
         None => Err(AppError::NotFound(crate::msg!("idface.no-such-post-here", "no such post here"))),
     }
 }
@@ -1343,6 +1375,15 @@ pub async fn id_profile(
         .filter_map(|k| speakable::node_key_b58(&k))
         .collect();
 
+    // The profile's first shelf page carries reply counts like every other post surface.
+    let count_pairs: Vec<(String, String)> = posts
+        .iter()
+        .map(|p| (root_hex.clone(), hex::encode(p.doc_id)))
+        .collect();
+    let reply_counts = crate::replies::known_counts(&state.node_db, &count_pairs)
+        .await
+        .unwrap_or_default();
+
     Ok(axum::Json(serde_json::json!({
         "root": root_hex,
         "speakable": speakable::speakable(&root),
@@ -1358,7 +1399,16 @@ pub async fn id_profile(
         // When this node last reached them, for a persona it does not host. Absent for one it
         // does: a persona we host has no "last synced" - its words are written here.
         "synced_ms": synced_ms,
-        "posts": posts.iter().map(post_json).collect::<Vec<_>>(),
+        "posts": posts
+            .iter()
+            .map(|p| {
+                let n = reply_counts
+                    .get(&(root_hex.clone(), hex::encode(p.doc_id)))
+                    .copied()
+                    .unwrap_or(0);
+                post_json(p, n)
+            })
+            .collect::<Vec<_>>(),
         // Whether the shelf goes further back than this first page.
         "posts_more": posts_more,
         "fields": fields.iter().map(|f| serde_json::json!({

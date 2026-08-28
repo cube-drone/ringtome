@@ -634,6 +634,11 @@ struct FeedItem {
     /// since receded (which the slider treats as the weakest path, honestly).
     #[serde(skip_serializing_if = "Option::is_none")]
     suggested_level: Option<String>,
+    /// How many replies this node THINKS the post has (`replies::known_counts`) - the
+    /// foot line's number, honest-partial like the thread it summarizes. Absent when
+    /// zero.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replies: Option<i64>,
     /// This post is a REPLY, and this is its parent - the quote-card's whole payload
     /// (COMMENTS.md slice 3). From the node's replies memo, so it is exactly as partial as
     /// the thread view: a reply whose link this node never verified renders as an ordinary
@@ -720,6 +725,15 @@ async fn feed_handler(
     let parent_cards = crate::fanout::journal_cards(&state.node_db, &root, &parents)
         .await
         .map_err(AppError::Internal)?;
+    let reply_counts = crate::replies::known_counts(
+        &state.node_db,
+        &rows
+            .iter()
+            .map(|r| (r.author_root.clone(), r.doc_id.clone()))
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(AppError::Internal)?;
 
     // Bylines for authors AND sharers: "X shared Y's post" needs two names, and asking for
     // them in one lookup beats a second round of database opens at render time. The other
@@ -799,6 +813,10 @@ async fn feed_handler(
                 .suggested_via
                 .as_ref()
                 .and_then(|_| levels.get(&r.author_root).cloned());
+            let replies = reply_counts
+                .get(&(r.author_root.clone(), r.doc_id.clone()))
+                .copied()
+                .filter(|n| *n > 0);
             let reply_to = reply_links.get(&(r.author_root.clone(), r.doc_id.clone())).map(
                 |(pa, pd)| {
                     let card = parent_cards.get(&(pa.clone(), pd.clone()));
@@ -830,6 +848,7 @@ async fn feed_handler(
                 suggested_level,
                 suggested_via: r.suggested_via,
                 suggested_via_name,
+                replies,
                 reply_to,
             }
         })

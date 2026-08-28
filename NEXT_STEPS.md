@@ -30,6 +30,11 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Make a whole bucket public in one fell swoop.
 * Rebroadcast replies — the comments arc, rulings pinned and sliced in [COMMENTS.md](COMMENTS.md) (2026-08-26)
 * Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - COMMENTS.md)
+* Envelope-kept reply evidence has no deletion road: a stranger's reply noted from its
+  COMMENT envelope outlives its deletion on the parent-author's node (and in their reply
+  count) until that node ever meets the replier's chain or fragment. Surfaced 2026-08-27
+  by the count acceptance; candidates: revalidate evidence on the fragment ALPN like a
+  fragment, or age it on the door's own beat.
 * Save to bucket
 * Node feed ("here's everything public hosted on this node")
 * Node-observed feed ("here's everything public that anybody is looking at")

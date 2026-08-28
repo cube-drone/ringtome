@@ -576,4 +576,29 @@ const base58 = async (host) => {
             "the reply's own image serves - a reply is an ordinary post, media and all"
         );
     });
+
+    it("a post says how many replies this node thinks exist (the foot line's number)", async () => {
+        // Honest-partial by construction: the count is the memo's TREE for a top-level
+        // post (root-keyed - nested replies count, which is why it can exceed the direct
+        // listing: on bea's node op's tree holds her rich reply AND cal's old nested one,
+        // remembered from its COMMENT envelope though cal since deleted it - a named
+        // residual, the evidence has no deletion road until cal's chain is met). The foot
+        // and the memo are one source: the number IS the root-keyed row count, verbatim.
+        const head = await (await bea(`api/id/${adaRoot}/posts/${op}`)).json();
+        const { rows } = await sql(
+            `SELECT COUNT(*) AS n FROM post_replies WHERE root_author = '${adaRoot}' AND root_doc = '${op}'`,
+            HOST_B
+        );
+        assert.ok(rows[0].n >= 1, "precondition: bea's node knows the thread");
+        assert.equal(
+            head.replies,
+            rows[0].n,
+            "the foot's number IS the memo's tree - one source, no contradiction"
+        );
+        const direct = await (await bea(`api/id/${adaRoot}/posts/${op}/replies`)).json();
+        assert.ok(
+            head.replies >= direct.replies.length,
+            "and never fewer than the direct children on screen"
+        );
+    });
 });

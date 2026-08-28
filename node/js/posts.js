@@ -66,6 +66,7 @@ export const PublicPosts = ({ root, posts, more, current }) => {
         title: p.title,
         format: p.format,
         published_ms: p.published_ms,
+        replies: p.replies,
         mine,
     }));
 

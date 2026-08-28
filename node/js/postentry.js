@@ -669,14 +669,19 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                               ${t('postentry.the-whole-thing', 'the whole thing')}
                           </button>`}
                       </div>`}`}
-            ${/* An untitled entry's foot line is just "link" (Curtis, 2026-08-26): it goes
-                to the post's own page now, so naming the author here restated the byline -
-                and the old "from someone's page" showed exactly what a copy without a
-                fetched name degrades to. */ ''}
+            ${/* The foot line: the reply count when this node knows of any (Curtis,
+                2026-08-27 - "how many replies we THINK exist", honest-partial like the
+                thread it summarizes), else - for an untitled post - just "link" (Curtis,
+                2026-08-26): it goes to the post's own page, where the thread assembles.
+                A titled post with no known replies keeps no foot at all, as before. */ ''}
             ${!open &&
-            !title &&
+            (!title || !!item.replies) &&
             html`<p class="feed-entry-foot">
-                <a href=${href}>${t('postentry.link', 'link')}</a>
+                <a href=${href}>${item.replies
+                    ? item.replies === 1
+                        ? t('postentry.1-reply', '1 reply')
+                        : t('postentry.n-replies', '{n} replies', { n: item.replies })
+                    : t('postentry.link', 'link')}</a>
             </p>`}
         </article>
     `;

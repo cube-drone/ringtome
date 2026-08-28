@@ -7220,3 +7220,21 @@ strings sweep extracts at regex level (the backslash drops, "write a replyu2026"
 catalog wins over the runtime fallback, and the sweep rewrites call sites FROM the
 catalog, so the mangling round-trips until both sides are fixed by hand. Real characters
 in source are the rule.
+
+## 2026-08-27 (cont. 5): the foot line learns to count
+
+Every surface that shows a post now says how many replies this node THINKS exist -
+honest-partial like the thread it summarizes. `replies::known_counts`: page-scoped, two
+indexed GROUP BYs merged by max - a top-level post counts its whole known TREE (the
+root-keyed index), a mid-thread reply its direct children (all it can claim without
+walking, since its descendants name the thread's top as root, not it) - absent when
+zero, so a post nobody answered renders byte-identical to before. Four surfaces dressed
+(feed items, the permalink, the shelf page, the profile's first page), one memo read per
+page each. In the UI the number lives where "link" lived: an untitled post's foot
+upgrades to "3 replies", a titled post GAINS a foot only when there is a number to say.
+The acceptance's first red was the semantics teaching the test: tree is not direct - on
+bea's node op counts 2 (her rich reply plus cal's old nested one) while the direct
+listing shows 1, and both are honest. The nested row also surfaced a residual now named
+in NEXT_STEPS: evidence kept from a COMMENT envelope has no deletion road, so a
+stranger's deleted reply lingers in the parent-author's count until their node ever
+meets the replier's chain.

@@ -206,6 +206,53 @@ pub async fn links_for(
         .collect())
 }
 
+/// How many replies this node THINKS each of these posts has - the honest-partial count
+/// for the foot line ("3 replies"), page-scoped like `links_for`. Two indexed GROUP BYs,
+/// merged by max: rows whose thread ROOT is the post count its whole known tree (a
+/// top-level post - `post_replies_by_root`), rows whose PARENT is the post count direct
+/// children (all a mid-thread reply can claim without walking, since its descendants'
+/// root is the thread's top, not it - undercounting nested grandchildren is the honest
+/// cheap answer, and the thread page shows the real shape). Max is exact for both cases:
+/// a root's direct children are a subset of its tree, and nobody's root is a mid-thread
+/// reply.
+pub async fn known_counts(
+    node_db: &Db,
+    posts: &[(String, String)],
+) -> Result<std::collections::HashMap<(String, String), i64>> {
+    let docs: Vec<String> = posts
+        .iter()
+        .map(|(_, d)| d)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|d| format!("'{d}'"))
+        .collect();
+    if docs.is_empty() {
+        return Ok(Default::default());
+    }
+    let mut out: std::collections::HashMap<(String, String), i64> = Default::default();
+    for (a_col, d_col) in [("root_author", "root_doc"), ("parent_author", "parent_doc")] {
+        let rows: Vec<(String, String, i64)> = node_db
+            .fetch_all(
+                &format!(
+                    "SELECT {a_col}, {d_col}, COUNT(*) FROM post_replies
+                     WHERE {d_col} IN ({}) GROUP BY {a_col}, {d_col}",
+                    docs.join(",")
+                ),
+                (),
+            )
+            .await
+            .context("counting known replies")?;
+        for (a, d, n) in rows {
+            if posts.contains(&(a.clone(), d.clone())) {
+                let e = out.entry((a, d)).or_insert(0);
+                *e = (*e).max(n);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The thread read: one page of a post's DIRECT replies, oldest first, keyset by
 /// (claimed_ms, reply_doc). The UI recurses per level, depth-capped - a thousand-reply
 /// tree is a read whose cost grows with history, so it pages or it does not ship.
@@ -679,5 +726,22 @@ mod tests {
         let (page, _) = replies_of(&db, &parent.0, &parent.1, None).await.unwrap();
         assert_eq!(page.len(), 1, "the header left the shelf; the row went with it");
         assert_eq!(page[0].author, "cc".repeat(32));
+    }
+
+    /// The foot-line count: a root sees its whole known tree, a mid-thread reply its
+    /// direct children, and the max-merge never double-counts.
+    #[tokio::test]
+    async fn known_counts_root_tree_and_direct_children() {
+        let db = crate::db::test_node_db().await;
+        let root = ("aa".repeat(32), "11".repeat(16));
+        let mid = ("bb".repeat(32), "22".repeat(16));
+        // bb answers aa's post; cc answers bb's reply (root copied from the thread top).
+        note(&db, &root, &root, &"bb".repeat(32), &"22".repeat(16), 1).await.unwrap();
+        note(&db, &mid, &root, &"cc".repeat(32), &"33".repeat(16), 2).await.unwrap();
+        let posts = vec![root.clone(), mid.clone(), ("dd".repeat(32), "44".repeat(16))];
+        let counts = known_counts(&db, &posts).await.unwrap();
+        assert_eq!(counts.get(&root), Some(&2), "the root counts its whole known tree");
+        assert_eq!(counts.get(&mid), Some(&1), "a mid-thread reply counts its direct children");
+        assert_eq!(counts.get(&posts[2]), None, "no replies, no entry - the foot stays quiet");
     }
 }
