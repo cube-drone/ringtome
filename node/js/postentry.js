@@ -123,7 +123,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
  */
 export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
     for (;;) {
-        // `extraBody` rides every round (a reply's `reply_to` - COMMENTS.md): the re-POST
+        // `extraBody` rides every round (a reply's `reply_to` - PROJECT_PLAN's Replies): the re-POST
         // is the idempotent "how's it going?", and the links must be there whichever
         // round finally lands the post.
         const resp = await api(`/api/identity/${root}/docs/${privDocId}/publish`, {
@@ -608,7 +608,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
             ${!open &&
             !!title &&
             html`<h2 class="feed-entry-title"><a href=${href}>${title}</a></h2>`}
-            ${/* The quoted context (COMMENTS.md slice 3): this post is a REPLY, and the
+            ${/* The quoted context (PROJECT_PLAN's Replies slice 3): this post is a REPLY, and the
                 mini-card names what it answers - which is the whole reason context-free
                 "@rando, I disagree" cannot happen here. Suppressed on the thread page
                 (quote=false), where nesting under the parent already says it. */ ''}

@@ -1381,7 +1381,7 @@ pub async fn followed_sharers(
 }
 
 /// What the reader's own journal knows about these posts - title and stamp, for dressing a
-/// reply row's quote-card with its PARENT (COMMENTS.md slice 3). Page-scoped: one indexed
+/// reply row's quote-card with its PARENT (PROJECT_PLAN's Replies slice 3). Page-scoped: one indexed
 /// read under the journal's leading `reader_root`, the `followed_sharers` shape. Best-effort
 /// by design - a parent the journal never met dresses as a bare "link", which is the
 /// mini-card's own degraded case.

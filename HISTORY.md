@@ -7238,3 +7238,16 @@ listing shows 1, and both are honest. The nested row also surfaced a residual no
 in NEXT_STEPS: evidence kept from a COMMENT envelope has no deletion road, so a
 stranger's deleted reply lingers in the parent-author's count until their node ever
 meets the replier's chain.
+
+## 2026-08-27 (cont. 6): COMMENTS.md folds into the plan
+
+The arc's working doc retires. PROJECT_PLAN's "Replies are rebroadcast plus a comment"
+section - written pre-arc as "second cut, deliberately after" with its questions open -
+now carries the settled design whole: the signed-header links, parent-plus-root pins,
+reply-IS-recommendation, ordinary-post status, honest-partial assembly with the
+cursor-paged memo, first-class comment notices on both roads, the author's thread door
+with curation-is-display, and the feed-never-assembles-a-tree invariant - each stated as
+a ruling, with the build history left to this file where it belongs. COMMENTS.md is
+deleted; the nineteen source files that cited it now point at PROJECT_PLAN's Replies,
+and NEXT_STEPS keeps only what is still owed (the mode register's UI control, the
+envelope-evidence deletion road).

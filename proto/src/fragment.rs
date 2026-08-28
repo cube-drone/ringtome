@@ -88,7 +88,7 @@ pub enum FragmentMessage {
     /// `cursor` is where the next ask resumes; a page shorter than the server's page size means
     /// the log is drained.
     Deaths { proofs: Vec<DeathProof>, cursor: u64 },
-    /// The author's thread door (COMMENTS.md slice 6): every reply anywhere announces
+    /// The author's thread door (PROJECT_PLAN's Replies slice 6): every reply anywhere announces
     /// itself to its parent's author - by sync or by envelope - so the author's node is
     /// structurally the best-informed about the thread, and serves a reply INDEX to anyone
     /// who asks. The death-cursor idiom verbatim: `since` is the SERVER's opaque monotonic
@@ -634,7 +634,7 @@ mod tests {
         SignedEntry::create(&entry, key).unwrap().bytes().to_vec()
     }
 
-    /// COMMENTS.md slice 6: a reply proof verifies offline against the exact parent asked
+    /// PROJECT_PLAN's Replies slice 6: a reply proof verifies offline against the exact parent asked
     /// about, yields the reply's identity from inside the signature, and refuses both the
     /// mis-parented claim and the header that is not a reply at all.
     #[test]

@@ -550,7 +550,7 @@ pub struct DocHeaderPlain {
     /// absent on the wire. Capped at [`Self::MAX_REFS`] - a document embedding more is not a
     /// document, it is a Taxonomy wearing one's clothes (the media-budget argument, counted).
     pub refs: Vec<[u8; 16]>,
-    /// This post replies to another (COMMENTS.md, 2026-08-26): the parent's author root and
+    /// This post replies to another (PROJECT_PLAN's Replies, 2026-08-26): the parent's author root and
     /// doc id, the author's own signed claim - no relay can mint, alter, or re-parent a
     /// reply. On the header rather than the rebroadcast pointer because the link must
     /// travel with every fragment and share, resolvable offline (the `refs` precedent),
@@ -1413,7 +1413,7 @@ mod tests {
     /// The realized reserved key: refs round-trip, empty stays absent on the wire (byte-equal
     /// to a pre-refs encoding), and the cap refuses at BOTH doors - an encoder cannot mint an
     /// over-count header and a decoder refuses one minted by other code.
-    /// COMMENTS.md slice 1: the thread links ride the header, round-trip, are wire-absent
+    /// PROJECT_PLAN's Replies slice 1: the thread links ride the header, round-trip, are wire-absent
     /// for a non-reply (pre-reply readers and entries agree byte for byte), and a root
     /// claim without a parent is not a shape this codec carries - either way round.
     #[test]

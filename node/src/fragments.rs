@@ -163,7 +163,7 @@ pub async fn remember(
         )
         .await
         .context("remembering a fragment")?;
-    // A reply fragment's link joins the replies memo (COMMENTS.md slice 2); the fragment
+    // A reply fragment's link joins the replies memo (PROJECT_PLAN's Replies slice 2); the fragment
     // lifecycle owns the row - `forget_one` is the other half.
     if let Err(e) = crate::replies::note_reply(node_db, author_root, verified).await {
         tracing::debug!(author = %author_root, error = ?e, "noting a reply fragment failed");
@@ -344,7 +344,7 @@ async fn cover_refs_inner(
 
 /// One held fragment's proof, as stored: the author's exact signed bytes and the packed
 /// delegation path - what the thread door serves for a reply that arrived as a share
-/// (COMMENTS.md slice 6).
+/// (PROJECT_PLAN's Replies slice 6).
 pub async fn held_proof(
     node_db: &crate::db::Db,
     author_root: &str,
@@ -1013,7 +1013,7 @@ pub async fn entombed(node_db: &Db, author_root: &str, doc_id: &[u8; 16]) -> Res
 
 /// One held fragment, if we have it.
 /// The held fragment's SIGNED header, decoded - the reply resolver's fragment rung
-/// (COMMENTS.md slice 1): replying to a post you met as a share needs its header's own
+/// (PROJECT_PLAN's Replies slice 1): replying to a post you met as a share needs its header's own
 /// thread claims, and the stored entry carries them verbatim.
 pub async fn held_header(
     node_db: &Db,

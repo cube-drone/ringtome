@@ -92,7 +92,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         }
         Some(FragmentMessage::WantDeaths { since }) => deaths_page(&state, since).await,
         Some(FragmentMessage::WantReplies { author, doc_id, since }) => {
-            // The author's thread door (COMMENTS.md slice 6): claims, never words, curated
+            // The author's thread door (PROJECT_PLAN's Replies slice 6): claims, never words, curated
             // by the author's own bit. A node that does not host this author answers an
             // empty page rather than an error - "nothing to say" is a fact, not a fault.
             let (proofs, cursor) = crate::replies::door_page(

@@ -216,7 +216,7 @@ export function leadOf(body, emphasis) {
 export const feedKey = (item) => `${item.author}:${item.doc_id}`;
 
 /**
- * The share/reply pair, collapsed at render (COMMENTS.md: a reply pins its parent, so a
+ * The share/reply pair, collapsed at render (PROJECT_PLAN's Replies: a reply pins its parent, so a
  * follower of the replier meets the thread twice - the parent journaled by the pin's share,
  * bylined via the replier, and the reply as the replier's own post). When BOTH are on
  * screen, the reply's quote-card already says everything the share row says, so the share

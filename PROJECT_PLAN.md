@@ -3517,27 +3517,51 @@ is delete-and-repost, which mints a new doc_id and loses the shares and journal 
 one. The record is the record - the old-internet posture, and the price of every node not carrying an
 ever-growing edit index.
 
-#### Replies are rebroadcast plus a comment (second cut, deliberately after)
+#### Replies are rebroadcast plus a comment (settled and built, 2026-08-26/27)
 
 A public reply carries the soft promise of rebroadcasting the thing it responds to - without it, "well,
 @rando, I disagree" is context-free noise to everyone but the two of you. So structurally a reply is a quote:
-**rebroadcast + your own comment doc, linked.** Your words are yours forever; the context is a replica that honors
-its author's control. If they delete the post you were dunking on, your reply stands over "in reply to a retracted
-post" - the hollow rendering composes, no new case. The socially correct outcome falls out: your words were always
-yours to keep, theirs never were.
+**rebroadcast + your own comment doc, linked.** Your words are yours forever, an ordinary public post in every
+mechanical respect (tombstones, the edit window, freezing, media, the full composer) - any new special case is a
+design smell. The context is a replica that honors its author's control: delete the post someone was dunking on
+and their reply stands over "in reply to a retracted post" - the hollow rendering composes, no new case.
 
-What a deep reply pins is **open, leaning parent-plus-root**: the immediate parent (what your comment is
-unintelligible without) and the thread's root, so readers can walk the tree up one hop or jump to the top. Never
-the whole ancestor path - a transitive promise would make a depth-N leaf owe N replicas, the deepest repliers
-paying the most to say the least. Bounded pinning keeps every reply O(1) regardless of depth, context degrades hop
-by hop with node death rather than all at once, and each parent's own legibility was its author's promise, already
-kept.
+The settled shape, from the arc's rulings (full build history in HISTORY.md, 2026-08-26/27):
 
-Deferred with it, named so they are not forgotten: **assembly** (nobody's chain holds "all replies to P" - it is a
-fold/memo problem fed by sync plus the comment notice-kind, and a thousand-reply tree is precisely a read whose
-cost grows with history, so it arrives with a cursor or it does not ship) and **scale** (a hot root is pinned by
-every direct replier; its retraction propagates to all of them on the cadence). None of it changes the rebroadcast
-design above, which is why **plain, unadorned rebroadcast ships first** - the vanilla feature, the first cut.
+- **The link lives on the comment's signed header** (`reply_to` + `thread_root`, the `refs` precedent): the
+  author's own claim, travelling with every fragment and share, verifiable offline, carried forward on
+  re-publication so an edit can never re-parent a conversation. The codec refuses a root without a parent.
+- **A reply pins parent-plus-root, never the ancestor path**: depth-N stays O(1) per reply, context degrades hop
+  by hop, and a hot root pinned by every direct replier is the named, accepted cost. The pin lives and dies with
+  the comment - deletion retracts both pointers, read off the reply's own held copy.
+- **A reply IS a recommendation**: the pins are ordinary rebroadcasts - journaling, bylines, crowd counts, media
+  covers and all. One pointer kind, one semantics, no flavor flag. If someone does not want a post in their
+  network, they should not comment on it.
+- **Replies are ordinary posts in followers' feeds**, worn with the parent as a quoted mini-card; the share/reply
+  pair collapses at render (lead-sharer-keyed, journal stays honest about both rows). **The feed never assembles
+  a tree** - the post's own permalink is where the visible tree forms, and the only place.
+- **Assembly is honest-partial**: nobody's chain holds "all replies to P". The node-level replies memo folds
+  every link it can verify - synced chains, fragments, comment-notice evidence - and every read of it is
+  cursor-paged ("replies known here"; a thread is a read whose cost grows with history, so it ships with a
+  cursor or not at all). Reply counts are the same memo's numbers: a root counts its known tree, a mid-thread
+  reply its direct children.
+- **Comment notices are first-class, never murmurs** (`notice_kind::COMMENT`, both roads): the envelope carries
+  the reply's own signed header as evidence, the derived twin folds from followed repliers' shelves, the two
+  roads dedupe on the follow-edge rule, and the parent pin goes quiet - one act, one notice. For a sender the
+  reader now pulls, the derived path owns a fact's ABSENCE too: stale delivered copies never resurface.
+- **The author's thread door**: the author is structurally the best-informed node about their own post's thread,
+  and serves a reply INDEX on the fragment ALPN (`WantReplies`/`Replies`, the death-cursor idiom) - the
+  repliers' own signed evidence, claims never words; the asker verifies each proof against the exact parent
+  asked, notes the claims, and fetches the words through ordinary `Want` machinery. Visiting the permalink IS
+  the demand (budget-capped SWR behind the render, a refresh affordance that re-reads the index from zero,
+  because a cursor resumed can never see a withheld row approved later).
+- **Curation is the same bit as display**: trusted-tier (followed) repliers serve automatically; an anonymous
+  reply waits for the author's "approve comment" nod; a per-persona register flips the default to auto-share-all
+  or to suppress-all (the "no comments" switch, absolute - past approvals included). Honest limit, stated:
+  suppression mutes the author's amplification, never the reply's existence on its own author's chain.
+
+Named residual (NEXT_STEPS): envelope-kept reply evidence has no deletion road until the keeping node ever meets
+the replier's chain or fragment.
 
 ---
 

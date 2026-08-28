@@ -29,7 +29,7 @@ pub const KIND_PUBLIC_EDGE: &str = "public-edge";
 pub const KIND_REBROADCAST: &str = "rebroadcast";
 
 /// "Someone you follow replied to your post." The derived twin of
-/// `deliver::notice_kind::COMMENT` (COMMENTS.md slice 4) - first-class by ruling, tiered by
+/// `deliver::notice_kind::COMMENT` (PROJECT_PLAN's Replies slice 4) - first-class by ruling, tiered by
 /// sender like the public edge, and the row's doc is the PARENT: the reader's own post,
 /// where the thread assembles and the bell's mini-card points.
 pub const KIND_COMMENT: &str = "comment";

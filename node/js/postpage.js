@@ -95,7 +95,7 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                 )}
             </p>`}
             ${/* The parent, when this post is itself a reply: the conversation it belongs
-                to, one hop up (COMMENTS.md slice 3 - "parent context above, replies
+                to, one hop up (PROJECT_PLAN's Replies slice 3 - "parent context above, replies
                 below"). The card degrades to a bare "link" when the parent's header is not
                 readable here - the hollow case, honestly. */ ''}
             ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
@@ -161,7 +161,7 @@ const ParentContext = ({ link }) => {
     </p>`;
 };
 
-/// The author's curation surface (COMMENTS.md slice 6): strangers' replies this node holds
+/// The author's curation surface (PROJECT_PLAN's Replies slice 6): strangers' replies this node holds
 /// for the nod. Curation is the same bit as display - "approve comment" makes the reply
 /// join the visible conversation here AND start being served from the author's door;
 /// "keep quiet" suppresses it. The honest limit, on the surface that exercises it:
@@ -236,7 +236,7 @@ const HeldReplyBody = ({ author, doc }) => {
     return html`<${PostEntry} key=${post.doc_id} item=${item} current=${null} editing=${null} quote=${false} />`;
 };
 
-/// The reply box (COMMENTS.md slice 3; grown to the FULL authoring surface 2026-08-27):
+/// The reply box (PROJECT_PLAN's Replies slice 3; grown to the FULL authoring surface 2026-08-27):
 /// your words under the post they answer, in the same editor every other surface uses -
 /// marquee, media embeds, the bake and all - because a reply is an ordinary post and
 /// deserves the ordinary pen. The box opens INERT ("write a reply") and the first click
@@ -318,7 +318,7 @@ const ReplyBox = ({ current, parent, onReplied }) => {
 };
 
 /// The visible tree below one post: this node's replies memo, one level per fetch, the
-/// UI recursing with a depth cap (COMMENTS.md slice 2 - "replies known here", honest and
+/// UI recursing with a depth cap (PROJECT_PLAN's Replies slice 2 - "replies known here", honest and
 /// partial by ruling; slice 6's author door widens the well, not this shape). The feed
 /// never assembles a tree - this page is the only place one forms.
 const THREAD_DEPTH_CAP = 6;
@@ -407,7 +407,7 @@ const ThreadReply = ({ author, doc, current, depth }) => {
         // The memo knows the claim; the shelf cannot answer for it right now - deleted
         // between fold and render, or a door-learned reply whose words are still in
         // flight. The hollow row is the honest render: the thread's shape stands, the
-        // words degrade (COMMENTS.md - "in reply to a retracted post" composes).
+        // words degrade (PROJECT_PLAN's Replies - "in reply to a retracted post" composes).
         return html`<div class="thread-reply">
             <p class="thread-hollow">
                 ${t('postpage.a-reply-that-isnt-readable', "a reply that isn't readable here - deleted, or its words still on their way")}

@@ -52,7 +52,7 @@ const sentence = (r) => {
     // share notifications in plain sight (2026-08-25: the row rendered, wearing the wrong
     // words). Derived rows name the document; a delivered murmur cannot (the pool
     // collapses per sender), and the words stay honest about that difference.
-    // A comment is conversation, first-class by ruling (COMMENTS.md slice 4): the verb,
+    // A comment is conversation, first-class by ruling (PROJECT_PLAN's Replies slice 4): the verb,
     // and the mini-card - YOUR post, whose permalink is where the thread assembles - as
     // the object. Same sentence shape as the share, different weight by tier.
     if (r.kind === 'comment') {

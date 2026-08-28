@@ -1,5 +1,5 @@
 /*
-    The comments arc, slice 1 (COMMENTS.md): a reply is rebroadcast plus your own words.
+    The comments arc, slice 1 (PROJECT_PLAN's Replies): a reply is rebroadcast plus your own words.
 
     The wire and the mint, end to end: publishing with `reply_to` stamps the thread links
     onto the SIGNED header (parent, and the root copied from the parent's own claim -

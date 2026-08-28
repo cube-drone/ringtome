@@ -1,4 +1,4 @@
-//! The replies memo: "replies known here", per post (COMMENTS.md slice 2).
+//! The replies memo: "replies known here", per post (PROJECT_PLAN's Replies slice 2).
 //!
 //! Nobody's chain holds "all replies to P" - assembly is honest-partial by ruling. This
 //! node-level table folds the reply links it can VERIFY from things it already holds: the
@@ -168,7 +168,7 @@ async fn refresh_inner(state: &AppState, author_root: &str) -> Result<()> {
 }
 
 /// Which of these posts are replies, and to what: the feed page's quote-card read
-/// (COMMENTS.md slice 3). Page-scoped by construction - one IN query over the page's doc
+/// (PROJECT_PLAN's Replies slice 3). Page-scoped by construction - one IN query over the page's doc
 /// ids (`post_replies_by_reply`), pairs re-checked in Rust like `fanout`'s share read, so
 /// the query shape stays portable. A post with no row here is not a reply, honestly:
 /// the memo holds every reply this node journals a feed row FROM (both arrive by the same
@@ -300,7 +300,7 @@ pub async fn replies_of(
 }
 
 // ---------------------------------------------------------------------------------------------
-// The author's thread door (COMMENTS.md slice 6). The author is structurally the
+// The author's thread door (PROJECT_PLAN's Replies slice 6). The author is structurally the
 // best-informed node about their own post's thread - every reply anywhere announces itself
 // to them, by sync or by envelope - so their node serves a reply INDEX to anyone who asks:
 // the repliers' own signed evidence, claims never words, curated by the author's own bit.

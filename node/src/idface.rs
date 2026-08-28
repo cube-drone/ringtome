@@ -1170,7 +1170,7 @@ pub async fn id_post(
 }
 
 /// GET `/api/id/{root}/posts/{doc}/replies` - one page of the post's DIRECT replies as
-/// this node knows them (COMMENTS.md slice 2: assembly is honest-partial, and the copy
+/// this node knows them (PROJECT_PLAN's Replies slice 2: assembly is honest-partial, and the copy
 /// says "replies known here"). Same shelf rule as the post itself; keyset by
 /// (claimed_ms, reply_doc), oldest first.
 pub async fn id_post_replies(
@@ -1197,7 +1197,7 @@ pub async fn id_post_replies(
         .await
         .map_err(AppError::Internal)?;
 
-    // Curation is the same bit as display (COMMENTS.md slice 6): when the post's author
+    // Curation is the same bit as display (PROJECT_PLAN's Replies slice 6): when the post's author
     // lives HERE, this public read speaks with the author's own voice, so it holds back
     // exactly what the door would - a stranger's reply waits for the nod, a suppressed one
     // stays quiet. The author's own view (session-owned, routes.rs) sees everything,

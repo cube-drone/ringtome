@@ -98,7 +98,7 @@ pub mod notice_kind {
     /// how the person whose work was shared finds out when they do not follow the sharer.
     pub const REBROADCAST: u32 = 2;
     /// "I replied to your post" - evidence is the sender's own signed DOC HEADER whose
-    /// `reply_to` names the recipient as the parent's author (COMMENTS.md slice 4). The
+    /// `reply_to` names the recipient as the parent's author (PROJECT_PLAN's Replies slice 4). The
     /// claim's `doc_id` is the PARENT - the recipient's own post, which is what the bell's
     /// mini-card shows and where the thread assembles. First-class by ruling: a comment on
     /// your post is conversation, so the classifier tiers it by sender like a public edge,
@@ -993,7 +993,7 @@ mod tests {
         SignedEnvelope::create(&envelope, leaf).unwrap()
     }
 
-    /// COMMENTS.md slice 4: the comment notice's evidence is the reply's own signed header,
+    /// PROJECT_PLAN's Replies slice 4: the comment notice's evidence is the reply's own signed header,
     /// and the claim's doc is the PARENT - the recipient's post, where the thread lives.
     #[test]
     fn a_comment_notice_verifies_and_names_the_parent() {

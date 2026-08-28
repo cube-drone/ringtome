@@ -241,7 +241,7 @@ pub async fn accept(
     catch_up(&db, &keys).await?;
 
     // A COMMENT's evidence is the reply's own signed header - keep it servable and note the
-    // claim (COMMENTS.md slice 6): this is how a stranger's reply enters the author's
+    // claim (PROJECT_PLAN's Replies slice 6): this is how a stranger's reply enters the author's
     // thread door and their own thread view, held for the nod. Best-effort beside the
     // transcription: the notice is on the chain either way.
     if claim.kind == ringtome_proto::deliver::notice_kind::COMMENT {
@@ -570,7 +570,7 @@ mod tests {
         );
     }
 
-    /// A comment is conversation, never a murmur (COMMENTS.md ruling 5): it tiers by
+    /// A comment is conversation, never a murmur (PROJECT_PLAN's Replies ruling 5): it tiers by
     /// sender exactly as a public edge does - trusted when any relationship is recorded,
     /// the stranger pool otherwise.
     #[test]

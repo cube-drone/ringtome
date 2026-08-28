@@ -277,7 +277,7 @@ const ACTIONS = [
         },
     },
     {
-        // A reply is rebroadcast plus your own words (COMMENTS.md): answer something the
+        // A reply is rebroadcast plus your own words (PROJECT_PLAN's Replies): answer something the
         // feed brought, the way the permalink's reply box does - the same three acts, so
         // the seeded network exercises the pins, the comment notices, the quote-cards, and
         // the thread pages all at once. Biased toward posts that are THEMSELVES replies

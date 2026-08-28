@@ -28,8 +28,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Search my feed
 * Posts can be annotated with tags, emoji, description, buckets (triggering a notification)
 * Make a whole bucket public in one fell swoop.
-* Rebroadcast replies — the comments arc, rulings pinned and sliced in [COMMENTS.md](COMMENTS.md) (2026-08-26)
-* Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - COMMENTS.md)
+* Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - PROJECT_PLAN's Replies)
 * Envelope-kept reply evidence has no deletion road: a stranger's reply noted from its
   COMMENT envelope outlives its deletion on the parent-author's node (and in their reply
   count) until that node ever meets the replier's chain or fragment. Surfaced 2026-08-27

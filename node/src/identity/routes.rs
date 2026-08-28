@@ -640,7 +640,7 @@ struct FeedItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     replies: Option<i64>,
     /// This post is a REPLY, and this is its parent - the quote-card's whole payload
-    /// (COMMENTS.md slice 3). From the node's replies memo, so it is exactly as partial as
+    /// (PROJECT_PLAN's Replies slice 3). From the node's replies memo, so it is exactly as partial as
     /// the thread view: a reply whose link this node never verified renders as an ordinary
     /// post, honestly. Absent on every non-reply so old clients render unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1148,7 +1148,7 @@ struct PublishResponse {
 
 /// Publish a note: mint (or extend) its public post. The deliberate act the whole membrane
 /// rests on - there is no flag to set, only this call to make.
-/// A reply's target, as the publish request names it (COMMENTS.md slice 1).
+/// A reply's target, as the publish request names it (PROJECT_PLAN's Replies slice 1).
 #[derive(serde::Deserialize, Default)]
 struct PublishRequest {
     reply_to: Option<ReplyRef>,
@@ -1220,7 +1220,7 @@ async fn publish_handler(
     // is 202 with the modal's item list - re-POST to check again (idempotent).
     match crate::record::bake::publish(&state, &data, &root, &doc_id, reply).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
-            // The pins: a reply IS a recommendation (COMMENTS.md, Curtis's ruling) - the
+            // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
             // parent and the thread root are shared outright, ordinary pointers, crowd
             // counts and all. Deduped when the parent is the root; your OWN posts pin
             // nothing (they are already yours to serve, and a persona does not rebroadcast
@@ -1243,7 +1243,7 @@ async fn publish_handler(
                             "a reply's pin did not mint; the reply stands, share by hand");
                     }
                 }
-                // The comment notice (COMMENTS.md slice 4): first-class, to the PARENT's
+                // The comment notice (PROJECT_PLAN's Replies slice 4): first-class, to the PARENT's
                 // author, carrying the reply's own signed header as evidence - the claim
                 // verify_claim checks against the recipient's name. Best-effort like the
                 // pins: the reply is on the chain either way. The follow-edge gate at the
@@ -1313,7 +1313,7 @@ async fn publish_handler(
 }
 
 /// GET `/api/identity/{root}/posts/{post_id}/replies` - the AUTHOR's view of their own
-/// post's thread index (COMMENTS.md slice 6): every reply this node knows, including the
+/// post's thread index (PROJECT_PLAN's Replies slice 6): every reply this node knows, including the
 /// strangers' held for the nod, each row carrying `served` - the curation bit as it stands.
 /// The public read (idface) shows only what `served` is true of; this surface exists so the
 /// author can see what is waiting and nod it in (a `comments` register PUT, which drains
@@ -1390,7 +1390,7 @@ async fn unpublish_handler(
             "that post isn't on your public shelf - it may already be taken down"
         )));
     }
-    // The pin lives and dies with the comment (COMMENTS.md): read the post's own thread
+    // The pin lives and dies with the comment (PROJECT_PLAN's Replies): read the post's own thread
     // links BEFORE the tombstone lands, so a deleted reply retracts the pointers it
     // minted. Retraction is the silent pointer write, exactly like un-sharing by hand -
     // and it IS un-sharing: one pointer per (author, doc), so a manual share of the same
@@ -1485,7 +1485,7 @@ struct RebroadcastItem {
 /// share, which is the whole of *Pointer Plus Pinned Replica* and the reason a fourth hop exists.
 /// One share, end to end: resolve the held version, append the pointer, tell the author,
 /// journal to the sharer's rebroadcast-followers, knock eagerly. The rebroadcast POST's
-/// core and the reply pin's (COMMENTS.md: a reply IS a recommendation, so a pin is this
+/// core and the reply pin's (PROJECT_PLAN's Replies: a reply IS a recommendation, so a pin is this
 /// exact act - one pointer kind, one semantics).
 async fn share_one(
     state: &AppState,
@@ -1505,7 +1505,7 @@ async fn share_one(
         })?;
     let entry = data.rebroadcasts().share(&author, &doc_id, Some(version)).await?;
     let author_hex = hex::encode(author);
-    // `announce: false` is the reply's PARENT pin (COMMENTS.md slice 4): the COMMENT notice
+    // `announce: false` is the reply's PARENT pin (PROJECT_PLAN's Replies slice 4): the COMMENT notice
     // minted beside it says everything "shared your post" would and more, so the murmur
     // stays unminted rather than arriving as the same act said twice. The share itself is
     // identical either way - only the envelope differs.

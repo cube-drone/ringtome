@@ -495,7 +495,7 @@ pub async fn save_version(
         preview_hash: save.media.as_ref().and_then(|m| m.preview_hash),
         refs: save.refs,
         genesis_ms: None, // the edit window is a PUBLIC posture; private notes edit forever
-        reply_to: None, // replies are public speech; the link enters at publish (COMMENTS.md)
+        reply_to: None, // replies are public speech; the link enters at publish (PROJECT_PLAN's Replies)
         thread_root: None,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
@@ -652,7 +652,7 @@ pub async fn save_public_media(
 /// current head exactly like an ordinary save.
 /// One end of a thread link: (author root, doc id) - the shape the signed header carries.
 pub type ThreadTarget = ([u8; 32], [u8; 16]);
-/// A reply's two links, resolved: (parent, thread root) - COMMENTS.md's parent-plus-root.
+/// A reply's two links, resolved: (parent, thread root) - PROJECT_PLAN's Replies's parent-plus-root.
 pub type ReplyLinks = (ThreadTarget, ThreadTarget);
 
 pub struct PublicText<'a> {
@@ -669,7 +669,7 @@ pub struct PublicText<'a> {
     pub refs: Vec<[u8; 16]>,
     /// A reply's links, FIRST publication only: (parent, thread root), each (author root,
     /// doc id) - resolved by the publish path from the parent's own held header
-    /// (COMMENTS.md). Ignored on re-publication, where the previous header's claims carry
+    /// (PROJECT_PLAN's Replies). Ignored on re-publication, where the previous header's claims carry
     /// forward like genesis: an edit must not re-parent a conversation.
     pub reply: Option<ReplyLinks>,
 }
@@ -710,7 +710,7 @@ pub async fn save_public_text(
                 None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
             };
             // The reply link is CARRIED like genesis, never re-supplied: what a post replies
-            // to is a fact of its first publication (COMMENTS.md), and a re-publication that
+            // to is a fact of its first publication (PROJECT_PLAN's Replies), and a re-publication that
             // could re-parent would let an edit move a reply under a different conversation.
             (id, parents, genesis, carried_reply, carried_root)
         }
@@ -764,7 +764,7 @@ pub async fn save_public_text(
 /// no such thing as a private fact here, by construction.
 pub struct PublicDoc {
     /// The thread links, hex (author root, doc id) - straight off the folded header
-    /// (COMMENTS.md slice 1). `None` = not a reply.
+    /// (PROJECT_PLAN's Replies slice 1). `None` = not a reply.
     pub reply_to: Option<(String, String)>,
     pub thread_root: Option<(String, String)>,
     pub doc_id: [u8; 16],
@@ -1716,7 +1716,7 @@ type VersionRow = (
     i64,             // timestamp_ms
     i64,             // seq (folded fact; the DAG doesn't use it)
     String,          // author_pubkey
-    Option<String>,  // reply_to_root (hex; the thread links, COMMENTS.md slice 1)
+    Option<String>,  // reply_to_root (hex; the thread links, PROJECT_PLAN's Replies slice 1)
     Option<String>,  // reply_to_doc
     Option<String>,  // thread_root_root
     Option<String>,  // thread_root_doc
