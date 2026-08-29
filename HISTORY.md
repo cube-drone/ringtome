@@ -7390,3 +7390,17 @@ that case, on both roads: `share_one`'s `announce` is "root author differs from 
 author", and the derived shares leg's suppression set carries the root beside the parent
 when their authors match. Acceptance: bea answers ada's self-reply, and ada hears one
 comment and no share.
+
+## 2026-08-29 (cont.): the tag that never confirmed was a shadowed t()
+
+Curtis, from the editor: a new tag never "confirmed", and the tags-date-description
+panel could not be dismissed. One bug wearing two faces: in the tag list,
+`shownTags.map((t) => ...)` named its parameter `t`, shadowing the i18n `t()` - so the
+remove button's `t('doc.annotations.remove-tag', ...)` called the TAG STRING as a
+function, and the whole panel threw the moment a tag existed. The optimistic add
+rendered a tag, the render threw, and every re-render after (the toggle's included)
+threw with it - hence "never confirms" and "cannot dismiss". The strings migration
+wrapped that literal without seeing the shadow; the parameter is `tag` now. And since
+click-out is what a panel like this owes, it has it: a mousedown outside the panel and
+its chip closes it (mousedown, so the description's blur-flush still fires on the way
+out); the chip keeps toggling.

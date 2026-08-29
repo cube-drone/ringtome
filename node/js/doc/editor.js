@@ -90,7 +90,23 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
     } = useDocSession(root, docId, { onDeleted });
 
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
-    const [showMeta, setShowMeta] = useState(false); // the tags/date/description dropdown
+    const [showMeta, setShowMeta] = useState(false);
+    // Click-out dismisses the panel (Curtis, 2026-08-29): a mousedown anywhere outside
+    // the panel and its chip closes it - the chip's own click keeps toggling. Mousedown,
+    // not click, so the description's blur-flush (its debounce's last chance) still
+    // fires on the way out.
+    const metaChipRef = useRef(null);
+    const metaPanelRef = useRef(null);
+    useEffect(() => {
+        if (!showMeta) return undefined;
+        const onDown = (e) => {
+            const inChip = metaChipRef.current && metaChipRef.current.contains(e.target);
+            const inPanel = metaPanelRef.current && metaPanelRef.current.contains(e.target);
+            if (!inChip && !inPanel) setShowMeta(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [showMeta]); // the tags/date/description dropdown
     // The copy-a-cozy-link chip: computes this doc's derived address (doc/address.js) and puts it on
     // the clipboard - the crosslink you paste into another document.
     const [linkCopied, setLinkCopied] = useState(false);
@@ -418,12 +434,14 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
                             ? html`<${Icons.warn} />`
                             : html`<span class="status-spin"><${Icons.spinner} /></span>`}
                     </${Chip}>
-                    <${Chip}
-                        icon=${Icons.tag}
-                        on=${showMeta}
-                        title="tags, date & description"
-                        onClick=${() => setShowMeta((v) => !v)}
-                    />
+                    <span class="editor-meta-anchor" ref=${metaChipRef}>
+                        <${Chip}
+                            icon=${Icons.tag}
+                            on=${showMeta}
+                            title="tags, date & description"
+                            onClick=${() => setShowMeta((v) => !v)}
+                        />
+                    </span>
                     ${feat.pin &&
                     html`<${Chip}
                         icon=${Icons.pin}
@@ -436,7 +454,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
                     <${NavChips} nav=${nav} />
                 </span>
                 ${showMeta &&
-                html`<div class="editor-meta">
+                html`<div class="editor-meta" ref=${metaPanelRef}>
                     <${Annotations} root=${root} docId=${docId} features=${feat} />
                 </div>`}
             </header>

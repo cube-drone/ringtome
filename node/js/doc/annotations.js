@@ -158,13 +158,18 @@ export const Annotations = ({ root, docId, features }) => {
                 />
             </div>`}
             <div class="annot-tags">
+                ${/* `tag`, never `t`: the map's parameter once shadowed the i18n t(), so the
+                    remove button's title called the TAG STRING as a function and the whole
+                    panel threw the moment a tag existed - a new tag never "confirmed"
+                    (Curtis, 2026-08-29; the strings migration wrapped the literal without
+                    seeing the shadow). */ ''}
                 ${shownTags.map(
-                    (t) => html`<span class="annot-tag" key=${t}>
-                        ${t}
+                    (tag) => html`<span class="annot-tag" key=${tag}>
+                        ${tag}
                         <button
                             class="annot-tag-x"
                             title=${t('doc.annotations.remove-tag', 'remove tag')}
-                            onClick=${() => removeTag(t)}
+                            onClick=${() => removeTag(tag)}
                         >×</button>
                     </span>`
                 )}

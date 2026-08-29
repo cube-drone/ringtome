@@ -10,6 +10,12 @@
 
 /* The metadata dropdown: tags, date & description, tucked out of the way and dropped over the
    editor on demand so they stop eating writing space. */
+/* The tag chip's wrapper exists only so click-out dismissal can ask "was that the chip?"
+   - invisible to layout, so the chips row keeps its spacing. */
+.editor-meta-anchor {
+    display: contents;
+}
+
 .editor-meta {
     position: absolute;
     top: 100%;
