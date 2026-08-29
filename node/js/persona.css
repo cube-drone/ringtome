@@ -909,6 +909,25 @@
     color: var(--sea);
 }
 
+/* Discarding an unposted draft: the edit chip's shape, warming toward coral on hover -
+   a small destructive act, dressed as one. */
+.feed-discard {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+    margin-left: 0.4rem;
+    cursor: pointer;
+}
+
+.feed-discard:hover {
+    border-color: var(--coral);
+    color: var(--coral);
+}
+
 .feed-item-body {
     margin-top: 0.4rem;
     font-size: 0.95rem;

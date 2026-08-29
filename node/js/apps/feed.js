@@ -75,8 +75,7 @@ const EMPTY = new Map();
 // hold the same words until you edit again, and after that the honest thing to show in your
 // own app is the draft you are actually working on. The link below says where the public one
 // lives.
-const PostBody = ({ root, docId }) => {
-    const { doc } = useDocDetail(root, docId);
+const PostBody = ({ doc }) => {
     const tlProfile = useTurbolinks(doc?.body ?? '', doc?.format);
     if (!doc) return html`<p class="null-sub">…</p>`;
     if (doc.body == null) {
@@ -106,12 +105,39 @@ const PostBody = ({ root, docId }) => {
 const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
     const [open, setOpen] = useState(false);
     const state = publishedState(row, seal);
+    // The body read, hoisted from PostBody so the stack can judge emptiness (Curtis,
+    // 2026-08-28): an unposted draft with no title and no words is a blank page - most
+    // often a reply box opened and walked away from - and listing it is noise. Hidden
+    // only once the body has ARRIVED and is known empty; while it loads, the row shows as
+    // before, so nothing flashes. The document itself stays (the GC in NEXT_STEPS is the
+    // road for reclaiming it); this is a display judgment, not a deletion.
+    const { doc } = useDocDetail(root, row.doc_id);
+    const blank =
+        !state.published &&
+        !open &&
+        !(row.title || '').trim() &&
+        doc &&
+        typeof doc.body === 'string' &&
+        !doc.body.trim();
+    // Discard an unposted draft (Curtis, 2026-08-28: the stack had no way to delete one).
+    // The same reversible tombstone the editor's own delete chip mints - the doc leaves
+    // every list, its history stays - behind the app's native confirm idiom. The mirror's
+    // live rows drop it from the stack on their own; nothing here needs to.
+    const discard = async () => {
+        if (!confirm(t('apps.feed.discard-this-draft', 'Discard this draft? It leaves the list right away.'))) return;
+        try {
+            await api(`/api/identity/${root}/docs/${row.doc_id}`, { method: 'DELETE' });
+        } catch (e) {
+            alert(t('apps.feed.couldnt-discard-it', "couldn't discard it: {message}", { message: e.message }));
+        }
+    };
     const when = new Date(createdMs(row)).toLocaleString(undefined, {
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
     });
+    if (blank) return null;
     return html`
         <article class=${state.locked ? 'feed-item feed-item-posted' : 'feed-item'}>
             <header class="feed-item-head">
@@ -126,10 +152,16 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
                           }}
                       />`
                     : html`<button
-                          class="feed-edit"
-                          title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
-                          onClick=${() => setOpen(true)}
-                      >${t('apps.feed.edit', 'edit')}</button>`)}
+                              class="feed-edit"
+                              title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
+                              onClick=${() => setOpen(true)}
+                          >${t('apps.feed.edit', 'edit')}</button>
+                          ${!state.published &&
+                          html`<button
+                              class="feed-discard"
+                              title=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
+                              onClick=${discard}
+                          >${t('apps.feed.discard', 'discard')}</button>`}`)}
             </header>
             ${/* No title, no heading. A post that was never given one is untitled in the
                 ordinary sense of the word - the app inventing the LABEL "untitled" and
@@ -145,8 +177,9 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
                           setOpen(false); // said again, and sealed again
                       }}
                       posting=${posting}
+                      onDeleted=${() => setOpen(false)}
                   />`
-                : html`<${PostBody} root=${root} docId=${row.doc_id} />`}
+                : html`<${PostBody} doc=${doc} />`}
             ${state.published &&
             html`<p class="feed-item-link">
                 <a href=${`/id/${root}/docs/${state.postId}/body`}>${t('apps.feed.the-public-copy', 'the public copy')}</a>

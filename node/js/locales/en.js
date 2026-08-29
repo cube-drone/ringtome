@@ -10,13 +10,17 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 494 phrases across 44 files.
+// 498 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
+    'apps.feed.discard-this-draft': 'Discard this draft? It leaves the list right away.',
+    'apps.feed.couldnt-discard-it': "couldn't discard it: {message}",
     'apps.feed.editing': 'editing',
     'apps.feed.open-this-for-editing': 'open this for editing',
     'apps.feed.edit': 'edit',
+    'apps.feed.discard-this-draft-title': 'discard this draft',
+    'apps.feed.discard': 'discard',
     'apps.feed.the-public-copy': 'the public copy',
     'apps.feed.1-update': '1 update',
     'apps.feed.refresh': '· refresh',

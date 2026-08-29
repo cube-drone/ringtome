@@ -7321,3 +7321,18 @@ author's reply on their own post is AUTHORING, not commenting - never held, neve
 suppressible, and not silenced by the no-comments switch, which is about other people's
 words. Acceptance: the self-reply speaks at once, the held list never names it, and it
 survives mode `none`.
+
+## 2026-08-28 (cont. 2): drafts can be discarded
+
+Curtis, from the feed: the "older drafts" stack offered edit and nothing else. The editor
+already mints the reversible tombstone behind its delete chip (`useDocSession::remove`),
+but the stack's composer never passed `onDeleted`, and a closed draft had no button at
+all. Now: a "discard" on every unposted draft in the stack (native confirm, the app's
+idiom - the doc leaves every list, its history stays; the mirror's live rows drop it on
+their own), and `onDeleted` into the stack's open editor so its delete chip appears there
+too. Posted items keep no discard - taking a post down is `unpublish`'s gesture, not
+this one's. And a blank draft - unposted, untitled, body known empty - no longer shows in
+the stack at all (Curtis's follow-up): the body read PostBody already made is hoisted
+into the item, so the judgment costs no extra fetch and never flashes while the body
+loads. The usual source is a reply box opened and walked away from; the document stays,
+for the GC road to reclaim.
