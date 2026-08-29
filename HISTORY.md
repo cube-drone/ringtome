@@ -7336,3 +7336,20 @@ the stack at all (Curtis's follow-up): the body read PostBody already made is ho
 into the item, so the judgment costs no extra fetch and never flashes while the body
 loads. The usual source is a reply box opened and walked away from; the document stays,
 for the GC road to reclaim.
+
+## 2026-08-28 (cont. 3): the reply box follows the conversation
+
+Curtis, from the post view: "write a reply" sat above the replies. Moved below them - you
+read what was said, then say something, the transcript's own order and the same reason
+the thread reads oldest-first. The author's held-for-the-nod section stays at the top,
+where it is a call to act before reading, not after.
+
+## 2026-08-28 (cont. 4): the approved reply was only waiting on a refetch
+
+Curtis, from the post view: approving a stranger's reply made it vanish until a reload -
+"dooming that comment to the shadow dimension". The bit was fine (the nod's acceptance
+reads the public thread after approving, and it is green); the seam was the page: the
+held list refetches itself after the nod and correctly drops the row, but the thread
+below never looked again, so the reply appeared nowhere. The nod now bumps the thread's
+refresh key - the same lever as the refresh button - and the approved reply moves from
+the held list into the conversation in one motion.

@@ -112,13 +112,11 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                         onClick=${() => setRefreshKey((k) => k + 1)}
                     >${t('postpage.refresh', 'refresh')}</button>`}
                 </h2>
-                ${item.mine && html`<${HeldReplies} root=${root} doc=${doc} />`}
-                ${current &&
-                current.root &&
-                html`<${ReplyBox}
-                    current=${current}
-                    parent=${{ author: root, doc_id: doc }}
-                    onReplied=${(mint) => setSaid((have) => [...have, mint])}
+                ${item.mine &&
+                html`<${HeldReplies}
+                    root=${root}
+                    doc=${doc}
+                    onNod=${() => setRefreshKey((k) => k + 1)}
                 />`}
                 <${Thread}
                     author=${root}
@@ -128,6 +126,16 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                     extra=${said}
                     refreshKey=${refreshKey}
                 />
+                ${/* The reply box comes AFTER the conversation (Curtis, 2026-08-28): you
+                    read what was said, then say something - the transcript's own order,
+                    the same reason the thread reads oldest-first. */ ''}
+                ${current &&
+                current.root &&
+                html`<${ReplyBox}
+                    current=${current}
+                    parent=${{ author: root, doc_id: doc }}
+                    onReplied=${(mint) => setSaid((have) => [...have, mint])}
+                />`}
             </section>`}
         </div>
     `;
@@ -167,7 +175,7 @@ const ParentContext = ({ link }) => {
 /// "keep quiet" suppresses it. The honest limit, on the surface that exercises it:
 /// suppression mutes YOUR amplification, never the reply's existence on its own author's
 /// chain.
-const HeldReplies = ({ root, doc }) => {
+const HeldReplies = ({ root, doc, onNod }) => {
     const [rows, setRows] = useState(null);
     const [gen, setGen] = useState(0);
     useEffect(() => {
@@ -185,6 +193,11 @@ const HeldReplies = ({ root, doc }) => {
             body: JSON.stringify({ value: verdict }),
         }).catch(() => {});
         setGen((g) => g + 1);
+        // The PUT's 200 means the fold agreed and the door speaks the new bit - so the
+        // thread below must look again NOW, or an approved reply leaves this list and
+        // appears nowhere until a reload (Curtis, 2026-08-28: "dooming that comment to
+        // the shadow dimension" - it was only ever waiting on a refetch).
+        if (onNod) onNod();
     };
     if (!rows || !rows.length) return null;
     return html`<div class="held-replies">
