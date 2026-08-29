@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 498 phrases across 44 files.
+// 501 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -376,6 +376,7 @@ export default {
     'postentry.vouches-for-this-author': 'vouches for this author',
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.edit': 'edit',
+    'postentry.thread': 'thread',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
@@ -391,6 +392,8 @@ export default {
     'postpage.replies-known-here': 'replies known here',
     'postpage.ask-the-author-again': "ask the author's computer again - a hot thread is worth a second glance",
     'postpage.refresh': 'refresh',
+    'postpage.thread-unreadable': 'thread (no longer readable here)',
+    'postpage.thread': 'thread',
     'postpage.in-reply-to-unreadable': 'in reply to a post that is no longer readable here',
     'postpage.in-reply-to': 'in reply to',
     'postpage.held-for-your-nod': 'replies from people you don’t follow, held for your nod',

@@ -645,6 +645,11 @@ struct FeedItem {
     /// post, honestly. Absent on every non-reply so old clients render unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     reply_to: Option<ReplyCard>,
+    /// The thread's ROOT, when this reply sits deeper than depth one - absent when the
+    /// parent IS the root, so a depth-one reply carries one card, not the same card
+    /// twice (Curtis, 2026-08-28).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thread_root: Option<ReplyCard>,
 }
 
 /// A reply row's parent, dressed for the mini-card: the link always, the trimmings when the
@@ -721,7 +726,11 @@ async fn feed_handler(
     )
     .await
     .map_err(AppError::Internal)?;
-    let parents: Vec<(String, String)> = reply_links.values().cloned().collect();
+    // Parents and roots alike get the journal's dressing, one read for both.
+    let parents: Vec<(String, String)> = reply_links
+        .values()
+        .flat_map(|l| [l.parent.clone(), l.root.clone()])
+        .collect();
     let parent_cards = crate::fanout::journal_cards(&state.node_db, &root, &parents)
         .await
         .map_err(AppError::Internal)?;
@@ -740,7 +749,11 @@ async fn feed_handler(
     // sharers ride the same lookup for the same reason - a hover list of twelve faces must not
     // become twelve queries.
     let mut authors: Vec<String> = rows.iter().map(|r| r.author_root.clone()).collect();
-    authors.extend(reply_links.values().map(|(pa, _)| pa.clone()));
+    authors.extend(
+        reply_links
+            .values()
+            .flat_map(|l| [l.parent.0.clone(), l.root.0.clone()]),
+    );
     authors.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     authors.extend(rows.iter().filter_map(|r| r.suggested_via.clone()));
     authors.extend(sharers.values().flatten().cloned());
@@ -817,18 +830,21 @@ async fn feed_handler(
                 .get(&(r.author_root.clone(), r.doc_id.clone()))
                 .copied()
                 .filter(|n| *n > 0);
-            let reply_to = reply_links.get(&(r.author_root.clone(), r.doc_id.clone())).map(
-                |(pa, pd)| {
-                    let card = parent_cards.get(&(pa.clone(), pd.clone()));
-                    ReplyCard {
-                        author: pa.clone(),
-                        doc_id: pd.clone(),
-                        name: bylines.get(pa).and_then(|b| b.name.clone()),
-                        title: card.map(|(t, _)| t.clone()).filter(|t| !t.is_empty()),
-                        published_ms: card.map(|(_, ms)| *ms),
-                    }
-                },
-            );
+            let dress = |(pa, pd): &(String, String)| {
+                let card = parent_cards.get(&(pa.clone(), pd.clone()));
+                ReplyCard {
+                    author: pa.clone(),
+                    doc_id: pd.clone(),
+                    name: bylines.get(pa).and_then(|b| b.name.clone()),
+                    title: card.map(|(t, _)| t.clone()).filter(|t| !t.is_empty()),
+                    published_ms: card.map(|(_, ms)| *ms),
+                }
+            };
+            let links = reply_links.get(&(r.author_root.clone(), r.doc_id.clone()));
+            let reply_to = links.map(|l| dress(&l.parent));
+            let thread_root = links
+                .filter(|l| l.root != l.parent)
+                .map(|l| dress(&l.root));
             FeedItem {
                 mine,
                 author_name: byline.name,
@@ -850,6 +866,7 @@ async fn feed_handler(
                 suggested_via_name,
                 replies,
                 reply_to,
+                thread_root,
             }
         })
         .collect();

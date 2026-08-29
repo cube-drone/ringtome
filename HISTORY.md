@@ -7353,3 +7353,14 @@ held list refetches itself after the nod and correctly drops the row, but the th
 below never looked again, so the reply appeared nowhere. The nod now bumps the thread's
 refresh key - the same lever as the refresh button - and the approved reply moves from
 the held list into the conversation in one motion.
+
+## 2026-08-28 (cont. 5): the root rides too, past depth one
+
+Curtis, from the feed: a reply's context showed the comment it answered, not the post
+the conversation was about. Now both, wherever a reply wears context: the memo's
+`links_for` returns parent AND root, the feed dresses a `thread_root` card beside
+`reply_to` (absent at depth one, so a first reply carries one card, not the same card
+twice), the quote-card and the permalink's context both show it - the root ABOVE the parent,
+labelled simply "thread" (Curtis's two follow-ups: root, then parent, then the reply,
+reading downward like the thread itself; and the card carries the title, so the label
+needs no name). The nested-reply acceptance asserts the root card in cal's own feed.

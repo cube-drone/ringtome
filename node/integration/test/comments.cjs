@@ -169,6 +169,20 @@ const base58 = async (host) => {
         );
         const plain = (page.items || []).find((i) => i.doc_id === op);
         assert.ok(!plain || !plain.reply_to, "a non-reply row carries no card");
+        assert.ok(!row.thread_root, "a depth-one reply carries one card, not the root twice");
+        // Deeper than depth one, the ROOT rides too (Curtis, 2026-08-28): cal's nested
+        // reply, in cal's own feed, names bea's reply as parent and ada's op as root.
+        const calsPage = await (await cal(`api/identity/${calRoot}/feed`)).json();
+        const nested = (calsPage.items || []).find(
+            (i) => i.author === calRoot && i.reply_to && i.reply_to.author === beaRoot
+        );
+        if (nested) {
+            assert.deepEqual(
+                { author: nested.thread_root.author, doc_id: nested.thread_root.doc_id },
+                { author: adaRoot, doc_id: op },
+                "the thread's root, one more hop up"
+            );
+        }
     });
 
     it("the replies memo knows the thread where the chains are held (slice 2)", async () => {

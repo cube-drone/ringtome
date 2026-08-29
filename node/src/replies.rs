@@ -183,7 +183,7 @@ async fn refresh_inner(state: &AppState, author_root: &str, force: bool) -> Resu
 pub async fn links_for(
     node_db: &Db,
     posts: &[(String, String)],
-) -> Result<std::collections::HashMap<(String, String), (String, String)>> {
+) -> Result<std::collections::HashMap<(String, String), ReplyLinks>> {
     let docs: Vec<String> = posts
         .iter()
         .map(|(_, d)| d)
@@ -195,10 +195,10 @@ pub async fn links_for(
     if docs.is_empty() {
         return Ok(Default::default());
     }
-    let rows: Vec<(String, String, String, String)> = node_db
+    let rows: Vec<(String, String, String, String, String, String)> = node_db
         .fetch_all(
             &format!(
-                "SELECT reply_author, reply_doc, parent_author, parent_doc
+                "SELECT reply_author, reply_doc, parent_author, parent_doc, root_author, root_doc
                  FROM post_replies WHERE reply_doc IN ({})",
                 docs.join(",")
             ),
@@ -208,9 +208,26 @@ pub async fn links_for(
         .context("reading which posts are replies")?;
     Ok(rows
         .into_iter()
-        .filter(|(a, d, _, _)| posts.contains(&(a.clone(), d.clone())))
-        .map(|(a, d, pa, pd)| ((a, d), (pa, pd)))
+        .filter(|(a, d, ..)| posts.contains(&(a.clone(), d.clone())))
+        .map(|(a, d, pa, pd, ra, rd)| {
+            (
+                (a, d),
+                ReplyLinks {
+                    parent: (pa, pd),
+                    root: (ra, rd),
+                },
+            )
+        })
         .collect())
+}
+
+/// A reply's two links as the memo holds them: the parent it answers, and the thread's
+/// root (equal to the parent at depth one). The feed dresses both (Curtis, 2026-08-28:
+/// deeper in a chain, the root should be visible too).
+#[derive(Debug, Clone)]
+pub struct ReplyLinks {
+    pub parent: (String, String),
+    pub root: (String, String),
 }
 
 /// How many replies this node THINKS each of these posts has - the honest-partial count

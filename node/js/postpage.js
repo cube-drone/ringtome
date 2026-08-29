@@ -98,6 +98,15 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                 to, one hop up (PROJECT_PLAN's Replies slice 3 - "parent context above, replies
                 below"). The card degrades to a bare "link" when the parent's header is not
                 readable here - the hollow case, honestly. */ ''}
+            ${/* The thread's root FIRST when this reply sits deeper than depth one
+                (Curtis, 2026-08-28) - the conversation's subject, then the words these
+                answer, then the reply: reading downward like the thread itself. */ ''}
+            ${post &&
+            post.thread_root &&
+            post.reply_to &&
+            (post.thread_root.author !== post.reply_to.author ||
+                post.thread_root.doc_id !== post.reply_to.doc_id) &&
+            html`<${ParentContext} link=${post.thread_root} root=${true} />`}
             ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
             ${item &&
             html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} />`}
@@ -144,7 +153,7 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
 /// One hop up: the post this page's post replies to, as a mini-card. The title comes from
 /// the parent's own held header when this node can read it; a parent not held here still
 /// gets its link - "in reply to: link" is the honest hollow rendering.
-const ParentContext = ({ link }) => {
+const ParentContext = ({ link, root }) => {
     const [head, setHead] = useState(null);
     const [gone, setGone] = useState(false);
     useEffect(() => {
@@ -157,9 +166,13 @@ const ParentContext = ({ link }) => {
         };
     }, [link.author, link.doc_id]);
     return html`<p class="postpage-parent">
-        ${gone
-            ? t('postpage.in-reply-to-unreadable', 'in reply to a post that is no longer readable here')
-            : t('postpage.in-reply-to', 'in reply to')}
+        ${root
+            ? gone
+                ? t('postpage.thread-unreadable', 'thread (no longer readable here)')
+                : t('postpage.thread', 'thread')
+            : gone
+              ? t('postpage.in-reply-to-unreadable', 'in reply to a post that is no longer readable here')
+              : t('postpage.in-reply-to', 'in reply to')}
         <${MiniPost}
             author=${link.author}
             doc_id=${link.doc_id}

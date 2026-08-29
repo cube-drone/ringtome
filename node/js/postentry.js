@@ -612,6 +612,22 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 mini-card names what it answers - which is the whole reason context-free
                 "@rando, I disagree" cannot happen here. Suppressed on the thread page
                 (quote=false), where nesting under the parent already says it. */ ''}
+            ${/* Deeper than depth one, the thread's ROOT first (Curtis, 2026-08-28): the
+                conversation's subject above the words these answer - root, then parent,
+                then the reply, reading downward like the thread itself. Absent when the
+                parent IS the root - one card, not the same card twice. The label is just
+                "thread": the card carries the title, and nothing needs saying twice. */ ''}
+            ${!!item.thread_root &&
+            quote !== false &&
+            html`<p class="feed-entry-replyto feed-entry-thread-root">
+                ${t('postentry.thread', 'thread')}
+                <${MiniPost}
+                    author=${item.thread_root.author}
+                    doc_id=${item.thread_root.doc_id}
+                    title=${item.thread_root.title}
+                    published_ms=${item.thread_root.published_ms}
+                />
+            </p>`}
             ${!!item.reply_to &&
             quote !== false &&
             html`<p class="feed-entry-replyto">
@@ -625,6 +641,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     published_ms=${item.reply_to.published_ms}
                 />
             </p>`}
+
             ${open
                 ? html`<${Composer}
                       root=${editing.root}
