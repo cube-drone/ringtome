@@ -55,7 +55,6 @@ beside derived. What is left:
   does not (iroh QUIC already encrypts point to point).
 * **The transport tier**: pricing connection admission by shared public-edge standing.
 * Encrypted peer-to-peer messaging? (that's DMs - the Sealed Pair, settled separately)
-* Notification Badge (3 new!)
 
 ### Friends & Groups
 

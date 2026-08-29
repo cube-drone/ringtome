@@ -153,6 +153,11 @@ async fn refresh_from_inner(
             .map_err(|e| anyhow::anyhow!("listing hosted personas: {e}"))?
             .into_iter()
             .collect();
+    // Every reader whose rows this pass touches gets a stream nudge at the end (the dock
+    // badge, 2026-08-28): these rows live in node.db, invisible to the stream's user-db
+    // stamp, so the fold is what tells the open tabs "recount now". Delivered notices need
+    // nothing here - their transcription is a user-db append, which nudges on its own.
+    let mut touched: std::collections::BTreeSet<String> = Default::default();
 
     // "Someone you follow shared something of yours." The reader here is the shared document's
     // AUTHOR, not a follower of the sharer - which is the whole difference between this fold and
@@ -165,7 +170,15 @@ async fn refresh_from_inner(
     // not in this set, deliberately: for the root's author the news really is a share.
     let answered: std::collections::BTreeSet<(String, String)> = replies
         .iter()
-        .map(|(_, parent, _, _)| (parent.0.clone(), parent.1.clone()))
+        .flat_map(|(_, parent, root, _)| {
+            // The root pin too, when the parent's author owns the root: for them the
+            // comment already says it (the envelope road's `announce` rule, 2026-08-29).
+            let mut pins = vec![(parent.0.clone(), parent.1.clone())];
+            if root.0 == parent.0 {
+                pins.push((root.0.clone(), root.1.clone()));
+            }
+            pins
+        })
         .collect();
 
     for row in &shared {
@@ -180,6 +193,7 @@ async fn refresh_from_inner(
             continue;
         }
         let doc_hex = hex::encode(row.doc_id);
+        touched.insert(row.author_root.clone());
         if row.is_retracted() {
             // Un-sharing removes the notification rather than announcing itself. "X no longer
             // shares your post" is not news, just the absence of some - the same rule the
@@ -219,6 +233,7 @@ async fn refresh_from_inner(
         if !crate::net::subscriptions::follows(&state.node_db, &subject_hex, author_root).await? {
             continue;
         }
+        touched.insert(subject_hex.clone());
         if row.edge.is_empty() {
             delete_row(&state.node_db, &subject_hex, author_root, KIND_PUBLIC_EDGE, "").await?;
         } else {
@@ -243,6 +258,7 @@ async fn refresh_from_inner(
     // header simply leaves the shelf - so the fold diffs: rows this author no longer backs
     // recede with the pass that noticed (the replies memo's sweep, one table over).
     if !comment_leg {
+        nudge_streams(state, &touched);
         return Ok(()); // the comment leg below is reply-set-sourced; its diff must not run blind
     }
     let mut fresh: std::collections::BTreeSet<(String, String)> = Default::default();
@@ -254,6 +270,7 @@ async fn refresh_from_inner(
             continue;
         }
         fresh.insert((parent.0.clone(), parent.1.clone()));
+        touched.insert(parent.0.clone());
         upsert_row(
             &state.node_db,
             &parent.0,
@@ -277,10 +294,22 @@ async fn refresh_from_inner(
         .context("reading standing comment rows")?;
     for (reader, doc) in standing {
         if !fresh.contains(&(reader.clone(), doc.clone())) {
+            touched.insert(reader.clone());
             delete_row(&state.node_db, &reader, author_root, KIND_COMMENT, &doc).await?;
         }
     }
+    nudge_streams(state, &touched);
     Ok(())
+}
+
+/// Wake the open streams of these readers: the write-nudge bus, fired with the READER's
+/// root the way a user-db write would fire it for its own persona. The eager-sync loop
+/// hears it too and finds nothing moved - the tick is its backstop either way.
+fn nudge_streams(state: &AppState, readers: &std::collections::BTreeSet<String>) {
+    let bus = state.user_dbs.write_nudge();
+    for reader in readers {
+        let _ = bus.send(reader.clone());
+    }
 }
 
 /// Upsert one public-edge notification. Stamps come from the winning entry's arrival, so

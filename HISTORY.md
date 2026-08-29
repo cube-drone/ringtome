@@ -7364,3 +7364,29 @@ twice), the quote-card and the permalink's context both show it - the root ABOVE
 labelled simply "thread" (Curtis's two follow-ups: root, then parent, then the reply,
 reading downward like the thread itself; and the card carries the title, so the label
 needs no name). The nested-reply acceptance asserts the root card in cal's own feed.
+
+## 2026-08-28 (cont. 6): the bell wears its unread count on the dock
+
+Curtis: a badge over the notifications hexagon, updating "right away" on arrival. The
+number is the bell's own - `notification_items` factored out of the handler, the count
+being its rows the watermark has not passed, so badge and bell can never disagree - and
+it rides the live stream as one more kind: on every snapshot, and alone on a `live`
+frame whenever it changes. Derived rows live in node.db, invisible to the stream's
+user-db stamp, so the notifications fold nudges the write bus with each touched READER's
+root as it finishes; delivered notices needed nothing - their transcription is a user-db
+append, which nudges already; the watermark write is one too, so pressing "seen" drops
+the number the same way. The mirror keeps the count in kv; the dock reads it as a live
+query, never a poll. The badge sits beside the hexagon rather than inside it, because
+the hex is clip-pathed and would cut it. NEXT_STEPS' "Notification Badge (3 new!)" struck.
+
+## 2026-08-29: one act, one notice - two levels down too
+
+Curtis: a reply rang both "replied" and "shared". The leak was the ROOT pin of a nested
+reply: slice 4 quieted the parent pin, but a reply two levels down pins parent-plus-root
+and announced the root as an ordinary share - right when the root's author is somebody
+else (for them the news IS a share), wrong when the parent's author owns the root too,
+which is any self-threaded post someone answers. The root pin is now quiet in exactly
+that case, on both roads: `share_one`'s `announce` is "root author differs from parent
+author", and the derived shares leg's suppression set carries the root beside the parent
+when their authors match. Acceptance: bea answers ada's self-reply, and ada hears one
+comment and no share.

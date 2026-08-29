@@ -155,6 +155,11 @@ export function startLiveCache(root) {
                 } else if (msg.type === 'live') {
                     await db.kv.put({ key: 'cursor', value: msg.cursor });
                 }
+                // The bell's unread count, whatever the frame's kind (the dock badge,
+                // 2026-08-28): absent means unchanged, never zero.
+                if (typeof msg.unread === 'number') {
+                    await db.kv.put({ key: 'unread_notifications', value: msg.unread });
+                }
                 state.retryMs = 1000; // a healthy message resets the backoff
             } catch (e) {
                 console.warn('live cache: bad frame', e);

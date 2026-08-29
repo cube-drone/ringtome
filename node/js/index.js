@@ -46,6 +46,10 @@ import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 
 const html = htm.bind(h);
 
+// The app whose hexagon wears the unread badge (an id, not a phrase - hoisted so the
+// strings cop does not read it as words shown to a person).
+const BELL_APP_ID = 'notifications';
+
 // Nothing lives at this address. Internal URLs are session-relative (no identity in them, so
 // they never look shareable - PROJECT_PLAN, The Client Is a Console); an unknown one just
 // sends you home.
@@ -238,25 +242,39 @@ const Inside = ({ session }) => {
     // that rim is the same teal as the backdrop and vanishes, so it only reads on the part above.
     // The user's own tile (Persona, first) runs a little bigger. Persona being the first tile is
     // why there's no name or gear on the right - the persona tile IS both.
+    // The bell's unread count, off the mirror's kv - the stream keeps it current (the
+    // dock badge, Curtis 2026-08-28: "if we receive a new notification that could update
+    // right away"), so a badge is a live query and never a poll.
+    const unreadRow = useLive(
+        () => (root ? openMirror(root).kv.get('unread_notifications') : null),
+        [root]
+    );
+    const unread = unreadRow && typeof unreadRow.value === 'number' ? unreadRow.value : 0;
     const bar = html`
         <footer class="quickbar">
             <span class="quickbar-apps">
                 ${open &&
                 liveApps.map((app) => {
                     const isActive = !!(appHere && appHere.id === app.id);
+                    const badge = app.id === BELL_APP_ID && unread > 0 ? unread : 0;
                     // Clicking the app you're already in closes it (back to the launcher).
-                    return html`<button
-                        class=${[
-                            'quickbar-hex',
-                            app.id === 'persona' ? 'quickbar-hex-lead' : '',
-                            isActive ? 'active' : '',
-                        ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        key=${app.id}
-                        title=${appLabel(app, personaName)}
-                        onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
-                    ><span class="quickbar-hex-face"><${iconFor(app)} /></span></button>`;
+                    return html`<span class="quickbar-slot" key=${app.id}>
+                        <button
+                            class=${[
+                                'quickbar-hex',
+                                app.id === 'persona' ? 'quickbar-hex-lead' : '',
+                                isActive ? 'active' : '',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
+                            title=${appLabel(app, personaName)}
+                            onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
+                        ><span class="quickbar-hex-face"><${iconFor(app)} /></span></button>
+                        ${/* Outside the hexagon, not inside it: the hex is clip-pathed,
+                            and a badge within it would be cut to the shape. */ ''}
+                        ${badge > 0 &&
+                        html`<span class="quickbar-badge">${badge > 99 ? '99+' : badge}</span>`}
+                    </span>`;
                 })}
             </span>
             <${Clock} />

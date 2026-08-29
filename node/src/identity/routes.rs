@@ -944,7 +944,43 @@ async fn notifications_handler(
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let derived = crate::notifications::page(&state.node_db, &root, NOTIFICATIONS_PAGE)
+    let (mut items, watermark) = notification_items(&state, &data, &root).await?;
+
+    // The mini-card join: every row that names a doc names one of the READER's own posts,
+    // and their store is already open - one shelf read per doc'd row, page-bounded.
+    for item in items.iter_mut().filter(|i| !i.doc_id.is_empty()) {
+        let Some(doc_id) = hex::decode(&item.doc_id)
+            .ok()
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        else {
+            continue;
+        };
+        if let Some(p) = crate::record::documents::public_doc(data.db(), &doc_id).await? {
+            item.doc_title = Some(p.title);
+            item.doc_published_ms = Some(p.genesis_ms);
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "items": items, "watermark": watermark })))
+}
+
+/// How many of the bell's rows the reader has not seen - the dock badge's number
+/// (2026-08-28), computed from exactly the rows the bell would show, so the badge and the
+/// bell can never disagree.
+async fn unread_count(state: &AppState, data: &store::Store, root: &str) -> Result<u64, AppError> {
+    let (items, _) = notification_items(state, data, root).await?;
+    Ok(items.iter().filter(|i| !i.seen).count() as u64)
+}
+
+/// The bell's rows, assembled: derived beside delivered, deduped by the follow-edge rule
+/// (present twin, or owned sender), seen-state from the reader's watermark. The mini-card
+/// dressing is the handler's own step - the badge count has no use for titles.
+async fn notification_items(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+) -> Result<(Vec<NotificationItem>, i64), AppError> {
+    let derived = crate::notifications::page(&state.node_db, root, NOTIFICATIONS_PAGE)
         .await
         .map_err(AppError::Internal)?;
     let delivered = data.inbox().page(NOTIFICATIONS_PAGE).await?;
@@ -993,7 +1029,7 @@ async fn notifications_handler(
     // applied to the copies that got in before the follow began.
     let mut delivered_unowned = Vec::new();
     for n in delivered {
-        if !crate::net::subscriptions::follows(&state.node_db, &root, &n.sender_root)
+        if !crate::net::subscriptions::follows(&state.node_db, root, &n.sender_root)
             .await
             .map_err(AppError::Internal)?
         {
@@ -1023,23 +1059,7 @@ async fn notifications_handler(
     }));
     items.sort_by_key(|i| std::cmp::Reverse(i.updated_ms));
     items.truncate(NOTIFICATIONS_PAGE as usize);
-
-    // The mini-card join: every row that names a doc names one of the READER's own posts,
-    // and their store is already open - one shelf read per doc'd row, page-bounded.
-    for item in items.iter_mut().filter(|i| !i.doc_id.is_empty()) {
-        let Some(doc_id) = hex::decode(&item.doc_id)
-            .ok()
-            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
-        else {
-            continue;
-        };
-        if let Some(p) = crate::record::documents::public_doc(data.db(), &doc_id).await? {
-            item.doc_title = Some(p.title);
-            item.doc_published_ms = Some(p.genesis_ms);
-        }
-    }
-
-    Ok(Json(serde_json::json!({ "items": items, "watermark": watermark })))
+    Ok((items, watermark))
 }
 
 /// The follow-edge rule, applied after the fact: **where the derived path already carries a
@@ -1247,11 +1267,15 @@ async fn publish_handler(
                 let self_root = hex_fixed::<32>(&root, "root")?;
                 // The parent pin is QUIET (announce: false): the comment notice below is
                 // the same act said properly. The root pin - the nested case's second
-                // pointer - announces as an ordinary share, because for the root's author
-                // the news IS "your post got passed along", not "somebody answered you".
-                for (author, doc, announce) in
-                    [(parent.0, parent.1, false), (root_link.0, root_link.1, true)]
-                {
+                // pointer - announces as an ordinary share when the root's author is
+                // somebody ELSE (for them the news IS "your post got passed along"), and
+                // stays quiet when the parent's author owns the root too (Curtis,
+                // 2026-08-29: answering someone's reply in their own thread rang them
+                // twice - "replied" and "shared" - for one act).
+                for (author, doc, announce) in [
+                    (parent.0, parent.1, false),
+                    (root_link.0, root_link.1, root_link.0 != parent.0),
+                ] {
                     if author == self_root || (announce && (author, doc) == parent) {
                         continue;
                     }
@@ -3514,6 +3538,12 @@ struct StreamMessage {
     search_changed: Option<Vec<crate::record::documents::SearchRow>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     search_removed: Option<Vec<String>>,
+    /// The bell's unread count (2026-08-28, the dock badge) - sent on every snapshot and
+    /// whenever it changes, alone on a `live` frame when nothing else did. Not a view of
+    /// the user db like the kinds above: derived rows live in node.db, so the fold nudges
+    /// the stream when it writes them, and the loop recounts on every wake.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unread: Option<u64>,
 }
 
 impl StreamMessage {
@@ -3534,6 +3564,7 @@ impl StreamMessage {
             docs_removed: None,
             search_changed: None,
             search_removed: None,
+            unread: None,
         }
     }
 }
@@ -3883,7 +3914,7 @@ async fn serve_stream(
     let mut baselines = Baselines::default();
 
     // First word: live if the client's cursor still holds, a full snapshot on any doubt.
-    let first = if client_cursor.as_deref() == Some(stamp.token().as_str()) {
+    let mut first = if client_cursor.as_deref() == Some(stamp.token().as_str()) {
         StreamMessage::quiet("live", stamp.token())
     } else {
         gather(
@@ -3897,6 +3928,12 @@ async fn serve_stream(
         .await
         .map_err(anyhow::Error::new)?
     };
+    // The badge's number rides the first frame whatever its kind: a reconnect whose
+    // cursor still holds has no snapshot, but its badge may be stale.
+    let mut last_unread = unread_count(&state, &data, &root)
+        .await
+        .map_err(anyhow::Error::new)?;
+    first.unread = Some(last_unread);
     socket
         .send(Message::Text(serde_json::to_string(&first)?.into()))
         .await?;
@@ -3943,14 +3980,30 @@ async fn serve_stream(
         let now = stream_stamp(&db, state.view_epochs.get(&root))
             .await
             .map_err(anyhow::Error::new)?;
+        // The badge recounts on every wake - the derived fold's nudge is a wake with no
+        // stamp change behind it, and the watermark write is a wake with one.
+        let unread = unread_count(&state, &data, &root)
+            .await
+            .map_err(anyhow::Error::new)?;
+        let unread_changed = unread != last_unread;
+        last_unread = unread;
         if now != stamp {
             let moved = Moved::since(&stamp, &now);
             stamp = now;
-            let update = gather(&state, &data, "update", stamp.token(), moved, &mut baselines)
+            let mut update = gather(&state, &data, "update", stamp.token(), moved, &mut baselines)
                 .await
                 .map_err(anyhow::Error::new)?;
+            if unread_changed {
+                update.unread = Some(unread);
+            }
             socket
                 .send(Message::Text(serde_json::to_string(&update)?.into()))
+                .await?;
+        } else if unread_changed {
+            let mut quiet = StreamMessage::quiet("live", stamp.token());
+            quiet.unread = Some(unread);
+            socket
+                .send(Message::Text(serde_json::to_string(&quiet)?.into()))
                 .await?;
         }
     }

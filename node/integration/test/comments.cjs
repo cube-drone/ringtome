@@ -27,7 +27,7 @@ const base58 = async (host) => {
     this.timeout(1200000);
 
     let ada, adaRoot, bea, beaRoot, cal, calRoot, rio, rioRoot;
-    let op, reply, rioReply, eve;
+    let op, reply, rioReply, eve, selfReply;
 
     const publish = async (who, root, title, replyTo) => {
         const made = await (
@@ -313,6 +313,7 @@ const base58 = async (host) => {
         // curation whole: served at once, and the held list never names them.
         const out = await publish(ada, adaRoot, "my-own-follow-up", { author: adaRoot, doc_id: op });
         assert.equal(out.status, 200, out.text);
+        selfReply = out.post;
         await beat(HOST, "fold", adaRoot);
         const pub = await (await ada(`api/id/${adaRoot}/posts/${op}/replies`)).json();
         assert.ok(
@@ -336,6 +337,31 @@ const base58 = async (host) => {
             method: "PUT",
             body: JSON.stringify({ value: "" }),
         });
+    });
+
+    it("answering a reply in its author's own thread rings them once - replied, not shared", async function () {
+        // bea answers ada's self-reply: parent AND root are ada's, so the reply pins both -
+        // and used to ring ada twice, "replied" for the parent and "shared" for the root,
+        // for one act (Curtis, 2026-08-29). The root pin is quiet when the parent's author
+        // owns the root, on both roads; ada follows bea, so this is the derived one.
+        if (!selfReply) this.skip();
+        const out = await publish(bea, beaRoot, "answering-your-follow-up", {
+            author: adaRoot,
+            doc_id: selfReply,
+        });
+        assert.equal(out.status, 200, out.text);
+        await beat(HOST, "pull", adaRoot);
+        await beat(HOST, "fold", beaRoot);
+        const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+        const fromBea = (bell.items || []).filter((i) => i.author === beaRoot);
+        assert.ok(
+            fromBea.some((i) => i.kind === "comment" && i.doc_id === selfReply),
+            "the comment on the self-reply rings"
+        );
+        assert.ok(
+            !fromBea.some((i) => i.kind === "rebroadcast"),
+            "and the root pin stays quiet - one act, one notice, even two levels down"
+        );
     });
 
     it("a blank node learns the thread from the author's door (slice 6)", async function () {
@@ -438,8 +464,12 @@ const base58 = async (host) => {
         await beat(HOST, "pull", adaRoot);
         await beat(HOST, "fold", beaRoot);
         const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+        // Precisely the deleted reply's row - bea's OTHER conversation with ada (her answer
+        // to the self-reply, a claim above) rightly stands.
         assert.ok(
-            !(bell.items || []).some((i) => i.author === beaRoot && i.kind === "comment"),
+            !(bell.items || []).some(
+                (i) => i.author === beaRoot && i.kind === "comment" && i.doc_id === op
+            ),
             "a deleted reply stops being a conversation in the bell"
         );
     });
