@@ -149,6 +149,227 @@ pub async fn for_posts(
     Ok(out)
 }
 
+// ---------------------------------------------------------------------------------------------
+// The viral road (ANNOTATIONS.md slice 3): labels ride the fragment as the annotator's own
+// signed proofs, verified at the receiving edge, noted into the memo, and KEPT - so the
+// next hop's fragment carries them onward. Virality is a relay of proofs, never hearsay.
+
+/// Byte budget for the proofs attached to one fragment answer: comfortably under the 16KB
+/// frame cap with the header and its path beside them. Author-first order means the labels
+/// most worth carrying are the last to be dropped.
+const PROOF_BYTES_BUDGET: usize = 6 * 1024;
+
+/// Keep one verified proof servable.
+#[allow(clippy::too_many_arguments)] // a proof IS eight facts; a params struct would name them worse
+pub async fn keep_proof(
+    node_db: &Db,
+    annotator: &str,
+    target_author: &str,
+    target_doc: &str,
+    key: &str,
+    value: &str,
+    entry: &[u8],
+    auth_path: &[Vec<u8>],
+) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO annotation_proofs
+               (annotator, target_author, target_doc, key, value, entry, auth_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT (annotator, target_author, target_doc, key, value) DO UPDATE SET
+               entry = excluded.entry, auth_path = excluded.auth_path",
+            (
+                annotator,
+                target_author,
+                target_doc,
+                key,
+                value,
+                entry.to_vec(),
+                crate::fragments::pack_path(auth_path),
+            ),
+        )
+        .await
+        .context("keeping an annotation proof")?;
+    Ok(())
+}
+
+async fn drop_proof(
+    node_db: &Db,
+    annotator: &str,
+    target_author: &str,
+    target_doc: &str,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM annotation_proofs
+             WHERE annotator = ?1 AND target_author = ?2 AND target_doc = ?3
+               AND key = ?4 AND value = ?5",
+            (annotator, target_author, target_doc, key, value),
+        )
+        .await
+        .context("dropping an annotation proof")?;
+    Ok(())
+}
+
+/// Every proof this node can attach to a fragment of (author, doc), author's labels first,
+/// budget-capped by bytes. Sources, cheapest first: the kept-proofs table (labels that
+/// arrived by fragment), then each annotator's held chain (the memo row's statement,
+/// resolved through the entries log with its delegation path).
+pub async fn proofs_for(
+    state: &AppState,
+    target_author: &str,
+    target_doc: &str,
+) -> Vec<ringtome_proto::fragment::AnnotationProof> {
+    let rows = match for_posts(
+        &state.node_db,
+        &[(target_author.to_string(), target_doc.to_string())],
+    )
+    .await
+    {
+        Ok(mut known) => known
+            .remove(&(target_author.to_string(), target_doc.to_string()))
+            .unwrap_or_default(),
+        Err(e) => {
+            tracing::debug!(error = ?e, "annotation proofs read failed");
+            return Vec::new();
+        }
+    };
+    let mut out = Vec::new();
+    let mut spent = 0usize;
+    for row in rows {
+        if out.len() >= ringtome_proto::fragment::MAX_ANNOTATIONS_PER_FRAGMENT {
+            break;
+        }
+        let Some(annotator) = crate::pubkey::decode(&row.annotator) else {
+            continue;
+        };
+        let resolved = resolve_proof(state, &row, target_author, target_doc).await;
+        let Some((entry, auth_path)) = resolved else {
+            continue;
+        };
+        let cost = entry.len() + auth_path.iter().map(Vec::len).sum::<usize>() + 64;
+        if spent + cost > PROOF_BYTES_BUDGET {
+            break;
+        }
+        spent += cost;
+        out.push(ringtome_proto::fragment::AnnotationProof {
+            annotator,
+            entry,
+            auth_path,
+        });
+    }
+    out
+}
+
+async fn resolve_proof(
+    state: &AppState,
+    row: &KnownAnnotation,
+    target_author: &str,
+    target_doc: &str,
+) -> Option<(Vec<u8>, Vec<Vec<u8>>)> {
+    let kept: Option<(Vec<u8>, Vec<u8>)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT entry, auth_path FROM annotation_proofs
+             WHERE annotator = ?1 AND target_author = ?2 AND target_doc = ?3
+               AND key = ?4 AND value = ?5",
+            (
+                row.annotator.as_str(),
+                target_author,
+                target_doc,
+                row.key.as_str(),
+                row.value.as_str(),
+            ),
+        )
+        .await
+        .ok()
+        .flatten();
+    if let Some((entry, packed)) = kept {
+        return Some((entry, crate::fragments::unpack_path(&packed)));
+    }
+    let doc_bytes = hex::decode(target_doc).ok()?;
+    let doc_id = <[u8; 16]>::try_from(doc_bytes.as_slice()).ok()?;
+    let db = state.user_dbs.get(&row.annotator).await.ok().flatten()?;
+    let entry = crate::record::imaol::annotation_entry(
+        &db,
+        target_author,
+        &doc_id,
+        &row.key,
+        &row.value,
+    )
+    .await
+    .ok()
+    .flatten()?;
+    let path = crate::record::documents::auth_path_for(&db, &row.annotator, &entry)
+        .await
+        .ok()?;
+    Some((entry.bytes().to_vec(), path))
+}
+
+/// Learn the proofs that rode a fragment of (author, doc): verify each against ITS
+/// annotator and exactly this target, then fold - a present statement notes and keeps,
+/// a retraction forgets and drops. Best-effort per proof; a forged one moves nothing.
+pub async fn learn_proofs(
+    state: &AppState,
+    target_author: &[u8; 32],
+    target_doc: &[u8; 16],
+    proofs: &[ringtome_proto::fragment::AnnotationProof],
+) {
+    let author_hex = hex::encode(target_author);
+    let doc_hex = hex::encode(target_doc);
+    for p in proofs {
+        let a = match ringtome_proto::fragment::verify_annotation(
+            p.annotator,
+            *target_author,
+            *target_doc,
+            &p.entry,
+            &p.auth_path,
+        ) {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!(annotator = %hex::encode(p.annotator), error = ?e,
+                    "an annotation that rode a fragment failed its own proof - skipped");
+                continue;
+            }
+        };
+        let annotator_hex = hex::encode(p.annotator);
+        let outcome = if a.present {
+            let noted =
+                note(&state.node_db, &author_hex, &doc_hex, &annotator_hex, &a.key, &a.value).await;
+            match noted {
+                Ok(()) => keep_proof(
+                    &state.node_db,
+                    &annotator_hex,
+                    &author_hex,
+                    &doc_hex,
+                    &a.key,
+                    &a.value,
+                    &p.entry,
+                    &p.auth_path,
+                )
+                .await,
+                e => e,
+            }
+        } else {
+            let forgot =
+                forget(&state.node_db, &author_hex, &doc_hex, &annotator_hex, &a.key, &a.value)
+                    .await;
+            match forgot {
+                Ok(()) => {
+                    drop_proof(&state.node_db, &annotator_hex, &author_hex, &doc_hex, &a.key, &a.value)
+                        .await
+                }
+                e => e,
+            }
+        };
+        if let Err(e) = outcome {
+            tracing::debug!(error = ?e, "folding a ridden annotation failed");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

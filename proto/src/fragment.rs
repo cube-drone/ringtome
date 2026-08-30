@@ -65,7 +65,12 @@ pub const MAX_FRAGMENT_FRAME_BYTES: usize = 16 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentMessage {
     Want { author: [u8; 32], doc_id: [u8; 16] },
-    Have { entry: Vec<u8>, auth_path: Vec<Vec<u8>> },
+    /// The words' proof - and, riding beside it, every annotation proof the answering node
+    /// chose to attach (ANNOTATIONS.md slice 3): the author's labels and third parties'
+    /// alike, each the ANNOTATOR's own signed statement with its delegation path, verified
+    /// at the receiving edge against its annotator. The label set is best-effort and
+    /// budget-capped - a fragment with no labels is still the fragment.
+    Have { entry: Vec<u8>, auth_path: Vec<Vec<u8>>, annotations: Vec<AnnotationProof> },
     /// The author took it back - and here is the author SAYING so (added 2026-08-13). A bare
     /// `Gone` was the one unauthenticated word in the protocol: `Have` proves itself with the
     /// author's signature, while its opposite was taken on the answering node's word - so any
@@ -111,6 +116,20 @@ pub struct DeathProof {
     pub auth_path: Vec<Vec<u8>>,
 }
 
+/// One annotation riding a fragment: who said it, and their signed word for it. The
+/// statement's target, key, and value live INSIDE the entry - the proof carries nothing
+/// the signature does not cover.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnotationProof {
+    pub annotator: [u8; 32],
+    pub entry: Vec<u8>,
+    pub auth_path: Vec<Vec<u8>>,
+}
+
+/// Cap on annotation proofs per fragment, enforced at decode; the server budgets by BYTES
+/// well under the frame cap, so this is the refusal for what no honest server sends.
+pub const MAX_ANNOTATIONS_PER_FRAGMENT: usize = 24;
+
 /// One reply in the index: who answered, and their signed word for it. The reply's own
 /// doc id and stamp live INSIDE the entry - the proof carries nothing the signature does
 /// not cover.
@@ -147,13 +166,23 @@ impl FragmentMessage {
                 w.bytes(author);
                 w.bytes(doc_id);
             }
-            Self::Have { entry, auth_path } => {
-                w.array(3);
+            Self::Have { entry, auth_path, annotations } => {
+                w.array(4);
                 w.uint(TAG_HAVE);
                 w.bytes(entry);
                 w.array(auth_path.len() as u64);
                 for rung in auth_path {
                     w.bytes(rung);
+                }
+                w.array(annotations.len() as u64);
+                for a in annotations {
+                    w.array(3);
+                    w.bytes(&a.annotator);
+                    w.bytes(&a.entry);
+                    w.array(a.auth_path.len() as u64);
+                    for rung in &a.auth_path {
+                        w.bytes(rung);
+                    }
                 }
             }
             Self::Gone { entry, auth_path } => {
@@ -231,9 +260,30 @@ impl FragmentMessage {
                 author: r.bytes_fixed::<32>()?,
                 doc_id: r.bytes_fixed::<16>()?,
             },
-            (TAG_HAVE, 3) => {
+            (TAG_HAVE, 4) => {
                 let (entry, auth_path) = Self::entry_and_path(&mut r)?;
-                Self::Have { entry, auth_path }
+                let count = r.array()?;
+                if count > MAX_ANNOTATIONS_PER_FRAGMENT as u64 {
+                    return Err(ProtoError::BadEntry("fragment annotations too many"));
+                }
+                let mut annotations = Vec::new();
+                for _ in 0..count {
+                    if r.array()? != 3 {
+                        return Err(ProtoError::BadEntry("malformed annotation proof"));
+                    }
+                    let annotator = r.bytes_fixed::<32>()?;
+                    let (entry, auth_path) = Self::entry_and_path(&mut r)?;
+                    annotations.push(AnnotationProof {
+                        annotator,
+                        entry,
+                        auth_path,
+                    });
+                }
+                Self::Have {
+                    entry,
+                    auth_path,
+                    annotations,
+                }
             }
             (TAG_GONE, 3) => {
                 let (entry, auth_path) = Self::entry_and_path(&mut r)?;
@@ -396,6 +446,41 @@ pub fn verify_fragment(
 /// was asked about. Returns the reply's doc id and claimed stamp - both read from INSIDE
 /// the signature, never from the wire's framing. The door's twin of [`verify_retraction`]:
 /// the author serves claims, and every claim proves itself against ITS author.
+/// Verify one annotation proof offline: a real statement on the annotator's own chain,
+/// signed by a key the delegation path ties to them, and TARGETING exactly the post it
+/// arrived with - a relay can withhold a label but never re-target one. Returns the
+/// statement whole (key, value, present): a retraction rides like anything else, and the
+/// receiver folds it as the chain would.
+pub fn verify_annotation(
+    annotator: [u8; 32],
+    target_author: [u8; 32],
+    target_doc: [u8; 16],
+    entry_bytes: &[u8],
+    auth_path: &[Vec<u8>],
+) -> Result<crate::registry::PublicAnnotation, ProtoError> {
+    let signed = SignedEntry::decode(entry_bytes)?;
+    signed.verify()?;
+    let entry = signed.entry();
+    if entry.chain.service != service::ANNOTATIONS_PUBLIC
+        || entry.entry_type != entry_type::PUBLIC_ANNOTATION
+    {
+        return Err(ProtoError::ChainViolation(
+            "an annotation proof must be a public annotation",
+        ));
+    }
+    crate::deliver::walk_auth_path(annotator, auth_path, entry.chain.author)?;
+    let Payload::Inline(payload) = &entry.payload else {
+        return Err(ProtoError::BadEntry("an annotation must be inline"));
+    };
+    let a = crate::registry::PublicAnnotation::decode(payload)?;
+    if a.target_author != target_author || a.target_doc != target_doc {
+        return Err(ProtoError::ChainViolation(
+            "the annotation labels a different post than the one it rode with",
+        ));
+    }
+    Ok(a)
+}
+
 pub fn verify_reply(
     replier: [u8; 32],
     parent_author: [u8; 32],
@@ -472,10 +557,16 @@ mod tests {
             FragmentMessage::Have {
                 entry: vec![3, 4, 5],
                 auth_path: vec![vec![6, 7], vec![8]],
+                annotations: vec![AnnotationProof {
+                    annotator: [4u8; 32],
+                    entry: vec![5, 6],
+                    auth_path: vec![vec![7]],
+                }],
             },
             FragmentMessage::Have {
                 entry: vec![9],
                 auth_path: Vec::new(),
+                annotations: Vec::new(),
             },
             FragmentMessage::Gone {
                 entry: vec![10, 11],
@@ -632,6 +723,62 @@ mod tests {
             payload: Payload::Inline(header.encode().unwrap()),
         };
         SignedEntry::create(&entry, key).unwrap().bytes().to_vec()
+    }
+
+    /// One annotation entry on `signer`'s chain, targeting a post.
+    fn annotation_entry(
+        signer: &crate::SigningKey,
+        target: ([u8; 32], [u8; 16]),
+        value: &str,
+        present: bool,
+    ) -> Vec<u8> {
+        let payload = crate::registry::PublicAnnotation {
+            target_author: target.0,
+            target_doc: target.1,
+            key: "tag".into(),
+            value: value.into(),
+            present,
+        }
+        .encode()
+        .unwrap();
+        let entry = crate::Entry {
+            v: crate::ENTRY_VERSION,
+            entry_type: entry_type::PUBLIC_ANNOTATION,
+            chain: crate::ChainId {
+                author: signer.verifying_key().to_bytes(),
+                service: service::ANNOTATIONS_PUBLIC,
+            },
+            seq: 3,
+            prev_hash: crate::ZERO_HASH,
+            timestamp_ms: 1_700_000_222_000,
+            payload: Payload::Inline(payload),
+        };
+        SignedEntry::create(&entry, signer).unwrap().bytes().to_vec()
+    }
+
+    /// ANNOTATIONS.md slice 3: an annotation proof verifies against exactly the post it
+    /// rode with, carries retractions like anything else, and refuses the re-target and
+    /// the stranger's signature.
+    #[test]
+    fn an_annotation_proof_verifies_and_cannot_be_retargeted() {
+        let key = author_key();
+        let annotator = key.verifying_key().to_bytes();
+        let target = ([2u8; 32], [3u8; 16]);
+        let entry = annotation_entry(&key, target, "goopy", true);
+        let a = verify_annotation(annotator, target.0, target.1, &entry, &[]).unwrap();
+        assert_eq!((a.key.as_str(), a.value.as_str(), a.present), ("tag", "goopy", true));
+        let gone = annotation_entry(&key, target, "goopy", false);
+        assert!(!verify_annotation(annotator, target.0, target.1, &gone, &[]).unwrap().present);
+        assert!(
+            verify_annotation(annotator, [9u8; 32], target.1, &entry, &[]).is_err(),
+            "a different target author refuses"
+        );
+        let stranger = crate::SigningKey::from_bytes(&[9u8; 32]);
+        let forged = annotation_entry(&stranger, target, "goopy", true);
+        assert!(
+            verify_annotation(annotator, target.0, target.1, &forged, &[]).is_err(),
+            "signed by a key the path does not tie to the annotator"
+        );
     }
 
     /// PROJECT_PLAN's Replies slice 6: a reply proof verifies offline against the exact parent asked

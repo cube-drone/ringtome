@@ -12,9 +12,9 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { HOST_B } = require("./fetch.cjs");
+const { sql, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 const { makeUserFetch } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
+const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
 const { HOST } = require("./fetch.cjs");
 
 const base58 = async (host) => {
@@ -162,6 +162,90 @@ describe("public annotations: the wire and the mint", function () {
         assert.ok(
             !(head.annotations || []).some((a) => a.value === "goopy"),
             "a retraction on bea's chain takes the memo row with it"
+        );
+    });
+
+    it("labels ride the fragment - a node holding nothing else receives them (slice 3)", async function () {
+        if (!bea || !HOST_C) this.skip();
+        // cal follows bea's SHARES only. bea re-tags and rebroadcasts ada's post, and the
+        // labels reach cal's node - by the fragment's proofs, and on THIS topology also by
+        // a second road (bea's published vouch for ada gets ada speculatively mirrored
+        // here, and the chain fold delivers the same rows), so this claim proves arrival,
+        // not the road. The PLANTED road-proof is the two-hop claim below: eve's node has
+        // no vouch toward ada and no chain but cal's, so only the fragment can carry hers.
+        const put = await bea(`api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}`, {
+            method: "PUT",
+            body: JSON.stringify({ key: "tag", value: "viral-goop" }),
+        });
+        assert.equal(put.status, 200, await put.text());
+        const cal = await makeUserFetch({ prefix: "anncal", host: HOST_C });
+        const calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
+        await cal(`api/identity/${calRoot}/serve`, { method: "POST" });
+        const viaBea = await base58(bea);
+        if ((await cal(`api/id/${beaRoot}/profile?via=${viaBea}`)).status !== 200) this.skip();
+        await cal(`api/identity/${calRoot}/private/kv/contact:${beaRoot}/interest_rebroadcasts`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "high" }),
+        });
+        await beat(HOST_C, "fold", calRoot);
+        const shared = await bea(`api/identity/${beaRoot}/rebroadcasts`, {
+            method: "POST",
+            body: JSON.stringify({ author: adaRoot, doc_id: post }),
+        });
+        assert.equal(shared.status, 200, await shared.text());
+        let labels = [];
+        for (let i = 0; i < 30 && !labels.some((l) => l.value === "mighty"); i++) {
+            await shareArrives(HOST_C, beaRoot, adaRoot);
+            const { rows } = await sql(
+                `SELECT annotator, value FROM doc_annotations WHERE target_doc = '${post}'`,
+                HOST_C
+            );
+            labels = rows;
+        }
+        assert.ok(
+            labels.some((l) => l.annotator === adaRoot && l.value === "mighty"),
+            "ada's label arrived by fragment - her chain was never here"
+        );
+        assert.ok(
+            labels.some((l) => l.annotator === beaRoot && l.value === "viral-goop"),
+            "and bea's, provenance intact"
+        );
+        this.test.ctx.suite = { cal, calRoot };
+    });
+
+    it("and ride the NEXT fragment too - the relay serves kept proofs (slice 3)", async function () {
+        if (!HOST_E || !this.test.ctx.suite) this.skip();
+        // eve follows cal's shares; cal re-shares. Eve's node has met NOBODY in this story
+        // but cal - the labels she receives were relayed as proofs from cal's kept table,
+        // each still verifying against ada and bea.
+        const { cal, calRoot } = this.test.ctx.suite;
+        const eve = await makeUserFetch({ prefix: "anneve", host: HOST_E });
+        const eveRoot = (await (await eve("api/identity", { method: "POST" })).json()).root_pubkey;
+        const viaCal = await base58(cal);
+        if ((await eve(`api/id/${calRoot}/profile?via=${viaCal}`)).status !== 200) this.skip();
+        await eve(`api/identity/${eveRoot}/private/kv/contact:${calRoot}/interest_rebroadcasts`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "high" }),
+        });
+        await beat(HOST_E, "fold", eveRoot);
+        const onward = await cal(`api/identity/${calRoot}/rebroadcasts`, {
+            method: "POST",
+            body: JSON.stringify({ author: adaRoot, doc_id: post }),
+        });
+        assert.equal(onward.status, 200, await onward.text());
+        let labels = [];
+        for (let i = 0; i < 30 && !labels.some((l) => l.value === "viral-goop"); i++) {
+            await shareArrives(HOST_E, calRoot, adaRoot);
+            const { rows } = await sql(
+                `SELECT annotator, value FROM doc_annotations WHERE target_doc = '${post}'`,
+                HOST_E
+            );
+            labels = rows;
+        }
+        assert.ok(
+            labels.some((l) => l.annotator === adaRoot && l.value === "mighty") &&
+                labels.some((l) => l.annotator === beaRoot && l.value === "viral-goop"),
+            "two hops out, both labels stand, each still signed by its own annotator"
         );
     });
 });

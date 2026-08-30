@@ -733,6 +733,22 @@ CREATE INDEX post_replies_by_reply ON post_replies (reply_doc, reply_author);
 -- otherwise grow with every reply this node knows about anyone.
 CREATE INDEX post_replies_by_replier ON post_replies (reply_author, noted_ms);
 
+-- Annotation proofs (ANNOTATIONS.md slice 3): the annotator's exact signed statement and
+-- its packed delegation path, kept so a label that arrived by fragment can ride the NEXT
+-- fragment onward - virality is a relay of proofs, never of hearsay. One proof per live
+-- statement; a retraction learned by proof deletes it (and its memo row).
+CREATE TABLE annotation_proofs (
+    annotator     TEXT NOT NULL,
+    target_author TEXT NOT NULL,
+    target_doc    TEXT NOT NULL,
+    key           TEXT NOT NULL,
+    value         TEXT NOT NULL,
+    entry         BLOB NOT NULL,
+    auth_path     BLOB NOT NULL,
+    PRIMARY KEY (annotator, target_author, target_doc, key, value)
+);
+CREATE INDEX annotation_proofs_by_target ON annotation_proofs (target_author, target_doc);
+
 -- The annotations memo (ANNOTATIONS.md slice 2): every public annotation this node can
 -- verify, from the chains it holds - the author's own labels and anyone else's - one row
 -- per (target, annotator, key, value). Folded on the fold lane per annotator, incremental

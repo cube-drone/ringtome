@@ -99,8 +99,20 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    author's labels dress a follower's feed; a friend's tag arrives by subscription
    naming the friend, and its retraction takes the row with it. The fragment road (every
    surface on nodes holding only a fragment) is slice 3.
-3. **Viral.** The fragment carries the annotation proofs the relayer holds (capped); intake
-   verifies and notes them; revalidation refreshes.
+3. ~~**Viral.**~~ Built 2026-08-30 (node gen 33; the two-hop acceptance in
+   `public_annotations.cjs`). `Have` grew a fourth field: the annotation proofs the
+   answering node chose to attach - each the ANNOTATOR's own signed statement with its
+   delegation path, byte-budgeted (6KB, author's labels first, so the ones most worth
+   carrying are the last dropped) under the 16KB frame. `verify_annotation` binds every
+   proof to its annotator AND to exactly the post it rode with - a relay can withhold a
+   label, never re-target one - and retractions ride like anything else, folding as the
+   chain would. Received proofs are noted into the memo and KEPT (`annotation_proofs`),
+   so the next hop's fragment carries them onward: virality is a relay of proofs, never
+   hearsay - proven two hops out, where a node that has met nobody but its own introducer
+   holds both the author's and a friend's labels, each still signed by its own annotator.
+   Revalidation refreshes for free (every Want re-learns). Named residual: a retraction
+   reaches fragment-held labels only when some fragment carries it or the annotator's
+   chain is met - the reply-evidence residual's sibling, same road when it is built.
 4. **Others' labels.** Third-party tagging UI on any post; `notice_kind::TAGGED` both roads.
 5. **Collections.** Public buckets as browsable pages; search over public tags.
 

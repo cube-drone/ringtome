@@ -602,6 +602,37 @@ pub async fn public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError>
         .collect())
 }
 
+/// The signed entry behind one PRESENT statement, for serving as a proof (ANNOTATIONS.md
+/// slice 3): the stored hash resolves through the entries log, so the bytes are the
+/// annotator's own, byte for byte.
+pub async fn annotation_entry(
+    db: &Db,
+    target_author: &str,
+    target_doc: &[u8; 16],
+    key: &str,
+    value: &str,
+) -> Result<Option<SignedEntry>, AppError> {
+    let row: Option<(Vec<u8>, i64)> = db
+        .fetch_optional(
+            "SELECT entry_hash, present FROM public_annotations
+             WHERE target_author = ?1 AND target_doc = ?2 AND key = ?3 AND value = ?4",
+            (target_author, target_doc.as_slice(), key, value),
+        )
+        .await
+        .context("reading an annotation's entry hash")
+        .map_err(AppError::Internal)?;
+    let Some((hash, present)) = row else {
+        return Ok(None);
+    };
+    if present == 0 {
+        return Ok(None);
+    }
+    let Ok(hash) = <[u8; 32]>::try_from(hash.as_slice()) else {
+        return Ok(None);
+    };
+    entry_by_hash(db, &hash).await
+}
+
 /// The speaker's PRESENT statements about one post, insertion order.
 pub async fn annotations_of(
     db: &Db,

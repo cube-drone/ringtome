@@ -7475,3 +7475,25 @@ else's post, drawn from the persona's own feed so only posts they can see get la
 from a deliberately small vocabulary so the same word lands on many posts and the display
 register's stops have distinct sets to show; one draw in six retracts a label the persona
 said earlier, so the LWW tombstone path is in the data too.
+
+## 2026-08-30 (cont. 2): annotations slice 3 - labels ride the fragment
+
+Virality, as ruled: a post's fragment now carries every annotation proof the relaying
+node holds - the author's labels and third parties' alike, each the annotator's own
+signed statement with its delegation path, byte-budgeted author-first under the frame
+cap. `verify_annotation` at the receiving edge binds each proof to its annotator and to
+exactly the post it rode with (a relay can withhold, never re-target), retractions ride
+and fold like the chain's own, and verified proofs are noted into the memo AND kept in
+`annotation_proofs` (node gen 33) so the next hop's fragment carries them onward - a
+relay of proofs, never hearsay. The attach happens in one place (`answer_for`, after
+whichever shelf answered for the words) and the learn in one place (the ask's verified
+Have). Proven two hops out: eve's node, which has met nobody but cal, holds ada's
+"mighty" and bea's "viral-goop", each still signed by its own annotator. The plant
+sharpened the claims' own honesty: with the attach disabled only the TWO-HOP claim fell,
+because at one hop this suite's topology has a second road (bea's published vouch gets
+ada speculatively mirrored onto cal's node, and the chain fold delivers the same rows) -
+so the one-hop claim proves arrival, and the two-hop claim, where no vouch road exists,
+is the planted proof of the fragment road itself. One tooling
+scar: a blanket regex meant for the Have CONSTRUCTIONS also padded three match PATTERNS
+- structural edits want the sites listed, not pattern-matched blind. Node gen 32 -> 33
+(`just clean` before the next dev boot).

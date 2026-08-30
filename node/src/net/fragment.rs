@@ -164,7 +164,15 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
 /// never held the author either.
 async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {
     let author_hex = hex::encode(author);
-    let answer = answer_inner(state, &author_hex, doc_id).await;
+    let mut answer = answer_inner(state, &author_hex, doc_id).await;
+    // The labels ride the words (ANNOTATIONS.md slice 3): every proof this node can attach,
+    // in one place for every Have - the mirror's, the fragment ledger's, whichever shelf
+    // answered. Attach-after keeps the sources honest about the WORDS and this line honest
+    // about the labels.
+    if let FragmentMessage::Have { annotations, .. } = &mut answer {
+        *annotations =
+            crate::annotations::proofs_for(state, &author_hex, &hex::encode(doc_id)).await;
+    }
     tracing::debug!(
         author = %author_hex, doc = %hex::encode(doc_id),
         answer = match &answer {
@@ -222,7 +230,11 @@ async fn answer_inner(
     if let Ok(Some((entry, auth_path))) =
         crate::fragments::relayable(&state.node_db, author_hex, doc_id).await
     {
-        return FragmentMessage::Have { entry, auth_path };
+        return FragmentMessage::Have {
+            entry,
+            auth_path,
+            annotations: Vec::new(),
+        };
     }
     FragmentMessage::Unknown
 }
@@ -275,6 +287,7 @@ async fn from_held_chain(
     Ok(Some(FragmentMessage::Have {
         entry: entry.bytes().to_vec(),
         auth_path,
+        annotations: Vec::new(),
     }))
 }
 
@@ -435,7 +448,7 @@ pub async fn fetch(
         .unwrap_or(false)
     {
         return match answer_for(state, author, doc_id).await {
-            FragmentMessage::Have { entry, auth_path } => {
+            FragmentMessage::Have { entry, auth_path, .. } => {
                 match verify_fragment(*author, *doc_id, &entry, &auth_path) {
                     Ok(v) => Fetched::Have(Box::new(v), entry, auth_path, None),
                     Err(e) => {
@@ -677,12 +690,16 @@ async fn ask(
     let answer = read_frame(&mut recv).await?;
     conn.close(0u8.into(), b"done");
     match answer {
-        Some(FragmentMessage::Have { entry, auth_path }) => {
+        Some(FragmentMessage::Have { entry, auth_path, annotations }) => {
             // **Verified here, at the edge, before a byte of it is believed.** A relay handing
             // us a signed entry is an honest post office; a relay handing us a forged one must
             // get nothing for the trouble.
             let verified = verify_fragment(*author, *doc_id, &entry, &auth_path)
                 .map_err(|e| anyhow!("a fragment failed its own proof: {e}"))?;
+            // The labels that rode along, each verified against ITS annotator and exactly
+            // this post, folded into the memo and kept for the next hop (slice 3). After
+            // the words' own proof: a forged fragment must not get its labels believed.
+            crate::annotations::learn_proofs(state, author, doc_id, &annotations).await;
             Ok(Fetched::Have(
                 Box::new(verified),
                 entry,

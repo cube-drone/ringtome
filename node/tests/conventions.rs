@@ -33,6 +33,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("comment_curation", vec!["replies.rs"]),
         ("reply_cursors", vec!["replies.rs"]),
         ("doc_annotations", vec!["annotations.rs"]),
+        ("annotation_proofs", vec!["annotations.rs"]),
         ("persona_frontiers", vec!["net/frontier.rs"]),
         ("chain_heads", vec!["net/frontier.rs"]),
         ("media_bakes", vec!["record/bake.rs"]),
@@ -215,7 +216,8 @@ fn user_db_opens_are_deliberate() {
         ("identity/routes.rs", 6),
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
         ("replies.rs", 3),
-        ("annotations.rs", 1),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
+        ("annotations.rs", 2),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
+                                  // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
                                   // root being folded - serialized per root, never a persona loop (2026-08-26)
                                   // + curation_refresh_inner: one ledger unseal per ledger-leg fold (2026-08-27)
                                   // + resolve_proof: one mirror open per served proof, page-bounded by the door (2026-08-27)
