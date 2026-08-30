@@ -233,12 +233,13 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
     // ledger legs ride the `ledger` flag below, fragment arrivals note their own memos at
     // intake.
     use ringtome_proto::registry::service;
-    const EVERYTHING: [u32; 5] = [
+    const EVERYTHING: [u32; 6] = [
         service::IDENTITY_PUBLIC,
         service::PROFILE_PUBLIC,
         service::POSTS,
         service::FOLLOWS_PUBLIC,
         service::REBROADCASTS,
+        service::ANNOTATIONS_PUBLIC,
     ];
     let moved: Vec<u32> = match crate::net::frontier::refresh_moved(state, root).await {
         Ok(m) => {
@@ -275,6 +276,9 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
     let t = std::time::Instant::now();
     if has(service::POSTS) {
         crate::replies::refresh_from(state, root, force).await;
+    }
+    if has(service::ANNOTATIONS_PUBLIC) {
+        crate::annotations::refresh_from(state, root, force).await;
     }
     let t_replies = t.elapsed();
     let t = std::time::Instant::now();

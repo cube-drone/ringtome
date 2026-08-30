@@ -658,6 +658,20 @@ struct FeedItem {
     /// twice (Curtis, 2026-08-28).
     #[serde(skip_serializing_if = "Option::is_none")]
     thread_root: Option<ReplyCard>,
+    /// Every label this node knows on the post (ANNOTATIONS.md slice 2): the author's own
+    /// first, then others' with the annotator's byline. All of them - the reader's display
+    /// register decides at the client which annotators render.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    annotations: Vec<AnnotationCard>,
+}
+
+#[derive(Serialize)]
+struct AnnotationCard {
+    annotator: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    annotator_name: Option<String>,
+    key: String,
+    value: String,
 }
 
 /// A reply row's parent, dressed for the mini-card: the link always, the trimmings when the
@@ -742,6 +756,13 @@ async fn feed_handler(
     let parent_cards = crate::fanout::journal_cards(&state.node_db, &root, &parents)
         .await
         .map_err(AppError::Internal)?;
+    let page_pairs: Vec<(String, String)> = rows
+        .iter()
+        .map(|r| (r.author_root.clone(), r.doc_id.clone()))
+        .collect();
+    let known_labels = crate::annotations::for_posts(&state.node_db, &page_pairs)
+        .await
+        .map_err(AppError::Internal)?;
     let reply_counts = crate::replies::known_counts(
         &state.node_db,
         &rows
@@ -762,6 +783,7 @@ async fn feed_handler(
             .values()
             .flat_map(|l| [l.parent.0.clone(), l.root.0.clone()]),
     );
+    authors.extend(known_labels.values().flatten().map(|a| a.annotator.clone()));
     authors.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     authors.extend(rows.iter().filter_map(|r| r.suggested_via.clone()));
     authors.extend(sharers.values().flatten().cloned());
@@ -848,6 +870,19 @@ async fn feed_handler(
                     published_ms: card.map(|(_, ms)| *ms),
                 }
             };
+            let annotations: Vec<AnnotationCard> = known_labels
+                .get(&(r.author_root.clone(), r.doc_id.clone()))
+                .map(|list| {
+                    list.iter()
+                        .map(|a| AnnotationCard {
+                            annotator_name: bylines.get(&a.annotator).and_then(|b| b.name.clone()),
+                            annotator: a.annotator.clone(),
+                            key: a.key.clone(),
+                            value: a.value.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             let links = reply_links.get(&(r.author_root.clone(), r.doc_id.clone()));
             let reply_to = links.map(|l| dress(&l.parent));
             let thread_root = links
@@ -875,6 +910,7 @@ async fn feed_handler(
                 replies,
                 reply_to,
                 thread_root,
+                annotations,
             }
         })
         .collect();

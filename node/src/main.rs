@@ -37,6 +37,7 @@ mod pubkey;
 mod publish;
 mod rate_limit;
 mod rebroadcast;
+mod annotations;
 mod replies;
 mod reaper;
 mod record;

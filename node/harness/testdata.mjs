@@ -45,6 +45,11 @@ const PASSWORD = 'test';
 /// module graph; if the app registry gains a style, add it here and the generator seeds it.
 const BUCKET_STYLES = ['default', 'journal'];
 
+/// The labels the generator says about other people's posts - short and few on purpose, so
+/// the same word lands on many posts and the display register's stops have distinct sets to
+/// show ("everyone's labels" should look different from "people I follow").
+const LABELS = ['goopy', 'mighty', 'saucy', 'gentle', 'loud', 'nice', 'odd', 'sharp'];
+
 const ACTIONS = [
     {
         name: 'post-in-public',
@@ -303,6 +308,37 @@ const ACTIONS = [
             await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {
                 reply_to: { author: item.author, doc_id: item.doc_id },
             });
+        },
+    },
+    {
+        // A public annotation of somebody else's post (ANNOTATIONS.md): a statement on THIS
+        // persona's own chain naming their post - "goopy", says Mara - which reaches the
+        // author and their followers by subscription, bylined with the annotator. Drawn
+        // from the feed like a share or a reply, so only posts this persona can actually
+        // see get labelled; a small vocabulary so the same tag lands on many posts and the
+        // provenance ("— name") has something to distinguish. One in six retracts a label
+        // this persona said earlier - the LWW tombstone path, exercised in the data.
+        name: 'tag-someones-post',
+        weight: 10,
+        run: async (ctx, p, rng) => {
+            p.labels = p.labels || [];
+            if (p.labels.length && rng() < 1 / 6) {
+                const said = ctx.pick(rng, p.labels);
+                await api(p, 'DELETE',
+                    `/api/identity/${p.root}/public-annotations/${said.author}/${said.doc_id}/tag/${encodeURIComponent(said.value)}`);
+                p.labels = p.labels.filter((l) => l !== said);
+                return;
+            }
+            const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
+            const theirs = (feed.items || []).filter((i) => i.author !== p.root);
+            const item = ctx.pick(rng, theirs);
+            if (!item) return;
+            const value = ctx.pick(rng, LABELS);
+            await api(p, 'PUT', `/api/identity/${p.root}/public-annotations/${item.author}/${item.doc_id}`, {
+                key: 'tag',
+                value,
+            });
+            p.labels.push({ author: item.author, doc_id: item.doc_id, value });
         },
     },
     {

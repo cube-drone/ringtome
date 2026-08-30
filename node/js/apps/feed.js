@@ -54,6 +54,8 @@ import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { t } from '../i18n.js';
+import { ANNOTATION_STOPS } from '../pure/annotations.js';
+import { useAnnotationStop, setAnnotationStop } from '../annotations-stop.js';
 import {
     PostEntry,
     Composer,
@@ -334,6 +336,9 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
     };
 
     const stopKey = stop || DEFAULT_STOP;
+    // Whose labels show (ANNOTATIONS.md ruling 5): the second read-time dial, beside the
+    // first. Same discipline - a persona-level register, instant, network-silent.
+    const labelStop = useAnnotationStop(root);
     // Your own posts always show: the slider curates OTHER people's claims on your
     // attention, and hiding your words from yourself at "high interest only" would read as
     // loss, not selectivity.
@@ -366,6 +371,17 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
                         onInput=${(e) => moveStop(SELECTIVITY_STOPS[Number(e.currentTarget.value)].key)}
                     />
                     <span class="feed-selectivity-label">${(SELECTIVITY_STOPS.find((s) => s.key === stopKey) || {}).label}</span>
+                </label>`}
+                ${labelStop &&
+                html`<label class="feed-labels-dial" title=${t('apps.feed.whose-labels-show', 'whose labels show on posts')}>
+                    <select
+                        value=${labelStop}
+                        onChange=${(e) => setAnnotationStop(root, e.currentTarget.value)}
+                    >
+                        ${ANNOTATION_STOPS.map(
+                            (s) => html`<option value=${s.key} key=${s.key}>${s.label}</option>`
+                        )}
+                    </select>
                 </label>`}
             </div>
             ${visible.map(

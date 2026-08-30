@@ -1166,14 +1166,42 @@ pub async fn id_post(
             // The author's own public annotations ride the permalink read (ANNOTATIONS.md
             // slice 1) - from the author's shelf, so a mirror-holding node answers too.
             let mut v = post_json(&p, n);
+            // The author's own statements straight off their shelf (read-your-writes for a
+            // fresh publish), merged with everything the memo knows - others' labels with
+            // their annotator (ANNOTATIONS.md slice 2). Names ride from the byline cache.
+            let doc_hex = hex::encode(p.doc_id);
+            let mut labels: Vec<(String, String, String)> = Vec::new();
             if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
                 if let Ok(rows) = crate::record::imaol::annotations_of(&db, &root_hex, &p.doc_id).await {
-                    v["annotations"] = serde_json::json!(rows
-                        .into_iter()
-                        .map(|r| serde_json::json!({ "key": r.key, "value": r.value }))
-                        .collect::<Vec<_>>());
+                    labels.extend(rows.into_iter().map(|r| (root_hex.clone(), r.key, r.value)));
                 }
             }
+            if let Ok(known) = crate::annotations::for_posts(
+                &state.node_db,
+                &[(root_hex.clone(), doc_hex.clone())],
+            )
+            .await
+            {
+                for a in known.into_values().flatten() {
+                    let row = (a.annotator, a.key, a.value);
+                    if !labels.contains(&row) {
+                        labels.push(row);
+                    }
+                }
+            }
+            let annotators: Vec<String> = labels.iter().map(|(a, _, _)| a.clone()).collect();
+            let bylines = crate::profiles::bylines(&state.node_db, &annotators)
+                .await
+                .unwrap_or_default();
+            v["annotations"] = serde_json::json!(labels
+                .into_iter()
+                .map(|(annotator, key, value)| serde_json::json!({
+                    "annotator_name": bylines.get(&annotator).and_then(|b| b.name.clone()),
+                    "annotator": annotator,
+                    "key": key,
+                    "value": value,
+                }))
+                .collect::<Vec<_>>());
             Ok(axum::Json(v).into_response())
         }
         None => Err(AppError::NotFound(crate::msg!("idface.no-such-post-here", "no such post here"))),

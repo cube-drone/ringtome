@@ -733,6 +733,22 @@ CREATE INDEX post_replies_by_reply ON post_replies (reply_doc, reply_author);
 -- otherwise grow with every reply this node knows about anyone.
 CREATE INDEX post_replies_by_replier ON post_replies (reply_author, noted_ms);
 
+-- The annotations memo (ANNOTATIONS.md slice 2): every public annotation this node can
+-- verify, from the chains it holds - the author's own labels and anyone else's - one row
+-- per (target, annotator, key, value). Folded on the fold lane per annotator, incremental
+-- by stamp; a retraction on the chain deletes the row. Reads are page-scoped by the posts
+-- on screen; the reader's display register decides whose labels render, at read.
+CREATE TABLE doc_annotations (
+    target_author TEXT    NOT NULL,
+    target_doc    TEXT    NOT NULL,
+    annotator     TEXT    NOT NULL,
+    key           TEXT    NOT NULL,
+    value         TEXT    NOT NULL,
+    noted_ms      INTEGER NOT NULL,
+    PRIMARY KEY (target_author, target_doc, annotator, key, value)
+);
+CREATE INDEX doc_annotations_by_annotator ON doc_annotations (annotator);
+
 -- The author's thread door, three tables (COMMENTS.md slice 6).
 --
 -- A stranger's reply reaches its parent's author as a COMMENT notice whose evidence is the

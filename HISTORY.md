@@ -7448,3 +7448,30 @@ of two gate runs (712 passing became 708 with four new claims: eight missing) is
 found it. Restored from git; the public suite is `public_annotations.cjs`. Writing a test
 file means checking the name is free first. User gen 17 -> 18 (`just clean` before the
 next dev boot).
+
+## 2026-08-30: annotations slice 2 - the memo and the reads
+
+Labels now show where posts show. `doc_annotations` (node gen 32, `annotations.rs`) is
+the node-level memo: one row per (target, annotator, key, value), folded on the fold lane
+as its own leg - it runs only when a persona's annotations chain moved, walks only the
+statements past its in-memory stamp mark, and a retraction on the chain deletes the row -
+the share fold's discipline applied to a fourth chain. Every post surface dresses from it
+page-scoped: the feed carries every known label with the annotator's byline (the author's
+own first), the permalink merges the author's shelf statements (read-your-writes after a
+fresh publish) with the memo's. The UI renders chips with provenance - the author's plain,
+anyone else's dashed and signed "— name"; buckets read "in blog", descriptions "about …",
+and the author's description is the one description a post has. The reader's display
+register is the second read-time dial beside the selectivity slider: author-only /
+author + followed / everyone, blocked never, an anonymous visitor author-only - a pure
+function with its own claims, network-silent both ways. Proven across two nodes: the
+author's labels dress a follower's feed; a friend's "goopy" arrives by subscription
+naming the friend; the friend's retraction takes it back on the next fold. Node gen
+31 -> 32, `just clean` before the next dev boot.
+
+## 2026-08-30 (cont.): the generator learns to label
+
+`just test-data` grew `tag-someones-post` (weight 10): a public annotation of somebody
+else's post, drawn from the persona's own feed so only posts they can see get labelled,
+from a deliberately small vocabulary so the same word lands on many posts and the display
+register's stops have distinct sets to show; one draw in six retracts a label the persona
+said earlier, so the LWW tombstone path is in the data too.

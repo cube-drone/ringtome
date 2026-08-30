@@ -23,6 +23,8 @@ import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
+import { visibleAnnotations, DEFAULT_ANNOTATION_STOP } from './pure/annotations.js';
+import { useAnnotationStop } from './annotations-stop.js';
 import {
     FEED_STYLE,
     publishedState,
@@ -515,6 +517,21 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const tlProfile = useTurbolinks(shownBody || '', item.format);
     const { lead, cut } = leadOf(shownBody || '', emphasis);
     const shown = wholeThing ? shownBody : lead;
+    // Whose labels this reader sees: the register and their ledger, both live. The
+    // description key is the author's alone here (one description per post); anyone
+    // else's description is shown only at 'everyone', as a label.
+    const stop = useAnnotationStop(current && current.root) || DEFAULT_ANNOTATION_STOP;
+    const contactRows = useLive(
+        () => (current && current.root ? openMirror(current.root).contacts.toArray() : []),
+        [current && current.root]
+    );
+    const factsByRoot = current && current.root ? {} : null;
+    if (factsByRoot) for (const c of contactRows || []) factsByRoot[c.root] = c.facts || {};
+    const shownLabels = visibleAnnotations(item.annotations, {
+        author: item.author,
+        stop,
+        factsByRoot,
+    }).filter((a) => a.key !== 'description' || a.annotator === item.author || stop === 'everyone');
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
@@ -628,6 +645,29 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     published_ms=${item.thread_root.published_ms}
                 />
             </p>`}
+            ${/* The labels (ANNOTATIONS.md slice 2): the author's own plain, anyone else's
+                with the annotator's byline - never an anonymous cloud - and only the
+                annotators the reader's display register admits. The author's description
+                is the one description; others' descriptions are tags-grade and ride the
+                'everyone' stop like any label. */ ''}
+            ${!open && shownLabels.length > 0 &&
+            html`<div class="feed-entry-labels">
+                ${shownLabels.map(
+                    (a) => html`<span
+                        class=${a.annotator === item.author ? 'label-chip' : 'label-chip label-chip-theirs'}
+                        key=${`${a.annotator}:${a.key}:${a.value}`}
+                        title=${a.annotator === item.author
+                            ? t('postentry.the-authors-label', "the author's label")
+                            : t('postentry.label-by-name', 'label by {name}', { name: a.annotator_name || speakable(a.annotator) })}
+                    >
+                        ${a.key === 'bucket' ? html`<span class="label-kind">${t('postentry.in', 'in')}</span>` : ''}
+                        ${a.key === 'description' ? html`<span class="label-kind">${t('postentry.about', 'about')}</span>` : ''}
+                        ${a.value}
+                        ${a.annotator !== item.author &&
+                        html`<span class="label-by">${'— '}${a.annotator_name || speakable(a.annotator)}</span>`}
+                    </span>`
+                )}
+            </div>`}
             ${!!item.reply_to &&
             quote !== false &&
             html`<p class="feed-entry-replyto">

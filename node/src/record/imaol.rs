@@ -573,6 +573,35 @@ pub struct AnnotationRow {
     pub received_at_ms: i64,
 }
 
+/// Every statement this speaker has folded, retractions as tombstones - the annotations
+/// memo's source (ANNOTATIONS.md slice 2), filtered by stamp at the caller.
+pub async fn public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError> {
+    catch_up_annotations(db).await?;
+    type Row = (String, Vec<u8>, String, String, i64, i64);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT target_author, target_doc, key, value, present, received_at_ms
+             FROM public_annotations ORDER BY received_at_ms, seq",
+            (),
+        )
+        .await
+        .context("reading the public annotations view")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(target_author, doc, key, value, present, received_at_ms)| {
+            Some(AnnotationRow {
+                target_author,
+                target_doc: doc.try_into().ok()?,
+                key,
+                value,
+                present: present != 0,
+                received_at_ms,
+            })
+        })
+        .collect())
+}
+
 /// The speaker's PRESENT statements about one post, insertion order.
 pub async fn annotations_of(
     db: &Db,

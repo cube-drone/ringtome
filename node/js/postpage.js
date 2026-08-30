@@ -78,6 +78,7 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
         format: post.format,
         published_ms: post.published_ms,
         replies: post.replies,
+        annotations: post.annotations,
         mine: !!(current && current.root === root),
     };
 
@@ -447,6 +448,7 @@ const ThreadReply = ({ author, doc, current, depth }) => {
         format: post.format,
         published_ms: post.published_ms,
         replies: post.replies,
+        annotations: post.annotations,
         mine: !!(current && current.root === author),
     };
     return html`<div class="thread-reply">

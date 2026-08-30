@@ -928,6 +928,46 @@
     color: var(--coral);
 }
 
+/* The labels row (ANNOTATIONS.md): the author's chips plain, others' dressed with a byline. */
+.feed-entry-labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.25rem 0 0.5rem;
+}
+.label-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+}
+.label-chip-theirs {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+}
+.label-kind {
+    color: var(--faint);
+    font-size: 0.72rem;
+}
+.label-by {
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+.feed-labels-dial select {
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.1rem 0.4rem;
+    margin-left: 0.6rem;
+}
+
 .feed-item-body {
     margin-top: 0.4rem;
     font-size: 0.95rem;

@@ -84,10 +84,21 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    statements from the author's shelf, so a mirror-holding node answers too - which is the
    sync scope proven: the new service is public by the roster's default, and it crossed
    the wire with the rest of the persona untouched.
-2. **The memo and the reads.** `doc_annotations` (node-level), folded from synced chains on
-   the fold lane (incremental by stamp, the share fold's discipline) and from fragment intake;
-   page-scoped dressing on feed, permalink, shelf and profile; UI with provenance; the display
-   register and its control.
+2. ~~**The memo and the reads.**~~ Built 2026-08-30 (node gen 32; acceptance in
+   `public_annotations.cjs`). `doc_annotations` (`annotations.rs`, node-level), one row per
+   (target, annotator, key, value), folded on the fold lane as its own leg - gated on the
+   annotations chain moving, incremental by stamp, a retraction deleting the row. The
+   feed dresses every row with every known label (author's first, others bylined by
+   annotator name), and the permalink merges the author's own shelf statements
+   (read-your-writes) with the memo. UI: label chips - the author's plain, anyone else's
+   dashed with "— name"; buckets read "in blog", descriptions "about …", and the author's
+   description is the one description. The display register (`annotations_display/stop`,
+   persona-level, a select beside the selectivity slider) filters at the client through
+   `pure/annotations.js`: author-only / author + followed (default) / everyone, blocked
+   never, and no persona signed in reads as author-only. Proven across two nodes: the
+   author's labels dress a follower's feed; a friend's tag arrives by subscription
+   naming the friend, and its retraction takes the row with it. The fragment road (every
+   surface on nodes holding only a fragment) is slice 3.
 3. **Viral.** The fragment carries the annotation proofs the relayer holds (capped); intake
    verifies and notes them; revalidation refreshes.
 4. **Others' labels.** Third-party tagging UI on any post; `notice_kind::TAGGED` both roads.
