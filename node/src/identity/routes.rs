@@ -50,6 +50,14 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             get(rebroadcasts_handler).post(rebroadcast_handler),
         )
         .route(
+            "/api/identity/{root}/public-annotations/{author}/{doc}",
+            get(public_annotations_handler).put(public_annotation_put_handler),
+        )
+        .route(
+            "/api/identity/{root}/public-annotations/{author}/{doc}/{key}/{value}",
+            axum::routing::delete(public_annotation_delete_handler),
+        )
+        .route(
             "/api/identity/{root}/avatar",
             post(set_avatar_handler).layer(axum::extract::DefaultBodyLimit::max(limits.upload)),
         )
@@ -1336,6 +1344,14 @@ async fn publish_handler(
                     });
                 }
             }
+            // The draft's annotations, restated in public about the new post (ANNOTATIONS.md
+            // slice 1) - best-effort, like the pins: a label must not unsay the words.
+            {
+                let self_root = hex_fixed::<32>(&root, "root")?;
+                if let Err(e) = replicate_annotations(&data, &self_root, &doc_id, &post_id).await {
+                    tracing::warn!(error = ?e, "annotation replication failed; the post stands");
+                }
+            }
             Ok(Json(PublishResponse {
                 post_id: Some(hex::encode(post_id)),
                 baking: None,
@@ -1693,6 +1709,134 @@ async fn rebroadcasts_handler(
         })
         .collect();
     Ok(Json(serde_json::json!({ "items": items })))
+}
+
+/// GET `/api/identity/{root}/public-annotations/{author}/{doc}` - this persona's PRESENT
+/// public statements about one post (ANNOTATIONS.md slice 1): their own labels on their
+/// own post, or what they say about somebody else's.
+async fn public_annotations_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let target_doc = hex_fixed::<16>(&doc, "doc id")?;
+    hex_fixed::<32>(&author, "author root")?;
+    let items: Vec<serde_json::Value> = data
+        .public_annotations()
+        .of(&author, &target_doc)
+        .await?
+        .into_iter()
+        .map(|r| serde_json::json!({ "key": r.key, "value": r.value, "said_ms": r.received_at_ms }))
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items })))
+}
+
+#[derive(Deserialize)]
+struct PublicAnnotationPut {
+    key: String,
+    value: String,
+}
+
+/// PUT - state `key = value` about the post. A tag is `key: "tag", value: "saucy"`; a
+/// single-valued key is the key and its value.
+async fn public_annotation_put_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+    Json(req): Json<PublicAnnotationPut>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let target_author = hex_fixed::<32>(&author, "author root")?;
+    let target_doc = hex_fixed::<16>(&doc, "doc id")?;
+    let signed = data
+        .public_annotations()
+        .say(&target_author, &target_doc, req.key.trim(), req.value.trim(), true)
+        .await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// DELETE - retract one statement: restate it absent, so an older copy cannot win it back.
+async fn public_annotation_delete_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc, key, value)): Path<(String, String, String, String, String)>,
+) -> Result<Json<PrivateWriteResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let target_author = hex_fixed::<32>(&author, "author root")?;
+    let target_doc = hex_fixed::<16>(&doc, "doc id")?;
+    let signed = data
+        .public_annotations()
+        .say(&target_author, &target_doc, &key, &value, false)
+        .await?;
+    Ok(Json(PrivateWriteResponse {
+        seq: signed.entry().seq,
+        entry_hash: hex::encode(signed.hash()),
+    }))
+}
+
+/// Caps on what publish replicates (ANNOTATIONS.md: "within reason" is counts and lengths,
+/// never a category exclusion). Past the cap, the rest is skipped with a warning - the words
+/// must not fail with a label.
+const REPLICATED_TAGS_CAP: usize = 32;
+
+/// Publish-time replication (ANNOTATIONS.md slice 1): every annotation the draft carries -
+/// tags, every set field (description, the claimed date), and its buckets - restated as
+/// public statements on this persona's chain, about the freshly minted post. Copy, don't
+/// flip: the draft keeps its private facts. Best-effort beside the publish, like the pins.
+///
+/// A DIFF, not a dump (the publication suite's "says nothing new when nothing changed"
+/// caught the first cut appending the whole set on every re-publish): only statements the
+/// chain does not already make are minted, and statements the draft no longer carries are
+/// retracted - so a re-publish with untouched labels grows the chain by nothing, and
+/// removing a tag from the draft and posting again takes it back in public.
+async fn replicate_annotations(
+    data: &store::Store,
+    self_root: &[u8; 32],
+    draft_id: &[u8; 16],
+    post_id: &[u8; 16],
+) -> Result<(), AppError> {
+    let cap = |v: &str| -> String { v.chars().take(ringtome_proto::PublicAnnotation::MAX_VALUE_LEN / 4).collect() };
+    let mut desired: std::collections::BTreeSet<(String, String)> = Default::default();
+    let tags = data.annotations().tags(draft_id).await?;
+    if tags.len() > REPLICATED_TAGS_CAP {
+        tracing::warn!(cap = REPLICATED_TAGS_CAP, have = tags.len(),
+            "a draft carries more tags than publish replicates; the rest stay private");
+    }
+    for tag in tags.iter().take(REPLICATED_TAGS_CAP) {
+        if !tag.trim().is_empty() {
+            desired.insert(("tag".into(), cap(tag)));
+        }
+    }
+    for (field, value) in data.annotations().fields(draft_id).await? {
+        // `published_as` is the draft's private bookkeeping (which post it minted) - a
+        // fact about the draft, not a label on the post.
+        if field == store::PUBLISHED_AS || value.trim().is_empty() {
+            continue;
+        }
+        desired.insert((field, cap(&value)));
+    }
+    let buckets = bucket_map(data).await?;
+    for bucket in buckets.get(&hex::encode(draft_id)).cloned().unwrap_or_default() {
+        desired.insert(("bucket".into(), cap(&bucket)));
+    }
+    let stated: std::collections::BTreeSet<(String, String)> = data
+        .public_annotations()
+        .of(&hex::encode(self_root), post_id)
+        .await?
+        .into_iter()
+        .map(|r| (r.key, r.value))
+        .collect();
+    for (k, v) in desired.difference(&stated) {
+        data.public_annotations().say(self_root, post_id, k, v, true).await?;
+    }
+    for (k, v) in stated.difference(&desired) {
+        data.public_annotations().say(self_root, post_id, k, v, false).await?;
+    }
+    Ok(())
 }
 
 #[derive(serde::Serialize)]

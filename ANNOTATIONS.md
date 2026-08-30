@@ -1,0 +1,99 @@
+# Annotations — what a post is said to be, by whom
+
+*The public-annotations arc (rulings 2026-08-29). Today tags, description, claimed date, and
+bucket are private facts on a document's `doc-meta` lane; publishing a note copies its
+header and body into a public post and none of that. This arc makes annotations public
+speech — the author's and everyone else's — carried the way everything public here is
+carried: signed on the speaker's own chain, reached by subscription or virally with the post,
+and filtered by the reader.*
+
+## The problem
+
+A tag is currently a filing tool: it never leaves your persona. But "what is this post?" is
+the most useful thing a network can say about a post, and the two people who can say it are
+the author (who filed it) and the readers (who react to it). Neither can speak today.
+
+## The shape (rulings, 2026-08-29)
+
+1. **A public annotation is a statement on the SPEAKER's chain**: `ANNOTATIONS_PUBLIC`, a new
+   service, holding LWW statements keyed `(target author, target doc, key, value)` — one
+   statement per tag (`tag=saucy` present or retracted), one per single-valued key
+   (`description`, `bucket`, the claimed date). Mine when I annotate my own post, my friend's
+   when they tag mine "goopy". Same statement, same fold, whoever speaks; retraction is the
+   empty statement, like an edge. Never a shared object: nobody edits anyone else's label.
+2. **Publishing replicates the draft's annotations, ALL of them, bucket included** (Curtis).
+   Copy-don't-flip holds: the draft keeps its private facts; the public post gets public
+   statements minted beside it, on the author's own chain. The bucket comes too because
+   publication already comes only through a bucket you chose to publish from, and publishing
+   a whole "therapy" bucket would itself be the decision — the bucket name is not a leak, it
+   is the label. "Within reason" is caps: counts and lengths, never a category exclusion.
+3. **Later edits are statements, not versions.** Posts freeze after the edit window; tags on
+   the signed header would freeze with them. The chain is what keeps annotations mutable for
+   life; the fragment's snapshot (below) is what keeps them viral.
+4. **Two roads to a reader, the rebroadcast idiom.** By subscription: a node syncing an
+   annotator's chain folds their statements into the node-level `doc_annotations` memo.
+   Virally: a post's FRAGMENT carries every annotation the relaying node knows for that post —
+   the author's and third parties' alike — each as `(annotator, signed entry, auth path)`,
+   verified at the receiving edge against its own annotator exactly as a reply proof is. The
+   network carries all it knows (Curtis: "posts carry all known non-blocked annotations").
+5. **The reader decides what shows.** Acquisition and attention split, as for the feed: the
+   memo holds everything that arrived; a persona-level display register says which
+   annotators' labels render — the author's only, the author's plus people I follow (the
+   default), or everyone's — and a blocked annotator's never render, whatever the stop.
+   Read-time, network-silent both ways.
+6. **Provenance is always on the label.** The author's annotations render plain; anyone
+   else's carry the annotator's byline — "goopy — Mara". Labels are never merged into one
+   anonymous cloud: every one names a human, the crowd rule, the byline rule.
+7. **A third party's annotation of your post is news** — `notice_kind::TAGGED`, both roads,
+   the COMMENT envelope's twin (evidence: the annotation entry naming the recipient's doc).
+   A murmur, not first-class: it is closer to a share than a conversation.
+
+## Consequences worth saying out loud
+
+- The description key has one author who matters; a third party's "description" is a
+  comment-shaped thing. The display register may treat non-author descriptions as tags-grade
+  (shown only at "everyone"), and the UI shows one description: the author's.
+- A public bucket annotation is the seed of a browsable public collection ("Curtis's blog") —
+  NEXT_STEPS' "make a whole bucket public in one fell swoop" grows from it, not before it.
+- Search over public tags is a consumer, deliberately after: the memo precedes its consumers.
+
+## Invariants
+
+- Annotations are the speaker's signed claims; no relay can mint, alter, or re-target one.
+- Everything verifies offline at the receiving edge, per statement, against its annotator.
+- Nothing grows with history unbounded: per-post annotation counts are capped at mint and at
+  relay; memo reads are page-scoped by the posts on screen.
+- Explicit beats implicit; blocked beats everything — at read.
+- The memo is disposable: rebuildable from held chains plus held fragments.
+
+## Slices, in order
+
+1. ~~**The wire and the mint.**~~ Built 2026-08-29 (user gen 18; acceptance in
+   `public_annotations.cjs`; the replication planted red). `service::ANNOTATIONS_PUBLIC` (12) and
+   `entry_type::PUBLIC_ANNOTATION` (12), the `PublicAnnotation` statement (target, key,
+   value, present) with the codec's own caps (key 64, value 1024 - a relay cannot be made
+   to carry a novel), re-exported beside `Rebroadcast`. The speaker's `public_annotations`
+   view folds LWW per (target, key, value) exactly as rebroadcasts fold per (author, doc),
+   retraction kept as a tombstone so an older statement cannot win it back. Store accessor
+   `public_annotations().say/of`; HTTP `GET/PUT .../public-annotations/{author}/{doc}` and
+   `DELETE .../{key}/{value}`. Publish restates every annotation the draft carries - tags
+   (capped at 32), every set field, and its buckets - about the fresh post, best-effort
+   beside the publish like the pins, and as a DIFF against what the chain already says
+   (an untouched re-post mints nothing; a tag removed from the draft is retracted in
+   public on the next post). The permalink read carries the author's own
+   statements from the author's shelf, so a mirror-holding node answers too - which is the
+   sync scope proven: the new service is public by the roster's default, and it crossed
+   the wire with the rest of the persona untouched.
+2. **The memo and the reads.** `doc_annotations` (node-level), folded from synced chains on
+   the fold lane (incremental by stamp, the share fold's discipline) and from fragment intake;
+   page-scoped dressing on feed, permalink, shelf and profile; UI with provenance; the display
+   register and its control.
+3. **Viral.** The fragment carries the annotation proofs the relayer holds (capped); intake
+   verifies and notes them; revalidation refreshes.
+4. **Others' labels.** Third-party tagging UI on any post; `notice_kind::TAGGED` both roads.
+5. **Collections.** Public buckets as browsable pages; search over public tags.
+
+## What this deliberately is not
+
+Not folksonomy-as-truth: there is no global tag namespace and no vote count, only people
+saying things under their own names, and a reader choosing whose words to weigh.

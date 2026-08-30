@@ -165,7 +165,8 @@ fn user_db_opens_are_deliberate() {
         ("fanout.rs", 3),          // journal_page + retract_vanished: ONE author per public-move edge
                                   // + shelf_updated_since: the journal delta, one open per POSTS move (2026-08-28)
         ("identity.rs", 4),
-        ("idface.rs", 6),          // + stored_tree_leaves: ONE mirror per revalidation;
+        ("idface.rs", 7),          // + stored_tree_leaves: ONE mirror per revalidation;
+                                  // + id_post annotations: one shelf open per permalink read (2026-08-29)
                                    // + id_post: one open per permalink request (2026-08-25)
         ("ingest.rs", 1),
         ("profiles.rs", 1),        // refresh: ONE persona per claim-change edge

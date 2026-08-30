@@ -7404,3 +7404,47 @@ wrapped that literal without seeing the shadow; the parameter is `tag` now. And 
 click-out is what a panel like this owes, it has it: a mousedown outside the panel and
 its chip closes it (mousedown, so the description's blur-flush still fires on the way
 out); the chip keeps toggling.
+
+## 2026-08-29 (cont. 2): the annotations arc - rulings pinned, ANNOTATIONS.md
+
+Curtis asked whether tags and descriptions are public; they are not - `doc-meta` is a
+private lane and publish copies header and body only - and the answer became an arc.
+Rulings, one sitting: a public annotation is a statement on the SPEAKER's chain (a new
+service, LWW per (target, key, value), one statement per tag); publishing replicates the
+draft's annotations WHOLE - bucket included, because publication already comes only
+through a bucket you chose, and publishing a whole "therapy" would itself be the
+decision, so the name is the label, not a leak; later edits are statements, since posts
+freeze and the header cannot carry a mutable tag; two roads to a reader (subscription
+folds the annotator's chain; the fragment carries every annotation the relayer knows,
+third parties' included, each verified against its own annotator); and the READER
+decides what shows - a persona-level display register over the memo, author-only /
+author-plus-followed / everyone, blocked never - acquisition and attention split as the
+feed splits them. Provenance rides every label; a third party's tag on your post is a
+murmur-grade notice. Five slices queued.
+
+## 2026-08-29 (cont. 3): annotations slice 1 - the wire and the mint
+
+A public annotation is now a real thing on the wire: `ANNOTATIONS_PUBLIC` (service 12)
+carrying `PublicAnnotation` statements - target author and doc, key, value, present -
+LWW per (target, key, value) on the SPEAKER's chain, so a tag is its own statement and a
+retraction is the same statement absent, kept as a tombstone the way a withdrawn share
+is. The codec owns the caps (key 64, value 1024): a relay cannot be made to carry a
+novel. The speaker's view folds past the watermark exactly as rebroadcasts do, keyed
+four ways instead of two; the store speaks it (`public_annotations().say/of`); HTTP
+reads, states, and retracts it. Publish restates every annotation the draft carries -
+tags, every set field, and its buckets, bucket included by ruling - about the fresh
+post, best-effort beside the words like the pins. The permalink read serves the author's
+own statements from the author's shelf, which is what proved the sync scope for free: a
+follower's node answered with the labels after one pull, the new service being public by
+the roster's default. One older claim taught the mint its manners: publish.cjs's "says
+nothing new when nothing changed - the chain does not grow" went red because the first
+cut restated the whole set on every re-publish. Replication is a DIFF now - statements
+the chain lacks are minted, statements the draft dropped are retracted - so an untouched
+re-post grows the chain by nothing and removing a tag then posting again takes it back
+in public; and the draft's private `published_as` bookkeeping stays home. One scar, kept: the
+new suite was first written to `annotations.cjs`, which already existed - the PRIVATE
+annotations suite, eight claims - and the write clobbered it silently; a per-suite diff
+of two gate runs (712 passing became 708 with four new claims: eight missing) is what
+found it. Restored from git; the public suite is `public_annotations.cjs`. Writing a test
+file means checking the name is free first. User gen 17 -> 18 (`just clean` before the
+next dev boot).

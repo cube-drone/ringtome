@@ -47,6 +47,12 @@ pub mod service {
     /// share-noise spending those slots let a burst of shares evict a stranger's follow.
     /// Its own chain, its own keep - the only thing a murmur can drown is another murmur.
     pub const INBOX_MURMURS: u32 = 11;
+    /// Public annotations (ANNOTATIONS.md, 2026-08-29): what a post is said to be, by whom.
+    /// LWW statements on the SPEAKER's chain keyed (target author, target doc, key, value) -
+    /// the author's own labels replicated at publish, anyone else's about anyone's post.
+    /// Public and whole, like rebroadcasts: a reader holding only the tail would mis-fold a
+    /// retraction whose statement fell off the front.
+    pub const ANNOTATIONS_PUBLIC: u32 = 12;
     /// Rebroadcasts: signed pointers at other people's documents (PROJECT_PLAN, Rebroadcast:
     /// Pointer Plus Pinned Replica), LWW per `(author, doc_id)`.
     ///
@@ -78,6 +84,7 @@ pub mod service {
             INBOX_TRUSTED => "inbox-trusted",
             INBOX_STRANGER => "inbox-stranger",
             INBOX_MURMURS => "inbox-murmurs",
+            ANNOTATIONS_PUBLIC => "annotations-public",
             REBROADCASTS => "rebroadcasts",
             GENERAL_PRIVATE => "general-private",
             DOCUMENTS_PRIVATE => "documents-private",
@@ -123,6 +130,8 @@ pub mod entry_type {
     /// *speech*. Content-free by construction: sixteen bytes of doc id and nothing else, which
     /// is what lets every node remember it forever without remembering what it withdrew.
     pub const POST_RETRACT: u32 = 11;
+    /// One public annotation statement (`PublicAnnotation`), on `ANNOTATIONS_PUBLIC`.
+    pub const PUBLIC_ANNOTATION: u32 = 12;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -135,6 +144,7 @@ pub mod entry_type {
             DOC_HEADER => "doc-header",
             REBROADCAST => "rebroadcast",
             POST_RETRACT => "post-retract",
+            PUBLIC_ANNOTATION => "public-annotation",
             PUBLIC_EDGE => "public-edge",
             INBOX_NOTICE => "inbox-notice",
             _ => "unknown-type",
@@ -1158,9 +1168,111 @@ impl Rebroadcast {
     }
 }
 
+/// One public annotation: a statement that `target` carries `key = value`, or - `present`
+/// false - that it no longer does. LWW per (target, key, value) on the speaker's chain, so a
+/// tag is its own statement (`tag=saucy`), retracted by restating it absent; single-valued
+/// keys (`description`, `bucket`, `display_date`) are just keys whose newest present
+/// statement wins at read. Caps are the codec's: a decoder refuses what a well-behaved
+/// speaker could not have minted, so a relay cannot be made to carry a novel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicAnnotation {
+    /// The annotated post's author - never the speaker, who is the entry's chain author.
+    pub target_author: [u8; 32],
+    pub target_doc: [u8; 16],
+    pub key: String,
+    pub value: String,
+    pub present: bool,
+}
+
+impl PublicAnnotation {
+    pub const MAX_KEY_LEN: usize = 64;
+    pub const MAX_VALUE_LEN: usize = 1024;
+
+    pub fn is_retraction(&self) -> bool {
+        !self.present
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        if self.key.len() > Self::MAX_KEY_LEN || self.key.is_empty() {
+            return Err(ProtoError::BadEntry("annotation key length"));
+        }
+        if self.value.len() > Self::MAX_VALUE_LEN {
+            return Err(ProtoError::BadEntry("annotation value length"));
+        }
+        let mut w = Writer::new();
+        w.map(5);
+        w.uint(0);
+        w.bytes(&self.target_author);
+        w.uint(1);
+        w.bytes(&self.target_doc);
+        w.uint(2);
+        w.text(&self.key);
+        w.uint(3);
+        w.text(&self.value);
+        w.uint(4);
+        w.uint(u64::from(self.present));
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let mut map = r.int_map()?;
+        let mut target_author: Option<[u8; 32]> = None;
+        let mut target_doc: Option<[u8; 16]> = None;
+        let mut key: Option<String> = None;
+        let mut value: Option<String> = None;
+        let mut present: Option<bool> = None;
+        while let Some(k) = map.next_key()? {
+            match k {
+                0 => target_author = Some(map.bytes_fixed::<32>()?),
+                1 => target_doc = Some(map.bytes_fixed::<16>()?),
+                2 => key = Some(map.text()?.to_string()),
+                3 => value = Some(map.text()?.to_string()),
+                4 => present = Some(map.uint()? != 0),
+                _ => map.skip_value()?,
+            }
+        }
+        r.finish()?;
+        let out = Self {
+            target_author: target_author.ok_or(ProtoError::BadEntry("annotation missing target author"))?,
+            target_doc: target_doc.ok_or(ProtoError::BadEntry("annotation missing target doc"))?,
+            key: key.ok_or(ProtoError::BadEntry("annotation missing key"))?,
+            value: value.ok_or(ProtoError::BadEntry("annotation missing value"))?,
+            present: present.ok_or(ProtoError::BadEntry("annotation missing presence"))?,
+        };
+        if out.key.len() > Self::MAX_KEY_LEN || out.key.is_empty() {
+            return Err(ProtoError::BadEntry("annotation key length"));
+        }
+        if out.value.len() > Self::MAX_VALUE_LEN {
+            return Err(ProtoError::BadEntry("annotation value length"));
+        }
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ANNOTATIONS.md slice 1: the statement round-trips, a retraction is the same shape
+    /// absent, and the codec refuses what no well-behaved speaker could have minted.
+    #[test]
+    fn a_public_annotation_round_trips_and_keeps_its_caps() {
+        let a = PublicAnnotation {
+            target_author: [1u8; 32],
+            target_doc: [2u8; 16],
+            key: "tag".into(),
+            value: "saucy".into(),
+            present: true,
+        };
+        assert_eq!(PublicAnnotation::decode(&a.encode().unwrap()).unwrap(), a);
+        let gone = PublicAnnotation { present: false, ..a.clone() };
+        assert!(PublicAnnotation::decode(&gone.encode().unwrap()).unwrap().is_retraction());
+        let novel = PublicAnnotation { value: "x".repeat(PublicAnnotation::MAX_VALUE_LEN + 1), ..a.clone() };
+        assert!(novel.encode().is_err(), "a value past the cap does not mint");
+        let nameless = PublicAnnotation { key: String::new(), ..a };
+        assert!(nameless.encode().is_err(), "an empty key is not a statement");
+    }
 
     #[test]
     fn a_post_retraction_is_sixteen_bytes_of_regret() {

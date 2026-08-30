@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 501 phrases across 44 files.
+// 502 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -559,6 +559,7 @@ export default {
     // --- node/src/record/imaol.rs ---
     'record.imaol.this-computers-key-is-no': "this computer's key is no longer part of the persona",
     'record.imaol.invalid-profile-field-e': 'invalid profile field: {e}',
+    'record.imaol.annotation-too-long': "that annotation is too long to state - the codec's caps are the law",
 
     // --- node/src/record/private.rs ---
     'record.private.invalid-private-record-e': 'invalid private record: {e}',

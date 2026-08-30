@@ -269,6 +269,23 @@ CREATE TABLE rebroadcasts (
     PRIMARY KEY (author_root, doc_id)
 );
 
+-- Public annotations (ANNOTATIONS.md slice 1): this persona's own statements about posts -
+-- the author's labels replicated at publish, and anything they say about anyone else's
+-- post - folded LWW from the annotations-public chain, one row per (target, key, value).
+-- `present` 0 is the folded retraction, kept so an older statement cannot win it back.
+CREATE TABLE public_annotations (
+    target_author  TEXT    NOT NULL,
+    target_doc     BLOB    NOT NULL,
+    key            TEXT    NOT NULL,
+    value          TEXT    NOT NULL,
+    present        INTEGER NOT NULL,
+    timestamp_ms   INTEGER NOT NULL,
+    seq            INTEGER NOT NULL,
+    entry_hash     BLOB    NOT NULL,
+    received_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (target_author, target_doc, key, value)
+);
+
 -- The inbox: notices delivered by strangers, folded from the two inbox tier chains
 -- (PROJECT_PLAN, Arrival and Attention - the DELIVERED path; the derived path is node.db's
 -- `notifications` and never touches this).

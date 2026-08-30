@@ -34,6 +34,10 @@ federated, unapologetically Old Internet.
   the private store (mutable documents on an immutable spine; git-for-notes divergence handling).
   Also the discovery narrative for the file layer, versioned documents, and taxonomies — the
   canonical statements graduated to PROJECT_PLAN's Data Layer.
+- [`ANNOTATIONS.md`](ANNOTATIONS.md) — the working plan for public annotations: tags,
+  description, date and bucket going public at publish, third parties annotating on their own
+  chains, everything riding virally with the post, the reader choosing whose labels show.
+  Rulings pinned 2026-08-29; in-motion slices mirrored in NEXT_STEPS.
 - [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
   language mapping.
 - [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and

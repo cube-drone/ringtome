@@ -185,6 +185,11 @@ impl Store {
         Rebroadcasts { store: self }
     }
 
+    /// This persona's public annotation statements (ANNOTATIONS.md).
+    pub fn public_annotations(&self) -> PublicAnnotations<'_> {
+        PublicAnnotations { store: self }
+    }
+
     /// Outbound notices: sealing an envelope that tells someone what this persona did about
     /// them (`outbox`). Kind-agnostic - a follow and a share differ only in their evidence.
     pub fn notices(&self) -> Notices<'_> {
@@ -316,6 +321,45 @@ impl Rebroadcasts<'_> {
     /// included as tombstones - callers that render must skip `is_retracted`.
     pub async fn all(&self) -> Result<Vec<imaol::RebroadcastRow>, AppError> {
         imaol::rebroadcasts(&self.store.db).await
+    }
+}
+
+pub struct PublicAnnotations<'s> {
+    store: &'s Store,
+}
+
+impl PublicAnnotations<'_> {
+    /// Say that `target` carries `key = value` (or, `present` false, that it no longer
+    /// does). LWW per (target, key, value): restating overwrites, never stacks.
+    pub async fn say(
+        &self,
+        target_author: &[u8; 32],
+        target_doc: &[u8; 16],
+        key: &str,
+        value: &str,
+        present: bool,
+    ) -> Result<SignedEntry, AppError> {
+        imaol::publish_annotation(
+            &self.store.db,
+            &self.store.authorship.signer,
+            &ringtome_proto::PublicAnnotation {
+                target_author: *target_author,
+                target_doc: *target_doc,
+                key: key.to_string(),
+                value: value.to_string(),
+                present,
+            },
+        )
+        .await
+    }
+
+    /// The present statements about one post, insertion order.
+    pub async fn of(
+        &self,
+        target_author_hex: &str,
+        target_doc: &[u8; 16],
+    ) -> Result<Vec<imaol::AnnotationRow>, AppError> {
+        imaol::annotations_of(&self.store.db, target_author_hex, target_doc).await
     }
 }
 

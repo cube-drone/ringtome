@@ -1163,7 +1163,18 @@ pub async fn id_post(
             .copied()
             .next()
             .unwrap_or(0);
-            Ok(axum::Json(post_json(&p, n)).into_response())
+            // The author's own public annotations ride the permalink read (ANNOTATIONS.md
+            // slice 1) - from the author's shelf, so a mirror-holding node answers too.
+            let mut v = post_json(&p, n);
+            if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
+                if let Ok(rows) = crate::record::imaol::annotations_of(&db, &root_hex, &p.doc_id).await {
+                    v["annotations"] = serde_json::json!(rows
+                        .into_iter()
+                        .map(|r| serde_json::json!({ "key": r.key, "value": r.value }))
+                        .collect::<Vec<_>>());
+                }
+            }
+            Ok(axum::Json(v).into_response())
         }
         None => Err(AppError::NotFound(crate::msg!("idface.no-such-post-here", "no such post here"))),
     }

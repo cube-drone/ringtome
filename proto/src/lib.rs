@@ -33,8 +33,7 @@ pub use crown::{Ceiling, KeyStatus, Crown};
 pub use registry::{
     Anchor, Authorize, Disposition, DocHeaderPlain, KeyEpoch, PrivateKind, PrivatePlain,
     PostRetraction, PrivateRecord, ProfileSet, PublicEdge, Rebroadcast,
-    Revoke,
-};
+    Revoke, PublicAnnotation,};
 pub use deliver::{DeliverMessage, Envelope, SignedEnvelope};
 pub use sync::MemberProof;
 

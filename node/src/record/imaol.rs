@@ -538,6 +538,157 @@ async fn catch_up_rebroadcasts(db: &Db) -> Result<(), AppError> {
     Ok(())
 }
 
+/// State one public annotation (ANNOTATIONS.md slice 1): `target` carries `key = value`,
+/// or with `present` false no longer does. LWW per (target, key, value) - restating
+/// overwrites, never stacks.
+pub async fn publish_annotation(
+    db: &Db,
+    key: &SigningKey,
+    annotation: &ringtome_proto::PublicAnnotation,
+) -> Result<SignedEntry, AppError> {
+    let payload = annotation.encode().map_err(|_| {
+        AppError::BadRequest(crate::msg!(
+            "record.imaol.annotation-too-long",
+            "that annotation is too long to state - the codec's caps are the law"
+        ))
+    })?;
+    append(
+        db,
+        key,
+        service::ANNOTATIONS_PUBLIC,
+        entry_type::PUBLIC_ANNOTATION,
+        Payload::Inline(payload),
+    )
+    .await
+}
+
+/// One folded annotation statement, as a reader sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnotationRow {
+    pub target_author: String,
+    pub target_doc: [u8; 16],
+    pub key: String,
+    pub value: String,
+    pub present: bool,
+    pub received_at_ms: i64,
+}
+
+/// The speaker's PRESENT statements about one post, insertion order.
+pub async fn annotations_of(
+    db: &Db,
+    target_author_hex: &str,
+    target_doc: &[u8; 16],
+) -> Result<Vec<AnnotationRow>, AppError> {
+    catch_up_annotations(db).await?;
+    Ok(annotation_rows(db, (target_author_hex, target_doc))
+        .await?
+        .into_iter()
+        .filter(|r| r.present)
+        .collect())
+}
+
+async fn annotation_rows(
+    db: &Db,
+    (author, doc): (&str, &[u8; 16]),
+) -> Result<Vec<AnnotationRow>, AppError> {
+    type Row = (String, Vec<u8>, String, String, i64, i64);
+    // One post's statements only, today; the whole-view read arrives with slice 2's memo
+    // fold, which is its one consumer.
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT target_author, target_doc, key, value, present, received_at_ms
+             FROM public_annotations WHERE target_author = ?1 AND target_doc = ?2
+             ORDER BY timestamp_ms, seq",
+            (author, doc.as_slice()),
+        )
+        .await
+        .context("reading the public annotations view")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(target_author, doc, key, value, present, received_at_ms)| {
+            Some(AnnotationRow {
+                target_author,
+                target_doc: doc.try_into().ok()?,
+                key,
+                value,
+                present: present != 0,
+                received_at_ms,
+            })
+        })
+        .collect())
+}
+
+/// Fold annotation statements past the watermark - `catch_up_rebroadcasts`' twin, keyed
+/// four ways instead of two.
+async fn catch_up_annotations(db: &Db) -> Result<(), AppError> {
+    type Row = (String, Vec<u8>, i64, i64);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT e.author_pubkey, e.bytes, e.received_at_ms, e.seq
+             FROM entries e
+             LEFT JOIN view_watermarks w
+               ON w.author_pubkey = e.author_pubkey AND w.service = e.service
+             WHERE e.service = ?1 AND e.entry_type = ?2
+               AND e.seq > COALESCE(w.folded_seq, -1)
+             ORDER BY e.author_pubkey, e.seq",
+            (
+                i64::from(service::ANNOTATIONS_PUBLIC),
+                i64::from(entry_type::PUBLIC_ANNOTATION),
+            ),
+        )
+        .await
+        .context("reading annotation entries past the watermark")
+        .map_err(AppError::Internal)?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut advance: BTreeMap<String, u64> = BTreeMap::new();
+    for (author_hex, bytes, received_at_ms, seq) in rows {
+        advance.insert(author_hex, seq as u64);
+        let Ok(signed) = SignedEntry::decode(&bytes) else {
+            continue;
+        };
+        let Payload::Inline(payload) = &signed.entry().payload else {
+            continue;
+        };
+        let Ok(a) = ringtome_proto::PublicAnnotation::decode(payload) else {
+            continue;
+        };
+        db.execute(
+            "INSERT INTO public_annotations
+               (target_author, target_doc, key, value, present, timestamp_ms, seq, entry_hash, received_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(target_author, target_doc, key, value) DO UPDATE SET
+               present = excluded.present,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash,
+               received_at_ms = excluded.received_at_ms
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (public_annotations.timestamp_ms, public_annotations.seq, public_annotations.entry_hash)",
+            (
+                hex::encode(a.target_author),
+                a.target_doc.as_slice(),
+                a.key.as_str(),
+                a.value.as_str(),
+                i64::from(a.present),
+                signed.entry().timestamp_ms,
+                signed.entry().seq as i64,
+                signed.hash().as_slice(),
+                received_at_ms,
+            ),
+        )
+        .await
+        .context("folding an annotation")
+        .map_err(AppError::Internal)?;
+    }
+    for (author_hex, seq) in advance {
+        advance_watermark(db, &author_hex, service::ANNOTATIONS_PUBLIC, seq).await?;
+    }
+    Ok(())
+}
+
 /// Drop one chain's rows below `floor_seq` - the retention primitive (PROJECT_PLAN, Tiered
 /// inbox chains: "most eviction is aging off the floor"). Returns how many rows left.
 ///
