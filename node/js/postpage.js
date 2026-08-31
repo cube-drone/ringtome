@@ -147,8 +147,57 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                     onReplied=${(mint) => setSaid((have) => [...have, mint])}
                 />`}
             </section>`}
+            ${item && html`<${PostDossier} author=${root} doc=${doc} />`}
         </div>
     `;
+};
+
+/// The post's forensic ledger, folded at the very bottom (Curtis, 2026-08-31): everything
+/// this node knows about the post, dense over pretty - each reply and label with the ROAD
+/// it arrived by ('chain', 'fragment', 'envelope', 'door', 'relay:<endpoint>'), so a
+/// reader who feels harassed can reverse-engineer the peer rubber-stamping the traffic in.
+/// Fetched lazily on first unfold; a log, not a page.
+const PostDossier = ({ author, doc }) => {
+    const [data, setData] = useState(null);
+    const [open, setOpen] = useState(false);
+    useEffect(() => {
+        if (!open || data !== null) return;
+        let live = true;
+        api(`/api/id/${author}/posts/${doc}/dossier`)
+            .then((d) => live && setData(d))
+            .catch(() => live && setData(false));
+        return () => {
+            live = false;
+        };
+    }, [open, data, author, doc]);
+    const iso = (ms) => (ms ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : '?');
+    const who = (root_, name) => `${name ? `${name} ` : ''}${speakable(root_)}`;
+    return html`<details class="post-dossier" onToggle=${(e) => setOpen(e.currentTarget.open)}>
+        <summary>${t('postpage.post-history', 'post history')}</summary>
+        ${data === null && open && html`<p>${t('postpage.reading-the-ledger', 'reading the ledger…')}</p>`}
+        ${data === false && html`<p>${t('postpage.no-ledger-readable-here', 'no ledger readable here')}</p>`}
+        ${data &&
+        html`<pre class="post-dossier-log">${[
+            `post ${doc} by ${speakable(author)}`,
+            data.post &&
+                `  published ${iso(data.post.published_ms)} updated ${iso(data.post.updated_ms)} format ${data.post.format || '?'}`,
+            `annotations known here: ${(data.annotations || []).length}`,
+            ...(data.annotations || []).map(
+                (a) =>
+                    `  ${a.key} ${JSON.stringify(a.value)} by ${who(a.annotator, a.annotator_name)}` +
+                    ` noted ${iso(a.noted_ms)} via ${a.learned_via}${a.proof_kept ? ' [relaying onward]' : ''}`
+            ),
+            `replies known here: ${(data.replies || []).length}`,
+            ...(data.replies || []).map(
+                (r) =>
+                    `  ${r.direct ? 'reply' : 'in-tree'} ${r.doc_id} by ${who(r.author, (data.reply_names || {})[r.author])}` +
+                    ` claimed ${iso(r.claimed_ms)} noted ${iso(r.noted_ms)} via ${r.learned_via}` +
+                    (r.served === true ? ' [served]' : r.served === false ? ' [held/suppressed]' : '')
+            ),
+        ]
+            .filter(Boolean)
+            .join('\n')}</pre>`}
+    </details>`;
 };
 
 /// One hop up: the post this page's post replies to, as a mini-card. The title comes from

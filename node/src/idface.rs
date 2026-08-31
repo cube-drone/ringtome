@@ -1330,6 +1330,106 @@ pub async fn id_post_replies(
         .into_response())
 }
 
+/// GET `/api/id/{root}/posts/{doc}/dossier` - the post's forensic ledger (Curtis,
+/// 2026-08-31): everything THIS node knows about the post, its replies and its labels, and
+/// crucially, which ROAD taught the node each fact. Every statement in the network is
+/// signed, but carriage was anonymous; a reader who feels harassed reads this to
+/// reverse-engineer the peer that has been rubber-stamping the traffic in. Deliberately
+/// dense and unpolished: it is a log, not a page.
+pub async fn id_post_dossier(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path((seg, doc)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-12", "no such persona here")));
+    };
+    let root_hex = hex::encode(root);
+    if !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-13", "no such persona here")));
+    }
+    if hex::decode(&doc).map(|b| b.len()) != Ok(16) {
+        return Err(AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id-3", "that isn't a document id")));
+    }
+    let hosted = hosted_here(&state, &root_hex).await?;
+
+    // The post's own shelf facts, when a shelf here holds it.
+    let mut post_v = serde_json::Value::Null;
+    let doc_id: [u8; 16] = hex::decode(&doc)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .expect("length-checked above");
+    if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
+        if let Ok(Some(p)) = crate::record::documents::public_doc(&db, &doc_id).await {
+            post_v = post_json(&p, 0);
+        }
+    }
+
+    // Every reply row the memo holds for this post - the owning module's ledger read - and
+    // (when the author lives here) the door's verdict per row.
+    let rows = crate::replies::ledger_for(&state.node_db, &root_hex, &doc)
+        .await
+        .map_err(AppError::Internal)?;
+    let mut replies = Vec::with_capacity(rows.len());
+    for (author, rdoc, direct, claimed_ms, noted_ms, learned_via) in rows {
+        let served = if hosted {
+            Some(crate::replies::servable(&state, &root_hex, &author, &rdoc).await)
+        } else {
+            None
+        };
+        replies.push(serde_json::json!({
+            "author": author,
+            "doc_id": rdoc,
+            "direct": direct,
+            "claimed_ms": claimed_ms,
+            "noted_ms": noted_ms,
+            "learned_via": learned_via,
+            "served": served,
+        }));
+    }
+
+    // Every label the memo holds, its road, and whether the proof is kept servable onward
+    // (a kept proof means this node RELAYS it - carriage, named).
+    let (labels, kept) = crate::annotations::ledger_for(&state.node_db, &root_hex, &doc)
+        .await
+        .map_err(AppError::Internal)?;
+
+    let mut names: Vec<String> = labels.iter().map(|(a, ..)| a.clone()).collect();
+    names.extend(replies.iter().filter_map(|r| r["author"].as_str().map(String::from)));
+    let bylines = crate::profiles::bylines(&state.node_db, &names)
+        .await
+        .unwrap_or_default();
+
+    let annotations: Vec<serde_json::Value> = labels
+        .into_iter()
+        .map(|(annotator, key, value, noted_ms, learned_via)| {
+            serde_json::json!({
+                "annotator_name": bylines.get(&annotator).and_then(|b| b.name.clone()),
+                "proof_kept": kept.contains(&(annotator.clone(), key.clone(), value.clone())),
+                "annotator": annotator,
+                "key": key,
+                "value": value,
+                "noted_ms": noted_ms,
+                "learned_via": learned_via,
+            })
+        })
+        .collect();
+    let reply_names: serde_json::Value = serde_json::json!(replies
+        .iter()
+        .filter_map(|r| r["author"].as_str())
+        .filter_map(|a| bylines.get(a).and_then(|b| b.name.clone()).map(|n| (a.to_string(), n)))
+        .collect::<std::collections::BTreeMap<String, String>>());
+
+    Ok(axum::Json(serde_json::json!({
+        "hosted": hosted,
+        "post": post_v,
+        "replies": replies,
+        "reply_names": reply_names,
+        "annotations": annotations,
+    }))
+    .into_response())
+}
+
 #[derive(serde::Deserialize)]
 pub struct RepliesQuery {
     pub after_ms: Option<i64>,

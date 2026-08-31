@@ -699,7 +699,7 @@ async fn ask(
             // The labels that rode along, each verified against ITS annotator and exactly
             // this post, folded into the memo and kept for the next hop (slice 3). After
             // the words' own proof: a forged fragment must not get its labels believed.
-            crate::annotations::learn_proofs(state, author, doc_id, &annotations).await;
+            crate::annotations::learn_proofs(state, author, doc_id, &annotations, endpoint_id).await;
             Ok(Fetched::Have(
                 Box::new(verified),
                 entry,

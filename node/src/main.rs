@@ -551,6 +551,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/id/{seg}/posts", get(idface::id_posts))
         .route("/api/id/{seg}/posts/{doc}", get(idface::id_post))
         .route("/api/id/{seg}/posts/{doc}/replies", get(idface::id_post_replies))
+        .route("/api/id/{seg}/posts/{doc}/dossier", get(idface::id_post_dossier))
         .route("/api/directory", get(idface::directory))
         .route("/home/{*wildcard}", get(ui::homepage))
         // Versioned static assets (CDN cache-safe)

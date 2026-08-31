@@ -724,6 +724,11 @@ CREATE TABLE post_replies (
     root_doc      TEXT    NOT NULL,
     claimed_ms    INTEGER NOT NULL,  -- the reply's claimed stamp: ordering, replay-stable
     noted_ms      INTEGER NOT NULL,  -- the memo's own stamp: the whole-slice sweep's clock
+    -- Which ROAD taught this node the row (the dossier, 2026-08-31): 'chain' (folded from
+    -- a chain synced here), 'fragment' (rode a post fragment), 'envelope' (a COMMENT
+    -- notice's kept evidence), 'door' (learned from the author's thread door). Carriage
+    -- was the one unsigned act; this is its memory.
+    learned_via   TEXT    NOT NULL DEFAULT 'chain',
     PRIMARY KEY (parent_author, parent_doc, reply_author, reply_doc)
 );
 -- Slice 6's door asks by thread root ("everything in Q's conversation") in one read.
@@ -763,6 +768,10 @@ CREATE TABLE doc_annotations (
     key           TEXT    NOT NULL,
     value         TEXT    NOT NULL,
     noted_ms      INTEGER NOT NULL,
+    -- Which road taught this node the label (the dossier, 2026-08-31): 'chain' for the
+    -- annotator's own synced chain, 'relay:<endpoint>' naming the peer whose fragment
+    -- carried the proof in - the vector a harassed author reverse-engineers.
+    learned_via   TEXT    NOT NULL DEFAULT 'chain',
     PRIMARY KEY (target_author, target_doc, annotator, key, value)
 );
 CREATE INDEX doc_annotations_by_annotator ON doc_annotations (annotator);

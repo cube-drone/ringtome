@@ -54,7 +54,8 @@ async fn refresh_inner(state: &AppState, annotator: &str, force: bool) -> Result
         }
         let doc_hex = hex::encode(r.target_doc);
         if r.present {
-            note(&state.node_db, &r.target_author, &doc_hex, annotator, &r.key, &r.value).await?;
+            note(&state.node_db, &r.target_author, &doc_hex, annotator, &r.key, &r.value, "chain")
+                .await?;
         } else {
             forget(&state.node_db, &r.target_author, &doc_hex, annotator, &r.key, &r.value).await?;
         }
@@ -70,15 +71,17 @@ pub async fn note(
     annotator: &str,
     key: &str,
     value: &str,
+    learned_via: &str,
 ) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO doc_annotations
-               (target_author, target_doc, annotator, key, value, noted_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+               (target_author, target_doc, annotator, key, value, noted_ms, learned_via)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
-               noted_ms = excluded.noted_ms",
-            (target_author, target_doc, annotator, key, value, now_ms()),
+               noted_ms = excluded.noted_ms,
+               learned_via = excluded.learned_via",
+            (target_author, target_doc, annotator, key, value, now_ms(), learned_via),
         )
         .await
         .context("noting an annotation")?;
@@ -158,6 +161,37 @@ pub async fn for_posts(
 /// frame cap with the header and its path beside them. Author-first order means the labels
 /// most worth carrying are the last to be dropped.
 const PROOF_BYTES_BUDGET: usize = 6 * 1024;
+
+/// The dossier's label ledger (2026-08-31): every label the memo holds for one post with
+/// the road it arrived by - `(annotator, key, value, noted_ms, learned_via)`, oldest-noted
+/// first - and the set of (annotator, key, value) whose proofs this node keeps for onward
+/// relay. A kept proof means this node CARRIES the label - carriage, named.
+pub async fn ledger_for(
+    node_db: &Db,
+    root: &str,
+    doc: &str,
+) -> Result<(
+    Vec<(String, String, String, i64, String)>,
+    std::collections::HashSet<(String, String, String)>,
+)> {
+    let labels: Vec<(String, String, String, i64, String)> = node_db
+        .fetch_all(
+            "SELECT annotator, key, value, noted_ms, learned_via FROM doc_annotations
+             WHERE target_author = ?1 AND target_doc = ?2 ORDER BY noted_ms",
+            (root, doc),
+        )
+        .await
+        .context("reading the label ledger")?;
+    let kept: Vec<(String, String, String)> = node_db
+        .fetch_all(
+            "SELECT annotator, key, value FROM annotation_proofs
+             WHERE target_author = ?1 AND target_doc = ?2",
+            (root, doc),
+        )
+        .await
+        .unwrap_or_default();
+    Ok((labels, kept.into_iter().collect()))
+}
 
 /// Keep one verified proof servable.
 #[allow(clippy::too_many_arguments)] // a proof IS eight facts; a params struct would name them worse
@@ -316,7 +350,12 @@ pub async fn learn_proofs(
     target_author: &[u8; 32],
     target_doc: &[u8; 16],
     proofs: &[ringtome_proto::fragment::AnnotationProof],
+    taught_by: &str,
 ) {
+    // The dossier's key fact (Curtis, 2026-08-31): every statement here is signed, but
+    // CARRIAGE was anonymous - a relay could launder a legion's labels into view with no
+    // name on the act. The road now records who handed the proof over.
+    let road = format!("relay:{taught_by}");
     let author_hex = hex::encode(target_author);
     let doc_hex = hex::encode(target_doc);
     for p in proofs {
@@ -336,8 +375,16 @@ pub async fn learn_proofs(
         };
         let annotator_hex = hex::encode(p.annotator);
         let outcome = if a.present {
-            let noted =
-                note(&state.node_db, &author_hex, &doc_hex, &annotator_hex, &a.key, &a.value).await;
+            let noted = note(
+                &state.node_db,
+                &author_hex,
+                &doc_hex,
+                &annotator_hex,
+                &a.key,
+                &a.value,
+                &road,
+            )
+            .await;
             match noted {
                 Ok(()) => keep_proof(
                     &state.node_db,
@@ -380,9 +427,9 @@ mod tests {
     async fn noted_read_and_forgotten() {
         let db = crate::db::test_node_db().await;
         let (a, d) = ("aa".repeat(32), "11".repeat(16));
-        note(&db, &a, &d, &"bb".repeat(32), "tag", "goopy").await.unwrap();
-        note(&db, &a, &d, &a, "tag", "saucy").await.unwrap();
-        note(&db, &a, &d, &a, "tag", "saucy").await.unwrap();
+        note(&db, &a, &d, &"bb".repeat(32), "tag", "goopy", "chain").await.unwrap();
+        note(&db, &a, &d, &a, "tag", "saucy", "chain").await.unwrap();
+        note(&db, &a, &d, &a, "tag", "saucy", "chain").await.unwrap();
         let known = for_posts(&db, &[(a.clone(), d.clone())]).await.unwrap();
         let labels = known.get(&(a.clone(), d.clone())).unwrap();
         assert_eq!(labels.len(), 2, "idempotent: one row per statement");

@@ -44,18 +44,20 @@ async fn note(
     reply_author: &str,
     reply_doc: &str,
     claimed_ms: i64,
+    learned_via: &str,
 ) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO post_replies
                (parent_author, parent_doc, reply_author, reply_doc,
-                root_author, root_doc, claimed_ms, noted_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                root_author, root_doc, claimed_ms, noted_ms, learned_via)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT (parent_author, parent_doc, reply_author, reply_doc) DO UPDATE SET
                root_author = excluded.root_author,
                root_doc = excluded.root_doc,
                claimed_ms = excluded.claimed_ms,
-               noted_ms = excluded.noted_ms",
+               noted_ms = excluded.noted_ms,
+               learned_via = excluded.learned_via",
             (
                 parent.0.as_str(),
                 parent.1.as_str(),
@@ -65,6 +67,7 @@ async fn note(
                 root.1.as_str(),
                 claimed_ms,
                 now_ms(),
+                learned_via,
             ),
         )
         .await
@@ -94,6 +97,7 @@ pub async fn note_reply(
         reply_author,
         &hex::encode(verified.doc_id),
         verified.timestamp_ms,
+        "fragment",
     )
     .await
 }
@@ -156,6 +160,7 @@ async fn refresh_inner(state: &AppState, author_root: &str, force: bool) -> Resu
             author_root,
             &hex::encode(doc_id),
             *claimed_ms,
+            "chain",
         )
         .await?;
     }
@@ -424,6 +429,7 @@ pub async fn keep_claim(
         reply_author,
         &doc_hex,
         signed.entry().timestamp_ms,
+        "envelope",
     )
     .await
 }
@@ -572,6 +578,36 @@ pub async fn servable(state: &AppState, root: &str, replier: &str, reply_doc: &s
                     .unwrap_or(false)
         }
     }
+}
+
+/// The dossier's reply ledger (2026-08-31): every row the memo holds for one post - direct
+/// children and the known tree - with the road each arrived by. `(author, doc, direct,
+/// claimed_ms, noted_ms, learned_via)`, oldest-noted first.
+pub async fn ledger_for(
+    node_db: &Db,
+    root: &str,
+    doc: &str,
+) -> Result<Vec<(String, String, bool, i64, i64, String)>> {
+    type Row = (String, String, String, String, i64, i64, String);
+    let rows: Vec<Row> = node_db
+        .fetch_all(
+            "SELECT reply_author, reply_doc, parent_author, parent_doc,
+                    claimed_ms, noted_ms, learned_via
+             FROM post_replies
+             WHERE (parent_author = ?1 AND parent_doc = ?2)
+                OR (root_author = ?1 AND root_doc = ?2)
+             ORDER BY noted_ms",
+            (root, doc),
+        )
+        .await
+        .context("reading the reply ledger")?;
+    Ok(rows
+        .into_iter()
+        .map(|(author, rdoc, pa, pd, claimed_ms, noted_ms, learned_via)| {
+            let direct = pa == root && pd == doc;
+            (author, rdoc, direct, claimed_ms, noted_ms, learned_via)
+        })
+        .collect())
 }
 
 /// One page of the door's index for one post: rowid-cursored over the replies memo (an
@@ -731,6 +767,7 @@ pub async fn learn(
             &replier_hex,
             &doc_hex,
             claimed_ms,
+            "door",
         )
         .await
         {
@@ -755,9 +792,9 @@ mod tests {
         let db = crate::db::test_node_db().await;
         let parent = ("aa".repeat(32), "11".repeat(16));
         let root = parent.clone();
-        note(&db, &parent, &root, &"bb".repeat(32), &"22".repeat(16), 5).await.unwrap();
-        note(&db, &parent, &root, &"cc".repeat(32), &"33".repeat(16), 3).await.unwrap();
-        note(&db, &parent, &root, &"bb".repeat(32), &"22".repeat(16), 5).await.unwrap();
+        note(&db, &parent, &root, &"bb".repeat(32), &"22".repeat(16), 5, "chain").await.unwrap();
+        note(&db, &parent, &root, &"cc".repeat(32), &"33".repeat(16), 3, "chain").await.unwrap();
+        note(&db, &parent, &root, &"bb".repeat(32), &"22".repeat(16), 5, "chain").await.unwrap();
 
         let (page, more) = replies_of(&db, &parent.0, &parent.1, None).await.unwrap();
         assert!(!more);
@@ -770,7 +807,7 @@ mod tests {
         // this test had and the serialized fold lane never does.
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         let cutoff = now_ms();
-        note(&db, &parent, &root, &"cc".repeat(32), &"33".repeat(16), 3).await.unwrap();
+        note(&db, &parent, &root, &"cc".repeat(32), &"33".repeat(16), 3, "chain").await.unwrap();
         db.execute(
             "DELETE FROM post_replies WHERE reply_author = ?1 AND noted_ms < ?2",
             ("bb".repeat(32), cutoff),
@@ -790,8 +827,8 @@ mod tests {
         let root = ("aa".repeat(32), "11".repeat(16));
         let mid = ("bb".repeat(32), "22".repeat(16));
         // bb answers aa's post; cc answers bb's reply (root copied from the thread top).
-        note(&db, &root, &root, &"bb".repeat(32), &"22".repeat(16), 1).await.unwrap();
-        note(&db, &mid, &root, &"cc".repeat(32), &"33".repeat(16), 2).await.unwrap();
+        note(&db, &root, &root, &"bb".repeat(32), &"22".repeat(16), 1, "chain").await.unwrap();
+        note(&db, &mid, &root, &"cc".repeat(32), &"33".repeat(16), 2, "chain").await.unwrap();
         let posts = vec![root.clone(), mid.clone(), ("dd".repeat(32), "44".repeat(16))];
         let counts = known_counts(&db, &posts).await.unwrap();
         assert_eq!(counts.get(&root), Some(&2), "the root counts its whole known tree");

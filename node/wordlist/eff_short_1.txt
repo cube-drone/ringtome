@@ -11,7 +11,7 @@ aging
 agony
 ahead
 aide
-aids
+ants
 aim
 ajar
 alarm
@@ -128,7 +128,7 @@ bud
 buggy
 bulge
 bulk
-bully
+berry
 bunch
 bunny
 bunt
@@ -177,7 +177,7 @@ chomp
 chop
 chow
 chuck
-chump
+chirp
 chunk
 churn
 chute
@@ -219,7 +219,7 @@ coke
 cola
 cold
 colt
-coma
+comet
 come
 comic
 comma
@@ -248,7 +248,7 @@ crept
 crib
 cried
 crisp
-crook
+creek
 crop
 cross
 crowd
@@ -314,7 +314,7 @@ disco
 dish
 disk
 ditch
-ditzy
+dune
 dizzy
 dock
 dodge
@@ -353,7 +353,7 @@ duo
 dusk
 dust
 duty
-dwarf
+deer
 dwell
 eagle
 early
@@ -419,7 +419,7 @@ fiber
 fifth
 fifty
 film
-filth
+flute
 final
 finch
 fit
@@ -447,7 +447,7 @@ foil
 folic
 folk
 food
-fool
+foot
 found
 fox
 foyer
@@ -517,7 +517,7 @@ grill
 grip
 grit
 groom
-grope
+grove
 growl
 grub
 grunt
@@ -538,7 +538,7 @@ harm
 hash
 hasty
 hatch
-hate
+haiku
 haven
 hazel
 hazy
@@ -626,7 +626,7 @@ lasso
 last
 latch
 late
-lazy
+lava
 left
 legal
 lemon
@@ -655,7 +655,7 @@ lung
 lurch
 lure
 lurk
-lying
+lotus
 lyric
 mace
 maker
@@ -767,7 +767,7 @@ perm
 pest
 petal
 petri
-petty
+pearl
 photo
 plank
 plant
@@ -787,14 +787,14 @@ point
 poise
 poker
 polar
-polio
+piano
 polka
 polo
 pond
 pony
 poppy
 pork
-poser
+pesto
 pouch
 pound
 pout
@@ -809,7 +809,7 @@ probe
 prong
 proof
 props
-prude
+plum
 prune
 pry
 pug
@@ -834,7 +834,7 @@ quilt
 quit
 quota
 quote
-rabid
+rapid
 race
 rack
 radar
@@ -916,7 +916,7 @@ savor
 sax
 say
 scale
-scam
+seal
 scan
 scare
 scarf
@@ -1009,10 +1009,10 @@ slimy
 sling
 slip
 slit
-slob
+sloth
 slot
 slug
-slum
+snail
 slurp
 slush
 small
@@ -1063,7 +1063,7 @@ stain
 stall
 stamp
 stand
-stank
+stork
 stark
 start
 stash
@@ -1118,7 +1118,7 @@ swirl
 swoop
 swore
 syrup
-tacky
+totem
 taco
 tag
 take
@@ -1176,7 +1176,7 @@ trio
 trout
 truce
 truck
-trump
+tarp
 trunk
 try
 tug
@@ -1252,7 +1252,7 @@ width
 wife
 wifi
 wilt
-wimp
+whale
 wind
 wing
 wink

@@ -974,6 +974,25 @@ article:has(.label-emoji-strip) {
     position: relative;
     z-index: 40;
 }
+/* The forensic ledger at the very bottom of a post page (2026-08-31): a log, not a page -
+   dense monospace, folded away, scrolling on its own. */
+.post-dossier {
+    margin-top: 1.2rem;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+}
+.post-dossier summary {
+    cursor: pointer;
+    color: var(--faint);
+}
+.post-dossier-log {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 0.4rem;
+    padding: 0.5rem 0.7rem;
+    line-height: 1.5;
+}
 .label-add-anchor {
     position: relative;
     display: inline-flex;

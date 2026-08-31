@@ -196,6 +196,16 @@ describe("public annotations: the wire and the mint", function () {
         const goopy = (head.annotations || []).find((a) => a.value === "goopy");
         assert.ok(goopy, "bea's label reached ada's node through bea's chain");
         assert.equal(goopy.annotator, beaRoot, "and it names bea, never ada");
+        // The dossier (2026-08-31): the post's forensic ledger names the road each label
+        // arrived by - here bea's own chain, synced because ada follows her.
+        {
+            const ledger = await (await ada(`api/id/${adaRoot}/posts/${post}/dossier`)).json();
+            const row = (ledger.annotations || []).find(
+                (a) => a.annotator === beaRoot && a.value === "goopy"
+            );
+            assert.ok(row, "the ledger lists bea's label");
+            assert.equal(row.learned_via, "chain", "and names the road: her own synced chain");
+        }
         // The derived road: ada follows bea now, so the fold speaks and the delivered
         // copy yields - one row, not a stranger.
         {
@@ -261,6 +271,19 @@ describe("public annotations: the wire and the mint", function () {
             labels.some((l) => l.annotator === adaRoot && l.value === "mighty"),
             "ada's label arrived by fragment - her chain was never here"
         );
+        // Carriage is named (Curtis, 2026-08-31: the vector must be reverse-engineerable):
+        // a proof that rode a fragment records WHICH peer handed it over.
+        {
+            const { rows } = await sql(
+                `SELECT annotator, learned_via FROM doc_annotations WHERE target_doc = '${post}'`,
+                HOST_C
+            );
+            const rode = rows.find((r) => r.annotator === adaRoot);
+            assert.ok(
+                rode && /^relay:/.test(rode.learned_via),
+                `the relayed proof names its carrier: ${rode && rode.learned_via}`
+            );
+        }
         assert.ok(
             labels.some((l) => l.annotator === beaRoot && l.value === "viral-goop"),
             "and bea's, provenance intact"

@@ -7738,3 +7738,45 @@ the stops and default from pure/annotations.js, and the stop plumbing through th
 author's and the reader's own unconditionally - and an anonymous visitor with no ledger
 sees the post as it is. The display-register claims rewrote to the simpler contract;
 ANNOTATIONS.md carries the amendment to ruling 5.
+
+## 2026-08-31 (cont. 18): the dossier - carriage gets a name
+
+Curtis, after the Mean Friend B analysis: a post should carry a folded, information-dense
+history log so a harassed author can reverse-engineer who rubber-stamped the traffic in.
+Built: `learned_via` on both memos (schema gen 35) - 'chain'/'fragment'/'envelope'/'door'
+for replies, 'chain' or `relay:<endpoint>` for annotations, written at every noting site
+(the fragment learn edge has the dialed endpoint in hand, so the carrier is named
+precisely). A public dossier read per post: shelf facts, reply rows with road + door
+verdict when the author lives here, label rows with road + whether the proof is relayed
+onward. postpage renders it as a folded monospace log under everything - dense over
+pretty, by design. Acceptance: bea's label reads via 'chain' on ada's node; the two-hop
+relay's proof on HOST_C reads `relay:<carrier>`. Residuals in ANNOTATIONS.md: door-hop
+endpoint, and the unruled vouched-relay proposal.
+
+## 2026-08-31 (cont. 19): tramp for trump
+
+Curtis: "trump" (EFF short list, slot 1179) has unfortunate political implications - swap
+it for "tramp", which was not in the list. A swap at the index, never a deletion: the list
+must stay exactly 1296 and addresses are position-indexed, so only identities hashing to
+that slot change their speakable word. Pre-User-1, that costs nothing. Both copies moved -
+the pinned wordlist and js/pure/words.js - and the speakable cop diffs them.
+
+## 2026-08-31 (cont. 20): no insults in anyone's name
+
+Curtis's ruling on the wordlist pass: political/religious words stay ("nothing wrong with
+being evil-king - that's kinda fun"), but anything that reads as an insult or affliction
+when worn in a person's address goes. Fourteen index-swaps, both copies: aids>ants,
+filth>flute, hate>haiku, bully>berry, chump>chirp, slob>sloth, wimp>whale, rabid>rapid,
+scam>seal, polio>piano, coma>comet, crook>creek, fool>foot, grope>grove. Still 1296
+unique; only identities hashing to those slots change a word; pre-User-1 that is free.
+Flagged, unswapped, for a later call: tramp (yesterday's own trump replacement fails the
+new bar), and the borderline teases - ditzy, prude, poser, lazy, petty, lying, stank,
+tacky, slum, dwarf, crazy, junky, mousy, virus.
+
+## 2026-08-31 (cont. 21): the borderliners go too
+
+Curtis: "evil-king or pagan-drum are at least cool, petty-stank is a tough one to get
+caught with." Eleven more index-swaps: tramp>tarp (the trump replacement failed its own
+bar within the hour), ditzy>dune, prude>plum, poser>pesto, lazy>lava, petty>pearl,
+lying>lotus, stank>stork, tacky>totem, slum>snail, dwarf>deer. By ruling, crazy, junky,
+mousy, and virus stay. Still 1296 unique, both copies matched.

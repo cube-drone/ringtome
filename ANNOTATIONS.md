@@ -147,3 +147,24 @@ readers get all available labels all the time. The display decision collapses to
 everyone's labels, blocked annotators never - and the block lives where it always did, on
 the contact ledger. The persona register `annotations_display/stop` is simply no longer
 read; pre-User-1, nothing migrates.
+
+## Slice 6 (2026-08-31): the dossier - carriage gets a name
+
+The stealth-harassment analysis (Mean Friend B relaying a shadow legion's labels into
+view): every statement is signed, but carriage was anonymous - a relay could launder
+hostile labels with no name on the act, and the victim could not reverse-engineer the
+vector. Two pieces, built:
+
+1. **The road is recorded.** `post_replies` and `doc_annotations` carry `learned_via`:
+   'chain' (folded from a chain synced here), 'fragment' / 'envelope' / 'door' for the
+   reply roads, and - the forensic key - `relay:<endpoint>` on any annotation proof that
+   rode a fragment, naming the peer that handed it over. Node schema gen 35.
+2. **The dossier.** `GET /api/id/{root}/posts/{doc}/dossier`: everything THIS node knows
+   about the post - shelf facts, every reply row with its road and (on the author's node)
+   the door's verdict, every label with its road and whether its proof is kept for onward
+   relay. Surfaced as a folded, deliberately dense "post history" log at the very bottom
+   of the post page: a log, not a page.
+
+Residuals: the door-learn road records 'door' without the endpoint (fetch_replies picks
+its peer internally - thread it through when it matters); and the vouched-relay rule
+("you relay what you follow"), proposed as the structural fix, awaits a ruling.
