@@ -105,3 +105,21 @@ describe('the strict key rule', () => {
         assert.ok(lied.expected.includes('-'), 'the true words ride the refusal');
     });
 });
+
+describe('the wordlist is the pinned file, index for index', () => {
+    // The two implementations mint the same words only if they index the same list
+    // (2026-08-30: js/pure/words.js carried "gag" at 467 where the pinned EFF file has
+    // "gains", shifting a window of indices by one - a browser-minted address the
+    // server called mangled). The text file is canon; this cop keeps the copy honest.
+    it('matches wordlist/eff_short_1.txt exactly', async () => {
+        const fs = require('node:fs');
+        const path = require('node:path');
+        const { WORDS } = await import('../../../js/pure/words.js');
+        const txt = fs
+            .readFileSync(path.join(__dirname, '..', '..', '..', 'wordlist', 'eff_short_1.txt'), 'utf8')
+            .split(/\s+/)
+            .filter(Boolean);
+        assert.equal(WORDS.length, 1296);
+        assert.deepEqual(WORDS, txt);
+    });
+});

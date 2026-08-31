@@ -7541,3 +7541,17 @@ re-post - best-effort for sync lag (the draft chain reaches every member device 
 corrected the first wording, which wrongly blamed device locality). Said and
 unsaid labels ride the card's local overlay, deduped when the dressed rows agree. The
 TAGGED notice is the slice's remaining half.
+
+## 2026-08-30 (cont. 7): two wordlists, one address
+
+Curtis clicked a post and the page called its address mangled - "did you mean
+glass-error?" - for a link the browser had just minted as glad-error. Same algorithm on
+both sides (BLAKE3, two big-endian windows, mod the list); different LISTS: js/pure/
+words.js carried "gag" where the pinned EFF file has "gains" and "islam" where it has
+"icky", so indices 467-486 sat one word off between the browser's mint and the server's
+parse, and any root whose hash landed in that window got two names. The text file is
+canon (the Rust side asserts it is exactly the EFF short list, yo-yo amendment and all);
+words.js is regenerated from it, index for index, and a pure cop now diffs the two
+files so they cannot drift again. No stored data was wrong - addresses are derived each
+time - and the goldens never hit the window, which is how a wire-format bug hid behind
+green tests: goldens pin points, a diff pins the whole line.
