@@ -500,6 +500,8 @@ CREATE TABLE notifications (
     doc_id      TEXT    NOT NULL DEFAULT '',
     trust       TEXT,              -- the published trust band, as published
     interest    TEXT,              -- the published interest band, as published
+    detail      TEXT,              -- the row's own words, for kinds that carry some - 'tagged':
+                                   -- every current label that annotator has on that post, joined
     updated_ms  INTEGER NOT NULL,  -- when the winning statement reached THIS node
     PRIMARY KEY (reader_root, author_root, kind, doc_id)
 );

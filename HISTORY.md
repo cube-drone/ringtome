@@ -7630,3 +7630,18 @@ memo's primary key kept one, which is why a reload was clean) and two identical 
 chips (the render deduped overlay-vs-server, never overlay-vs-itself). Two belts: a
 one-tick in-flight ref so the synchronous blur echo no-ops, and the overlay push made
 idempotent by label key.
+
+## 2026-08-31 (cont. 6): the bell says the label's words
+
+Curtis: the tagged notice read "user labelled [post]" without saying what the label WAS.
+A `detail` fact now rides both roads. Proto: `VerifiedClaim.detail` - for TAGGED, the
+label itself off the sender's signed annotation (`value`, or `key: value` for a non-tag
+key); the other kinds carry none. Envelope road: transcription stores it in a new
+`inbox_notices.detail` column, read back with the page. Derived road: the notifications
+fold now gathers per (reader, annotator, post) - the collapsed row's detail is every
+current label that annotator has on that post, joined, stamped by the newest - in a new
+`notifications.detail` column, updated on conflict like the bands. The bell renders
+`labelled "goopy"` (t() params carry the words), falling back to the bare verb for a row
+without any. Both schema generations bump (node 34, user 19 - pre-User-1, rebuild not
+migrate), so the dev network wants `just clean`. Acceptance: both bell claims in
+public_annotations.cjs now assert the words.

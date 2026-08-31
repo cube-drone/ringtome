@@ -53,6 +53,10 @@ pub struct NotificationRow {
     pub trust: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interest: Option<String>,
+    /// The row's own words, for kinds that carry some - 'tagged': every current label
+    /// that annotator has on that post, joined.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
     pub updated_ms: i64,
 }
 
@@ -239,6 +243,7 @@ async fn refresh_from_inner(
                 &doc_hex,
                 None,
                 None,
+                None,
                 row.received_at_ms,
             )
             .await?;
@@ -268,6 +273,7 @@ async fn refresh_from_inner(
                 "",
                 row.edge.trust.as_deref(),
                 row.edge.interest.as_deref(),
+                None,
                 row.received_at_ms,
             )
             .await?;
@@ -285,7 +291,11 @@ async fn refresh_from_inner(
     // rule as the share leg; recedes by diff when the annotator withdraws every label on
     // that post.
     if has_labels {
-        let mut fresh: std::collections::BTreeSet<(String, String)> = Default::default();
+        // Gather first, speak once: the collapsed row carries every current label that
+        // annotator has on that post ("labelled it" without the label is half the news -
+        // Curtis, 2026-08-31), stamped by the newest of them.
+        let mut fresh: std::collections::BTreeMap<(String, String), (Vec<String>, i64)> =
+            Default::default();
         for l in labels.iter().filter(|l| l.present) {
             if !hosted.contains(&l.target_author) || l.target_author == author_root {
                 continue;
@@ -295,21 +305,31 @@ async fn refresh_from_inner(
             {
                 continue;
             }
-            let doc_hex = hex::encode(l.target_doc);
-            if fresh.insert((l.target_author.clone(), doc_hex.clone())) {
-                touched.insert(l.target_author.clone());
-                upsert_row(
-                    &state.node_db,
-                    &l.target_author,
-                    author_root,
-                    KIND_TAGGED,
-                    &doc_hex,
-                    None,
-                    None,
-                    l.received_at_ms,
-                )
-                .await?;
-            }
+            let words = if l.key == "tag" {
+                l.value.clone()
+            } else {
+                format!("{}: {}", l.key, l.value)
+            };
+            let e = fresh
+                .entry((l.target_author.clone(), hex::encode(l.target_doc)))
+                .or_insert((Vec::new(), 0));
+            e.0.push(words);
+            e.1 = e.1.max(l.received_at_ms);
+        }
+        for ((reader, doc_hex), (words, newest_ms)) in &fresh {
+            touched.insert(reader.clone());
+            upsert_row(
+                &state.node_db,
+                reader,
+                author_root,
+                KIND_TAGGED,
+                doc_hex,
+                None,
+                None,
+                Some(&words.join(", ")),
+                *newest_ms,
+            )
+            .await?;
         }
         let standing: Vec<(String, String)> = state
             .node_db
@@ -321,7 +341,7 @@ async fn refresh_from_inner(
             .await
             .context("reading standing tagged rows")?;
         for (reader, doc) in standing {
-            if !fresh.contains(&(reader.clone(), doc.clone())) {
+            if !fresh.contains_key(&(reader.clone(), doc.clone())) {
                 touched.insert(reader.clone());
                 delete_row(&state.node_db, &reader, author_root, KIND_TAGGED, &doc).await?;
             }
@@ -347,6 +367,7 @@ async fn refresh_from_inner(
             author_root,
             KIND_COMMENT,
             &parent.1,
+            None,
             None,
             None,
             *claimed_ms,
@@ -393,16 +414,18 @@ async fn upsert_row(
     doc_id: &str,
     trust: Option<&str>,
     interest: Option<&str>,
+    detail: Option<&str>,
     updated_ms: i64,
 ) -> Result<()> {
     node_db
         .execute(
             "INSERT INTO notifications
-               (reader_root, author_root, kind, doc_id, trust, interest, updated_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+               (reader_root, author_root, kind, doc_id, trust, interest, detail, updated_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT (reader_root, author_root, kind, doc_id) DO UPDATE SET
                  trust = excluded.trust,
                  interest = excluded.interest,
+                 detail = excluded.detail,
                  updated_ms = excluded.updated_ms",
             (
                 reader_root,
@@ -411,6 +434,7 @@ async fn upsert_row(
                 doc_id,
                 trust,
                 interest,
+                detail,
                 updated_ms,
             ),
         )
@@ -440,11 +464,11 @@ async fn delete_row(
 /// One reader's notifications, newest first. Small and bounded on purpose: the memo collapses
 /// per (author, kind), so the row count is the reader's social circle, not their history.
 pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<NotificationRow>> {
-    /// `(author_root, kind, doc_id, trust, interest, updated_ms)`, as the row comes back.
-    type Row = (String, String, String, Option<String>, Option<String>, i64);
+    /// `(author_root, kind, doc_id, trust, interest, detail, updated_ms)`, as the row comes back.
+    type Row = (String, String, String, Option<String>, Option<String>, Option<String>, i64);
     let rows: Vec<Row> = node_db
         .fetch_all(
-            "SELECT author_root, kind, doc_id, trust, interest, updated_ms FROM notifications
+            "SELECT author_root, kind, doc_id, trust, interest, detail, updated_ms FROM notifications
              WHERE reader_root = ?1 ORDER BY updated_ms DESC LIMIT ?2",
             (reader_root, i64::from(limit)),
         )
@@ -453,9 +477,10 @@ pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<Not
     Ok(rows
         .into_iter()
         .map(
-            |(author_root, kind, doc_id, trust, interest, updated_ms)| NotificationRow {
+            |(author_root, kind, doc_id, trust, interest, detail, updated_ms)| NotificationRow {
                 author_root,
                 kind,
+                detail,
                 doc_id,
                 trust,
                 interest,
@@ -475,8 +500,8 @@ mod tests {
         let reader = "aa".repeat(32);
         let author = "bb".repeat(32);
 
-        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", None, Some("high"), 1000).await.unwrap();
-        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", Some("max"), Some("high"), 2000).await.unwrap();
+        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", None, Some("high"), None, 1000).await.unwrap();
+        upsert_row(&db, &reader, &author, KIND_PUBLIC_EDGE, "", Some("max"), Some("high"), None, 2000).await.unwrap();
 
         let rows = page(&db, &reader, 50).await.unwrap();
         assert_eq!(rows.len(), 1, "collapse by (sender, kind): one row however often they publish");
@@ -497,10 +522,10 @@ mod tests {
         let sharer = "bb".repeat(32);
         let (first, second) = ("11".repeat(16), "22".repeat(16));
 
-        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &first, None, None, 1000)
+        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &first, None, None, None, 1000)
             .await
             .unwrap();
-        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &second, None, None, 2000)
+        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &second, None, None, None, 2000)
             .await
             .unwrap();
         assert_eq!(
@@ -510,7 +535,7 @@ mod tests {
         );
 
         // The same document again (they re-shared after an edit) still collapses.
-        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &first, None, None, 3000)
+        upsert_row(&db, &me, &sharer, KIND_REBROADCAST, &first, None, None, None, 3000)
             .await
             .unwrap();
         let rows = page(&db, &me, 50).await.unwrap();
@@ -520,7 +545,7 @@ mod tests {
 
         // And an edge from the same person is a third, independent row - the kinds do not
         // collide even though the author is the same.
-        upsert_row(&db, &me, &sharer, KIND_PUBLIC_EDGE, "", None, Some("high"), 4000)
+        upsert_row(&db, &me, &sharer, KIND_PUBLIC_EDGE, "", None, Some("high"), None, 4000)
             .await
             .unwrap();
         assert_eq!(page(&db, &me, 50).await.unwrap().len(), 3);
@@ -540,9 +565,9 @@ mod tests {
         let me = "aa".repeat(32);
         let housemate = "cc".repeat(32);
 
-        upsert_row(&db, &me, &"b1".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("low"), 100).await.unwrap();
-        upsert_row(&db, &me, &"b2".repeat(32), KIND_PUBLIC_EDGE, "", Some("high"), None, 300).await.unwrap();
-        upsert_row(&db, &housemate, &"b3".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("max"), 200).await.unwrap();
+        upsert_row(&db, &me, &"b1".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("low"), None, 100).await.unwrap();
+        upsert_row(&db, &me, &"b2".repeat(32), KIND_PUBLIC_EDGE, "", Some("high"), None, None, 300).await.unwrap();
+        upsert_row(&db, &housemate, &"b3".repeat(32), KIND_PUBLIC_EDGE, "", None, Some("max"), None, 200).await.unwrap();
 
         let mine = page(&db, &me, 50).await.unwrap();
         assert_eq!(

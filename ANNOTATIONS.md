@@ -127,7 +127,8 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    `verify_claim` binds it by `target_author == recipient` and refuses a withdrawal. Derived
    road: the notifications fold reads the annotator's public annotations when that chain
    moves, one `tagged` row per (reader, annotator, post) under the follow-edge rule, receded
-   by diff. The bell reads "labelled" with the post's card).
+   by diff. The bell reads `labelled "goopy"` - the claim carries the
+   label's own words on both roads (`detail`, 2026-08-31) - with the post's card).
 5. **Collections.** Public buckets as browsable pages; search over public tags.
 
 ## What this deliberately is not

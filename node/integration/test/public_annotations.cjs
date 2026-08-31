@@ -174,6 +174,7 @@ describe("public annotations: the wire and the mint", function () {
             assert.ok(row, "the label rang ada's bell");
             assert.equal(row.doc_id, post, "naming her post");
             assert.equal(row.stranger, true, "by envelope - the murmur ring");
+            assert.equal(row.detail, "goopy", "and carrying the label's own words");
         }
         // Read-your-writes on the annotator's OWN node, no beat (Curtis, 2026-08-31: a tag
         // on someone else's post vanished on refresh - the memo waited for a sweep): the
@@ -202,6 +203,7 @@ describe("public annotations: the wire and the mint", function () {
             const rows = (bell.items || []).filter((i) => i.author === beaRoot && i.kind === "tagged");
             assert.equal(rows.length, 1, "one label notice, the roads dedupe");
             assert.ok(!rows[0].stranger, "derived from a followed chain");
+            assert.ok((rows[0].detail || "").includes("goopy"), "the derived row says the words too");
         }
 
         const del = await bea(

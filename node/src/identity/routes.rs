@@ -930,6 +930,9 @@ struct NotificationItem {
     trust: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     interest: Option<String>,
+    /// The row's own words, for kinds that carry some - 'tagged': the label(s) themselves.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
     /// The referenced post's title and date, joined server-side for the bell's mini-card
     /// (2026-08-26): the doc is the READER's own post, so their open store answers in one
     /// read - no client fan-out, and the bell renders instantly. Absent when the row names
@@ -1058,6 +1061,7 @@ async fn notification_items(
                 kind: r.kind,
                 trust: r.trust,
                 interest: r.interest,
+                detail: r.detail,
                 updated_ms: r.updated_ms,
             }
         })
@@ -1097,6 +1101,7 @@ async fn notification_items(
         kind: n.kind,
         trust: n.trust,
         interest: n.interest,
+        detail: n.detail,
         doc_title: None,
         doc_published_ms: None,
         updated_ms: n.timestamp_ms,
@@ -4377,6 +4382,7 @@ mod notification_dedup_tests {
             claimed_name: None,
             trust: None,
             interest: None,
+            detail: None,
             updated_ms: 1,
             seen: false,
             stranger: false,
@@ -4392,6 +4398,7 @@ mod notification_dedup_tests {
             trust: None,
             interest: None,
             doc_id: None,
+            detail: None,
             timestamp_ms: 1,
             display_name: None,
             service: ringtome_proto::registry::service::INBOX_STRANGER,

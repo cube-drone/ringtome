@@ -440,6 +440,9 @@ pub struct VerifiedClaim {
     /// Which document of the recipient's was shared, for `REBROADCAST`. The recipient needs it
     /// to say *which* post, and it is the sender's own signed claim rather than a hint.
     pub doc_id: Option<[u8; 16]>,
+    /// The claim's own words, for kinds that carry some - `TAGGED`: the label itself, off the
+    /// sender's signed annotation. "Labelled your post" without the label is half the news.
+    pub detail: Option<String>,
 }
 
 /// Verify an envelope end to end, offline: the signature, the delegation from the claimed
@@ -542,7 +545,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
     }
     evidence.verify()?;
 
-    let (trust, interest, doc_id) = match envelope.kind {
+    let (trust, interest, doc_id, detail) = match envelope.kind {
         notice_kind::PUBLIC_EDGE => {
             if evidence.entry().chain.service != crate::registry::service::FOLLOWS_PUBLIC
                 || evidence.entry().entry_type != crate::registry::entry_type::PUBLIC_EDGE
@@ -565,7 +568,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                 // follow you" is an absence, not a notice.
                 return Err(ProtoError::BadEntry("the published edge is empty"));
             }
-            (edge.trust, edge.interest, None)
+            (edge.trust, edge.interest, None, None)
         }
         notice_kind::REBROADCAST => {
             if evidence.entry().chain.service != crate::registry::service::REBROADCASTS
@@ -592,7 +595,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                 // as an empty edge above. "I stopped sharing your post" is an absence.
                 return Err(ProtoError::BadEntry("the rebroadcast was withdrawn"));
             }
-            (None, None, Some(pointer.doc_id))
+            (None, None, Some(pointer.doc_id), None)
         }
         notice_kind::COMMENT => {
             if evidence.entry().chain.service != crate::registry::service::POSTS
@@ -620,7 +623,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                     "the reply answers somebody else's post",
                 ));
             }
-            (None, None, Some(parent_doc))
+            (None, None, Some(parent_doc), None)
         }
         notice_kind::TAGGED => {
             if evidence.entry().chain.service != crate::registry::service::ANNOTATIONS_PUBLIC
@@ -646,7 +649,12 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
                 // the empty edge's rule, the withdrawn share's rule.
                 return Err(ProtoError::BadEntry("the label was withdrawn"));
             }
-            (None, None, Some(a.target_doc))
+            let words = if a.key == "tag" {
+                a.value.clone()
+            } else {
+                format!("{}: {}", a.key, a.value)
+            };
+            (None, None, Some(a.target_doc), Some(words))
         }
         _ => return Err(ProtoError::BadEntry("unknown notice kind")),
     };
@@ -660,6 +668,7 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
         trust,
         interest,
         doc_id,
+        detail,
     })
 }
 
@@ -1060,6 +1069,7 @@ mod tests {
         let claim = verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, (recipient, post), true))).unwrap();
         assert_eq!(claim.kind, notice_kind::TAGGED);
         assert_eq!(claim.doc_id, Some(post));
+        assert_eq!(claim.detail.as_deref(), Some("goopy"), "the words ride the claim");
         assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, ([8u8; 32], post), true))).is_err());
         assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, (recipient, post), false))).is_err());
     }

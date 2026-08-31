@@ -57,6 +57,12 @@ const sentence = (r) => {
     // the object. Same sentence shape as the share, different weight by tier.
     // A label on your post (ANNOTATIONS.md slice 4): a murmur, the verb and the card.
     if (r.kind === 'tagged') {
+        if (r.detail) {
+            // The words themselves - "labelled" without the label is half the news.
+            return r.doc_id
+                ? t('apps.notifications.labelled-words', 'labelled "{words}"', { words: r.detail })
+                : t('apps.notifications.labelled-a-post-words', 'labelled one of your posts "{words}"', { words: r.detail });
+        }
         return r.doc_id
             ? t('apps.notifications.labelled', 'labelled')
             : t('apps.notifications.labelled-one-of-your-posts', 'labelled one of your posts');
