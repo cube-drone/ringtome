@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 507 phrases across 44 files.
+// 511 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -382,6 +382,10 @@ export default {
     'postentry.label-by-name': 'label by {name}',
     'postentry.in': 'in',
     'postentry.about': 'about',
+    'postentry.take-this-label-back': 'take this label back',
+    'postentry.tag-placeholder': 'a tag',
+    'postentry.say-what-this-post-is': 'say what this post is - the label goes on your own chain, with your name on it',
+    'postentry.plus-tag': '+ tag',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",

@@ -7528,3 +7528,16 @@ lacking until a reload. The overlay now carries the labels the mirror already kn
 (tags, set fields minus `published_as`, buckets - the default bucket quiet at render as
 everywhere), which is the overlay idiom's own rule: the view may run ahead as long as it
 never disagrees.
+
+## 2026-08-30 (cont. 6): saying what a post is, from the post
+
+The tagging UI (ANNOTATIONS.md slice 4's front half), on PostEntry so every surface has
+it: a dashed "+ tag" at the end of the label row on any post when signed in - Enter or
+comma commits, Escape closes - and an x on labels you authored, wherever they sit. The
+statement lands on YOUR chain either way; tagging your OWN post also files the tag on
+the private draft (found by its `published_as` back-reference), because the publish diff
+restates the draft's annotations and a public-only tag would be retracted on the next
+re-post - best-effort for sync lag (the draft chain reaches every member device - Curtis
+corrected the first wording, which wrongly blamed device locality). Said and
+unsaid labels ride the card's local overlay, deduped when the dressed rows agree. The
+TAGGED notice is the slice's remaining half.

@@ -113,7 +113,12 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    Revalidation refreshes for free (every Want re-learns). Named residual: a retraction
    reaches fragment-held labels only when some fragment carries it or the annotator's
    chain is met - the reply-evidence residual's sibling, same road when it is built.
-4. **Others' labels.** Third-party tagging UI on any post; `notice_kind::TAGGED` both roads.
+4. **Others' labels.** ~~Third-party tagging UI on any post~~ (built 2026-08-30: "+ tag"
+   on every post card for any signed-in reader, an × on labels you authored; tagging your
+   OWN post also files the tag on the private draft via its `published_as` back-reference,
+   so the publish diff cannot retract it - best-effort for sync lag only, since the draft
+   chain reaches every member device; said/unsaid labels ride the card's overlay).
+   Remaining: `notice_kind::TAGGED` both roads.
 5. **Collections.** Public buckets as browsable pages; search over public tags.
 
 ## What this deliberately is not

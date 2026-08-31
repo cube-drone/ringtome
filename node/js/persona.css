@@ -957,6 +957,44 @@
     color: var(--muted);
     font-size: 0.72rem;
 }
+
+/* Saying and unsaying labels, inline on the chip row. */
+.label-x {
+    background: none;
+    border: 0;
+    color: var(--faint);
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0 0.1rem;
+    cursor: pointer;
+}
+.label-x:hover {
+    color: var(--coral);
+}
+.label-add {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    color: var(--faint);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.1rem 0.55rem;
+    cursor: pointer;
+}
+.label-add:hover {
+    color: var(--sea);
+    border-color: var(--teal);
+}
+.label-add-input {
+    font: inherit;
+    font-size: 0.78rem;
+    width: 7rem;
+    padding: 0.1rem 0.55rem;
+    border: 1px solid var(--teal);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--ink);
+}
 .feed-labels-dial select {
     font: inherit;
     font-size: 0.78rem;

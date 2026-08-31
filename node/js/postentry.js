@@ -527,7 +527,79 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     );
     const factsByRoot = current && current.root ? {} : null;
     if (factsByRoot) for (const c of contactRows || []) factsByRoot[c.root] = c.facts || {};
-    const shownLabels = visibleAnnotations(item.annotations, {
+    // Labels said or retracted from THIS card, this session - the overlay idiom: shown at
+    // once, deduped when the dressed rows eventually agree.
+    const [saidLabels, setSaidLabels] = useState([]);
+    const [retractedLabels, setRetractedLabels] = useState([]);
+    const [tagging, setTagging] = useState(false);
+    const [tagInput, setTagInput] = useState('');
+    const labelKey = (a) => `${a.annotator}:${a.key}:${a.value}`;
+    const addTag = async (raw) => {
+        const value = raw.trim().toLowerCase();
+        setTagInput('');
+        setTagging(false);
+        if (!value || !current) return;
+        const me = current.root;
+        try {
+            await api(`/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ key: 'tag', value }),
+            });
+        } catch {
+            return; // a refused statement shows nothing - nothing was said
+        }
+        // Tagging YOUR OWN post also files the tag on the private draft (found by its
+        // published_as back-reference): the publish diff restates the DRAFT's annotations,
+        // and a public-only tag would be retracted on the next re-post. Best-effort for
+        // sync lag only - the draft chain reaches every member device (Curtis, 2026-08-30,
+        // correcting this comment's first claim), so the miss is a mirror that has not
+        // caught up yet, and the statement stands either way.
+        if (me === item.author) {
+            try {
+                const draft = (await openMirror(me).docs.toArray()).find(
+                    (d) => d.fields && d.fields.published_as === item.doc_id
+                );
+                if (draft) {
+                    await api(
+                        `/api/identity/${me}/docs/${draft.doc_id}/annotations/tags/${encodeURIComponent(value)}`,
+                        { method: 'PUT' }
+                    );
+                }
+            } catch {
+                // the public statement is the speech; the filing catch-up can wait
+            }
+        }
+        setSaidLabels((have) => [...have, { annotator: me, key: 'tag', value }]);
+    };
+    const removeLabel = async (a) => {
+        if (!current || a.annotator !== current.root) return;
+        const me = current.root;
+        try {
+            await api(
+                `/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}/${encodeURIComponent(a.key)}/${encodeURIComponent(a.value)}`,
+                { method: 'DELETE' }
+            );
+        } catch {
+            return;
+        }
+        if (me === item.author && a.key === 'tag') {
+            try {
+                const draft = (await openMirror(me).docs.toArray()).find(
+                    (d) => d.fields && d.fields.published_as === item.doc_id
+                );
+                if (draft) {
+                    await api(
+                        `/api/identity/${me}/docs/${draft.doc_id}/annotations/tags/${encodeURIComponent(a.value)}`,
+                        { method: 'DELETE' }
+                    );
+                }
+            } catch {
+                // as above
+            }
+        }
+        setRetractedLabels((have) => [...have, labelKey(a)]);
+    };
+    const baseLabels = visibleAnnotations(item.annotations, {
         author: item.author,
         stop,
         factsByRoot,
@@ -538,6 +610,10 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
         // 2026-08-30). Hidden at DISPLAY only - the statement still replicates publicly by
         // ruling, and any other bucket ("blog") still shows.
         .filter((a) => !(a.key === 'bucket' && a.value === FEED_STYLE && a.annotator === item.author));
+    const shownLabels = [
+        ...baseLabels,
+        ...saidLabels.filter((a) => !baseLabels.some((b) => labelKey(b) === labelKey(a))),
+    ].filter((a) => !retractedLabels.includes(labelKey(a)));
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
@@ -656,7 +732,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 annotators the reader's display register admits. The author's description
                 is the one description; others' descriptions are tags-grade and ride the
                 'everyone' stop like any label. */ ''}
-            ${!open && shownLabels.length > 0 &&
+            ${!open && (shownLabels.length > 0 || !!current) &&
             html`<div class="feed-entry-labels">
                 ${shownLabels.map(
                     (a) => html`<span
@@ -671,8 +747,43 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                         ${a.value}
                         ${a.annotator !== item.author &&
                         html`<span class="label-by">${'— '}${a.annotator_name || speakable(a.annotator)}</span>`}
+                        ${!!current &&
+                        a.annotator === current.root &&
+                        html`<button
+                            class="label-x"
+                            title=${t('postentry.take-this-label-back', 'take this label back')}
+                            onClick=${() => removeLabel(a)}
+                        >×</button>`}
                     </span>`
                 )}
+                ${/* Say something about any post - yours or anyone's (ANNOTATIONS.md
+                    slice 4): the statement lands on YOUR chain, bylined as yours
+                    everywhere it travels. */ ''}
+                ${!!current &&
+                (tagging
+                    ? html`<input
+                          class="label-add-input"
+                          placeholder=${t('postentry.tag-placeholder', 'a tag')}
+                          value=${tagInput}
+                          ref=${(el) => el && el.focus()}
+                          onInput=${(e) => setTagInput(e.currentTarget.value)}
+                          onKeyDown=${(e) => {
+                              if (e.key === 'Enter' || e.key === ',') {
+                                  e.preventDefault();
+                                  addTag(tagInput);
+                              }
+                              if (e.key === 'Escape') {
+                                  setTagInput('');
+                                  setTagging(false);
+                              }
+                          }}
+                          onBlur=${() => addTag(tagInput)}
+                      />`
+                    : html`<button
+                          class="label-add"
+                          title=${t('postentry.say-what-this-post-is', 'say what this post is - the label goes on your own chain, with your name on it')}
+                          onClick=${() => setTagging(true)}
+                      >${t('postentry.plus-tag', '+ tag')}</button>`)}
             </div>`}
             ${!!item.reply_to &&
             quote !== false &&
