@@ -1789,6 +1789,11 @@ async fn public_annotation_put_handler(
         .public_annotations()
         .say(&target_author, &target_doc, req.key.trim(), req.value.trim(), true)
         .await?;
+    // The 200 means the label SHOWS (Curtis, 2026-08-31: a tag on someone else's post
+    // vanished on refresh): the memo every surface reads is fed by the fold lane, and
+    // nothing rang it for this append - the memo waited for the frontier sweep. Drain it
+    // here, the contact-dial's read-your-writes idiom.
+    crate::fold::fold_now(&state, &root).await;
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -1808,6 +1813,7 @@ async fn public_annotation_delete_handler(
         .public_annotations()
         .say(&target_author, &target_doc, &key, &value, false)
         .await?;
+    crate::fold::fold_now(&state, &root).await; // the retraction shows on the same 200
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),

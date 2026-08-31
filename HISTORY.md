@@ -7555,3 +7555,19 @@ words.js is regenerated from it, index for index, and a pure cop now diffs the t
 files so they cannot drift again. No stored data was wrong - addresses are derived each
 time - and the goldens never hit the window, which is how a wire-format bug hid behind
 green tests: goldens pin points, a diff pins the whole line.
+
+## 2026-08-31: a label you say shows before you refresh
+
+Curtis tagged someone else's posts in the UI and the tags vanished on refresh. The
+statement was on his chain the whole time; the surfaces read the node-level memo, which
+the fold lane feeds - and nothing rang the fold for this append (the rebroadcast handler
+nudges it, the contact dial drains it; the annotation handlers did neither), so the memo
+waited for the periodic frontier sweep. The PUT and DELETE now drain the fold before
+their 200 - the contact-dial's read-your-writes idiom - and the acceptance reads the
+annotator's own node with no beat. The earlier claim had passed only because the test
+beat the fold by hand: a beat in a test is a promise the product must keep on its own.
+And a second bug behind the same symptom, after a clean reboot showed "three tags,
+refresh, none": the reader's OWN labels on someone else's post went through the display
+register like anyone's, and at the default stop it asked "do I follow myself?" - nobody
+does - so the optimistic chips showed and the server's rows vanished. The register now
+shows the reader's own labels always, beside the author's; a pure claim pins it.

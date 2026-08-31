@@ -151,6 +151,14 @@ describe("public annotations: the wire and the mint", function () {
             body: JSON.stringify({ key: "tag", value: "goopy" }),
         });
         assert.equal(put.status, 200, await put.text());
+        // Read-your-writes on the annotator's OWN node, no beat (Curtis, 2026-08-31: a tag
+        // on someone else's post vanished on refresh - the memo waited for a sweep): the
+        // PUT's 200 means the label shows on the post's own read here.
+        const mineNow = await (await bea(`api/id/${adaRoot}/posts/${post}`)).json();
+        assert.ok(
+            (mineNow.annotations || []).some((a) => a.value === "goopy" && a.annotator === beaRoot),
+            "the label shows on the annotator's node before any beat"
+        );
         const viaBea = await base58(bea);
         if ((await ada(`api/id/${beaRoot}/profile?via=${viaBea}`)).status !== 200) this.skip();
         await ada(`api/identity/${adaRoot}/private/kv/contact:${beaRoot}/interest`, {

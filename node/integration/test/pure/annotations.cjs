@@ -32,6 +32,14 @@ describe('the annotations display register', () => {
         assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'bea', 'dan']);
     });
 
+    it("the reader's own labels always show - nobody follows themselves", () => {
+        // 2026-08-31: three tags said from the UI vanished on refresh, filtered out by the
+        // reader's own register at the default stop.
+        const mine = [...labels, { annotator: 'me', key: 'tag', value: 'said-by-me' }];
+        const seen = visibleAnnotations(mine, { author, stop: 'author', factsByRoot: facts, me: 'me' });
+        assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'me']);
+    });
+
     it("with no ledger at all (nobody signed in) it is the author's only", () => {
         const seen = visibleAnnotations(labels, { author, stop: 'everyone', factsByRoot: null });
         assert.deepEqual(seen.map((a) => a.annotator), ['ada']);

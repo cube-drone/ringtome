@@ -603,6 +603,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
         author: item.author,
         stop,
         factsByRoot,
+        me: current && current.root,
     })
         .filter((a) => a.key !== 'description' || a.annotator === item.author || stop === 'everyone')
         // The default bucket is the universal truth wearing a chip: every composed post is
