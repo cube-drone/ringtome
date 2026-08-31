@@ -7571,3 +7571,22 @@ refresh, none": the reader's OWN labels on someone else's post went through the 
 register like anyone's, and at the default stop it asked "do I follow myself?" - nobody
 does - so the optimistic chips showed and the server's rows vanished. The register now
 shows the reader's own labels always, beside the author's; a pure claim pins it.
+
+## 2026-08-31 (cont.): everyone's labels, by default
+
+Curtis: by default, every visible tag on every post. The display register's default
+moves from "the author's plus people I follow" to "everyone's" - a label is a claim under
+a name, and the name is the safeguard; a blocked annotator still never shows, and the
+narrower stops remain for a reader who wants a quieter post. Ruling 5 amended in
+ANNOTATIONS.md; the pure claims follow the new default.
+
+## 2026-08-31 (cont. 2): a tag is 32 characters
+
+Curtis asked how long a tag can be, and the answer was three numbers: 1024 on the wire,
+256 by silent truncation at publish, unlimited in the inputs. Now one rule, refused
+rather than trimmed: a tag is 32 characters (his number), a description or bucket the
+wire's 1024, enforced in the codec itself (`well_formed`, at encode and decode - a relay
+cannot carry a 1000-character "tag" either), skipped with a warning at publish instead of
+shortened, refused with words by the API ("a tag is 32 characters at most"), and stated
+as `maxlength` on both tag inputs so a draft never holds a tag that publish would leave
+behind.

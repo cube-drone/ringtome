@@ -8,7 +8,10 @@ export const ANNOTATION_STOPS = [
     { key: 'followed', label: "the author's, and people I follow" },
     { key: 'everyone', label: "everyone's labels" },
 ];
-export const DEFAULT_ANNOTATION_STOP = 'followed';
+// Everyone's, by default (Curtis, 2026-08-31): a label is a claim under a name, and the
+// name is the safeguard - a blocked annotator still never shows. The narrower stops are
+// there for a reader who wants a quieter post.
+export const DEFAULT_ANNOTATION_STOP = 'everyone';
 
 /// Which of a post's known labels this reader sees. The author's always; the READER's own
 /// always (2026-08-31: at the default stop the register asked "do I follow myself?" and

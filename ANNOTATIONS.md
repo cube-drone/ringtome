@@ -26,7 +26,9 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    statements minted beside it, on the author's own chain. The bucket comes too because
    publication already comes only through a bucket you chose to publish from, and publishing
    a whole "therapy" bucket would itself be the decision — the bucket name is not a leak, it
-   is the label. "Within reason" is caps: counts and lengths, never a category exclusion.
+   is the label. "Within reason" is caps: counts and lengths, never a category exclusion -
+   a tag is 32 characters (Curtis, 2026-08-31), anything else the wire's 1024, and a label
+   past its cap is refused with words, never quietly shortened.
 3. **Later edits are statements, not versions.** Posts freeze after the edit window; tags on
    the signed header would freeze with them. The chain is what keeps annotations mutable for
    life; the fragment's snapshot (below) is what keeps them viral.
@@ -38,8 +40,9 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    network carries all it knows (Curtis: "posts carry all known non-blocked annotations").
 5. **The reader decides what shows.** Acquisition and attention split, as for the feed: the
    memo holds everything that arrived; a persona-level display register says which
-   annotators' labels render — the author's only, the author's plus people I follow (the
-   default), or everyone's — and a blocked annotator's never render, whatever the stop.
+   annotators' labels render — the author's only, the author's plus people I follow, or
+   everyone's (the default, ruled 2026-08-31: a label is a claim under a name, and the name
+   is the safeguard) — and a blocked annotator's never render, whatever the stop.
    Read-time, network-silent both ways.
 6. **Provenance is always on the label.** The author's annotations render plain; anyone
    else's carry the annotator's byline — "goopy — Mara". Labels are never merged into one
@@ -94,8 +97,8 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    dashed with "— name"; buckets read "in blog", descriptions "about …", and the author's
    description is the one description. The display register (`annotations_display/stop`,
    persona-level, a select beside the selectivity slider) filters at the client through
-   `pure/annotations.js`: author-only / author + followed (default) / everyone, blocked
-   never, and no persona signed in reads as author-only. Proven across two nodes: the
+   `pure/annotations.js`: author-only / author + followed / everyone (the default since 2026-08-31),
+   blocked never, and no persona signed in reads as author-only. Proven across two nodes: the
    author's labels dress a follower's feed; a friend's tag arrives by subscription
    naming the friend, and its retraction takes the row with it. The fragment road (every
    surface on nodes holding only a fragment) is slice 3.

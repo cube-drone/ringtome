@@ -16,8 +16,13 @@ describe('the annotations display register', () => {
     ];
     const facts = { bea: { interest: 'high' }, cal: { blocked: 'yes' }, dan: {} };
 
-    it("defaults to the author's plus people I follow", () => {
-        assert.equal(DEFAULT_ANNOTATION_STOP, 'followed');
+    it("defaults to everyone's labels - blocked excepted", () => {
+        assert.equal(DEFAULT_ANNOTATION_STOP, 'everyone');
+        const seen = visibleAnnotations(labels, { author, stop: DEFAULT_ANNOTATION_STOP, factsByRoot: facts });
+        assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'bea', 'dan']);
+    });
+
+    it("'followed' narrows to the author's plus people I follow", () => {
         const seen = visibleAnnotations(labels, { author, stop: 'followed', factsByRoot: facts });
         assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'bea']);
     });

@@ -110,7 +110,9 @@ export const Annotations = ({ root, docId, features }) => {
         `/api/identity/${root}/docs/${docId}/annotations/tags/${encodeURIComponent(tag)}`;
 
     const addTag = async (raw) => {
-        const tag = raw.trim().toLowerCase();
+        // 32 characters, the public tag's cap (2026-08-31), so a draft never carries a
+        // tag that publish would have to leave behind.
+        const tag = raw.trim().toLowerCase().slice(0, 32);
         setTagInput('');
         if (!tag || shownTags.includes(tag)) return;
         setPending((p) => ({ ...p, [tag]: 'adding' }));
@@ -175,6 +177,7 @@ export const Annotations = ({ root, docId, features }) => {
                 )}
                 <input
                     class="annot-tag-input"
+                    maxlength="32"
                     placeholder=${t('doc.annotations.tag', '+ tag')}
                     value=${tagInput}
                     onInput=${(e) => setTagInput(e.currentTarget.value)}

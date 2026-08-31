@@ -535,7 +535,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const [tagInput, setTagInput] = useState('');
     const labelKey = (a) => `${a.annotator}:${a.key}:${a.value}`;
     const addTag = async (raw) => {
-        const value = raw.trim().toLowerCase();
+        const value = raw.trim().toLowerCase().slice(0, 32); // the input's maxlength, restated
         setTagInput('');
         setTagging(false);
         if (!value || !current) return;
@@ -764,6 +764,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 (tagging
                     ? html`<input
                           class="label-add-input"
+                          maxlength="32"
                           placeholder=${t('postentry.tag-placeholder', 'a tag')}
                           value=${tagInput}
                           ref=${(el) => el && el.focus()}

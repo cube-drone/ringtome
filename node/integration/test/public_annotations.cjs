@@ -87,6 +87,20 @@ describe("public annotations: the wire and the mint", function () {
         );
     });
 
+    it("a tag is 32 characters at most, and the refusal has words", async () => {
+        const put = await ada(`api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}`, {
+            method: "PUT",
+            body: JSON.stringify({ key: "tag", value: "x".repeat(33) }),
+        });
+        assert.equal(put.status, 400);
+        assert.match(await put.text(), /32 characters/);
+        const ok = await ada(`api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}`, {
+            method: "PUT",
+            body: JSON.stringify({ key: "description", value: "y".repeat(600) }),
+        });
+        assert.equal(ok.status, 200, "a description keeps the wire's cap");
+    });
+
     it("the permalink read carries the author's own statements", async () => {
         const head = await (await ada(`api/id/${adaRoot}/posts/${post}`)).json();
         const has = (k, v) => (head.annotations || []).some((a) => a.key === k && a.value === v);

@@ -1841,7 +1841,19 @@ async fn replicate_annotations(
     draft_id: &[u8; 16],
     post_id: &[u8; 16],
 ) -> Result<(), AppError> {
-    let cap = |v: &str| -> String { v.chars().take(ringtome_proto::PublicAnnotation::MAX_VALUE_LEN / 4).collect() };
+    // Refuse, never truncate (2026-08-31): a label past its cap is skipped with a warning
+    // rather than quietly shortened - the draft's word is the author's word or nothing.
+    // Tags cap at 32 characters, everything else at the wire's value cap.
+    let fits = |k: &str, v: &str| -> bool {
+        let ok = v.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN
+            && (k != ringtome_proto::PublicAnnotation::TAG_KEY
+                || v.chars().count() <= ringtome_proto::PublicAnnotation::MAX_TAG_CHARS);
+        if !ok {
+            tracing::warn!(key = %k, chars = v.chars().count(),
+                "a draft label is past its cap and stays private");
+        }
+        ok
+    };
     let mut desired: std::collections::BTreeSet<(String, String)> = Default::default();
     let tags = data.annotations().tags(draft_id).await?;
     if tags.len() > REPLICATED_TAGS_CAP {
@@ -1849,21 +1861,23 @@ async fn replicate_annotations(
             "a draft carries more tags than publish replicates; the rest stay private");
     }
     for tag in tags.iter().take(REPLICATED_TAGS_CAP) {
-        if !tag.trim().is_empty() {
-            desired.insert(("tag".into(), cap(tag)));
+        if !tag.trim().is_empty() && fits("tag", tag) {
+            desired.insert(("tag".into(), tag.clone()));
         }
     }
     for (field, value) in data.annotations().fields(draft_id).await? {
         // `published_as` is the draft's private bookkeeping (which post it minted) - a
         // fact about the draft, not a label on the post.
-        if field == store::PUBLISHED_AS || value.trim().is_empty() {
+        if field == store::PUBLISHED_AS || value.trim().is_empty() || !fits(&field, &value) {
             continue;
         }
-        desired.insert((field, cap(&value)));
+        desired.insert((field, value));
     }
     let buckets = bucket_map(data).await?;
     for bucket in buckets.get(&hex::encode(draft_id)).cloned().unwrap_or_default() {
-        desired.insert(("bucket".into(), cap(&bucket)));
+        if fits("bucket", &bucket) {
+            desired.insert(("bucket".into(), bucket));
+        }
     }
     let stated: std::collections::BTreeSet<(String, String)> = data
         .public_annotations()

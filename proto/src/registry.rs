@@ -1187,18 +1187,31 @@ pub struct PublicAnnotation {
 impl PublicAnnotation {
     pub const MAX_KEY_LEN: usize = 64;
     pub const MAX_VALUE_LEN: usize = 1024;
+    /// A tag is a word or a few (Curtis, 2026-08-31: 32 characters): short enough that a
+    /// post can carry many inside the fragment's proof budget, and long enough for
+    /// "north-american-birds". Descriptions keep the wire's full value cap.
+    pub const MAX_TAG_CHARS: usize = 32;
+    pub const TAG_KEY: &'static str = "tag";
 
-    pub fn is_retraction(&self) -> bool {
-        !self.present
-    }
-
-    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+    fn well_formed(&self) -> Result<(), ProtoError> {
         if self.key.len() > Self::MAX_KEY_LEN || self.key.is_empty() {
             return Err(ProtoError::BadEntry("annotation key length"));
         }
         if self.value.len() > Self::MAX_VALUE_LEN {
             return Err(ProtoError::BadEntry("annotation value length"));
         }
+        if self.key == Self::TAG_KEY && self.value.chars().count() > Self::MAX_TAG_CHARS {
+            return Err(ProtoError::BadEntry("tag length"));
+        }
+        Ok(())
+    }
+
+    pub fn is_retraction(&self) -> bool {
+        !self.present
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        self.well_formed()?;
         let mut w = Writer::new();
         w.map(5);
         w.uint(0);
@@ -1240,12 +1253,7 @@ impl PublicAnnotation {
             value: value.ok_or(ProtoError::BadEntry("annotation missing value"))?,
             present: present.ok_or(ProtoError::BadEntry("annotation missing presence"))?,
         };
-        if out.key.len() > Self::MAX_KEY_LEN || out.key.is_empty() {
-            return Err(ProtoError::BadEntry("annotation key length"));
-        }
-        if out.value.len() > Self::MAX_VALUE_LEN {
-            return Err(ProtoError::BadEntry("annotation value length"));
-        }
+        out.well_formed()?;
         Ok(out)
     }
 }
@@ -1270,8 +1278,12 @@ mod tests {
         assert!(PublicAnnotation::decode(&gone.encode().unwrap()).unwrap().is_retraction());
         let novel = PublicAnnotation { value: "x".repeat(PublicAnnotation::MAX_VALUE_LEN + 1), ..a.clone() };
         assert!(novel.encode().is_err(), "a value past the cap does not mint");
-        let nameless = PublicAnnotation { key: String::new(), ..a };
+        let nameless = PublicAnnotation { key: String::new(), ..a.clone() };
         assert!(nameless.encode().is_err(), "an empty key is not a statement");
+        let long_tag = PublicAnnotation { value: "x".repeat(33), ..a.clone() };
+        assert!(long_tag.encode().is_err(), "a tag is 32 characters at most (2026-08-31)");
+        let long_desc = PublicAnnotation { key: "description".into(), value: "x".repeat(600), ..a };
+        assert!(long_desc.encode().is_ok(), "a description keeps the wire's full cap");
     }
 
     #[test]
