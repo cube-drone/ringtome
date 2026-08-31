@@ -121,7 +121,7 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    OWN post also files the tag on the private draft via its `published_as` back-reference,
    so the publish diff cannot retract it - best-effort for sync lag only, since the draft
    chain reaches every member device; said/unsaid labels ride the card's overlay). Identical labels
-   collapse into one chip - most-agreed first, names smashed ("Jeff Dorp and 3 others") -
+   collapse into one chip - most-agreed first, wearing a count from two up (names on hover) -
    and a chip you have not said yet is itself the agree button (2026-08-31). The open tag
    input drops a reaction palette - nine pole emoji, then the whole gemoji table - where
    one click says the emoji as a tag (2026-08-31).

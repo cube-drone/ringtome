@@ -7698,3 +7698,32 @@ the purpose, which also gave them tooltips.
 ## 2026-08-31 (cont. 12): pole position gains poop
 
 Curtis: add "poop" to the quick emoji. The pole row is ten now - 💩 after the hug.
+
+## 2026-08-31 (cont. 13): the chip face slims to tag and count
+
+Curtis: hover already divines provenance, so the smashed byline came off the chip - the
+face wears only the tag and how many people applied it (a bare chip means one; the count
+shows from two). The full name list stays in the tooltip; the "{name} and {n} others"
+strings retired with the byline.
+
+## 2026-08-31 (cont. 14): the count is chrome, not text
+
+Curtis: a tag named "asshole 100" must not read as widely supported. The count badge went
+from faint text (spoofable) to an inverted pill - ink ground, surface figure, bold, its own
+shape - chrome no tag value can imitate, since tag text renders inline in the chip's own
+colors.
+
+## 2026-08-31 (cont. 15): a reaction shows at twice the size
+
+Curtis: a tag that is JUST an emoji - now first-class - displays doubled. `isEmojiTag` in
+pure/annotations.js recognises exactly one pictographic cluster (variation selector, skin
+tone, ZWJ sequences; Emoji_Component deliberately unused so bare digits never bless), the
+chip wraps such a value in `.label-emoji-value` at 2em, and everything else - text tags,
+mixtures, "🔥🔥" - stays prose-sized. Claims beside the grouping ones.
+
+## 2026-08-31 (cont. 16): centering around the doubled emoji
+
+Curtis: with emoji chips doubled, text chips and the x on the same row sat off-center.
+Two rules: the labels row aligns center instead of stretch, so text chips sit mid-height
+beside taller emoji chips; and a chip wearing `.label-emoji-value` centers its own row, so
+its count pill and x hang on the picture's middle rather than its baseline.

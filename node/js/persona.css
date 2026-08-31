@@ -932,6 +932,9 @@
 .feed-entry-labels {
     display: flex;
     flex-wrap: wrap;
+    /* Centered, not baseline: a doubled emoji chip is taller than its text neighbours
+       (Curtis, 2026-08-31), and baseline left them hanging high. */
+    align-items: center;
     gap: 0.35rem;
     margin: 0.25rem 0 0.5rem;
 }
@@ -1010,6 +1013,29 @@ article:has(.label-emoji-strip) {
     height: 0;
     border-top: 1px solid var(--border);
     margin: 0.2rem 0;
+}
+/* A tag that IS one emoji is a reaction (2026-08-31): shown at twice the size, since the
+   picture is the whole statement. */
+.label-emoji-value {
+    font-size: 2em;
+    line-height: 1;
+}
+/* Inside a chip wearing a doubled emoji, baseline alignment shoves the count and the x
+   toward the floor - center them on the picture instead. */
+.label-chip:has(.label-emoji-value) {
+    align-items: center;
+}
+/* The count is CHROME, not text (Curtis, 2026-08-31: a tag named "asshole 100" must not
+   look widely supported) - an inverted pill no tag value can imitate. */
+.label-count {
+    background: var(--ink);
+    color: var(--surface);
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.16rem 0.4rem;
+    border-radius: 999px;
+    align-self: center;
 }
 .label-kind {
     color: var(--faint);

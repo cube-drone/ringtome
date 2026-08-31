@@ -50,7 +50,7 @@ const EMOJI_PALETTE = (() => {
     }
     return rest;
 })();
-import { groupLabels, visibleAnnotations, DEFAULT_ANNOTATION_STOP } from './pure/annotations.js';
+import { groupLabels, isEmojiTag, visibleAnnotations, DEFAULT_ANNOTATION_STOP } from './pure/annotations.js';
 import { useAnnotationStop } from './annotations-stop.js';
 import {
     FEED_STYLE,
@@ -790,16 +790,6 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     const canAgree = !!current && g.key === 'tag' && !mine;
                     const soleAuthor =
                         g.contributors.length === 1 && g.contributors[0].annotator === item.author;
-                    const byline = soleAuthor
-                        ? null
-                        : g.contributors.length === 1
-                          ? names[0]
-                          : g.contributors.length === 2
-                            ? t('postentry.name-and-one-other', '{name} and one other', { name: names[0] })
-                            : t('postentry.name-and-n-others', '{name} and {n} others', {
-                                  name: names[0],
-                                  n: g.contributors.length - 1,
-                              });
                     return html`<span
                         class=${[
                             'label-chip',
@@ -819,8 +809,14 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     >
                         ${g.key === 'bucket' ? html`<span class="label-kind">${t('postentry.in', 'in')}</span>` : ''}
                         ${g.key === 'description' ? html`<span class="label-kind">${t('postentry.about', 'about')}</span>` : ''}
-                        ${g.value}
-                        ${byline && html`<span class="label-by">${'— '}${byline}</span>`}
+                        ${g.key === 'tag' && isEmojiTag(g.value)
+                            ? html`<span class="label-emoji-value">${g.value}</span>`
+                            : g.value}
+                        ${/* Provenance lives on hover (Curtis, 2026-08-31); the chip face
+                            wears only the tag and how many people applied it - a bare chip
+                            means one. */ ''}
+                        ${g.contributors.length > 1 &&
+                        html`<span class="label-count">${g.contributors.length}</span>`}
                         ${!!mine &&
                         html`<button
                             class="label-x"

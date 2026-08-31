@@ -56,3 +56,15 @@ export function groupLabels(labels, { author }) {
     }
     return out.sort((x, y) => y.contributors.length - x.contributors.length);
 }
+
+/**
+ * Is this tag value ONE emoji (a reaction, now first-class - Curtis, 2026-08-31)? One
+ * pictographic cluster: a base emoji with optional variation selector and skin tone,
+ * ZWJ-joined to more of the same (families, flags-of-choice). Two separate emoji, plain
+ * text, and "asshole 100" all fail - Emoji_Component is deliberately not used, because it
+ * would bless bare digits.
+ */
+const ONE_EMOJI = /^\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*$/u;
+export function isEmojiTag(value) {
+    return typeof value === 'string' && ONE_EMOJI.test(value);
+}

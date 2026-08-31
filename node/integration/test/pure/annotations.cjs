@@ -1,9 +1,9 @@
 // The display register: whose labels render (ANNOTATIONS.md ruling 5).
 const assert = require('node:assert');
 
-let visibleAnnotations, DEFAULT_ANNOTATION_STOP, groupLabels;
+let visibleAnnotations, DEFAULT_ANNOTATION_STOP, groupLabels, isEmojiTag;
 before(async () => {
-    ({ visibleAnnotations, DEFAULT_ANNOTATION_STOP, groupLabels } = await import('../../../js/pure/annotations.js'));
+    ({ visibleAnnotations, DEFAULT_ANNOTATION_STOP, groupLabels, isEmojiTag } = await import('../../../js/pure/annotations.js'));
 });
 
 describe('the annotations display register', () => {
@@ -84,5 +84,20 @@ describe('grouping identical labels', () => {
             grouped.map((g) => [g.value, g.contributors.length]),
             [['goopy', 1], ['rude', 1]]
         );
+    });
+});
+
+// A tag that IS one emoji is a reaction (Curtis, 2026-08-31): one pictographic cluster,
+// however it is composed - and nothing that merely contains one.
+describe('recognising an emoji-only tag', () => {
+    it('accepts one emoji, composed or plain', () => {
+        for (const v of ['\u2764\uFE0F', '\u{1F44D}', '\u{1F44D}\u{1F3FD}', '\u{1FAC2}', '\u{1F469}\u200D\u{1F469}\u200D\u{1F466}', '\u{1F4A9}']) {
+            assert.ok(isEmojiTag(v), `one emoji: ${v}`);
+        }
+    });
+    it('refuses text, mixtures, digits, and crowds', () => {
+        for (const v of ['beef', 'beef \u{1F914}', 'asshole 100', '100', '\u{1F525}\u{1F525}', '']) {
+            assert.ok(!isEmojiTag(v), `not one emoji: ${v}`);
+        }
     });
 });
