@@ -534,6 +534,15 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const [tagging, setTagging] = useState(false);
     const [tagInput, setTagInput] = useState('');
     const labelKey = (a) => `${a.annotator}:${a.key}:${a.value}`;
+    // The reader's own display name, for the overlay chip's byline (Curtis, 2026-08-31:
+    // a fresh tag wore the speakable address until a refresh brought the server's
+    // dressed row). The mirror's live profile name, the fetched-at-open name behind it -
+    // persona.js's usePersonaName, restated here to keep the import graph acyclic.
+    const liveMyName = useLive(
+        () => (current ? openMirror(current.root).profile.get('name') : Promise.resolve(null)),
+        [current && current.root]
+    );
+    const myName = (liveMyName && liveMyName.value) || (current && current.name) || undefined;
     const addTag = async (raw) => {
         const value = raw.trim().toLowerCase().slice(0, 32); // the input's maxlength, restated
         setTagInput('');
@@ -569,7 +578,10 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 // the public statement is the speech; the filing catch-up can wait
             }
         }
-        setSaidLabels((have) => [...have, { annotator: me, key: 'tag', value }]);
+        setSaidLabels((have) => [
+            ...have,
+            { annotator: me, annotator_name: myName, key: 'tag', value },
+        ]);
     };
     const removeLabel = async (a) => {
         if (!current || a.annotator !== current.root) return;

@@ -568,7 +568,7 @@ export default {
     // --- node/src/record/imaol.rs ---
     'record.imaol.this-computers-key-is-no': "this computer's key is no longer part of the persona",
     'record.imaol.invalid-profile-field-e': 'invalid profile field: {e}',
-    'record.imaol.annotation-too-long': "that annotation is too long to state - the codec's caps are the law",
+    'record.imaol.annotation-too-long': 'that label is too long to state - a tag is 32 characters at most, anything else 1024',
 
     // --- node/src/record/private.rs ---
     'record.private.invalid-private-record-e': 'invalid private record: {e}',

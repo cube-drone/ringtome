@@ -7590,3 +7590,15 @@ cannot carry a 1000-character "tag" either), skipped with a warning at publish i
 shortened, refused with words by the API ("a tag is 32 characters at most"), and stated
 as `maxlength` on both tag inputs so a draft never holds a tag that publish would leave
 behind.
+
+## 2026-08-31 (cont. 3): the fresh tag wears its name
+
+Curtis: a tag he had just said was bylined with his speakable address until a refresh
+brought his name. The server dresses annotator names from the byline cache; the card's
+optimistic overlay row carried only the root. The overlay now carries the reader's own
+display name (the mirror's live profile name, the fetched-at-open name behind it - the
+persona page's own hook, restated to keep the import graph acyclic), so the chip reads
+"— Rule Tutu" from the first paint. Also on the way: the caps refusal's new wording had
+been reverted by the strings sweep, which rewrites call sites FROM the catalog - both
+sides say "a tag is 32 characters at most" now, the escape-trap lesson relearned as the
+rewording trap.
