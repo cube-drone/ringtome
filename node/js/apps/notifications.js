@@ -55,6 +55,12 @@ const sentence = (r) => {
     // A comment is conversation, first-class by ruling (PROJECT_PLAN's Replies slice 4): the verb,
     // and the mini-card - YOUR post, whose permalink is where the thread assembles - as
     // the object. Same sentence shape as the share, different weight by tier.
+    // A label on your post (ANNOTATIONS.md slice 4): a murmur, the verb and the card.
+    if (r.kind === 'tagged') {
+        return r.doc_id
+            ? t('apps.notifications.labelled', 'labelled')
+            : t('apps.notifications.labelled-one-of-your-posts', 'labelled one of your posts');
+    }
     if (r.kind === 'comment') {
         return r.doc_id
             ? t('apps.notifications.replied-on', 'replied on')
@@ -198,7 +204,7 @@ export const NotificationsApp = ({ current }) => {
                                           link to its own page - title joined server-side
                                           (the reader's own post), degrading to a bare
                                           "link" when the post has left the shelf. */ ''}
-                                      ${(r.kind === 'rebroadcast' || r.kind === 'comment') &&
+                                      ${(r.kind === 'rebroadcast' || r.kind === 'comment' || r.kind === 'tagged') &&
                                       r.doc_id &&
                                       html`<${MiniPost}
                                           author=${root}

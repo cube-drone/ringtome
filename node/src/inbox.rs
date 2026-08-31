@@ -290,7 +290,9 @@ fn facts_say_blocked(facts: &std::collections::BTreeMap<String, String>) -> bool
 /// band - earns the trusted tier; everyone else waits in the stranger pool. When the flow
 /// computation arrives it replaces the SENDER half, and nothing around it changes.
 fn classify(kind: u32, facts: &std::collections::BTreeMap<String, String>) -> Tier {
-    if kind == ringtome_proto::deliver::notice_kind::REBROADCAST {
+    if kind == ringtome_proto::deliver::notice_kind::REBROADCAST
+        || kind == ringtome_proto::deliver::notice_kind::TAGGED
+    {
         return Tier::Murmur;
     }
     let has = |k: &str| facts.get(k).is_some_and(|v| !v.is_empty() && v != "none");
@@ -568,6 +570,14 @@ mod tests {
             Tier::Murmur,
             "a stranger's share never touches the stranger pool"
         );
+    }
+
+    /// A label on your post is news, not conversation (ANNOTATIONS.md ruling 7): the
+    /// murmur ring, whoever sent it - the lowest priority there is.
+    #[test]
+    fn a_tagged_notice_is_a_murmur_whoever_sent_it() {
+        assert_eq!(classify(notice_kind::TAGGED, &facts(&[("trust", "max")])), Tier::Murmur);
+        assert_eq!(classify(notice_kind::TAGGED, &facts(&[])), Tier::Murmur);
     }
 
     /// A comment is conversation, never a murmur (PROJECT_PLAN's Replies ruling 5): it tiers by

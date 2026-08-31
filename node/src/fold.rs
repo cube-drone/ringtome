@@ -264,7 +264,11 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
     }
     let t_journal = t.elapsed();
     let t = std::time::Instant::now();
-    if has(service::POSTS) || has(service::FOLLOWS_PUBLIC) || has(service::REBROADCASTS) {
+    if has(service::POSTS)
+        || has(service::FOLLOWS_PUBLIC)
+        || has(service::REBROADCASTS)
+        || has(service::ANNOTATIONS_PUBLIC)
+    {
         crate::notifications::refresh_parts(state, root, &moved, force).await;
     }
     let t_notif = t.elapsed();

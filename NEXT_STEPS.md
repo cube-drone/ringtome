@@ -47,9 +47,9 @@ format and its offline verification, the `ringtome/deliver/0` ALPN, the gate at 
 both tiered inbox chains, the outbox with its backoff ladder, and the bell showing delivered
 beside derived. What is left:
 
-* **More notice kinds**: commented on / tagged your post - each needs its own
-  evidence rule in `deliver::verify_claim`; and first-contact, the one bare-claim kind, which
-  needs the capped greeting surfaced and its own smaller pool.
+* **More notice kinds**: first-contact, the one bare-claim kind, which needs the capped
+  greeting surfaced and its own smaller pool (commented-on and tagged-your-post are built,
+  each with its evidence rule in `deliver::verify_claim`).
 * **Sealed-envelope relays**: a friend's always-on node holding a notice for a phone that is
   never awake. Needs the envelope sealed to the recipient's epoch key, which direct delivery
   does not (iroh QUIC already encrypts point to point).

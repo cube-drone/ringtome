@@ -165,6 +165,16 @@ describe("public annotations: the wire and the mint", function () {
             body: JSON.stringify({ key: "tag", value: "goopy" }),
         });
         assert.equal(put.status, 200, await put.text());
+        // The tagged notice, envelope road (ANNOTATIONS.md slice 4): ada does not follow
+        // bea yet, so the news arrives at her door - a murmur naming her post.
+        await beat(HOST_B, "outbox");
+        {
+            const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+            const row = (bell.items || []).find((i) => i.author === beaRoot && i.kind === "tagged");
+            assert.ok(row, "the label rang ada's bell");
+            assert.equal(row.doc_id, post, "naming her post");
+            assert.equal(row.stranger, true, "by envelope - the murmur ring");
+        }
         // Read-your-writes on the annotator's OWN node, no beat (Curtis, 2026-08-31: a tag
         // on someone else's post vanished on refresh - the memo waited for a sweep): the
         // PUT's 200 means the label shows on the post's own read here.
@@ -185,6 +195,14 @@ describe("public annotations: the wire and the mint", function () {
         const goopy = (head.annotations || []).find((a) => a.value === "goopy");
         assert.ok(goopy, "bea's label reached ada's node through bea's chain");
         assert.equal(goopy.annotator, beaRoot, "and it names bea, never ada");
+        // The derived road: ada follows bea now, so the fold speaks and the delivered
+        // copy yields - one row, not a stranger.
+        {
+            const bell = await (await ada(`api/identity/${adaRoot}/notifications`)).json();
+            const rows = (bell.items || []).filter((i) => i.author === beaRoot && i.kind === "tagged");
+            assert.equal(rows.length, 1, "one label notice, the roads dedupe");
+            assert.ok(!rows[0].stranger, "derived from a followed chain");
+        }
 
         const del = await bea(
             `api/identity/${beaRoot}/public-annotations/${adaRoot}/${post}/tag/goopy`,

@@ -1794,6 +1794,35 @@ async fn public_annotation_put_handler(
     // nothing rang it for this append - the memo waited for the frontier sweep. Drain it
     // here, the contact-dial's read-your-writes idiom.
     crate::fold::fold_now(&state, &root).await;
+    // The tagged notice (ANNOTATIONS.md slice 4), to the post's author when that is
+    // somebody else: the annotation entry itself is the evidence, and the recipient's gate
+    // drops it when they already pull us (the derived fold speaks there). A murmur, so
+    // best-effort beside the statement, and knocked eagerly like a share's.
+    if author != root {
+        match data
+            .notices()
+            .seal(
+                &target_author,
+                &signed,
+                ringtome_proto::deliver::notice_kind::TAGGED,
+                state.config.pow_requested_bits,
+            )
+            .await
+        {
+            Ok(envelope) => {
+                if let Err(e) = crate::outbox::queue(&state.node_db, &root, &author, &envelope).await {
+                    tracing::warn!(author = %author, error = ?e, "could not queue a tagged notice");
+                }
+                let eager = state.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = crate::outbox::sweep(eager).await {
+                        tracing::debug!(error = ?e, "eager tagged-notice delivery failed");
+                    }
+                });
+            }
+            Err(e) => tracing::warn!(author = %author, error = ?e, "could not seal a tagged notice"),
+        }
+    }
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),

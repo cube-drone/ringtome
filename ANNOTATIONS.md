@@ -121,7 +121,13 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    OWN post also files the tag on the private draft via its `published_as` back-reference,
    so the publish diff cannot retract it - best-effort for sync lag only, since the draft
    chain reaches every member device; said/unsaid labels ride the card's overlay).
-   Remaining: `notice_kind::TAGGED` both roads.
+   ~~`notice_kind::TAGGED` both roads~~ (built 2026-08-31, at Curtis's ask: the comment
+   notice's twin - a murmur, the lowest ring whoever sent it. Envelope road: the tag PUT
+   seals the annotation entry itself to the post's author when that is somebody else;
+   `verify_claim` binds it by `target_author == recipient` and refuses a withdrawal. Derived
+   road: the notifications fold reads the annotator's public annotations when that chain
+   moves, one `tagged` row per (reader, annotator, post) under the follow-edge rule, receded
+   by diff. The bell reads "labelled" with the post's card).
 5. **Collections.** Public buckets as browsable pages; search over public tags.
 
 ## What this deliberately is not

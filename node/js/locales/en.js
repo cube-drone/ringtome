@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 511 phrases across 44 files.
+// 513 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -64,6 +64,8 @@ export default {
 
     // --- node/js/apps/notifications.js ---
     'apps.notifications.what-they-call-themselves-unverified': 'what they call themselves - an unverified claim, not a name this computer has checked',
+    'apps.notifications.labelled': 'labelled',
+    'apps.notifications.labelled-one-of-your-posts': 'labelled one of your posts',
     'apps.notifications.replied-on': 'replied on',
     'apps.notifications.replied-to-one-of-your': 'replied to one of your posts',
     'apps.notifications.shared': 'shared',

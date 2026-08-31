@@ -34,6 +34,12 @@ pub const KIND_REBROADCAST: &str = "rebroadcast";
 /// where the thread assembles and the bell's mini-card points.
 pub const KIND_COMMENT: &str = "comment";
 
+/// "Someone you follow labelled your post." The derived twin of
+/// `deliver::notice_kind::TAGGED` (ANNOTATIONS.md slice 4) - a murmur; the row's doc is
+/// the post, and rows collapse per (reader, annotator, post): three tags from one person
+/// on one post are one line in the bell.
+pub const KIND_TAGGED: &str = "tagged";
+
 /// One notification, as the endpoint serves it.
 #[derive(Debug, serde::Serialize)]
 pub struct NotificationRow {
@@ -60,7 +66,12 @@ pub async fn refresh_from(state: &AppState, author_root: &str) {
     refresh_parts(
         state,
         author_root,
-        &[service::FOLLOWS_PUBLIC, service::REBROADCASTS, service::POSTS],
+        &[
+            service::FOLLOWS_PUBLIC,
+            service::REBROADCASTS,
+            service::POSTS,
+            service::ANNOTATIONS_PUBLIC,
+        ],
         true,
     )
     .await;
@@ -98,9 +109,12 @@ async fn refresh_from_inner(
     let has_posts = wants(service::POSTS)
         && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::POSTS)
             .await?;
+    let has_labels = wants(service::ANNOTATIONS_PUBLIC)
+        && crate::net::frontier::has_service_chain(&state.node_db, author_root, service::ANNOTATIONS_PUBLIC)
+            .await?;
     // Reads below open the database once for whichever legs run; the comment leg then asks
     // the reply-set fingerprint (replies::replies_moved) and steps aside for a plain post.
-    if !has_edges && !has_shares && !has_posts {
+    if !has_edges && !has_shares && !has_posts && !has_labels {
         return Ok(());
     }
     // ONE database open for both folds, the fold edge's allowance (the same shape as
@@ -135,6 +149,15 @@ async fn refresh_from_inner(
     let comment_leg = has_posts
         && (crate::replies::replies_moved(state, &db, author_root, "comment-notices").await?
             || force);
+    // The labels leg (ANNOTATIONS.md slice 4) reads the whole folded view: it is small
+    // (one row per statement, tombstones included) and the leg diffs against standing rows.
+    let labels = if has_labels {
+        crate::record::imaol::public_annotations(&db)
+            .await
+            .map_err(|e| anyhow::anyhow!("folding {author_root}'s labels: {e}"))?
+    } else {
+        Vec::new()
+    };
     let replies = if comment_leg || has_shares {
         crate::record::documents::public_replies(&db)
             .await
@@ -143,7 +166,7 @@ async fn refresh_from_inner(
         Vec::new()
     };
     drop(db);
-    if published.is_empty() && shared.is_empty() && replies.is_empty() {
+    if published.is_empty() && shared.is_empty() && replies.is_empty() && labels.is_empty() {
         return Ok(());
     }
 
@@ -257,6 +280,53 @@ async fn refresh_from_inner(
     // as everything above. Deletion has no retraction entry to read - a deleted reply's
     // header simply leaves the shelf - so the fold diffs: rows this author no longer backs
     // recede with the pass that noticed (the replies memo's sweep, one table over).
+    // "Someone you follow labelled your post" (ANNOTATIONS.md slice 4). The reader is the
+    // post's author; the row collapses per (reader, annotator, post). Same follow-edge
+    // rule as the share leg; recedes by diff when the annotator withdraws every label on
+    // that post.
+    if has_labels {
+        let mut fresh: std::collections::BTreeSet<(String, String)> = Default::default();
+        for l in labels.iter().filter(|l| l.present) {
+            if !hosted.contains(&l.target_author) || l.target_author == author_root {
+                continue;
+            }
+            if !crate::net::subscriptions::follows(&state.node_db, &l.target_author, author_root)
+                .await?
+            {
+                continue;
+            }
+            let doc_hex = hex::encode(l.target_doc);
+            if fresh.insert((l.target_author.clone(), doc_hex.clone())) {
+                touched.insert(l.target_author.clone());
+                upsert_row(
+                    &state.node_db,
+                    &l.target_author,
+                    author_root,
+                    KIND_TAGGED,
+                    &doc_hex,
+                    None,
+                    None,
+                    l.received_at_ms,
+                )
+                .await?;
+            }
+        }
+        let standing: Vec<(String, String)> = state
+            .node_db
+            .fetch_all(
+                "SELECT reader_root, doc_id FROM notifications
+                 WHERE author_root = ?1 AND kind = ?2",
+                (author_root, KIND_TAGGED),
+            )
+            .await
+            .context("reading standing tagged rows")?;
+        for (reader, doc) in standing {
+            if !fresh.contains(&(reader.clone(), doc.clone())) {
+                touched.insert(reader.clone());
+                delete_row(&state.node_db, &reader, author_root, KIND_TAGGED, &doc).await?;
+            }
+        }
+    }
     if !comment_leg {
         nudge_streams(state, &touched);
         return Ok(()); // the comment leg below is reply-set-sourced; its diff must not run blind

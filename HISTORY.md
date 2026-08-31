@@ -7602,3 +7602,21 @@ persona page's own hook, restated to keep the import graph acyclic), so the chip
 been reverted by the strings sweep, which rewrites call sites FROM the catalog - both
 sides say "a tag is 32 characters at most" now, the escape-trap lesson relearned as the
 rewording trap.
+
+## 2026-08-31 (cont. 4): a label on your post is news
+
+Curtis: "when someone tags your post, you should get a notification (at the lowest
+priority)". ANNOTATIONS.md slice 4's other half, shaped on the comment notice.
+`notice_kind::TAGGED` (4): the evidence is the sender's own signed annotation entry;
+`verify_claim` demands the ANNOTATIONS_PUBLIC service and entry type, binds the label to the
+recipient (`target_author == recipient_root`, else "somebody else's post"), refuses a
+withdrawal (the empty edge's rule), and names the post as the claim's doc. The inbox
+classifies it a murmur whoever sent it - the share's ring, the lowest there is. Envelope
+road: the tag PUT seals and queues it to the post's author when that is not the annotator,
+knocked eagerly, best-effort beside the statement. Derived road: the notifications fold now
+also runs when an ANNOTATIONS_PUBLIC chain moves, reads that annotator's folded view, and
+keeps one `tagged` row per (reader, annotator, post) for readers who follow the annotator,
+receded by diff when every label on that post is withdrawn - the two roads dedupe as the
+others do. The bell says "labelled" with the post's card. Acceptance rides the friend's-label
+claim in public_annotations.cjs: before ada follows bea the row is a stranger's by envelope;
+after, exactly one row, derived. Proto and inbox unit claims beside.

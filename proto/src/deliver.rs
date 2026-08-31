@@ -104,12 +104,17 @@ pub mod notice_kind {
     /// your post is conversation, so the classifier tiers it by sender like a public edge,
     /// never as a murmur.
     pub const COMMENT: u32 = 3;
+    /// "I labelled your post" (ANNOTATIONS.md slice 4) - evidence is the sender's own
+    /// signed public annotation naming the recipient as the post's author. A murmur, like
+    /// a share: news, not conversation. The claim's `doc_id` is the post.
+    pub const TAGGED: u32 = 4;
 
     pub fn name(id: u32) -> &'static str {
         match id {
             PUBLIC_EDGE => "public-edge",
             REBROADCAST => "rebroadcast",
             COMMENT => "comment",
+            TAGGED => "tagged",
             _ => "unknown-kind",
         }
     }
@@ -617,6 +622,32 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
             }
             (None, None, Some(parent_doc))
         }
+        notice_kind::TAGGED => {
+            if evidence.entry().chain.service != crate::registry::service::ANNOTATIONS_PUBLIC
+                || evidence.entry().entry_type != crate::registry::entry_type::PUBLIC_ANNOTATION
+            {
+                return Err(ProtoError::ChainViolation(
+                    "a tagged notice needs the sender's own annotation",
+                ));
+            }
+            let crate::Payload::Inline(payload) = &evidence.entry().payload else {
+                return Err(ProtoError::BadEntry("annotation payload must be inline"));
+            };
+            let a = crate::registry::PublicAnnotation::decode(payload)?;
+            // The binding: the label must name the RECIPIENT's post, or it is news for
+            // somebody else's door.
+            if a.target_author != envelope.recipient_root {
+                return Err(ProtoError::ChainViolation(
+                    "the annotation labels somebody else's post",
+                ));
+            }
+            if a.is_retraction() {
+                // Taking a label back is correct to publish and never worth announcing -
+                // the empty edge's rule, the withdrawn share's rule.
+                return Err(ProtoError::BadEntry("the label was withdrawn"));
+            }
+            (None, None, Some(a.target_doc))
+        }
         _ => return Err(ProtoError::BadEntry("unknown notice kind")),
     };
 
@@ -971,6 +1002,66 @@ mod tests {
             signer,
         )
         .unwrap()
+    }
+
+    /// One annotation entry on `signer`'s chain, labelling a post.
+    fn annotation_entry(signer: &SigningKey, target: ([u8; 32], [u8; 16]), present: bool) -> SignedEntry {
+        let payload = crate::registry::PublicAnnotation {
+            target_author: target.0,
+            target_doc: target.1,
+            key: "tag".into(),
+            value: "goopy".into(),
+            present,
+        }
+        .encode()
+        .unwrap();
+        SignedEntry::create(
+            &Entry {
+                v: ENTRY_VERSION,
+                entry_type: entry_type::PUBLIC_ANNOTATION,
+                chain: ChainId {
+                    author: pubkey(signer),
+                    service: service::ANNOTATIONS_PUBLIC,
+                },
+                seq: 0,
+                prev_hash: ZERO_HASH,
+                timestamp_ms: 1_700_000_080_000,
+                payload: Payload::Inline(payload),
+            },
+            signer,
+        )
+        .unwrap()
+    }
+
+    fn tagged_notice(root: &SigningKey, leaf: &SigningKey, recipient: [u8; 32], evidence: SignedEntry) -> SignedEnvelope {
+        let envelope = Envelope {
+            sender_root: pubkey(root),
+            signer: pubkey(leaf),
+            recipient_root: recipient,
+            kind: notice_kind::TAGGED,
+            auth_path: vec![authorize(root, leaf, 0).bytes().to_vec()],
+            evidence: Some(evidence.bytes().to_vec()),
+            greeting: None,
+            stamp: None,
+            display_name: None,
+        };
+        SignedEnvelope::create(&envelope, leaf).unwrap()
+    }
+
+    /// ANNOTATIONS.md slice 4: a tagged notice's evidence is the sender's own annotation
+    /// naming the recipient's post; a withdrawn label and a label on somebody else's post
+    /// both refuse.
+    #[test]
+    fn a_tagged_notice_verifies_and_names_the_post() {
+        let root = key(1);
+        let leaf = key(2);
+        let recipient = [7u8; 32];
+        let post = [6u8; 16];
+        let claim = verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, (recipient, post), true))).unwrap();
+        assert_eq!(claim.kind, notice_kind::TAGGED);
+        assert_eq!(claim.doc_id, Some(post));
+        assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, ([8u8; 32], post), true))).is_err());
+        assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, (recipient, post), false))).is_err());
     }
 
     fn comment_notice(
