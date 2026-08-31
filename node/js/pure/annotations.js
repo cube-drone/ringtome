@@ -33,3 +33,26 @@ export function visibleAnnotations(annotations, { author, stop, factsByRoot, me 
         return false;
     });
 }
+
+/**
+ * Collapse identical labels said by different people into one chip's worth of facts
+ * (Curtis, 2026-08-31: "beef" by Jeff Dorp and "beef" by Darn Hot are ONE chip, worn by
+ * both). Groups by (key, value); within a group the post author's copy leads, everyone
+ * else in arrival order; groups sort most-agreed-first (ties keep their arrival order -
+ * Array.prototype.sort is stable).
+ */
+export function groupLabels(labels, { author }) {
+    const groups = new Map();
+    for (const a of labels || []) {
+        const k = `${a.key}\u0000${a.value}`;
+        if (!groups.has(k)) groups.set(k, { key: a.key, value: a.value, contributors: [] });
+        const g = groups.get(k);
+        if (!g.contributors.some((c) => c.annotator === a.annotator)) g.contributors.push(a);
+    }
+    const out = [...groups.values()];
+    for (const g of out) {
+        const i = g.contributors.findIndex((c) => c.annotator === author);
+        if (i > 0) g.contributors.unshift(g.contributors.splice(i, 1)[0]);
+    }
+    return out.sort((x, y) => y.contributors.length - x.contributors.length);
+}

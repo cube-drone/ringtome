@@ -23,7 +23,7 @@ import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
-import { visibleAnnotations, DEFAULT_ANNOTATION_STOP } from './pure/annotations.js';
+import { groupLabels, visibleAnnotations, DEFAULT_ANNOTATION_STOP } from './pure/annotations.js';
 import { useAnnotationStop } from './annotations-stop.js';
 import {
     FEED_STYLE,
@@ -754,28 +754,57 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 'everyone' stop like any label. */ ''}
             ${!open && (shownLabels.length > 0 || !!current) &&
             html`<div class="feed-entry-labels">
-                ${shownLabels.map(
-                    (a) => html`<span
-                        class=${a.annotator === item.author ? 'label-chip' : 'label-chip label-chip-theirs'}
-                        key=${`${a.annotator}:${a.key}:${a.value}`}
-                        title=${a.annotator === item.author
-                            ? t('postentry.the-authors-label', "the author's label")
-                            : t('postentry.label-by-name', 'label by {name}', { name: a.annotator_name || speakable(a.annotator) })}
+                ${groupLabels(shownLabels, { author: item.author }).map((g) => {
+                    // One chip per (key, value), worn by everyone who said it: most-agreed
+                    // first, names smashed ("Jeff Dorp and 3 others"), and the chip itself
+                    // is the agree button when you have not said it yet.
+                    const names = g.contributors.map((c) => c.annotator_name || speakable(c.annotator));
+                    const mine = current && g.contributors.find((c) => c.annotator === current.root);
+                    const canAgree = !!current && g.key === 'tag' && !mine;
+                    const soleAuthor =
+                        g.contributors.length === 1 && g.contributors[0].annotator === item.author;
+                    const byline = soleAuthor
+                        ? null
+                        : g.contributors.length === 1
+                          ? names[0]
+                          : g.contributors.length === 2
+                            ? t('postentry.name-and-one-other', '{name} and one other', { name: names[0] })
+                            : t('postentry.name-and-n-others', '{name} and {n} others', {
+                                  name: names[0],
+                                  n: g.contributors.length - 1,
+                              });
+                    return html`<span
+                        class=${[
+                            'label-chip',
+                            g.contributors.some((c) => c.annotator === item.author) ? '' : 'label-chip-theirs',
+                            canAgree ? 'label-chip-agree' : '',
+                            mine ? 'label-chip-mine' : '',
+                        ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        key=${`${g.key}:${g.value}`}
+                        title=${canAgree
+                            ? t('postentry.click-to-agree', 'said by {names} - click to agree, with your own name on it', { names: names.join(', ') })
+                            : soleAuthor
+                              ? t('postentry.the-authors-label', "the author's label")
+                              : t('postentry.label-by-name', 'label by {name}', { name: names.join(', ') })}
+                        onClick=${canAgree ? () => addTag(g.value) : undefined}
                     >
-                        ${a.key === 'bucket' ? html`<span class="label-kind">${t('postentry.in', 'in')}</span>` : ''}
-                        ${a.key === 'description' ? html`<span class="label-kind">${t('postentry.about', 'about')}</span>` : ''}
-                        ${a.value}
-                        ${a.annotator !== item.author &&
-                        html`<span class="label-by">${'— '}${a.annotator_name || speakable(a.annotator)}</span>`}
-                        ${!!current &&
-                        a.annotator === current.root &&
+                        ${g.key === 'bucket' ? html`<span class="label-kind">${t('postentry.in', 'in')}</span>` : ''}
+                        ${g.key === 'description' ? html`<span class="label-kind">${t('postentry.about', 'about')}</span>` : ''}
+                        ${g.value}
+                        ${byline && html`<span class="label-by">${'— '}${byline}</span>`}
+                        ${!!mine &&
                         html`<button
                             class="label-x"
                             title=${t('postentry.take-this-label-back', 'take this label back')}
-                            onClick=${() => removeLabel(a)}
+                            onClick=${(e) => {
+                                e.stopPropagation();
+                                removeLabel(mine);
+                            }}
                         >×</button>`}
-                    </span>`
-                )}
+                    </span>`;
+                })}
                 ${/* Say something about any post - yours or anyone's (ANNOTATIONS.md
                     slice 4): the statement lands on YOUR chain, bylined as yours
                     everywhere it travels. */ ''}

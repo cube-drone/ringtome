@@ -120,7 +120,9 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
    on every post card for any signed-in reader, an × on labels you authored; tagging your
    OWN post also files the tag on the private draft via its `published_as` back-reference,
    so the publish diff cannot retract it - best-effort for sync lag only, since the draft
-   chain reaches every member device; said/unsaid labels ride the card's overlay).
+   chain reaches every member device; said/unsaid labels ride the card's overlay). Identical labels
+   collapse into one chip - most-agreed first, names smashed ("Jeff Dorp and 3 others") -
+   and a chip you have not said yet is itself the agree button (2026-08-31).
    ~~`notice_kind::TAGGED` both roads~~ (built 2026-08-31, at Curtis's ask: the comment
    notice's twin - a murmur, the lowest ring whoever sent it. Envelope road: the tag PUT
    seals the annotation entry itself to the post's author when that is somebody else;

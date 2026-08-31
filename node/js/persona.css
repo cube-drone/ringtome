@@ -949,6 +949,19 @@
     background: var(--surface);
     border: 1px dashed var(--border);
 }
+/* A chip you have not said yet is the agree button (2026-08-31): the hand says so. */
+.label-chip-agree {
+    cursor: pointer;
+}
+/* A chip you HAVE said is activated (Curtis, 2026-08-31): a shade deeper than its resting
+   fill, whichever variant it is wearing - your weight is on it. */
+.label-chip-mine {
+    background: color-mix(in srgb, var(--surface-2) 84%, var(--ink) 16%);
+}
+.label-chip-theirs.label-chip-mine {
+    background: color-mix(in srgb, var(--surface) 84%, var(--ink) 16%);
+    border-style: solid;
+}
 .label-kind {
     color: var(--faint);
     font-size: 0.72rem;

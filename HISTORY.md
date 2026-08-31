@@ -7645,3 +7645,24 @@ current label that annotator has on that post, joined, stamped by the newest - i
 without any. Both schema generations bump (node 34, user 19 - pre-User-1, rebuild not
 migrate), so the dev network wants `just clean`. Acceptance: both bell claims in
 public_annotations.cjs now assert the words.
+
+## 2026-08-31 (cont. 7): agreement wears one chip
+
+Curtis: Jeff Dorp tags a post "beef", Darn Hot clicks the chip to agree - now two "beef"
+statements by two people, shown as ONE chip. `groupLabels` in pure/annotations.js: collapse
+by (key, value), the post author's copy leading its group, groups ordered most-agreed-first
+(stable on ties), same person never counted twice. The card renders the smashed byline
+("Jeff Dorp and 3 others" / "and one other"; a sole author-chip stays bare as before), the
+full name list in the tooltip, and makes the chip itself the agree button when the signed-in
+reader has not said that tag yet - the same addTag road, so the optimistic overlay joins the
+group at once and the × still takes back only your own copy (stopPropagation, so taking
+back is never mistaken for agreeing). Cursor CSS in persona.css, css bundle rebuilt. Pure
+claims beside the display-register ones.
+
+## 2026-08-31 (cont. 8): the chip you said wears your weight
+
+Curtis: an agreed chip should change color - "it's been activated". `label-chip-mine` on
+any chip whose contributors include the signed-in reader: its resting fill mixed 16% toward
+`--ink` (color-mix, so each variant deepens from its own base and both themes keep their
+sense), and a dashed stranger-chip goes solid once your name is on it. Rides the optimistic
+overlay, so the click darkens at once.
