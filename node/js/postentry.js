@@ -23,6 +23,33 @@ import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
+import { nameToEmoji } from 'gemoji';
+// The reaction palette under the open tag input (Curtis, 2026-08-31): the nine in pole
+// position, then the whole gemoji table - the same table the marquee editor's `:` completions
+// draw from - deduped (gemoji aliases share characters) and scrollable. One click says the
+// emoji as a tag; there is no separate "react" machinery to build or explain.
+const POLE_EMOJI = [
+    ['heart', '\u2764\uFE0F'],
+    ['thumbs up', '\u{1F44D}'],
+    ['thumbs down', '\u{1F44E}'],
+    ['rofl', '\u{1F923}'],
+    ['crying', '\u{1F622}'],
+    ['rolling eyes', '\u{1F644}'],
+    ['thinking', '\u{1F914}'],
+    ['partying', '\u{1F973}'],
+    ['people hugging', '\u{1FAC2}'],
+    ['poop', '\u{1F4A9}'],
+];
+const EMOJI_PALETTE = (() => {
+    const seen = new Set(POLE_EMOJI.map(([, ch]) => ch));
+    const rest = [];
+    for (const [name, ch] of Object.entries(nameToEmoji)) {
+        if (seen.has(ch)) continue;
+        seen.add(ch);
+        rest.push([name, ch]);
+    }
+    return rest;
+})();
 import { groupLabels, visibleAnnotations, DEFAULT_ANNOTATION_STOP } from './pure/annotations.js';
 import { useAnnotationStop } from './annotations-stop.js';
 import {
@@ -810,7 +837,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     everywhere it travels. */ ''}
                 ${!!current &&
                 (tagging
-                    ? html`<input
+                    ? html`<span class="label-add-anchor"><input
                           class="label-add-input"
                           maxlength="32"
                           placeholder=${t('postentry.tag-placeholder', 'a tag')}
@@ -828,7 +855,31 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                               }
                           }}
                           onBlur=${() => addTag(tagInput)}
-                      />`
+                      />
+                      ${(() => {
+                          // Typing filters the palette by emoji name (Curtis, 2026-08-31):
+                          // "thum" narrows to the thumbs, Enter still says the TEXT as the
+                          // tag - the filter is a lens, not a commitment. Underscores in
+                          // gemoji names read as spaces so "rolling e" finds roll_eyes.
+                          const q = tagInput.trim().toLowerCase();
+                          const hit = ([name]) => !q || name.replace(/_/g, ' ').includes(q);
+                          const pole = POLE_EMOJI.filter(hit);
+                          const rest = EMOJI_PALETTE.filter(hit);
+                          const chip = ([name, ch]) => html`<button
+                              class="label-emoji"
+                              key=${name}
+                              title=${name}
+                              onMouseDown=${(e) => e.preventDefault()}
+                              onClick=${() => addTag(ch)}
+                          >${ch}</button>`;
+                          if (!pole.length && !rest.length) return '';
+                          return html`<span class="label-emoji-strip">
+                              ${pole.map(chip)}
+                              ${pole.length > 0 && rest.length > 0 &&
+                              html`<span class="label-emoji-pole-break"></span>`}
+                              ${rest.map(chip)}
+                          </span>`;
+                      })()}</span>`
                     : html`<button
                           class="label-add"
                           title=${t('postentry.say-what-this-post-is', 'say what this post is - the label goes on your own chain, with your name on it')}

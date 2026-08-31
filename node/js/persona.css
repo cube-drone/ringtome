@@ -962,6 +962,55 @@
     background: color-mix(in srgb, var(--surface) 84%, var(--ink) 16%);
     border-style: solid;
 }
+/* The reaction palette under the open tag input (2026-08-31): pole row first, the whole
+   gemoji table behind a divider, scrollable. A dropdown, so the feed does not reflow. */
+/* The card wearing the open palette outranks its siblings (Curtis, 2026-08-31: the
+   dropdown appeared UNDER the next post - later cards paint above earlier ones, and the
+   strip's own z-index only counts inside its card's stacking context). */
+article:has(.label-emoji-strip) {
+    position: relative;
+    z-index: 40;
+}
+.label-add-anchor {
+    position: relative;
+    display: inline-flex;
+}
+.label-emoji-strip {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    z-index: 30;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1rem;
+    width: 15.5rem;
+    max-height: 8.5rem;
+    overflow-y: auto;
+    padding: 0.4rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    box-shadow: 0 6px 18px var(--shadow-drop);
+}
+.label-emoji {
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    padding: 0.05rem 0.15rem;
+    border-radius: 0.3rem;
+    cursor: pointer;
+}
+.label-emoji:hover {
+    background: var(--surface-2);
+}
+.label-emoji-pole-break {
+    flex-basis: 100%;
+    height: 0;
+    border-top: 1px solid var(--border);
+    margin: 0.2rem 0;
+}
 .label-kind {
     color: var(--faint);
     font-size: 0.72rem;

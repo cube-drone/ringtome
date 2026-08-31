@@ -7666,3 +7666,35 @@ any chip whose contributors include the signed-in reader: its resting fill mixed
 `--ink` (color-mix, so each variant deepens from its own base and both themes keep their
 sense), and a dashed stranger-chip goes solid once your name is on it. Rides the optimistic
 overlay, so the click darkens at once.
+
+## 2026-08-31 (cont. 9): reactions are tags wearing emoji
+
+Curtis: opening the tag editor should immediately offer an emoji selector, like the marquee
+editor's, with heart / thumbs up / thumbs down / rofl / crying / rolling eyes / thinking /
+partying / people hugging in pole position. A dropdown palette under the open input: those
+nine first, a divider, then the whole gemoji table (the same table the editor's `:`
+completions use), deduped and scrollable. One click SAYS the emoji as a tag - the reaction
+set makes the intent plain, and the agree/collapse/notice machinery all come free because a
+reaction is just a label. `onMouseDown` is prevented on the palette so the input's
+blur-submit cannot misfire; the in-flight guard already covers the rest. Positioned
+absolutely so the feed does not reflow.
+
+## 2026-08-31 (cont. 10): the palette outranks the next post
+
+Curtis, amused: the emoji selector appeared UNDER the next post. Later cards paint above
+earlier ones, and the strip's z-index only counts inside its own card's stacking context -
+so `article:has(.label-emoji-strip)` now lifts the card wearing the open palette above its
+siblings (position: relative, z-index 40). CSS only; nothing reflows.
+
+## 2026-08-31 (cont. 11): the tag input filters the palette
+
+Curtis: typing a tag should filter the emoji selector. The input's text now narrows the
+palette by emoji name (underscores read as spaces, so "rolling e" finds roll_eyes); the
+pole nine filter too and keep their lead, the divider only renders when both halves
+survive, and the strip vanishes when nothing matches. Enter is unchanged - it says the
+TEXT as the tag; the filter is a lens, not a commitment. The pole entries grew names for
+the purpose, which also gave them tooltips.
+
+## 2026-08-31 (cont. 12): pole position gains poop
+
+Curtis: add "poop" to the quick emoji. The pole row is ten now - 💩 after the hug.
