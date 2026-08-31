@@ -93,6 +93,19 @@ describe("public annotations: the wire and the mint", function () {
         assert.ok(has("tag", "mighty") && has("bucket", "blog"), "labels on the post's own read");
     });
 
+    it("the shelf listing carries the labels too - tags show wherever a post shows", async () => {
+        // The person page's list reads `api/id/{root}/posts`; its rows wear the same
+        // labels the permalink and feed wear (the two surfaces slice 2 missed, closed
+        // 2026-08-30).
+        const page = await (await ada(`api/id/${adaRoot}/posts`)).json();
+        const row = (page.posts || []).find((p) => p.doc_id === post);
+        assert.ok(row, "the post is on the shelf");
+        assert.ok(
+            (row.annotations || []).some((a) => a.key === "tag" && a.value === "mighty"),
+            "and wears its labels there"
+        );
+    });
+
     it("the chain syncs like any public service - a mirror-holding node answers too", async function () {
         if (!HOST_B) this.skip();
         bea = await makeUserFetch({ prefix: "annbea", host: HOST_B });

@@ -61,6 +61,12 @@ const ACTIONS = [
                 body: ctx.lorem(rng, 1 + Math.floor(rng() * 3)),
                 format: 'marquee',
             });
+            // Filed in the feed bucket BEFORE publishing, because that is what the real
+            // composer does at mint - and since publish replicates the draft's
+            // annotations (ANNOTATIONS.md), skipping it made generator posts publicly
+            // bucketless while replies (whose action always filed) said "in: feed" -
+            // half a shelf labelled, half not (Curtis, 2026-08-30).
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
             await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`);
         },
     },

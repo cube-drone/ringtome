@@ -47,6 +47,7 @@ import {
     feedKey,
     feedCursor,
     collapseReplyPairs,
+    PUBLISHED_AS,
 } from '../pure/feed.js';
 import { api } from '../net.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
@@ -525,6 +526,23 @@ export const FeedApp = ({ current }) => {
             // public link are true the moment the server answers.
             setPostedAs((p) => ({ ...p, [posted]: made.post_id }));
             const row = (rows || []).find((d) => d.doc_id === posted);
+            // The labels ride the overlay too (Curtis, 2026-08-30: tags didn't show until
+            // a refresh): the synthesized item is what the stream shows until the poll,
+            // and the dedupe deliberately swallows the dressed journal row - so the
+            // overlay must carry what the mirror already knows. Same exclusions as the
+            // server's mint: `published_as` is bookkeeping, and the default bucket is
+            // quiet at render anyway.
+            const overlayLabels = [];
+            for (const tag of (row && row.tags) || []) {
+                overlayLabels.push({ annotator: root, key: 'tag', value: tag });
+            }
+            for (const [field, value] of Object.entries((row && row.fields) || {})) {
+                if (field === PUBLISHED_AS || !(value || '').trim()) continue;
+                overlayLabels.push({ annotator: root, key: field, value });
+            }
+            for (const bucket of (row && row.buckets) || []) {
+                overlayLabels.push({ annotator: root, key: 'bucket', value: bucket });
+            }
             setFresh({
                 author: root,
                 doc_id: made.post_id,
@@ -533,6 +551,7 @@ export const FeedApp = ({ current }) => {
                 published_ms: Date.now(),
                 updated_ms: Date.now(),
                 arrived_ms: Date.now(),
+                annotations: overlayLabels,
                 mine: true,
             });
             // Said in public: seal it, so editing again costs the unlock.

@@ -7497,3 +7497,34 @@ is the planted proof of the fragment road itself. One tooling
 scar: a blanket regex meant for the Have CONSTRUCTIONS also padded three match PATTERNS
 - structural edits want the sites listed, not pattern-matched blind. Node gen 32 -> 33
 (`just clean` before the next dev boot).
+
+## 2026-08-30 (cont. 3): the tags show on every post surface
+
+Curtis, from the UI: seeing a post's tags. Slice 2 dressed the feed and the permalink but
+left the shelf listing (`id_posts`) and the profile's first page bare - PostEntry had the
+chips and those two surfaces never sent the labels. One shared dresser
+(`attach_annotations`: page-scoped memo read, annotator bylines, author-first) now feeds
+both, and the person page's item mapping passes them through. Labels render wherever a
+post renders.
+
+## 2026-08-30 (cont. 4): the generator files its posts like the composer does
+
+Curtis, scrolling panda-blotch: only half the posts said "in: feed". The real composer
+files every draft in the feed bucket at mint, and the reply box does too - but the
+generator's `post-in-public` skipped the bucket PUT, so its plain posts published
+publicly bucketless while its replies (whose action always filed) wore the label. The
+action now files before publishing, matching the UI's actual gesture. And with every
+post now honestly "in: feed", the chip became the universal truth wearing a label -
+Curtis's next note before it was written - so the DEFAULT bucket is quiet at display:
+the author's `bucket: feed` chip is hidden at render only, the statement still
+replicates publicly by ruling, and any other bucket ("blog") still shows.
+
+## 2026-08-30 (cont. 5): the fresh post's labels ride the overlay
+
+Curtis: tags on a new post didn't show until a refresh. The feed's fresh-post overlay
+hands the stream a synthesized item the moment the server confirms - and the dedupe
+deliberately swallows the later dressed journal row, so whatever the overlay lacks stays
+lacking until a reload. The overlay now carries the labels the mirror already knows
+(tags, set fields minus `published_as`, buckets - the default bucket quiet at render as
+everywhere), which is the overlay idiom's own rule: the view may run ahead as long as it
+never disagrees.

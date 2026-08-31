@@ -1087,20 +1087,67 @@ pub async fn id_posts(
     let counts = crate::replies::known_counts(&state.node_db, &pairs)
         .await
         .unwrap_or_default();
+    let mut items: Vec<serde_json::Value> = posts
+        .iter()
+        .map(|p| {
+            let n = counts
+                .get(&(root_hex.clone(), hex::encode(p.doc_id)))
+                .copied()
+                .unwrap_or(0);
+            post_json(p, n)
+        })
+        .collect();
+    attach_annotations(&state, &root_hex, &mut items).await;
     Ok(axum::Json(serde_json::json!({
-        "posts": posts
-            .iter()
-            .map(|p| {
-                let n = counts
-                    .get(&(root_hex.clone(), hex::encode(p.doc_id)))
-                    .copied()
-                    .unwrap_or(0);
-                post_json(p, n)
-            })
-            .collect::<Vec<_>>(),
+        "posts": items,
         "more": more,
     }))
     .into_response())
+}
+
+/// Attach every known label to a page of post JSON (ANNOTATIONS.md slice 2's read, on the
+/// two surfaces that missed it): one page-scoped memo read, bylines for the annotators,
+/// the author's own labels first. The reader's display register filters at the client.
+async fn attach_annotations(
+    state: &AppState,
+    root_hex: &str,
+    posts: &mut [serde_json::Value],
+) {
+    let pairs: Vec<(String, String)> = posts
+        .iter()
+        .filter_map(|v| v["doc_id"].as_str().map(|d| (root_hex.to_string(), d.to_string())))
+        .collect();
+    let Ok(known) = crate::annotations::for_posts(&state.node_db, &pairs).await else {
+        return;
+    };
+    if known.is_empty() {
+        return;
+    }
+    let annotators: Vec<String> = known
+        .values()
+        .flatten()
+        .map(|a| a.annotator.clone())
+        .collect();
+    let bylines = crate::profiles::bylines(&state.node_db, &annotators)
+        .await
+        .unwrap_or_default();
+    for v in posts.iter_mut() {
+        let Some(doc) = v["doc_id"].as_str().map(String::from) else {
+            continue;
+        };
+        let Some(list) = known.get(&(root_hex.to_string(), doc)) else {
+            continue;
+        };
+        v["annotations"] = serde_json::json!(list
+            .iter()
+            .map(|a| serde_json::json!({
+                "annotator_name": bylines.get(&a.annotator).and_then(|b| b.name.clone()),
+                "annotator": a.annotator,
+                "key": a.key,
+                "value": a.value,
+            }))
+            .collect::<Vec<_>>());
+    }
 }
 
 /// One post, as every surface reports it. `replies` is the honest-partial count from
@@ -1422,6 +1469,17 @@ pub async fn id_profile(
     let reply_counts = crate::replies::known_counts(&state.node_db, &count_pairs)
         .await
         .unwrap_or_default();
+    let mut profile_posts: Vec<serde_json::Value> = posts
+        .iter()
+        .map(|p| {
+            let n = reply_counts
+                .get(&(root_hex.clone(), hex::encode(p.doc_id)))
+                .copied()
+                .unwrap_or(0);
+            post_json(p, n)
+        })
+        .collect();
+    attach_annotations(&state, &root_hex, &mut profile_posts).await;
 
     Ok(axum::Json(serde_json::json!({
         "root": root_hex,
@@ -1438,16 +1496,7 @@ pub async fn id_profile(
         // When this node last reached them, for a persona it does not host. Absent for one it
         // does: a persona we host has no "last synced" - its words are written here.
         "synced_ms": synced_ms,
-        "posts": posts
-            .iter()
-            .map(|p| {
-                let n = reply_counts
-                    .get(&(root_hex.clone(), hex::encode(p.doc_id)))
-                    .copied()
-                    .unwrap_or(0);
-                post_json(p, n)
-            })
-            .collect::<Vec<_>>(),
+        "posts": profile_posts,
         // Whether the shelf goes further back than this first page.
         "posts_more": posts_more,
         "fields": fields.iter().map(|f| serde_json::json!({

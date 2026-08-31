@@ -531,7 +531,13 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
         author: item.author,
         stop,
         factsByRoot,
-    }).filter((a) => a.key !== 'description' || a.annotator === item.author || stop === 'everyone');
+    })
+        .filter((a) => a.key !== 'description' || a.annotator === item.author || stop === 'everyone')
+        // The default bucket is the universal truth wearing a chip: every composed post is
+        // "in: feed", so the label carries no information and renders as noise (Curtis,
+        // 2026-08-30). Hidden at DISPLAY only - the statement still replicates publicly by
+        // ruling, and any other bucket ("blog") still shows.
+        .filter((a) => !(a.key === 'bucket' && a.value === FEED_STYLE && a.annotator === item.author));
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
