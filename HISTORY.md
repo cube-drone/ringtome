@@ -7620,3 +7620,13 @@ receded by diff when every label on that post is withdrawn - the two roads dedup
 others do. The bell says "labelled" with the post's card. Acceptance rides the friend's-label
 claim in public_annotations.cjs: before ada follows bea the row is a stranger's by envelope;
 after, exactly one row, derived. Proto and inbox unit claims beside.
+
+## 2026-08-31 (cont. 5): the tag that said itself twice
+
+Curtis: tags on another user's post each appeared twice until a reboot. The "+ tag" input
+submits on Enter and then unmounts (`setTagging(false)`), and the unmount fires the input's
+blur - whose handler submits the same text again from the same closure: two PUTs (the
+memo's primary key kept one, which is why a reload was clean) and two identical overlay
+chips (the render deduped overlay-vs-server, never overlay-vs-itself). Two belts: a
+one-tick in-flight ref so the synchronous blur echo no-ops, and the overlay push made
+idempotent by label key.

@@ -534,6 +534,10 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const [tagging, setTagging] = useState(false);
     const [tagInput, setTagInput] = useState('');
     const labelKey = (a) => `${a.annotator}:${a.key}:${a.value}`;
+    // Enter submits AND unmounts the input, whose blur then submits the same text again
+    // (Curtis, 2026-08-31: every tag on another user's post appeared twice until a reload
+    // let the server's one row win). One flight at a time; the blur echo lands here.
+    const tagInFlight = useRef(false);
     // The reader's own display name, for the overlay chip's byline (Curtis, 2026-08-31:
     // a fresh tag wore the speakable address until a refresh brought the server's
     // dressed row). The mirror's live profile name, the fetched-at-open name behind it -
@@ -544,6 +548,9 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     );
     const myName = (liveMyName && liveMyName.value) || (current && current.name) || undefined;
     const addTag = async (raw) => {
+        if (tagInFlight.current) return; // the unmount-blur echo of the Enter that just fired
+        tagInFlight.current = true;
+        setTimeout(() => (tagInFlight.current = false), 0); // outlives the synchronous echo only
         const value = raw.trim().toLowerCase().slice(0, 32); // the input's maxlength, restated
         setTagInput('');
         setTagging(false);
@@ -578,10 +585,10 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 // the public statement is the speech; the filing catch-up can wait
             }
         }
-        setSaidLabels((have) => [
-            ...have,
-            { annotator: me, annotator_name: myName, key: 'tag', value },
-        ]);
+        const said = { annotator: me, annotator_name: myName, key: 'tag', value };
+        setSaidLabels((have) =>
+            have.some((a) => labelKey(a) === labelKey(said)) ? have : [...have, said]
+        );
     };
     const removeLabel = async (a) => {
         if (!current || a.annotator !== current.root) return;
