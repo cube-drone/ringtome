@@ -139,3 +139,11 @@ the author (who filed it) and the readers (who react to it). Neither can speak t
 
 Not folksonomy-as-truth: there is no global tag namespace and no vote count, only people
 saying things under their own names, and a reader choosing whose words to weigh.
+
+## Amendment (2026-08-31): the display dial is gone
+
+Ruling 5's author/followed/everyone control proved too conservative and fussy (Curtis):
+readers get all available labels all the time. The display decision collapses to one rule -
+everyone's labels, blocked annotators never - and the block lives where it always did, on
+the contact ledger. The persona register `annotations_display/stop` is simply no longer
+read; pre-User-1, nothing migrates.

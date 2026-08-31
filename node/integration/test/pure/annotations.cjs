@@ -1,12 +1,14 @@
 // The display register: whose labels render (ANNOTATIONS.md ruling 5).
 const assert = require('node:assert');
 
-let visibleAnnotations, DEFAULT_ANNOTATION_STOP, groupLabels, isEmojiTag;
+let visibleAnnotations, groupLabels, isEmojiTag;
 before(async () => {
-    ({ visibleAnnotations, DEFAULT_ANNOTATION_STOP, groupLabels, isEmojiTag } = await import('../../../js/pure/annotations.js'));
+    ({ visibleAnnotations, groupLabels, isEmojiTag } = await import('../../../js/pure/annotations.js'));
 });
 
-describe('the annotations display register', () => {
+describe('whose labels show', () => {
+    // The dial is gone (Curtis, 2026-08-31: "too conservative and fussy") - everyone's
+    // labels, always; the block is the one filter left standing.
     const author = 'ada';
     const labels = [
         { annotator: 'ada', key: 'tag', value: 'saucy' },
@@ -14,40 +16,18 @@ describe('the annotations display register', () => {
         { annotator: 'cal', key: 'tag', value: 'rude' },
         { annotator: 'dan', key: 'tag', value: 'meh' },
     ];
-    const facts = { bea: { interest: 'high' }, cal: { blocked: 'yes' }, dan: {} };
-
-    it("defaults to everyone's labels - blocked excepted", () => {
-        assert.equal(DEFAULT_ANNOTATION_STOP, 'everyone');
-        const seen = visibleAnnotations(labels, { author, stop: DEFAULT_ANNOTATION_STOP, factsByRoot: facts });
+    it("shows everyone's labels, blocked excepted", () => {
+        const facts = { bea: { interest: 'high' }, cal: { blocked: 'yes' }, dan: {} };
+        const seen = visibleAnnotations(labels, { author, factsByRoot: facts });
         assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'bea', 'dan']);
     });
-
-    it("'followed' narrows to the author's plus people I follow", () => {
-        const seen = visibleAnnotations(labels, { author, stop: 'followed', factsByRoot: facts });
-        assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'bea']);
+    it('with no ledger at all, everything shows - an anonymous visitor sees the post as it is', () => {
+        const seen = visibleAnnotations(labels, { author, factsByRoot: null });
+        assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'bea', 'cal', 'dan']);
     });
-
-    it("'author' shows the author's alone", () => {
-        const seen = visibleAnnotations(labels, { author, stop: 'author', factsByRoot: facts });
-        assert.deepEqual(seen.map((a) => a.annotator), ['ada']);
-    });
-
-    it("'everyone' shows all - except a blocked annotator, whatever the stop", () => {
-        const seen = visibleAnnotations(labels, { author, stop: 'everyone', factsByRoot: facts });
-        assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'bea', 'dan']);
-    });
-
-    it("the reader's own labels always show - nobody follows themselves", () => {
-        // 2026-08-31: three tags said from the UI vanished on refresh, filtered out by the
-        // reader's own register at the default stop.
-        const mine = [...labels, { annotator: 'me', key: 'tag', value: 'said-by-me' }];
-        const seen = visibleAnnotations(mine, { author, stop: 'author', factsByRoot: facts, me: 'me' });
-        assert.deepEqual(seen.map((a) => a.annotator), ['ada', 'me']);
-    });
-
-    it("with no ledger at all (nobody signed in) it is the author's only", () => {
-        const seen = visibleAnnotations(labels, { author, stop: 'everyone', factsByRoot: null });
-        assert.deepEqual(seen.map((a) => a.annotator), ['ada']);
+    it("the reader's own labels always show, even if their ledger somehow marks them", () => {
+        const seen = visibleAnnotations(labels, { author, factsByRoot: { cal: { blocked: 'yes' } }, me: 'cal' });
+        assert.ok(seen.some((a) => a.annotator === 'cal'));
     });
 });
 

@@ -50,8 +50,7 @@ const EMOJI_PALETTE = (() => {
     }
     return rest;
 })();
-import { groupLabels, isEmojiTag, visibleAnnotations, DEFAULT_ANNOTATION_STOP } from './pure/annotations.js';
-import { useAnnotationStop } from './annotations-stop.js';
+import { groupLabels, isEmojiTag, visibleAnnotations } from './pure/annotations.js';
 import {
     FEED_STYLE,
     publishedState,
@@ -547,7 +546,6 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     // Whose labels this reader sees: the register and their ledger, both live. The
     // description key is the author's alone here (one description per post); anyone
     // else's description is shown only at 'everyone', as a label.
-    const stop = useAnnotationStop(current && current.root) || DEFAULT_ANNOTATION_STOP;
     const contactRows = useLive(
         () => (current && current.root ? openMirror(current.root).contacts.toArray() : []),
         [current && current.root]
@@ -647,11 +645,9 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     };
     const baseLabels = visibleAnnotations(item.annotations, {
         author: item.author,
-        stop,
         factsByRoot,
         me: current && current.root,
     })
-        .filter((a) => a.key !== 'description' || a.annotator === item.author || stop === 'everyone')
         // The default bucket is the universal truth wearing a chip: every composed post is
         // "in: feed", so the label carries no information and renders as noise (Curtis,
         // 2026-08-30). Hidden at DISPLAY only - the statement still replicates publicly by
@@ -778,7 +774,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 with the annotator's byline - never an anonymous cloud - and only the
                 annotators the reader's display register admits. The author's description
                 is the one description; others' descriptions are tags-grade and ride the
-                'everyone' stop like any label. */ ''}
+                display rule like any label. */ ''}
             ${!open && (shownLabels.length > 0 || !!current) &&
             html`<div class="feed-entry-labels">
                 ${groupLabels(shownLabels, { author: item.author }).map((g) => {

@@ -1083,16 +1083,6 @@ article:has(.label-emoji-strip) {
     background: var(--surface);
     color: var(--ink);
 }
-.feed-labels-dial select {
-    font: inherit;
-    font-size: 0.78rem;
-    color: var(--muted);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.1rem 0.4rem;
-    margin-left: 0.6rem;
-}
 
 .feed-item-body {
     margin-top: 0.4rem;

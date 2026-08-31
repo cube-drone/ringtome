@@ -7727,3 +7727,14 @@ Curtis: with emoji chips doubled, text chips and the x on the same row sat off-c
 Two rules: the labels row aligns center instead of stretch, so text chips sit mid-height
 beside taller emoji chips; and a chip wearing `.label-emoji-value` centers its own row, so
 its count pill and x hang on the picture's middle rather than its baseline.
+
+## 2026-08-31 (cont. 17): the labels dial comes off
+
+Curtis: the author's/followed/everyone option was "a bit too conservative and fussy - for
+most users we just want all available tags all the time, please remove the option".
+Removed whole: the feed-header select, annotations-stop.js (the persona-register hook),
+the stops and default from pure/annotations.js, and the stop plumbing through the card.
+`visibleAnnotations` is now one rule - everyone's labels, blocked annotators never, the
+author's and the reader's own unconditionally - and an anonymous visitor with no ledger
+sees the post as it is. The display-register claims rewrote to the simpler contract;
+ANNOTATIONS.md carries the amendment to ruling 5.

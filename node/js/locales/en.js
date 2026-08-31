@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 516 phrases across 44 files.
+// 515 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -26,7 +26,6 @@ export default {
     'apps.feed.refresh': '· refresh',
     'apps.feed.the-feed': 'the feed',
     'apps.feed.how-far-past-the-people': 'how far past the people you chose this feed may reach',
-    'apps.feed.whose-labels-show': 'whose labels show on posts',
     'apps.feed.nothing-here-yet---follow': 'nothing here yet - follow someone, or write something on the left.',
     'apps.feed.nothing-at-this-selectivity': 'nothing at this selectivity - slide toward Explorer to widen the feed.',
     'apps.feed.reading-further-back': 'reading further back…',
