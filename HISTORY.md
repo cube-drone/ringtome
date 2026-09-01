@@ -7818,3 +7818,11 @@ ruling. The composer's second checkbox, the card's honest hollow line, and the a
 in trusted_posts.cjs. Slice 2b's danger list is pinned in VISIBILITY.md - the blob-lane
 leak first: node-to-node blob fetches by hash bypass the gate until the iroh-blobs
 permission hook lands.
+
+## 2026-09-01 (cont. 4): discovery never vouches a gated post
+
+Curtis asked whether trusted-only posts show in discovery - they did: the speculative
+journal lane collected the newest shelf page wholesale, so a trust-graph vouch could put a
+gated post's hollow card in a stranger's feed. One filter at the lane (`!r.trusted_only`),
+with the reasoning in place: the speculative lane is the one surface the reader never
+chose. Followers keep their rows and their honest hollow line.

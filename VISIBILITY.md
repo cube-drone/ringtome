@@ -92,3 +92,10 @@ trust" instead of the waiting dot. Acceptance in trusted_posts.cjs.
 4. **Friendly-node display**: a trusted mirror re-serving the body applies the same
    published-trust check for its local readers (the HTTP gate already does this wherever
    the author's chains are mirrored, since it reads the author's own edges).
+
+## Amendment (2026-09-01): discovery never carries a trusted-only post
+
+Curtis: "Do trusted-only items show up in discovery? They shouldn't." They did - the
+speculative journal lane took the newest page wholesale. Now filtered at the lane:
+followers still get the (hollow, for the untrusted) row because they chose the author;
+the speculative lane, which nobody chose, carries no gated posts at all.

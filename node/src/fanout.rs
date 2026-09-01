@@ -268,7 +268,13 @@ async fn journal_for(state: &AppState, author_root: &str) -> Result<usize> {
     // NOTHING is the whole precedence ladder). Best-effort beside the real writes - a
     // speculative miss is the next move's to retry, not this journal's to fail.
     if !wanting.is_empty() && !first_page.is_empty() {
-        let suggested: Vec<&JournalRow> = first_page.iter().collect();
+        // Trusted-only posts never ride discovery (Curtis, 2026-09-01): the speculative
+        // lane is the one surface the reader never chose - no follow, no share, no trust
+        // umbrella - and a gated post advertised there is a hollow card for strangers.
+        // Followers still get the row (they chose the author; untrusted ones read the
+        // honest hollow line), and the sharer-scoped lane is slice 2b's own gate.
+        let suggested: Vec<&JournalRow> =
+            first_page.iter().filter(|r| !r.trusted_only).collect();
         if let Err(e) =
             journal_rows_suggested(&state.node_db, author_root, &wanting, &suggested).await
         {
