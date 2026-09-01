@@ -166,6 +166,7 @@ pub async fn publish(
     doc_id: &[u8; 16],
     reply: Option<crate::record::documents::ReplyLinks>,
     settled: bool,
+    trusted_only: bool,
 ) -> Result<Outcome, AppError> {
     let docs = data.documents();
     let view = docs.all().await?;
@@ -179,7 +180,7 @@ pub async fn publish(
         .unwrap_or(crate::record::documents::Format::Plaintext);
     if format != crate::record::documents::Format::Marquee {
         // Plaintext (and the media-format refusal inside) take the plain path: no embeds.
-        return Ok(Outcome::Posted(docs.publish(doc_id, None, Vec::new(), reply, settled).await?));
+        return Ok(Outcome::Posted(docs.publish(doc_id, None, Vec::new(), reply, settled, trusted_only).await?));
     }
     let resolved = docs.resolved(doc).await?;
     let body = resolved.body.ok_or_else(|| {
@@ -188,7 +189,7 @@ pub async fn publish(
 
     let refs = media_refs(&body, root_hex);
     if refs.is_empty() {
-        return Ok(Outcome::Posted(docs.publish(doc_id, Some(body), Vec::new(), reply, settled).await?));
+        return Ok(Outcome::Posted(docs.publish(doc_id, Some(body), Vec::new(), reply, settled, trusted_only).await?));
     }
     // The COUNT cap, before a byte of bake work: `media_budget` below prices the bytes, this
     // prices the obligations - every ref is a fetch every sharer owes, and fifty distinct
@@ -305,7 +306,7 @@ pub async fn publish(
         }
     }
     Ok(Outcome::Posted(
-        docs.publish(doc_id, Some(rewrite(&body, &swaps)), header_refs, reply, settled).await?,
+        docs.publish(doc_id, Some(rewrite(&body, &swaps)), header_refs, reply, settled, trusted_only).await?,
     ))
 }
 

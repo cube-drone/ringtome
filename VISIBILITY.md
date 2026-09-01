@@ -16,7 +16,28 @@ Curtis's ask (2026-09-01): at posting time, two flags.
    CONTENT only to nodes serving users the author trusts; everyone else can see there WAS
    a post but not what it contained.
 
-## Trusted-only mechanics (for ruling before slice 2)
+## Trusted-only rulings (Curtis, 2026-09-01)
+
+1. **Title public, body gated.** The header travels as today - existence, title, date,
+   format, thumbnail are the post's public face; the BODY (and its media blobs) is the
+   gated thing. The hollow card reads title + date + "for trusted readers".
+2. **Trusted = any published trust band.** The author's FOLLOWS_PUBLIC edges, any level:
+   "trusted only" means "people I've marked at all". Checked at serve time, so trust
+   published later opens older posts, and revoked trust closes future serving (copies
+   already delivered are the honest-parties caveat, as everywhere).
+3. **Replies allowed.** A reply is the replier's own public speech; the thread is only as
+   private as its least discreet participant, and that is their responsibility.
+4. **Rebroadcast: allowed, and SHARER-SCOPED** (Curtis's design): every act is scoped by
+   its own actor. The body gates by the AUTHOR's trust; the share pointer journals only
+   into feeds of readers the SHARER publishes trust for - so the post travels through
+   chains of trust umbrellas instead of appearing as hollow cards in strangers' feeds.
+   Enforced at the journaling fold (honest-surface, like everything: the pointer entry
+   stays an ordinary public statement on the sharer's chain). Re-sharing self-limits: the
+   existing "can't share what it hasn't read" mint rule means every sharer can open the
+   body, i.e. is author-trusted. "Trusted-only + no-rebroadcast" is then the strict tier:
+   my network and nothing beyond it.
+
+## Trusted-only mechanics (as designed before the rulings)
 
 - **What travels**: the chain entry must survive for the chain to verify, so the header
   travels; the BODY is the gated thing. Two candidate shapes: (a) header as today, body
@@ -44,3 +65,30 @@ Curtis's ask (2026-09-01): at posting time, two flags.
    OTHERS' settled posts still render the share button until the feed dressing carries the
    flag (the mint refuses with words either way).
 2. **Trusted-only.** After the title ruling above.
+
+## Slice 2a built (2026-09-01): the HTTP door and the wire
+
+Header key 16 (`trusted_only`, carried like `settled`); both doc memos and the feed journal
+carry it (user gen 21, node gen 37 - `just clean`); the composer grows "only show to people
+I trust"; the body route refuses untrusted sessions with honest words (thumbnail stays
+public by the title ruling), checked at serve time against the author's published trust
+edges; the card and the post page say "the author shares these words only with people they
+trust" instead of the waiting dot. Acceptance in trusted_posts.cjs.
+
+## Slice 2b - the remaining doors, in danger order
+
+1. **The blob lane leaks.** Bodies travel node-to-node by content hash over the iroh-blobs
+   ALPN, which serves the whole store to any peer - and the public header names the hash.
+   Until this closes, a gated body is withheld from browsers but fetchable by any NODE that
+   asks the blob door directly. iroh-blobs 0.103's provider events carry a
+   permission-denied abort (`events.rs`: "the client does not have permission"), so the
+   shape is an EventSender hook: deny gated hashes unless the dialing endpoint resolves
+   (via `identity_peers` / serving records) to a persona the author trusts.
+2. **Media twins.** A gated post's images are separate media documents; their headers must
+   inherit `trusted_only` at the bake mints (store.rs inline-embed twin, bake.rs external
+   twin) or the pictures stay public while the words are gated.
+3. **Sharer-scoped share journaling** (ruling 4): the share pointer journals only into
+   feeds the SHARER publishes trust for.
+4. **Friendly-node display**: a trusted mirror re-serving the body applies the same
+   published-trust check for its local readers (the HTTP gate already does this wherever
+   the author's chains are mirrored, since it reads the author's own edges).

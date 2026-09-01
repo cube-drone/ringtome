@@ -494,6 +494,8 @@ export const FeedApp = ({ current }) => {
     // The settled wish for the NEXT post (VISIBILITY.md): rides the publish request, set
     // per post and cleared after - not a standing preference.
     const [settleNext, setSettleNext] = useState(false);
+    // Trusted-readers-only for the NEXT post (VISIBILITY.md slice 2), same discipline.
+    const [trustNext, setTrustNext] = useState(false);
 
     const post = async (docId) => {
         const posted = docId || draftId;
@@ -512,9 +514,15 @@ export const FeedApp = ({ current }) => {
                 root,
                 posted,
                 setBaking,
-                settleNext ? { settled: true } : undefined
+                settleNext || trustNext
+                    ? {
+                          ...(settleNext ? { settled: true } : {}),
+                          ...(trustNext ? { trusted_only: true } : {}),
+                      }
+                    : undefined
             );
             setSettleNext(false);
+            setTrustNext(false);
             // Say it here rather than waiting for the stream to say it back: the label and the
             // public link are true the moment the server answers.
             setPostedAs((p) => ({ ...p, [posted]: made.post_id }));
@@ -606,6 +614,17 @@ export const FeedApp = ({ current }) => {
                                             onChange=${(e) => setSettleNext(e.currentTarget.checked)}
                                         />
                                         ${t('apps.feed.settled-no-replies-no', 'turn off rebroadcast and comment')}
+                                    </label>
+                                    <label
+                                        class="feed-settle"
+                                        title=${t('apps.feed.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked=${trustNext}
+                                            onChange=${(e) => setTrustNext(e.currentTarget.checked)}
+                                        />
+                                        ${t('apps.feed.only-show-to-people', 'only show to people I trust')}
                                     </label>`
                                   : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`}
                               ${/* Beside the button that caused it. This used to sit above the

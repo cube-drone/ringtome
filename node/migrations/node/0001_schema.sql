@@ -246,6 +246,8 @@ CREATE TABLE feed_journal (
     settled      INTEGER NOT NULL DEFAULT 0, -- the author's no-shares-no-replies wish, off
                                      --   the journaled header (VISIBILITY.md) - so the card
                                      --   can hide the share button without a second read
+    trusted_only INTEGER NOT NULL DEFAULT 0, -- trusted-readers-only, same source - so the
+                                     --   card can say WHY a body will not arrive
     suggested_via TEXT,              -- via_root's SPECULATIVE sibling (DISCOVERY slice 2,
                                      --   2026-08-24): the introducer whose vouch journaled this
                                      --   row when the reader neither follows the author nor any

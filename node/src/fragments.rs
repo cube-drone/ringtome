@@ -1290,6 +1290,7 @@ fn row_of_verified(
         published_ms: now,
         updated_ms: now,
         settled: verified.header.settled,
+        trusted_only: verified.header.trusted_only,
     }
 }
 
@@ -1309,6 +1310,7 @@ fn row_of(f: &Fragment, doc_hex: &str) -> crate::fanout::JournalRow {
         // post in the first place, and the journal upsert corrects this from the verified
         // fragment whenever one is in hand.
         settled: false,
+        trusted_only: false,
     }
 }
 
@@ -1721,6 +1723,7 @@ mod tests {
             version: [7u8; 32],
             timestamp_ms,
             header: ringtome_proto::registry::DocHeaderPlain {
+                trusted_only: false,
                 settled: false,
                 doc_id: doc,
                 parents: Vec::new(),

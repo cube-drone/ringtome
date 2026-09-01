@@ -80,6 +80,7 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
         replies: post.replies,
         annotations: post.annotations,
         settled: !!post.settled,
+        trusted_only: !!post.trusted_only,
         mine: !!(current && current.root === root),
     };
 

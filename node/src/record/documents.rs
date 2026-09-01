@@ -482,6 +482,7 @@ pub async fn save_version(
     };
 
     let header = DocHeaderPlain {
+        trusted_only: false,
         settled: false,
         doc_id: save.doc_id,
         parents: save.parents,
@@ -551,6 +552,7 @@ pub async fn retitle(
         return Ok(head.hash);
     }
     let header = DocHeaderPlain {
+        trusted_only: false,
         settled: false,
         doc_id,
         parents: doc.logical_heads.clone(),
@@ -611,6 +613,7 @@ pub async fn save_public_media(
         );
     }
     let header = DocHeaderPlain {
+        trusted_only: false,
         doc_id,
         parents: vec![],
         file_hash: *body_hash.as_bytes(),
@@ -673,6 +676,8 @@ pub struct PublicText<'a> {
     /// The author's no-shares-no-replies wish (VISIBILITY.md): set at publish, carried
     /// forward on re-publication like the reply link.
     pub settled: bool,
+    /// Trusted readers only (VISIBILITY.md slice 2): carried the same way.
+    pub trusted_only: bool,
     /// A reply's links, FIRST publication only: (parent, thread root), each (author root,
     /// doc id) - resolved by the publish path from the parent's own held header
     /// (PROJECT_PLAN's Replies). Ignored on re-publication, where the previous header's claims carry
@@ -686,12 +691,12 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply, settled } = text;
+    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only } = text;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
     // genesis never moves.
-    let (doc_id, parents, genesis_ms, reply_to, thread_root, settled) = match onto {
+    let (doc_id, parents, genesis_ms, reply_to, thread_root, settled, trusted_only) = match onto {
         Some((id, parents)) => {
             // CARRIED from the previous header's own claim, never re-derived: the mint's
             // claim and the entry's stamp are minted milliseconds apart, so a re-derivation
@@ -704,13 +709,13 @@ pub async fn save_public_text(
                     ringtome_proto::Payload::Inline(payload) => {
                         DocHeaderPlain::decode(payload)
                             .ok()
-                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled))
+                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only))
                     }
                     _ => None,
                 },
                 None => None,
             };
-            let (carried_genesis, carried_reply, carried_root, carried_settled) =
+            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted) =
                 carried.unwrap_or_default();
             let genesis = match carried_genesis {
                 Some(g) => g,
@@ -721,14 +726,22 @@ pub async fn save_public_text(
             // could re-parent would let an edit move a reply under a different conversation.
             // The wish is carried like genesis - but a fresh request during the edit
             // window may still change the author's mind (their post, their door).
-            (id, parents, genesis, carried_reply, carried_root, settled || carried_settled)
+            (
+                id,
+                parents,
+                genesis,
+                carried_reply,
+                carried_root,
+                settled || carried_settled,
+                trusted_only || carried_trusted,
+            )
         }
         None => {
             let (reply_to, thread_root) = match reply {
                 Some((parent, root)) => (Some(parent), Some(root)),
                 None => (None, None),
             };
-            (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled)
+            (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled, trusted_only)
         }
     };
     let file_hash = files
@@ -755,6 +768,7 @@ pub async fn save_public_text(
         reply_to,
         thread_root,
         settled,
+        trusted_only,
     };
     let payload = header
         .encode()
@@ -789,6 +803,8 @@ pub struct PublicDoc {
     pub thumb_hash: Option<[u8; 32]>,
     /// The author's no-shares-no-replies wish (VISIBILITY.md), off the signed header.
     pub settled: bool,
+    /// Trusted readers only (VISIBILITY.md slice 2): the body is gated; this face is not.
+    pub trusted_only: bool,
 }
 
 /// Everything this identity has published, newest first. Keyless: the anonymous face and the
@@ -884,12 +900,14 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         Option<String>,
         Option<String>,
         i64,
+        i64,
     );
     let row: Option<Row> = db
         .fetch_optional(
             &format!(
                 "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash,
-                        reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled
+                        reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
+                        trusted_only
                  FROM doc_heads
                  WHERE lane = 'public' AND doc_id = ? AND {text_only} AND {not_retracted}"
             ),
@@ -899,8 +917,9 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         .map_err(AppError::Internal)?;
     match row {
         None => Ok(None),
-        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled)) => Ok(Some(PublicDoc {
+        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only)) => Ok(Some(PublicDoc {
             settled: settled != 0,
+            trusted_only: trusted_only != 0,
             reply_to: rr.zip(rd),
             thread_root: tr.zip(td),
             doc_id: doc_id
@@ -985,9 +1004,11 @@ pub async fn public_docs(
         Option<String>,
         Option<String>,
         i64,
+        i64,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
-                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled";
+                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
+                   trusted_only";
     let rows: Vec<Row> = match after {
         None => db
             .fetch_all(
@@ -1030,12 +1051,14 @@ type PublicDocRow = (
     Option<String>,
     Option<String>,
     i64,
+    i64,
 );
 
 fn public_doc_from_row(row: PublicDocRow) -> Result<PublicDoc, AppError> {
-    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled) = row;
+    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only) = row;
     Ok(PublicDoc {
         settled: settled != 0,
+        trusted_only: trusted_only != 0,
         reply_to: rr.zip(rd),
         thread_root: tr.zip(td),
         doc_id: doc_id
@@ -1081,9 +1104,11 @@ pub async fn public_docs_updated_since(
         Option<String>,
         Option<String>,
         i64,
+        i64,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
-                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled";
+                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
+                   trusted_only";
     let rows: Vec<Row> = db
         .fetch_all(
             &format!(
@@ -1347,13 +1372,15 @@ async fn fold_header(
         "INSERT OR IGNORE INTO doc_versions
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
             duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq, author_pubkey, lane,
-            reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled)
+            reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
                  :width, :height, :duration_ms, :thumb_hash, :preview_hash, :refs,
                  :timestamp_ms, :seq, :author_pubkey, :lane,
-                 :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled)",
+                 :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
+                 :trusted_only)",
         turso::named_params! {
             ":settled": i64::from(header.settled),
+            ":trusted_only": i64::from(header.trusted_only),
             ":reply_to_root": header.reply_to.map(|(r, _)| hex::encode(r)),
             ":reply_to_doc": header.reply_to.map(|(_, d)| hex::encode(d)),
             ":thread_root_root": header.thread_root.map(|(r, _)| hex::encode(r)),
@@ -1741,11 +1768,13 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                (doc_id, lane, entry_hash, title, format, file_hash, width, height, duration_ms,
                 thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms,
                 heads_fp, head_bodies,
-                reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled)
+                reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
+                trusted_only)
              VALUES (:doc_id, :lane, :entry_hash, :title, :format, :file_hash, :width, :height,
                      :duration_ms, :thumb_hash, :preview_hash, :logical_heads, :diverged,
                      :genesis_ms, :head_ms, :heads_fp, :head_bodies,
-                     :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled)
+                     :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
+                     :trusted_only)
              ON CONFLICT(doc_id) DO UPDATE SET
                lane = excluded.lane,
                entry_hash = excluded.entry_hash,
@@ -1767,7 +1796,8 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                reply_to_doc = excluded.reply_to_doc,
                thread_root_root = excluded.thread_root_root,
                thread_root_doc = excluded.thread_root_doc,
-               settled = excluded.settled",
+               settled = excluded.settled,
+               trusted_only = excluded.trusted_only",
             turso::named_params! {
                 ":heads_fp": heads_hasher.finalize().as_bytes().to_vec(),
                 ":head_bodies": head_bodies,
@@ -1776,6 +1806,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                 ":thread_root_root": head.header.thread_root.map(|(r, _)| hex::encode(r)),
                 ":thread_root_doc": head.header.thread_root.map(|(_, d)| hex::encode(d)),
                 ":settled": i64::from(head.header.settled),
+                ":trusted_only": i64::from(head.header.trusted_only),
                 ":doc_id": doc_id.as_slice(),
                 ":lane": doc.lane.as_str(),
                 ":entry_hash": head.hash.as_slice(),
@@ -1846,6 +1877,7 @@ type VersionRow = (
     Option<String>,  // thread_root_root
     Option<String>,  // thread_root_doc
     i64,             // settled (VISIBILITY.md: the author's no-shares-no-replies wish)
+    i64,             // trusted_only (VISIBILITY.md slice 2)
 );
 
 /// Rehydrate one stored version from its `doc_versions` row.
@@ -1872,6 +1904,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         thread_root_root,
         thread_root_doc,
         settled,
+        trusted_only,
     ) = row;
     let link = |root: Option<String>, doc: Option<String>| -> Option<([u8; 32], [u8; 16])> {
         let root = crate::pubkey::decode(&root?)?;
@@ -1886,6 +1919,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         .map_err(|_| AppError::Internal(anyhow!("corrupt doc_id in doc_versions")))?;
     let author = hash32(&hex::decode(&author_hex).unwrap_or_default())?;
     let header = DocHeaderPlain {
+        trusted_only: trusted_only != 0,
         doc_id,
         parents: decode_parents(&parents)?,
         file_hash: hash32(&file_hash)?,
@@ -1925,7 +1959,7 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
                     height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only
              FROM doc_versions WHERE doc_id = ?1",
             (doc_id.to_vec(),),
         )
@@ -1966,7 +2000,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
                     height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only
              FROM doc_versions",
             (),
         )
@@ -3001,6 +3035,7 @@ mod tests {
         title: &str,
     ) {
         let header = DocHeaderPlain {
+            trusted_only: false,
             settled: false,
             doc_id: *doc_id,
             parents: Vec::new(),
@@ -5303,6 +5338,7 @@ mod tests {
             timestamp_ms: t,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                trusted_only: false,
                 settled: false,
                 doc_id: [1u8; 16],
                 parents,

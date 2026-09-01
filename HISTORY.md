@@ -7795,3 +7795,26 @@ share button and the whole thread section for a quiet italic line. The composer 
 per-post checkbox that clears after posting. FromRow tuple arities 11-13, 17-19 and 21
 filled in along the way (the memo rows outgrew the widest impl). VISIBILITY.md pins the
 design, including the trusted-only mechanics awaiting Curtis's title ruling.
+
+## 2026-09-01 (cont. 2): trusted-only ruled
+
+Curtis's four rulings pinned in VISIBILITY.md: title public/body gated; trusted = any
+published trust band; replies allowed; rebroadcast allowed but SHARER-SCOPED - his design:
+the share pointer journals only into feeds the sharer publishes trust for, so a
+trusted-only post travels through chains of trust umbrellas, never as hollow cards in
+strangers' feeds. Each act scoped by its own actor; the mint's "can't share what it hasn't
+read" rule makes every sharer author-trusted by construction. Slice 2 is buildable.
+
+## 2026-09-01 (cont. 3): trusted-only, the HTTP door (VISIBILITY.md slice 2a)
+
+Curtis's four rulings pinned (title public / any trust band / replies allowed /
+sharer-scoped shares), then the wire and the first door: header key 16 threaded
+publish->bake->store->mint, carried on re-publication; both doc memos and the feed journal
+grew the column (user gen 21, node gen 37); FromRow arity 22. The body route now takes the
+session and refuses untrusted readers with "the author shares these words only with people
+they trust" - the author's own published trust edges, ANY band, checked at serve time so a
+trust published later opens older posts; the thumbnail stays public with the title by
+ruling. The composer's second checkbox, the card's honest hollow line, and the acceptance
+in trusted_posts.cjs. Slice 2b's danger list is pinned in VISIBILITY.md - the blob-lane
+leak first: node-to-node blob fetches by hash bypass the gate until the iroh-blobs
+permission hook lands.

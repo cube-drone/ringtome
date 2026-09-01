@@ -839,6 +839,7 @@ pub async fn directory(
 /// a different avatar is a different document).
 async fn public_doc_bytes(
     state: &AppState,
+    session: &Option<Session>,
     seg: &str,
     doc_hex: &str,
     thumb: bool,
@@ -874,6 +875,7 @@ async fn public_doc_bytes(
         file_hash: [u8; 32],
         thumb_hash: Option<[u8; 32]>,
         format: Option<u64>,
+        trusted_only: bool,
     }
     let from_fragments = || async {
         Result::<Option<ServeFacts>, AppError>::Ok(
@@ -884,6 +886,7 @@ async fn public_doc_bytes(
                     file_hash: h.file_hash,
                     thumb_hash: h.thumb_hash,
                     format: h.format,
+                    trusted_only: h.trusted_only,
                 }),
         )
     };
@@ -896,20 +899,57 @@ async fn public_doc_bytes(
                 let fragment_first = if speculative_only { from_fragments().await? } else { None };
                 match fragment_first {
                     Some(facts) => Some(facts),
-                    None => crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
-                        ServeFacts {
-                            file_hash: h.file_hash,
-                            thumb_hash: h.thumb_hash,
-                            format: h.format,
-                        }
-                    }),
+                    None => {
+                        let gated = crate::record::documents::public_doc(&db, &doc_id)
+                            .await?
+                            .is_some_and(|p| p.trusted_only);
+                        crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
+                            ServeFacts {
+                                file_hash: h.file_hash,
+                                thumb_hash: h.thumb_hash,
+                                format: h.format,
+                                trusted_only: gated,
+                            }
+                        })
+                    }
                 }
             }
             None => from_fragments().await?,
         };
-    let Some(ServeFacts { file_hash, thumb_hash, format }) = facts else {
+    let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only }) = facts else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
     };
+    // The trusted-readers gate (VISIBILITY.md slice 2). The BODY is the gated thing; the
+    // thumbnail is the post's public face by ruling, with the title and the date. A reader
+    // qualifies when any persona on their session is the author, or holds any published
+    // trust band on the author's own chain - checked at serve time, so trust published
+    // later opens older posts.
+    if trusted_only && !thumb {
+        let mut allowed = false;
+        if let Some(sess) = session {
+            let mine: Vec<String> =
+                crate::identity::list_for_account(&state.node_db, &sess.account.id)
+                    .await?
+                    .into_iter()
+                    .map(|i| i.root_pubkey)
+                    .collect();
+            if mine.contains(&root_hex) {
+                allowed = true;
+            } else if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
+                if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
+                    allowed = mine
+                        .iter()
+                        .any(|r| edges.get(r).is_some_and(|e| e.edge.trust.is_some()));
+                }
+            }
+        }
+        if !allowed {
+            return Err(AppError::Forbidden(crate::msg!(
+                "idface.for-trusted-readers-only",
+                "the author shares these words only with people they trust"
+            )));
+        }
+    }
     let (hash, mime) = if thumb {
         let Some(t) = thumb_hash else {
             return Err(AppError::NotFound(crate::msg!("idface.this-document-has-no-thumbnail", "this document has no thumbnail")));
@@ -963,13 +1003,14 @@ async fn public_doc_bytes(
 
 pub async fn public_body_route(
     State(state): State<AppState>,
+    session: Option<Session>,
     headers: axum::http::HeaderMap,
     Path((seg, doc_hex)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let inm = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &seg, &doc_hex, false, inm).await
+    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm).await
 }
 
 /// The decorative-filename twin of the body route: baked embeds mint as
@@ -977,24 +1018,26 @@ pub async fn public_body_route(
 /// extension to read; the name itself is ignored, exactly like the private twin.
 pub async fn public_body_named_route(
     State(state): State<AppState>,
+    session: Option<Session>,
     headers: axum::http::HeaderMap,
     Path((seg, doc_hex, _filename)): Path<(String, String, String)>,
 ) -> Result<Response, AppError> {
     let inm = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &seg, &doc_hex, false, inm).await
+    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm).await
 }
 
 pub async fn public_thumb_route(
     State(state): State<AppState>,
+    session: Option<Session>,
     headers: axum::http::HeaderMap,
     Path((seg, doc_hex)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let inm = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &seg, &doc_hex, true, inm).await
+    public_doc_bytes(&state, &session, &seg, &doc_hex, true, inm).await
 }
 
 /// GET `/api/id/{root}/profile` - the JSON face. Anonymous callers get the shelf rule (hosted
@@ -1160,6 +1203,7 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
     };
     serde_json::json!({
         "settled": if p.settled { Some(true) } else { None },
+        "trusted_only": if p.trusted_only { Some(true) } else { None },
         "replies": if replies > 0 { Some(replies) } else { None },
         "reply_to": link(&p.reply_to),
         "thread_root": link(&p.thread_root),

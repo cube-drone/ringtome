@@ -333,6 +333,7 @@ async fn shelf_page(
             published_ms: p.genesis_ms,
             updated_ms: p.head_ms,
             settled: p.settled,
+            trusted_only: p.trusted_only,
         })
         .collect())
 }
@@ -372,6 +373,7 @@ async fn shelf_updated_since(
             published_ms: p.genesis_ms,
             updated_ms: p.head_ms,
             settled: p.settled,
+            trusted_only: p.trusted_only,
         })
         .collect())
 }
@@ -389,6 +391,8 @@ pub(crate) struct JournalRow {
     pub(crate) updated_ms: i64,
     /// The author's no-shares-no-replies wish (VISIBILITY.md), off the journaled header.
     pub(crate) settled: bool,
+    /// Trusted-readers-only, same source.
+    pub(crate) trusted_only: bool,
 }
 
 impl JournalRow {
@@ -436,9 +440,9 @@ async fn journal_rows(
     for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 10;
+                let b = i * 11;
                 format!(
-                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
+                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
                     b + 1,
                     b + 2,
                     b + 3,
@@ -448,20 +452,22 @@ async fn journal_rows(
                     b + 7,
                     b + 8,
                     b + 9,
-                    b + 10
+                    b + 10,
+                    b + 11
                 )
             })
             .collect();
         let sql = format!(
             "INSERT INTO feed_journal
                (reader_root, author_root, doc_id, title, format,
-                published_ms, updated_ms, arrived_ms, settled, via_root)
+                published_ms, updated_ms, arrived_ms, settled, trusted_only, via_root)
              VALUES {}
              ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
                  title = excluded.title,
                  format = excluded.format,
                  updated_ms = excluded.updated_ms,
                  settled = excluded.settled,
+                 trusted_only = excluded.trusted_only,
                  via_root = CASE
                      -- A follow arrival outranks any byline: the reader pulls this author.
                      WHEN excluded.via_root IS NULL THEN NULL
@@ -491,6 +497,7 @@ async fn journal_rows(
                     turso::Value::Integer(row.updated_ms),
                     turso::Value::Integer(now),
                     turso::Value::Integer(i64::from(row.settled)),
+                    turso::Value::Integer(i64::from(row.trusted_only)),
                     match via_root {
                         Some(v) => turso::Value::Text(v.to_string()),
                         None => turso::Value::Null,
@@ -549,17 +556,17 @@ async fn journal_rows_suggested(
     for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 10;
+                let b = i * 11;
                 format!(
-                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
-                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10
+                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
+                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10, b + 11
                 )
             })
             .collect();
         let sql = format!(
             "INSERT INTO feed_journal
                (reader_root, author_root, doc_id, title, format,
-                published_ms, updated_ms, arrived_ms, settled, suggested_via)
+                published_ms, updated_ms, arrived_ms, settled, trusted_only, suggested_via)
              VALUES {}
              ON CONFLICT (reader_root, author_root, doc_id) DO NOTHING",
             placeholders.join(",")
@@ -577,6 +584,7 @@ async fn journal_rows_suggested(
                     turso::Value::Integer(row.updated_ms),
                     turso::Value::Integer(now),
                     turso::Value::Integer(i64::from(row.settled)),
+                    turso::Value::Integer(i64::from(row.trusted_only)),
                     turso::Value::Text((*introducer).clone()),
                 ]
             })
@@ -1416,6 +1424,8 @@ pub struct FeedRow {
     pub arrived_ms: i64,
     /// The author's no-shares-no-replies wish, off the journaled header.
     pub settled: bool,
+    /// Trusted-readers-only, same source.
+    pub trusted_only: bool,
 }
 
 /// How many of a document's other sharers a feed row will carry. A count is exact; a LIST is a
@@ -1561,7 +1571,7 @@ pub async fn feed_page(
     before: Option<(i64, String)>,
     limit: i64,
 ) -> Result<Vec<FeedRow>> {
-    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64);
+    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64);
     // Text only, twice over: the shelf read upstream no longer journals media documents at
     // all (`public_docs` filters them - they're ingredients, not posts), and this clause
     // makes journals written BEFORE that filter harmless rather than a page of raw bytes
@@ -1569,7 +1579,7 @@ pub async fn feed_page(
     let rows: Vec<Row> = match before {
         None => node_db
             .fetch_all(
-                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled
+                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
@@ -1581,7 +1591,7 @@ pub async fn feed_page(
         // "bind index 5 out of bounds"... only on the cursor branch, which no test paged.
         Some((ms, doc)) => node_db
             .fetch_all(
-                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled
+                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
@@ -1594,7 +1604,7 @@ pub async fn feed_page(
     Ok(rows
         .into_iter()
         .map(
-            |(author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled)| FeedRow {
+            |(author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only)| FeedRow {
                 author_root,
                 via_root,
                 suggested_via,
@@ -1605,6 +1615,7 @@ pub async fn feed_page(
                 updated_ms,
                 arrived_ms,
                 settled: settled != 0,
+                trusted_only: trusted_only != 0,
             },
         )
         .collect())
@@ -1640,6 +1651,7 @@ mod tests {
     fn post(doc: &str, title: &str, updated_ms: i64) -> JournalRow {
         JournalRow {
             settled: false,
+            trusted_only: false,
             doc_id_hex: format!("{doc:0>32}"),
             title: title.to_string(),
             format: "plaintext".to_string(),
@@ -1700,6 +1712,7 @@ mod tests {
         let introducer = "cc".repeat(32);
         let row = JournalRow {
             settled: false,
+            trusted_only: false,
             doc_id_hex: "11".repeat(16),
             title: "the-unasked-for-post".into(),
             format: "plaintext".into(),
@@ -1752,6 +1765,7 @@ mod tests {
         let sharer = "dd".repeat(32);
         let row = JournalRow {
             settled: false,
+            trusted_only: false,
             doc_id_hex: "11".repeat(16),
             title: "t".into(),
             format: "plaintext".into(),

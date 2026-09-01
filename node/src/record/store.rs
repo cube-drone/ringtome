@@ -988,6 +988,7 @@ impl Documents<'_> {
         refs: Vec<[u8; 16]>,
         reply: Option<crate::record::documents::ReplyLinks>,
         settled: bool,
+        trusted_only: bool,
     ) -> Result<[u8; 16], AppError> {
         let view = self.all().await?;
         let doc = view
@@ -1080,6 +1081,7 @@ impl Documents<'_> {
                 refs,
                 reply,
                 settled,
+                trusted_only,
             },
         )
         .await?;
@@ -2298,7 +2300,7 @@ mod tests {
             .unwrap();
         let twins = vec![[5u8; 16], [6u8; 16]];
         let post = docs
-            .publish(&doc_id, Some("the words".into()), twins.clone(), None, false)
+            .publish(&doc_id, Some("the words".into()), twins.clone(), None, false, false)
             .await
             .unwrap();
         let entry = crate::record::documents::public_header_entry(&store.db, &post)

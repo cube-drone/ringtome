@@ -109,8 +109,9 @@ CREATE TABLE doc_versions (
     reply_to_doc     TEXT,              -- (COMMENTS.md slice 1) - folded out so the heads memo
     thread_root_root TEXT,              -- and every reconstruction round-trips the claim
     thread_root_doc  TEXT,
-    settled          INTEGER NOT NULL DEFAULT 0 -- the author's no-shares-no-replies wish
-                                                -- (VISIBILITY.md), off the signed header
+    settled          INTEGER NOT NULL DEFAULT 0, -- the author's no-shares-no-replies wish
+                                                 -- (VISIBILITY.md), off the signed header
+    trusted_only     INTEGER NOT NULL DEFAULT 0  -- the body goes to trusted readers only
 );
 CREATE INDEX doc_versions_by_doc ON doc_versions (doc_id);
 
@@ -145,7 +146,8 @@ CREATE TABLE doc_heads (
     reply_to_doc     TEXT,              -- slice 1): parent author root + doc id, hex; NULL =
     thread_root_root TEXT,              -- not a reply. Root beside parent - parent-plus-root,
     thread_root_doc  TEXT,              -- never the ancestor path.
-    settled          INTEGER NOT NULL DEFAULT 0 -- display head's no-shares-no-replies wish
+    settled          INTEGER NOT NULL DEFAULT 0, -- display head's no-shares-no-replies wish
+    trusted_only     INTEGER NOT NULL DEFAULT 0  -- display head's trusted-readers-only wish
 );
 
 -- The search index: one token-bag row per document, derived from title + resolved body +

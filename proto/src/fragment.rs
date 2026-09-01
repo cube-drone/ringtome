@@ -694,6 +694,7 @@ mod tests {
         reply_to: Option<([u8; 32], [u8; 16])>,
     ) -> Vec<u8> {
         let header = crate::registry::DocHeaderPlain {
+            trusted_only: false,
             settled: false,
             doc_id,
             parents: vec![[1u8; 32]],

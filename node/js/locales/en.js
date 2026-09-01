@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 526 phrases across 44 files.
+// 530 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -35,6 +35,8 @@ export default {
     'apps.feed.write-2': 'write',
     'apps.feed.settled-means-no-replies': 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist',
     'apps.feed.settled-no-replies-no': 'turn off rebroadcast and comment',
+    'apps.feed.trusted-only-means': 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists',
+    'apps.feed.only-show-to-people': 'only show to people I trust',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
     'apps.feed.older-drafts': 'older drafts',
 
@@ -394,6 +396,7 @@ export default {
     'postentry.plus-tag': '+ tag',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',
+    'postentry.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
     'postentry.the-whole-thing': 'the whole thing',
     'postentry.1-reply': '1 reply',
@@ -531,6 +534,7 @@ export default {
     'idface.no-such-persona-here': 'no such persona here',
     'idface.no-such-document': 'no such document',
     'idface.no-such-public-document-here': 'no such public document here',
+    'idface.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'idface.this-document-has-no-thumbnail': 'this document has no thumbnail',
     'idface.the-bytes-havent-arrived-here': "the bytes haven't arrived here yet - headers travel ahead of bodies",
     'idface.no-such-persona-here-2': 'no such persona here',

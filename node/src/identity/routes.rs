@@ -607,6 +607,10 @@ struct FeedItem {
     /// affordances. Absent when open, so older clients change nothing.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     settled: bool,
+    /// The author shares the body with trusted readers only (VISIBILITY.md slice 2): the
+    /// card says why a body will not arrive. Absent when open.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    trusted_only: bool,
     /// The reader wrote this one themselves.
     mine: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -904,6 +908,7 @@ async fn feed_handler(
                 updated_ms: r.updated_ms,
                 arrived_ms: r.arrived_ms,
                 settled: r.settled,
+                trusted_only: r.trusted_only,
                 via: lead,
                 via_name,
                 via_avatar,
@@ -1246,6 +1251,8 @@ struct PublishRequest {
     /// The author's no-shares-no-replies wish (VISIBILITY.md): set at publish, carried
     /// forward on re-publication like the reply link.
     settled: Option<bool>,
+    /// Trusted readers only (VISIBILITY.md slice 2), carried the same way.
+    trusted_only: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1346,10 +1353,11 @@ async fn publish_handler(
         None => None,
     };
     let settled = req.as_ref().and_then(|b| b.settled).unwrap_or(false);
+    let trusted_only = req.as_ref().and_then(|b| b.trusted_only).unwrap_or(false);
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, settled).await? {
+    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, settled, trusted_only).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
             // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
             // parent and the thread root are shared outright, ordinary pointers, crowd
@@ -4324,6 +4332,7 @@ mod media_info_tests {
             timestamp_ms: 0,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                trusted_only: false,
                 settled: false,
                 doc_id: [0u8; 16],
                 parents: vec![],

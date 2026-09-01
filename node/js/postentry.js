@@ -919,7 +919,9 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 : html`${shownBody === undefined && html`<p class="null-sub">…</p>`}
                       ${shownBody === null &&
                       html`<p class="null-sub">
-                          <span class="waiting-dot"></span> ${t('postentry.these-words-havent-reached-this', "these words haven't reached this computer.")}
+                          ${item.trusted_only
+                              ? t('postentry.for-trusted-readers-only', 'the author shares these words only with people they trust')
+                              : html`<span class="waiting-dot"></span> ${t('postentry.these-words-havent-reached-this', "these words haven't reached this computer.")}`}
                       </p>`}
                       ${!!shownBody &&
                       html`<div class="feed-entry-body">

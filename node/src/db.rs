@@ -40,8 +40,8 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 36; // 36: feed_journal.settled - the card hides the share button (2026-09-01)
-const USER_SCHEMA_GENERATION: i64 = 20; // 20: settled on the doc memos + header key 15 - VISIBILITY.md slice 1 (2026-09-01)
+const NODE_SCHEMA_GENERATION: i64 = 37; // 37: feed_journal.trusted_only beside settled (2026-09-01)
+const USER_SCHEMA_GENERATION: i64 = 21; // 21: trusted_only beside settled (header key 16) - VISIBILITY.md slice 2 (2026-09-01)
 
 /// How long a write waits on a busy connection before failing.
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -130,6 +130,7 @@ impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 
 impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R);
 impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R, 18 S);
 impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R, 18 S, 19 T, 20 U);
+impl_from_row!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K, 11 L, 12 M, 13 N, 14 O, 15 P, 16 Q, 17 R, 18 S, 19 T, 20 U, 21 V);
 
 // ---------------------------------------------------------------------------------------------
 // The handle
