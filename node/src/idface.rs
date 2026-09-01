@@ -1159,6 +1159,7 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
             .map(|(author, doc)| serde_json::json!({ "author": author, "doc_id": doc }))
     };
     serde_json::json!({
+        "settled": if p.settled { Some(true) } else { None },
         "replies": if replies > 0 { Some(replies) } else { None },
         "reply_to": link(&p.reply_to),
         "thread_root": link(&p.thread_root),
@@ -1279,6 +1280,22 @@ pub async fn id_post_replies(
         (Some(ms), Some(d)) => Some((ms, d)),
         _ => None,
     };
+    // A settled parent's thread door is shut (VISIBILITY.md): a node that can see the
+    // header serves no replies and does not go asking for more.
+    if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
+        if let Ok(doc_bytes) = hex::decode(&doc) {
+            if let Ok(doc_id) = <[u8; 16]>::try_from(doc_bytes.as_slice()) {
+                if let Ok(Some(p)) = crate::record::documents::public_doc(&db, &doc_id).await {
+                    if p.settled {
+                        return Ok(axum::Json(serde_json::json!({
+                            "replies": [], "more": false, "seeking": false, "settled": true,
+                        }))
+                        .into_response());
+                    }
+                }
+            }
+        }
+    }
     let (mut replies, more) = crate::replies::replies_of(&state.node_db, &root_hex, &doc, after)
         .await
         .map_err(AppError::Internal)?;

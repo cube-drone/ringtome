@@ -482,6 +482,7 @@ pub async fn save_version(
     };
 
     let header = DocHeaderPlain {
+        settled: false,
         doc_id: save.doc_id,
         parents: save.parents,
         file_hash,
@@ -550,6 +551,7 @@ pub async fn retitle(
         return Ok(head.hash);
     }
     let header = DocHeaderPlain {
+        settled: false,
         doc_id,
         parents: doc.logical_heads.clone(),
         file_hash: head.header.file_hash,
@@ -627,6 +629,7 @@ pub async fn save_public_media(
         genesis_ms: None, // and they never edit: absent genesis IS frozen-from-birth
         reply_to: None, // media twins ride their post; the post carries the thread link
         thread_root: None,
+        settled: false, // the post carries the wish; its media twins are plumbing
     };
     let payload = header
         .encode()
@@ -667,6 +670,9 @@ pub struct PublicText<'a> {
     /// actually ask for. In the SIGNED header so a fragment names its media from the entry
     /// alone, and no sweep ever parses foreign Marquee.
     pub refs: Vec<[u8; 16]>,
+    /// The author's no-shares-no-replies wish (VISIBILITY.md): set at publish, carried
+    /// forward on re-publication like the reply link.
+    pub settled: bool,
     /// A reply's links, FIRST publication only: (parent, thread root), each (author root,
     /// doc id) - resolved by the publish path from the parent's own held header
     /// (PROJECT_PLAN's Replies). Ignored on re-publication, where the previous header's claims carry
@@ -680,12 +686,12 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply } = text;
+    let PublicText { onto, title, body, format, refs, reply, settled } = text;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
     // genesis never moves.
-    let (doc_id, parents, genesis_ms, reply_to, thread_root) = match onto {
+    let (doc_id, parents, genesis_ms, reply_to, thread_root, settled) = match onto {
         Some((id, parents)) => {
             // CARRIED from the previous header's own claim, never re-derived: the mint's
             // claim and the entry's stamp are minted milliseconds apart, so a re-derivation
@@ -698,13 +704,14 @@ pub async fn save_public_text(
                     ringtome_proto::Payload::Inline(payload) => {
                         DocHeaderPlain::decode(payload)
                             .ok()
-                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root))
+                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled))
                     }
                     _ => None,
                 },
                 None => None,
             };
-            let (carried_genesis, carried_reply, carried_root) = carried.unwrap_or_default();
+            let (carried_genesis, carried_reply, carried_root, carried_settled) =
+                carried.unwrap_or_default();
             let genesis = match carried_genesis {
                 Some(g) => g,
                 None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
@@ -712,14 +719,16 @@ pub async fn save_public_text(
             // The reply link is CARRIED like genesis, never re-supplied: what a post replies
             // to is a fact of its first publication (PROJECT_PLAN's Replies), and a re-publication that
             // could re-parent would let an edit move a reply under a different conversation.
-            (id, parents, genesis, carried_reply, carried_root)
+            // The wish is carried like genesis - but a fresh request during the edit
+            // window may still change the author's mind (their post, their door).
+            (id, parents, genesis, carried_reply, carried_root, settled || carried_settled)
         }
         None => {
             let (reply_to, thread_root) = match reply {
                 Some((parent, root)) => (Some(parent), Some(root)),
                 None => (None, None),
             };
-            (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root)
+            (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled)
         }
     };
     let file_hash = files
@@ -745,6 +754,7 @@ pub async fn save_public_text(
         genesis_ms: Some(genesis_ms),
         reply_to,
         thread_root,
+        settled,
     };
     let payload = header
         .encode()
@@ -777,6 +787,8 @@ pub struct PublicDoc {
     /// When it last changed. Reported, never sorted by.
     pub head_ms: i64,
     pub thumb_hash: Option<[u8; 32]>,
+    /// The author's no-shares-no-replies wish (VISIBILITY.md), off the signed header.
+    pub settled: bool,
 }
 
 /// Everything this identity has published, newest first. Keyless: the anonymous face and the
@@ -871,12 +883,13 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         Option<String>,
         Option<String>,
         Option<String>,
+        i64,
     );
     let row: Option<Row> = db
         .fetch_optional(
             &format!(
                 "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash,
-                        reply_to_root, reply_to_doc, thread_root_root, thread_root_doc
+                        reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled
                  FROM doc_heads
                  WHERE lane = 'public' AND doc_id = ? AND {text_only} AND {not_retracted}"
             ),
@@ -886,7 +899,8 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         .map_err(AppError::Internal)?;
     match row {
         None => Ok(None),
-        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td)) => Ok(Some(PublicDoc {
+        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled)) => Ok(Some(PublicDoc {
+            settled: settled != 0,
             reply_to: rr.zip(rd),
             thread_root: tr.zip(td),
             doc_id: doc_id
@@ -970,9 +984,10 @@ pub async fn public_docs(
         Option<String>,
         Option<String>,
         Option<String>,
+        i64,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
-                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc";
+                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled";
     let rows: Vec<Row> = match after {
         None => db
             .fetch_all(
@@ -1014,11 +1029,13 @@ type PublicDocRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    i64,
 );
 
 fn public_doc_from_row(row: PublicDocRow) -> Result<PublicDoc, AppError> {
-    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td) = row;
+    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled) = row;
     Ok(PublicDoc {
+        settled: settled != 0,
         reply_to: rr.zip(rd),
         thread_root: tr.zip(td),
         doc_id: doc_id
@@ -1063,9 +1080,10 @@ pub async fn public_docs_updated_since(
         Option<String>,
         Option<String>,
         Option<String>,
+        i64,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
-                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc";
+                   reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled";
     let rows: Vec<Row> = db
         .fetch_all(
             &format!(
@@ -1329,12 +1347,13 @@ async fn fold_header(
         "INSERT OR IGNORE INTO doc_versions
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
             duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq, author_pubkey, lane,
-            reply_to_root, reply_to_doc, thread_root_root, thread_root_doc)
+            reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
                  :width, :height, :duration_ms, :thumb_hash, :preview_hash, :refs,
                  :timestamp_ms, :seq, :author_pubkey, :lane,
-                 :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc)",
+                 :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled)",
         turso::named_params! {
+            ":settled": i64::from(header.settled),
             ":reply_to_root": header.reply_to.map(|(r, _)| hex::encode(r)),
             ":reply_to_doc": header.reply_to.map(|(_, d)| hex::encode(d)),
             ":thread_root_root": header.thread_root.map(|(r, _)| hex::encode(r)),
@@ -1722,11 +1741,11 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                (doc_id, lane, entry_hash, title, format, file_hash, width, height, duration_ms,
                 thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms,
                 heads_fp, head_bodies,
-                reply_to_root, reply_to_doc, thread_root_root, thread_root_doc)
+                reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled)
              VALUES (:doc_id, :lane, :entry_hash, :title, :format, :file_hash, :width, :height,
                      :duration_ms, :thumb_hash, :preview_hash, :logical_heads, :diverged,
                      :genesis_ms, :head_ms, :heads_fp, :head_bodies,
-                     :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc)
+                     :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled)
              ON CONFLICT(doc_id) DO UPDATE SET
                lane = excluded.lane,
                entry_hash = excluded.entry_hash,
@@ -1747,7 +1766,8 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                reply_to_root = excluded.reply_to_root,
                reply_to_doc = excluded.reply_to_doc,
                thread_root_root = excluded.thread_root_root,
-               thread_root_doc = excluded.thread_root_doc",
+               thread_root_doc = excluded.thread_root_doc,
+               settled = excluded.settled",
             turso::named_params! {
                 ":heads_fp": heads_hasher.finalize().as_bytes().to_vec(),
                 ":head_bodies": head_bodies,
@@ -1755,6 +1775,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                 ":reply_to_doc": head.header.reply_to.map(|(_, d)| hex::encode(d)),
                 ":thread_root_root": head.header.thread_root.map(|(r, _)| hex::encode(r)),
                 ":thread_root_doc": head.header.thread_root.map(|(_, d)| hex::encode(d)),
+                ":settled": i64::from(head.header.settled),
                 ":doc_id": doc_id.as_slice(),
                 ":lane": doc.lane.as_str(),
                 ":entry_hash": head.hash.as_slice(),
@@ -1824,6 +1845,7 @@ type VersionRow = (
     Option<String>,  // reply_to_doc
     Option<String>,  // thread_root_root
     Option<String>,  // thread_root_doc
+    i64,             // settled (VISIBILITY.md: the author's no-shares-no-replies wish)
 );
 
 /// Rehydrate one stored version from its `doc_versions` row.
@@ -1849,6 +1871,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         reply_to_doc,
         thread_root_root,
         thread_root_doc,
+        settled,
     ) = row;
     let link = |root: Option<String>, doc: Option<String>| -> Option<([u8; 32], [u8; 16])> {
         let root = crate::pubkey::decode(&root?)?;
@@ -1881,6 +1904,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         genesis_ms: None,
         reply_to,
         thread_root,
+        settled: settled != 0,
     };
     Ok((
         doc_id,
@@ -1901,7 +1925,7 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
                     height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled
              FROM doc_versions WHERE doc_id = ?1",
             (doc_id.to_vec(),),
         )
@@ -1942,7 +1966,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
                     height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled
              FROM doc_versions",
             (),
         )
@@ -2977,6 +3001,7 @@ mod tests {
         title: &str,
     ) {
         let header = DocHeaderPlain {
+            settled: false,
             doc_id: *doc_id,
             parents: Vec::new(),
             file_hash: [1u8; 32],
@@ -5278,6 +5303,7 @@ mod tests {
             timestamp_ms: t,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                settled: false,
                 doc_id: [1u8; 16],
                 parents,
                 file_hash: [hash; 32],

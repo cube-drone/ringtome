@@ -974,6 +974,21 @@ article:has(.label-emoji-strip) {
     position: relative;
     z-index: 40;
 }
+/* The settled wish (VISIBILITY.md): the composer's checkbox and the post page's quiet word. */
+.feed-settle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+}
+.thread-settled {
+    color: var(--faint);
+    font-size: 0.85rem;
+    font-style: italic;
+    margin: 1rem 0;
+}
 /* The forensic ledger at the very bottom of a post page (2026-08-31): a log, not a page -
    dense monospace, folded away, scrolling on its own. */
 .post-dossier {

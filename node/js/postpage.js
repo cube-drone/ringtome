@@ -79,6 +79,7 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
         published_ms: post.published_ms,
         replies: post.replies,
         annotations: post.annotations,
+        settled: !!post.settled,
         mine: !!(current && current.root === root),
     };
 
@@ -111,7 +112,15 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
             ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
             ${item &&
             html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} />`}
+            ${/* The author's wish (VISIBILITY.md): a settled post has no thread section and
+                no reply box - just the honest word for why. */ ''}
             ${item &&
+            item.settled &&
+            html`<p class="thread-settled">
+                ${t('postpage.the-author-settled-this', 'the author turned off comments and rebroadcasts for this post')}
+            </p>`}
+            ${item &&
+            !item.settled &&
             html`<section class="thread">
                 <h2 class="thread-head">
                     ${t('postpage.replies-known-here', 'replies known here')}

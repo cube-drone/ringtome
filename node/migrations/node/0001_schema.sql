@@ -243,6 +243,9 @@ CREATE TABLE feed_journal (
                                      --   NULL means the reader follows author_root directly.
                                      --   A direct arrival always clears this (it is the stronger
                                      --   claim: you follow them, you are not being shown a share)
+    settled      INTEGER NOT NULL DEFAULT 0, -- the author's no-shares-no-replies wish, off
+                                     --   the journaled header (VISIBILITY.md) - so the card
+                                     --   can hide the share button without a second read
     suggested_via TEXT,              -- via_root's SPECULATIVE sibling (DISCOVERY slice 2,
                                      --   2026-08-24): the introducer whose vouch journaled this
                                      --   row when the reader neither follows the author nor any

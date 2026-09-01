@@ -730,7 +730,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     via: [],
                 }}
                 actions=${html`<span class="feed-entry-when">${when}</span>
-                    ${!item.mine && !!current && html`<${ShareButton} item=${item} current=${current} />`}
+                    ${!item.mine && !!current && !item.settled && html`<${ShareButton} item=${item} current=${current} />`}
                     ${editing &&
                     !open &&
                     (editing.locked

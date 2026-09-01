@@ -26,6 +26,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 * Search my posts
 * Search my feed
+* Post visibility — [VISIBILITY.md](VISIBILITY.md) (2026-09-01): "settled" built; "trusted
+  only" designed, awaiting the is-the-title-public ruling
 * Public annotations — the arc, rulings pinned and sliced in [ANNOTATIONS.md](ANNOTATIONS.md) (2026-08-29): tags, description, date, and bucket go public at publish, third parties annotate on their own chains, everything rides virally, the reader chooses whose labels show
 * Make a whole bucket public in one fell swoop.
 * Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - PROJECT_PLAN's Replies)

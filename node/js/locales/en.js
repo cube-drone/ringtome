@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 521 phrases across 44 files.
+// 526 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -33,6 +33,8 @@ export default {
     'apps.feed.further-back': 'further back',
     'apps.feed.write': 'write',
     'apps.feed.write-2': 'write',
+    'apps.feed.settled-means-no-replies': 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist',
+    'apps.feed.settled-no-replies-no': 'turn off rebroadcast and comment',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
     'apps.feed.older-drafts': 'older drafts',
 
@@ -402,6 +404,7 @@ export default {
     'postpage.that-isnt-an-address': "that isn't an address this app knows how to read",
     'postpage.looking-for-the-post': 'looking for the post…',
     'postpage.no-such-post-is-held': 'no such post is held here - it may be private, taken down, or its author unreachable',
+    'postpage.the-author-settled-this': 'the author turned off comments and rebroadcasts for this post',
     'postpage.replies-known-here': 'replies known here',
     'postpage.ask-the-author-again': "ask the author's computer again - a hot thread is worth a second glance",
     'postpage.refresh': 'refresh',
@@ -479,11 +482,13 @@ export default {
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
+    'identity.routes.settled-no-replies': 'the author turned off comments for this post',
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.this-computer-doesnt-have-that-post-2': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.rebroadcast-is-for-other-peoples-documents': "a persona rebroadcasts other people's documents; publish your own",
     'identity.routes.this-computer-doesnt-have-that-post': "this computer doesn't have that post yet - it can't share what it hasn't read",
+    'identity.routes.settled-no-shares': 'the author turned off rebroadcasts for this post',
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',

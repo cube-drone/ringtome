@@ -977,6 +977,7 @@ mod tests {
         reply_to: Option<([u8; 32], [u8; 16])>,
     ) -> SignedEntry {
         let payload = crate::registry::DocHeaderPlain {
+            settled: false,
             doc_id: [9u8; 16],
             parents: vec![[1u8; 32]],
             file_hash: [3u8; 32],

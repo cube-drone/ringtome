@@ -603,6 +603,10 @@ struct FeedItem {
     published_ms: i64,
     updated_ms: i64,
     arrived_ms: i64,
+    /// The author turned off rebroadcast and comment (VISIBILITY.md); the card hides those
+    /// affordances. Absent when open, so older clients change nothing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    settled: bool,
     /// The reader wrote this one themselves.
     mine: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -899,6 +903,7 @@ async fn feed_handler(
                 published_ms: r.published_ms,
                 updated_ms: r.updated_ms,
                 arrived_ms: r.arrived_ms,
+                settled: r.settled,
                 via: lead,
                 via_name,
                 via_avatar,
@@ -1238,12 +1243,42 @@ struct PublishResponse {
 #[derive(serde::Deserialize, Default)]
 struct PublishRequest {
     reply_to: Option<ReplyRef>,
+    /// The author's no-shares-no-replies wish (VISIBILITY.md): set at publish, carried
+    /// forward on re-publication like the reply link.
+    settled: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
 struct ReplyRef {
     author: String,
     doc_id: String,
+}
+
+/// The PARENT's own held header, mirror shelf first, fragment shelf second - the shared
+/// lookup for every honest door that must honor the header's own flags.
+async fn held_public_header(
+    state: &AppState,
+    author_hex: &str,
+    doc_hex: &str,
+) -> Result<Option<ringtome_proto::registry::DocHeaderPlain>, AppError> {
+    if let Ok(Some(db)) = state.user_dbs.get(author_hex).await {
+        if let Ok(doc) = hex::decode(doc_hex) {
+            if let Ok(doc) = <[u8; 16]>::try_from(doc.as_slice()) {
+                if let Some(entry) =
+                    crate::record::documents::public_header_entry(&db, &doc).await?
+                {
+                    if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
+                        if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
+                            return Ok(Some(h));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    crate::fragments::held_header(&state.node_db, author_hex, doc_hex)
+        .await
+        .map_err(AppError::Internal)
 }
 
 /// Resolve a reply's links from the PARENT's own held header: the mirror's public shelf
@@ -1284,6 +1319,14 @@ async fn resolve_reply_link(
             "can't reply to a post this computer doesn't hold - visit it first"
         )));
     };
+    // The author's wish, honored at the honest door (VISIBILITY.md): a settled post takes
+    // no replies, and the refusal has words rather than a quietly orphaned comment.
+    if header.settled {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.settled-no-replies",
+            "the author turned off comments for this post"
+        )));
+    }
     let parent_link = (author, doc);
     let root_link = header.thread_root.unwrap_or(parent_link);
     Ok((parent_link, root_link))
@@ -1297,14 +1340,16 @@ async fn publish_handler(
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let reply = match body.and_then(|Json(b)| b.reply_to) {
-        Some(parent) => Some(resolve_reply_link(&state, &parent).await?),
+    let req = body.map(|Json(b)| b);
+    let reply = match req.as_ref().and_then(|b| b.reply_to.as_ref()) {
+        Some(parent) => Some(resolve_reply_link(&state, parent).await?),
         None => None,
     };
+    let settled = req.as_ref().and_then(|b| b.settled).unwrap_or(false);
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply).await? {
+    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, settled).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
             // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
             // parent and the thread root are shared outright, ordinary pointers, crowd
@@ -1668,6 +1713,21 @@ async fn rebroadcast_handler(
             })?),
         }
     };
+    // A settled post is not passed along (VISIBILITY.md): every honest node that can see
+    // the header refuses the mint with words. A node that holds nothing of the post already
+    // refused above; malicious clients exist, and this door is not for them.
+    if version.is_some() {
+        if let Some(h) =
+            held_public_header(&state, &hex::encode(author), &hex::encode(doc_id)).await?
+        {
+            if h.settled {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "identity.routes.settled-no-shares",
+                    "the author turned off rebroadcasts for this post"
+                )));
+            }
+        }
+    }
     let entry = data.rebroadcasts().share(&author, &doc_id, version).await?;
 
     // Tell the author, if there is anything to tell. A withdrawal is deliberately silent -
@@ -4264,6 +4324,7 @@ mod media_info_tests {
             timestamp_ms: 0,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                settled: false,
                 doc_id: [0u8; 16],
                 parents: vec![],
                 file_hash: [0u8; 32],

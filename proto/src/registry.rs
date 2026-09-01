@@ -574,6 +574,12 @@ pub struct DocHeaderPlain {
     /// the wrong thread, and any holder of the parent sees the mismatch. Requires
     /// `reply_to`: a root claim without a parent is not a shape this codec carries.
     pub thread_root: Option<([u8; 32], [u8; 16])>,
+    /// The author settled this post (VISIBILITY.md, 2026-09-01): no rebroadcasts, no
+    /// replies - a wish every honest surface honors, carried in the SIGNED header so any
+    /// holder can check it offline. Malicious clients and screenshots exist; from this
+    /// network's own point of view a settled post is settled. Absent on the wire when
+    /// false. Carried forward on re-publication like `genesis_ms`.
+    pub settled: bool,
 }
 
 impl DocHeaderPlain {
@@ -620,7 +626,8 @@ impl DocHeaderPlain {
             + !self.refs.is_empty() as u64
             + self.genesis_ms.is_some() as u64
             + self.reply_to.is_some() as u64
-            + self.thread_root.is_some() as u64;
+            + self.thread_root.is_some() as u64
+            + self.settled as u64;
         if self.thread_root.is_some() && self.reply_to.is_none() {
             return Err(ProtoError::BadEntry("a thread root without a parent"));
         }
@@ -688,6 +695,10 @@ impl DocHeaderPlain {
             w.bytes(author);
             w.bytes(doc);
         }
+        if self.settled {
+            w.uint(15);
+            w.uint(1);
+        }
         Ok(w.into_bytes())
     }
 
@@ -702,6 +713,7 @@ impl DocHeaderPlain {
         let mut genesis_ms: Option<i64> = None;
         let mut reply_to: Option<([u8; 32], [u8; 16])> = None;
         let mut thread_root: Option<([u8; 32], [u8; 16])> = None;
+        let mut settled = false;
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -763,6 +775,7 @@ impl DocHeaderPlain {
                     }
                     thread_root = Some((map.bytes_fixed::<32>()?, map.bytes_fixed::<16>()?));
                 }
+                15 => settled = map.uint()? != 0,
                 _ => map.skip_value()?,
             }
         }
@@ -783,6 +796,7 @@ impl DocHeaderPlain {
             genesis_ms,
             reply_to,
             thread_root,
+            settled,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -1264,6 +1278,37 @@ mod tests {
 
     /// ANNOTATIONS.md slice 1: the statement round-trips, a retraction is the same shape
     /// absent, and the codec refuses what no well-behaved speaker could have minted.
+    /// VISIBILITY.md slice 1: the settled wish rides the signed header (key 15), absent
+    /// when false, and round-trips.
+    #[test]
+    fn a_settled_header_round_trips_and_absence_means_open() {
+        let mut h = DocHeaderPlain {
+            doc_id: [1u8; 16],
+            parents: vec![],
+            file_hash: [2u8; 32],
+            body_hash: [3u8; 32],
+            title: "quiet words".into(),
+            format: None,
+            width: None,
+            height: None,
+            duration_ms: None,
+            thumb_hash: None,
+            preview_hash: None,
+            refs: vec![],
+            genesis_ms: Some(1_700_000_000_000),
+            reply_to: None,
+            thread_root: None,
+            settled: true,
+        };
+        let settled = DocHeaderPlain::decode(&h.encode().unwrap()).unwrap();
+        assert!(settled.settled, "the wish survives the wire");
+        h.settled = false;
+        let open_bytes = h.encode().unwrap();
+        assert!(!DocHeaderPlain::decode(&open_bytes).unwrap().settled);
+        let short = h.encode().unwrap();
+        assert_eq!(open_bytes, short, "false is absence, not a zero");
+    }
+
     #[test]
     fn a_public_annotation_round_trips_and_keeps_its_caps() {
         let a = PublicAnnotation {
@@ -1543,6 +1588,7 @@ mod tests {
     #[test]
     fn doc_header_reply_links_round_trip_and_pair() {
         let base = DocHeaderPlain {
+            settled: false,
             doc_id: [9u8; 16],
             parents: vec![[1u8; 32]],
             file_hash: [3u8; 32],
@@ -1560,6 +1606,7 @@ mod tests {
             thread_root: None,
         };
         let reply = DocHeaderPlain {
+            settled: false,
             reply_to: Some(([5u8; 32], [6u8; 16])),
             thread_root: Some(([7u8; 32], [8u8; 16])),
             ..base.clone()
@@ -1571,6 +1618,7 @@ mod tests {
         assert_eq!(plain.thread_root, None);
 
         let orphan = DocHeaderPlain {
+            settled: false,
             thread_root: Some(([7u8; 32], [8u8; 16])),
             ..base
         };
@@ -1583,6 +1631,7 @@ mod tests {
     #[test]
     fn doc_header_refs_round_trip_and_cap() {
         let base = DocHeaderPlain {
+            settled: false,
             doc_id: [9u8; 16],
             parents: vec![[1u8; 32]],
             file_hash: [3u8; 32],
@@ -1602,6 +1651,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
         let empty = DocHeaderPlain {
+            settled: false,
             refs: Vec::new(),
             ..base.clone()
         };
@@ -1613,6 +1663,7 @@ mod tests {
         );
 
         let over = DocHeaderPlain {
+            settled: false,
             refs: vec![[7u8; 16]; DocHeaderPlain::MAX_REFS + 1],
             ..base.clone()
         };
@@ -1646,6 +1697,7 @@ mod tests {
         // The three parent shapes: genesis (none), ordinary save (one), merge (two).
         for parents in [vec![], vec![[1u8; 32]], vec![[1u8; 32], [2u8; 32]]] {
             let h = DocHeaderPlain {
+                settled: false,
                 doc_id: [9u8; 16],
                 parents,
                 file_hash: [3u8; 32],
@@ -1666,6 +1718,7 @@ mod tests {
         }
         // format present survives the trip too
         let h = DocHeaderPlain {
+            settled: false,
             doc_id: [9u8; 16],
             parents: vec![[1u8; 32]],
             file_hash: [3u8; 32],
@@ -1685,6 +1738,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
         let img = DocHeaderPlain {
+            settled: false,
             doc_id: [9u8; 16],
             parents: vec![],
             file_hash: [3u8; 32],
@@ -1704,6 +1758,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
         let vid = DocHeaderPlain {
+            settled: false,
             doc_id: [9u8; 16],
             parents: vec![[1u8; 32]],
             file_hash: [3u8; 32],
@@ -1726,6 +1781,7 @@ mod tests {
     #[test]
     fn doc_header_enforces_caps() {
         let base = DocHeaderPlain {
+            settled: false,
             doc_id: [0u8; 16],
             parents: vec![],
             file_hash: [0u8; 32],
@@ -1744,6 +1800,7 @@ mod tests {
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {
+            settled: false,
             parents: vec![[0u8; 32]; DocHeaderPlain::MAX_PARENTS + 1],
             title: "ok".into(),
             ..base

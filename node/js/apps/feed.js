@@ -491,6 +491,9 @@ export const FeedApp = ({ current }) => {
     const [fresh, setFresh] = useState(null);
     // The "preparing media for the network" modal's items, while a post's embeds bake.
     const [baking, setBaking] = useState(null);
+    // The settled wish for the NEXT post (VISIBILITY.md): rides the publish request, set
+    // per post and cleared after - not a standing preference.
+    const [settleNext, setSettleNext] = useState(false);
 
     const post = async (docId) => {
         const posted = docId || draftId;
@@ -505,7 +508,13 @@ export const FeedApp = ({ current }) => {
             mintDraft(); // deliberately not awaited - it carries its own error path
         }
         try {
-            const made = await publishWithBaking(root, posted, setBaking);
+            const made = await publishWithBaking(
+                root,
+                posted,
+                setBaking,
+                settleNext ? { settled: true } : undefined
+            );
+            setSettleNext(false);
             // Say it here rather than waiting for the stream to say it back: the label and the
             // public link are true the moment the server answers.
             setPostedAs((p) => ({ ...p, [posted]: made.post_id }));
@@ -586,7 +595,18 @@ export const FeedApp = ({ current }) => {
                                             setMinted(null);
                                             minting.current = false;
                                         }}
-                                    />`
+                                    />
+                                    <label
+                                        class="feed-settle"
+                                        title=${t('apps.feed.settled-means-no-replies', 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist')}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked=${settleNext}
+                                            onChange=${(e) => setSettleNext(e.currentTarget.checked)}
+                                        />
+                                        ${t('apps.feed.settled-no-replies-no', 'turn off rebroadcast and comment')}
+                                    </label>`
                                   : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`}
                               ${/* Beside the button that caused it. This used to sit above the
                                   columns, where a failed post reported itself a long way from

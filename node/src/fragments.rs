@@ -1289,6 +1289,7 @@ fn row_of_verified(
         // Placeholders the caller REPLACES, exactly as `row_of` documents.
         published_ms: now,
         updated_ms: now,
+        settled: verified.header.settled,
     }
 }
 
@@ -1304,6 +1305,10 @@ fn row_of(f: &Fragment, doc_hex: &str) -> crate::fanout::JournalRow {
         format: f.format.clone().unwrap_or_else(|| "plaintext".to_string()),
         published_ms: now,
         updated_ms: now,
+        // The shelf row holds no header to ask; an honest network never shares a settled
+        // post in the first place, and the journal upsert corrects this from the verified
+        // fragment whenever one is in hand.
+        settled: false,
     }
 }
 
@@ -1716,6 +1721,7 @@ mod tests {
             version: [7u8; 32],
             timestamp_ms,
             header: ringtome_proto::registry::DocHeaderPlain {
+                settled: false,
                 doc_id: doc,
                 parents: Vec::new(),
                 file_hash: [1u8; 32],

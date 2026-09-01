@@ -7780,3 +7780,18 @@ caught with." Eleven more index-swaps: tramp>tarp (the trump replacement failed 
 bar within the hour), ditzy>dune, prude>plum, poser>pesto, lazy>lava, petty>pearl,
 lying>lotus, stank>stork, tacky>totem, slum>snail, dwarf>deer. By ruling, crazy, junky,
 mousy, and virus stay. Still 1296 unique, both copies matched.
+
+## 2026-09-01: the settled post (VISIBILITY.md slice 1)
+
+Curtis: at posting time, a "no rebroadcast/comment" flag - a wish, not cryptography
+("malicious clients and screenshots exist; from our POV that is a settled post"). Header
+key 15 (`settled`, absent when false, carried on re-publication like genesis), threaded
+publish-request -> bake -> store -> save_public_text, persisted on both doc memos (user gen
+20 - dev network wants `just clean`). Four honest doors honor it: a reply publish naming a
+settled parent refuses with words (resolve_reply_link), a rebroadcast mint on any node that
+can see the header refuses (mirror shelf first, fragment shelf second - held_public_header),
+the author's thread door serves nothing (door_page + id_post_replies), and the UI drops the
+share button and the whole thread section for a quiet italic line. The composer grows a
+per-post checkbox that clears after posting. FromRow tuple arities 11-13, 17-19 and 21
+filled in along the way (the memo rows outgrew the widest impl). VISIBILITY.md pins the
+design, including the trusted-only mechanics awaiting Curtis's title ruling.

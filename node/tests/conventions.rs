@@ -167,7 +167,7 @@ fn user_db_opens_are_deliberate() {
         ("fanout.rs", 3),          // journal_page + retract_vanished: ONE author per public-move edge
                                   // + shelf_updated_since: the journal delta, one open per POSTS move (2026-08-28)
         ("identity.rs", 4),
-        ("idface.rs", 8),          // + stored_tree_leaves: ONE mirror per revalidation;
+        ("idface.rs", 9),          // + stored_tree_leaves: ONE mirror per revalidation;
                                   // + id_post annotations: one shelf open per permalink read (2026-08-29)
                                    // + id_post: one open per permalink request (2026-08-25)
         ("ingest.rs", 1),
@@ -213,9 +213,9 @@ fn user_db_opens_are_deliberate() {
         ("record/documents.rs", 1),
         ("record/store.rs", 2),
         ("identity/adoption.rs", 2),
-        ("identity/routes.rs", 6),
+        ("identity/routes.rs", 7),
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
-        ("replies.rs", 3),
+        ("replies.rs", 4),
         ("annotations.rs", 2),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
                                   // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
                                   // root being folded - serialized per root, never a persona loop (2026-08-26)
