@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 # The Marquee reference parser (our own, ~/code/marqueemarkup): publication's media pre-pass
 # walks the AST for embed targets rather than regexing source. Pinned like turso: pre-1.0.
-cube-drone-marquee-parser = "=0.6.2"
+cube-drone-marquee-parser = "=0.7.0"
 # the protocol layer: canonical bytes, hashing, signing, chain validation
 ringtome-proto = { path = "../proto" }
 

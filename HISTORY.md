@@ -7959,3 +7959,9 @@ the surface rules, and the deferrals now live in PROJECT_PLAN under Data Layer b
 Rebroadcast and Replies ("Post visibility"); VISIBILITY.md is deleted and 21
 code/test/migration references repoint to "PROJECT_PLAN's Post visibility", the same fold
 COMMENTS.md and DISCOVERY.md got.
+
+## 2026-09-02 (cont. 10): Marquee 0.7.0
+
+Curtis shipped marqueemarkup 0.7.0 for a small display bug. Bumped both sides: the Rust
+reference parser (pinned =0.7.0, crates.io) and the five @cube-drone npm packages
+(^0.7.0), lockfile refreshed, bundle, CSS and fonts rebuilt.

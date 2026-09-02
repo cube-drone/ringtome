@@ -1250,9 +1250,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-parser"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dda2aa0263aeae2ab6e68b55edba6c9871b22e52304062cc89fed4bdcccfead0"
+checksum = "c70c338815bca0f41ec6d435321733e0ef15c8db7a78383ff792120275a36046"
 dependencies = [
  "serde",
  "serde_json",
