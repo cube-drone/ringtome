@@ -775,6 +775,19 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 annotators the reader's display register admits. The author's description
                 is the one description; others' descriptions are tags-grade and ride the
                 display rule like any label. */ ''}
+            ${!!item.reply_to &&
+            quote !== false &&
+            html`<p class="feed-entry-replyto">
+                ${item.reply_to.name
+                    ? t('postentry.in-reply-to-name', 'in reply to {name}', { name: item.reply_to.name })
+                    : t('postentry.in-reply-to', 'in reply to')}
+                <${MiniPost}
+                    author=${item.reply_to.author}
+                    doc_id=${item.reply_to.doc_id}
+                    title=${item.reply_to.title}
+                    published_ms=${item.reply_to.published_ms}
+                />
+            </p>`}
             ${!open && (shownLabels.length > 0 || !!current) &&
             html`<div class="feed-entry-labels">
                 ${groupLabels(shownLabels, { author: item.author }).map((g) => {
@@ -878,19 +891,6 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                           onClick=${() => setTagging(true)}
                       >${t('postentry.plus-tag', '+ tag')}</button>`)}
             </div>`}
-            ${!!item.reply_to &&
-            quote !== false &&
-            html`<p class="feed-entry-replyto">
-                ${item.reply_to.name
-                    ? t('postentry.in-reply-to-name', 'in reply to {name}', { name: item.reply_to.name })
-                    : t('postentry.in-reply-to', 'in reply to')}
-                <${MiniPost}
-                    author=${item.reply_to.author}
-                    doc_id=${item.reply_to.doc_id}
-                    title=${item.reply_to.title}
-                    published_ms=${item.reply_to.published_ms}
-                />
-            </p>`}
 
             ${open
                 ? html`<${Composer}

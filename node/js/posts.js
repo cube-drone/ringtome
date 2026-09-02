@@ -29,6 +29,9 @@ export const PublicPosts = ({ root, posts, more, current }) => {
     const [error, setError] = useState(null);
     const mine = !!(current && current.root === root);
     const editingFor = useOwnPostEditing(current);
+    // Everything by default; the toggles SUBTRACT (Curtis, 2026-09-02).
+    const [withShares, setWithShares] = useState(true);
+    const [withReplies, setWithReplies] = useState(true);
 
     // A different persona is a different shelf: drop what the last one's pages left behind.
     useEffect(() => {
@@ -59,27 +62,60 @@ export const PublicPosts = ({ root, posts, more, current }) => {
 
     if (!list.length) return null; // nothing said in public yet - say nothing about it
 
-    // The profile's post rows, dressed as the shared entry's item shape.
-    const items = list.map((p) => ({
-        author: root,
-        doc_id: p.doc_id,
-        title: p.title,
-        format: p.format,
-        published_ms: p.published_ms,
-        replies: p.replies,
-        annotations: p.annotations,
-        mine,
-    }));
+    // The profile's rows, dressed as the shared entry's item shape - a share keeps its
+    // ORIGINAL author (the card is still that person speaking) and wears this persona as
+    // its via line, exactly as the feed renders a passed-along post.
+    const items = list
+        .filter((p) => (withShares || p.kind !== 'share') && (withReplies || !p.reply_to))
+        .map((p) =>
+            p.kind === 'share'
+                ? {
+                      kind: 'share',
+                      author: p.author,
+                      doc_id: p.doc_id,
+                      title: p.title,
+                      format: p.format,
+                      published_ms: p.published_ms,
+                      via: p.via,
+                      mine: false,
+                  }
+                : {
+                      author: root,
+                      doc_id: p.doc_id,
+                      title: p.title,
+                      format: p.format,
+                      published_ms: p.published_ms,
+                      replies: p.replies,
+                      reply_to: p.reply_to,
+                      thread_root: p.thread_root,
+                      trusted_only: p.trusted_only,
+                      settled: p.settled,
+                      annotations: p.annotations,
+                      mine,
+                  }
+        );
 
     return html`
         <section class="public-posts">
-            <h2 class="public-posts-head">${t('posts.recent-posts', 'recent posts')}</h2>
+            <h2 class="public-posts-head">
+                ${t('posts.recent-posts', 'recent posts')}
+                <button
+                    class=${withShares ? 'shelf-toggle shelf-toggle-on' : 'shelf-toggle'}
+                    title=${t('posts.show-what-they-passed-along', 'show what they passed along')}
+                    onClick=${() => setWithShares((v) => !v)}
+                >${t('posts.plus-rebroadcasts', '+ rebroadcasts')}</button>
+                <button
+                    class=${withReplies ? 'shelf-toggle shelf-toggle-on' : 'shelf-toggle'}
+                    title=${t('posts.show-their-replies-in', 'show their replies in other people\u2019s threads')}
+                    onClick=${() => setWithReplies((v) => !v)}
+                >${t('posts.plus-replies', '+ replies')}</button>
+            </h2>
             ${items.map(
                 (item) => html`<${PostEntry}
-                    key=${item.doc_id}
+                    key=${`${item.kind || 'post'}:${item.doc_id}`}
                     item=${item}
                     current=${current}
-                    editing=${mine ? editingFor(item.doc_id) : null}
+                    editing=${mine && item.kind !== 'share' ? editingFor(item.doc_id) : null}
                 />`
             )}
             ${error && html`<p class="form-error">${error}</p>`}

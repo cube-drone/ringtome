@@ -1140,6 +1140,22 @@ article:has(.label-emoji-strip) {
     gap: 0.8rem;
 }
 
+.shelf-toggle {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+    margin-left: 0.5rem;
+    cursor: pointer;
+    vertical-align: middle;
+}
+.shelf-toggle-on {
+    background: var(--surface-2);
+    border-style: solid;
+    color: var(--ink);
+}
 .public-posts-head {
     font-size: 0.85rem;
     font-weight: 600;

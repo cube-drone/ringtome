@@ -7898,3 +7898,25 @@ per distinct flagged author, failing closed with the body gate. The two-hop clai
 to the new truth: the journal row lands flag-intact (asserted by sql - the memo knows), the
 feed API shows the untrusted nothing, and trust makes the same row surface, title and all,
 beside the opening body. The permalink's honest hollow line stays for direct visits.
+
+## 2026-09-02 (cont. 3): the shelf shows everything, minus what you untoggle
+
+Curtis: a persona's page should default to posts + rebroadcasts + replies, with filled
+"(+ rebroadcasts)" / "(+ replies)" buttons that subtract - and replies should say what
+they answer. The shelf read now merges the persona's live shares into the same
+stamp-keyset page (stamped by when they passed it along; titles off the fragment shelf,
+node.db only), and dresses every reply's parent link with title and byline (own shelf for
+same-shelf parents, fragment shelf for foreign - never a per-author open). The page grows
+the two pill toggles, default on; a share renders as the feed renders it - the original
+author's card wearing the sharer's via line. Acceptance: bea's shelf lists her share of
+the sealed post, kind-tagged, author intact.
+
+## 2026-09-02 (cont. 4): the toggles drop their parens
+
+Curtis: "+ rebroadcasts" and "+ replies", no parentheses. Both sides of the catalog, as
+ever.
+
+## 2026-09-02 (cont. 5): tags sit below the conversation context
+
+Curtis: on a reply's card the order read thread / tags / in-reply-to. The labels row now
+renders after BOTH context rows - the conversation's where before the post's what.

@@ -1145,14 +1145,45 @@ pub async fn id_posts(
     };
     // One more than the page, to learn whether there IS a further page without counting the
     // whole shelf - the extra row is the answer and never reaches the reader.
-    let mut posts = match state.user_dbs.get(&root_hex).await {
-        Ok(Some(db)) => crate::record::documents::public_docs(&db, after, POSTS_PAGE + 1)
+    let dbh = state.user_dbs.get(&root_hex).await.ok().flatten();
+    let posts = match &dbh {
+        Some(db) => crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
             .await
             .unwrap_or_default(),
-        _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
+        None => Vec::new(), // nothing held, or unreadable: an empty shelf either way
     };
-    let more = posts.len() as i64 > POSTS_PAGE;
-    posts.truncate(POSTS_PAGE as usize);
+    // The persona's SHARES join the shelf (Curtis, 2026-09-02: the page defaults to
+    // everything - posts, rebroadcasts, replies - and the client's toggles subtract).
+    // Same stamp-keyset cursor as the posts, stamped by when they passed it along; a
+    // withdrawn pointer is a tombstone and stays off. Titles resolve from the fragment
+    // shelf this node's own share machinery keeps - node.db only, no per-author opens.
+    let mut shares = match &dbh {
+        Some(db) => crate::record::imaol::rebroadcasts(db).await.unwrap_or_default(),
+        None => Vec::new(),
+    };
+    shares.retain(|s| s.version_seen.is_some());
+    if let Some((ms, doc)) = &after {
+        let doc_hex = hex::encode(doc);
+        shares.retain(|s| {
+            s.received_at_ms < *ms
+                || (s.received_at_ms == *ms && hex::encode(s.doc_id) > doc_hex)
+        });
+    }
+    shares.truncate((POSTS_PAGE + 1) as usize); // the view is already newest-first
+    enum Shelf {
+        Post(usize),
+        Share(usize),
+    }
+    let mut merged: Vec<(i64, String, Shelf)> = Vec::with_capacity(posts.len() + shares.len());
+    for (i, p) in posts.iter().enumerate() {
+        merged.push((p.genesis_ms, hex::encode(p.doc_id), Shelf::Post(i)));
+    }
+    for (i, s) in shares.iter().enumerate() {
+        merged.push((s.received_at_ms, hex::encode(s.doc_id), Shelf::Share(i)));
+    }
+    merged.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    let more = merged.len() as i64 > POSTS_PAGE;
+    merged.truncate(POSTS_PAGE as usize);
     // The reply counts, one page-scoped memo read for the whole shelf page.
     let pairs: Vec<(String, String)> = posts
         .iter()
@@ -1161,17 +1192,108 @@ pub async fn id_posts(
     let counts = crate::replies::known_counts(&state.node_db, &pairs)
         .await
         .unwrap_or_default();
-    let mut items: Vec<serde_json::Value> = posts
-        .iter()
-        .map(|p| {
-            let n = counts
-                .get(&(root_hex.clone(), hex::encode(p.doc_id)))
-                .copied()
-                .unwrap_or(0);
-            post_json(p, n)
-        })
-        .collect();
+    let mut items: Vec<serde_json::Value> = Vec::with_capacity(merged.len());
+    for (_, _, which) in &merged {
+        items.push(match which {
+            Shelf::Post(i) => {
+                let p = &posts[*i];
+                let n = counts
+                    .get(&(root_hex.clone(), hex::encode(p.doc_id)))
+                    .copied()
+                    .unwrap_or(0);
+                post_json(p, n)
+            }
+            Shelf::Share(i) => {
+                let s = &shares[*i];
+                let doc_hex = hex::encode(s.doc_id);
+                let header = crate::fragments::serving_header(&state.node_db, &s.author_root, &s.doc_id)
+                    .await
+                    .ok()
+                    .flatten();
+                serde_json::json!({
+                    "kind": "share",
+                    "author": s.author_root,
+                    "doc_id": doc_hex,
+                    "title": header.as_ref().map(|h| h.title.clone()),
+                    "format": header
+                        .as_ref()
+                        .map(|h| crate::record::documents::Format::from_wire(h.format).as_str()),
+                    "published_ms": s.received_at_ms,
+                    "shared_ms": s.received_at_ms,
+                    "via": root_hex,
+                })
+            }
+        });
+    }
     attach_annotations(&state, &root_hex, &mut items).await;
+    // Replies say what they answer (Curtis, 2026-09-02: the list "doesn't make it obvious
+    // what the replies are replies to"): dress each reply's parent link with a title and a
+    // byline - the author's own shelf for same-shelf parents, the fragment shelf for
+    // foreign ones, never a fresh per-author open.
+    {
+        let mut parents: Vec<(String, String)> = Vec::new();
+        for v in items.iter() {
+            if let (Some(pa), Some(pd)) = (
+                v["reply_to"]["author"].as_str(),
+                v["reply_to"]["doc_id"].as_str(),
+            ) {
+                parents.push((pa.to_string(), pd.to_string()));
+            }
+        }
+        if !parents.is_empty() {
+            let bylines = crate::profiles::bylines(
+                &state.node_db,
+                &parents.iter().map(|(a, _)| a.clone()).collect::<Vec<_>>(),
+            )
+            .await
+            .unwrap_or_default();
+            let mut cards: std::collections::HashMap<(String, String), (Option<String>, Option<i64>)> =
+                Default::default();
+            for (pa, pd) in &parents {
+                let Some(id) = hex::decode(pd)
+                    .ok()
+                    .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+                else {
+                    continue;
+                };
+                let resolved: Option<(Option<String>, Option<i64>)> = if *pa == root_hex {
+                    match &dbh {
+                        Some(db) => crate::record::documents::public_doc(db, &id)
+                            .await
+                            .ok()
+                            .flatten()
+                            .map(|d| (Some(d.title), Some(d.genesis_ms))),
+                        None => None,
+                    }
+                } else {
+                    crate::fragments::serving_header(&state.node_db, pa, &id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|h| (Some(h.title), None))
+                };
+                if let Some((title, ms)) = resolved {
+                    cards.insert((pa.clone(), pd.clone()), (title, ms));
+                }
+            }
+            for v in items.iter_mut() {
+                let (Some(pa), Some(pd)) = (
+                    v["reply_to"]["author"].as_str().map(String::from),
+                    v["reply_to"]["doc_id"].as_str().map(String::from),
+                ) else {
+                    continue;
+                };
+                let (title, ms) = cards.get(&(pa.clone(), pd.clone())).cloned().unwrap_or((None, None));
+                v["reply_to"] = serde_json::json!({
+                    "author": pa,
+                    "doc_id": pd,
+                    "name": bylines.get(&pa).and_then(|b| b.name.clone()),
+                    "title": title,
+                    "published_ms": ms,
+                });
+            }
+        }
+    }
     Ok(axum::Json(serde_json::json!({
         "posts": items,
         "more": more,

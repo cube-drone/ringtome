@@ -149,6 +149,17 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
             jrow = await journalRow(HOST_C, calRoot);
         }
         assert.ok(jrow, "the pointer reached cal's journal");
+        // And bea's own SHELF now lists the share (Curtis, 2026-09-02: the page defaults
+        // to everything) - kind-tagged, wearing her as the via.
+        {
+            const shelf = await (await bea(`api/id/${beaRoot}/posts`)).json();
+            const share = (shelf.posts || []).find(
+                (i) => i.kind === "share" && i.doc_id === post
+            );
+            assert.ok(share, "the share sits on the shelf");
+            assert.equal(share.via, beaRoot);
+            assert.equal(share.author, adaRoot, "the card still belongs to its author");
+        }
         assert.equal(jrow.trusted_only, 1, "wearing the flag");
         assert.equal(await feedRow(cal, calRoot), undefined,
             "and the feed shows cal nothing he cannot open");
