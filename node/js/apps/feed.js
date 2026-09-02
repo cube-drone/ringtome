@@ -491,10 +491,10 @@ export const FeedApp = ({ current }) => {
     const [fresh, setFresh] = useState(null);
     // The "preparing media for the network" modal's items, while a post's embeds bake.
     const [baking, setBaking] = useState(null);
-    // The settled wish for the NEXT post (VISIBILITY.md): rides the publish request, set
+    // The settled wish for the NEXT post (PROJECT_PLAN's Post visibility): rides the publish request, set
     // per post and cleared after - not a standing preference.
     const [settleNext, setSettleNext] = useState(false);
-    // Trusted-readers-only for the NEXT post (VISIBILITY.md slice 2), same discipline.
+    // Trusted-readers-only for the NEXT post (PROJECT_PLAN's Post visibility slice 2), same discipline.
     const [trustNext, setTrustNext] = useState(false);
 
     const post = async (docId) => {

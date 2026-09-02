@@ -974,7 +974,7 @@ article:has(.label-emoji-strip) {
     position: relative;
     z-index: 40;
 }
-/* The settled wish (VISIBILITY.md): the composer's checkbox and the post page's quiet word. */
+/* The settled wish (PROJECT_PLAN's Post visibility): the composer's checkbox and the post page's quiet word. */
 .feed-settle {
     display: flex;
     align-items: center;

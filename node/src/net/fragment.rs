@@ -115,7 +115,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     Ok(())
 }
 
-/// The key-release door (VISIBILITY.md slice 2b). The body is ciphertext wherever it
+/// The key-release door (PROJECT_PLAN's Post visibility slice 2b). The body is ciphertext wherever it
 /// travels; this 32-byte answer is the only gated thing in the design, and it goes only
 /// to a dialer whose endpoint the peer ledger ties - via signed serving records and
 /// member proofs - to the author themselves or to a persona the author publishes trust

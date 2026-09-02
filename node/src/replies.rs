@@ -628,7 +628,7 @@ pub async fn door_page(
     if !hosted.iter().any(|r| r == parent_author) {
         return (Vec::new(), since); // not this node's author, not this node's door
     }
-    // A settled post's door is shut (VISIBILITY.md): the author's node hands out nothing.
+    // A settled post's door is shut (PROJECT_PLAN's Post visibility): the author's node hands out nothing.
     if let Ok(Some(db)) = state.user_dbs.get(parent_author).await {
         if let Ok(doc) = hex::decode(parent_doc) {
             if let Ok(doc) = <[u8; 16]>::try_from(doc.as_slice()) {

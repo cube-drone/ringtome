@@ -603,11 +603,11 @@ struct FeedItem {
     published_ms: i64,
     updated_ms: i64,
     arrived_ms: i64,
-    /// The author turned off rebroadcast and comment (VISIBILITY.md); the card hides those
+    /// The author turned off rebroadcast and comment (PROJECT_PLAN's Post visibility); the card hides those
     /// affordances. Absent when open, so older clients change nothing.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     settled: bool,
-    /// The author shares the body with trusted readers only (VISIBILITY.md slice 2): the
+    /// The author shares the body with trusted readers only (PROJECT_PLAN's Post visibility slice 2): the
     /// card says why a body will not arrive. Absent when open.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     trusted_only: bool,
@@ -1283,10 +1283,10 @@ struct PublishResponse {
 #[derive(serde::Deserialize, Default)]
 struct PublishRequest {
     reply_to: Option<ReplyRef>,
-    /// The author's no-shares-no-replies wish (VISIBILITY.md): set at publish, carried
+    /// The author's no-shares-no-replies wish (PROJECT_PLAN's Post visibility): set at publish, carried
     /// forward on re-publication like the reply link.
     settled: Option<bool>,
-    /// Trusted readers only (VISIBILITY.md slice 2), carried the same way.
+    /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2), carried the same way.
     trusted_only: Option<bool>,
 }
 
@@ -1361,7 +1361,7 @@ async fn resolve_reply_link(
             "can't reply to a post this computer doesn't hold - visit it first"
         )));
     };
-    // The author's wish, honored at the honest door (VISIBILITY.md): a settled post takes
+    // The author's wish, honored at the honest door (PROJECT_PLAN's Post visibility): a settled post takes
     // no replies, and the refusal has words rather than a quietly orphaned comment.
     if header.settled {
         return Err(AppError::BadRequest(crate::msg!(
@@ -1473,7 +1473,7 @@ async fn publish_handler(
                     });
                 }
             }
-            // The sealing key's node memo (VISIBILITY.md slice 2b): the author's node
+            // The sealing key's node memo (PROJECT_PLAN's Post visibility slice 2b): the author's node
             // remembers at mint so the body door and the key lane answer without a
             // private-chain read per request. Best-effort: the draft's copy is durable.
             if trusted_only {
@@ -1801,7 +1801,7 @@ async fn rebroadcast_handler(
             })?),
         }
     };
-    // A settled post is not passed along (VISIBILITY.md): every honest node that can see
+    // A settled post is not passed along (PROJECT_PLAN's Post visibility): every honest node that can see
     // the header refuses the mint with words. A node that holds nothing of the post already
     // refused above; malicious clients exist, and this door is not for them.
     if version.is_some() {

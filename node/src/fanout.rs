@@ -395,7 +395,7 @@ pub(crate) struct JournalRow {
     pub(crate) format: String,
     pub(crate) published_ms: i64,
     pub(crate) updated_ms: i64,
-    /// The author's no-shares-no-replies wish (VISIBILITY.md), off the journaled header.
+    /// The author's no-shares-no-replies wish (PROJECT_PLAN's Post visibility), off the journaled header.
     pub(crate) settled: bool,
     /// Trusted-readers-only, same source.
     pub(crate) trusted_only: bool,

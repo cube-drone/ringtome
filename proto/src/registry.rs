@@ -574,13 +574,13 @@ pub struct DocHeaderPlain {
     /// the wrong thread, and any holder of the parent sees the mismatch. Requires
     /// `reply_to`: a root claim without a parent is not a shape this codec carries.
     pub thread_root: Option<([u8; 32], [u8; 16])>,
-    /// The author settled this post (VISIBILITY.md, 2026-09-01): no rebroadcasts, no
+    /// The author settled this post (PROJECT_PLAN's Post visibility, 2026-09-01): no rebroadcasts, no
     /// replies - a wish every honest surface honors, carried in the SIGNED header so any
     /// holder can check it offline. Malicious clients and screenshots exist; from this
     /// network's own point of view a settled post is settled. Absent on the wire when
     /// false. Carried forward on re-publication like `genesis_ms`.
     pub settled: bool,
-    /// Trusted readers only (VISIBILITY.md slice 2): the BODY goes only to readers the
+    /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2): the BODY goes only to readers the
     /// author publishes trust for; the header - existence, title, date, thumbnail - is the
     /// post's public face by ruling. A wish enforced at every honest serving edge, like
     /// `settled`. Absent when false; carried forward on re-publication.
@@ -1291,7 +1291,7 @@ mod tests {
 
     /// ANNOTATIONS.md slice 1: the statement round-trips, a retraction is the same shape
     /// absent, and the codec refuses what no well-behaved speaker could have minted.
-    /// VISIBILITY.md slice 1: the settled wish rides the signed header (key 15), absent
+    /// PROJECT_PLAN's Post visibility slice 1: the settled wish rides the signed header (key 15), absent
     /// when false, and round-trips.
     #[test]
     fn a_settled_header_round_trips_and_absence_means_open() {

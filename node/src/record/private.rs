@@ -124,7 +124,7 @@ impl EpochKeys {
         self.keys.get(&epoch).map_or(&[], |v| v.as_slice())
     }
 
-    /// A one-entry ring - the per-post sealing key's shape (VISIBILITY.md slice 2b), and
+    /// A one-entry ring - the per-post sealing key's shape (PROJECT_PLAN's Post visibility slice 2b), and
     /// what tests hand to `decrypt_file`.
     pub(crate) fn single(epoch: u64, key: [u8; 32]) -> Self {
         let mut keys = std::collections::BTreeMap::new();
@@ -577,7 +577,7 @@ pub fn decrypt_file(blob: &[u8], keys: &EpochKeys) -> Option<Vec<u8>> {
     None
 }
 
-/// The sentinel epoch for per-post keys (VISIBILITY.md slice 2b): a trusted-only post's
+/// The sentinel epoch for per-post keys (PROJECT_PLAN's Post visibility slice 2b): a trusted-only post's
 /// body is sealed under its own random key, not an era's - the blob's self-describing
 /// epoch field carries this value so no reader ever tries their epoch ring on it.
 pub const POST_KEY_EPOCH: u64 = u64::MAX;

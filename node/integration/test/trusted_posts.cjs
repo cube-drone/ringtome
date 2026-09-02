@@ -1,5 +1,5 @@
 /*
-    VISIBILITY.md slice 2: trusted-only posts. Title public, body gated - the words go only
+    PROJECT_PLAN's Post visibility slice 2: trusted-only posts. Title public, body gated - the words go only
     to readers the author publishes trust for, checked at serve time against the author's
     own FOLLOWS_PUBLIC edges. The HTTP door here; the node-to-node doors are slice 2b.
 */

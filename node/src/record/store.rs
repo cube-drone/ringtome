@@ -61,7 +61,7 @@ use crate::AppState;
 /// The annotation field naming a note's published form (its post's doc_id, hex). Private,
 /// like every annotation: the world sees the post, only you see which note it came from.
 pub const PUBLISHED_AS: &str = "published_as";
-/// The draft's private copy of its post's sealing key (VISIBILITY.md slice 2b) - device-
+/// The draft's private copy of its post's sealing key (PROJECT_PLAN's Post visibility slice 2b) - device-
 /// durable because the draft chain reaches every member device, and excluded from publish
 /// replication exactly like `published_as`: bookkeeping, never a label.
 pub const TRUSTED_KEY: &str = "trusted_key";
@@ -1106,7 +1106,7 @@ impl Documents<'_> {
         Ok(post)
     }
 
-    /// The per-post sealing key for a trusted-only publish (VISIBILITY.md slice 2b):
+    /// The per-post sealing key for a trusted-only publish (PROJECT_PLAN's Post visibility slice 2b):
     /// minted once onto the draft's private meta - device-durable, replication-excluded -
     /// and reused verbatim ever after. Shared by the text mint and every twin bake, so one
     /// key opens the whole post.

@@ -74,7 +74,7 @@ const ACTIONS = [
         name: 'post-trusted-only',
         weight: 4,
         run: async (ctx, p, rng) => {
-            // VISIBILITY.md slice 2: the body goes only to readers this persona publishes
+            // PROJECT_PLAN's Post visibility slice 2: the body goes only to readers this persona publishes
             // trust for; everyone else gets the title and the honest hollow line.
             const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
                 title: ctx.lorem(rng, 1).slice(0, 40).replace(/\.$/, ''),
@@ -91,7 +91,7 @@ const ACTIONS = [
         name: 'post-settled',
         weight: 4,
         run: async (ctx, p, rng) => {
-            // VISIBILITY.md slice 1: rebroadcast and comment turned off - the share button
+            // PROJECT_PLAN's Post visibility slice 1: rebroadcast and comment turned off - the share button
             // and reply box vanish everywhere, and the doors refuse with words.
             const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
                 title: ctx.lorem(rng, 1).slice(0, 40).replace(/\.$/, ''),

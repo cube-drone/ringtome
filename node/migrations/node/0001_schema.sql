@@ -244,7 +244,7 @@ CREATE TABLE feed_journal (
                                      --   A direct arrival always clears this (it is the stronger
                                      --   claim: you follow them, you are not being shown a share)
     settled      INTEGER NOT NULL DEFAULT 0, -- the author's no-shares-no-replies wish, off
-                                     --   the journaled header (VISIBILITY.md) - so the card
+                                     --   the journaled header (PROJECT_PLAN's Post visibility) - so the card
                                      --   can hide the share button without a second read
     trusted_only INTEGER NOT NULL DEFAULT 0, -- trusted-readers-only, same source - so the
                                      --   card can say WHY a body will not arrive
@@ -513,7 +513,7 @@ CREATE TABLE notifications (
 CREATE INDEX notifications_by_reader ON notifications (reader_root, updated_ms);
 
 -- ---------------------------------------------------------------------------------------------
--- Per-post keys for trusted-only bodies (VISIBILITY.md slice 2b). The body is ciphertext
+-- Per-post keys for trusted-only bodies (PROJECT_PLAN's Post visibility slice 2b). The body is ciphertext
 -- wherever it travels; the KEY is the gated thing, and this memo is who holds it: the
 -- author's node remembers at mint, a trusted reader's node remembers what the key lane
 -- taught it. Never served except through the key-release check.

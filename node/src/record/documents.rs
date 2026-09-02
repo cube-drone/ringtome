@@ -600,7 +600,7 @@ pub async fn save_public_media(
 ) -> Result<[u8; 16], AppError> {
     let doc_id = new_doc_id();
     // A trusted-only post's pictures seal under the SAME per-post key as its words
-    // (VISIBILITY.md: the twin's body AND its thumbnail - a small copy of a gated image
+    // (PROJECT_PLAN's Post visibility: the twin's body AND its thumbnail - a small copy of a gated image
     // is the gated image), with the keyed plaintext fingerprint where the content hash
     // would have leaked one.
     let stored_body = match &post_key {
@@ -689,10 +689,10 @@ pub struct PublicText<'a> {
     /// actually ask for. In the SIGNED header so a fragment names its media from the entry
     /// alone, and no sweep ever parses foreign Marquee.
     pub refs: Vec<[u8; 16]>,
-    /// The author's no-shares-no-replies wish (VISIBILITY.md): set at publish, carried
+    /// The author's no-shares-no-replies wish (PROJECT_PLAN's Post visibility): set at publish, carried
     /// forward on re-publication like the reply link.
     pub settled: bool,
-    /// Trusted readers only (VISIBILITY.md slice 2): carried the same way.
+    /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2): carried the same way.
     pub trusted_only: bool,
     /// The per-post key when `trusted_only` (slice 2b): the body is sealed under it and
     /// `file_hash` names the CIPHERTEXT; `body_hash` keeps the keyed plaintext
@@ -764,7 +764,7 @@ pub async fn save_public_text(
             (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled, trusted_only)
         }
     };
-    // A trusted-only body is SEALED at mint (VISIBILITY.md slice 2b): the ciphertext is
+    // A trusted-only body is SEALED at mint (PROJECT_PLAN's Post visibility slice 2b): the ciphertext is
     // what the store holds and the blob lane spreads - harmless anywhere - and the key is
     // the gated thing. `file_hash` names the ciphertext; `body_hash` keeps the keyed
     // plaintext fingerprint (the private lane's rainbow-table-proof shape), so a trusted
@@ -836,9 +836,9 @@ pub struct PublicDoc {
     /// When it last changed. Reported, never sorted by.
     pub head_ms: i64,
     pub thumb_hash: Option<[u8; 32]>,
-    /// The author's no-shares-no-replies wish (VISIBILITY.md), off the signed header.
+    /// The author's no-shares-no-replies wish (PROJECT_PLAN's Post visibility), off the signed header.
     pub settled: bool,
-    /// Trusted readers only (VISIBILITY.md slice 2): the body is gated; this face is not.
+    /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2): the body is gated; this face is not.
     pub trusted_only: bool,
 }
 
@@ -1911,8 +1911,8 @@ type VersionRow = (
     Option<String>,  // reply_to_doc
     Option<String>,  // thread_root_root
     Option<String>,  // thread_root_doc
-    i64,             // settled (VISIBILITY.md: the author's no-shares-no-replies wish)
-    i64,             // trusted_only (VISIBILITY.md slice 2)
+    i64,             // settled (PROJECT_PLAN's Post visibility: the author's no-shares-no-replies wish)
+    i64,             // trusted_only (PROJECT_PLAN's Post visibility slice 2)
 );
 
 /// Rehydrate one stored version from its `doc_versions` row.

@@ -110,7 +110,7 @@ CREATE TABLE doc_versions (
     thread_root_root TEXT,              -- and every reconstruction round-trips the claim
     thread_root_doc  TEXT,
     settled          INTEGER NOT NULL DEFAULT 0, -- the author's no-shares-no-replies wish
-                                                 -- (VISIBILITY.md), off the signed header
+                                                 -- (PROJECT_PLAN's Post visibility), off the signed header
     trusted_only     INTEGER NOT NULL DEFAULT 0  -- the body goes to trusted readers only
 );
 CREATE INDEX doc_versions_by_doc ON doc_versions (doc_id);

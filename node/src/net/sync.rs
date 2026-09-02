@@ -1854,7 +1854,7 @@ pub(crate) async fn prune_forgotten_peers(node_db: &Db, now: i64) -> Result<u64>
 }
 
 /// Does this endpoint serve ANY of these identities, by the peer ledger (signed serving
-/// records and member proofs feed it)? The key-release check's question (VISIBILITY.md
+/// records and member proofs feed it)? The key-release check's question (PROJECT_PLAN's Post visibility
 /// slice 2b): "is the dialing node one that a trusted person's own chain names".
 pub async fn endpoint_serves_any(
     node_db: &Db,

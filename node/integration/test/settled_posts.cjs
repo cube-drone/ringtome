@@ -1,5 +1,5 @@
 /*
-    VISIBILITY.md slice 1: the settled post. The flag is a wish carried in the signed
+    PROJECT_PLAN's Post visibility slice 1: the settled post. The flag is a wish carried in the signed
     header - malicious clients and screenshots exist - and every honest door here honors
     it: the reply publish refuses, the rebroadcast mint refuses, the thread door serves
     nothing, and the permalink says so.

@@ -64,7 +64,7 @@ pub const MAX_FRAGMENT_FRAME_BYTES: usize = 16 * 1024;
 /// reader would delete a live share every time it asked the wrong node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentMessage {
-    /// A trusted-only post's per-post key, asked node-to-node (VISIBILITY.md slice 2b:
+    /// A trusted-only post's per-post key, asked node-to-node (PROJECT_PLAN's Post visibility slice 2b:
     /// the body is ciphertext anywhere it travels; THIS is the gated thing). Only nodes
     /// holding the key can answer, and they answer only dialers whose endpoint resolves -
     /// through signed serving records - to a persona the author publishes trust for.

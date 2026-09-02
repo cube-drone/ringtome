@@ -7943,3 +7943,19 @@ to helpers.cjs shed its dependencies one ReferenceError at a time (pngChunk, crc
 assert) - and taught a harness lesson worth keeping: node -e exposes builtins as
 REPL-style globals, so a smoke test there cannot catch a missing require; smokes run as
 module files now, and they exercise the moved bodies, not just their names.
+
+## 2026-09-02 (cont. 8): the arc's last two calls
+
+Curtis: bare media posts get no flags (no UI mints them), and sharer-scoped share
+journaling is deferred - the feed filter already delivers the visible outcome, and the
+current design's free carriage plus instant recovery outweigh the bandwidth it would save.
+The trust-arrival re-fold hook is pinned as the shape to build if that ever changes.
+VISIBILITY.md is closed as an arc.
+
+## 2026-09-02 (cont. 9): VISIBILITY.md folds into the plan
+
+The arc closed, so its rulings, the sealed-not-gated argument, the key lane's mechanics,
+the surface rules, and the deferrals now live in PROJECT_PLAN under Data Layer beside
+Rebroadcast and Replies ("Post visibility"); VISIBILITY.md is deleted and 21
+code/test/migration references repoint to "PROJECT_PLAN's Post visibility", the same fold
+COMMENTS.md and DISCOVERY.md got.

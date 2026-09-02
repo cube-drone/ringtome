@@ -113,7 +113,7 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
             ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
             ${item &&
             html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} />`}
-            ${/* The author's wish (VISIBILITY.md): a settled post has no thread section and
+            ${/* The author's wish (PROJECT_PLAN's Post visibility): a settled post has no thread section and
                 no reply box - just the honest word for why. */ ''}
             ${item &&
             item.settled &&

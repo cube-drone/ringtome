@@ -3683,6 +3683,80 @@ The honest trade, named: shallow-held chains mean a node can serve recent conten
 identity's own nodes hold its own chains whole (agenting stays full-fat), and anyone may volunteer as a deep
 archive. That is the same trade git made, and the right one.
 
+### Post visibility: settled posts and trusted-only posts (settled and built, 2026-09-01/02)
+
+Two flags an author sets at posting time, both carried in the SIGNED public header so any
+holder checks them offline (keys 15 and 16, absent when false, carried forward on
+re-publication like `genesis_ms`), both persisted on the doc memos and the feed journal.
+Folded here from VISIBILITY.md when the arc closed (2026-09-02).
+
+**"Settled" - rebroadcast and comment turned off.** A wish, not cryptography: malicious
+clients and screenshots exist, and from this network's own point of view a settled post is
+settled. Every honest door honors it - a reply publish naming a settled parent refuses with
+words, a rebroadcast mint refuses on any node that can see the header (mirror shelf first,
+fragment shelf second), the author's thread door serves nothing, and the card drops the
+share button and the whole thread section for one quiet line. Tags stay allowed: a label is
+the labeller's speech about the post, not participation inside it. The user-facing language
+is "turn off rebroadcast and comment"; "settled" is internal only.
+
+**"Trusted only" - the body goes to readers the author publishes trust for.** The rulings:
+title, date, and format are the post's public face (the header must travel for the chain to
+verify); trusted means ANY published trust band on the author's FOLLOWS_PUBLIC chain, checked
+at serve time, so trust published later opens older posts and revoked trust closes future
+serving (delivered copies are the honest-parties floor); replies are allowed, since a reply is
+the replier's own public speech; rebroadcast is allowed - a share spreads the pointer, never
+the words.
+
+*Sealed, not gated.* The first design gated serving - release the bytes only to trusted
+askers - and was retired before it was built, on the argument that serve-time gating makes
+every holder an enforcement point and "many nodes are malicious" is the assumption. A hash
+cannot be the secret either: it has public jobs (signed beside the title, the ETag, the
+wants), and a secret hash still leaves plaintext at rest behind every holder's door, with
+availability and confidentiality at war. So the body is CIPHERTEXT wherever it travels -
+sealed at mint under a fresh per-post key, the private lane's own blob shape at a sentinel
+epoch, `file_hash` naming the ciphertext (public, spreadable, harmless) and `body_hash`
+keeping the keyed plaintext fingerprint for verification. Embedded media seals under the same
+key - twin body and thumbnail both, minted fresh per post (different posts, different keys)
+and never cached into `published_as`; external web media in a trusted-only post refuses at
+bake, since the background job has no key in hand. The blob lane needs no gate at all:
+untrusted nodes do not refuse to share the content, they cannot, because they never had it -
+and every extra carrier makes the post harder to lose without making it easier to read.
+Carriage never requires reading: the mint needs a held VERSION, so an untrusted relay passes
+a sealed fragment along and still cannot open it after delivering it two hops on.
+
+*The key is the only gated thing.* It lives on the draft's private meta (`trusted_key`,
+device-durable because the draft chain reaches every member device, excluded from publish
+replication like `published_as`) and in the node's `post_keys` memo - the author's node at
+mint, under the post id and every twin id; a trusted reader's node once the key lane teaches
+it. The HTTP body door decrypts for a session whose persona the author trusts. Node to node,
+`WantKey`/`Key` on the fragment lane: the asker walks the pull ladder's own candidates (the
+author's active tree leaves resolved through their signed serving records - chasing the bare
+root resolves the recovery-key beacon instead), and the answering node releases only to a
+dialer the peer ledger ties, through signed serving records, to the author or a trusted
+subject, deriving those rows on demand when the ledger is merely unresolved. "Not here" and
+"not for you" answer identically. One semantic falls out: release requires the author's node
+to have MET the trusted reader (their chains, hence their serving records), which the
+dial-trust-from-a-profile flow guarantees.
+
+*What the surfaces show.* The feed never shows a sealed post its reader cannot open - a
+hollow card is an advertisement for a refusal - filtered at read against the author's
+published trust, so the same journal row surfaces the moment trust is published; the journal
+keeps every row (the memo knows, the surface chooses). Discovery's speculative lane carries no
+trusted-only posts at all - the one surface a reader never chose. The permalink keeps the
+honest line for a direct visit: "the author shares these words only with people they trust".
+The composer offers both flags as per-post checkboxes; the test-data generator posts both
+kinds.
+
+*Deferred and residual.* Sharer-scoped share journaling (the pointer journals only into feeds
+the sharer publishes trust for) stays a direction, not a build: the feed filter already
+delivers the visible outcome, and the present design's free carriage plus instant recovery
+outweigh the ciphertext bandwidth it would save; if that ever changes, the shape is a hook
+that re-folds withheld pointers when a trust edge from their author lands in the edge fold.
+Bare media posts take no flags (no UI mints one). A COMMENT envelope about a settled post
+still transcribes to the bell (only a malicious client sends one); a double-tapped sealed
+publish mints one redundant version (the nonce moves the ciphertext hash past the no-op
+bounce); key rotation on revocation is future-posts-only.
+
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
 There is no roster of an identity's nodes, no membership protocol, and no coordinator (**No Central Authority**, Doctrine). Each node's picture of the

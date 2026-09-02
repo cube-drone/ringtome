@@ -933,12 +933,12 @@ async fn public_doc_bytes(
     let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only }) = facts else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
     };
-    // The trusted-readers gate (VISIBILITY.md slice 2). The BODY is the gated thing; the
+    // The trusted-readers gate (PROJECT_PLAN's Post visibility slice 2). The BODY is the gated thing; the
     // thumbnail is the post's public face by ruling, with the title and the date. A reader
     // qualifies when any persona on their session is the author, or holds any published
     // trust band on the author's own chain - checked at serve time, so trust published
     // later opens older posts.
-    // The thumb exemption died with the twins slice (VISIBILITY.md): a sealed document's
+    // The thumb exemption died with the twins slice (PROJECT_PLAN's Post visibility): a sealed document's
     // thumbnail is a small copy of the sealed content. A text post's public face - title,
     // date - never had a thumb to lose, and untrusted feeds hide the card anyway.
     if trusted_only {
@@ -1003,7 +1003,7 @@ async fn public_doc_bytes(
     else {
         return Err(AppError::NotFound(crate::msg!("idface.the-bytes-havent-arrived-here", "the bytes haven't arrived here yet - headers travel ahead of bodies")));
     };
-    // A sealed body opens at the door (VISIBILITY.md slice 2b): what the store holds and
+    // A sealed body opens at the door (PROJECT_PLAN's Post visibility slice 2b): what the store holds and
     // the network spreads is ciphertext; the trusted reader above has earned the words,
     // and the key comes from the memo - or, first time, from whoever serves the author,
     // over the key lane with its own trust check at the far end.
@@ -1513,7 +1513,7 @@ pub async fn id_post_replies(
         (Some(ms), Some(d)) => Some((ms, d)),
         _ => None,
     };
-    // A settled parent's thread door is shut (VISIBILITY.md): a node that can see the
+    // A settled parent's thread door is shut (PROJECT_PLAN's Post visibility): a node that can see the
     // header serves no replies and does not go asking for more.
     if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
         if let Ok(doc_bytes) = hex::decode(&doc) {

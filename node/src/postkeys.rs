@@ -1,4 +1,4 @@
-//! Per-post keys for trusted-only bodies (VISIBILITY.md slice 2b).
+//! Per-post keys for trusted-only bodies (PROJECT_PLAN's Post visibility slice 2b).
 //!
 //! The design argument, settled 2026-09-01: a secret hash is capability-URL security and
 //! this hash already has public jobs, so the body is CIPHERTEXT wherever it travels and
