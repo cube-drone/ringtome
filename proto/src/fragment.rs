@@ -64,6 +64,14 @@ pub const MAX_FRAGMENT_FRAME_BYTES: usize = 16 * 1024;
 /// reader would delete a live share every time it asked the wrong node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentMessage {
+    /// A trusted-only post's per-post key, asked node-to-node (VISIBILITY.md slice 2b:
+    /// the body is ciphertext anywhere it travels; THIS is the gated thing). Only nodes
+    /// holding the key can answer, and they answer only dialers whose endpoint resolves -
+    /// through signed serving records - to a persona the author publishes trust for.
+    WantKey { author: [u8; 32], doc_id: [u8; 16] },
+    /// The answer: 32 key bytes, or empty for "not here" and "not for you" alike - a
+    /// refusal deliberately indistinguishable from absence.
+    Key { key: Vec<u8> },
     Want { author: [u8; 32], doc_id: [u8; 16] },
     /// The words' proof - and, riding beside it, every annotation proof the answering node
     /// chose to attach (ANNOTATIONS.md slice 3): the author's labels and third parties'
@@ -155,6 +163,8 @@ const TAG_WANT_DEATHS: u64 = 4;
 const TAG_DEATHS: u64 = 5;
 const TAG_WANT_REPLIES: u64 = 6;
 const TAG_REPLIES: u64 = 7;
+const TAG_WANT_KEY: u64 = 8;
+const TAG_KEY: u64 = 9;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -225,6 +235,17 @@ impl FragmentMessage {
                 w.bytes(author);
                 w.bytes(doc_id);
                 w.uint(*since);
+            }
+            Self::WantKey { author, doc_id } => {
+                w.array(3);
+                w.uint(TAG_WANT_KEY);
+                w.bytes(author);
+                w.bytes(doc_id);
+            }
+            Self::Key { key } => {
+                w.array(2);
+                w.uint(TAG_KEY);
+                w.bytes(key);
             }
             Self::Replies { proofs, cursor } => {
                 w.array(3);
@@ -315,6 +336,17 @@ impl FragmentMessage {
                     proofs,
                     cursor: r.uint()?,
                 }
+            }
+            (TAG_WANT_KEY, 3) => Self::WantKey {
+                author: r.bytes_fixed::<32>()?,
+                doc_id: r.bytes_fixed::<16>()?,
+            },
+            (TAG_KEY, 2) => {
+                let key = r.bytes()?.to_vec();
+                if key.len() > 32 {
+                    return Err(ProtoError::BadEntry("a post key is 32 bytes or absent"));
+                }
+                Self::Key { key }
             }
             (TAG_WANT_REPLIES, 4) => Self::WantReplies {
                 author: r.bytes_fixed::<32>()?,

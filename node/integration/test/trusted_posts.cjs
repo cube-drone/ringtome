@@ -8,7 +8,13 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
-const { beat } = require("./beat.cjs");
+const { beat, pullAndFold } = require("./beat.cjs");
+const { HOST_B } = require("./fetch.cjs");
+
+const base58 = async (host) => {
+    const { toBase58 } = await import("../../js/speakable.js");
+    return toBase58((await (await host("api/node")).json()).endpoint_id);
+};
 
 describe("trusted-only posts: the body goes to trusted readers", function () {
     this.timeout(600000);
@@ -62,5 +68,43 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         const yes = await bea(`id/${adaRoot}/docs/${post}/body`);
         assert.equal(yes.status, 200, await yes.clone().text());
         assert.equal(await yes.text(), "the quiet words");
+    });
+
+    it("across nodes, the body is ciphertext and the KEY travels the trusted lane", async function () {
+        if (!HOST_B) this.skip();
+        // cara, on another node, follows ada - her node mirrors the chains and pulls the
+        // ciphertext like any bytes. The words appear only after ada trusts her and her
+        // node earns the key over the lane.
+        const cara = await makeUserFetch({ prefix: "trustcara", host: HOST_B });
+        const caraRoot = (await (await cara("api/identity", { method: "POST" })).json()).root_pubkey;
+        await cara(`api/identity/${caraRoot}/serve`, { method: "POST" });
+        const viaAda = await base58(ada);
+        if ((await cara(`api/id/${adaRoot}/profile?via=${viaAda}`)).status !== 200) this.skip();
+        await cara(`api/identity/${caraRoot}/private/kv/contact:${adaRoot}/interest`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "high" }),
+        });
+        await pullAndFold(HOST_B, adaRoot);
+        // Untrusted: her node can see the flag (it mirrors ada), so the gate refuses.
+        const no = await cara(`id/${adaRoot}/docs/${post}/body`);
+        assert.notEqual(no.status, 200, "no words for the untrusted, on any node");
+        // ada trusts cara and, so her node can resolve cara's serving record for the
+        // key-release check, meets her chains.
+        await ada(`api/identity/${adaRoot}/private/kv/contact:${caraRoot}/trust`, {
+            method: "PUT",
+            body: JSON.stringify({ value: "high" }),
+        });
+        await beat(undefined, "mint", adaRoot);
+        const viaCara = await base58(cara);
+        await ada(`api/id/${caraRoot}/profile?via=${viaCara}`);
+        await pullAndFold(undefined, caraRoot);
+        await pullAndFold(HOST_B, adaRoot);
+        let got = null;
+        for (let i = 0; i < 40 && got !== "the quiet words"; i++) {
+            const r = await cara(`id/${adaRoot}/docs/${post}/body`);
+            if (r.status === 200) got = await r.text();
+            else await new Promise((res) => setTimeout(res, 400));
+        }
+        assert.equal(got, "the quiet words", "the key lane opened the sealed body");
     });
 });

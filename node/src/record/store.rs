@@ -61,6 +61,10 @@ use crate::AppState;
 /// The annotation field naming a note's published form (its post's doc_id, hex). Private,
 /// like every annotation: the world sees the post, only you see which note it came from.
 pub const PUBLISHED_AS: &str = "published_as";
+/// The draft's private copy of its post's sealing key (VISIBILITY.md slice 2b) - device-
+/// durable because the draft chain reaches every member device, and excluded from publish
+/// replication exactly like `published_as`: bookkeeping, never a label.
+pub const TRUSTED_KEY: &str = "trusted_key";
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
 pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar"];
@@ -999,6 +1003,34 @@ impl Documents<'_> {
             return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict")));
         }
         let resolved = self.resolved(doc).await?;
+        // The per-post key (slice 2b): minted once, kept on the draft's private meta so
+        // every member device can serve the body, reused verbatim on re-publication.
+        let post_key: Option<[u8; 32]> = if trusted_only {
+            let existing = self
+                .store
+                .annotations()
+                .field(doc_id, TRUSTED_KEY)
+                .await?
+                .and_then(|v| hex::decode(v).ok())
+                .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
+            Some(match existing {
+                Some(k) => k,
+                None => {
+                    let mut k = [0u8; 32];
+                    {
+                        use rand::RngCore;
+                        rand::rngs::OsRng.fill_bytes(&mut k);
+                    }
+                    self.store
+                        .annotations()
+                        .set_field(doc_id, TRUSTED_KEY, &hex::encode(k))
+                        .await?;
+                    k
+                }
+            })
+        } else {
+            None
+        };
         let body = match body_override {
             Some(prepared) => prepared,
             None => resolved.body.ok_or_else(|| {
@@ -1032,8 +1064,12 @@ impl Documents<'_> {
             None => None,
         };
         if let Some(head) = &head {
-            let same_words =
-                head.file_hash == *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes();
+            // Sealed bodies skip the no-op bounce: the ciphertext hash moves with every
+            // nonce, so "same words" is unknowable from the head alone - a double-tap on a
+            // trusted-only post mints one redundant version, which is the cheaper honest cost.
+            let same_words = !trusted_only
+                && head.file_hash
+                    == *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes();
             if same_words && head.title == resolved.title {
                 return Ok(existing.expect("a head implies a post"));
             }
@@ -1082,6 +1118,7 @@ impl Documents<'_> {
                 reply,
                 settled,
                 trusted_only,
+                post_key,
             },
         )
         .await?;

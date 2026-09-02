@@ -678,6 +678,10 @@ pub struct PublicText<'a> {
     pub settled: bool,
     /// Trusted readers only (VISIBILITY.md slice 2): carried the same way.
     pub trusted_only: bool,
+    /// The per-post key when `trusted_only` (slice 2b): the body is sealed under it and
+    /// `file_hash` names the CIPHERTEXT; `body_hash` keeps the keyed plaintext
+    /// fingerprint so trusted readers still verify the words against the signature.
+    pub post_key: Option<[u8; 32]>,
     /// A reply's links, FIRST publication only: (parent, thread root), each (author root,
     /// doc id) - resolved by the publish path from the parent's own held header
     /// (PROJECT_PLAN's Replies). Ignored on re-publication, where the previous header's claims carry
@@ -691,7 +695,7 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only } = text;
+    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key } = text;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
@@ -744,8 +748,24 @@ pub async fn save_public_text(
             (new_doc_id(), vec![], crate::clock::now_ms(), reply_to, thread_root, settled, trusted_only)
         }
     };
+    // A trusted-only body is SEALED at mint (VISIBILITY.md slice 2b): the ciphertext is
+    // what the store holds and the blob lane spreads - harmless anywhere - and the key is
+    // the gated thing. `file_hash` names the ciphertext; `body_hash` keeps the keyed
+    // plaintext fingerprint (the private lane's rainbow-table-proof shape), so a trusted
+    // reader still verifies the words against the signed header.
+    let (stored, body_hash) = if trusted_only {
+        let key = post_key.ok_or_else(|| {
+            AppError::Internal(anyhow!("a trusted-only mint arrived without its key"))
+        })?;
+        (
+            crate::record::private::seal_post_body(&key, body.as_bytes())?,
+            DocHeaderPlain::body_hash(&doc_id, body.as_bytes()),
+        )
+    } else {
+        (body.as_bytes().to_vec(), *crate::files::FileStore::public_hash(body.as_bytes()).as_bytes())
+    };
     let file_hash = files
-        .put_public(body.as_bytes())
+        .put_public(&stored)
         .await
         .map_err(AppError::Internal)?;
     let header = DocHeaderPlain {
@@ -753,9 +773,8 @@ pub async fn save_public_text(
         parents,
         file_hash: *file_hash.as_bytes(),
         // Public bodies are plaintext and content-addressed: the file hash IS the body's
-        // honest fingerprint (the private lane's keyed member-secret hash has no public
-        // meaning to protect here).
-        body_hash: *file_hash.as_bytes(),
+        // honest fingerprint. Sealed bodies carry the keyed plaintext fingerprint instead.
+        body_hash,
         title: title.to_string(),
         format: format.to_wire(),
         width: None,

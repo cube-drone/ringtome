@@ -1438,6 +1438,28 @@ async fn publish_handler(
                     });
                 }
             }
+            // The sealing key's node memo (VISIBILITY.md slice 2b): the author's node
+            // remembers at mint so the body door and the key lane answer without a
+            // private-chain read per request. Best-effort: the draft's copy is durable.
+            if trusted_only {
+                if let Ok(Some(k)) = data.annotations().field(&doc_id, store::TRUSTED_KEY).await {
+                    if let Some(key) = hex::decode(&k)
+                        .ok()
+                        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+                    {
+                        if let Err(e) = crate::postkeys::remember(
+                            &state.node_db,
+                            &root,
+                            &hex::encode(post_id),
+                            &key,
+                        )
+                        .await
+                        {
+                            tracing::warn!(error = ?e, "post key memo write failed");
+                        }
+                    }
+                }
+            }
             // The draft's annotations, restated in public about the new post (ANNOTATIONS.md
             // slice 1) - best-effort, like the pins: a label must not unsay the words.
             {
@@ -1970,7 +1992,11 @@ async fn replicate_annotations(
     for (field, value) in data.annotations().fields(draft_id).await? {
         // `published_as` is the draft's private bookkeeping (which post it minted) - a
         // fact about the draft, not a label on the post.
-        if field == store::PUBLISHED_AS || value.trim().is_empty() || !fits(&field, &value) {
+        if field == store::PUBLISHED_AS
+            || field == store::TRUSTED_KEY
+            || value.trim().is_empty()
+            || !fits(&field, &value)
+        {
             continue;
         }
         desired.insert((field, value));

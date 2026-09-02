@@ -7826,3 +7826,43 @@ journal lane collected the newest shelf page wholesale, so a trust-graph vouch c
 gated post's hollow card in a stranger's feed. One filter at the lane (`!r.trusted_only`),
 with the reasoning in place: the speculative lane is the one surface the reader never
 chose. Followers keep their rows and their honest hollow line.
+
+## 2026-09-01 (cont. 5): the generator posts flagged items
+
+Curtis: add "post a trusted-only item" and "post a no-rebroadcast item" to the test-data
+hat. Two new actions (weight 4 each) beside post-in-public, same bucket-then-publish shape,
+carrying `trusted_only: true` / `settled: true` on the publish - so a generated network
+exercises the gates and the hollow cards without hand-posting.
+
+## 2026-09-01 (cont. 6): sealed bodies, gated keys (VISIBILITY.md slice 2b)
+
+Curtis killed the deny-hook design with the right argument - policy at every holder's
+door versus possession - and then pressure-tested the replacement ("isn't a careful key
+the same model as a careful hash?") until the answer was crisp: this hash has public jobs
+and plaintext-at-rest makes every replica a leak point; ciphertext makes availability and
+confidentiality orthogonal. Built end to end: seal_post_body/open_post_body on the private
+lane's blob shape (sentinel epoch), the mint seals when trusted_only (ciphertext behind
+file_hash, keyed plaintext fingerprint in body_hash), the key rides the draft's private
+meta (device-durable, replication-excluded) plus the node's post_keys memo (node gen 38),
+the HTTP door decrypts for trusted readers, and WantKey/Key (fragment tags 8/9) let a
+trusted reader's node earn the key once - released only to dialers the peer ledger ties to
+the author or a trusted subject, with refusal indistinguishable from absence. Cross-node
+acceptance: ciphertext syncs freely, the words appear only after trust. Media twins are
+the standing residual.
+
+## 2026-09-01 (cont. 7): the key lane earns its addressing, the hard way
+
+The cross-node acceptance stayed red through five gates while the key lane learned what
+every other lane already knew, one refusal at a time - each diagnosed from the nodes' own
+debug lines, the last two on a live scratch-pair repro instead of 15-minute ci roundtrips.
+Client side: the delivery-candidate ladder dialed a bare leaf hex; peers_for was empty;
+the root-keyed serving record resolves to the RECOVERY key (an undialable spare); the
+working list is the pull ladder's own - the author's active tree leaves resolved through
+their signed serving records, plus the peer rows and last_via. Server side: the release
+check read an empty peer ledger as "nobody" when it means "not resolved yet" - it now
+derives each allowed party's serving records on demand and asks once more, leaving the
+ledger warm. Both sides keep debug lines (candidate list; refusal with dialer named).
+And per Curtis's overlap check: open_post_body is now one delegation to the private
+lane's decrypt_file via a single-entry epoch ring - the hand-rolled AEAD copy is gone.
+Gate green with the cross-node claim passing: ciphertext syncs freely, the words open
+only after trust, on any node.

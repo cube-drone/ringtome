@@ -19,6 +19,7 @@ mod edgegraph;
 mod error;
 mod fanout;
 mod fragments;
+mod postkeys;
 mod files;
 mod fold;
 mod identity;

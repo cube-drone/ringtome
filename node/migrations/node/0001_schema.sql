@@ -513,6 +513,18 @@ CREATE TABLE notifications (
 CREATE INDEX notifications_by_reader ON notifications (reader_root, updated_ms);
 
 -- ---------------------------------------------------------------------------------------------
+-- Per-post keys for trusted-only bodies (VISIBILITY.md slice 2b). The body is ciphertext
+-- wherever it travels; the KEY is the gated thing, and this memo is who holds it: the
+-- author's node remembers at mint, a trusted reader's node remembers what the key lane
+-- taught it. Never served except through the key-release check.
+CREATE TABLE post_keys (
+    author_root TEXT NOT NULL,
+    doc_id      TEXT NOT NULL,   -- the PUBLIC post, hex
+    key         BLOB NOT NULL,   -- 32 bytes
+    noted_ms    INTEGER NOT NULL,
+    PRIMARY KEY (author_root, doc_id)
+);
+
 -- The outbox: envelopes this node owes to strangers (PROJECT_PLAN, Arrival and Attention -
 -- the DELIVERED path, sender side).
 --

@@ -124,6 +124,14 @@ impl EpochKeys {
         self.keys.get(&epoch).map_or(&[], |v| v.as_slice())
     }
 
+    /// A one-entry ring - the per-post sealing key's shape (VISIBILITY.md slice 2b), and
+    /// what tests hand to `decrypt_file`.
+    pub(crate) fn single(epoch: u64, key: [u8; 32]) -> Self {
+        let mut keys = std::collections::BTreeMap::new();
+        keys.insert(epoch, vec![key]);
+        Self { keys }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (u64, &[u8; 32])> {
         self.keys
             .iter()
@@ -137,13 +145,6 @@ impl EpochKeys {
         }
     }
 
-    /// Test-only constructor: an `EpochKeys` holding a single known key.
-    #[cfg(test)]
-    pub(crate) fn single(epoch: u64, key: [u8; 32]) -> Self {
-        let mut ek = Self::default();
-        ek.insert(epoch, key);
-        ek
-    }
 }
 
 /// Every decodable `key-epoch` entry stored on the identity-public chains.
@@ -574,6 +575,26 @@ pub fn decrypt_file(blob: &[u8], keys: &EpochKeys) -> Option<Vec<u8>> {
         }
     }
     None
+}
+
+/// The sentinel epoch for per-post keys (VISIBILITY.md slice 2b): a trusted-only post's
+/// body is sealed under its own random key, not an era's - the blob's self-describing
+/// epoch field carries this value so no reader ever tries their epoch ring on it.
+pub const POST_KEY_EPOCH: u64 = u64::MAX;
+
+/// Seal a trusted-only post body under its per-post key. Same blob shape as every
+/// encrypted file - `epoch || nonce || ciphertext` - so the store, the caps, and the blob
+/// lane treat it as any other bytes.
+pub fn seal_post_body(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, AppError> {
+    encrypt_file(POST_KEY_EPOCH, key, plaintext)
+}
+
+/// Open a sealed post body with its per-post key. `None` = malformed, wrong key, or not a
+/// post-sealed blob at all. A one-entry ring at the sentinel epoch, so `decrypt_file`'s own
+/// parsing and epoch dispatch do all the work - the private lane's decryption, not a copy
+/// of it (Curtis's overlap check, 2026-09-01).
+pub fn open_post_body(blob: &[u8], key: &[u8; 32]) -> Option<Vec<u8>> {
+    decrypt_file(blob, &EpochKeys::single(POST_KEY_EPOCH, *key))
 }
 
 /// Append one private record under the current epoch, onto `service_id`'s chain (general-private

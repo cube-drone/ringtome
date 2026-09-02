@@ -1853,6 +1853,38 @@ pub(crate) async fn prune_forgotten_peers(node_db: &Db, now: i64) -> Result<u64>
     Ok(n)
 }
 
+/// Does this endpoint serve ANY of these identities, by the peer ledger (signed serving
+/// records and member proofs feed it)? The key-release check's question (VISIBILITY.md
+/// slice 2b): "is the dialing node one that a trusted person's own chain names".
+pub async fn endpoint_serves_any(
+    node_db: &Db,
+    roots: &[String],
+    endpoint_id: &str,
+) -> Result<bool> {
+    if roots.is_empty() {
+        return Ok(false);
+    }
+    let list: Vec<String> = roots
+        .iter()
+        .filter(|r| r.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|r| format!("'{r}'"))
+        .collect();
+    if list.is_empty() {
+        return Ok(false);
+    }
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            &format!(
+                "SELECT 1 FROM identity_peers WHERE endpoint_id = ?1 AND root_pubkey IN ({})",
+                list.join(",")
+            ),
+            (endpoint_id,),
+        )
+        .await
+        .context("checking an endpoint against the peer ledger")?;
+    Ok(row.is_some())
+}
+
 /// Known peer endpoint ids for an identity.
 pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db

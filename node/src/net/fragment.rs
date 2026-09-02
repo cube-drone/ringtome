@@ -91,6 +91,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             answer_for(&state, &author, &doc_id).await
         }
         Some(FragmentMessage::WantDeaths { since }) => deaths_page(&state, since).await,
+        Some(FragmentMessage::WantKey { author, doc_id }) => {
+            answer_key(&state, &conn, &author, &doc_id).await
+        }
         Some(FragmentMessage::WantReplies { author, doc_id, since }) => {
             // The author's thread door (PROJECT_PLAN's Replies slice 6): claims, never words, curated
             // by the author's own bit. A node that does not host this author answers an
@@ -110,6 +113,170 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     send.finish().ok();
     conn.closed().await;
     Ok(())
+}
+
+/// The key-release door (VISIBILITY.md slice 2b). The body is ciphertext wherever it
+/// travels; this 32-byte answer is the only gated thing in the design, and it goes only
+/// to a dialer whose endpoint the peer ledger ties - via signed serving records and
+/// member proofs - to the author themselves or to a persona the author publishes trust
+/// for. "Not here" and "not for you" answer identically: an empty key, so the door leaks
+/// nothing about which it was.
+async fn answer_key(
+    state: &AppState,
+    conn: &Connection,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> FragmentMessage {
+    let refused = FragmentMessage::Key { key: Vec::new() };
+    let author_hex = hex::encode(author);
+    let doc_hex = hex::encode(doc_id);
+    let Ok(Some(key)) = crate::postkeys::lookup(&state.node_db, &author_hex, &doc_hex).await
+    else {
+        return refused;
+    };
+    let dialer = conn.remote_id().to_string();
+    // Who may receive: the author's own devices, and nodes serving any trusted subject.
+    let mut allowed_roots = vec![author_hex.clone()];
+    if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
+        if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
+            allowed_roots.extend(
+                edges
+                    .into_iter()
+                    .filter(|(_, r)| r.edge.trust.is_some())
+                    .map(|(subject, _)| subject),
+            );
+        }
+    }
+    let mut ok = crate::net::sync::endpoint_serves_any(&state.node_db, &allowed_roots, &dialer)
+        .await
+        .unwrap_or(false);
+    if !ok {
+        // An empty ledger is "not resolved yet", never "nobody" - the client lane's own
+        // lesson (the repro's forty polite refusals). Resolve each allowed party's signed
+        // serving records into peer rows on demand - a bounded, one-time cost that leaves
+        // the ledger warm for every later knock - and ask once more.
+        for r in &allowed_roots {
+            crate::net::sync::derive_peers_for(state, r).await;
+        }
+        ok = crate::net::sync::endpoint_serves_any(&state.node_db, &allowed_roots, &dialer)
+            .await
+            .unwrap_or(false);
+    }
+    if ok {
+        FragmentMessage::Key { key: key.to_vec() }
+    } else {
+        tracing::debug!(author = %author_hex, %dialer, allowed = allowed_roots.len(),
+            "key release refused: dialer not in any allowed party's peer ledger");
+        refused
+    }
+}
+
+/// Ask one endpoint for a post key.
+async fn ask_key(
+    state: &AppState,
+    endpoint_id: &str,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> Result<Option<[u8; 32]>> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for a post key: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(
+        &mut send,
+        &FragmentMessage::WantKey {
+            author: *author,
+            doc_id: *doc_id,
+        },
+    )
+    .await?;
+    send.finish().ok();
+    let answer = read_frame(&mut recv).await?;
+    conn.close(0u8.into(), b"done");
+    match answer {
+        Some(FragmentMessage::Key { key }) => Ok(<[u8; 32]>::try_from(key.as_slice()).ok()),
+        _ => Ok(None),
+    }
+}
+
+/// Fetch a trusted-only post's key from whoever serves the author, remembering it on
+/// success so the next body read is a memo hit. `None` is honest: no candidate answered,
+/// or every door judged this node untrusted.
+pub async fn fetch_key(
+    state: &AppState,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> Option<[u8; 32]> {
+    let author_hex = hex::encode(author);
+    // The endpoints this node ACTUALLY dials for the author - the same peer rows every
+    // pull walks - first; the delivery-candidate ladder only as a fallback (its leaf
+    // mapping needs a resolved serving record, which a fresh follower may not hold yet -
+    // the first cut asked only that ladder and dialed a bare leaf hex into "no addressing
+    // information", forty times, politely).
+    // The pull ladder's own candidate list (test_endpoints' "pull" beat is the spec): the
+    // author's ACTIVE LEAVES from the mirrored key tree, each resolved through its signed
+    // serving record to the endpoint actually serving them. (Chasing the bare root here
+    // resolves the root-keyed record, whose endpoint field is the RECOVERY key - forty
+    // polite dials at an undialable spare, in the CI artifact that taught this comment.)
+    let mut endpoints: Vec<String> = Vec::new();
+    for leaf in crate::idface::stored_tree_leaves(state, &author_hex).await {
+        let ep = crate::idface::leaf_via_to_endpoint(state, &author_hex, &leaf).await;
+        if ep != leaf && !endpoints.contains(&ep) {
+            endpoints.push(ep);
+        }
+    }
+    for ep in crate::net::sync::peers_for(&state.node_db, &author_hex)
+        .await
+        .unwrap_or_default()
+    {
+        if !endpoints.contains(&ep) {
+            endpoints.push(ep);
+        }
+    }
+    // The endpoint that ANSWERED for this author before - the ?via hint's memory
+    // (foreign_fetches.last_via), which is how a fresh follower reached them at all -
+    // outranks the ledger: it is the one address proven live for exactly this road.
+    if let Ok(Some((_, Some(via)))) = crate::idface::foreign_fetch_row(state, &author_hex).await {
+        if !endpoints.contains(&via) {
+            endpoints.insert(0, via);
+        }
+    }
+    // An empty ledger is not "nobody serves them" - it is "not resolved yet": the pull
+    // ladder's own rung (resync.rs) derives peer rows from the author's signed serving
+    // record on demand, and the key lane walks the same ladder.
+    if endpoints.is_empty() {
+        crate::net::sync::derive_peers_for(state, &author_hex).await;
+        endpoints = crate::net::sync::peers_for(&state.node_db, &author_hex)
+            .await
+            .unwrap_or_default();
+    }
+    for candidate in crate::net::deliver::candidates(state, &author_hex).await {
+        let ep = crate::idface::leaf_via_to_endpoint(state, &author_hex, &candidate).await;
+        if !endpoints.contains(&ep) {
+            endpoints.push(ep);
+        }
+    }
+    tracing::debug!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
+    for endpoint_id in endpoints {
+        match tokio::time::timeout(FETCH_TIMEOUT, ask_key(state, &endpoint_id, author, doc_id))
+            .await
+        {
+            Ok(Ok(Some(key))) => {
+                if let Err(e) =
+                    crate::postkeys::remember(&state.node_db, &author_hex, &hex::encode(doc_id), &key)
+                        .await
+                {
+                    tracing::debug!(error = ?e, "fetched key not remembered");
+                }
+                return Some(key);
+            }
+            Ok(Ok(None)) => continue,
+            Ok(Err(e)) => tracing::debug!(endpoint = %endpoint_id, error = ?e, "key ask failed"),
+            Err(_) => tracing::debug!(endpoint = %endpoint_id, "key ask timed out"),
+        }
+    }
+    None
 }
 
 /// One page of "what died since N", from the log. Rows whose stored identity fails to parse are

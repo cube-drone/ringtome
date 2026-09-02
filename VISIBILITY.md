@@ -99,3 +99,27 @@ Curtis: "Do trusted-only items show up in discovery? They shouldn't." They did -
 speculative journal lane took the newest page wholesale. Now filtered at the lane:
 followers still get the (hollow, for the untrusted) row because they chose the author;
 the speculative lane, which nobody chose, carries no gated posts at all.
+
+## Slice 2b built (2026-09-01): sealed bodies, gated keys
+
+The deny-hook design is retired before it was built, on Curtis's argument: serve-time
+gating makes every holder an enforcement point, and "many nodes are malicious" is the
+assumption. And against "isn't a careful key the same model as a careful hash": the hash
+already has public jobs (signed beside the title, the ETag, the wants) so it cannot be a
+secret, and even a secret hash leaves plaintext at rest behind every holder's door -
+availability and confidentiality at war. Encryption makes them orthogonal.
+
+Built: a trusted-only body is SEALED at mint under a fresh per-post key (epoch sentinel
+u64::MAX, the private lane's own blob shape). `file_hash` names the ciphertext - public,
+spreadable, harmless; `body_hash` keeps the keyed plaintext fingerprint for verification.
+The key lives on the draft's private meta (`trusted_key`, device-durable, excluded from
+publish replication like `published_as`) and in the node's `post_keys` memo (gen 38). The
+blob lane needs no gate at all. The gated thing is the key: the HTTP door decrypts for
+readers who pass the trust check, and a trusted reader's node earns the key once over the
+fragment lane's `WantKey` door, whose release check ties the dialing endpoint - through
+the peer ledger's signed serving records - to the author or a trusted subject. "Not here"
+and "not for you" answer identically.
+
+Residuals: media twins still mint plaintext (a gated post's pictures are not yet sealed -
+next); key rotation on trust revocation is future-posts-only by the honest-parties floor;
+the no-op publish bounce is skipped for sealed posts (nonce moves the ciphertext hash).

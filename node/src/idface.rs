@@ -401,7 +401,7 @@ pub async fn fetched_via(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Res
     Ok(row.and_then(|(via,)| via))
 }
 
-async fn foreign_fetch_row(
+pub(crate) async fn foreign_fetch_row(
     state: &AppState,
     root_hex: &str,
 ) -> Result<Option<(i64, Option<String>)>, AppError> {
@@ -985,6 +985,37 @@ async fn public_doc_bytes(
         .map_err(AppError::Internal)?
     else {
         return Err(AppError::NotFound(crate::msg!("idface.the-bytes-havent-arrived-here", "the bytes haven't arrived here yet - headers travel ahead of bodies")));
+    };
+    // A sealed body opens at the door (VISIBILITY.md slice 2b): what the store holds and
+    // the network spreads is ciphertext; the trusted reader above has earned the words,
+    // and the key comes from the memo - or, first time, from whoever serves the author,
+    // over the key lane with its own trust check at the far end.
+    let bytes = if trusted_only && !thumb {
+        let doc_bytes: [u8; 16] = hex::decode(doc_hex)
+            .ok()
+            .and_then(|b| b.try_into().ok())
+            .expect("checked above");
+        let key = match crate::postkeys::lookup(&state.node_db, &root_hex, doc_hex)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            Some(k) => Some(k),
+            None => crate::net::fragment::fetch_key(state, &root, &doc_bytes).await,
+        };
+        let Some(key) = key else {
+            return Err(AppError::NotFound(crate::msg!(
+                "idface.the-key-hasnt-arrived",
+                "the key hasn't arrived here yet - it travels only between trusted computers"
+            )));
+        };
+        let Some(plain) = crate::record::private::open_post_body(&bytes, &key) else {
+            return Err(AppError::Internal(anyhow::anyhow!(
+                "a sealed body would not open with its own key"
+            )));
+        };
+        plain
+    } else {
+        bytes
     };
     Ok((
         StatusCode::OK,
