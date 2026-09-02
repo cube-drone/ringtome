@@ -7920,3 +7920,26 @@ ever.
 
 Curtis: on a reply's card the order read thread / tags / in-reply-to. The labels row now
 renders after BOTH context rows - the conversation's where before the post's what.
+
+## 2026-09-02 (cont. 6): sealed posts seal their pictures
+
+Curtis: the trusted-only effect must reach embedded media. save_public_media takes the
+post key and seals body + thumbnail (keyed fingerprints in the header); the bake pass
+mints the key BEFORE the twins so pictures and words share one key; sealed twins are
+per-post - no reuse, no published_as cache; external web embeds refuse with words. The
+gate stops exempting thumbs, the publish memoizes the key under every ref id so both key
+doors answer for pictures, and the permalink now names its refs (public facts off the
+signed header) - which is also what the acceptance walks: trusted bea reads the twin body
+as AVIF, untrusted dana gets 403 on body and thumb alike. makePng moved to helpers.cjs on
+the way (a test file must not be required by another - its describes would run twice).
+
+## 2026-09-02 (cont. 7): the pictures seal, and what the claim caught
+
+The twins acceptance went green - after catching a real gate bug: the body door read
+trusted_only through public_doc, whose text-only filter excludes media, so a sealed twin
+served its ciphertext ungated (200 of sealed bytes to the untrusted). The gate now decodes
+the flag off the signed header entry, which knows every lane. The mechanical makePng move
+to helpers.cjs shed its dependencies one ReferenceError at a time (pngChunk, crc32, zlib,
+assert) - and taught a harness lesson worth keeping: node -e exposes builtins as
+REPL-style globals, so a smoke test there cannot catch a missing require; smokes run as
+module files now, and they exercise the moved bodies, not just their names.

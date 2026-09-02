@@ -7,7 +7,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, makePng } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
 const { sql, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 const { shareArrives } = require("./beat.cjs");
@@ -107,6 +107,59 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
             else await new Promise((res) => setTimeout(res, 400));
         }
         assert.equal(got, "the quiet words", "the key lane opened the sealed body");
+    });
+
+    it("a sealed post's pictures seal too: twin body and thumb open only for the trusted", async () => {
+        // A real image into ada's private shelf, then a marquee post embedding it.
+        const png = makePng(64, 48);
+        const queued = await (
+            await ada(`api/identity/${adaRoot}/docs/binary?title=pic`, {
+                method: "POST",
+                body: png,
+                file: true,
+            })
+        ).json();
+        const media = queued.doc_id;
+        for (let i = 0; i < 60; i++) {
+            const r = await ada(`api/identity/${adaRoot}/docs/${media}/body`);
+            if (r.status === 200) break;
+            await new Promise((res) => setTimeout(res, 400));
+        }
+        const made = await (
+            await ada(`api/identity/${adaRoot}/docs`, {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "sealed picture",
+                    body: `![p](/api/identity/${adaRoot}/docs/${media}/body/p.avif)`,
+                    format: "marquee",
+                }),
+            })
+        ).json();
+        let pub = null;
+        for (let i = 0; i < 30; i++) {
+            const r = await ada(`api/identity/${adaRoot}/docs/${made.doc_id}/publish`, {
+                method: "POST",
+                body: JSON.stringify({ trusted_only: true }),
+            });
+            const t = JSON.parse(await r.text());
+            if (r.status === 200) {
+                pub = t.post_id;
+                break;
+            }
+            await new Promise((res) => setTimeout(res, 400));
+        }
+        assert.ok(pub, "the sealed picture post published");
+        const head = await (await ada(`api/id/${adaRoot}/posts/${pub}`)).json();
+        const twin = (head.refs || [])[0];
+        assert.ok(twin, "the header names its twin");
+        // bea is trusted: picture and thumbnail open.
+        const beaBody = await bea(`id/${adaRoot}/docs/${twin}/body`);
+        assert.equal(beaBody.status, 200, await beaBody.clone().text());
+        assert.equal(beaBody.headers.get("content-type"), "image/avif");
+        // dana is not: body AND thumb refuse - a small copy of a sealed image is sealed.
+        const dana = await makeUserFetch({ prefix: "trustdana" });
+        assert.equal((await dana(`id/${adaRoot}/docs/${twin}/body`)).status, 403);
+        assert.equal((await dana(`id/${adaRoot}/docs/${twin}/thumb`)).status, 403);
     });
 
     // The multi-hop claim (Curtis, 2026-09-02): a rebroadcast spreads the POINTER between

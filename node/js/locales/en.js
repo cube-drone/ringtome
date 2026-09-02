@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 535 phrases across 44 files.
+// 537 phrases across 44 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -385,6 +385,8 @@ export default {
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.edit': 'edit',
     'postentry.thread': 'thread',
+    'postentry.in-reply-to-name': 'in reply to {name}',
+    'postentry.in-reply-to': 'in reply to',
     'postentry.click-to-agree': 'said by {names} - click to agree, with your own name on it',
     'postentry.the-authors-label': "the author's label",
     'postentry.label-by-name': 'label by {name}',
@@ -394,8 +396,6 @@ export default {
     'postentry.tag-placeholder': 'a tag',
     'postentry.say-what-this-post-is': 'say what this post is - the label goes on your own chain, with your name on it',
     'postentry.plus-tag': '+ tag',
-    'postentry.in-reply-to-name': 'in reply to {name}',
-    'postentry.in-reply-to': 'in reply to',
     'postentry.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
     'postentry.the-whole-thing': 'the whole thing',
@@ -548,6 +548,7 @@ export default {
     'idface.no-such-persona-here-8': 'no such persona here',
     'idface.no-such-persona-here-9': 'no such persona here',
     'idface.that-isnt-a-document-id': "that isn't a document id",
+    'idface.no-such-post-here-2': 'no such post here',
     'idface.no-such-post-here': 'no such post here',
     'idface.no-such-persona-here-10': 'no such persona here',
     'idface.no-such-persona-here-11': 'no such persona here',
@@ -583,6 +584,7 @@ export default {
     'record.bake.no-such-document': 'no such document',
     'record.bake.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
     'record.bake.post-embeds-too-many-documents': 'this post embeds {count} documents - one post may carry {cap}. A collection this size wants to be several posts.',
+    'record.bake.trusted-cant-bake-external': "a trusted-only post can't bake media from the open web yet - save the image and attach it directly",
     'record.bake.post-media-over-budget': "this post's media adds up to {total} - one post may carry {cap}. Split it across several posts.",
 
     // --- node/src/record/documents.rs ---

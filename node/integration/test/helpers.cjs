@@ -1,3 +1,4 @@
+const assert = require("node:assert");
 /*
     Test fixtures built on top of the raw fetch wrapper.
 
@@ -91,4 +92,59 @@ const settleWith = (defaultTries) => async (fn, tries = defaultTries) => {
     return null;
 };
 
-module.exports = { makeUserFetch, uniqueUsername, decodeCode, settleWith };
+function pngChunk(type, data) {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+}
+
+function crc32(buf) {
+    let c = ~0;
+    for (let i = 0; i < buf.length; i++) {
+        c ^= buf[i];
+        for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+    }
+    return (~c) >>> 0;
+}
+
+const zlib = require("node:zlib");
+
+function makePng(width, height) {
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0);
+    ihdr.writeUInt32BE(height, 4);
+    ihdr[8] = 8; // bit depth
+    ihdr[9] = 2; // color type 2 = truecolor RGB
+    const raw = Buffer.alloc(height * (1 + width * 3));
+    let o = 0;
+    for (let y = 0; y < height; y++) {
+        raw[o++] = 0; // filter: none
+        for (let x = 0; x < width; x++) {
+            raw[o++] = Math.floor((x * 255) / width);
+            raw[o++] = Math.floor((y * 255) / height);
+            raw[o++] = 128;
+        }
+    }
+    return Buffer.concat([
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        pngChunk("IHDR", ihdr),
+        pngChunk("IDAT", zlib.deflateSync(raw)),
+        pngChunk("IEND", Buffer.alloc(0)),
+    ]);
+}
+
+// AVIF is ISOBMFF: an `ftyp` box at offset 4, with an `avif`/`avis` brand near the head.
+function assertIsAvif(buf, why) {
+    assert.ok(buf.length > 12, `${why}: non-empty`);
+    assert.equal(buf.slice(4, 8).toString("ascii"), "ftyp", `${why}: ISOBMFF ftyp box`);
+    const head = buf.slice(0, 64).toString("ascii");
+    assert.ok(head.includes("avif") || head.includes("avis"), `${why}: AVIF brand present`);
+}
+
+// Poll the owner's ingest queue until the job finishes. Transcode is async (quarantine -> queue
+// -> AV1 encode), so callers wait for `done` before the document has a version.
+
+module.exports = { makeUserFetch, uniqueUsername, decodeCode, settleWith, makePng, assertIsAvif };

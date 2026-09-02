@@ -206,6 +206,21 @@ pub async fn publish(
         )));
     }
 
+    // The post's sealing key, minted BEFORE the twins so the pictures seal under the same
+    // key as the words. External web media cannot seal at bake time (the background job
+    // has no post in hand), and a gated post silently shipping a public copy of its own
+    // image would be the leak this whole design exists to close - refuse with words.
+    let post_key = if trusted_only {
+        Some(docs.post_key_for(doc_id).await?)
+    } else {
+        None
+    };
+    if post_key.is_some() && refs.iter().any(|r| matches!(r, MediaRef::External { .. })) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "record.bake.trusted-cant-bake-external",
+            "a trusted-only post can't bake media from the open web yet - save the image and attach it directly"
+        )));
+    }
     let mut swaps: Vec<(String, String)> = Vec::new();
     let mut baked: Vec<[u8; 16]> = Vec::new();
     let mut items: Vec<BakeItem> = Vec::new();
@@ -215,7 +230,7 @@ pub async fn publish(
             MediaRef::PrivateDoc { target, doc_id: media } => {
                 // Private twins bake inline: the bytes are local and already crushed, so this
                 // is decrypt-and-remint - milliseconds, no queue, no modal dwell.
-                match docs.bake_private_media(media).await {
+                match docs.bake_private_media(media, post_key).await {
                     Ok((public, fmt)) => {
                         swaps.push((target.clone(), public_media_target(root_hex, &public, fmt)));
                         baked.push(public);
@@ -534,7 +549,7 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
     // The source URL is the title: v1's provenance-on-the-artifact, until the public header
     // grows a real field at the next deliberate wire break (the registry row is the durable
     // record meanwhile).
-    crate::record::documents::save_public_media(&db, &leaf, &state.files, url, crushed)
+    crate::record::documents::save_public_media(&db, &leaf, &state.files, url, crushed, None)
         .await
         .map_err(|e| format!("minting: {e}"))
 }

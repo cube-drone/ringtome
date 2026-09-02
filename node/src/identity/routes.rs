@@ -1492,6 +1492,29 @@ async fn publish_handler(
                         {
                             tracing::warn!(error = ?e, "post key memo write failed");
                         }
+                        // The twins seal under the same key: memo it under THEIR ids too,
+                        // so the key doors (HTTP and WantKey alike) answer for a picture
+                        // exactly as they answer for the words.
+                        if let Ok(Some(entry)) =
+                            crate::record::documents::public_header_entry(data.db(), &post_id).await
+                        {
+                            if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
+                                if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
+                                    for r in &h.refs {
+                                        if let Err(e) = crate::postkeys::remember(
+                                            &state.node_db,
+                                            &root,
+                                            &hex::encode(r),
+                                            &key,
+                                        )
+                                        .await
+                                        {
+                                            tracing::warn!(error = ?e, "twin key memo write failed");
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2645,7 +2668,7 @@ async fn set_avatar_handler(
     let signer = super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
         .await?;
     let doc_id =
-        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested)
+        crate::record::documents::save_public_media(&db, &signer, &state.files, "avatar", ingested, None)
             .await?;
     data.profile().set("avatar", &hex::encode(doc_id)).await?;
     Ok(Json(AvatarResponse {

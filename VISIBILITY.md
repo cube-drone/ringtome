@@ -140,3 +140,15 @@ published trust names the reader (or the reader is the author) - checked live, s
 APPEARS the moment trust is published, and fails closed where the author is unmirrored.
 The journal still carries every row (the memo knows; the surface chooses), and the
 permalink keeps its honest line for a direct visit.
+
+## Slice 2b addendum (2026-09-02): the pictures seal too
+
+The media-twins residual closes. A trusted-only post's embedded images and audio bake as
+SEALED twins - body and thumbnail both, under the same per-post key as the words, with
+keyed plaintext fingerprints - minted fresh per post (a sealed twin cannot be shared
+across posts: different posts, different keys) and never cached into `published_as`. The
+key doors answer for twin ids exactly as for the post (the publish memoizes the key under
+every ref). The thumb exemption in the body gate died here: a text post's public face
+never had a thumb, and a sealed image's thumbnail is the image. External web media in a
+trusted-only post is refused at bake with honest words - the background job has no post
+key in hand, and a silent public copy would be the leak this design closes.

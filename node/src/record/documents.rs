@@ -596,31 +596,46 @@ pub async fn save_public_media(
     files: &crate::files::FileStore,
     title: &str,
     ingested: crate::media::Ingested,
+    post_key: Option<[u8; 32]>,
 ) -> Result<[u8; 16], AppError> {
     let doc_id = new_doc_id();
+    // A trusted-only post's pictures seal under the SAME per-post key as its words
+    // (VISIBILITY.md: the twin's body AND its thumbnail - a small copy of a gated image
+    // is the gated image), with the keyed plaintext fingerprint where the content hash
+    // would have leaked one.
+    let stored_body = match &post_key {
+        Some(key) => crate::record::private::seal_post_body(key, &ingested.body)?,
+        None => ingested.body.clone(),
+    };
+    let plain_body_hash = match &post_key {
+        Some(_) => DocHeaderPlain::body_hash(&doc_id, &ingested.body),
+        None => *crate::files::FileStore::public_hash(&ingested.body).as_bytes(),
+    };
     let body_hash = files
-        .put_public(&ingested.body)
+        .put_public(&stored_body)
         .await
         .map_err(AppError::Internal)?;
     let mut thumb_hash = None;
     if let Some(thumb) = &ingested.thumb_avif {
+        let stored_thumb = match &post_key {
+            Some(key) => crate::record::private::seal_post_body(key, thumb)?,
+            None => thumb.clone(),
+        };
         thumb_hash = Some(
             *files
-                .put_public(thumb)
+                .put_public(&stored_thumb)
                 .await
                 .map_err(AppError::Internal)?
                 .as_bytes(),
         );
     }
     let header = DocHeaderPlain {
-        trusted_only: false,
         doc_id,
         parents: vec![],
         file_hash: *body_hash.as_bytes(),
-        // Public bodies are plaintext and content-addressed: the file hash IS the body's
-        // honest fingerprint (the private lane's keyed member-secret hash has no public
-        // meaning to protect here).
-        body_hash: *body_hash.as_bytes(),
+        // Public bodies are plaintext and content-addressed; sealed twins carry the keyed
+        // plaintext fingerprint instead, the text mint's own rule.
+        body_hash: plain_body_hash,
         title: title.to_string(),
         format: ingested.format.to_wire(),
         width: ingested.width,
@@ -633,6 +648,7 @@ pub async fn save_public_media(
         reply_to: None, // media twins ride their post; the post carries the thread link
         thread_root: None,
         settled: false, // the post carries the wish; its media twins are plumbing
+        trusted_only: post_key.is_some(),
     };
     let payload = header
         .encode()

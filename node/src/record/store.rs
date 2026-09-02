@@ -1003,31 +1003,8 @@ impl Documents<'_> {
             return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict")));
         }
         let resolved = self.resolved(doc).await?;
-        // The per-post key (slice 2b): minted once, kept on the draft's private meta so
-        // every member device can serve the body, reused verbatim on re-publication.
         let post_key: Option<[u8; 32]> = if trusted_only {
-            let existing = self
-                .store
-                .annotations()
-                .field(doc_id, TRUSTED_KEY)
-                .await?
-                .and_then(|v| hex::decode(v).ok())
-                .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
-            Some(match existing {
-                Some(k) => k,
-                None => {
-                    let mut k = [0u8; 32];
-                    {
-                        use rand::RngCore;
-                        rand::rngs::OsRng.fill_bytes(&mut k);
-                    }
-                    self.store
-                        .annotations()
-                        .set_field(doc_id, TRUSTED_KEY, &hex::encode(k))
-                        .await?;
-                    k
-                }
-            })
+            Some(self.post_key_for(doc_id).await?)
         } else {
             None
         };
@@ -1129,6 +1106,35 @@ impl Documents<'_> {
         Ok(post)
     }
 
+    /// The per-post sealing key for a trusted-only publish (VISIBILITY.md slice 2b):
+    /// minted once onto the draft's private meta - device-durable, replication-excluded -
+    /// and reused verbatim ever after. Shared by the text mint and every twin bake, so one
+    /// key opens the whole post.
+    pub async fn post_key_for(&self, doc_id: &[u8; 16]) -> Result<[u8; 32], AppError> {
+        let existing = self
+            .store
+            .annotations()
+            .field(doc_id, TRUSTED_KEY)
+            .await?
+            .and_then(|v| hex::decode(v).ok())
+            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
+        Ok(match existing {
+            Some(k) => k,
+            None => {
+                let mut k = [0u8; 32];
+                {
+                    use rand::RngCore;
+                    rand::rngs::OsRng.fill_bytes(&mut k);
+                }
+                self.store
+                    .annotations()
+                    .set_field(doc_id, TRUSTED_KEY, &hex::encode(k))
+                    .await?;
+                k
+            }
+        })
+    }
+
     /// Bake one of the author's PRIVATE media documents into its public twin - media
     /// publication through the same one door as text (copy-don't-flip, `published_as` reuse).
     /// The bytes were crushed once at upload; this decrypts and re-mints them, never
@@ -1137,6 +1143,7 @@ impl Documents<'_> {
     pub async fn bake_private_media(
         &self,
         media_doc: &[u8; 16],
+        post_key: Option<[u8; 32]>,
     ) -> Result<([u8; 16], crate::record::documents::Format), AppError> {
         let view = self.all().await?;
         let doc = view
@@ -1158,16 +1165,21 @@ impl Documents<'_> {
                 return Err(AppError::BadRequest(crate::msg!("record.store.an-embedded-target-is-not", "an embedded target is not a media document")));
             }
         }
-        // Already baked by an earlier post? The same twin serves every embed of it.
-        if let Some(existing) = self
-            .store
-            .annotations()
-            .field(media_doc, PUBLISHED_AS)
-            .await?
-            .and_then(|v| hex::decode(v).ok())
-            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
-        {
-            return Ok((existing, format));
+        // Already baked by an earlier post? The same twin serves every embed of it -
+        // PLAINTEXT twins only. A sealed twin is per-post by construction (each post has
+        // its own key), so a trusted bake never reuses and never caches: fresh twin, no
+        // `published_as`, and the plaintext cache stays unpoisoned for open posts.
+        if post_key.is_none() {
+            if let Some(existing) = self
+                .store
+                .annotations()
+                .field(media_doc, PUBLISHED_AS)
+                .await?
+                .and_then(|v| hex::decode(v).ok())
+                .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+            {
+                return Ok((existing, format));
+            }
         }
         let body = self.body(head).await?.ok_or_else(|| {
             AppError::BadRequest(crate::msg!("record.store.this-medias-bytes-havent-arrived", "this media's bytes haven't arrived on this computer yet"))
@@ -1191,12 +1203,15 @@ impl Documents<'_> {
             &self.store.files,
             &head.header.title,
             ingested,
+            post_key,
         )
         .await?;
-        self.store
-            .annotations()
-            .set_field(media_doc, PUBLISHED_AS, &hex::encode(public))
-            .await?;
+        if post_key.is_none() {
+            self.store
+                .annotations()
+                .set_field(media_doc, PUBLISHED_AS, &hex::encode(public))
+                .await?;
+        }
         Ok((public, format))
     }
 

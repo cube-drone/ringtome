@@ -900,9 +900,23 @@ async fn public_doc_bytes(
                 match fragment_first {
                     Some(facts) => Some(facts),
                     None => {
-                        let gated = crate::record::documents::public_doc(&db, &doc_id)
+                        // Off the HEADER, not the text-only shelf view: a media twin is
+                        // filtered out of `public_doc` by format, which left sealed
+                        // pictures serving their ciphertext ungated (caught by the twins
+                        // acceptance - 200 of sealed bytes for the untrusted).
+                        let gated = match crate::record::documents::public_header_entry(&db, &doc_id)
                             .await?
-                            .is_some_and(|p| p.trusted_only);
+                        {
+                            Some(entry) => match &entry.entry().payload {
+                                ringtome_proto::Payload::Inline(payload) => {
+                                    ringtome_proto::registry::DocHeaderPlain::decode(payload)
+                                        .map(|h| h.trusted_only)
+                                        .unwrap_or(false)
+                                }
+                                _ => false,
+                            },
+                            None => false,
+                        };
                         crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
                             ServeFacts {
                                 file_hash: h.file_hash,
@@ -924,7 +938,10 @@ async fn public_doc_bytes(
     // qualifies when any persona on their session is the author, or holds any published
     // trust band on the author's own chain - checked at serve time, so trust published
     // later opens older posts.
-    if trusted_only && !thumb {
+    // The thumb exemption died with the twins slice (VISIBILITY.md): a sealed document's
+    // thumbnail is a small copy of the sealed content. A text post's public face - title,
+    // date - never had a thumb to lose, and untrusted feeds hide the card anyway.
+    if trusted_only {
         let mut allowed = false;
         if let Some(sess) = session {
             let mine: Vec<String> =
@@ -990,7 +1007,7 @@ async fn public_doc_bytes(
     // the network spreads is ciphertext; the trusted reader above has earned the words,
     // and the key comes from the memo - or, first time, from whoever serves the author,
     // over the key lane with its own trust check at the far end.
-    let bytes = if trusted_only && !thumb {
+    let bytes = if trusted_only {
         let doc_bytes: [u8; 16] = hex::decode(doc_hex)
             .ok()
             .and_then(|b| b.try_into().ok())
@@ -1392,10 +1409,13 @@ pub async fn id_post(
         .ok_or_else(|| {
             AppError::BadRequest(crate::msg!("idface.that-isnt-a-document-id", "that isn't a document id"))
         })?;
-    let post = match state.user_dbs.get(&root_hex).await {
-        Ok(Some(db)) => crate::record::documents::public_doc(&db, &doc_id).await?,
-        _ => None,
+    let db_for_labels = match state.user_dbs.get(&root_hex).await {
+        Ok(Some(db)) => db,
+        _ => {
+            return Err(AppError::NotFound(crate::msg!("idface.no-such-post-here-2", "no such post here")));
+        }
     };
+    let post = crate::record::documents::public_doc(&db_for_labels, &doc_id).await?;
     match post {
         Some(p) => {
             let n = crate::replies::known_counts(
@@ -1411,15 +1431,31 @@ pub async fn id_post(
             // The author's own public annotations ride the permalink read (ANNOTATIONS.md
             // slice 1) - from the author's shelf, so a mirror-holding node answers too.
             let mut v = post_json(&p, n);
+            // The refs are public facts (they ride the signed header and every fragment);
+            // naming them here lets a reader's renderer - and the twins acceptance - ask
+            // for exactly the documents the post embeds.
+            if let Ok(Some(entry)) =
+                crate::record::documents::public_header_entry(&db_for_labels, &doc_id).await
+            {
+                if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
+                    if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
+                        v["refs"] = serde_json::json!(h
+                            .refs
+                            .iter()
+                            .map(hex::encode)
+                            .collect::<Vec<_>>());
+                    }
+                }
+            }
             // The author's own statements straight off their shelf (read-your-writes for a
             // fresh publish), merged with everything the memo knows - others' labels with
             // their annotator (ANNOTATIONS.md slice 2). Names ride from the byline cache.
             let doc_hex = hex::encode(p.doc_id);
             let mut labels: Vec<(String, String, String)> = Vec::new();
-            if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
-                if let Ok(rows) = crate::record::imaol::annotations_of(&db, &root_hex, &p.doc_id).await {
-                    labels.extend(rows.into_iter().map(|r| (root_hex.clone(), r.key, r.value)));
-                }
+            if let Ok(rows) =
+                crate::record::imaol::annotations_of(&db_for_labels, &root_hex, &p.doc_id).await
+            {
+                labels.extend(rows.into_iter().map(|r| (root_hex.clone(), r.key, r.value)));
             }
             if let Ok(known) = crate::annotations::for_posts(
                 &state.node_db,
