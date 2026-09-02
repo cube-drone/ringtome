@@ -214,7 +214,7 @@ fn user_db_opens_are_deliberate() {
         ("record/documents.rs", 1),
         ("record/store.rs", 2),
         ("identity/adoption.rs", 2),
-        ("identity/routes.rs", 7),
+        ("identity/routes.rs", 8),
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
         ("replies.rs", 4),
         ("annotations.rs", 2),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)

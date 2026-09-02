@@ -1158,7 +1158,16 @@ pub async fn journalable(
     // hours proving healthy layers healthy instead of reading which branch swallowed the doc.
     if let Ok(Some(f)) = held(&state.node_db, author_root, &doc_hex).await {
         tracing::debug!(author = %author_root, doc = %doc_hex, "journalable: held, journaling");
-        return Some(row_of(&f, &doc_hex));
+        let mut row = row_of(&f, &doc_hex);
+        // The shelf's thin row knows no header flags, and "corrected later" never came for
+        // this road (the two-hop claim caught a shared sealed post journaling flagless, so
+        // the card offered a share button and no honest hollow line). The stored entry IS
+        // the header - decode what we already hold and journal the truth.
+        if let Ok(Some(h)) = held_header(&state.node_db, author_root, &doc_hex).await {
+            row.settled = h.settled;
+            row.trusted_only = h.trusted_only;
+        }
+        return Some(row);
     }
     // Buried already? Then there is nothing to journal and nobody worth dialling. `remember` is
     // what makes this safe rather than merely tidy - but a stale sharer's pointer is re-folded

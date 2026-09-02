@@ -7866,3 +7866,35 @@ And per Curtis's overlap check: open_post_body is now one delegation to the priv
 lane's decrypt_file via a single-entry epoch ring - the hand-rolled AEAD copy is gone.
 Gate green with the cross-node claim passing: ciphertext syncs freely, the words open
 only after trust, on any node.
+
+## 2026-09-02: the multi-hop sealed-share claim
+
+Curtis asked for it outright: a trusted reader shares the sealed post, the pointer crosses
+two hops (bea -> cal on HOST_C -> eve on HOST_E) carrying title, date, and the flag; the
+body answers 200 to nobody untrusted at any hop; carriage never requires reading (cal
+relays a fragment it cannot open - which corrects an earlier claim that re-sharing
+self-limits to readers: the mint requires a held VERSION, not a readable one, and under
+sealed bodies that is a feature); and when ada trusts eve, the key lane opens the words
+two hops out - while cal, the relay in the middle, still cannot read what it carried.
+(The first append of these claims died on a python quoting error and I gated an unchanged
+tree - caught because the green run reported the OLD test count.)
+
+## 2026-09-02 (cont.): the two-hop claim goes green, and what it caught
+
+Both hop claims pass (743). On the way they caught one real product bug and one real
+semantic: share-journaled rows dropped the header flags (the fragment path built rows
+from the thin shelf columns and hardcoded false - so a shared sealed post offered a share
+button and no honest hollow line; journalable now decodes the held entry and journals the
+truth), and key release requires the author to have MET the trusted reader (the release
+check resolves the subject serving records from their mirrored chains; the app dial-from-
+profile flow guarantees the meeting, and the test now performs it). VISIBILITY.md carries
+the note.
+
+## 2026-09-02 (cont. 2): the feed hides what it cannot say
+
+Curtis: "I'd prefer it if the feed didn't show feed items I can't see." The feed read now
+filters trusted-only rows by the author's own published trust, live - page-scoped, memoized
+per distinct flagged author, failing closed with the body gate. The two-hop claims flipped
+to the new truth: the journal row lands flag-intact (asserted by sql - the memo knows), the
+feed API shows the untrusted nothing, and trust makes the same row surface, title and all,
+beside the opening body. The permalink's honest hollow line stays for direct visits.

@@ -739,6 +739,41 @@ async fn feed_handler(
     let more = rows.len() as i64 > page;
     rows.truncate(page as usize);
 
+    // A sealed post this reader cannot open is not SHOWN at all (Curtis, 2026-09-02: "I'd
+    // prefer it if the feed didn't show feed items I can't see") - a hollow card is just an
+    // advertisement for a refusal. Checked live against the author's published trust, so
+    // the row appears the moment the author trusts this reader; fails closed when the
+    // author's chains are not mirrored here, exactly as the body gate would. The author-db
+    // opens are bounded by the page's DISTINCT flagged authors - ordinarily zero.
+    {
+        let mut trusted_here: std::collections::HashMap<String, bool> = Default::default();
+        let mut keep = Vec::with_capacity(rows.len());
+        for r in rows {
+            if !r.trusted_only || r.author_root == root {
+                keep.push(r);
+                continue;
+            }
+            let ok = match trusted_here.get(&r.author_root) {
+                Some(v) => *v,
+                None => {
+                    let v = match state.user_dbs.get(&r.author_root).await {
+                        Ok(Some(db)) => crate::record::imaol::published_edges(&db)
+                            .await
+                            .map(|e| e.get(&root).is_some_and(|row| row.edge.trust.is_some()))
+                            .unwrap_or(false),
+                        _ => false,
+                    };
+                    trusted_here.insert(r.author_root.clone(), v);
+                    v
+                }
+            };
+            if ok {
+                keep.push(r);
+            }
+        }
+        rows = keep;
+    }
+
     // Who else passed each of these along - two indexed node.db reads for the whole page, never
     // per row (`fanout::followed_sharers` argues for deriving this rather than storing it).
     let sharers = crate::fanout::followed_sharers(&state.node_db, &root, &rows)

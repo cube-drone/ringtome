@@ -123,3 +123,20 @@ and "not for you" answer identically.
 Residuals: media twins still mint plaintext (a gated post's pictures are not yet sealed -
 next); key rotation on trust revocation is future-posts-only by the honest-parties floor;
 the no-op publish bounce is skipped for sealed posts (nonce moves the ciphertext hash).
+
+## Note (2026-09-02): key release requires having MET the trusted reader
+
+The release check ties a dialing endpoint to a trusted persona through that persona s own
+signed serving records, resolved from their identity chain - so an author who publishes
+trust for a root their node has never fetched leaves that reader s key asks refused until
+the chains are met. The app makes this a non-case (trust is dialed from a profile page,
+which is the meeting), and the two-hop acceptance now performs the same ceremony.
+
+## Amendment (2026-09-02): the feed never shows a sealed post its reader cannot open
+
+Curtis: a hollow "shares these words only with people they trust" card in the feed is
+worse than nothing. The feed read now drops trusted-only rows unless the author's
+published trust names the reader (or the reader is the author) - checked live, so the row
+APPEARS the moment trust is published, and fails closed where the author is unmirrored.
+The journal still carries every row (the memo knows; the surface chooses), and the
+permalink keeps its honest line for a direct visit.
