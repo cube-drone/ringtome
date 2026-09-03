@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 532 phrases across 43 files.
+// 531 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -606,7 +606,6 @@ export default {
     'record.store.this-post-has-settled': 'this post has settled - posts can be edited for a day, then what you said is what you said. Take it down and post afresh if it needs changing.',
     'record.store.an-embedded-media-document-is': 'an embedded media document is missing',
     'record.store.embedded-media-has-no-readable': 'embedded media has no readable head',
-    'record.store.video-cant-be-baked-into': "video can't be baked into a post yet - image and audio only for now",
     'record.store.an-embedded-target-is-not': 'an embedded target is not a media document',
     'record.store.this-medias-bytes-havent-arrived': "this media's bytes haven't arrived on this computer yet",
     'record.store.annotation-value-exceeds-bytes-past': 'annotation value exceeds {limit} bytes: past that, a description is becoming another document - write one and reference it',

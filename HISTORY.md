@@ -8142,3 +8142,17 @@ the parser and markup crates pinned `=0.7.1`, and all seven npm packages `^0.7.1
 `@cube-drone/marquee-codemirror` a few minutes behind the others, held at `^0.7.0` until its
 publish landed (the install refuses the whole tree over one missing version). Ringtome's
 own media table stays in front of the profile regardless.
+
+## 2026-09-03 (cont.): video in public posts, the private half
+
+Curtis: "the next step is video that we've already encoded, a relatively easy one to share
+across the internet." It was: the 2026-08-06 scope line had kept video out of the bake over
+the EXTERNAL case (a video URL the node cannot decode), and the private case - bytes the
+browser laundered and the ingest crushed to AV1-in-WebM with a poster - is decrypt-and-remint
+like a picture's. `bake_private_media` admits `WebmAv1`; `save_public_media` already carried
+dimensions, duration, and the poster as the twin's thumbnail, sealed under a trusted post's
+key. The external refusal now says what it means ("upload the video instead"). Acceptance:
+the opaque squirrel gif from sample_media crushes to video/webm with a poster, a trusted-only
+post bakes a sealed twin (video for the author and the trusted reader, the door and no poster
+for a stranger), and an open post bakes a separate plaintext twin served to anyone. Left in
+NEXT_STEPS: the external half, and the loop/muted/autoplay treatment for silent animations.

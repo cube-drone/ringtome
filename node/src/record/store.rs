@@ -1208,7 +1208,7 @@ impl Documents<'_> {
     /// publication through the same one door as text (copy-don't-flip, `published_as` reuse).
     /// The bytes were crushed once at upload; this decrypts and re-mints them, never
     /// re-encodes. Returns the public doc and its format (the embed rewrite needs the
-    /// extension). Video is refused for now - the 2026-08-06 scope line.
+    /// extension). Video bakes since 2026-09-03; the external video URL is what stays refused.
     pub async fn bake_private_media(
         &self,
         media_doc: &[u8; 16],
@@ -1223,13 +1223,18 @@ impl Documents<'_> {
             .display_head()
             .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.embedded-media-has-no-readable", "embedded media has no readable head")))?;
         let format = crate::record::documents::Format::from_wire(head.header.format);
+        // Video joined the twins on 2026-09-03 (Curtis: "video that we've already encoded, a
+        // relatively easy one to share across the internet"). The 2026-08-06 scope line kept
+        // it out over the EXTERNAL case - a video URL the node cannot decode - and this is
+        // the other case: bytes the browser laundered and the ingest already crushed to AV1
+        // in WebM, with a poster. The twin is decrypt-and-remint like a picture's, and under
+        // a trusted post the body and the poster seal under the post key exactly as a
+        // picture's body and thumbnail do.
         match format {
             crate::record::documents::Format::Avif
             | crate::record::documents::Format::Apng
-            | crate::record::documents::Format::OggOpus => {}
-            crate::record::documents::Format::WebmAv1 => {
-                return Err(AppError::BadRequest(crate::msg!("record.store.video-cant-be-baked-into", "video can't be baked into a post yet - image and audio only for now")));
-            }
+            | crate::record::documents::Format::OggOpus
+            | crate::record::documents::Format::WebmAv1 => {}
             _ => {
                 return Err(AppError::BadRequest(crate::msg!("record.store.an-embedded-target-is-not", "an embedded target is not a media document")));
             }

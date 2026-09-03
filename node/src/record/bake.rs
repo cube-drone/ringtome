@@ -543,8 +543,11 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
     .map_err(|e| format!("bake worker died: {e}"))?
     .map_err(|te| format!("couldn't process these bytes: {te}"))?;
 
+    // The node cannot decode the codec zoo a video URL arrives in (that laundering is the
+    // browser's job at upload - video-ingest/README.md), so an external video stays refused
+    // with the road named. A video you UPLOADED bakes fine (2026-09-03).
     if crushed.format == crate::record::documents::Format::WebmAv1 {
-        return Err("video can't be baked into a post yet - image and audio only for now".into());
+        return Err("a video at a web address can't be fetched and prepared by this computer yet - upload the video instead and embed that".into());
     }
 
     // Mint under the node's own leaf for this root - the session-free path the ingest worker
