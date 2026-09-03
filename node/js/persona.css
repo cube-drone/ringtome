@@ -974,14 +974,6 @@ article:has(.label-emoji-strip) {
     position: relative;
     z-index: 40;
 }
-/* A scheduled post's badge (PUBLISH.md): peach, the sunset before the post. */
-.feed-entry-scheduled {
-    background: var(--peach);
-    color: var(--dock-text);
-    border-radius: 999px;
-    padding: 0.1rem 0.55rem;
-    font-size: 0.72rem;
-}
 /* The settled wish (PROJECT_PLAN's Post visibility): the composer's checkbox and the post page's quiet word. */
 .feed-settle {
     display: flex;
@@ -1460,6 +1452,22 @@ article:has(.label-emoji-strip) {
     color: var(--ink-soft);
     text-decoration: underline dotted;
     text-underline-offset: 0.15em;
+}
+/* A scheduled post's badge (PUBLISH.md): peach, the sunset before the post. Below the
+ * plain `when` rule on purpose: same specificity, so the later one wins the ink - it sat
+ * above it once and the light gray won (Curtis, 2026-09-02). */
+.feed-entry-scheduled {
+    background: var(--peach);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.72rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+}
+.feed-entry-scheduled svg {
+    font-size: 1.25em;
 }
 
 /* The banner sits flush in the card; its own page-margins don't apply here.

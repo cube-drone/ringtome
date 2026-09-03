@@ -61,6 +61,7 @@ import {
     LockSimple,
     Megaphone,
     Bell,
+    ClockCountdown,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -138,6 +139,8 @@ export const Icons = {
     trustPublic: Globe,
     trustPrivate: LockSimple,
     path: Path,
+    // A post waiting for its day (PUBLISH.md): the clock counting down.
+    scheduled: ClockCountdown,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

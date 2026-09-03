@@ -8047,3 +8047,14 @@ it, which is the deliberate end of the grace (PUBLISH.md ruling 9). The feed jou
 `dated_ms` and `minted_ms` (node gen 39; fragment rows know no genesis and say 0), feed items
 and the shelf carry both, and `isBackdated` - a claim more than a minute before the mint -
 styles the stamp italic with a dotted underline and the real moment on hover.
+
+Badge polish (Curtis: light gray on orange "not enough contrast"): the scheduled badge is
+dark ink on peach now, and wears the clock-countdown icon - `Icons.scheduled`, the glyph
+PUBLISH.md slice 3 will reuse on Writer's rows.
+The badge's ink then did not take (Curtis rebuilt, still light gray): the scheduled rule sat
+ABOVE the plain `.feed-entry-when` rule at equal specificity, so the later rule won the
+color. Moved below it, with the reason written beside it.
+
+The card's actions slot (Curtis: "no padding between them, nor... from the datetime"): the
+banner's actions span was a bare inline span, so the stamp and the buttons sat flush. It is
+an inline-flex row with a half-rem gap now (person.css).

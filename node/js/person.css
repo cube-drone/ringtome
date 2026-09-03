@@ -123,6 +123,11 @@
 .person-banner-actions {
     margin-left: auto;
     flex-shrink: 0;
+    /* A row with air in it: the post's date, then its buttons, used to sit flush against
+     * each other (Curtis, 2026-09-02). */
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 /* The card: everything about them, and everything between you. */

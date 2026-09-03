@@ -740,7 +740,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     via: [],
                 }}
                 actions=${html`${item.scheduled
-                        ? html`<span class="feed-entry-when feed-entry-scheduled">${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
+                        ? html`<span class="feed-entry-when feed-entry-scheduled"><${Icons.scheduled} /> ${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
                         : backdated
                           ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when}</span>`
                           : html`<span class="feed-entry-when">${when}</span>`}
