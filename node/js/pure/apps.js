@@ -86,6 +86,7 @@ export const APPS = [
             tree: false,
             tagColumn: false,
             pin: false,
+            publish: false, // the composer's Post button is the door here
             // The claimed date is the post's preferred date (PUBLISH.md): a past date files
             // the post there, a future one schedules it. Off until 2026-09-02, when a post
             // was stamped at publish and the claim had nothing to say.
@@ -141,6 +142,7 @@ const DEFAULT_FEATURES = {
     tagColumn: false, // a sidebar listing every tag by frequency
     tree: false, // the document tree pane (doc/tree.js), right of the list
     pin: true, // the pin chip - floats the doc atop the LIST, so list-less apps drop it
+    publish: true, // the publish chip (PUBLISH.md): the feed composer has its own Post button
 };
 
 /// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back

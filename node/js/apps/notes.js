@@ -28,6 +28,7 @@ import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 import { t } from '../i18n.js';
+import { docStatus } from '../pure/feed.js';
 
 const html = htm.bind(h);
 
@@ -128,6 +129,27 @@ const Snippet = ({ root, docId, query }) => {
 };
 
 
+// The three status icons (PUBLISH.md ruling 6), on every row.
+const StatusMark = ({ doc }) => {
+    const status = docStatus(doc);
+    const icon =
+        status === 'scheduled' ? Icons.scheduled : status === 'public' ? Icons.docPublic : Icons.docPrivate;
+    const title =
+        status === 'scheduled'
+            ? t('apps.notes.scheduled-to-publish', 'scheduled to publish')
+            : status === 'public'
+              ? t('apps.notes.published', 'published')
+              : t('apps.notes.private', 'private');
+    // Spelled out, so the dead-CSS convention can see each class.
+    const cls =
+        status === 'scheduled'
+            ? 'note-row-status note-row-status-scheduled'
+            : status === 'public'
+              ? 'note-row-status note-row-status-public'
+              : 'note-row-status note-row-status-private';
+    return html`<span class=${cls} title=${title}><${icon} /></span> `;
+};
+
 // One row in the list: title, and whatever this app has asked to show beneath it. Everything
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
 // description, no date and no tags is one line tall.
@@ -139,6 +161,9 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
     onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
 >
     <span class="note-row-title">
+        ${/* The document's standing in public (PUBLISH.md ruling 6): detective for private,
+            globe for public, clock for scheduled - each in its own colour. */ ''}
+        <${StatusMark} doc=${doc} />
         ${doc.pinned && html`<span class="note-row-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span> `}
         ${doc.media && doc.media.has_thumb
             ? html`<img

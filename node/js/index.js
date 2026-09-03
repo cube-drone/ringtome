@@ -42,6 +42,7 @@ import { resolveSlugPath } from './doc/address.js';
 import { slugify, HEX_ID } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
+import { DiffPage } from './doc/diffpage.js';
 
 const html = htm.bind(h);
 
@@ -398,6 +399,7 @@ const Inside = ({ session }) => {
             <${FeedApp} path="/home/feed" current=${persona.current} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
+            <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
             <${PostPage} path="/id/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg/*" current=${persona.current} onTitle=${setIdTitle} />

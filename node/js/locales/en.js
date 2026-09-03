@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 531 phrases across 43 files.
+// 576 phrases across 46 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -41,6 +41,9 @@ export default {
     'apps.feed.older-drafts': 'older drafts',
 
     // --- node/js/apps/notes.js ---
+    'apps.notes.scheduled-to-publish': 'scheduled to publish',
+    'apps.notes.published': 'published',
+    'apps.notes.private': 'private',
     'apps.notes.pinned': 'pinned',
     'apps.notes.untitled': 'untitled',
     'apps.notes.follow-me-home-open-this': 'follow me home — open this in its own app',
@@ -160,9 +163,63 @@ export default {
     'doc.chips.the-previous-document': 'the previous document',
     'doc.chips.the-next-document': 'the next document',
 
+    // --- node/js/doc/diffpage.js ---
+    'doc.diffpage.your-changes-are-public': 'your changes are public',
+    'doc.diffpage.this-document-has-no-public': 'this document has no public version to compare against',
+    'doc.diffpage.back-to-the-note': 'back to the note',
+    'doc.diffpage.untitled': 'untitled',
+    'doc.diffpage.the-private-words-against-the': 'the private words against the public version - what an update would change',
+    'doc.diffpage.view-public': 'view public',
+    'doc.diffpage.publishing': 'publishing…',
+    'doc.diffpage.make-your-changes-public': 'make your changes public',
+    'doc.diffpage.the-public-version-says-exactly': 'the public version says exactly this - nothing to update',
+    'doc.diffpage.public-only': 'public only',
+    'doc.diffpage.private-only': 'private only',
+
+    // --- node/js/doc/editor.js ---
+    'doc.editor.scheduled-for': 'scheduled for {when}',
+    'doc.editor.live-on-your-public-feed': 'live on your public feed',
+    'doc.editor.private': 'private',
+    'doc.editor.settled-means': 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist',
+    'doc.editor.turn-off-rebroadcast-and-comment': 'turn off rebroadcast and comment',
+    'doc.editor.trusted-only-means': 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists',
+    'doc.editor.trusted-only': 'trusted only',
+    'doc.editor.publish---makes-this-content': 'publish - makes this content available on your public feed',
+    'doc.editor.publishing': 'publishing…',
+    'doc.editor.publish': 'publish',
+    'doc.editor.open-the-public-version': 'open the public version',
+    'doc.editor.view': 'view',
+    'doc.editor.what-differs-between-these-words': 'what differs between these words and the public version',
+    'doc.editor.diff': 'diff',
+    'doc.editor.make-your-changes-public': 'make your changes public',
+    'doc.editor.update': 'update',
+    'doc.editor.this-document-was-published-over': 'this document was published over a day ago and can no longer be updated',
+    'doc.editor.take-this-post-back-off': 'take this post back off the network',
+    'doc.editor.unpublish': 'unpublish',
+    'doc.editor.re-read-the-date-and': 're-read the date and the words: a date still ahead re-plans, a date now or past publishes',
+    'doc.editor.cancel-the-schedule---the': 'cancel the schedule - the words stay private',
+    'doc.editor.cancel': 'cancel',
+    'doc.editor.scheduled-for-2': 'scheduled for {when}',
+    'doc.editor.taken-down---it-leaves': "taken down - it leaves other people's feeds and shares, but very slowly",
+    'doc.editor.schedule-cancelled': 'schedule cancelled',
+    'doc.editor.published': 'published',
+    'doc.editor.take-it-down': 'take it down',
+    'doc.editor.this-removes-it-from-other': "removes it from other people's feeds and shares, but very slowly",
+    'doc.editor.taking-it-down': 'taking it down…',
+    'doc.editor.yes-take-it-down': 'yes, take it down',
+    'doc.editor.keep-it': 'keep it',
+
     // --- node/js/doc/marqueebody.js ---
     'doc.marqueebody.this-marquee-doesnt-parse-right': "this marquee doesn't parse right now (likely a conflict split a block) - showing the source; edit to tidy it.",
     'doc.marqueebody.marquee-doesnt-parse': "marquee doesn't parse: {message}",
+
+    // --- node/js/doc/publish.js ---
+    'postentry.preparing-media-for-the-network': 'preparing media for the network…',
+    'postentry.fetching': 'fetching',
+    'postentry.yours': 'yours',
+    'postentry.ready': 'ready',
+    'postentry.failed': 'failed',
+    'postentry.failed-2': 'failed',
 
     // --- node/js/doc/reader.js ---
     'doc.reader.pick-something-on-the-left': 'pick something on the left, or make something new.',
@@ -347,12 +404,6 @@ export default {
     'postentry.posting': 'posting…',
     'postentry.post-the-changes': 'post the changes',
     'postentry.post': 'post',
-    'postentry.preparing-media-for-the-network': 'preparing media for the network…',
-    'postentry.fetching': 'fetching',
-    'postentry.yours': 'yours',
-    'postentry.ready': 'ready',
-    'postentry.failed': 'failed',
-    'postentry.failed-2': 'failed',
     'postentry.take-this-post-back-off': 'take this post back off the network',
     'postentry.take-it-down': 'take it down',
     'postentry.this-removes-it-from-other': "removes it from other people's feeds and shares, but very slowly",

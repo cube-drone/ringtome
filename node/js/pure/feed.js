@@ -273,6 +273,15 @@ export function mergeFeed(seen, page) {
     );
 }
 
+/// A private document's standing in public (PUBLISH.md ruling 6): `scheduled` when a publish
+/// plan waits on its private meta, `public` once it has been published, else `private`. A
+/// scheduled re-publication of a public post reads as scheduled - the plan is the newer fact.
+export function docStatus(row) {
+    if (isScheduled(row)) return 'scheduled';
+    if (publishedState(row).published) return 'public';
+    return 'private';
+}
+
 /// Backdated: the author claimed a date (PUBLISH.md) more than a minute before the post was
 /// actually written down. A bare claim of "today" lands at the publish hour and reads as
 /// fresh; a scheduled post mints within a minute of its claim and reads as fresh too.

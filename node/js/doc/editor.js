@@ -23,6 +23,12 @@ import htm from 'htm';
 
 import { readPref, setPref, viewModeKey } from '../mirror/prefs.js';
 import { Chip, NavChips } from './chips.js';
+import { t } from '../i18n.js';
+import { publishWithBaking, BakeModal } from './publish.js';
+import { docStatus, isScheduled, publishedState } from '../pure/feed.js';
+import { Modal } from '../modal.js';
+import { api, apiText } from '../net.js';
+import { sameWords } from '../pure/wordsdiff.js';
 import { MarqueeBody, marqueeApology, parseError } from './marqueebody.js';
 import { useDocSession } from './session.js';
 import { LiveMarquee } from './livemarquee.js';
@@ -97,6 +103,107 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
     // fires on the way out.
     const metaChipRef = useRef(null);
     const metaPanelRef = useRef(null);
+    // The publish bar (PUBLISH.md slice 3; Curtis, 2026-09-03: "its own row, a whole bar
+    // between title and editor"): wears the document's standing - gray private, teal live,
+    // peach scheduled - and holds the verbs: publish, update (while the post's edit window
+    // is open), unpublish (a takedown; for a schedule, cancelling the plan). The same door
+    // the feed uses, with the same two wishes at first publish.
+    const [wishes, setWishes] = useState({ settled: false, trusted_only: false });
+    const [publishing, setPublishing] = useState(false);
+    const [baking, setBaking] = useState(null);
+    const [publishNote, setPublishNote] = useState(null); // { kind: 'published' | 'scheduled' | 'unpublished' | 'unscheduled', at }
+    const [publishError, setPublishError] = useState(null);
+    const [askingTakedown, setAskingTakedown] = useState(false);
+    const standing = docStatus(row);
+    const postId = publishedState(row).postId;
+    const scheduledAt = (() => {
+        if (!isScheduled(row)) return null;
+        try {
+            return JSON.parse(row.fields.publish_plan).at;
+        } catch {
+            return null;
+        }
+    })();
+    // The post's edit window, asked of the permalink (the server is the one who knows):
+    // "update" is offered only while a re-publication would still be honoured.
+    const [windowOpen, setWindowOpen] = useState(null);
+    // The public words, for "does this differ?" and the diff (Curtis: update and diff only
+    // when the content differs from the public version). Re-read after every publish.
+    const [publicWords, setPublicWords] = useState(null); // { title, body }
+    const [headPoll, setHeadPoll] = useState(0);
+    useEffect(() => {
+        if (standing !== 'public' || !postId) {
+            setWindowOpen(null);
+            setPublicWords(null);
+            return undefined;
+        }
+        let live = true;
+        api(`/api/id/${root}/posts/${postId}`)
+            .then((head) => live && setWindowOpen(head.edit_window_open !== false))
+            .catch(() => live && setWindowOpen(true)); // unknown: offer it, the door refuses honestly
+        Promise.all([
+            api(`/api/id/${root}/posts/${postId}`).catch(() => null),
+            apiText(`/id/${root}/docs/${postId}/body`).catch(() => null),
+        ]).then(([head, text]) => {
+            if (live) setPublicWords({ title: head ? head.title : null, body: text });
+        });
+        return () => {
+            live = false;
+        };
+    }, [root, postId, standing, headPoll]);
+    const differs =
+        standing === 'public' &&
+        publicWords !== null &&
+        (publicWords.body === null || !sameWords(body, publicWords.body) || (publicWords.title !== null && publicWords.title !== title));
+    const publishNow = async () => {
+        setPublishing(true);
+        setPublishError(null);
+        setPublishNote(null);
+        try {
+            await save(); // the door publishes what is SAVED
+            const extra =
+                standing === 'private' && (wishes.settled || wishes.trusted_only)
+                    ? {
+                          ...(wishes.settled ? { settled: true } : {}),
+                          ...(wishes.trusted_only ? { trusted_only: true } : {}),
+                      }
+                    : undefined;
+            const made = await publishWithBaking(root, docId, setBaking, extra);
+            setPublishNote(
+                made.scheduled_for ? { kind: 'scheduled', at: made.scheduled_for } : { kind: 'published' }
+            );
+            setHeadPoll((n) => n + 1);
+        } catch (e) {
+            setPublishError(e.message);
+        } finally {
+            setPublishing(false);
+        }
+    };
+    const takeDown = async () => {
+        setPublishing(true);
+        setPublishError(null);
+        try {
+            await api(`/api/identity/${root}/posts/${postId}`, { method: 'DELETE' });
+            setPublishNote({ kind: 'unpublished' });
+        } catch (e) {
+            setPublishError(e.message);
+        } finally {
+            setPublishing(false);
+            setAskingTakedown(false);
+        }
+    };
+    const cancelSchedule = async () => {
+        setPublishing(true);
+        setPublishError(null);
+        try {
+            await api(`/api/identity/${root}/docs/${docId}/annotations/fields/publish_plan`, { method: 'DELETE' });
+            setPublishNote({ kind: 'unscheduled' });
+        } catch (e) {
+            setPublishError(e.message);
+        } finally {
+            setPublishing(false);
+        }
+    };
     useEffect(() => {
         if (!showMeta) return undefined;
         const onDown = (e) => {
@@ -385,6 +492,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
                       />`}
                 <span class="reader-chips">
                     ${onDeleted &&
+                    standing !== 'public' &&
                     html`<${Chip}
                         icon=${Icons.trash}
                         modifier="chip-delete"
@@ -442,6 +550,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
                             onClick=${() => setShowMeta((v) => !v)}
                         />
                     </span>
+
                     ${feat.pin &&
                     html`<${Chip}
                         icon=${Icons.pin}
@@ -458,6 +567,132 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
                     <${Annotations} root=${root} docId=${docId} features=${feat} />
                 </div>`}
             </header>
+            ${feat.publish &&
+            html`<div
+                class=${standing === 'scheduled'
+                    ? 'publish-bar publish-bar-scheduled'
+                    : standing === 'public'
+                      ? 'publish-bar publish-bar-public'
+                      : 'publish-bar publish-bar-private'}
+            >
+                <span class="publish-bar-standing">
+                    <${standing === 'scheduled' ? Icons.scheduled : standing === 'public' ? Icons.docPublic : Icons.docPrivate} />
+                    ${standing === 'scheduled'
+                        ? t('doc.editor.scheduled-for', 'scheduled for {when}', {
+                              when: scheduledAt ? new Date(scheduledAt).toLocaleString() : '…',
+                          })
+                        : standing === 'public'
+                          ? t('doc.editor.live-on-your-public-feed', 'live on your public feed')
+                          : t('doc.editor.private', 'private')}
+                </span>
+                <span class="publish-bar-acts">
+                ${standing === 'private' &&
+                html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turns off comments and rebroadcasts for this post, as far as this network can honor it - malicious clients and screenshots exist')}>
+                        <input
+                            type="checkbox"
+                            checked=${wishes.settled}
+                            onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))}
+                        />
+                        ${t('doc.editor.turn-off-rebroadcast-and-comment', 'turn off rebroadcast and comment')}
+                    </label>
+                    <label class="publish-bar-wish" title=${t('doc.editor.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}>
+                        <input
+                            type="checkbox"
+                            checked=${wishes.trusted_only}
+                            onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))}
+                        />
+                        ${t('doc.editor.trusted-only', 'trusted only')}
+                    </label>`}
+                    ${standing === 'private' &&
+                    html`<button
+                        class="publish-bar-publish"
+                        disabled=${publishing}
+                        title=${t('doc.editor.publish---makes-this-content', 'publish - makes this content available on your public feed')}
+                        onClick=${publishNow}
+                    ><${Icons.docPublic} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.publish', 'publish')}</button>`}
+                    ${standing === 'public' &&
+                    html`<a
+                        class="publish-bar-view"
+                        href=${`/id/${root}/post/${postId}`}
+                        title=${t('doc.editor.open-the-public-version', 'open the public version')}
+                    ><${Icons.docPublic} /> ${t('doc.editor.view', 'view')}</a>`}
+                    ${standing === 'public' &&
+                    differs &&
+                    html`<a
+                        class="publish-bar-diff"
+                        href=${`/home/notes/${docId}/diff`}
+                        title=${t('doc.editor.what-differs-between-these-words', 'what differs between these words and the public version')}
+                    ><${Icons.conflict} /> ${t('doc.editor.diff', 'diff')}</a>`}
+                    ${standing === 'public' &&
+                    differs &&
+                    windowOpen !== false &&
+                    html`<button
+                        class="publish-bar-update"
+                        disabled=${publishing}
+                        title=${t('doc.editor.make-your-changes-public', 'make your changes public')}
+                        onClick=${publishNow}
+                    ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>`}
+                    ${standing === 'public' &&
+                    differs &&
+                    windowOpen === false &&
+                    html`<button
+                        class="publish-bar-update"
+                        disabled=${true}
+                        title=${t('doc.editor.this-document-was-published-over', 'this document was published over a day ago and can no longer be updated')}
+                    ><${Icons.update} /> ${t('doc.editor.update', 'update')}</button>`}
+                    ${standing === 'public' &&
+                    html`<button
+                        class="publish-bar-unpublish"
+                        disabled=${publishing}
+                        title=${t('doc.editor.take-this-post-back-off', 'take this post back off the network')}
+                        onClick=${() => setAskingTakedown(true)}
+                    ><${Icons.unpublish} /> ${t('doc.editor.unpublish', 'unpublish')}</button>`}
+                    ${standing === 'scheduled' &&
+                    html`<button
+                            class="publish-bar-update"
+                            disabled=${publishing}
+                            title=${t('doc.editor.re-read-the-date-and', 're-read the date and the words: a date still ahead re-plans, a date now or past publishes')}
+                            onClick=${publishNow}
+                        ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>
+                        <button
+                            class="publish-bar-unpublish"
+                            disabled=${publishing}
+                            title=${t('doc.editor.cancel-the-schedule---the', 'cancel the schedule - the words stay private')}
+                            onClick=${cancelSchedule}
+                        ><${Icons.unpublish} /> ${t('doc.editor.cancel', 'cancel')}</button>`}
+                </span>
+                ${publishNote &&
+                html`<span class="publish-bar-note">
+                    ${publishNote.kind === 'scheduled'
+                        ? t('doc.editor.scheduled-for-2', 'scheduled for {when}', { when: new Date(publishNote.at).toLocaleString() })
+                        : publishNote.kind === 'unpublished'
+                          ? t('doc.editor.taken-down---it-leaves', 'taken down - it leaves other people\'s feeds and shares, but very slowly')
+                          : publishNote.kind === 'unscheduled'
+                            ? t('doc.editor.schedule-cancelled', 'schedule cancelled')
+                            : t('doc.editor.published', 'published')}
+                </span>`}
+                ${publishError && html`<span class="publish-bar-error">${publishError}</span>`}
+                ${askingTakedown &&
+                html`<${Modal}
+                    title=${t('doc.editor.take-it-down', 'take it down')}
+                    onClose=${() => {
+                        if (!publishing) setAskingTakedown(false);
+                    }}
+                >
+                    <p class="feed-unpublish-warn">
+                        ${t('doc.editor.this-removes-it-from-other', "removes it from other people's feeds and shares, but very slowly")}
+                    </p>
+                    <div class="feed-unpublish-acts">
+                        <button class="feed-unpublish-go" disabled=${publishing} onClick=${takeDown}>
+                            ${publishing ? t('doc.editor.taking-it-down', 'taking it down…') : t('doc.editor.yes-take-it-down', 'yes, take it down')}
+                        </button>
+                        <button class="feed-unpublish-no" disabled=${publishing} onClick=${() => setAskingTakedown(false)}>
+                            ${t('doc.editor.keep-it', 'keep it')}
+                        </button>
+                    </div>
+                </${Modal}>`}
+                <${BakeModal} items=${baking} />
+            </div>`}
             ${available.length > 1 &&
             html`<div class="editor-tabs">
                 ${available.map(

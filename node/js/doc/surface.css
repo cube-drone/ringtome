@@ -16,6 +16,151 @@
     display: contents;
 }
 
+/* The publish bar (PUBLISH.md slice 3; Curtis, 2026-09-03): its own row between the title
+ * and the editor, in the standing's colour - gray private, teal live, peach scheduled - the
+ * one pattern the row icons and the feed's scheduled badge wear too. */
+.publish-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.9rem;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--border);
+}
+.publish-bar-private {
+    background: var(--surface-2);
+    color: var(--ink-soft);
+}
+.publish-bar-public {
+    background: var(--teal);
+    color: var(--dock-text);
+}
+.publish-bar-scheduled {
+    background: var(--peach);
+    color: var(--ink);
+}
+.publish-bar-standing {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+}
+.publish-bar-wish {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.publish-bar-acts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.9rem;
+    margin-left: auto; /* the wishes ride here too, beside the publish button (Curtis, 2026-09-03) */
+}
+.publish-bar-publish,
+.publish-bar-update,
+.publish-bar-unpublish,
+.publish-bar-view,
+.publish-bar-diff {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.publish-bar-publish:hover,
+.publish-bar-update:hover,
+.publish-bar-unpublish:hover,
+.publish-bar-view:hover,
+.publish-bar-diff:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.publish-bar-view {
+    text-decoration: none;
+}
+/* The diff page: the public words against the private, a line at a time. */
+.diff-page {
+    padding: 1rem 1.2rem;
+    max-width: 60rem;
+}
+.diff-page-head {
+    margin-bottom: 0.8rem;
+}
+.diff-page-title {
+    margin: 0 0 0.2rem;
+}
+.diff-page-sub,
+.diff-page-note,
+.diff-page-same,
+.diff-page-legend {
+    margin: 0.3rem 0;
+    color: var(--ink-soft);
+}
+.diff-page-legend {
+    display: flex;
+    gap: 0.8rem;
+    font-size: 0.8rem;
+}
+.diff-page-acts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+.diff-page .publish-bar-view,
+.diff-page .publish-bar-update {
+    color: var(--ink);
+}
+.publish-bar-diff {
+    text-decoration: none;
+}
+.words-diff {
+    max-height: 60vh;
+    overflow: auto;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    margin: 0;
+}
+.words-diff-title {
+    display: flex;
+    gap: 0.6rem;
+    margin: 0 0 0.5rem;
+}
+.words-diff-del {
+    background: color-mix(in srgb, var(--coral) 22%, transparent);
+    text-decoration: line-through;
+}
+.words-diff-add {
+    background: color-mix(in srgb, var(--teal) 22%, transparent);
+}
+.words-diff-same {
+    opacity: 0.75;
+}
+/* Past the edit window the update button stays, greyed, and says why on hover (Curtis,
+ * 2026-09-03). */
+.publish-bar-update:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+.publish-bar-update:disabled:hover {
+    background: transparent;
+}
+.publish-bar-note {
+    width: 100%;
+    opacity: 0.9;
+}
+.publish-bar-error {
+    width: 100%;
+    color: var(--coral);
+}
+
 .editor-meta {
     position: absolute;
     top: 100%;

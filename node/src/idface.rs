@@ -1390,6 +1390,10 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
         "dated_ms": p.dated_ms,
         "minted_ms": p.genesis_ms,
         "updated_ms": p.head_ms,
+        // Whether a re-publication would still be honoured (PROJECT_PLAN: the edit window
+        // anchors on the mint) - Writer's publish bar offers "update" only while it is.
+        "edit_window_open": crate::clock::now_ms()
+            < p.genesis_ms + crate::record::documents::edit_window_ms(),
         "thumb": p.thumb_hash.map(hex::encode),
     })
 }

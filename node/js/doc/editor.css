@@ -186,6 +186,21 @@
 }
 
 /* A media row's kind glyph (file-image / file-video / file-audio), quiet beside the title. */
+/* The document's standing in public (PUBLISH.md ruling 6, as re-ruled 2026-09-03): private
+ * gray, live teal, scheduled peach - the publish bar's colours, the one pattern. */
+.note-row-status {
+    font-size: 0.9em;
+}
+.note-row-status-private {
+    color: var(--muted);
+}
+.note-row-status-public {
+    color: var(--teal);
+}
+.note-row-status-scheduled {
+    color: var(--peach);
+}
+
 .note-row-kind {
     font-size: 0.9em;
     color: var(--muted);

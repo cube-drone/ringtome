@@ -1,11 +1,11 @@
 // Feed's publication state: a durable public fact, and a local editing gesture.
 const assert = require('node:assert');
 
-let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated,
+let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated, docStatus,
     emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
     postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs;
 before(async () => {
-    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated,
+    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated, docStatus,
         postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
         postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs } = await import(
         '../../../js/pure/feed.js'
@@ -387,5 +387,15 @@ describe('a fresh post holds the top, and a backdated one wears its date (2026-0
         assert.equal(isBackdated({ minted_ms: m }), false, 'no claim');
         assert.equal(isBackdated({ dated_ms: m - 86_400_000 }), false, 'a fragment row knows no mint');
         assert.equal(isBackdated(null), false);
+    });
+});
+
+describe('docStatus: the three icons (PUBLISH.md ruling 6)', () => {
+    it('private, public, scheduled - and a plan outranks a publication', () => {
+        assert.equal(docStatus({ fields: {} }), 'private');
+        assert.equal(docStatus({}), 'private');
+        assert.equal(docStatus({ fields: { published_as: 'abc' } }), 'public');
+        assert.equal(docStatus({ fields: { publish_plan: '{"at":1,"by":"x"}' } }), 'scheduled');
+        assert.equal(docStatus({ fields: { published_as: 'abc', publish_plan: '{"at":1,"by":"x"}' } }), 'scheduled');
     });
 });

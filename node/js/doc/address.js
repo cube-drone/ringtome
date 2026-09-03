@@ -112,9 +112,15 @@ export function useCozyAddress(root, selected, bucket) {
     useEffect(() => {
         if (!selected || !HEX_ID.test(selected)) return;
         let alive = true;
+        const from = loc.path;
         slugPathFor(root, selected, bucket)
             .then((p) => {
-                if (alive && p && loc.path !== p) loc.route(p, true);
+                // Only re-dress the path this lookup was asked about (2026-09-03): a click
+                // to a sibling route - the publish bar's diff page, `/home/notes/<doc>/diff`
+                // - can land while the lookup is in flight, and routing then would replace
+                // the new address with the cozy form of the old one, segment lost.
+                if (!alive || !p || window.location.pathname !== from) return;
+                if (loc.path !== p) loc.route(p, true);
             })
             .catch(() => {});
         return () => {

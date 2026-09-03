@@ -26,8 +26,9 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 * Search my posts
 * Search my feed
-* Publishing from Writer — [PUBLISH.md](PUBLISH.md) (2026-09-02): slices 1 (the date on
-  the wire) and 2 (scheduling) built; the Writer button and status icons next
+* Publishing from Writer — [PUBLISH.md](PUBLISH.md): all three slices built (the date on
+  the wire, scheduling, the Writer chip and status icons, 2026-09-02/03); the arc's
+  residual is the taxonomy position (ruling 8), which waits on a public form for it
 * A race in public_annotations.cjs ("the relayed proof names its carrier", seen red once on
   2026-09-02, green on the clean-tree rerun): cal's node admits ada speculatively through
   bea's vouch, the acquisition pass pulls ada's chain on the rig's 2s beat, and the chain

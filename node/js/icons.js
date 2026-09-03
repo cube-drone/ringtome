@@ -63,6 +63,10 @@ import {
     Bell,
     ClockCountdown,
     Prohibit,
+    Detective,
+    GlobeHemisphereWest,
+    Swap,
+    ArrowCounterClockwise,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -144,6 +148,13 @@ export const Icons = {
     scheduled: ClockCountdown,
     // A post with rebroadcast and comment turned off (PROJECT_PLAN's Post visibility).
     settled: Prohibit,
+    // A document's standing in public (PUBLISH.md ruling 6): private, public - and
+    // `scheduled` above is the third.
+    docPrivate: Detective,
+    docPublic: GlobeHemisphereWest,
+    // The publish bar's verbs (PUBLISH.md): say the changes again; take it back.
+    update: Swap,
+    unpublish: ArrowCounterClockwise,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

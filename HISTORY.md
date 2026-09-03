@@ -8188,3 +8188,41 @@ Marquee 0.7.2 (Curtis deployed the loop work): parser and markup crates `=0.7.2`
 npm packages `^0.7.2`. The feed now loops a gif-that-became-a-video from the package itself;
 a pure claim renders the `-loop` spelling through the real html renderer and pins the
 attributes, beside the plain video keeping its player.
+
+## 2026-09-03 (cont.): the Writer publish chip (PUBLISH.md slice 3)
+
+A publish chip in the editor's header, feature-gated so the feed composer keeps its own Post
+button: it wears the document's standing - detective (teal) private, globe-hemisphere-west
+(gray) public, clock-countdown (peach) scheduled - and opens a popover with the two wishes
+(rebroadcast-and-comment off, trusted only; offered at first publish, carried after) and
+the door: `publishWithBaking`, the feed's own, moved with `BakeModal` into `doc/publish.js`
+because the editor cannot import postentry.js without a cycle (re-exported from there for
+the surfaces that always found it). The popover says what the next publish does - copies
+the words, tags, bucket, and date; a future date waits - and reports "published" or
+"scheduled for …". Every Writer row wears the same icon off `docStatus` (pure; a plan
+outranks a publication). Strings: 19 new phrases.
+
+The chip became a bar the same day (Curtis: "rather than sliding it into the existing bar
+full of options... publication should occupy its own row"): between the title and the
+editor, in the standing's colour - private gray with the two wishes and "publish"; live
+teal with "update" (only while the post's edit window is open, which the permalink now
+reports as `edit_window_open`; "settled" once it closes) and "unpublish" (the takedown,
+through the house modal, with the deletion copy that under-promises); scheduled peach with
+"update" and "cancel". The trash chip hides while a document is live. And the colours were
+re-ruled to hold throughout: gray private, teal live, peach scheduled - the row icons
+flipped to match (PUBLISH.md ruling 6 says so and why).
+Then, from the same review: shorter copy ("publish - makes this content available on your
+public feed"; "make your changes public"); a "view" link to the public version; "update"
+shown only when the private words differ from the public ones (`pure/wordsdiff.js`: embed
+targets masked, since publication rewrites every media reference to its twin); and the
+diff as its own page at `/home/notes/<doc>/diff` (Curtis: "complicated enough that it
+probably deserves its own UI page entirely") - the public words against the private, a line
+at a time by longest common subsequence, with "make your changes public" and the way back.
+Field-found by the headless drive: clicking the bar's diff link landed on `/home/notes/<slug>`
+with the segment gone - the notes app's cozy re-dress (`useCozyAddress`) had a slug lookup in
+flight, and it routed with a stale path after the click. The lookup now re-dresses only the
+path it was asked about. Verified headless through all nine steps: publish, edit, diff page,
+update from the page, back, unpublish, schedule, cancel.
+And past the edit window (Curtis): the update button stays, greyed, and its hover says "this
+document was published over a day ago and can no longer be updated" - in place of the bare
+word "settled".
