@@ -8122,3 +8122,17 @@ crate. Ringtome's 2026-07-25 port - and the decoder written this morning, a thir
 the table - are deleted; the node calls the crate and keeps only its own fetch, byte budget,
 private-address guard, rate bucket, and cache. The unit claims now read as lockstep tests of
 the crate through ringtome's door.
+
+## 2026-09-03 (cont.): APNG and public audio never reached the screen
+
+Curtis: "Is apng fully supported, currently?" Every stage said yes - ingest, wire format,
+bake, sealing, serving, the document viewer - except the one that draws it: the marquee
+renderer decides an embed's kind from its extension through the profile's `media()`, and
+the bare-web table knew neither `apng` nor `opus`. An APNG twin rendered as a bracketed
+link, and a public audio twin (`media.opus`) would have too; private audio dodged it by
+being spelled `.ogg`. Nobody had seen it because no acceptance rendered a body. Now
+`pure/mediakind.js` holds ringtome's spellings once (the completions picker shares it), the
+renderer profile asks it before the base table, and a pure claim renders all four formats
+through the real html renderer. The same two spellings were added to marqueemarkup's tables
+(html-renderer profile, turbolink plugins, and their Rust mirrors) so the base knows them
+after the next bump.

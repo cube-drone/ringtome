@@ -38,6 +38,20 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   "trusted only" built, sealed bodies and pictures, key lane, feed/discovery filters);
   the one deferred direction is sharer-scoped share journaling, with its trigger pinned
 * Public annotations — the arc, rulings pinned and sliced in [ANNOTATIONS.md](ANNOTATIONS.md) (2026-08-29): tags, description, date, and bucket go public at publish, third parties annotate on their own chains, everything rides virally, the reader chooses whose labels show
+* Video in public posts (2026-09-03, Curtis posted an animated gif: "we never actually
+  implemented video types for publication"). The ingest already crushes an opaque animation
+  to silent WebM AV1 (transparent-and-silent → APNG, which bakes fine); `bake_private_media`
+  refuses `WebmAv1` by the 2026-08-06 scope line - which was scope, not a ruling: "I'm most
+  concerned about how complicated this might be for video files, which is why I'm
+  comfortable saying that, initial pass, this only has to handle image and audio for now"
+  (Curtis, setting the baking task). The worry was the EXTERNAL half (downloading and
+  ingesting a video URL at publish time - the whole encoder on the node); the private half,
+  re-minting a WebM the ingest already crushed, was swept under the same line and is the
+  cheap case. To open it: allow the format in the bake,
+  carry dimensions and duration on the twin (no poster thumbnail yet - the ingest's own
+  note), and decide how a silent animation renders - the marquee renderer already draws a
+  video as `<video controls>`, but a gif-that-became-video wants loop/muted/autoplay, and
+  nothing on the wire says "this was a gif" today.
 * Make a whole bucket public in one fell swoop.
 * Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - PROJECT_PLAN's Replies)
 * Envelope-kept reply evidence has no deletion road: a stranger's reply noted from its

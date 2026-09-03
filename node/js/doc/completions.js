@@ -10,6 +10,7 @@ import { nameToEmoji } from 'gemoji';
 import { openMirror } from '../mirror.js';
 import { slugPathFor } from './address.js';
 import { slugify, MEDIA_EXT } from '../pure/naming.js';
+import { OWN_MEDIA_KINDS } from '../pure/mediakind.js';
 
 /// Plain membership - the app rule (`bucketHolds`) mirrored for the pickers, ONE copy for
 /// both (the link and media pickers each carried their own and one drifted - the second copy
@@ -158,8 +159,9 @@ export function linkCompletions(root, bucket) {
     };
 }
 
-// The kind a media format reads as, for the picker's detail column.
-const MEDIA_KIND = { avif: 'image', apng: 'image', webm: 'video', opus: 'audio' };
+// The kind a media format reads as, for the picker's detail column - the one table
+// (pure/mediakind.js), shared with the renderer profile.
+const MEDIA_KIND = OWN_MEDIA_KINDS;
 
 /// The `!` picker, also a factory: a searchable list of the bucket's MEDIA (images, video,
 /// audio). Picking fills the whole embed - `![title](…/body/name.ext)`, the byte-URL form

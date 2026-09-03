@@ -14,6 +14,8 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { nameToEmoji } from 'gemoji';
 import { parse } from '@cube-drone/marquee-react-renderer';
+import { bareWebProfile } from '@cube-drone/marquee-html-renderer';
+import { mediaResolver } from '../pure/mediakind.js';
 import { api } from '../net.js';
 import {
     composeTurbolinks,
@@ -92,6 +94,9 @@ export function useTurbolinks(source, format) {
      
     return useMemo(
         () => ({
+            // Ringtome's own media spellings (pure/mediakind.js) - `.apng` and `.opus` twins
+            // rendered as bracketed links until the profile learned them (2026-09-03).
+            media: mediaResolver(bareWebProfile),
             turbolink: composeTurbolinks(plugins, resolved),
             // The gemoji table: `:smile:` -> 😄. Marquee's emoji socket is embedder-supplied
             // by design (bareWebProfile ships no table - the spec's custom-emoji map is our
