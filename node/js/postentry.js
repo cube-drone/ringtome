@@ -673,7 +673,20 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                           ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when}</span>`
                           : html`<span class="feed-entry-when">${when}</span>`}
                     ${!item.mine && !!current && !item.settled && html`<${ShareButton} item=${item} current=${current} />`}
+                    ${/* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
+                        feed's own) is edited where it lives: "edit" with the note-pencil goes to
+                        that note in Writer, and the publish bar there says the changes again.
+                        The slowly-unlocking lock stays for posts composed in the feed (Curtis,
+                        2026-09-03). */ ''}
                     ${editing &&
+                    !open &&
+                    (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
+                        ? html`<a
+                              class="feed-edit-writer"
+                              href=${`/home/notes/${editing.row.doc_id}`}
+                              title=${t('postentry.edit-this-note-in-writer', 'edit this note in Writer')}
+                          ><${Icons.notes} /></a>`
+                        : editing &&
                     !open &&
                     (editing.locked
                         ? html`<${LockButton}

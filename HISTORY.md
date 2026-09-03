@@ -8226,3 +8226,6 @@ update from the page, back, unpublish, schedule, cancel.
 And past the edit window (Curtis): the update button stays, greyed, and its hover says "this
 document was published over a day ago and can no longer be updated" - in place of the bare
 word "settled".
+Then the feed card (Curtis): a post whose private analogue lives in a notebook offers "edit"
+with the note-pencil, straight to that note in Writer, where the publish bar says the changes
+again; the slowly-unlocking lock stays for posts composed in the feed.

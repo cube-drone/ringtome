@@ -893,6 +893,23 @@
     margin: 0.3rem 0 0;
 }
 
+/* The note-pencil that leaves for Writer: icon only, the takedown button's shape, so the
+ * row's buttons match (Curtis, 2026-09-03). */
+.feed-edit-writer {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+    text-decoration: none;
+}
+.feed-edit-writer:hover {
+    color: var(--ink);
+    border-color: var(--border-strong);
+}
 .feed-edit {
     background: none;
     border: 1px solid var(--border);
