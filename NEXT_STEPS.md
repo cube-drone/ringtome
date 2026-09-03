@@ -26,8 +26,14 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 * Search my posts
 * Search my feed
-* Publishing from Writer — [PUBLISH.md](PUBLISH.md) (2026-09-02): slice 1 (the date on the
-  wire) built; scheduling and the Writer button next
+* Publishing from Writer — [PUBLISH.md](PUBLISH.md) (2026-09-02): slices 1 (the date on
+  the wire) and 2 (scheduling) built; the Writer button and status icons next
+* A race in public_annotations.cjs ("the relayed proof names its carrier", seen red once on
+  2026-09-02, green on the clean-tree rerun): cal's node admits ada speculatively through
+  bea's vouch, the acquisition pass pulls ada's chain on the rig's 2s beat, and the chain
+  fold's note overwrites `learned_via` relay→chain before the test reads it. Settle it one
+  of two ways: keep the FIRST road on conflict (the forensic reading - how it first got
+  here is what the dossier wants), or have the test accept either road. Curtis's call.
 * Post visibility — PROJECT_PLAN's Post visibility: arc closed 2026-09-02 ("settled" and
   "trusted only" built, sealed bodies and pictures, key lane, feed/discovery filters);
   the one deferred direction is sharer-scoped share journaling, with its trigger pinned

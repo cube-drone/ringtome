@@ -59,6 +59,7 @@ import {
     postScale,
     postImageCap,
     POST_IMAGE_MAX,
+    isBackdated,
 } from './pure/feed.js';
 import { appById, featuresOf } from './pure/apps.js';
 import { Editor } from './doc/editor.js';
@@ -160,6 +161,9 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
             method: 'POST',
             body: JSON.stringify({ tz_offset_min: new Date().getTimezoneOffset(), ...(extraBody || {}) }),
         });
+        // A schedule is a terminal answer too (PUBLISH.md): nothing public yet, and nothing
+        // to poll - the mirror row's plan is what the feed shows until the day.
+        if (resp.scheduled_for) return resp;
         if (resp.post_id) {
             onBaking(null);
             return resp;
@@ -494,13 +498,17 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
 
     useEffect(() => {
         let live = true;
-        apiText(`/id/${item.author}/docs/${item.doc_id}/body`)
+        // A scheduled draft has no public body yet: its words come from the private door.
+        const bodyUrl = item.private_doc
+            ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
+            : `/id/${item.author}/docs/${item.doc_id}/body`;
+        apiText(bodyUrl)
             .then((t) => live && setBody(t))
             .catch(() => live && setBody(null));
         return () => {
             live = false;
         };
-    }, [item.author, item.doc_id]);
+    }, [item.author, item.doc_id, item.private_doc]);
 
     // (A feed post used to mark itself SEEN here, via an IntersectionObserver that fired on
     // scroll. Removed 2026-08-09 with the whole read-state feature - PROJECT_PLAN, One Cursor.
@@ -525,12 +533,12 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
               ? 'feed-entry feed-entry-high'
               : 'feed-entry';
 
-    const when = new Date(item.published_ms).toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-    });
+    const whenOpts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    const when = new Date(item.published_ms).toLocaleString(undefined, whenOpts);
+    // A backdated post wears its date a little differently (Curtis, 2026-09-02), and says
+    // on hover when it was actually written down.
+    const backdated = isBackdated(item);
+    const minted = backdated ? new Date(item.minted_ms).toLocaleString(undefined, whenOpts) : null;
     // The item's link: the title when there is one, a quiet line at the foot when not. It
     // goes to the post's OWN page (postpage.js) - the per-item page this comment spent
     // months promising took the href over on 2026-08-26, the day after it was built. The
@@ -731,7 +739,11 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     ].filter(Boolean),
                     via: [],
                 }}
-                actions=${html`<span class="feed-entry-when">${when}</span>
+                actions=${html`${item.scheduled
+                        ? html`<span class="feed-entry-when feed-entry-scheduled">${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
+                        : backdated
+                          ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when}</span>`
+                          : html`<span class="feed-entry-when">${when}</span>`}
                     ${!item.mine && !!current && !item.settled && html`<${ShareButton} item=${item} current=${current} />`}
                     ${editing &&
                     !open &&

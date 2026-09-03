@@ -33,6 +33,19 @@ describe('whose labels show', () => {
 
 // One chip per (key, value), however many people said it (Curtis, 2026-08-31: Jeff Dorp's
 // "beef" and Darn Hot's "beef" collapse; most-agreed first; the author's copy leads its group).
+describe('the claimed date is never a chip', () => {
+    it('drops display_date labels no matter who said them (Curtis, 2026-09-02)', () => {
+        const seen = visibleAnnotations(
+            [
+                { annotator: 'a', key: 'display_date', value: '2015-07-31' },
+                { annotator: 'a', key: 'tag', value: 'beef' },
+            ],
+            { author: 'a', factsByRoot: {}, me: 'a' }
+        );
+        assert.deepEqual(seen.map((l) => l.key), ['tag']);
+    });
+});
+
 describe('grouping identical labels', () => {
     it('collapses by (key, value) and orders most-agreed-first', () => {
         const grouped = groupLabels(

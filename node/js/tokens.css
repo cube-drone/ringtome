@@ -28,6 +28,7 @@
     --teal-deep: #227d71;    /* the bottom dock band */
     --sea: #4bab7f;          /* good / merged / friendly sea-green */
     --pink: #d97a97;         /* tags: shell pink */
+    --peach: #e8a06b;        /* scheduled: the sunset before the post - warm, not alarming */
     --coral: #db6a63;        /* danger / conflict / logout-hover: sunset coral */
 
     --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */

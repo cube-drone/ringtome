@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 524 phrases across 43 files.
+// 528 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -148,7 +148,7 @@ export default {
     'computers.invite-this-computer-to-be': 'invite this computer to be you',
 
     // --- node/js/doc/annotations.js ---
-    'doc.annotations.the-date-and-time-this': 'the date and time this document should be filed and sorted under - your claim, authoritative over the real save date',
+    'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
     'doc.annotations.date': 'date',
     'doc.annotations.time-optional': 'time (optional)',
     'doc.annotations.set-a-date-first': 'set a date first',
@@ -367,6 +367,8 @@ export default {
     'postentry.link': 'link',
     'postentry.passed-this-along': 'passed this along',
     'postentry.vouches-for-this-author': 'vouches for this author',
+    'postentry.scheduled-for': 'scheduled for {when}',
+    'postentry.dated-by-its-author': 'dated by its author - written down {minted}',
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.edit': 'edit',
     'postentry.thread': 'thread',
@@ -587,6 +589,8 @@ export default {
 
     // --- node/src/record/store.rs ---
     'record.store.bad-root-pubkey': 'bad root pubkey',
+    'record.store.bad-root-pubkey-2': 'bad root pubkey',
+    'record.store.this-node-does-not-agent': 'this node does not agent that persona',
     'record.store.identity-not-found': 'identity not found',
     'record.store.unknown-profile-field-allowed': 'unknown profile field {field} (allowed: {allowed})',
     'record.store.device-names-are-capped-at': 'device names are capped at {limit} bytes - this is a nickname, not a description',

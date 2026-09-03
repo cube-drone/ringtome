@@ -65,6 +65,14 @@ pub const PUBLISHED_AS: &str = "published_as";
 /// durable because the draft chain reaches every member device, and excluded from publish
 /// replication exactly like `published_as`: bookkeeping, never a label.
 pub const TRUSTED_KEY: &str = "trusted_key";
+/// A scheduled publish (PUBLISH.md slice 2): JSON `{at, by, settled, trusted_only}` on the
+/// draft's private meta - device-durable, and `by` names the minting device's leaf so two
+/// devices cannot race to mint. Excluded from publish replication like the others.
+pub const PUBLISH_PLAN: &str = "publish_plan";
+/// The author's claimed date (PUBLISH.md): an ISO string on the draft's private meta. It
+/// rides the public header as `dated_ms` - never a public annotation (Curtis, 2026-09-02:
+/// "I see the date as a ... tag? That's a strange thing to occur").
+pub const DISPLAY_DATE: &str = "display_date";
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
 pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar"];
@@ -117,6 +125,32 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
     })
 }
 
+/// Open a persona's store with the NODE's own credentials, session-free - the sweeps' door
+/// (the scheduled-publish pass first). The inbox's key pattern: the node's leaf for the
+/// root, its encryption keypair, and the epochs that leaf can unseal.
+pub async fn open_agented(state: &AppState, root_hex: &str) -> Result<Store, AppError> {
+    let root = crate::pubkey::decode(root_hex)
+        .ok_or_else(|| AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey-2", "bad root pubkey")))?;
+    let signer = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root_hex)
+        .await?
+        .ok_or_else(|| AppError::NotFound(crate::msg!("record.store.this-node-does-not-agent", "this node does not agent that persona")))?;
+    let leaf = signer.verifying_key().to_bytes();
+    let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
+        .map_err(AppError::Internal)?;
+    let db = state
+        .user_dbs
+        .held(root_hex)
+        .await
+        .map_err(AppError::Internal)?;
+    let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
+    Ok(Store {
+        db,
+        root,
+        authorship: Authorship { signer, epoch_keys },
+        files: state.files.clone(),
+    })
+}
+
 /// Open the public slice of an identity this node holds (its own, or one it fronts). Uniform
 /// 404 when the node doesn't agent it.
 pub async fn read_public(state: &AppState, root_hex: &str) -> Result<PublicView, AppError> {
@@ -132,6 +166,11 @@ pub async fn read_public(state: &AppState, root_hex: &str) -> Result<PublicView,
 }
 
 impl Store {
+    /// The leaf this store writes with, hex - the device's name on a scheduled publish.
+    pub fn leaf_hex(&self) -> String {
+        hex::encode(self.authorship.signer.verifying_key().to_bytes())
+    }
+
     pub fn profile(&self) -> Profile<'_> {
         Profile { store: self }
     }

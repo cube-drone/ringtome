@@ -56,7 +56,19 @@ export function overlayPosted(row, postId) {
 /// Older unposted drafts (from before this rule, or from a post that moved the slot along)
 /// are not lost - they fall into the stack, visible and editable.
 export function openDraftOf(docs) {
-    return (docs || []).find((d) => !publishedState(d).published && isTextDoc(d)) || null;
+    return (
+        (docs || []).find((d) => !publishedState(d).published && isTextDoc(d) && !isScheduled(d)) ||
+        null
+    );
+}
+
+/// A draft with a publish plan on it (PUBLISH.md slice 2) is spoken for: it waits at the top
+/// of the stream, badged, and is never the composer's open draft. Without this the composer
+/// flipped back to it the moment the mirror caught up - the bucket sorts by CLAIMED date,
+/// and a post scheduled for 2030 is the "newest" unpublished thing there is (Curtis,
+/// 2026-09-02: "it keeps that post open in my drafts").
+export function isScheduled(d) {
+    return !!(d && d.fields && d.fields.publish_plan);
 }
 
 /// Only TEXT can be a draft. Uploading an image from the composer files the media document
@@ -252,7 +264,21 @@ export function mergeFeed(seen, page) {
             out.push(item);
         }
     }
-    return out.sort((a, b) => (b.published_ms || 0) - (a.published_ms || 0));
+    // A FRESH post of your own holds the top whatever its date (Curtis, 2026-09-02: a
+    // backdated post sorting itself into 2019 the instant you press Post would vanish, and
+    // you would have no sign you did anything). The next page load files it properly - that
+    // reload is the deliberate end of the grace, not a bug.
+    return out.sort(
+        (a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || (b.published_ms || 0) - (a.published_ms || 0)
+    );
+}
+
+/// Backdated: the author claimed a date (PUBLISH.md) more than a minute before the post was
+/// actually written down. A bare claim of "today" lands at the publish hour and reads as
+/// fresh; a scheduled post mints within a minute of its claim and reads as fresh too.
+export function isBackdated(item) {
+    if (!item || item.dated_ms == null || !item.minted_ms) return false;
+    return item.dated_ms < item.minted_ms - 60_000;
 }
 
 /// Where to ask for the next page down: the last item shown.

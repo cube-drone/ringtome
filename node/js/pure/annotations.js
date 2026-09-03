@@ -8,6 +8,9 @@ export function visibleAnnotations(annotations, { author, factsByRoot, me }) {
     const facts = factsByRoot || null;
     const blocked = (root) => !!(facts && facts[root] && facts[root].blocked === 'yes');
     return list.filter((a) => {
+        // The claimed date is the post's DATE, worn as the header's stamp, never a chip -
+        // posts minted before 2026-09-02 restated it, and this is where they stop.
+        if (a.key === 'display_date') return false;
         if (a.annotator === author) return true;
         if (me && a.annotator === me) return true;
         return !blocked(a.annotator);

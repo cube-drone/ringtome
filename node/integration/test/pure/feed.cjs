@@ -1,11 +1,11 @@
 // Feed's publication state: a durable public fact, and a local editing gesture.
 const assert = require('node:assert');
 
-let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor,
+let FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, postCursor, isBackdated,
     emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
     postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs;
 before(async () => {
-    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts,
+    ({ FEED_STYLE, publishedState, openDraftOf, overlayPosted, recentPosts, mergePosts, isBackdated,
         postCursor, emphasisOf, leadOf, mergeFeed, feedCursor, postScale, POST_SCALE_MIN,
         postImageCap, POST_IMAGE_MAX, POST_IMAGE_MIN, collapseReplyPairs } = await import(
         '../../../js/pure/feed.js'
@@ -56,6 +56,15 @@ describe('the one open draft', () => {
     it('is the newest unposted one (the list arrives newest first)', () => {
         const docs = [doc('c'), doc('b', 'p1'), doc('a')];
         assert.equal(openDraftOf(docs).doc_id, 'c');
+    });
+
+    it('never opens a SCHEDULED draft: a plan-bearing row is spoken for (2026-09-02)', () => {
+        const docs = [
+            { doc_id: 'sched', fields: { publish_plan: '{"at":1900000000000,"by":"x"}' } },
+            { doc_id: 'fresh', fields: {} },
+        ];
+        assert.equal(openDraftOf(docs).doc_id, 'fresh');
+        assert.equal(openDraftOf([docs[0]]), null);
     });
 
     it('skips posted items to find it', () => {
@@ -357,5 +366,26 @@ describe('the share/reply pair, collapsed at render', () => {
             via_others: [{ root: 'bea' }],
         };
         assert.deepEqual(collapseReplyPairs([reply, crowd]), [reply, crowd]);
+    });
+});
+
+describe('a fresh post holds the top, and a backdated one wears its date (2026-09-02)', () => {
+    it('mergeFeed keeps a fresh item first whatever its date, and files it on the next load', async () => {
+        const { mergeFeed } = await import('../../../js/pure/feed.js');
+        const old = { author: 'a', doc_id: 'old', published_ms: 1_000_000 };
+        const fresh = { author: 'a', doc_id: 'back', published_ms: 5, fresh: true };
+        assert.deepEqual(mergeFeed([fresh], [old]).map((i) => i.doc_id), ['back', 'old']);
+        // Without the flag (a later page load), the date rules.
+        assert.deepEqual(mergeFeed([{ ...fresh, fresh: false }], [old]).map((i) => i.doc_id), ['old', 'back']);
+    });
+
+    it('isBackdated: a claim more than a minute before the mint, and nothing else', () => {
+        const m = 10_000_000;
+        assert.equal(isBackdated({ dated_ms: m - 86_400_000, minted_ms: m }), true);
+        assert.equal(isBackdated({ dated_ms: m - 30_000, minted_ms: m }), false, 'a bare "today" lands at the publish hour');
+        assert.equal(isBackdated({ dated_ms: m, minted_ms: m + 5_000 }), false, 'a scheduled post mints on its claim');
+        assert.equal(isBackdated({ minted_ms: m }), false, 'no claim');
+        assert.equal(isBackdated({ dated_ms: m - 86_400_000 }), false, 'a fragment row knows no mint');
+        assert.equal(isBackdated(null), false);
     });
 });

@@ -341,6 +341,8 @@ async fn shelf_page(
             updated_ms: p.head_ms,
             settled: p.settled,
             trusted_only: p.trusted_only,
+            dated_ms: p.dated_ms,
+            minted_ms: p.genesis_ms,
         })
         .collect())
 }
@@ -382,6 +384,8 @@ async fn shelf_updated_since(
             updated_ms: p.head_ms,
             settled: p.settled,
             trusted_only: p.trusted_only,
+            dated_ms: p.dated_ms,
+            minted_ms: p.genesis_ms,
         })
         .collect())
 }
@@ -401,6 +405,11 @@ pub(crate) struct JournalRow {
     pub(crate) settled: bool,
     /// Trusted-readers-only, same source.
     pub(crate) trusted_only: bool,
+    /// The author's claimed date (PUBLISH.md), off the header - None when none was claimed.
+    pub(crate) dated_ms: Option<i64>,
+    /// The header's genesis - when the post was actually written down. 0 from a fragment,
+    /// which carries no genesis of its own.
+    pub(crate) minted_ms: i64,
 }
 
 impl JournalRow {
@@ -448,9 +457,9 @@ async fn journal_rows(
     for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 11;
+                let b = i * 13;
                 format!(
-                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
+                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
                     b + 1,
                     b + 2,
                     b + 3,
@@ -461,14 +470,16 @@ async fn journal_rows(
                     b + 8,
                     b + 9,
                     b + 10,
-                    b + 11
+                    b + 11,
+                    b + 12,
+                    b + 13
                 )
             })
             .collect();
         let sql = format!(
             "INSERT INTO feed_journal
                (reader_root, author_root, doc_id, title, format,
-                published_ms, updated_ms, arrived_ms, settled, trusted_only, via_root)
+                published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms, via_root)
              VALUES {}
              ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
                  title = excluded.title,
@@ -476,6 +487,8 @@ async fn journal_rows(
                  updated_ms = excluded.updated_ms,
                  settled = excluded.settled,
                  trusted_only = excluded.trusted_only,
+                 dated_ms = excluded.dated_ms,
+                 minted_ms = excluded.minted_ms,
                  via_root = CASE
                      -- A follow arrival outranks any byline: the reader pulls this author.
                      WHEN excluded.via_root IS NULL THEN NULL
@@ -506,6 +519,11 @@ async fn journal_rows(
                     turso::Value::Integer(now),
                     turso::Value::Integer(i64::from(row.settled)),
                     turso::Value::Integer(i64::from(row.trusted_only)),
+                    match row.dated_ms {
+                        Some(d) => turso::Value::Integer(d),
+                        None => turso::Value::Null,
+                    },
+                    turso::Value::Integer(row.minted_ms),
                     match via_root {
                         Some(v) => turso::Value::Text(v.to_string()),
                         None => turso::Value::Null,
@@ -564,17 +582,18 @@ async fn journal_rows_suggested(
     for chunk in pairs.chunks(JOURNAL_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 11;
+                let b = i * 13;
                 format!(
-                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
-                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10, b + 11
+                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
+                    b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10, b + 11,
+                    b + 12, b + 13
                 )
             })
             .collect();
         let sql = format!(
             "INSERT INTO feed_journal
                (reader_root, author_root, doc_id, title, format,
-                published_ms, updated_ms, arrived_ms, settled, trusted_only, suggested_via)
+                published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms, suggested_via)
              VALUES {}
              ON CONFLICT (reader_root, author_root, doc_id) DO NOTHING",
             placeholders.join(",")
@@ -593,6 +612,11 @@ async fn journal_rows_suggested(
                     turso::Value::Integer(now),
                     turso::Value::Integer(i64::from(row.settled)),
                     turso::Value::Integer(i64::from(row.trusted_only)),
+                    match row.dated_ms {
+                        Some(d) => turso::Value::Integer(d),
+                        None => turso::Value::Null,
+                    },
+                    turso::Value::Integer(row.minted_ms),
                     turso::Value::Text((*introducer).clone()),
                 ]
             })
@@ -1434,6 +1458,10 @@ pub struct FeedRow {
     pub settled: bool,
     /// Trusted-readers-only, same source.
     pub trusted_only: bool,
+    /// The author's claimed date, when one was claimed (PUBLISH.md).
+    pub dated_ms: Option<i64>,
+    /// When the post was actually written down; 0 when the row came from a fragment.
+    pub minted_ms: i64,
 }
 
 /// How many of a document's other sharers a feed row will carry. A count is exact; a LIST is a
@@ -1579,7 +1607,7 @@ pub async fn feed_page(
     before: Option<(i64, String)>,
     limit: i64,
 ) -> Result<Vec<FeedRow>> {
-    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64);
+    type Row = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64, Option<i64>, i64);
     // Text only, twice over: the shelf read upstream no longer journals media documents at
     // all (`public_docs` filters them - they're ingredients, not posts), and this clause
     // makes journals written BEFORE that filter harmless rather than a page of raw bytes
@@ -1587,7 +1615,7 @@ pub async fn feed_page(
     let rows: Vec<Row> = match before {
         None => node_db
             .fetch_all(
-                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only
+                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
@@ -1599,7 +1627,7 @@ pub async fn feed_page(
         // "bind index 5 out of bounds"... only on the cursor branch, which no test paged.
         Some((ms, doc)) => node_db
             .fetch_all(
-                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only
+                "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms
                  FROM feed_journal WHERE reader_root = ?1
                    AND format IN ('marquee', 'plaintext')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
@@ -1612,7 +1640,7 @@ pub async fn feed_page(
     Ok(rows
         .into_iter()
         .map(
-            |(author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only)| FeedRow {
+            |(author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms)| FeedRow {
                 author_root,
                 via_root,
                 suggested_via,
@@ -1622,6 +1650,8 @@ pub async fn feed_page(
                 published_ms,
                 updated_ms,
                 arrived_ms,
+                dated_ms,
+                minted_ms,
                 settled: settled != 0,
                 trusted_only: trusted_only != 0,
             },
@@ -1665,6 +1695,8 @@ mod tests {
             format: "plaintext".to_string(),
             published_ms: 1_000,
             updated_ms,
+            dated_ms: None,
+            minted_ms: 0,
         }
     }
 
@@ -1726,6 +1758,8 @@ mod tests {
             format: "plaintext".into(),
             published_ms: 1,
             updated_ms: 1,
+            dated_ms: None,
+            minted_ms: 0,
         };
         let rows = [&row];
         let wanting = [(reader.clone(), introducer.clone())];
@@ -1779,6 +1813,8 @@ mod tests {
             format: "plaintext".into(),
             published_ms: 1,
             updated_ms: 1,
+            dated_ms: None,
+            minted_ms: 0,
         };
         let rows = [&row];
         let wanting = [(reader.clone(), introducer.clone())];

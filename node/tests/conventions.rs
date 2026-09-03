@@ -212,7 +212,7 @@ fn user_db_opens_are_deliberate() {
         // exchange actually leave a mirror?"), never a loop over held personas.
         ("speculative.rs", 1),
         ("record/documents.rs", 1),
-        ("record/store.rs", 2),
+        ("record/store.rs", 3), // + open_agented: the sweeps' session-free door, per agented persona once a minute - the journal-fill pass's own cadence
         ("identity/adoption.rs", 2),
         ("identity/routes.rs", 8),
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)

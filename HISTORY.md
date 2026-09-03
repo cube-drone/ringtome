@@ -8002,3 +8002,48 @@ handler resolves the draft's display_date with it (a date-time claim is local wa
 bare day is that day at the current local time-of-day), and the header carries one stamp
 for every reader. Unit claims cover UTC-7 at 8PM and plain UTC; the acceptance asserts the
 stamp lands inside the claimed day at roughly the publication's hour.
+
+## 2026-09-02 (cont. 14): scheduled posts (PUBLISH.md slice 2)
+
+A future preferred date now schedules instead of minting: the publish answers
+`scheduled_for`, writes a `publish_plan` on the draft's private meta (device-durable, naming
+the minting leaf so two devices cannot race, excluded from public replication), and a
+one-minute sweep on the author's node - `store::open_agented`, the session-free door - mints
+what is due through the same bake pass; the handler's after-mint duties (pins, notices, key
+memos, annotation restatement) moved into `after_posted` so both roads owe the same, and the
+mint spends the plan. The author's feed and card show scheduled drafts at the top with a
+peach "scheduled for" badge, words fetched from the private door; the test beat takes an
+`at_ms` so a test can ring next year. Acceptance: schedule, sweep-before-day mints nothing,
+sweep-after-day mints exactly once under the scheduled moment.
+
+Follow-up, same day (Curtis: "how would I set a publication date for a post? We don't have a
+publish button yet!"): the feed composer had its date row switched off since the one-draft
+days, when a post was stamped at publish and the claim had nothing to say. It is on again -
+the same picker Writer's editor carries - with the tooltip saying what a future date now
+means, and the post-mint overlay stopped copying bookkeeping fields (the spent plan, the
+sealing key) into label chips.
+
+Same day again (Curtis: "I see the date as a ... tag? That's a strange thing to occur"): the
+claimed `display_date` was restated as a public annotation at mint like every other private
+field, though it already rides the signed header as `dated_ms`. Now `store::DISPLAY_DATE` is
+excluded at mint and in the post-mint overlay, and `visibleAnnotations` drops the key on
+display so posts minted before the fix stop wearing it too.
+
+And once more (Curtis: "it keeps that post open in my drafts"): the composer picks its open
+draft as the newest unpublished text in the feed bucket, sorted by CLAIMED date - so a draft
+scheduled for 2030 was the newest thing there is, and the composer flipped back to it the
+moment the mirror caught up (or on reload). `openDraftOf` now skips a plan-bearing draft
+(`isScheduled`, pure/feed.js), pinned by a pure test and verified in headless Chrome over the
+DevTools protocol against a scratch node: badge within a second of posting, composer empty
+before and after reload. The stream was proven to ship the plan live (a WebSocket probe saw
+`publish_plan` in the update frame), so "not in the feed until reload" did not reproduce.
+
+Then the backdated card (Curtis: "the date on the newly created post is wrong until I refresh
+the page... if a post IS backdated, I'd like the post's date to be visually a little
+different"). The publish answer now carries `published_ms` and `dated_ms`, so the composer's
+fresh overlay wears the claimed date from the first second; the overlay is flagged `fresh`
+and `mergeFeed` keeps a fresh item at the top whatever its date - the next page load files
+it, which is the deliberate end of the grace (PUBLISH.md ruling 9). The feed journal gained
+`dated_ms` and `minted_ms` (node gen 39; fragment rows know no genesis and say 0), feed items
+and the shelf carry both, and `isBackdated` - a claim more than a minute before the mint -
+styles the stamp italic with a dotted underline and the real moment on hover.

@@ -248,6 +248,13 @@ CREATE TABLE feed_journal (
                                      --   can hide the share button without a second read
     trusted_only INTEGER NOT NULL DEFAULT 0, -- trusted-readers-only, same source - so the
                                      --   card can say WHY a body will not arrive
+    dated_ms     INTEGER,            -- the author's CLAIMED date off the header (PUBLISH.md),
+                                     --   NULL when none was claimed. published_ms already folds
+                                     --   it in; this is here so a card can tell a backdated
+                                     --   post from a fresh one
+    minted_ms    INTEGER NOT NULL DEFAULT 0, -- the header's genesis: when it was actually
+                                     --   written down. 0 on a row journaled from a fragment,
+                                     --   which knows no genesis
     suggested_via TEXT,              -- via_root's SPECULATIVE sibling (DISCOVERY slice 2,
                                      --   2026-08-24): the introducer whose vouch journaled this
                                      --   row when the reader neither follows the author nor any

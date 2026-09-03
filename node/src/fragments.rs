@@ -1166,6 +1166,7 @@ pub async fn journalable(
         if let Ok(Some(h)) = held_header(&state.node_db, author_root, &doc_hex).await {
             row.settled = h.settled;
             row.trusted_only = h.trusted_only;
+            row.dated_ms = h.dated_ms;
         }
         return Some(row);
     }
@@ -1300,6 +1301,8 @@ fn row_of_verified(
         updated_ms: now,
         settled: verified.header.settled,
         trusted_only: verified.header.trusted_only,
+        dated_ms: verified.header.dated_ms,
+        minted_ms: 0, // a fragment carries no genesis of its own
     }
 }
 
@@ -1320,6 +1323,8 @@ fn row_of(f: &Fragment, doc_hex: &str) -> crate::fanout::JournalRow {
         // fragment whenever one is in hand.
         settled: false,
         trusted_only: false,
+        dated_ms: None,
+        minted_ms: 0,
     }
 }
 

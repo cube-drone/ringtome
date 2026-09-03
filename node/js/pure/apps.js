@@ -86,7 +86,10 @@ export const APPS = [
             tree: false,
             tagColumn: false,
             pin: false,
-            date: false,
+            // The claimed date is the post's preferred date (PUBLISH.md): a past date files
+            // the post there, a future one schedules it. Off until 2026-09-02, when a post
+            // was stamped at publish and the claim had nothing to say.
+            date: true,
             modes: ['interactive', 'side', 'plain'],
         },
     },

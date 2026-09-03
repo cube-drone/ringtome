@@ -141,7 +141,7 @@ export const Annotations = ({ root, docId, features }) => {
         <div class="annotations">
             ${showDate &&
             html`<div class="annot-row">
-                <label class="annot-label" title=${t('doc.annotations.the-date-and-time-this', 'the date and time this document should be filed and sorted under - your claim, authoritative over the real save date')}>${t('doc.annotations.date', 'date')}</label>
+                <label class="annot-label" title=${t('doc.annotations.the-date-and-time-this', 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then')}>${t('doc.annotations.date', 'date')}</label>
                 <input
                     class="annot-date"
                     type="date"

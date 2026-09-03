@@ -36,7 +36,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from '../mirror/prefs.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
-import { createdMs } from '../pure/docdate.js';
+import { createdMs, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
 import {
     FEED_STYLE,
     publishedState,
@@ -198,7 +198,19 @@ const StackItem = ({ root, row, seal, onSeal, onPost, posting }) => {
 // smaller, a little transparent, and cut to its lead; a high-interest one gets a touch more
 // visual importance and is never cut. Order never moves.
 
-const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
+/// The draft's schedule (PUBLISH.md): `{at, by, ...}` parsed off its private meta, or null.
+export function scheduledPlan(doc) {
+    const raw = doc && doc.fields && doc.fields.publish_plan;
+    if (!raw) return null;
+    try {
+        const plan = JSON.parse(raw);
+        return plan && typeof plan.at === 'number' ? plan : null;
+    } catch {
+        return null;
+    }
+}
+
+const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor }) => {
     const [items, setItems] = useState([]);
     const [more, setMore] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -343,6 +355,9 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
     const visible = collapseReplyPairs(
         items.filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot))
     );
+    // Your scheduled posts ride at the TOP (Curtis, 2026-09-02): a future time sorts later
+    // than anything that exists, and the badge says why nobody else sees them yet.
+    const shown = [...(scheduled || []), ...visible];
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
@@ -369,7 +384,7 @@ const FeedStream = ({ root, current, contacts, fresh, editingFor }) => {
                     <span class="feed-selectivity-label">${(SELECTIVITY_STOPS.find((s) => s.key === stopKey) || {}).label}</span>
                 </label>`}
             </div>
-            ${visible.map(
+            ${shown.map(
                 (item) => html`<${PostEntry}
                     key=${`${item.author}:${item.doc_id}`}
                     item=${item}
@@ -523,6 +538,12 @@ export const FeedApp = ({ current }) => {
             );
             setSettleNext(false);
             setTrustNext(false);
+            if (!made.post_id) {
+                // Scheduled (PUBLISH.md): nothing public yet. The mirror row's plan puts it
+                // at the top of the stream with its badge; nothing more to say here.
+                setPosting(false);
+                return;
+            }
             // Say it here rather than waiting for the stream to say it back: the label and the
             // public link are true the moment the server answers.
             setPostedAs((p) => ({ ...p, [posted]: made.post_id }));
@@ -538,7 +559,11 @@ export const FeedApp = ({ current }) => {
                 overlayLabels.push({ annotator: root, key: 'tag', value: tag });
             }
             for (const [field, value] of Object.entries((row && row.fields) || {})) {
-                if (field === PUBLISHED_AS || !(value || '').trim()) continue;
+                // Bookkeeping never becomes a chip: where the draft went public, the key
+                // it sealed under, and a schedule this very mint just spent.
+                if (field === PUBLISHED_AS || field === 'trusted_key' || field === 'publish_plan') continue;
+                if (field === DISPLAY_DATE_FIELD) continue; // rides the header as the post's date
+                if (!(value || '').trim()) continue;
                 overlayLabels.push({ annotator: root, key: field, value });
             }
             for (const bucket of (row && row.buckets) || []) {
@@ -549,7 +574,12 @@ export const FeedApp = ({ current }) => {
                 doc_id: made.post_id,
                 title: (row && row.title) || '',
                 format: 'marquee',
-                published_ms: Date.now(),
+                // The stamp the server minted under - a backdated post wears its claimed
+                // date from the first second - while `fresh` keeps the card at the top.
+                published_ms: made.published_ms || Date.now(),
+                dated_ms: made.dated_ms == null ? null : made.dated_ms,
+                minted_ms: Date.now(),
+                fresh: true,
                 updated_ms: Date.now(),
                 arrived_ms: Date.now(),
                 annotations: overlayLabels,
@@ -574,8 +604,29 @@ export const FeedApp = ({ current }) => {
         (d) =>
             d.doc_id !== draftId &&
             isTextDoc(d) && // an uploaded image in the feed bucket is media, never a draft
-            !publishedState(overlayPosted(d, postedAs[d.doc_id])).published
+            !publishedState(overlayPosted(d, postedAs[d.doc_id])).published &&
+            !scheduledPlan(d) // a scheduled draft lives in the stream, badged, not down here
     );
+    // Every scheduled draft of this persona - any bucket, since Writer publishes too -
+    // dressed as a stream item for the top of the feed.
+    const scheduledItems = (rows || [])
+        .filter((d) => scheduledPlan(d) && !publishedState(overlayPosted(d, postedAs[d.doc_id])).published)
+        .map((d) => {
+            const plan = scheduledPlan(d);
+            return {
+                author: root,
+                doc_id: d.doc_id,
+                title: d.title || '',
+                format: 'marquee',
+                published_ms: plan.at,
+                updated_ms: plan.at,
+                arrived_ms: plan.at,
+                mine: true,
+                scheduled: true,
+                private_doc: true,
+            };
+        })
+        .sort((a, b) => b.published_ms - a.published_ms);
     return html`
         <div class="feed-app">
             <${BakeModal} items=${baking} />
@@ -653,6 +704,7 @@ export const FeedApp = ({ current }) => {
                     current=${current}
                     contacts=${contactRows}
                     fresh=${fresh}
+                    scheduled=${scheduledItems}
                     editingFor=${editingFor}
                 />
             </div>

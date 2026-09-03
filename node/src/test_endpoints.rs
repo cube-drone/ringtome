@@ -43,6 +43,10 @@ pub struct BeatRequest {
     /// The root the pass concerns, for the per-root passes. Ignored by the fleet sweeps.
     #[serde(default)]
     pub root: Option<String>,
+    /// For the scheduled-publish pass: "pretend it is this moment" (PUBLISH.md) - a test
+    /// schedules a post for next year and rings the beat as if next year had come.
+    #[serde(default)]
+    pub at_ms: Option<i64>,
 }
 
 /// Ring one background pass, NOW, and return when it has completed - the test suite's
@@ -158,6 +162,12 @@ pub async fn beat(
             Ok(())
         }
         ("journal-fill", _) => crate::fanout::fill_pass(state.clone()).await,
+        ("publish-due", scope) => {
+            let at = req.at_ms.unwrap_or_else(crate::clock::now_ms);
+            let n = crate::scheduled::publish_due(&state, scope, at).await?;
+            tracing::info!(minted = n, at, "TEST BEAT: publish-due");
+            Ok(())
+        }
         ("follow-refresh", _) => crate::idface::refresh_followed_pass(state.clone()).await,
         ("speculative-acquire", _) => {
             // Clear the pass's in-memory attempt stamps first: the cooldown rotation would

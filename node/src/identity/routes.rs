@@ -611,6 +611,14 @@ struct FeedItem {
     /// card says why a body will not arrive. Absent when open.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     trusted_only: bool,
+    /// The author's claimed date (PUBLISH.md), when one was claimed - so the card can wear a
+    /// backdated stamp differently. Absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dated_ms: Option<i64>,
+    /// When the post was actually written down (the header's genesis); absent when the row
+    /// came from a fragment, which knows none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    minted_ms: Option<i64>,
     /// The reader wrote this one themselves.
     mine: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -944,6 +952,8 @@ async fn feed_handler(
                 arrived_ms: r.arrived_ms,
                 settled: r.settled,
                 trusted_only: r.trusted_only,
+                dated_ms: r.dated_ms,
+                minted_ms: (r.minted_ms != 0).then_some(r.minted_ms),
                 via: lead,
                 via_name,
                 via_avatar,
@@ -1272,6 +1282,16 @@ struct CrownResponse {
 struct PublishResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     post_id: Option<String>,
+    /// The publish is scheduled for this moment (PUBLISH.md): nothing public exists yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scheduled_for: Option<i64>,
+    /// The stamp the post displays under - its claimed date if one was claimed, else now -
+    /// so the composer's fresh card wears the right date without waiting for the journal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    published_ms: Option<i64>,
+    /// The claim itself, when there was one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dated_ms: Option<i64>,
     /// Media still preparing (or failed): the modal's list. Present only with a 202.
     #[serde(skip_serializing_if = "Option::is_none")]
     baking: Option<Vec<crate::record::bake::BakeItem>>,
@@ -1324,6 +1344,164 @@ async fn held_public_header(
     crate::fragments::held_header(&state.node_db, author_hex, doc_hex)
         .await
         .map_err(AppError::Internal)
+}
+
+/// Everything a mint owes after the header lands (PUBLISH.md lifted this out of the publish
+/// handler so the scheduled-publish sweep owes exactly the same): the reply's pins and
+/// comment notice, the sealing key's node memo, the draft's annotations restated in public,
+/// and the schedule mark cleared.
+pub(crate) async fn after_posted(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    draft_id: &[u8; 16],
+    post_id: [u8; 16],
+    reply: Option<crate::record::documents::ReplyLinks>,
+    flags: crate::record::documents::PublishFlags,
+) -> Result<(), AppError> {
+    let doc_id = *draft_id;
+    let trusted_only = flags.trusted_only;
+    let state = state.clone();
+    let root = root.to_string();
+    // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
+    // parent and the thread root are shared outright, ordinary pointers, crowd
+    // counts and all. Deduped when the parent is the root; your OWN posts pin
+    // nothing (they are already yours to serve, and a persona does not rebroadcast
+    // itself). Best-effort: the reply is on the chain either way, and a failed pin
+    // is re-mintable by sharing - a pin failure must not unsay the words.
+    if let Some((parent, root_link)) = reply {
+        let self_root = hex_fixed::<32>(&root, "root")?;
+        // The parent pin is QUIET (announce: false): the comment notice below is
+        // the same act said properly. The root pin - the nested case's second
+        // pointer - announces as an ordinary share when the root's author is
+        // somebody ELSE (for them the news IS "your post got passed along"), and
+        // stays quiet when the parent's author owns the root too (Curtis,
+        // 2026-08-29: answering someone's reply in their own thread rang them
+        // twice - "replied" and "shared" - for one act).
+        for (author, doc, announce) in [
+            (parent.0, parent.1, false),
+            (root_link.0, root_link.1, root_link.0 != parent.0),
+        ] {
+            if author == self_root || (announce && (author, doc) == parent) {
+                continue;
+            }
+            if let Err(e) = share_one(&state, data, &root, author, doc, announce).await {
+                tracing::warn!(author = %hex::encode(author), error = ?e,
+                    "a reply's pin did not mint; the reply stands, share by hand");
+            }
+        }
+        // The comment notice (PROJECT_PLAN's Replies slice 4): first-class, to the PARENT's
+        // author, carrying the reply's own signed header as evidence - the claim
+        // verify_claim checks against the recipient's name. Best-effort like the
+        // pins: the reply is on the chain either way. The follow-edge gate at the
+        // recipient drops this when they already pull us (the derived fold speaks
+        // there), so queueing unconditionally is correct, not chatty.
+        if parent.0 != self_root {
+            match crate::record::documents::public_header_entry(data.db(), &post_id).await {
+                Ok(Some(entry)) => {
+                    let parent_hex = hex::encode(parent.0);
+                    match data
+                        .notices()
+                        .seal(
+                            &parent.0,
+                            &entry,
+                            ringtome_proto::deliver::notice_kind::COMMENT,
+                            state.config.pow_requested_bits,
+                        )
+                        .await
+                    {
+                        Ok(envelope) => {
+                            if let Err(e) = crate::outbox::queue(
+                                &state.node_db,
+                                &root,
+                                &parent_hex,
+                                &envelope,
+                            )
+                            .await
+                            {
+                                tracing::warn!(author = %parent_hex, error = ?e,
+                                    "could not queue a comment notice");
+                            }
+                        }
+                        Err(e) => tracing::warn!(author = %parent_hex, error = ?e,
+                            "could not seal a comment notice"),
+                    }
+                }
+                Ok(None) => tracing::warn!(
+                    "the reply's own header is not readable; no comment notice"
+                ),
+                Err(e) => tracing::warn!(error = ?e,
+                    "could not read the reply's header for its comment notice"),
+            }
+            // Knock now, the share path's eager idiom.
+            let eager = state.clone();
+            tokio::spawn(async move {
+                if let Err(e) = crate::outbox::sweep(eager).await {
+                    tracing::debug!(error = ?e, "eager comment-notice delivery failed");
+                }
+            });
+        }
+    }
+    // The sealing key's node memo (PROJECT_PLAN's Post visibility slice 2b): the author's node
+    // remembers at mint so the body door and the key lane answer without a
+    // private-chain read per request. Best-effort: the draft's copy is durable.
+    if trusted_only {
+        if let Ok(Some(k)) = data.annotations().field(&doc_id, store::TRUSTED_KEY).await {
+            if let Some(key) = hex::decode(&k)
+                .ok()
+                .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+            {
+                if let Err(e) = crate::postkeys::remember(
+                    &state.node_db,
+                    &root,
+                    &hex::encode(post_id),
+                    &key,
+                )
+                .await
+                {
+                    tracing::warn!(error = ?e, "post key memo write failed");
+                }
+                // The twins seal under the same key: memo it under THEIR ids too,
+                // so the key doors (HTTP and WantKey alike) answer for a picture
+                // exactly as they answer for the words.
+                if let Ok(Some(entry)) =
+                    crate::record::documents::public_header_entry(data.db(), &post_id).await
+                {
+                    if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
+                        if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
+                            for r in &h.refs {
+                                if let Err(e) = crate::postkeys::remember(
+                                    &state.node_db,
+                                    &root,
+                                    &hex::encode(r),
+                                    &key,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(error = ?e, "twin key memo write failed");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // The draft's annotations, restated in public about the new post (ANNOTATIONS.md
+    // slice 1) - best-effort, like the pins: a label must not unsay the words.
+    {
+        let self_root = hex_fixed::<32>(&root, "root")?;
+        if let Err(e) = replicate_annotations(data, &self_root, &doc_id, &post_id).await {
+            tracing::warn!(error = ?e, "annotation replication failed; the post stands");
+        }
+    }
+    // The schedule mark, if this mint fulfilled one, is spent.
+    if let Ok(Some(plan)) = data.annotations().field(&doc_id, store::PUBLISH_PLAN).await {
+        if !plan.trim().is_empty() {
+            let _ = data.annotations().set_field(&doc_id, store::PUBLISH_PLAN, "").await;
+        }
+    }
+    Ok(())
 }
 
 /// Resolve a reply's links from the PARENT's own held header: the mirror's public shelf
@@ -1398,149 +1576,45 @@ async fn publish_handler(
     let tz_offset_min = req.as_ref().and_then(|b| b.tz_offset_min).unwrap_or(0);
     let dated_ms = data
         .annotations()
-        .field(&doc_id, "display_date")
+        .field(&doc_id, store::DISPLAY_DATE)
         .await?
         .and_then(|v| crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min));
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
     let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms };
+    // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
+    // until the day. The plan lives on the draft's private meta - device-durable - naming
+    // this device's leaf as the one that mints, and the sweep does the rest.
+    if let Some(at) = dated_ms {
+        if at > crate::clock::now_ms() {
+            let plan = serde_json::json!({
+                "at": at,
+                "by": data.leaf_hex(),
+                "settled": settled,
+                "trusted_only": trusted_only,
+            });
+            data.annotations()
+                .set_field(&doc_id, store::PUBLISH_PLAN, &plan.to_string())
+                .await?;
+            return Ok(Json(PublishResponse {
+                post_id: None,
+                scheduled_for: Some(at),
+                published_ms: None,
+                dated_ms: None,
+                baking: None,
+            })
+            .into_response());
+        }
+    }
     match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, flags).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
-            // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
-            // parent and the thread root are shared outright, ordinary pointers, crowd
-            // counts and all. Deduped when the parent is the root; your OWN posts pin
-            // nothing (they are already yours to serve, and a persona does not rebroadcast
-            // itself). Best-effort: the reply is on the chain either way, and a failed pin
-            // is re-mintable by sharing - a pin failure must not unsay the words.
-            if let Some((parent, root_link)) = reply {
-                let self_root = hex_fixed::<32>(&root, "root")?;
-                // The parent pin is QUIET (announce: false): the comment notice below is
-                // the same act said properly. The root pin - the nested case's second
-                // pointer - announces as an ordinary share when the root's author is
-                // somebody ELSE (for them the news IS "your post got passed along"), and
-                // stays quiet when the parent's author owns the root too (Curtis,
-                // 2026-08-29: answering someone's reply in their own thread rang them
-                // twice - "replied" and "shared" - for one act).
-                for (author, doc, announce) in [
-                    (parent.0, parent.1, false),
-                    (root_link.0, root_link.1, root_link.0 != parent.0),
-                ] {
-                    if author == self_root || (announce && (author, doc) == parent) {
-                        continue;
-                    }
-                    if let Err(e) = share_one(&state, &data, &root, author, doc, announce).await {
-                        tracing::warn!(author = %hex::encode(author), error = ?e,
-                            "a reply's pin did not mint; the reply stands, share by hand");
-                    }
-                }
-                // The comment notice (PROJECT_PLAN's Replies slice 4): first-class, to the PARENT's
-                // author, carrying the reply's own signed header as evidence - the claim
-                // verify_claim checks against the recipient's name. Best-effort like the
-                // pins: the reply is on the chain either way. The follow-edge gate at the
-                // recipient drops this when they already pull us (the derived fold speaks
-                // there), so queueing unconditionally is correct, not chatty.
-                if parent.0 != self_root {
-                    match crate::record::documents::public_header_entry(data.db(), &post_id).await {
-                        Ok(Some(entry)) => {
-                            let parent_hex = hex::encode(parent.0);
-                            match data
-                                .notices()
-                                .seal(
-                                    &parent.0,
-                                    &entry,
-                                    ringtome_proto::deliver::notice_kind::COMMENT,
-                                    state.config.pow_requested_bits,
-                                )
-                                .await
-                            {
-                                Ok(envelope) => {
-                                    if let Err(e) = crate::outbox::queue(
-                                        &state.node_db,
-                                        &root,
-                                        &parent_hex,
-                                        &envelope,
-                                    )
-                                    .await
-                                    {
-                                        tracing::warn!(author = %parent_hex, error = ?e,
-                                            "could not queue a comment notice");
-                                    }
-                                }
-                                Err(e) => tracing::warn!(author = %parent_hex, error = ?e,
-                                    "could not seal a comment notice"),
-                            }
-                        }
-                        Ok(None) => tracing::warn!(
-                            "the reply's own header is not readable; no comment notice"
-                        ),
-                        Err(e) => tracing::warn!(error = ?e,
-                            "could not read the reply's header for its comment notice"),
-                    }
-                    // Knock now, the share path's eager idiom.
-                    let eager = state.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = crate::outbox::sweep(eager).await {
-                            tracing::debug!(error = ?e, "eager comment-notice delivery failed");
-                        }
-                    });
-                }
-            }
-            // The sealing key's node memo (PROJECT_PLAN's Post visibility slice 2b): the author's node
-            // remembers at mint so the body door and the key lane answer without a
-            // private-chain read per request. Best-effort: the draft's copy is durable.
-            if trusted_only {
-                if let Ok(Some(k)) = data.annotations().field(&doc_id, store::TRUSTED_KEY).await {
-                    if let Some(key) = hex::decode(&k)
-                        .ok()
-                        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
-                    {
-                        if let Err(e) = crate::postkeys::remember(
-                            &state.node_db,
-                            &root,
-                            &hex::encode(post_id),
-                            &key,
-                        )
-                        .await
-                        {
-                            tracing::warn!(error = ?e, "post key memo write failed");
-                        }
-                        // The twins seal under the same key: memo it under THEIR ids too,
-                        // so the key doors (HTTP and WantKey alike) answer for a picture
-                        // exactly as they answer for the words.
-                        if let Ok(Some(entry)) =
-                            crate::record::documents::public_header_entry(data.db(), &post_id).await
-                        {
-                            if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
-                                if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
-                                    for r in &h.refs {
-                                        if let Err(e) = crate::postkeys::remember(
-                                            &state.node_db,
-                                            &root,
-                                            &hex::encode(r),
-                                            &key,
-                                        )
-                                        .await
-                                        {
-                                            tracing::warn!(error = ?e, "twin key memo write failed");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // The draft's annotations, restated in public about the new post (ANNOTATIONS.md
-            // slice 1) - best-effort, like the pins: a label must not unsay the words.
-            {
-                let self_root = hex_fixed::<32>(&root, "root")?;
-                if let Err(e) = replicate_annotations(&data, &self_root, &doc_id, &post_id).await {
-                    tracing::warn!(error = ?e, "annotation replication failed; the post stands");
-                }
-            }
+            after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
             Ok(Json(PublishResponse {
                 post_id: Some(hex::encode(post_id)),
+                scheduled_for: None,
+                published_ms: Some(flags.dated_ms.unwrap_or_else(crate::clock::now_ms)),
+                dated_ms: flags.dated_ms,
                 baking: None,
             })
             .into_response())
@@ -1549,6 +1623,9 @@ async fn publish_handler(
             axum::http::StatusCode::ACCEPTED,
             Json(PublishResponse {
                 post_id: None,
+                scheduled_for: None,
+                published_ms: None,
+                dated_ms: None,
                 baking: Some(items),
             }),
         )
@@ -2065,6 +2142,8 @@ async fn replicate_annotations(
         // fact about the draft, not a label on the post.
         if field == store::PUBLISHED_AS
             || field == store::TRUSTED_KEY
+            || field == store::PUBLISH_PLAN
+            || field == store::DISPLAY_DATE
             || value.trim().is_empty()
             || !fits(&field, &value)
         {

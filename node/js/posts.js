@@ -13,8 +13,11 @@ import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
+import { openMirror, useLive } from './mirror.js';
+import { scheduledPlan } from './apps/feed.js';
 import { recentPosts, mergePosts, postCursor } from './pure/feed.js';
 import { PostEntry, useOwnPostEditing } from './postentry.js';
+import { publishedState } from './pure/feed.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
@@ -32,6 +35,27 @@ export const PublicPosts = ({ root, posts, more, current }) => {
     // Everything by default; the toggles SUBTRACT (Curtis, 2026-09-02).
     const [withShares, setWithShares] = useState(true);
     const [withReplies, setWithReplies] = useState(true);
+    // Your own card shows your scheduled posts at the top, badged (PUBLISH.md ruling 5):
+    // read off the mirror, only when the page is yours.
+    const ownRows = useLive(() => (mine ? openMirror(root).docs.toArray() : []), [root, mine]);
+    const scheduledItems = mine
+        ? (ownRows || [])
+              .filter((d) => scheduledPlan(d) && !publishedState(d).published)
+              .map((d) => {
+                  const plan = scheduledPlan(d);
+                  return {
+                      author: root,
+                      doc_id: d.doc_id,
+                      title: d.title || '',
+                      format: 'marquee',
+                      published_ms: plan.at,
+                      mine: true,
+                      scheduled: true,
+                      private_doc: true,
+                  };
+              })
+              .sort((a, b) => b.published_ms - a.published_ms)
+        : [];
 
     // A different persona is a different shelf: drop what the last one's pages left behind.
     useEffect(() => {
@@ -60,12 +84,12 @@ export const PublicPosts = ({ root, posts, more, current }) => {
         setLoading(false);
     };
 
-    if (!list.length) return null; // nothing said in public yet - say nothing about it
+    if (!list.length && !scheduledItems.length) return null; // nothing said in public yet
 
     // The profile's rows, dressed as the shared entry's item shape - a share keeps its
     // ORIGINAL author (the card is still that person speaking) and wears this persona as
     // its via line, exactly as the feed renders a passed-along post.
-    const items = list
+    const items = [...scheduledItems, ...list
         .filter((p) => (withShares || p.kind !== 'share') && (withReplies || !p.reply_to))
         .map((p) =>
             p.kind === 'share'
@@ -85,6 +109,8 @@ export const PublicPosts = ({ root, posts, more, current }) => {
                       title: p.title,
                       format: p.format,
                       published_ms: p.published_ms,
+                      dated_ms: p.dated_ms,
+                      minted_ms: p.minted_ms,
                       replies: p.replies,
                       reply_to: p.reply_to,
                       thread_root: p.thread_root,
@@ -93,7 +119,7 @@ export const PublicPosts = ({ root, posts, more, current }) => {
                       annotations: p.annotations,
                       mine,
                   }
-        );
+        )];
 
     return html`
         <section class="public-posts">

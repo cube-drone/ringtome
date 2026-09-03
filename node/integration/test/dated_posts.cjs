@@ -39,7 +39,13 @@ describe("dated posts: the preferred date sorts the post everywhere", function (
         const pub = await ada(`api/identity/${adaRoot}/docs/${made.doc_id}/publish`, { method: "POST" });
         const text = await pub.text();
         assert.equal(pub.status, 200, text);
-        return JSON.parse(text).post_id;
+        const answer = JSON.parse(text);
+        // The answer carries the stamp the post displays under, so the composer's fresh
+        // card can wear the claimed date from the first second (2026-09-02).
+        assert.ok(answer.published_ms > 0, "published_ms rides the publish answer");
+        if (date) assert.equal(answer.dated_ms, answer.published_ms, "a claimed date IS the display stamp");
+        else assert.equal(answer.dated_ms, undefined, "no claim, no dated_ms");
+        return answer.post_id;
     };
 
     before(async () => {
@@ -89,5 +95,9 @@ describe("dated posts: the preferred date sorts the post everywhere", function (
         assert.ok(row, "the dated post reached the follower");
         assert.ok(row.published_ms >= MAY_4_2019 && row.published_ms < MAY_4_2019 + 86_400_000,
             "journaled inside its claimed day");
+        // The journal carries both stamps, so the follower's card can wear the claim as a
+        // backdate (2026-09-02).
+        assert.equal(row.dated_ms, row.published_ms, "the claim rides the feed item");
+        assert.ok(row.minted_ms > row.dated_ms + 86_400_000, "and so does the real mint moment");
     });
 });

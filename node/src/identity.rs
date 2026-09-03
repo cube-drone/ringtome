@@ -18,6 +18,7 @@ mod routes;
 pub(crate) mod serving;
 
 pub use routes::{router, BodyLimits};
+pub(crate) use routes::after_posted;
 
 use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::SigningKey;

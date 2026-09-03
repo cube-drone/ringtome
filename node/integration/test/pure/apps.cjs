@@ -103,7 +103,8 @@ describe('app registry', () => {
         it('applies an app override without losing the un-overridden defaults', () => {
             const f = featuresOf(appForStyle('feed'));
             assert.deepEqual(f.modes, ['interactive', 'side', 'plain']); // overridden
-            assert.equal(f.date, false); // overridden
+            assert.equal(f.pin, false); // overridden
+            assert.equal(f.date, true); // the post's preferred date (PUBLISH.md): a claim that schedules
             assert.equal(f.tree, false); // overridden
             assert.equal(f.description, true); // NOT overridden: the default stands
         });

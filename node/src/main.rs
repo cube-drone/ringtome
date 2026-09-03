@@ -20,6 +20,7 @@ mod error;
 mod fanout;
 mod fragments;
 mod postkeys;
+mod scheduled;
 mod files;
 mod fold;
 mod identity;
@@ -497,6 +498,19 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
+    // Scheduled publishes (PUBLISH.md slice 2): drafts whose preferred date lay in the
+    // future mint when their moment comes. A minute is plenty - the date is a day at an
+    // hour, never a deadline - and LOCAL_TEST may shorten it.
+    let publish_beat = if local_test {
+        std::env::var("RINGTOME_TEST_PUBLISH_DUE_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(60))
+    } else {
+        std::time::Duration::from_secs(60)
+    };
+    loops::periodic("publish-due", publish_beat, state.clone(), scheduled::pass);
     // WAL maintenance (db::checkpoint_pass): truncate node.db's and every open user db's log
     // on a slow beat - the policy and its reasoning live beside Db::checkpoint.
     loops::periodic(
