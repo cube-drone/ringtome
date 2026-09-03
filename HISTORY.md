@@ -8136,3 +8136,9 @@ renderer profile asks it before the base table, and a pure claim renders all fou
 through the real html renderer. The same two spellings were added to marqueemarkup's tables
 (html-renderer profile, turbolink plugins, and their Rust mirrors) so the base knows them
 after the next bump.
+
+Marquee 0.7.1 (Curtis: "that marqueemarkup patch hits in 0.7.1 - can you update the deps?"):
+the parser and markup crates pinned `=0.7.1`, and all seven npm packages `^0.7.1` -
+`@cube-drone/marquee-codemirror` a few minutes behind the others, held at `^0.7.0` until its
+publish landed (the install refuses the whole tree over one missing version). Ringtome's
+own media table stays in front of the profile regardless.
