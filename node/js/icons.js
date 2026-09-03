@@ -9,7 +9,6 @@ import {
     Funnel,
     Path,
     NotePencil,
-    PenNib,
     PushPin,
     CaretLeft,
     X,
@@ -30,8 +29,6 @@ import {
     SquareHalf,
     TextT,
     TextTSlash,
-    Keyboard,
-    TextAa,
     Plus,
     CaretRight,
     FileText,
@@ -72,7 +69,6 @@ export const Icons = {
     // apps (the console tiles + each app's own header)
     persona: UserCircle,
     notes: NotePencil,
-    journal: PenNib,
     // actions and chrome
     pin: PushPin,
     back: CaretLeft,
@@ -99,11 +95,7 @@ export const Icons = {
     modeSide: SquareHalf,
     modePlain: TextT,
     modeRead: TextTSlash,
-    // journal font override
-    fontTypewriter: Keyboard,
-    fontHand: PenNib,
-    fontLegible: TextAa,
-    // the document tree (sections are taxonomies, pages are documents) - TurboNotes' right column
+    // the document tree (sections are taxonomies, pages are documents) - Writer's right column
     page: FileText,
     pageNew: FilePlus,
     section: FolderSimple,

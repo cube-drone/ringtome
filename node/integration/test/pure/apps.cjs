@@ -1,6 +1,6 @@
 // The application registry's rules - pure lookups over a hand-written table, and the quiet
 // decider of what appears in every list in the product. The bucket <-> app-type mapping is mostly
-// IMPLICIT (a bucket named `journal` simply IS a journal bucket), which is cheap and readable and
+// IMPLICIT (a bucket named `feed` simply IS a feed bucket), which is cheap and readable and
 // exactly the kind of rule that wants vectors: the implicitness is doing real work, and nothing
 // else in the codebase states it.
 const assert = require('node:assert');
@@ -17,20 +17,24 @@ before(async () => {
 describe('app registry', () => {
     describe('appTypeOf', () => {
         it('reads a bucket whose NAME is a style as being of that style, with no registry', () => {
-            assert.equal(appTypeOf('journal'), 'journal');
             assert.equal(appTypeOf('feed'), 'feed');
             assert.equal(appTypeOf(DEFAULT_STYLE), DEFAULT_STYLE);
         });
 
         it('sends a RETIRED style to the default app rather than stranding its buckets', () => {
-            // Recipes and Wikibook were cut 2026-08-08 (each was TurboNotes with a column taken
+            // Recipes and Wikibook were cut 2026-08-08 (each was Writer with a column taken
             // away). Their buckets and documents outlive them on every dev node and in anyone's
             // data, so the fallback is the whole migration story: a `recipes` bucket simply opens
-            // in TurboNotes now. If this ever fails, retiring an app starts losing documents.
+            // in Writer now. If this ever fails, retiring an app starts losing documents.
             assert.equal(appTypeOf('recipes'), DEFAULT_STYLE);
             assert.equal(appTypeOf('wiki'), DEFAULT_STYLE);
             assert.equal(appForStyle('recipes').id, 'notes');
             assert.equal(homeAppFor({ buckets: ['wiki'] }, []).id, 'notes');
+            // The Journal followed them on 2026-09-02: Writer is the one editing primitive,
+            // and every day-book bucket simply opens there now.
+            assert.equal(appTypeOf('journal'), DEFAULT_STYLE);
+            assert.equal(appForStyle('journal').id, 'notes');
+            assert.equal(homeAppFor({ buckets: ['journal'] }, []).id, 'notes');
         });
 
         it('does NOT treat a system app id as a bucket type', () => {
@@ -39,8 +43,8 @@ describe('app registry', () => {
         });
 
         it('consults the roster for a user-named bucket', () => {
-            const roster = [{ name: 'dream-diary', app: 'journal' }];
-            assert.equal(appTypeOf('dream-diary', roster), 'journal');
+            const roster = [{ name: 'dream-diary', app: 'feed' }];
+            assert.equal(appTypeOf('dream-diary', roster), 'feed');
         });
 
         it('falls back to the default rather than stranding an unresolvable bucket', () => {
@@ -52,38 +56,38 @@ describe('app registry', () => {
 
         it('lets an implicit name win over a contradicting registry row', () => {
             // The name IS the type; a roster row claiming otherwise cannot rename a style.
-            assert.equal(appTypeOf('journal', [{ name: 'journal', app: 'feed' }]), 'journal');
+            assert.equal(appTypeOf('feed', [{ name: 'feed', app: 'default' }]), 'feed');
         });
     });
 
     describe('bucketsForApp (the switcher rail)', () => {
-        const journal = () => appForStyle('journal');
+        const writer = () => appForStyle(DEFAULT_STYLE);
 
         it('puts the home bucket first, then the rest alphabetically', () => {
             const roster = [
-                { name: 'zebra-nights', app: 'journal' },
-                { name: 'apple-mornings', app: 'journal' },
+                { name: 'zebra-nights', app: DEFAULT_STYLE },
+                { name: 'apple-mornings', app: DEFAULT_STYLE },
             ];
-            assert.deepEqual(bucketsForApp(journal(), roster),
-                ['journal', 'apple-mornings', 'zebra-nights']);
+            assert.deepEqual(bucketsForApp(writer(), roster),
+                [DEFAULT_STYLE, 'apple-mornings', 'zebra-nights']);
         });
 
         it('offers the home bucket even when the roster is empty', () => {
-            assert.deepEqual(bucketsForApp(journal(), []), ['journal']);
-            assert.deepEqual(bucketsForApp(journal()), ['journal']);
+            assert.deepEqual(bucketsForApp(writer(), []), [DEFAULT_STYLE]);
+            assert.deepEqual(bucketsForApp(writer()), [DEFAULT_STYLE]);
         });
 
         it('never lists the home bucket twice when the roster also carries it', () => {
-            const roster = [{ name: 'journal', app: 'journal' }];
-            assert.deepEqual(bucketsForApp(journal(), roster), ['journal']);
+            const roster = [{ name: DEFAULT_STYLE, app: DEFAULT_STYLE }];
+            assert.deepEqual(bucketsForApp(writer(), roster), [DEFAULT_STYLE]);
         });
 
         it('excludes buckets belonging to another app', () => {
             const roster = [
                 { name: 'my-feed', app: 'feed' },
-                { name: 'dream-diary', app: 'journal' },
+                { name: 'dream-diary', app: DEFAULT_STYLE },
             ];
-            assert.deepEqual(bucketsForApp(journal(), roster), ['journal', 'dream-diary']);
+            assert.deepEqual(bucketsForApp(writer(), roster), [DEFAULT_STYLE, 'dream-diary']);
         });
     });
 
@@ -105,7 +109,7 @@ describe('app registry', () => {
         });
 
         it('gives the tree-having app its tree', () => {
-            // TurboNotes is the only one left that mounts it, and it also carries the tag column:
+            // Writer is the only one left that mounts it, and it also carries the tag column:
             // the two apps that used to own one each were folded into it.
             const notes = featuresOf(appForStyle(DEFAULT_STYLE));
             assert.equal(notes.tree, true);
@@ -120,23 +124,23 @@ describe('app registry', () => {
 
     describe('bucketHolds (what a documents app has in view)', () => {
         const notes = () => appForStyle(DEFAULT_STYLE);
-        const journal = () => appForStyle('journal');
+        const feed = () => appForStyle('feed');
 
         it('holds a document that is a member of the bucket on screen', () => {
-            assert.equal(bucketHolds({ buckets: ['journal'] }, journal(), 'journal'), true);
-            assert.equal(bucketHolds({ buckets: ['a', 'b'] }, journal(), 'b'), true);
+            assert.equal(bucketHolds({ buckets: ['feed'] }, feed(), 'feed'), true);
+            assert.equal(bucketHolds({ buckets: ['a', 'b'] }, feed(), 'b'), true);
         });
 
         it('does not hold a document filed somewhere else', () => {
-            assert.equal(bucketHolds({ buckets: ['other'] }, journal(), 'journal'), false);
+            assert.equal(bucketHolds({ buckets: ['other'] }, feed(), 'feed'), false);
         });
 
         it('UNBUCKETED documents live ONLY in the everything-view (settled 2026-08-01)', () => {
-            // The old catch-all put them in TurboNotes' home; All is the formal home for
+            // The old catch-all put them in Writer's home; All is the formal home for
             // strays now, labeled "unfiled", so no ordinary notebook quietly mingles them.
             const orphan = { buckets: [] };
             assert.equal(bucketHolds(orphan, notes(), DEFAULT_STYLE), false);
-            assert.equal(bucketHolds(orphan, journal(), 'journal'), false);
+            assert.equal(bucketHolds(orphan, feed(), 'feed'), false);
             assert.equal(bucketHolds(orphan, appById('lost-found'), undefined), true);
         });
 
@@ -148,16 +152,16 @@ describe('app registry', () => {
         it('the everything-view holds every document, filed or not', () => {
             const all = appById('lost-found');
             assert.equal(all.everything, true, 'the registry carries the flag');
-            assert.equal(bucketHolds({ buckets: ['journal'] }, all, undefined), true);
+            assert.equal(bucketHolds({ buckets: ['feed'] }, all, undefined), true);
             assert.equal(bucketHolds({ buckets: [] }, all, undefined), true);
         });
     });
 
     describe('homeAppFor (follow me home)', () => {
         it('routes a bucketed document to its bucket type s app', () => {
-            const roster = [{ name: 'dream-diary', app: 'journal' }];
-            assert.equal(homeAppFor({ buckets: ['dream-diary'] }, roster).id, 'journal');
-            assert.equal(homeAppFor({ buckets: ['journal'] }, []).id, 'journal', 'implicit names too');
+            const roster = [{ name: 'dream-diary', app: 'feed' }];
+            assert.equal(homeAppFor({ buckets: ['dream-diary'] }, roster).id, 'feed');
+            assert.equal(homeAppFor({ buckets: ['feed'] }, []).id, 'feed', 'implicit names too');
         });
 
         it('routes the unbucketed HOME to the everything-view, the unknown to the default app', () => {
@@ -172,7 +176,6 @@ describe('app registry', () => {
     describe('appForStyle / appById', () => {
         it('resolves a live style to its app', () => {
             assert.equal(appForStyle('feed').id, 'feed');
-            assert.equal(appForStyle('journal').id, 'journal');
         });
 
         it('falls back to the default app for a style no app claims', () => {
@@ -198,7 +201,7 @@ describe('app registry', () => {
         });
 
         it('leaves every other app on its registry name', () => {
-            assert.equal(appLabel(appById('notes'), 'Curtis'), 'TurboNotes');
+            assert.equal(appLabel(appById('notes'), 'Curtis'), 'Writer');
         });
 
         it('is safe on no app', () => {
@@ -212,7 +215,6 @@ describe('app registry', () => {
     describe('itemNoun', () => {
         it('gives each app its own word for one of its things', () => {
             assert.equal(itemNoun(appById('notes')), 'note');
-            assert.equal(itemNoun(appById('journal')), 'entry');
             assert.equal(itemNoun(appById('feed')), 'post');
             assert.equal(itemNoun(appById('people')), 'person');
         });
@@ -225,13 +227,12 @@ describe('app registry', () => {
         it('pluralizes naively by default, and by declaration when that is wrong', () => {
             assert.equal(itemPlural(appById('notes')), 'notes');
             assert.equal(itemPlural(appById('feed')), 'posts');
-            assert.equal(itemPlural(appById('journal')), 'entries'); // NOT "entrys"
             assert.equal(itemPlural(undefined), 'items');
         });
 
         it('is lowercase, for mid-sentence use', () => {
             const nouns = APPS.filter((a) => a.itemNoun).map((a) => a.itemNoun);
-            assert.ok(nouns.length >= 4);
+            assert.ok(nouns.length >= 3);
             assert.deepEqual(nouns.filter((n) => n !== n.toLowerCase()), []);
         });
 

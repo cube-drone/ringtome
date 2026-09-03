@@ -1658,3 +1658,46 @@ article:has(.label-emoji-strip) {
     font-size: 0.78rem;
     min-width: 8.5rem;
 }
+
+/* The seal-and-unlock ceremony on a published post s card (moved from the retired Journal s
+   stylesheet, 2026-09-02; the lock was always the card s, not the day book s). */
+.seal-lock {
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.seal-lock-face {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+}
+
+.seal-unlock-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    z-index: 0;
+    background: var(--teal);
+    opacity: 0.4;
+    animation: seal-unlock 15s linear forwards;
+}
+
+@keyframes seal-unlock {
+    from {
+        width: 0;
+    }
+    to {
+        width: 100%;
+    }
+}

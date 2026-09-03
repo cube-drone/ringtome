@@ -111,7 +111,8 @@ CREATE TABLE doc_versions (
     thread_root_doc  TEXT,
     settled          INTEGER NOT NULL DEFAULT 0, -- the author's no-shares-no-replies wish
                                                  -- (PROJECT_PLAN's Post visibility), off the signed header
-    trusted_only     INTEGER NOT NULL DEFAULT 0  -- the body goes to trusted readers only
+    trusted_only     INTEGER NOT NULL DEFAULT 0, -- the body goes to trusted readers only
+    dated_ms         INTEGER                     -- the author's preferred date (PUBLISH.md)
 );
 CREATE INDEX doc_versions_by_doc ON doc_versions (doc_id);
 
@@ -147,7 +148,9 @@ CREATE TABLE doc_heads (
     thread_root_root TEXT,              -- not a reply. Root beside parent - parent-plus-root,
     thread_root_doc  TEXT,              -- never the ancestor path.
     settled          INTEGER NOT NULL DEFAULT 0, -- display head's no-shares-no-replies wish
-    trusted_only     INTEGER NOT NULL DEFAULT 0  -- display head's trusted-readers-only wish
+    trusted_only     INTEGER NOT NULL DEFAULT 0, -- display head's trusted-readers-only wish
+    dated_ms         INTEGER                     -- display head's preferred date: the shelf
+                                                 -- and every feed sort by COALESCE(this, genesis)
 );
 
 -- The search index: one token-bag row per document, derived from title + resolved body +

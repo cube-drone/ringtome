@@ -80,14 +80,14 @@ export const LockButton = ({ onUnlocked }) => {
     const [unlocking, setUnlocking] = useState(false);
     return html`
         <button
-            class=${unlocking ? 'journal-lock unlocking' : 'journal-lock'}
+            class=${unlocking ? 'seal-lock unlocking' : 'seal-lock'}
             title=${t('postentry.posted---click-then-wait', 'Posted - click, then wait 15 seconds, to edit this again')}
             onClick=${() => setUnlocking(true)}
             disabled=${unlocking}
         >
-            <span class="journal-lock-face"><${Icons.lock} /></span>
+            <span class="seal-lock-face"><${Icons.lock} /></span>
             ${unlocking &&
-            html`<span class="journal-unlock-bar" onAnimationEnd=${onUnlocked}></span>`}
+            html`<span class="seal-unlock-bar" onAnimationEnd=${onUnlocked}></span>`}
         </button>
     `;
 };
@@ -154,9 +154,11 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
         // `extraBody` rides every round (a reply's `reply_to` - PROJECT_PLAN's Replies): the re-POST
         // is the idempotent "how's it going?", and the links must be there whichever
         // round finally lands the post.
+        // The browser's timezone offset rides every publish (PUBLISH.md): the preferred date
+        // is the author's LOCAL claim, and a bare day takes the publication's own hour.
         const resp = await api(`/api/identity/${root}/docs/${privDocId}/publish`, {
             method: 'POST',
-            ...(extraBody ? { body: JSON.stringify(extraBody) } : {}),
+            body: JSON.stringify({ tz_offset_min: new Date().getTimezoneOffset(), ...(extraBody || {}) }),
         });
         if (resp.post_id) {
             onBaking(null);

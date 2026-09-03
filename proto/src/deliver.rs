@@ -977,6 +977,7 @@ mod tests {
         reply_to: Option<([u8; 32], [u8; 16])>,
     ) -> SignedEntry {
         let payload = crate::registry::DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],

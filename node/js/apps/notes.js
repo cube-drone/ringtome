@@ -1,4 +1,4 @@
-// The documents app: the surface TurboNotes wears, and Lost & Found with it - up to four
+// The documents app: the surface Writer wears, and Lost & Found with it - up to four
 // columns, each tuckable. Left to right: the tag
 // cloud, the document list (newest-claimed-date first, straight off the live mirror, so another
 // computer's save re-sorts it within seconds and nothing fetches), the tree, and the open
@@ -9,7 +9,7 @@
 // open document is doc/reader.js, the tree is doc/tree.js, the columns are panes.js. What is left
 // here is this app's own arrangement of them - the filters, the list rows, the tag cloud - which is
 // what let Recipes and Wikibook wear the same skeleton before they were folded back into
-// TurboNotes (2026-08-08), and what lets Lost & Found wear it now without importing a line.
+// Writer (2026-08-08), and what lets Lost & Found wear it now without importing a line.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
@@ -220,7 +220,7 @@ const TagColumn = ({ cloud, active, onToggleTag, onTuck }) => html`<aside class=
     ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('apps.notes.no-tags-yet', 'no tags yet')}</p>`}
 </aside>`;
 
-// The documents app - the shared surface a "documents" application (TurboNotes, Lost & Found)
+// The documents app - the shared surface a "documents" application (Writer, Lost & Found)
 // currently renders. `app` is its registry entry (id, name, icon, style); the document
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
 // `searchQuery`, not `query` - preact-iso's Router injects its OWN `query` prop (parsed URL search
@@ -261,7 +261,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
         : [];
 
     // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
-    // widths. `startsTucked` is the app's own opening posture (TurboNotes begins as a plain list,
+    // widths. `startsTucked` is the app's own opening posture (Writer begins as a plain list,
     // its tag column and tree waiting as rails); a stored preference always wins over it.
     const { tucked, toggleTuck } = useColTucks(root, app.id, app.startsTucked);
 

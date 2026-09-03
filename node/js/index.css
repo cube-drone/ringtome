@@ -8,12 +8,12 @@
  * node/README.md).
  *
  * THE IMPORT ORDER IS THE CASCADE. It is the original file order, and it matters wherever a host
- * re-dresses a borrowed component: apps/journal.css flattens `.editor-live` for its entries, so it
- * has to land after doc/editor.css. Add a partial where its section belongs, not at the bottom.
+ * re-dresses a borrowed component: a host's partial has to land after the partial it borrows
+ * from. Add a partial where its section belongs, not at the bottom.
  *
- * A rule's home is its class prefix, and the prefix names the file (`journal-*` ->
- * apps/journal.css, `tree-*` -> doc/tree.css). The exceptions are the cross-prefix rules -
- * `.journal .editor-live`, `.editor-side-preview .reader-marquee`, `.notes-columns .tree-pane` -
+ * A rule's home is its class prefix, and the prefix names the file (`tree-*` -> doc/tree.css,
+ * `notes-*` -> apps/notes.css). The exceptions are the cross-prefix rules -
+ * `.editor-side-preview .reader-marquee`, `.notes-columns .tree-pane` -
  * and each lives in the HOST's file, because "a host re-dressing a borrowed component" is whose
  * business it is.
  */
@@ -32,7 +32,6 @@
 @import "./doc/tree.css";     /* the document tree: sections and pages */
 @import "./apps/notes.css";   /* the documents app: columns, list rows, the tag cloud */
 @import "./doc/editor.css";   /* the editing surfaces and their mode tabs */
-@import "./apps/journal.css"; /* the day book (and its flattening of the shared editor) */
 @import "./person.css";       /* the Person widget family: one persona at four sizes */
 @import "./apps/notifications.css"; /* the bell: derived events from people you follow */
 @import "./modal.css";        /* the house modal */

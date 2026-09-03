@@ -7965,3 +7965,40 @@ COMMENTS.md and DISCOVERY.md got.
 Curtis shipped marqueemarkup 0.7.0 for a small display bug. Bumped both sides: the Rust
 reference parser (pinned =0.7.0, crates.io) and the five @cube-drone npm packages
 (^0.7.0), lockfile refreshed, bundle, CSS and fonts rebuilt.
+
+## 2026-09-02 (cont. 11): the Journal retires; TurboNotes becomes Writer
+
+Curtis: "it's time to kill the Journal" - TurboNotes is the core notes-and-editing
+primitive of the whole application, renamed Writer. The day book is gone (apps/journal.js,
+its stylesheet, pure/daybook.js and its claims); its buckets simply open in Writer by the
+registry's retired-style fallback, which the registry claims now pin for `journal` beside
+recipes and wiki. Writer keeps the `notes` route id (a persisted key) and its bucket noun
+becomes Notebook ("New Notebook"). The seal-and-unlock ceremony on a published card had
+borrowed the Journal's `journal-lock` rules - moved to persona.css as `seal-lock`, since
+the lock was always the card's. The journal font icons and pref retire with it; the
+generator stops minting journal buckets.
+
+## 2026-09-02 (cont. 12): PUBLISH.md, and the date on the wire
+
+Curtis's brief - publish from Writer, bucket-aware, with a preferred date that sorts a post
+into its past and holds a future post back until its day - pinned as PUBLISH.md with his
+rulings (the date rides the signed header; the edit window keeps genesis; a future date is
+a schedule, and the author sees scheduled posts at the top of their own feed and card,
+badged; three status icons; taxonomy is not an annotation). Slice 1 built: header key 17
+`dated_ms`, re-read from the draft's `display_date` at every publish (a date change inside
+the window re-sorts); doc memos and the feed journal carry it (user gen 22); every shelf
+query orders and pages by COALESCE(dated_ms, genesis_ms); the permalink reports
+published_ms as the display stamp with dated_ms and minted_ms beside it. Rust parses the
+claim by the client's rule (UTC where the client is local - hours never matter for filing).
+Acceptance: the dated post files behind everything newer on the shelf and lands in 2019 on
+a follower's feed.
+
+## 2026-09-02 (cont. 13): a bare date takes the publication's own hour
+
+Curtis: a date without a time should not mean midnight - backdating an 8PM post by three
+days means 8PM three days ago. And the claim is the author's LOCAL time, which the first
+cut had quietly read as UTC. Now the browser's timezone offset rides every publish, the
+handler resolves the draft's display_date with it (a date-time claim is local wall-clock; a
+bare day is that day at the current local time-of-day), and the header carries one stamp
+for every reader. Unit claims cover UTC-7 at 8PM and plain UTC; the acceptance asserts the
+stamp lands inside the claimed day at roughly the publication's hour.

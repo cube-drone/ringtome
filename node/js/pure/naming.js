@@ -85,7 +85,7 @@ export const bucketNameFor = (row, bucket) => {
     // passed bucket wins the tie - and the legit unbucketed case is unharmed, because a
     // truly unbucketed doc is only ever VIEWED in the everything-view, whose /all URLs never
     // reach this builder (the re-dress is suppressed there). Without this, the re-dress minted a
-    // default-headed path mid-race and silently teleported the user into TurboNotes
+    // default-headed path mid-race and silently teleported the user into Writer
     // (field-found 2026-08-01).
     if (bucket && (names.includes(bucket) || names.length === 0)) return bucket;
     return names[0] || DEFAULT_STYLE;

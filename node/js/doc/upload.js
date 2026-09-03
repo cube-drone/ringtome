@@ -422,7 +422,7 @@ export function mediaReference({ root, format, mimeType, docId, name }) {
  * catchDrop/allowFileDrag/catchPaste onto its surface; `pickFiles` opens the file picker.
  *
  * @param bucket    where landed uploads FILE (may deliberately differ from the doc's own
- *                  bucket - the journal files media into TurboNotes' home, never itself)
+ *                  bucket - the journal files media into Writer's home, never itself)
  * @param intoTree  also append landed uploads to the bucket's tree root
  * @param cursorPos () => offset in `body` where placeholders insert (null = append)
  */

@@ -2,12 +2,12 @@
 // a console with good games, not an app-builder). Each app carries a `style` - its app-type.
 //
 // The bucket <-> app-type mapping is mostly implicit: a bucket whose NAME is an app-type simply
-// IS that type (the `journal` bucket is a journal bucket, no mapping needed), so every app has
-// an eponymous bucket we can just assume exists - open the journal app and you're working in
-// the `journal` bucket. The registry (`name -> app`, on the server) is only consulted for
+// IS that type (the `feed` bucket is a feed bucket, no mapping needed), so every app has an
+// eponymous bucket we can just assume exists - open the feed app and you're working in the
+// `feed` bucket. The registry (`name -> app`, on the server) is only consulted for
 // USER-named buckets like `dream-diary`. Anything we can't resolve falls back to `default`
-// (TurboNotes), so an unknown style never strands you - which is also what retires an app
-// gracefully: the buckets of a style nobody serves anymore simply open in TurboNotes.
+// (Writer), so an unknown style never strands you - which is also what retires an app
+// gracefully: the buckets of a style nobody serves anymore simply open in Writer.
 //
 // The registry imports NOTHING. An app's `icon` is a role name that icons.js resolves at the two
 // render sites (`iconFor`), not a component - a table of app metadata and the rules over it has no
@@ -36,30 +36,20 @@ export const APPS = [
         lookup: true,
     },
     // The app's two nouns, both in the user's words rather than ours. `bucketNoun` is what ONE
-    // bucket is called, Capitalised because it lands in titles and prompts ("New TurboNotes",
-    // "Delete this Journal…"); `itemNoun` is what one THING INSIDE a bucket is called, lowercase
-    // because it lands mid-sentence ("+ new note", "a new page in this section"). A journal holds
-    // entries and a notebook holds notes; neither of them holds "items".
-    {
-        id: 'journal',
-        name: 'Journal',
-        icon: 'journal',
-        style: 'journal',
-        live: true,
-        bucketNoun: 'Journal',
-        itemNoun: 'entry',
-        itemPlural: 'entries',
-        // A day book: its own component (JournalApp), a stream of one entry per day - NOT the
-        // notes list. It composes the shared editing session directly, so it needs no `features`.
-        journal: true,
-    },
+    // bucket is called, Capitalised because it lands in titles and prompts ("New Notebook",
+    // "Delete this Notebook…"); `itemNoun` is what one THING INSIDE a bucket is called, lowercase
+    // because it lands mid-sentence ("+ new note", "a new page in this section"). A notebook holds
+    // notes and a feed holds posts; neither of them holds "items".
     {
         id: 'notes',
-        name: 'TurboNotes',
+        // Writer (renamed from Writer, 2026-09-02, the day the Journal was retired): the
+        // core notes-and-editing primitive of the whole application. The route id stays
+        // `notes` - it is a persisted key, and the word is right.
+        name: 'Writer',
         icon: 'notes',
         style: 'default',
         live: true,
-        bucketNoun: 'TurboNotes',
+        bucketNoun: 'Notebook',
         itemNoun: 'note',
         // The everything-app, and now the ONLY notebook app. Recipes and Wikibook lived here
         // until 2026-08-08, and the cut is the point: each was this surface with one column
@@ -227,7 +217,7 @@ export function bucketsForApp(app, roster) {
 /// Membership IS the rule: a document is in view when it's a member of the notebook on screen,
 /// and Lost & Found holds every private document. The unbucketed live ONLY in the everything-view
 /// (labeled "unfiled" there) - that surface is the formal home for strays, and it retired the
-/// old catch-all clause that quietly mingled them into TurboNotes' home notebook (settled
+/// old catch-all clause that quietly mingled them into Writer's home notebook (settled
 /// 2026-08-01; the default-app clause predated this surface, when "something has to hold
 /// them" had nowhere better to point).
 export function bucketHolds(doc, app, bucket) {

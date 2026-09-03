@@ -42,8 +42,6 @@ export const SEAL_PREFIX = 'seal:';
 /// A document's remembered editor view mode. Domain: a key of doc/editor.js's `MODES`.
 export const viewModeKey = (docId) => `mode:${docId}`;
 
-/// The journal's page font. Domain: a `FONTS` id from apps/journal.js.
-export const JOURNAL_FONT = 'journal:font';
 
 // --- reading ---
 

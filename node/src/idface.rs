@@ -1193,7 +1193,9 @@ pub async fn id_posts(
     }
     let mut merged: Vec<(i64, String, Shelf)> = Vec::with_capacity(posts.len() + shares.len());
     for (i, p) in posts.iter().enumerate() {
-        merged.push((p.genesis_ms, hex::encode(p.doc_id), Shelf::Post(i)));
+        // The DISPLAY stamp (PUBLISH.md): a dated post files under its claimed day here as
+        // everywhere - the query already ordered by it; the merge must not undo that.
+        merged.push((p.display_ms(), hex::encode(p.doc_id), Shelf::Post(i)));
     }
     for (i, s) in shares.iter().enumerate() {
         merged.push((s.received_at_ms, hex::encode(s.doc_id), Shelf::Share(i)));
@@ -1382,7 +1384,11 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
         "format": crate::record::documents::Format::from_wire(p.format).as_str(),
         // When it was first said - what it is dated by and sorted by. A re-publication
         // improves a post; it does not make a new one, and does not move it.
-        "published_ms": p.genesis_ms,
+        "published_ms": p.display_ms(),
+        // The preferred date when one was claimed, and the mint moment beside it - the edit
+        // window's anchor, and the dossier's honest "when it was actually said".
+        "dated_ms": p.dated_ms,
+        "minted_ms": p.genesis_ms,
         "updated_ms": p.head_ms,
         "thumb": p.thumb_hash.map(hex::encode),
     })

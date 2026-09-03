@@ -1,6 +1,6 @@
 /* The document tree: sections (interior taxonomies) and pages (document leaves), drawn by
    doc/tree.js. `tree-` rather than `wiki-` because the Wikibook is not the only app that wears it -
-   TurboNotes mounts the same pane as one of its four columns, and a class called `wiki-row` in a
+   Writer mounts the same pane as one of its four columns, and a class called `wiki-row` in a
    notebook was a lie the stylesheet told. The pane's WIDTH lives with the columns that host it
    (panes.js's `--w-tree`), since how wide a column is belongs to the arrangement, not the tree. */
 

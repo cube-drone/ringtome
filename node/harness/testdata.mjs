@@ -43,7 +43,7 @@ const PASSWORD = 'test';
 /// The document apps' STYLES - what a bucket's `app` field is matched against. Kept as a
 /// literal rather than derived from js/pure/apps.js so this harness stays free of the UI's
 /// module graph; if the app registry gains a style, add it here and the generator seeds it.
-const BUCKET_STYLES = ['default', 'journal'];
+const BUCKET_STYLES = ['default'];
 
 /// The labels the generator says about other people's posts - short and few on purpose, so
 /// the same word lands on many posts and the display register's stops have distinct sets to

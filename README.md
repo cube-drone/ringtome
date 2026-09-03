@@ -38,6 +38,8 @@ federated, unapologetically Old Internet.
   description, date and bucket going public at publish, third parties annotating on their own
   chains, everything riding virally with the post, the reader choosing whose labels show.
   Rulings pinned 2026-08-29; in-motion slices mirrored in NEXT_STEPS.
+- [`PUBLISH.md`](PUBLISH.md) — publishing from Writer: the preferred date on the wire,
+  scheduled posts, and the publish button (2026-09-02)
 - [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
   language mapping.
 - [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and

@@ -482,6 +482,7 @@ pub async fn save_version(
     };
 
     let header = DocHeaderPlain {
+        dated_ms: None,
         trusted_only: false,
         settled: false,
         doc_id: save.doc_id,
@@ -552,6 +553,7 @@ pub async fn retitle(
         return Ok(head.hash);
     }
     let header = DocHeaderPlain {
+        dated_ms: None,
         trusted_only: false,
         settled: false,
         doc_id,
@@ -630,6 +632,7 @@ pub async fn save_public_media(
         );
     }
     let header = DocHeaderPlain {
+        dated_ms: None,
         doc_id,
         parents: vec![],
         file_hash: *body_hash.as_bytes(),
@@ -694,6 +697,9 @@ pub struct PublicText<'a> {
     pub settled: bool,
     /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2): carried the same way.
     pub trusted_only: bool,
+    /// The author's preferred date off the draft's `display_date` field (PUBLISH.md),
+    /// re-read at every publish - a date change inside the edit window re-sorts the post.
+    pub dated_ms: Option<i64>,
     /// The per-post key when `trusted_only` (slice 2b): the body is sealed under it and
     /// `file_hash` names the CIPHERTEXT; `body_hash` keeps the keyed plaintext
     /// fingerprint so trusted readers still verify the words against the signature.
@@ -711,7 +717,7 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key } = text;
+    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, dated_ms } = text;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
@@ -804,6 +810,7 @@ pub async fn save_public_text(
         thread_root,
         settled,
         trusted_only,
+        dated_ms,
     };
     let payload = header
         .encode()
@@ -817,6 +824,73 @@ pub async fn save_public_text(
     )
     .await?;
     Ok(doc_id)
+}
+
+/// What a publish carries beside the words (PROJECT_PLAN's Post visibility, PUBLISH.md):
+/// the two wishes and the preferred date, resolved by the handler from the request and the
+/// draft, and threaded as one value through the bake pass to the mint.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PublishFlags {
+    pub settled: bool,
+    pub trusted_only: bool,
+    pub dated_ms: Option<i64>,
+}
+
+/// The draft's `display_date` claim as the header's stamp (PUBLISH.md). The claim is in the
+/// AUTHOR's local time - `tz_offset_min` is the browser's `getTimezoneOffset()` at publish
+/// (minutes to add to local to reach UTC). "YYYY-MM-DDTHH:MM[:SS]" is that local wall-clock.
+/// A bare "YYYY-MM-DD" is a DAY, and the time within it is the publication's own local
+/// time-of-day (Curtis, 2026-09-02: backdating a Friday-8PM post by three days makes it
+/// Tuesday 8PM, not Tuesday midnight). Anything else is no claim.
+pub fn claimed_ms(iso: &str, now_ms: i64, tz_offset_min: i32) -> Option<i64> {
+    let offset_ms = i64::from(tz_offset_min) * 60_000;
+    let (date_utc_midnight, time) = claimed_parts(iso)?;
+    const DAY: i64 = 86_400_000;
+    let tod_ms = match time {
+        Some(t) => t,
+        None => (now_ms - offset_ms).rem_euclid(DAY), // the local time-of-day right now
+    };
+    Some(date_utc_midnight + tod_ms + offset_ms)
+}
+
+/// The civil date as UTC midnight ms, and the wall-clock time-of-day in ms when the claim
+/// carried one.
+fn claimed_parts(iso: &str) -> Option<(i64, Option<i64>)> {
+    let s = iso.trim();
+    let (date, time) = match s.split_once('T') {
+        Some((d, t)) => (d, Some(t)),
+        None => (s, None),
+    };
+    let mut parts = date.split('-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: u32 = parts.next()?.parse().ok()?;
+    let d: u32 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let tod: Option<i64> = match time {
+        None => None,
+        Some(t) => {
+            let mut tp = t.trim_end_matches('Z').split(':');
+            let hh: i64 = tp.next()?.parse().ok()?;
+            let mm: i64 = tp.next()?.parse().ok()?;
+            let ss: i64 = tp.next().map(|x| x.parse().unwrap_or(0)).unwrap_or(0);
+            if !(0..24).contains(&hh) || !(0..60).contains(&mm) {
+                return None;
+            }
+            Some((hh * 3_600 + mm * 60 + ss) * 1_000)
+        }
+    };
+    // Days from civil (Howard Hinnant's algorithm), then to ms.
+    let (y, m, d) = (y, m as i64, d as i64);
+    let y2 = if m <= 2 { y - 1 } else { y };
+    let era = if y2 >= 0 { y2 } else { y2 - 399 } / 400;
+    let yoe = y2 - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some((days * 86_400_000, tod))
 }
 
 /// One public document, as the serving surfaces list it. Public-lane facts only - there is
@@ -838,8 +912,18 @@ pub struct PublicDoc {
     pub thumb_hash: Option<[u8; 32]>,
     /// The author's no-shares-no-replies wish (PROJECT_PLAN's Post visibility), off the signed header.
     pub settled: bool,
-    /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2): the body is gated; this face is not.
+    /// Trusted readers only (PROJECT_PLAN's Post visibility): the body is gated; this face is not.
     pub trusted_only: bool,
+    /// The author's preferred date (PUBLISH.md): what the post sorts and reads by.
+    pub dated_ms: Option<i64>,
+}
+
+impl PublicDoc {
+    /// The stamp every surface sorts and displays by: the preferred date when the author
+    /// claimed one, else the day it was said.
+    pub fn display_ms(&self) -> i64 {
+        self.dated_ms.unwrap_or(self.genesis_ms)
+    }
 }
 
 /// Everything this identity has published, newest first. Keyless: the anonymous face and the
@@ -936,13 +1020,14 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         Option<String>,
         i64,
         i64,
+        Option<i64>,
     );
     let row: Option<Row> = db
         .fetch_optional(
             &format!(
                 "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash,
                         reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
-                        trusted_only
+                        trusted_only, dated_ms
                  FROM doc_heads
                  WHERE lane = 'public' AND doc_id = ? AND {text_only} AND {not_retracted}"
             ),
@@ -952,9 +1037,10 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         .map_err(AppError::Internal)?;
     match row {
         None => Ok(None),
-        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only)) => Ok(Some(PublicDoc {
+        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, dated_ms)) => Ok(Some(PublicDoc {
             settled: settled != 0,
             trusted_only: trusted_only != 0,
+            dated_ms,
             reply_to: rr.zip(rd),
             thread_root: tr.zip(td),
             doc_id: doc_id
@@ -1040,17 +1126,18 @@ pub async fn public_docs(
         Option<String>,
         i64,
         i64,
+        Option<i64>,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
-                   trusted_only";
+                   trusted_only, dated_ms";
     let rows: Vec<Row> = match after {
         None => db
             .fetch_all(
                 &format!(
                     "SELECT {columns} FROM doc_heads
                      WHERE lane = 'public' AND {text_only} AND {not_retracted}
-                     ORDER BY genesis_ms DESC, doc_id LIMIT ?"
+                     ORDER BY COALESCE(dated_ms, genesis_ms) DESC, doc_id LIMIT ?"
                 ),
                 (limit,),
             )
@@ -1060,8 +1147,9 @@ pub async fn public_docs(
                 &format!(
                     "SELECT {columns} FROM doc_heads
                      WHERE lane = 'public' AND {text_only} AND {not_retracted}
-                       AND (genesis_ms < ? OR (genesis_ms = ? AND doc_id > ?))
-                     ORDER BY genesis_ms DESC, doc_id LIMIT ?"
+                       AND (COALESCE(dated_ms, genesis_ms) < ?
+                            OR (COALESCE(dated_ms, genesis_ms) = ? AND doc_id > ?))
+                     ORDER BY COALESCE(dated_ms, genesis_ms) DESC, doc_id LIMIT ?"
                 ),
                 (ms, ms, doc.to_vec(), limit),
             )
@@ -1087,13 +1175,15 @@ type PublicDocRow = (
     Option<String>,
     i64,
     i64,
+    Option<i64>,
 );
 
 fn public_doc_from_row(row: PublicDocRow) -> Result<PublicDoc, AppError> {
-    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only) = row;
+    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, dated_ms) = row;
     Ok(PublicDoc {
         settled: settled != 0,
         trusted_only: trusted_only != 0,
+        dated_ms,
         reply_to: rr.zip(rd),
         thread_root: tr.zip(td),
         doc_id: doc_id
@@ -1140,17 +1230,18 @@ pub async fn public_docs_updated_since(
         Option<String>,
         i64,
         i64,
+        Option<i64>,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
-                   trusted_only";
+                   trusted_only, dated_ms";
     let rows: Vec<Row> = db
         .fetch_all(
             &format!(
                 "SELECT {columns} FROM doc_heads
                  WHERE lane = 'public' AND {text_only} AND {not_retracted}
                    AND head_ms >= ?
-                 ORDER BY genesis_ms DESC, doc_id LIMIT ?"
+                 ORDER BY COALESCE(dated_ms, genesis_ms) DESC, doc_id LIMIT ?"
             ),
             (since_ms, limit),
         )
@@ -1407,15 +1498,17 @@ async fn fold_header(
         "INSERT OR IGNORE INTO doc_versions
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
             duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq, author_pubkey, lane,
-            reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only)
+            reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only,
+            dated_ms)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
                  :width, :height, :duration_ms, :thumb_hash, :preview_hash, :refs,
                  :timestamp_ms, :seq, :author_pubkey, :lane,
                  :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
-                 :trusted_only)",
+                 :trusted_only, :dated_ms)",
         turso::named_params! {
             ":settled": i64::from(header.settled),
             ":trusted_only": i64::from(header.trusted_only),
+            ":dated_ms": header.dated_ms,
             ":reply_to_root": header.reply_to.map(|(r, _)| hex::encode(r)),
             ":reply_to_doc": header.reply_to.map(|(_, d)| hex::encode(d)),
             ":thread_root_root": header.thread_root.map(|(r, _)| hex::encode(r)),
@@ -1804,12 +1897,12 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                 thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms,
                 heads_fp, head_bodies,
                 reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
-                trusted_only)
+                trusted_only, dated_ms)
              VALUES (:doc_id, :lane, :entry_hash, :title, :format, :file_hash, :width, :height,
                      :duration_ms, :thumb_hash, :preview_hash, :logical_heads, :diverged,
                      :genesis_ms, :head_ms, :heads_fp, :head_bodies,
                      :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
-                     :trusted_only)
+                     :trusted_only, :dated_ms)
              ON CONFLICT(doc_id) DO UPDATE SET
                lane = excluded.lane,
                entry_hash = excluded.entry_hash,
@@ -1832,7 +1925,8 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                thread_root_root = excluded.thread_root_root,
                thread_root_doc = excluded.thread_root_doc,
                settled = excluded.settled,
-               trusted_only = excluded.trusted_only",
+               trusted_only = excluded.trusted_only,
+               dated_ms = excluded.dated_ms",
             turso::named_params! {
                 ":heads_fp": heads_hasher.finalize().as_bytes().to_vec(),
                 ":head_bodies": head_bodies,
@@ -1842,6 +1936,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                 ":thread_root_doc": head.header.thread_root.map(|(_, d)| hex::encode(d)),
                 ":settled": i64::from(head.header.settled),
                 ":trusted_only": i64::from(head.header.trusted_only),
+                ":dated_ms": head.header.dated_ms,
                 ":doc_id": doc_id.as_slice(),
                 ":lane": doc.lane.as_str(),
                 ":entry_hash": head.hash.as_slice(),
@@ -1913,6 +2008,7 @@ type VersionRow = (
     Option<String>,  // thread_root_doc
     i64,             // settled (PROJECT_PLAN's Post visibility: the author's no-shares-no-replies wish)
     i64,             // trusted_only (PROJECT_PLAN's Post visibility slice 2)
+    Option<i64>,     // dated_ms (PUBLISH.md)
 );
 
 /// Rehydrate one stored version from its `doc_versions` row.
@@ -1940,6 +2036,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         thread_root_doc,
         settled,
         trusted_only,
+        dated_ms,
     ) = row;
     let link = |root: Option<String>, doc: Option<String>| -> Option<([u8; 32], [u8; 16])> {
         let root = crate::pubkey::decode(&root?)?;
@@ -1955,6 +2052,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
     let author = hash32(&hex::decode(&author_hex).unwrap_or_default())?;
     let header = DocHeaderPlain {
         trusted_only: trusted_only != 0,
+        dated_ms,
         doc_id,
         parents: decode_parents(&parents)?,
         file_hash: hash32(&file_hash)?,
@@ -1994,7 +2092,7 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
                     height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms
              FROM doc_versions WHERE doc_id = ?1",
             (doc_id.to_vec(),),
         )
@@ -2035,7 +2133,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
                     height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms
              FROM doc_versions",
             (),
         )
@@ -3060,6 +3158,25 @@ pub async fn read_body(
 
 #[cfg(test)]
 mod tests {
+
+    /// PUBLISH.md: a date-time claim is the author's local wall-clock; a bare date is that
+    /// day at the publication's own local time-of-day; anything else is no claim.
+    #[test]
+    fn a_claimed_date_is_local_and_a_bare_day_takes_the_publish_hour() {
+        const MAY_4: i64 = 1_556_928_000_000; // 2019-05-04T00:00Z
+        // Publishing at 20:00 local in UTC-7 (offset +420): a bare day lands at 20:00 local
+        // on that day = 03:00Z the next morning.
+        let now = MAY_4 + 30 * 86_400_000 + (20 * 3_600 + 7 * 3_600) * 1_000;
+        assert_eq!(super::claimed_ms("2019-05-04", now, 420), Some(MAY_4 + 27 * 3_600_000));
+        // In UTC, a bare day is that day at the current UTC time-of-day.
+        assert_eq!(super::claimed_ms("2019-05-04", MAY_4 + 5_000_000, 0), Some(MAY_4 + 5_000_000));
+        // A date-time claim is local wall-clock, shifted to UTC by the offset.
+        assert_eq!(super::claimed_ms("2019-05-04T15:35", now, 420), Some(1_556_984_100_000 + 420 * 60_000));
+        assert_eq!(super::claimed_ms("2019-05-04T15:35", now, 0), Some(1_556_984_100_000));
+        assert_eq!(super::claimed_ms("2019-13-01", now, 0), None);
+        assert_eq!(super::claimed_ms("yesterday", now, 0), None);
+        assert_eq!(super::claimed_ms("", now, 0), None);
+    }
     /// Append a public doc header straight to the POSTS chain. The real publish path needs a
     /// FileStore for the body; the fold under test only reads the header, so this stays a unit
     /// test instead of an integration one.
@@ -3070,6 +3187,7 @@ mod tests {
         title: &str,
     ) {
         let header = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: *doc_id,
@@ -5373,6 +5491,7 @@ mod tests {
             timestamp_ms: t,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                dated_ms: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: [1u8; 16],

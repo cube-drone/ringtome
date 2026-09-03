@@ -1288,6 +1288,9 @@ struct PublishRequest {
     settled: Option<bool>,
     /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2), carried the same way.
     trusted_only: Option<bool>,
+    /// The browser's `getTimezoneOffset()` at publish (PUBLISH.md): the preferred date is
+    /// the author's LOCAL claim, and this is what makes it one stamp for every reader.
+    tz_offset_min: Option<i32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1389,10 +1392,20 @@ async fn publish_handler(
     };
     let settled = req.as_ref().and_then(|b| b.settled).unwrap_or(false);
     let trusted_only = req.as_ref().and_then(|b| b.trusted_only).unwrap_or(false);
+    // The preferred date (PUBLISH.md): the draft's `display_date` claim, resolved HERE with
+    // the request's timezone offset - re-read at every publish, so a date changed inside the
+    // edit window re-sorts the post everywhere.
+    let tz_offset_min = req.as_ref().and_then(|b| b.tz_offset_min).unwrap_or(0);
+    let dated_ms = data
+        .annotations()
+        .field(&doc_id, "display_date")
+        .await?
+        .and_then(|v| crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min));
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, settled, trusted_only).await? {
+    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms };
+    match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, flags).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
             // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
             // parent and the thread root are shared outright, ordinary pointers, crowd
@@ -3427,7 +3440,7 @@ async fn buckets_roster_handler(
 #[derive(Deserialize)]
 struct BucketDefine {
     name: String,
-    /// The application meant to open this bucket ("recipes", "journal", ...); client vocabulary.
+    /// The application meant to open this bucket ("default", "feed", ...); client vocabulary.
     #[serde(default)]
     app: String,
 }
@@ -4416,6 +4429,7 @@ mod media_info_tests {
             timestamp_ms: 0,
             author: [0u8; 32],
             header: DocHeaderPlain {
+                dated_ms: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: [0u8; 16],

@@ -26,6 +26,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 * Search my posts
 * Search my feed
+* Publishing from Writer — [PUBLISH.md](PUBLISH.md) (2026-09-02): slice 1 (the date on the
+  wire) built; scheduling and the Writer button next
 * Post visibility — PROJECT_PLAN's Post visibility: arc closed 2026-09-02 ("settled" and
   "trusted only" built, sealed bodies and pictures, key lane, feed/discovery filters);
   the one deferred direction is sharer-scoped share journaling, with its trigger pinned

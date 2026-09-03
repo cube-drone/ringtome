@@ -42,7 +42,7 @@ export const Rail = ({ icon, label, onClick }) => html`<button
 /// surface can't tuck; everything to its left can.
 ///
 /// `startsTucked` names the columns that are away until this device says otherwise - how
-/// TurboNotes opens on a plain list with its tag column and tree as rails, rather than greeting a
+/// Writer opens on a plain list with its tag column and tree as rails, rather than greeting a
 /// newcomer with four columns at once. It is a DEFAULT, not a rule: `setFlag` writes '0' when a
 /// column is opened, so a stored preference always outranks it, and the absence of a stored key is
 /// what "never touched this" looks like. (Hence the raw pref map here rather than `flagsOf` alone:

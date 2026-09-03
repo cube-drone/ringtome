@@ -331,12 +331,13 @@ async fn shelf_page(
     Ok(posts
         .into_iter()
         .map(|p| JournalRow {
+            // The stamp first: `title` moves out of `p` below, and the display stamp reads it.
+            published_ms: p.display_ms(),
             doc_id_hex: hex::encode(p.doc_id),
             title: p.title,
             format: crate::record::documents::Format::from_wire(p.format)
                 .as_str()
                 .to_string(),
-            published_ms: p.genesis_ms,
             updated_ms: p.head_ms,
             settled: p.settled,
             trusted_only: p.trusted_only,
@@ -371,12 +372,13 @@ async fn shelf_updated_since(
     Ok(posts
         .into_iter()
         .map(|p| JournalRow {
+            // The stamp first: `title` moves out of `p` below, and the display stamp reads it.
+            published_ms: p.display_ms(),
             doc_id_hex: hex::encode(p.doc_id),
             title: p.title,
             format: crate::record::documents::Format::from_wire(p.format)
                 .as_str()
                 .to_string(),
-            published_ms: p.genesis_ms,
             updated_ms: p.head_ms,
             settled: p.settled,
             trusted_only: p.trusted_only,

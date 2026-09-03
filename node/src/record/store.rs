@@ -991,9 +991,9 @@ impl Documents<'_> {
         body_override: Option<String>,
         refs: Vec<[u8; 16]>,
         reply: Option<crate::record::documents::ReplyLinks>,
-        settled: bool,
-        trusted_only: bool,
+        flags: crate::record::documents::PublishFlags,
     ) -> Result<[u8; 16], AppError> {
+        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms } = flags;
         let view = self.all().await?;
         let doc = view
             .docs
@@ -1008,6 +1008,7 @@ impl Documents<'_> {
         } else {
             None
         };
+
         let body = match body_override {
             Some(prepared) => prepared,
             None => resolved.body.ok_or_else(|| {
@@ -1096,6 +1097,7 @@ impl Documents<'_> {
                 settled,
                 trusted_only,
                 post_key,
+                dated_ms,
             },
         )
         .await?;
@@ -2352,7 +2354,7 @@ mod tests {
             .unwrap();
         let twins = vec![[5u8; 16], [6u8; 16]];
         let post = docs
-            .publish(&doc_id, Some("the words".into()), twins.clone(), None, false, false)
+            .publish(&doc_id, Some("the words".into()), twins.clone(), None, crate::record::documents::PublishFlags::default())
             .await
             .unwrap();
         let entry = crate::record::documents::public_header_entry(&store.db, &post)

@@ -26,7 +26,6 @@ import {
 } from './persona.js';
 import { Computers } from './computers.js';
 import { DocsApp } from './apps/notes.js';
-import { JournalApp } from './apps/journal.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
 import { PostPage } from './postpage.js';
@@ -149,15 +148,6 @@ const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
     if (view === 'nope') return html`<${NotFound} />`;
     const app = appById(view.appId);
     if (!app) return html`<${NotFound} />`;
-    if (app.journal) {
-        // The journal has no per-document view; the entry lives in its stream.
-        return html`<${JournalApp}
-            key=${app.id}
-            current=${current}
-            searchQuery=${searchQuery}
-            bucket=${bucket}
-        />`;
-    }
     return html`<${DocsApp}
         key=${app.id}
         app=${app}
@@ -218,7 +208,7 @@ const Inside = ({ session }) => {
     const showSearch = !!(appHere && (appHere.style || appHere.everything) && appHere.searchable !== false);
     const [query, setQuery] = useState('');
     // The kind dial rides the search state's lifecycle: chosen beside the box, cleared with
-    // it on app switch - a filter you set in the Journal shouldn't silently empty TurboNotes.
+    // it on app switch - a filter you set in one app shouldn't silently empty another.
     const [searchKind, setSearchKind] = useState('all');
     const appHereId = appHere ? appHere.id : null;
     useEffect(() => {
@@ -339,10 +329,7 @@ const Inside = ({ session }) => {
                     value=${query}
                     onInput=${(e) => setQuery(e.currentTarget.value)}
                 />
-                ${/* The journal is a single-kind stream (day entries are always prose), so
-                    the kind dial would be a knob that does nothing - no funnel there. */ ''}
-                ${!appHere.journal &&
-                html`<${SearchOptions} kind=${searchKind} onKind=${setSearchKind} />`}
+                <${SearchOptions} kind=${searchKind} onKind=${setSearchKind} />
             </span>`}
             <span class="app-header-actions">
                 ${inDoc &&

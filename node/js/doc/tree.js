@@ -308,7 +308,7 @@ const UnfiledBin = ({ unfiled, ops }) => {
  * @param onMinimize   when present, the toolbar grows a tuck-away button (collapsible column)
  * @param onOrder      called with the depth-first doc order (the "book order") after each fetch
  * @param itemNoun     what the hosting app calls one of its things ("page", "note") - the tree grows
- *                     notes in TurboNotes, and says so
+ *                     notes in Writer, and says so
  * @param searchKind   the kind dial ('all' | 'docs' | 'media'): filters page rows like search
  *                     does, never sections
  */

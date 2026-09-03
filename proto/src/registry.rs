@@ -585,6 +585,11 @@ pub struct DocHeaderPlain {
     /// post's public face by ruling. A wish enforced at every honest serving edge, like
     /// `settled`. Absent when false; carried forward on re-publication.
     pub trusted_only: bool,
+    /// The author's PREFERRED date (PUBLISH.md, 2026-09-02): what the post sorts and reads
+    /// by everywhere - a diary entry written up years later files under its own day. Never
+    /// the edit window's anchor; that stays `genesis_ms`, when it was minted. Absent = "the
+    /// day it was said". Re-read from the draft at every publish inside the edit window.
+    pub dated_ms: Option<i64>,
 }
 
 impl DocHeaderPlain {
@@ -633,7 +638,8 @@ impl DocHeaderPlain {
             + self.reply_to.is_some() as u64
             + self.thread_root.is_some() as u64
             + self.settled as u64
-            + self.trusted_only as u64;
+            + self.trusted_only as u64
+            + self.dated_ms.is_some() as u64;
         if self.thread_root.is_some() && self.reply_to.is_none() {
             return Err(ProtoError::BadEntry("a thread root without a parent"));
         }
@@ -709,6 +715,13 @@ impl DocHeaderPlain {
             w.uint(16);
             w.uint(1);
         }
+        if let Some(d) = self.dated_ms {
+            if d < 0 {
+                return Err(ProtoError::BadEntry("dated before the epoch"));
+            }
+            w.uint(17);
+            w.uint(d as u64);
+        }
         Ok(w.into_bytes())
     }
 
@@ -725,6 +738,7 @@ impl DocHeaderPlain {
         let mut thread_root: Option<([u8; 32], [u8; 16])> = None;
         let mut settled = false;
         let mut trusted_only = false;
+        let mut dated_ms: Option<i64> = None;
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -788,6 +802,12 @@ impl DocHeaderPlain {
                 }
                 15 => settled = map.uint()? != 0,
                 16 => trusted_only = map.uint()? != 0,
+                17 => {
+                    let d = map.uint()?;
+                    dated_ms = Some(
+                        i64::try_from(d).map_err(|_| ProtoError::BadEntry("dated out of range"))?,
+                    );
+                }
                 _ => map.skip_value()?,
             }
         }
@@ -810,6 +830,7 @@ impl DocHeaderPlain {
             thread_root,
             settled,
             trusted_only,
+            dated_ms,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -1296,6 +1317,7 @@ mod tests {
     #[test]
     fn a_settled_header_round_trips_and_absence_means_open() {
         let mut h = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             doc_id: [1u8; 16],
             parents: vec![],
@@ -1319,6 +1341,13 @@ mod tests {
         h.trusted_only = true;
         assert!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().trusted_only, "key 16 too");
         h.trusted_only = false;
+        h.dated_ms = Some(1_262_304_000_000);
+        assert_eq!(
+            DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().dated_ms,
+            Some(1_262_304_000_000),
+            "key 17: the preferred date rides the header"
+        );
+        h.dated_ms = None;
         h.settled = false;
         let open_bytes = h.encode().unwrap();
         assert!(!DocHeaderPlain::decode(&open_bytes).unwrap().settled);
@@ -1605,6 +1634,7 @@ mod tests {
     #[test]
     fn doc_header_reply_links_round_trip_and_pair() {
         let base = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1624,6 +1654,7 @@ mod tests {
             thread_root: None,
         };
         let reply = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             reply_to: Some(([5u8; 32], [6u8; 16])),
@@ -1637,6 +1668,7 @@ mod tests {
         assert_eq!(plain.thread_root, None);
 
         let orphan = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             thread_root: Some(([7u8; 32], [8u8; 16])),
@@ -1651,6 +1683,7 @@ mod tests {
     #[test]
     fn doc_header_refs_round_trip_and_cap() {
         let base = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1672,6 +1705,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
         let empty = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             refs: Vec::new(),
@@ -1685,6 +1719,7 @@ mod tests {
         );
 
         let over = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             refs: vec![[7u8; 16]; DocHeaderPlain::MAX_REFS + 1],
@@ -1720,6 +1755,7 @@ mod tests {
         // The three parent shapes: genesis (none), ordinary save (one), merge (two).
         for parents in [vec![], vec![[1u8; 32]], vec![[1u8; 32], [2u8; 32]]] {
             let h = DocHeaderPlain {
+                dated_ms: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: [9u8; 16],
@@ -1742,6 +1778,7 @@ mod tests {
         }
         // format present survives the trip too
         let h = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1763,6 +1800,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
         let img = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1784,6 +1822,7 @@ mod tests {
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
         let vid = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1808,6 +1847,7 @@ mod tests {
     #[test]
     fn doc_header_enforces_caps() {
         let base = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             doc_id: [0u8; 16],
@@ -1828,6 +1868,7 @@ mod tests {
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {
+            dated_ms: None,
             trusted_only: false,
             settled: false,
             parents: vec![[0u8; 32]; DocHeaderPlain::MAX_PARENTS + 1],

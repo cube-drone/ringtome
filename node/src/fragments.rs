@@ -1732,6 +1732,7 @@ mod tests {
             version: [7u8; 32],
             timestamp_ms,
             header: ringtome_proto::registry::DocHeaderPlain {
+                dated_ms: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: doc,

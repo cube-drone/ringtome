@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 537 phrases across 44 files.
+// 524 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -39,21 +39,6 @@ export default {
     'apps.feed.only-show-to-people': 'only show to people I trust',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
     'apps.feed.older-drafts': 'older drafts',
-
-    // --- node/js/apps/journal.js ---
-    'apps.journal.error': 'error',
-    'apps.journal.opening': 'opening…',
-    'apps.journal.some-of-this-entrys-words': "some of this entry's words are still arriving from another computer.",
-    'apps.journal.untitled': 'untitled',
-    'apps.journal.seal-lock-this-entry-unlocking': 'Seal this entry (unlocking takes 15 seconds)',
-    'apps.journal.delete-removes-this-entry-its': 'Delete',
-    'apps.journal.still-arriving-from-another-computer': 'still arriving from another computer.',
-    'apps.journal.locked-click-then-wait-15': 'Locked — click, then wait 15 seconds, to unlock this entry for editing',
-    'apps.journal.tags-date-description': 'tags, date & description',
-    'apps.journal.untitled-2': 'untitled',
-    'apps.journal.opening-todays-page': 'opening today’s page…',
-    'apps.journal.todays-page-is-blank-click': 'Today’s page is blank. Click to start writing…',
-    'apps.journal.no-entries-match': 'no entries match “{searchQuery}”.',
 
     // --- node/js/apps/notes.js ---
     'apps.notes.pinned': 'pinned',
