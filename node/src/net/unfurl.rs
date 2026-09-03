@@ -54,8 +54,6 @@ pub enum Refusal {
 const DEFAULT_RATE_PER_MIN: f64 = 30.0;
 /// Bounded download: OpenGraph metadata lives at the top of the document.
 const MAX_BODY_BYTES: usize = 128 * 1024;
-/// And the parse looks at even less (matches marquee-turbolink).
-const MAX_PARSE_BYTES: usize = 65536;
 const MAX_REDIRECTS: usize = 4;
 const FETCH_TIMEOUT: Duration = Duration::from_secs(8);
 /// Cached per URL for a day; a page's card does not change often enough to matter.
@@ -366,100 +364,32 @@ async fn read_capped(res: reqwest::Response, cap: usize) -> anyhow::Result<Strin
     Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
-/// The OpenGraph parse, semantics matched to marquee-turbolink's `parseOpenGraph`: og:title
-/// (else `<title>`) is required; og:description (else `name=description`), og:image and
-/// og:site_name ride along; the five standard entities decode. Hand-rolled scanning rather
-/// than a regex dependency - the grammar is just "meta tags near the top".
+/// The OpenGraph parse: marquee-markup's `parse_open_graph`, the same rules and entity
+/// table as the npm turbolink package (og:title else `<title>` required; og:description
+/// else `name=description`, og:image and og:site_name ride along; numeric and named
+/// references decode in one pass). This was a hand-rolled port from 2026-07-25, before the
+/// Rust crate carried it; the port grew a third copy of the entity table on 2026-09-03 and
+/// was retired the same day (Curtis: "why did we have to hand-roll a port of this other
+/// code that we... already have?"). Ringtome keeps the fetch, its byte budget, the
+/// private-address guard, the rate bucket, and the cache around it.
 pub fn parse_open_graph(html: &str) -> Option<Summary> {
-    let mut end = html.len().min(MAX_PARSE_BYTES);
-    while end < html.len() && !html.is_char_boundary(end) {
-        end += 1;
-    }
-    let head = &html[..end];
-
-    let meta = |prop: &str| -> Option<String> {
-        meta_content(head, prop).map(|v| decode_entities(&v))
-    };
-    let title = meta("og:title")
-        .or_else(|| title_tag(head).map(|t| decode_entities(t.trim())))
-        .filter(|t| !t.is_empty())?;
+    let s = marquee_markup::opengraph::parse_open_graph(html)?;
+    let title = s.title.filter(|t| !t.is_empty())?;
     Some(Summary {
         title,
-        description: meta("og:description").or_else(|| meta("description")),
-        image: meta("og:image"),
-        site: meta("og:site_name"),
+        description: s.description,
+        image: s.image,
+        site: s.site,
     })
-}
-
-/// Find `<meta ... property|name="prop" ... content="...">` (attribute order and quote style
-/// free, ASCII case-insensitive) and return the raw content value.
-fn meta_content(head: &str, prop: &str) -> Option<String> {
-    let lower = head.to_ascii_lowercase();
-    let mut from = 0;
-    while let Some(pos) = lower[from..].find("<meta") {
-        let start = from + pos;
-        let end = lower[start..].find('>').map(|e| start + e)?;
-        let tag = &head[start..end];
-        let tag_lower = &lower[start..end];
-        let named = attr_value(tag, tag_lower, "property")
-            .or_else(|| attr_value(tag, tag_lower, "name"));
-        if named.is_some_and(|v| v.eq_ignore_ascii_case(prop)) {
-            if let Some(content) = attr_value(tag, tag_lower, "content") {
-                if !content.is_empty() {
-                    return Some(content.to_string());
-                }
-            }
-        }
-        from = end;
-    }
-    None
-}
-
-/// A quoted attribute's value within one tag. `tag_lower` is the same slice lowercased (so
-/// the search is case-insensitive while the returned value keeps its case).
-fn attr_value<'a>(tag: &'a str, tag_lower: &str, name: &str) -> Option<&'a str> {
-    let mut from = 0;
-    loop {
-        let pos = tag_lower[from..].find(name)? + from;
-        // Must be a standalone attribute name: preceded by whitespace, followed by `=`.
-        let before_ok = tag[..pos]
-            .chars()
-            .next_back()
-            .is_some_and(|c| c.is_ascii_whitespace());
-        let rest = &tag[pos + name.len()..];
-        let rest_trim = rest.trim_start();
-        if before_ok && rest_trim.starts_with('=') {
-            let after_eq = rest_trim[1..].trim_start();
-            let quote = after_eq.chars().next()?;
-            if quote == '"' || quote == '\'' {
-                let value = &after_eq[1..];
-                let close = value.find(quote)?;
-                return Some(&value[..close]);
-            }
-        }
-        from = pos + name.len();
-    }
-}
-
-fn title_tag(head: &str) -> Option<&str> {
-    let lower = head.to_ascii_lowercase();
-    let open = lower.find("<title")?;
-    let open_end = lower[open..].find('>').map(|e| open + e + 1)?;
-    let close = lower[open_end..].find("</title").map(|e| open_end + e)?;
-    Some(&head[open_end..close])
-}
-
-fn decode_entities(s: &str) -> String {
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The crate's own parse budget (marquee-markup reads 64 KiB of head, as the npm
+    /// package does); the byte-budget claim below pins that ringtome still gets it.
+    const MAX_PARSE_BYTES: usize = 65536;
 
     #[test]
     fn opengraph_tags_win_and_entities_decode() {
@@ -475,6 +405,24 @@ mod tests {
         assert_eq!(s.description.as_deref(), Some("a \"cozy\" p2p web"));
         assert_eq!(s.image.as_deref(), Some("https://example.com/cover.png"));
         assert_eq!(s.site.as_deref(), Some("Example"));
+    }
+
+    #[test]
+    fn numeric_and_named_references_decode_through_the_crate() {
+        // The CBC case (Curtis, 2026-09-03): React/Helmet heads write apostrophes as hex
+        // references, and the card read "Trump&#x27;s". The decoding is the crate's; this
+        // claim is that ringtome's door reaches it.
+        let html = r#"<head>
+            <meta property="og:title" content="Republicans are blaming Canada for Trump&#x27;s trade war">
+            <meta property="og:description" content="Carney&#39;s government &ldquo;walked&rdquo; &amp;#x27; &bogus;">
+        </head>"#;
+        let s = parse_open_graph(html).expect("a card");
+        assert_eq!(s.title, "Republicans are blaming Canada for Trump's trade war");
+        assert_eq!(
+            s.description.as_deref(),
+            Some("Carney's government \u{201c}walked\u{201d} &#x27; &bogus;"),
+            "decimal and named decode; an escaped reference stays literal; an unknown name stays as written"
+        );
     }
 
     #[test]

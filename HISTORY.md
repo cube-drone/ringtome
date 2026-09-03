@@ -8104,3 +8104,21 @@ shows the private draft, showed the newer ones. Every headless trace had the sav
 first (fast machine); the dev network is slower. Image edits never raced because the
 upload's swap had already saved. `session.js` now makes a second caller wait for the save
 on the wire, then judge dirtiness again.
+
+## 2026-09-03 (cont.): the link card's apostrophes
+
+Curtis: a CBC link unfurled to "Trump&#x27;s" after marqueemarkup 0.7.0 was meant to fix
+exactly that. Both sides were at 0.7.0; the package's fix never runs here because the node
+fetches and parses the page itself (`net/unfurl.rs`, the browser cannot cross origins), and
+the node's decoder was a five-entity chain of `replace` calls that knew no numeric
+references. It is now a one-pass port of marquee-turbolink's `decodeEntities` - decimal,
+hex, the named table - with `&amp;#x27;` staying literal, under a unit test built on the
+CBC line. Cards are cached in memory for a day, so a card unfurled before this keeps its
+entities until the node restarts or the day passes.
+Then the port itself went (Curtis: "why did we have to hand-roll a port of this other code
+that we... already have?"): marqueemarkup's `cube-drone-marquee-markup` crate has carried
+`opengraph::parse_open_graph` since 2026-09-02, and ringtome depended only on the parser
+crate. Ringtome's 2026-07-25 port - and the decoder written this morning, a third copy of
+the table - are deleted; the node calls the crate and keeps only its own fetch, byte budget,
+private-address guard, rate bucket, and cache. The unit claims now read as lockstep tests of
+the crate through ringtome's door.
