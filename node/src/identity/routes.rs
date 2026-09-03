@@ -1357,10 +1357,11 @@ pub(crate) async fn after_posted(
     draft_id: &[u8; 16],
     post_id: [u8; 16],
     reply: Option<crate::record::documents::ReplyLinks>,
-    flags: crate::record::documents::PublishFlags,
+    // The mint flags ride along for symmetry with the handler; nothing here reads them
+    // any more - the key memo asks the draft, not the request.
+    _flags: crate::record::documents::PublishFlags,
 ) -> Result<(), AppError> {
     let doc_id = *draft_id;
-    let trusted_only = flags.trusted_only;
     let state = state.clone();
     let root = root.to_string();
     // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
@@ -1445,41 +1446,43 @@ pub(crate) async fn after_posted(
     // The sealing key's node memo (PROJECT_PLAN's Post visibility slice 2b): the author's node
     // remembers at mint so the body door and the key lane answer without a
     // private-chain read per request. Best-effort: the draft's copy is durable.
-    if trusted_only {
-        if let Ok(Some(k)) = data.annotations().field(&doc_id, store::TRUSTED_KEY).await {
-            if let Some(key) = hex::decode(&k)
-                .ok()
-                .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+    // Whenever the draft HOLDS a key, not only when this request said trusted-only: the
+    // wish is carried on re-publication and the edit flow never repeats it, and gating on
+    // the request left the fresh twin an edit re-baked with no key memo - the picture
+    // 404'd for its own author (Curtis, 2026-09-03; the twins acceptance now edits).
+    if let Ok(Some(k)) = data.annotations().field(&doc_id, store::TRUSTED_KEY).await {
+        if let Some(key) = hex::decode(&k)
+            .ok()
+            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        {
+            if let Err(e) = crate::postkeys::remember(
+                &state.node_db,
+                &root,
+                &hex::encode(post_id),
+                &key,
+            )
+            .await
             {
-                if let Err(e) = crate::postkeys::remember(
-                    &state.node_db,
-                    &root,
-                    &hex::encode(post_id),
-                    &key,
-                )
-                .await
-                {
-                    tracing::warn!(error = ?e, "post key memo write failed");
-                }
-                // The twins seal under the same key: memo it under THEIR ids too,
-                // so the key doors (HTTP and WantKey alike) answer for a picture
-                // exactly as they answer for the words.
-                if let Ok(Some(entry)) =
-                    crate::record::documents::public_header_entry(data.db(), &post_id).await
-                {
-                    if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
-                        if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
-                            for r in &h.refs {
-                                if let Err(e) = crate::postkeys::remember(
-                                    &state.node_db,
-                                    &root,
-                                    &hex::encode(r),
-                                    &key,
-                                )
-                                .await
-                                {
-                                    tracing::warn!(error = ?e, "twin key memo write failed");
-                                }
+                tracing::warn!(error = ?e, "post key memo write failed");
+            }
+            // The twins seal under the same key: memo it under THEIR ids too,
+            // so the key doors (HTTP and WantKey alike) answer for a picture
+            // exactly as they answer for the words.
+            if let Ok(Some(entry)) =
+                crate::record::documents::public_header_entry(data.db(), &post_id).await
+            {
+                if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
+                    if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
+                        for r in &h.refs {
+                            if let Err(e) = crate::postkeys::remember(
+                                &state.node_db,
+                                &root,
+                                &hex::encode(r),
+                                &key,
+                            )
+                            .await
+                            {
+                                tracing::warn!(error = ?e, "twin key memo write failed");
                             }
                         }
                     }

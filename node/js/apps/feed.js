@@ -515,6 +515,10 @@ export const FeedApp = ({ current }) => {
     const post = async (docId) => {
         const posted = docId || draftId;
         if (!posted) return;
+        // The wishes this post rides out with, caught before the checkboxes reset: the
+        // fresh card wears them from the first second (a headless drive on 2026-09-03
+        // showed the "trusted only" chip arriving only with the reload).
+        const wishes = { settled: settleNext, trusted_only: trustNext };
         setPosting(true);
         setError(null);
         // Only the open draft moves the slot along. Re-posting something already in the stack
@@ -580,6 +584,8 @@ export const FeedApp = ({ current }) => {
                 dated_ms: made.dated_ms == null ? null : made.dated_ms,
                 minted_ms: Date.now(),
                 fresh: true,
+                settled: wishes.settled,
+                trusted_only: wishes.trusted_only,
                 updated_ms: Date.now(),
                 arrived_ms: Date.now(),
                 annotations: overlayLabels,

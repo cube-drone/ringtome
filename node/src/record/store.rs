@@ -1042,11 +1042,7 @@ impl Documents<'_> {
             return Err(AppError::BadRequest(crate::msg!("record.store.this-note-is-diverged--", "this note is diverged - settle it (an ordinary save) before publishing, or                  the post would carry the conflict")));
         }
         let resolved = self.resolved(doc).await?;
-        let post_key: Option<[u8; 32]> = if trusted_only {
-            Some(self.post_key_for(doc_id).await?)
-        } else {
-            None
-        };
+        let post_key = self.post_key_if(doc_id, trusted_only).await?;
 
         let body = match body_override {
             Some(prepared) => prepared,
@@ -1151,6 +1147,26 @@ impl Documents<'_> {
     /// minted once onto the draft's private meta - device-durable, replication-excluded -
     /// and reused verbatim ever after. Shared by the text mint and every twin bake, so one
     /// key opens the whole post.
+    /// The key a mint seals under, if it seals at all. Once a draft has minted trusted-only
+    /// it stays so (the wish is CARRIED on re-publication: documents.rs, `carried_trusted`),
+    /// so a draft that already holds a key hands it over whether or not THIS request says
+    /// trusted-only. The edit flow never says it (Curtis, 2026-09-03: "a trusted-only mint
+    /// arrived without its key" on editing a post), and a fresh trusted wish mints one.
+    pub async fn post_key_if(&self, doc_id: &[u8; 16], wanted: bool) -> Result<Option<[u8; 32]>, AppError> {
+        let existing = self
+            .store
+            .annotations()
+            .field(doc_id, TRUSTED_KEY)
+            .await?
+            .and_then(|v| hex::decode(v).ok())
+            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
+        match (existing, wanted) {
+            (Some(k), _) => Ok(Some(k)),
+            (None, true) => Ok(Some(self.post_key_for(doc_id).await?)),
+            (None, false) => Ok(None),
+        }
+    }
+
     pub async fn post_key_for(&self, doc_id: &[u8; 16]) -> Result<[u8; 32], AppError> {
         let existing = self
             .store

@@ -952,6 +952,17 @@
     background: var(--surface);
     border: 1px dashed var(--border);
 }
+/* The author's wishes (trusted only, no rebroadcast or comment): chrome on the labels row,
+ * outlined rather than filled so they read as facts about the post, not tags on it. */
+.label-chip-flag {
+    align-items: center;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-soft);
+}
+.label-chip-flag svg {
+    font-size: 1.15em;
+}
 /* A chip you have not said yet is the agree button (2026-08-31): the hand says so. */
 .label-chip-agree {
     cursor: pointer;

@@ -8058,3 +8058,29 @@ color. Moved below it, with the reason written beside it.
 The card's actions slot (Curtis: "no padding between them, nor... from the datetime"): the
 banner's actions span was a bare inline span, so the stamp and the buttons sat flush. It is
 an inline-flex row with a half-rem gap now (person.css).
+
+## 2026-09-03: editing a trusted-only post, and wearing the wishes
+
+Curtis edited a trusted-only post and got a 500 - "a trusted-only mint arrived without its
+key". A re-publication CARRIES the trusted wish from the first mint, but the sealing key was
+fetched only when the request itself said trusted-only, which the edit flow never does. Now
+`post_key_if` hands over a key the draft already holds whatever the request says (once
+sealed, always sealed) and mints one only for a fresh wish; both the store's and the bake
+pass's mint sites use it. Acceptance: an edit re-publishes the same post, still sealed to a
+stranger, new words for the author.
+
+And the wishes are visible now ("I didn't know that this post was trusted-only"): the labels
+row leads with outlined chips - a lock for "trusted only", a prohibit sign for "no
+rebroadcast or comment" - chrome off the header, not labels anyone said.
+
+The picture then (Curtis: after editing a sealed post "the image... now 404's"; re-opening
+the editor showed it fine, because the editor shows the PRIVATE media): the re-bake mints a
+fresh sealed twin, but the after-mint key memo ran only when the REQUEST said trusted-only,
+which an edit never does - so the new twin had no key at the door and answered "the key
+hasn't arrived here yet". The memo now fires whenever the draft holds a sealing key. The
+twins acceptance edits and re-publishes the picture post and reads the new twin as author,
+trusted reader, and stranger.
+Verified in headless Chrome against a scratch node: trusted post with a picture, in-place
+edit, the new twin loads after reload. The drive also caught the fresh card wearing its
+"trusted only" chip only after a reload - the composer's overlay item now carries the
+wishes it was posted with.

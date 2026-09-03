@@ -62,6 +62,7 @@ import {
     Megaphone,
     Bell,
     ClockCountdown,
+    Prohibit,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -141,6 +142,8 @@ export const Icons = {
     path: Path,
     // A post waiting for its day (PUBLISH.md): the clock counting down.
     scheduled: ClockCountdown,
+    // A post with rebroadcast and comment turned off (PROJECT_PLAN's Post visibility).
+    settled: Prohibit,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

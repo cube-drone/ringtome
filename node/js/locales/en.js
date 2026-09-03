@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 528 phrases across 43 files.
+// 532 phrases across 43 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -374,6 +374,10 @@ export default {
     'postentry.thread': 'thread',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',
+    'postentry.trusted-only-chip-title': 'the author shares these words only with people they trust',
+    'postentry.trusted-only': 'trusted only',
+    'postentry.settled-chip-title': 'the author turned off rebroadcast and comment on this post',
+    'postentry.no-rebroadcast-or-comment': 'no rebroadcast or comment',
     'postentry.click-to-agree': 'said by {names} - click to agree, with your own name on it',
     'postentry.the-authors-label': "the author's label",
     'postentry.label-by-name': 'label by {name}',

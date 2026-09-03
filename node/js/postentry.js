@@ -96,7 +96,8 @@ export const LockButton = ({ onUnlocked }) => {
 // The composer: the REAL notes editor, wearing Feed's clothes (Curtis's ruling, 2026-08-06:
 // both point at a private document, so the features come over whole rather than being
 // reimplemented). The registry's feature block does the tailoring - Feed already declares
-// `date: false` (a post happens NOW; nobody claims a date for one) and `pin: false` - and
+// `pin: false` (no list to float atop; the date is ON since PUBLISH.md - a claim that files
+// or schedules the post) - and
 // everything else arrives free: the format-convert chip, the upload chip with drop-and-paste
 // inline, tags and description, view modes, the delete chip (which, on the open draft, just
 // clears it - the one-draft rule mints a fresh page the moment the old one dies).
@@ -802,8 +803,15 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     published_ms=${item.reply_to.published_ms}
                 />
             </p>`}
-            ${!open && (shownLabels.length > 0 || !!current) &&
+            ${!open && (shownLabels.length > 0 || !!current || item.trusted_only || item.settled) &&
             html`<div class="feed-entry-labels">
+                ${/* The author's wishes wear chips of their own, first in the row (Curtis,
+                    2026-09-03: "I didn't know that this post was trusted-only") - chrome,
+                    not labels: nobody said them, the header did. */ ''}
+                ${item.trusted_only &&
+                html`<span class="label-chip label-chip-flag" title=${t('postentry.trusted-only-chip-title', 'the author shares these words only with people they trust')}><${Icons.trustPrivate} /> ${t('postentry.trusted-only', 'trusted only')}</span>`}
+                ${item.settled &&
+                html`<span class="label-chip label-chip-flag" title=${t('postentry.settled-chip-title', 'the author turned off rebroadcast and comment on this post')}><${Icons.settled} /> ${t('postentry.no-rebroadcast-or-comment', 'no rebroadcast or comment')}</span>`}
                 ${groupLabels(shownLabels, { author: item.author }).map((g) => {
                     // One chip per (key, value), worn by everyone who said it: most-agreed
                     // first, names smashed ("Jeff Dorp and 3 others"), and the chip itself

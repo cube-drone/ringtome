@@ -20,7 +20,7 @@ const base58 = async (host) => {
 describe("trusted-only posts: the body goes to trusted readers", function () {
     this.timeout(600000);
 
-    let ada, adaRoot, bea, beaRoot, post;
+    let ada, adaRoot, bea, beaRoot, post, draft;
 
     before(async () => {
         ada = await makeUserFetch({ prefix: "trustada" });
@@ -45,6 +45,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         const text = await pub.text();
         assert.equal(pub.status, 200, text);
         post = JSON.parse(text).post_id;
+        draft = made.doc_id;
         // The public face, for an untrusted reader: existence, title, date - and the flag.
         const head = await (await bea(`api/id/${adaRoot}/posts/${post}`)).json();
         assert.equal(head.title, "for my people", "the title is the post's public face");
@@ -160,6 +161,44 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         const dana = await makeUserFetch({ prefix: "trustdana" });
         assert.equal((await dana(`id/${adaRoot}/docs/${twin}/body`)).status, 403);
         assert.equal((await dana(`id/${adaRoot}/docs/${twin}/thumb`)).status, 403);
+
+        // An EDIT re-publishes the picture too (Curtis, 2026-09-03: after editing a sealed
+        // post the image 404'd): the re-bake mints a fresh sealed twin, the new body names
+        // it, and it opens for the author and the trusted exactly as the first one did.
+        const got = await (await ada(`api/identity/${adaRoot}/docs/${made.doc_id}`)).json();
+        const save = await ada(`api/identity/${adaRoot}/docs/${made.doc_id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+                title: "sealed picture",
+                body: `edited\n\n![p](/api/identity/${adaRoot}/docs/${media}/body/p.avif)`,
+                parents: got.heads.map((h) => h.version),
+                format: "marquee",
+            }),
+        });
+        assert.equal(save.status, 200, await save.text());
+        let again = null;
+        for (let i = 0; i < 30; i++) {
+            const r = await ada(`api/identity/${adaRoot}/docs/${made.doc_id}/publish`, { method: "POST" });
+            const t = JSON.parse(await r.text());
+            if (r.status === 200 && t.post_id) {
+                again = t.post_id;
+                break;
+            }
+            await new Promise((res) => setTimeout(res, 400));
+        }
+        assert.equal(again, pub, "the same post, re-said");
+        const head2 = await (await ada(`api/id/${adaRoot}/posts/${pub}`)).json();
+        const twin2 = (head2.refs || [])[0];
+        assert.ok(twin2, "the re-said header names a twin");
+        const words = await (await ada(`id/${adaRoot}/docs/${pub}/body`)).text();
+        assert.match(words, /^edited/, "the new words landed");
+        assert.ok(words.includes(`/docs/${twin2}/body/`), "and they name the twin the header names");
+        const adaTwin = await ada(`id/${adaRoot}/docs/${twin2}/body`);
+        assert.equal(adaTwin.status, 200, `the author's own picture after the edit: ${await adaTwin.clone().text()}`);
+        const beaTwin = await bea(`id/${adaRoot}/docs/${twin2}/body`);
+        assert.equal(beaTwin.status, 200, `the trusted reader's picture after the edit: ${await beaTwin.clone().text()}`);
+        assert.equal(beaTwin.headers.get("content-type"), "image/avif");
+        assert.equal((await dana(`id/${adaRoot}/docs/${twin2}/body`)).status, 403, "still sealed to the untrusted");
     });
 
     // The multi-hop claim (Curtis, 2026-09-02): a rebroadcast spreads the POINTER between
@@ -281,5 +320,37 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
         assert.equal(await feedRow(cal, calRoot), undefined, "cal's feed still shows nothing");
         assert.notEqual((await cal(`id/${adaRoot}/docs/${post}/body`)).status, 200,
             "the relay in the middle still cannot read what it carried");
+    });
+
+    it("an edit re-publishes sealed, with no flag on the request (2026-09-03)", async () => {
+        // LAST on purpose: every claim above reads the original words. The edit flow says
+        // nothing about trust; the wish is carried from the first mint,
+        // and so must the key be - this used to 500 ("a trusted-only mint arrived without
+        // its key").
+        const got = await (await ada(`api/identity/${adaRoot}/docs/${draft}`)).json();
+        const save = await ada(`api/identity/${adaRoot}/docs/${draft}`, {
+            method: "PUT",
+            body: JSON.stringify({
+                title: "for my people",
+                body: "the quieter words",
+                parents: got.heads.map((h) => h.version),
+                format: "plaintext",
+            }),
+        });
+        assert.equal(save.status, 200, await save.text());
+        const again = await ada(`api/identity/${adaRoot}/docs/${draft}/publish`, { method: "POST" });
+        const text = await again.text();
+        assert.equal(again.status, 200, text);
+        assert.equal(JSON.parse(text).post_id, post, "the same public post, re-said");
+        const head = await (await bea(`api/id/${adaRoot}/posts/${post}`)).json();
+        assert.equal(head.trusted_only, true, "still trusted-only");
+        // Bea is TRUSTED by now (the claims above published trust for her): the same key
+        // opens the new words for her, and a stranger who never met ada still gets the door.
+        const stranger = await makeUserFetch({ prefix: "truststranger" });
+        const no = await stranger(`id/${adaRoot}/docs/${post}/body`);
+        assert.equal(no.status, 403, "still sealed to a stranger");
+        assert.equal(await (await bea(`id/${adaRoot}/docs/${post}/body`)).text(), "the quieter words", "the trusted reader gets the new words");
+        const own = await ada(`id/${adaRoot}/docs/${post}/body`);
+        assert.equal(await own.text(), "the quieter words", "and the author reads the new words");
     });
 });

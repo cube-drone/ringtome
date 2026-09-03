@@ -210,11 +210,9 @@ pub async fn publish(
     // key as the words. External web media cannot seal at bake time (the background job
     // has no post in hand), and a gated post silently shipping a public copy of its own
     // image would be the leak this whole design exists to close - refuse with words.
-    let post_key = if trusted_only {
-        Some(docs.post_key_for(doc_id).await?)
-    } else {
-        None
-    };
+    // Once sealed, always sealed: a draft that already holds a key seals again whether or
+    // not this request says trusted-only (the edit flow never does).
+    let post_key = docs.post_key_if(doc_id, trusted_only).await?;
     if post_key.is_some() && refs.iter().any(|r| matches!(r, MediaRef::External { .. })) {
         return Err(AppError::BadRequest(crate::msg!(
             "record.bake.trusted-cant-bake-external",
