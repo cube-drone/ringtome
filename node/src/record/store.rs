@@ -1213,7 +1213,7 @@ impl Documents<'_> {
         &self,
         media_doc: &[u8; 16],
         post_key: Option<[u8; 32]>,
-    ) -> Result<([u8; 16], crate::record::documents::Format), AppError> {
+    ) -> Result<([u8; 16], crate::record::documents::Format, bool), AppError> {
         let view = self.all().await?;
         let doc = view
             .docs
@@ -1252,7 +1252,7 @@ impl Documents<'_> {
                 .and_then(|v| hex::decode(v).ok())
                 .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
             {
-                return Ok((existing, format));
+                return Ok((existing, format, head.header.animation));
             }
         }
         let body = self.body(head).await?.ok_or_else(|| {
@@ -1267,6 +1267,7 @@ impl Documents<'_> {
             format,
             thumb_avif,
             preview_webm: None,
+            animation: head.header.animation,
             width: head.header.width,
             height: head.header.height,
             duration_ms: head.header.duration_ms,
@@ -1286,7 +1287,7 @@ impl Documents<'_> {
                 .set_field(media_doc, PUBLISHED_AS, &hex::encode(public))
                 .await?;
         }
-        Ok((public, format))
+        Ok((public, format, head.header.animation))
     }
 
     /// The document's synthesized current text: one head's body verbatim, a clean three-way

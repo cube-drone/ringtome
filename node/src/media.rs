@@ -38,6 +38,8 @@ pub struct Ingested {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub duration_ms: Option<u64>,
+    /// The bytes were an animated image before the crush (header key 18): a silent loop.
+    pub animation: bool,
 }
 
 /// Why an upload could not be crushed - the union of the three lanes' failures. The ingest worker
@@ -137,6 +139,7 @@ impl Ingested {
             format: Format::Avif,
             thumb_avif: Some(c.thumb_avif),
             preview_webm: None,
+            animation: false,
             width: Some(c.width),
             height: Some(c.height),
             duration_ms: c.duration_ms,
@@ -155,6 +158,7 @@ impl Ingested {
             // preview (WebM output only) rides its own sibling field.
             thumb_avif: Some(c.poster_avif),
             preview_webm: c.preview_webm,
+            animation: c.animation,
             width: Some(c.width),
             height: Some(c.height),
             duration_ms: Some(c.duration_ms),
@@ -167,6 +171,7 @@ impl Ingested {
             format: Format::OggOpus,
             thumb_avif: c.waveform_avif,
             preview_webm: None,
+            animation: false,
             width: None,
             height: None,
             duration_ms: Some(c.duration_ms),

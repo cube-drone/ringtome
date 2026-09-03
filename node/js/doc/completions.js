@@ -10,7 +10,7 @@ import { nameToEmoji } from 'gemoji';
 import { openMirror } from '../mirror.js';
 import { slugPathFor } from './address.js';
 import { slugify, MEDIA_EXT } from '../pure/naming.js';
-import { OWN_MEDIA_KINDS } from '../pure/mediakind.js';
+import { OWN_MEDIA_KINDS, loopSuffix } from '../pure/mediakind.js';
 
 /// Plain membership - the app rule (`bucketHolds`) mirrored for the pickers, ONE copy for
 /// both (the link and media pickers each carried their own and one drifted - the second copy
@@ -195,7 +195,9 @@ export function mediaCompletions(root, bucket) {
                     apply: (view, _completion, from, to) => {
                         const slug =
                             slugify(label).replace(/-/g, '_').replace(/\.[^.]*$/, '') || 'file';
-                        const embed = `![${label}](/api/identity/${root}/docs/${d.doc_id}/body/${slug}.${MEDIA_EXT[d.format]})`;
+                        // A silent animation is spelled `-loop` (pure/mediakind.js), so the
+                        // renderer draws it looping rather than with a player.
+                        const embed = `![${label}](/api/identity/${root}/docs/${d.doc_id}/body/${slug}${loopSuffix(d.media && d.media.animation)}.${MEDIA_EXT[d.format]})`;
                         view.dispatch({
                             changes: { from: from - prefixLen, to, insert: embed },
                             selection: { anchor: from - prefixLen + embed.length },

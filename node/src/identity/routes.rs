@@ -3054,6 +3054,9 @@ struct MediaInfo {
     has_thumb: bool,
     /// A `/preview` blob exists: a silent hover-preview clip (WebM-output video only).
     has_preview: bool,
+    /// The bytes were an animated image before the crush (header key 18): a silent loop,
+    /// which the editor spells `-loop` in its references so the renderer draws it looping.
+    animation: bool,
 }
 
 impl MediaInfo {
@@ -3070,6 +3073,7 @@ impl MediaInfo {
             duration_ms: head.header.duration_ms,
             has_thumb: head.header.thumb_hash.is_some(),
             has_preview: head.header.preview_hash.is_some(),
+            animation: head.header.animation,
         })
     }
 
@@ -3085,6 +3089,7 @@ impl MediaInfo {
             duration_ms: row.duration_ms,
             has_thumb: row.thumb_hash.is_some(),
             has_preview: row.preview_hash.is_some(),
+            animation: row.animation,
         })
     }
 }
@@ -4512,6 +4517,7 @@ mod media_info_tests {
             author: [0u8; 32],
             header: DocHeaderPlain {
                 dated_ms: None,
+                animation: false,
                 trusted_only: false,
                 settled: false,
                 doc_id: [0u8; 16],

@@ -181,6 +181,12 @@ pub struct Crushed {
     pub frame_count: u32,
     /// Whether the output carries an Opus audio track.
     pub has_audio: bool,
+    /// The input was an ANIMATED IMAGE (gif / APNG / animated WebP) with no audio beside it: a
+    /// silent loop, which readers draw looping, muted, without controls (2026-09-03). A real
+    /// video that arrived through the APNG-frames fallback with no audio reads the same way -
+    /// the containers are the same, and a silent clip short enough to be sent that way loops
+    /// as well as it plays.
+    pub animation: bool,
     /// True when the source had transparency that was flattened onto [`FLATTEN_BACKGROUND`]
     /// because audio forced the WebM route.
     pub alpha_flattened: bool,
@@ -258,7 +264,9 @@ pub fn crush_with_progress(
 
     // Sniff the container from magic bytes and take the matching decode lane. Each lane yields
     // bounded (resized, frame-rate-capped, truncated) RGBA frames plus any passthrough audio.
-    let (frames, transparent, audio) = match sniff(video)? {
+    let kind = sniff(video)?;
+    let animation = !matches!(kind, InputKind::Webm) && audio_ogg_opus.is_none();
+    let (frames, transparent, audio) = match kind {
         InputKind::Webm => {
             let demuxed = demux_webm(video)?;
             let frames = decode_webm_frames(&demuxed, cap)?;
@@ -319,6 +327,7 @@ pub fn crush_with_progress(
             poster_avif,
             // An APNG already animates in an `<img>`; it needs no separate motion preview.
             preview_webm: None,
+            animation,
         });
     }
 
@@ -337,6 +346,7 @@ pub fn crush_with_progress(
         alpha_flattened,
         poster_avif,
         preview_webm,
+        animation,
     })
 }
 

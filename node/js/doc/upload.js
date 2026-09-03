@@ -28,6 +28,7 @@ import { Icons } from '../icons.js';
 // happens in the browser's hardened, licensed decoder, and the server only ever sees
 // our-encoder bytes - AV1-in-WebM (happy lane) or 320p APNG + Ogg Opus (universal fallback).
 import { ingestVideo } from '../../../video-ingest/src/index.js';
+import { bodyUrlFor, crushedReference } from '../pure/mediakind.js';
 
 const html = htm.bind(h);
 
@@ -70,7 +71,7 @@ const queueLabel = (r) =>
             : `waiting in the processing queue — ${r.queuePos} ahead of it…`
         : QUEUE_WORD[r.queueStatus] || 'processing…';
 
-const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFailed }) => {
+const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFailed, onIngested }) => {
     // One row per file. `phase`: uploading -> queued -> done | failed.
     const [rows, setRows] = useState(() =>
         files.map((f) => ({
@@ -229,6 +230,7 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
             try {
                 const jobs = await api(`/api/identity/${root}/ingest`);
                 const settle = []; // [i, row] pairs that just finished with a pending rename
+                const finished = []; // [i, docId] pairs that just crossed to done
                 setRows((rs) =>
                     rs.map((r, i) => {
                         if (r.phase !== 'queued' || !r.jobId) return r;
@@ -237,6 +239,7 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                         if (job.status === 'done') {
                             const doneRow = { ...r, phase: 'done' };
                             if (namesRef.current[i] !== r.appliedName) settle.push([i, doneRow]);
+                            if (r.docId) finished.push([i, r.docId]);
                             return doneRow;
                         }
                         if (job.status === 'failed') {
@@ -251,6 +254,17 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                     })
                 );
                 for (const [i, row] of settle) renameNow(i, row);
+                // The crush has spoken: tell the host what the document really is, so the
+                // reference it wrote from the MIME guess can be respelled (2026-09-03).
+                for (const [i, docId] of finished) {
+                    if (!onIngested) break;
+                    try {
+                        const doc = await api(`/api/identity/${root}/docs/${docId}`);
+                        onIngested(i, docId, doc);
+                    } catch {
+                        /* the picker still knows the truth; the reference stays as written */
+                    }
+                }
             } catch {
                 /* transient; the next tick retries */
             }
@@ -388,12 +402,8 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
  * server; the extension is what the sniff needs, derived from the document's own format
  * (what the crush actually emitted).
  */
-export function decoratedBodyUrl(root, docId, format, title) {
-    const base = `/api/identity/${root}/docs/${docId}/body`;
-    const ext = { avif: 'avif', apng: 'apng', webm: 'webm', opus: 'ogg' }[format];
-    const slug =
-        (title || 'file').replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
-    return ext ? `${base}/${slug}.${ext}` : base;
+export function decoratedBodyUrl(root, docId, format, title, animation = false) {
+    return bodyUrlFor(root, docId, format, title, animation);
 }
 
 export function mediaReference({ root, format, mimeType, docId, name }) {
@@ -442,6 +452,7 @@ export function useUploadCapture({
     const bodyNow = useRef('');
     bodyNow.current = body;
     const uploadTokens = useRef([]); // placeholder text per file index, for the open modal
+    const insertedRefs = useRef([]); // the reference each placeholder became, for the respell
     const captureFiles = (files) => {
         if (!files.length) return;
         // The embed cap, met at the GESTURE - the only place stopping costs nothing. Every
@@ -484,15 +495,38 @@ export function useUploadCapture({
         setBody(bodyNow.current.replace(tok, replacement));
         touched();
     };
-    const onUploaded = (i, file, uploadedId, name) =>
-        swapToken(i, mediaReference({
+    const onUploaded = (i, file, uploadedId, name) => {
+        const reference = mediaReference({
             root,
             format,
             mimeType: file.type,
             docId: uploadedId,
             name: name || file.name,
-        }));
+        });
+        insertedRefs.current[i] = reference;
+        swapToken(i, reference);
+    };
     const onUploadFailed = (i) => swapToken(i, '');
+    // The crush has spoken (2026-09-03): the reference written at upload guessed from the
+    // MIME type - `image/gif` said picture - and an animated gif comes out as a WebM or an
+    // APNG, so the guess rendered as a broken image. Respell it from the document's real
+    // format and animation fact, if the author has not already rewritten it by hand.
+    const onIngested = (i, docId, doc) => {
+        const before = insertedRefs.current[i];
+        if (!before || !doc || !bodyNow.current.includes(before)) return;
+        const after = crushedReference({
+            root,
+            docFormat: doc.format,
+            docId,
+            title: doc.title,
+            animation: !!(doc.media && doc.media.animation),
+            bodyFormat: format,
+        });
+        if (after === before) return;
+        insertedRefs.current[i] = after;
+        setBody(bodyNow.current.replace(before, after));
+        touched();
+    };
     const catchDrop = (e) => {
         const dt = e.dataTransfer;
         const files = Array.from((dt && dt.files) || []);
@@ -564,6 +598,7 @@ export function useUploadCapture({
             files=${uploadFiles}
             onUploaded=${onUploaded}
             onFailed=${onUploadFailed}
+            onIngested=${onIngested}
             onClose=${() => setUploadFiles(null)}
         />`}
     `;

@@ -50,7 +50,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
     const isMedia = doc && doc.format !== 'marquee' && doc.format !== 'plaintext';
     const copyLink = async () => {
         const p = isMedia
-            ? decoratedBodyUrl(root, docId, doc.format, doc.title)
+            ? decoratedBodyUrl(root, docId, doc.format, doc.title, !!(doc.media && doc.media.animation))
             : await slugPathFor(root, docId, bucket);
         if (!p) return;
         try {
@@ -122,7 +122,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
     // The DECORATED byte URL, not the bare /body: right-click -> "copy image address" on the
     // rendered media must yield a URL that re-embeds when pasted into a document, and the
     // embed sniff reads the extension (upload.js, decoratedBodyUrl).
-    const mediaUrl = decoratedBodyUrl(root, docId, doc.format, doc.title);
+    const mediaUrl = decoratedBodyUrl(root, docId, doc.format, doc.title, !!(doc.media && doc.media.animation));
     let body;
     if (doc.format === 'plaintext') {
         body = html`<pre class="reader-plain">${doc.body ?? t('doc.reader.body-not-on-this-computer', '(body not on this computer yet)')}</pre>`;

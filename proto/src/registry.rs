@@ -590,6 +590,11 @@ pub struct DocHeaderPlain {
     /// the edit window's anchor; that stays `genesis_ms`, when it was minted. Absent = "the
     /// day it was said". Re-read from the draft at every publish inside the edit window.
     pub dated_ms: Option<i64>,
+    /// The bytes were an ANIMATED IMAGE before the ingest crushed them (a gif, an animated
+    /// PNG or WebP - 2026-09-03): a silent loop, which a reader draws looping, muted, with no
+    /// controls, where a video with the same container gets a player. Absent when false.
+    /// A media fact, so it rides the twin a bake mints exactly as the dimensions do.
+    pub animation: bool,
 }
 
 impl DocHeaderPlain {
@@ -639,7 +644,8 @@ impl DocHeaderPlain {
             + self.thread_root.is_some() as u64
             + self.settled as u64
             + self.trusted_only as u64
-            + self.dated_ms.is_some() as u64;
+            + self.dated_ms.is_some() as u64
+            + self.animation as u64;
         if self.thread_root.is_some() && self.reply_to.is_none() {
             return Err(ProtoError::BadEntry("a thread root without a parent"));
         }
@@ -722,6 +728,10 @@ impl DocHeaderPlain {
             w.uint(17);
             w.uint(d as u64);
         }
+        if self.animation {
+            w.uint(18);
+            w.uint(1);
+        }
         Ok(w.into_bytes())
     }
 
@@ -739,6 +749,7 @@ impl DocHeaderPlain {
         let mut settled = false;
         let mut trusted_only = false;
         let mut dated_ms: Option<i64> = None;
+        let mut animation = false;
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -808,6 +819,7 @@ impl DocHeaderPlain {
                         i64::try_from(d).map_err(|_| ProtoError::BadEntry("dated out of range"))?,
                     );
                 }
+                18 => animation = map.uint()? != 0,
                 _ => map.skip_value()?,
             }
         }
@@ -831,6 +843,7 @@ impl DocHeaderPlain {
             settled,
             trusted_only,
             dated_ms,
+            animation,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -1318,6 +1331,7 @@ mod tests {
     fn a_settled_header_round_trips_and_absence_means_open() {
         let mut h = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             doc_id: [1u8; 16],
             parents: vec![],
@@ -1348,6 +1362,9 @@ mod tests {
             "key 17: the preferred date rides the header"
         );
         h.dated_ms = None;
+        h.animation = true;
+        assert!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().animation, "key 18: a silent loop says so");
+        h.animation = false;
         h.settled = false;
         let open_bytes = h.encode().unwrap();
         assert!(!DocHeaderPlain::decode(&open_bytes).unwrap().settled);
@@ -1635,6 +1652,7 @@ mod tests {
     fn doc_header_reply_links_round_trip_and_pair() {
         let base = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1655,6 +1673,7 @@ mod tests {
         };
         let reply = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             reply_to: Some(([5u8; 32], [6u8; 16])),
@@ -1669,6 +1688,7 @@ mod tests {
 
         let orphan = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             thread_root: Some(([7u8; 32], [8u8; 16])),
@@ -1684,6 +1704,7 @@ mod tests {
     fn doc_header_refs_round_trip_and_cap() {
         let base = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1706,6 +1727,7 @@ mod tests {
 
         let empty = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             refs: Vec::new(),
@@ -1720,6 +1742,7 @@ mod tests {
 
         let over = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             refs: vec![[7u8; 16]; DocHeaderPlain::MAX_REFS + 1],
@@ -1756,6 +1779,7 @@ mod tests {
         for parents in [vec![], vec![[1u8; 32]], vec![[1u8; 32], [2u8; 32]]] {
             let h = DocHeaderPlain {
                 dated_ms: None,
+                animation: false,
                 trusted_only: false,
                 settled: false,
                 doc_id: [9u8; 16],
@@ -1779,6 +1803,7 @@ mod tests {
         // format present survives the trip too
         let h = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1801,6 +1826,7 @@ mod tests {
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
         let img = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1823,6 +1849,7 @@ mod tests {
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
         let vid = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1848,6 +1875,7 @@ mod tests {
     fn doc_header_enforces_caps() {
         let base = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: [0u8; 16],
@@ -1869,6 +1897,7 @@ mod tests {
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             parents: vec![[0u8; 32]; DocHeaderPlain::MAX_PARENTS + 1],

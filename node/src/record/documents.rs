@@ -414,6 +414,8 @@ pub struct MediaMeta {
     /// The file-layer hash of a silent AV1-in-WebM hover-preview clip, stored as its OWN sibling
     /// blob (like `thumb_hash`). Video WebM output only; `None` for everything else.
     pub preview_hash: Option<[u8; 32]>,
+    /// The bytes were an animated image before the crush (header key 18): a silent loop.
+    pub animation: bool,
 }
 
 /// Save one version of a document: body into the file layer, header onto the notes chain.
@@ -496,6 +498,7 @@ pub async fn save_version(
         duration_ms: save.media.as_ref().and_then(|m| m.duration_ms),
         thumb_hash: save.media.as_ref().and_then(|m| m.thumb_hash),
         preview_hash: save.media.as_ref().and_then(|m| m.preview_hash),
+        animation: save.media.as_ref().is_some_and(|m| m.animation),
         refs: save.refs,
         genesis_ms: None, // the edit window is a PUBLIC posture; private notes edit forever
         reply_to: None, // replies are public speech; the link enters at publish (PROJECT_PLAN's Replies)
@@ -567,6 +570,7 @@ pub async fn retitle(
         duration_ms: head.header.duration_ms,
         thumb_hash: head.header.thumb_hash,
         preview_hash: head.header.preview_hash,
+        animation: head.header.animation,
         refs: head.header.refs.clone(),
         reply_to: head.header.reply_to,
         thread_root: head.header.thread_root,
@@ -646,6 +650,7 @@ pub async fn save_public_media(
         duration_ms: ingested.duration_ms,
         thumb_hash,
         preview_hash: None,
+        animation: ingested.animation,
         refs: Vec::new(), // media documents are leaves - they embed nothing
         genesis_ms: None, // and they never edit: absent genesis IS frozen-from-birth
         reply_to: None, // media twins ride their post; the post carries the thread link
@@ -811,6 +816,7 @@ pub async fn save_public_text(
         settled,
         trusted_only,
         dated_ms,
+        animation: false, // words, never a loop
     };
     let payload = header
         .encode()
@@ -1497,11 +1503,11 @@ async fn fold_header(
     db.execute(
         "INSERT OR IGNORE INTO doc_versions
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
-            duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq, author_pubkey, lane,
+            duration_ms, thumb_hash, preview_hash, animation, refs, timestamp_ms, seq, author_pubkey, lane,
             reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only,
             dated_ms)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
-                 :width, :height, :duration_ms, :thumb_hash, :preview_hash, :refs,
+                 :width, :height, :duration_ms, :thumb_hash, :preview_hash, :animation, :refs,
                  :timestamp_ms, :seq, :author_pubkey, :lane,
                  :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
                  :trusted_only, :dated_ms)",
@@ -1525,6 +1531,7 @@ async fn fold_header(
             ":duration_ms": header.duration_ms.map(|d| d as i64),
             ":thumb_hash": header.thumb_hash.map(|h| h.to_vec()),
             ":preview_hash": header.preview_hash.map(|h| h.to_vec()),
+            ":animation": i64::from(header.animation),
             ":refs": encode_refs(&header.refs),
             ":timestamp_ms": signed.entry().timestamp_ms,
             ":seq": signed.entry().seq as i64,
@@ -1894,12 +1901,12 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
         db.execute(
             "INSERT INTO doc_heads
                (doc_id, lane, entry_hash, title, format, file_hash, width, height, duration_ms,
-                thumb_hash, preview_hash, logical_heads, diverged, genesis_ms, head_ms,
+                thumb_hash, preview_hash, animation, logical_heads, diverged, genesis_ms, head_ms,
                 heads_fp, head_bodies,
                 reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
                 trusted_only, dated_ms)
              VALUES (:doc_id, :lane, :entry_hash, :title, :format, :file_hash, :width, :height,
-                     :duration_ms, :thumb_hash, :preview_hash, :logical_heads, :diverged,
+                     :duration_ms, :thumb_hash, :preview_hash, :animation, :logical_heads, :diverged,
                      :genesis_ms, :head_ms, :heads_fp, :head_bodies,
                      :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
                      :trusted_only, :dated_ms)
@@ -1914,6 +1921,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                duration_ms = excluded.duration_ms,
                thumb_hash = excluded.thumb_hash,
                preview_hash = excluded.preview_hash,
+               animation = excluded.animation,
                logical_heads = excluded.logical_heads,
                diverged = excluded.diverged,
                genesis_ms = excluded.genesis_ms,
@@ -1948,6 +1956,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                 ":duration_ms": head.header.duration_ms.map(|d| d as i64),
                 ":thumb_hash": head.header.thumb_hash.map(|h| h.to_vec()),
                 ":preview_hash": head.header.preview_hash.map(|h| h.to_vec()),
+                ":animation": i64::from(head.header.animation),
                 ":logical_heads": doc.logical_heads.len() as i64,
                 ":diverged": i64::from(doc.diverged()),
                 ":genesis_ms": genesis_ms,
@@ -1998,6 +2007,7 @@ type VersionRow = (
     Option<i64>,     // duration_ms
     Option<Vec<u8>>, // thumb_hash
     Option<Vec<u8>>, // preview_hash
+    i64,             // animation (header key 18)
     Vec<u8>,         // refs (concatenated 16-byte doc ids; empty = none)
     i64,             // timestamp_ms
     i64,             // seq (folded fact; the DAG doesn't use it)
@@ -2026,6 +2036,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         duration_ms,
         thumb_hash,
         preview_hash,
+        animation,
         refs,
         timestamp_ms,
         _seq,
@@ -2053,6 +2064,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
     let header = DocHeaderPlain {
         trusted_only: trusted_only != 0,
         dated_ms,
+        animation: animation != 0,
         doc_id,
         parents: decode_parents(&parents)?,
         file_hash: hash32(&file_hash)?,
@@ -2090,7 +2102,7 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
     let rows: Vec<VersionRow> = db
         .fetch_all(
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
-                    height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
+                    height, duration_ms, thumb_hash, preview_hash, animation, refs, timestamp_ms, seq,
                     author_pubkey,
                     reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms
              FROM doc_versions WHERE doc_id = ?1",
@@ -2131,7 +2143,7 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
     let rows: Vec<VersionRow> = db
         .fetch_all(
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
-                    height, duration_ms, thumb_hash, preview_hash, refs, timestamp_ms, seq,
+                    height, duration_ms, thumb_hash, preview_hash, animation, refs, timestamp_ms, seq,
                     author_pubkey,
                     reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms
              FROM doc_versions",
@@ -2205,6 +2217,8 @@ pub struct DocHeadRow {
     pub duration_ms: Option<u64>,
     pub thumb_hash: Option<[u8; 32]>,
     pub preview_hash: Option<[u8; 32]>,
+    /// A silent loop (header key 18).
+    pub animation: bool,
     pub logical_heads: usize,
     pub diverged: bool,
     /// Claimed stamp of the parentless/earliest version (the `created` ordering).
@@ -2225,6 +2239,7 @@ type HeadTuple = (
     Option<i64>,     // duration_ms
     Option<Vec<u8>>, // thumb_hash
     Option<Vec<u8>>, // preview_hash
+    i64,             // animation (header key 18)
     i64,             // logical_heads
     i64,             // diverged
     i64,             // genesis_ms
@@ -2232,7 +2247,7 @@ type HeadTuple = (
 );
 
 const HEAD_COLUMNS: &str = "doc_id, entry_hash, title, format, file_hash, width, height, \
-                            duration_ms, thumb_hash, preview_hash, logical_heads, diverged, \
+                            duration_ms, thumb_hash, preview_hash, animation, logical_heads, diverged, \
                             genesis_ms, head_ms";
 
 fn head_row(tuple: HeadTuple) -> Result<DocHeadRow, AppError> {
@@ -2247,6 +2262,7 @@ fn head_row(tuple: HeadTuple) -> Result<DocHeadRow, AppError> {
         duration_ms,
         thumb_hash,
         preview_hash,
+        animation,
         logical_heads,
         diverged,
         genesis_ms,
@@ -2265,6 +2281,7 @@ fn head_row(tuple: HeadTuple) -> Result<DocHeadRow, AppError> {
         duration_ms: duration_ms.map(|d| d as u64),
         thumb_hash: thumb_hash.as_deref().map(hash32).transpose()?,
         preview_hash: preview_hash.as_deref().map(hash32).transpose()?,
+        animation: animation != 0,
         logical_heads: logical_heads as usize,
         diverged: diverged != 0,
         genesis_ms,
@@ -3188,6 +3205,7 @@ mod tests {
     ) {
         let header = DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: *doc_id,
@@ -5492,6 +5510,7 @@ mod tests {
             author: [0u8; 32],
             header: DocHeaderPlain {
                 dated_ms: None,
+                animation: false,
                 trusted_only: false,
                 settled: false,
                 doc_id: [1u8; 16],

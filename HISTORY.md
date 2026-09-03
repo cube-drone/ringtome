@@ -8156,3 +8156,35 @@ the opaque squirrel gif from sample_media crushes to video/webm with a poster, a
 post bakes a sealed twin (video for the author and the trusted reader, the door and no poster
 for a stranger), and an open post bakes a separate plaintext twin served to anyone. Left in
 NEXT_STEPS: the external half, and the loop/muted/autoplay treatment for silent animations.
+
+## 2026-09-03 (cont.): a gif that became a video loops
+
+Curtis: "If we post an animated gif and it converts into a video, can we have that video
+autoplay and loop with no controls when it's rendered?" The fact rides the wire now: header
+key 18 `animation` - the ingest sets it when the input was an animated image with no audio
+beside it (a silent real video through the APNG-frames fallback reads the same way, by the
+same containers), the twin a bake mints copies it like the dimensions, and the doc memos
+carry it (user gen 23). Everything that writes a reference spells a silent animation
+`-loop` before its extension - the bake's `media-loop.webm`, the picker's and the reader's
+`name-loop.webm` - and ringtome's renderer profile resolves that spelling with `loop: true`.
+Marqueemarkup's `MediaResolution` grew `loop` (npm) / `looping` (Rust), and its three
+renderers draw such a video `autoplay loop muted playsinline` with no controls; tests on
+both sides. Until that ships as 0.7.2, the installed renderer ignores the flag and draws a
+player - the flag and the spelling are already right. A gif uploaded through the composer is
+still referenced pre-crush by its MIME guess (`.avif`); the picker and the reader spell the
+crushed truth. Recorded in NEXT_STEPS.
+
+Field-found the same hour (Curtis uploaded the squirrel after a clean): (1) the loop did not
+light up - the installed renderer is 0.7.1, which predates the loop work sitting uncommitted
+in marqueemarkup; a shim was written into `MarqueeBody` and taken out again the same hour
+(Curtis: "don't work around that temporarily, I should just go do that") - the deploy is
+his, then the deps bump. (2) In a private document the gif "loads an .avif file but doesn't do anything with it": the
+reference written at upload guessed from the MIME type (`image/gif` says picture), and the
+crush made a WebM. The upload flow now reports the finished document back to the composer,
+which respells the reference from the real format and the animation fact (pure
+`crushedReference`), unless the author already rewrote it by hand.
+
+Marquee 0.7.2 (Curtis deployed the loop work): parser and markup crates `=0.7.2`, all seven
+npm packages `^0.7.2`. The feed now loops a gif-that-became-a-video from the package itself;
+a pure claim renders the `-loop` spelling through the real html renderer and pins the
+attributes, beside the plain video keeping its player.

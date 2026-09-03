@@ -81,7 +81,10 @@ describe("video posts: an already-crushed video bakes a public twin", function (
         twin = (head.refs || [])[0];
         assert.ok(twin, "the header names its twin");
         const words = await (await ada(`id/${adaRoot}/docs/${post}/body`)).text();
-        assert.ok(words.includes(`/docs/${twin}/body/media.webm`), `the body names the twin as a video: ${words}`);
+        // A gif that became a video is a silent loop (header key 18): the bake spells it so.
+        assert.ok(words.includes(`/docs/${twin}/body/media-loop.webm`), `the body names the twin as a silent loop: ${words}`);
+        const doc = await (await ada(`api/identity/${adaRoot}/docs/${media}`)).json();
+        assert.equal(doc.media && doc.media.animation, true, "the private document knows it was an animation");
     });
 
     it("the twin is video/webm for the author and the trusted, sealed to a stranger - poster too", async () => {

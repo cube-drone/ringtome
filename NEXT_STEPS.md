@@ -42,11 +42,12 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
   crushed bakes a WebM twin with its poster, sealed under a trusted post's key; acceptance in
   video_posts.cjs). Two residuals: (1) the EXTERNAL half - a video URL at publish time has no
   lane, because the node cannot decode the codec zoo (video-ingest/README.md: that laundering
-  is the browser's job at upload) - refused with the road named; (2) a silent animation (a
-  gif that became a video) renders as `<video controls>` and wants loop/muted/autoplay, but
-  nothing on the wire says "this was a gif" - a header hint or a renderer rule ("silent and
-  under N seconds loops"). The public twin also carries no hover-preview clip; nothing public
-  reads one yet.
+  is the browser's job at upload) - refused with the road named; (2) done the same day: header key 18
+  `animation` and the `-loop` spelling, drawn looping by marqueemarkup's renderers - which
+  lands in ringtome when 0.7.2 publishes (bump the deps; add a render claim for the loop
+  attributes to pure/mediakind.cjs then). (3) done the same hour: the upload flow
+  respells the reference from the crushed document. The public twin also carries no
+  hover-preview clip; nothing public reads one yet.
 * Make a whole bucket public in one fell swoop.
 * Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - PROJECT_PLAN's Replies)
 * Envelope-kept reply evidence has no deletion road: a stranger's reply noted from its

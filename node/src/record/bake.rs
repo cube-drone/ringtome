@@ -130,9 +130,17 @@ pub fn rewrite(body: &str, swaps: &[(String, String)]) -> String {
 
 /// The public URL a baked media doc is embedded as: the anonymous identity-rooted path, with
 /// a decorative filename so the renderer's media-kind sniff has an extension to read.
-pub fn public_media_target(root_hex: &str, public_doc: &[u8; 16], format: crate::record::documents::Format) -> String {
+pub fn public_media_target(
+    root_hex: &str,
+    public_doc: &[u8; 16],
+    format: crate::record::documents::Format,
+    animation: bool,
+) -> String {
     let ext = format.as_str(); // avif / apng / opus / webm - the sniffable spellings
-    format!("/id/{root_hex}/docs/{}/body/media.{ext}", hex::encode(public_doc))
+    // A silent loop says so in its decorative name (2026-09-03): the route ignores the name,
+    // the renderer's profile reads `-loop` and draws it looping, muted, without controls.
+    let name = if animation { "media-loop" } else { "media" };
+    format!("/id/{root_hex}/docs/{}/body/{name}.{ext}", hex::encode(public_doc))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -243,8 +251,8 @@ pub async fn publish(
                 // Private twins bake inline: the bytes are local and already crushed, so this
                 // is decrypt-and-remint - milliseconds, no queue, no modal dwell.
                 match docs.bake_private_media(media, post_key).await {
-                    Ok((public, fmt)) => {
-                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt)));
+                    Ok((public, fmt, anim)) => {
+                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt, anim)));
                         baked.push(public);
                         items.push(BakeItem {
                             source: target.clone(),
@@ -282,7 +290,7 @@ pub async fn publish(
                             .await?
                             .map(|h| crate::record::documents::Format::from_wire(h.format))
                             .unwrap_or(crate::record::documents::Format::Avif);
-                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt)));
+                        swaps.push((target.clone(), public_media_target(root_hex, &public, fmt, false)));
                         baked.push(public);
                         items.push(BakeItem {
                             source: target.clone(),

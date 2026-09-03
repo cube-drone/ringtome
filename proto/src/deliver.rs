@@ -978,6 +978,7 @@ mod tests {
     ) -> SignedEntry {
         let payload = crate::registry::DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],

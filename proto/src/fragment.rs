@@ -727,6 +727,7 @@ mod tests {
     ) -> Vec<u8> {
         let header = crate::registry::DocHeaderPlain {
             dated_ms: None,
+            animation: false,
             trusted_only: false,
             settled: false,
             doc_id,

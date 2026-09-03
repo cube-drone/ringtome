@@ -302,6 +302,7 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
                 duration_ms: ingested.duration_ms,
                 thumb_hash,
                 preview_hash,
+                animation: ingested.animation,
             }),
         },
     )

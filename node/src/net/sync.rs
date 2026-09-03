@@ -2836,6 +2836,7 @@ mod tests {
         fn post(chain: &mut Chain, id: u8, title: &str) -> SignedEntry {
             let header = DocHeaderPlain {
                 dated_ms: None,
+                animation: false,
                 trusted_only: false,
                 settled: false,
                 doc_id: [id; 16],
