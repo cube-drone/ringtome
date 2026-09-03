@@ -104,11 +104,32 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         return out;
     };
 
+    // One save on the wire at a time - and a caller who arrives while one is in flight WAITS
+    // for it rather than skipping (2026-09-03). The skip was a race with a name: clicking
+    // "post the changes" blurs the editor, the blur fires a save, and the click's own
+    // `await save()` returned at once because one was already in flight - so the publish
+    // went out beside the save and, when it won, minted the PREVIOUS words. Curtis saw his
+    // card sit one edit behind on a slower network while the editor (the private draft)
+    // showed the newer words; image edits never raced because the upload's swap had saved
+    // already. Now the second caller waits, then judges dirtiness again.
     const save = async ({ unloading = false } = {}) => {
         const m = machine.current;
-        if (!m.dirty || m.inflight) return;
+        if (m.inflight) {
+            await m.inflight.catch(() => {});
+        }
+        if (!m.dirty) return;
         if (m.parents.length === 0) return; // waiting room: nothing loaded to save against
-        m.inflight = true;
+        const run = saveNow({ unloading });
+        m.inflight = run;
+        try {
+            await run;
+        } finally {
+            if (m.inflight === run) m.inflight = null;
+        }
+    };
+
+    const saveNow = async ({ unloading }) => {
+        const m = machine.current;
         setStatus('saving');
         // Snapshot what we're saving (from the ref, never a closure); edits during the
         // request keep the buffer dirty.
@@ -155,8 +176,6 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         } catch (e) {
             setError(e.message);
             setStatus('error'); // still dirty; the next trigger retries
-        } finally {
-            m.inflight = false;
         }
     };
     saveRef.current = save;

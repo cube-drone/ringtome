@@ -143,7 +143,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
                 body: JSON.stringify({ trusted_only: true }),
             });
             const t = JSON.parse(await r.text());
-            if (r.status === 200) {
+            if (r.status === 200 && t.post_id) {
                 pub = t.post_id;
                 break;
             }

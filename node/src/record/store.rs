@@ -1192,6 +1192,18 @@ impl Documents<'_> {
         })
     }
 
+    /// Whether an embedded media document's bytes have arrived on this computer - the
+    /// question the bake asks BEFORE trying, so a picture still ingesting is "wait", never
+    /// "failed" (Curtis, 2026-09-03: "the post flashed, it didn't take"; the second click,
+    /// after ingest, took). Unknown documents and non-media read as present: their refusal
+    /// belongs to the bake's own words.
+    pub async fn media_bytes_present(&self, media_doc: &[u8; 16]) -> Result<bool, AppError> {
+        let view = self.all().await?;
+        let Some(doc) = view.docs.get(media_doc) else { return Ok(true) };
+        let Some(head) = doc.display_head() else { return Ok(true) };
+        Ok(self.body(head).await?.is_some())
+    }
+
     /// Bake one of the author's PRIVATE media documents into its public twin - media
     /// publication through the same one door as text (copy-don't-flip, `published_as` reuse).
     /// The bytes were crushed once at upload; this decrypts and re-mints them, never

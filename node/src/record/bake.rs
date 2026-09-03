@@ -226,6 +226,20 @@ pub async fn publish(
     for r in &refs {
         match r {
             MediaRef::PrivateDoc { target, doc_id: media } => {
+                // A picture whose bytes are still ingesting is not a failure - it is a
+                // moment away. Say "ingesting" and let the publish's poll come back, rather
+                // than a tombstone the author has to click past (2026-09-03).
+                if !docs.media_bytes_present(media).await? {
+                    blocked = true;
+                    items.push(BakeItem {
+                        source: target.clone(),
+                        kind: "private",
+                        status: "ingesting".into(),
+                        progress: None,
+                        error: None,
+                    });
+                    continue;
+                }
                 // Private twins bake inline: the bytes are local and already crushed, so this
                 // is decrypt-and-remint - milliseconds, no queue, no modal dwell.
                 match docs.bake_private_media(media, post_key).await {

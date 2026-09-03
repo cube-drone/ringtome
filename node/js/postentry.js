@@ -933,6 +933,10 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                           }
                           setPostError(null);
                           setAmended(words);
+                          // The whole thing, not the lead: you just edited it, and a cut
+                          // that hid the paragraph you changed read as "the post didn't
+                          // update" (Curtis, 2026-09-03). The next page load may cut again.
+                          setWholeThing(true);
                           setOpen(false);
                       }}
                       posting=${editing.posting}

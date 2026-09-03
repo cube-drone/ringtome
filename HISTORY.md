@@ -8084,3 +8084,23 @@ Verified in headless Chrome against a scratch node: trusted post with a picture,
 edit, the new twin loads after reload. The drive also caught the fresh card wearing its
 "trusted only" chip only after a reload - the composer's overlay item now carries the
 wishes it was posted with.
+
+Editing a picture post, again (Curtis's A-through-G sequence: text edits that did not show
+until reload, a "post the changes" that flashed and did not take, image edits that showed at
+once). Headless drives on the feed and the persona page - one, two, and three consecutive
+text edits on a sealed picture post, clicks at 150ms/400ms/3s after typing, save and publish
+order traced - never reproduced a stale card. Two things did fall out. The flash: a picture
+whose bytes are still ingesting made the bake report it FAILED, the modal flashed its
+tombstone and the publish threw; the bake now reports "ingesting" and the publish's poll
+comes back for it. The stale look: your own card is cut to its first paragraph past 900
+characters, and the private picture reference the fresh card renders is longer than the
+public one - so a body near the budget cuts on the fresh card and not after reload, hiding
+an edit below the fold; an in-place edit now shows the whole body.
+Then the cause that fits the whole sequence (Curtis: "20 words or less... at the top of the
+document" - not the fold): clicking "post the changes" blurs the editor, the blur fires a
+save, and the click's own `save()` returned at once because one was already in flight - so
+the publish raced the save and, when it won, minted the PREVIOUS words; the editor, which
+shows the private draft, showed the newer ones. Every headless trace had the save land
+first (fast machine); the dev network is slower. Image edits never raced because the
+upload's swap had already saved. `session.js` now makes a second caller wait for the save
+on the wire, then judge dirtiness again.
