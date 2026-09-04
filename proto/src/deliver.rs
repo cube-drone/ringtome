@@ -979,6 +979,7 @@ mod tests {
         let payload = crate::registry::DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],

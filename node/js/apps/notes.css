@@ -198,6 +198,16 @@
     gap: 0.3rem;
     margin-top: 0.4rem;
 }
+.book-progress {
+    margin: 0;
+    color: var(--ink-soft);
+}
+.book-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    align-self: flex-start;
+}
 
 /* The resizer strip between columns: an invisible grab area that shows a teal seam on hover
    and while dragging. */

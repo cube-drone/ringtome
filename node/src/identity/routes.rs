@@ -44,6 +44,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/keys", get(keys_handler))
         .route("/api/identity/{root}/peers", get(peers_handler))
         .route("/api/identity/{root}/docs/{doc_id}/publish", post(publish_handler))
+        .route("/api/identity/{root}/books/{bucket}/rollout", post(book_rollout_handler))
         .route("/api/identity/{root}/posts/{post_id}", delete(unpublish_handler))
         .route(
             "/api/identity/{root}/rebroadcasts",
@@ -1507,6 +1508,56 @@ pub(crate) async fn after_posted(
     Ok(())
 }
 
+#[derive(Deserialize, Default)]
+struct BookRolloutRequest {
+    #[serde(default)]
+    settled: bool,
+    #[serde(default)]
+    trusted_only: bool,
+}
+
+#[derive(Serialize)]
+struct BookRolloutResponse {
+    status: &'static str,
+}
+
+/// Ask for a rollout (BOOKS.md ruling 8): the plan lands on the persona's private kv naming
+/// THIS device's leaf as the one that mints - so two devices cannot race - and the
+/// book-rollout sweep carries it out in the background. The Publish column polls the plan.
+async fn book_rollout_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, bucket)): Path<(String, String)>,
+    Json(req): Json<BookRolloutRequest>,
+) -> Result<Json<BookRolloutResponse>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let (facts, _) = data.private_registers(crate::books::BOOKS_KV).all().await?;
+    let on = facts
+        .iter()
+        .find(|r| r.key == bucket)
+        .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.value).ok())
+        .and_then(|v| v.get("mode").and_then(|m| m.as_str()).map(|m| m == "book"))
+        .unwrap_or(false);
+    if !on {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.this-notebook-is-not-switched",
+            "this notebook is not switched to publish as a book"
+        )));
+    }
+    let plan = serde_json::json!({
+        "by": data.leaf_hex(),
+        "status": "pending",
+        "settled": req.settled,
+        "trusted_only": req.trusted_only,
+        "total": 0,
+        "done": 0,
+    });
+    data.private_registers(crate::books::ROLLOUT_KV)
+        .set(&bucket, &plan.to_string())
+        .await?;
+    Ok(Json(BookRolloutResponse { status: "pending" }))
+}
+
 /// Resolve a reply's links from the PARENT's own held header: the mirror's public shelf
 /// first (a followed or visited persona), the fragment shelf second (a post met as a
 /// share). The thread root is the parent's own claim when the parent is itself a reply,
@@ -1585,7 +1636,7 @@ async fn publish_handler(
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
-    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms };
+    let flags = crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of: None };
     // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
     // until the day. The plan lives on the draft's private meta - device-durable - naming
     // this device's leaf as the one that mints, and the sweep does the rest.
@@ -4518,6 +4569,7 @@ mod media_info_tests {
             header: DocHeaderPlain {
                 dated_ms: None,
                 animation: false,
+                part_of: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: [0u8; 16],

@@ -2837,6 +2837,7 @@ mod tests {
             let header = DocHeaderPlain {
                 dated_ms: None,
                 animation: false,
+                part_of: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: [id; 16],

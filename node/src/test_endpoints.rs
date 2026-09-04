@@ -162,6 +162,11 @@ pub async fn beat(
             Ok(())
         }
         ("journal-fill", _) => crate::fanout::fill_pass(state.clone()).await,
+        ("book-rollout", scope) => {
+            let n = crate::books::rollout_due(&state, scope).await?;
+            tracing::info!(touched = n, "TEST BEAT: book-rollout");
+            Ok(())
+        }
         ("publish-due", scope) => {
             let at = req.at_ms.unwrap_or_else(crate::clock::now_ms);
             let n = crate::scheduled::publish_due(&state, scope, at).await?;

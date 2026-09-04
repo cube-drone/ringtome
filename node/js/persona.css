@@ -1473,6 +1473,31 @@ article:has(.label-emoji-strip) {
     color: var(--faint);
     font-size: 0.75em;
 }
+/* A book on the feed (BOOKS.md): the table of contents as nested lists, pages as links. */
+.book-card-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0 0 0.4rem;
+    color: var(--ink-soft);
+}
+.book-card-list {
+    list-style: none;
+    margin: 0;
+    padding-left: 0.9rem;
+}
+.book-card > .book-card-list {
+    padding-left: 0;
+}
+.book-card-section-title {
+    display: block;
+    font-weight: 600;
+    margin: 0.3rem 0 0.1rem;
+}
+.book-card-page {
+    margin: 0.1rem 0;
+}
+
 /* A backdated post's stamp (PUBLISH.md): the author's claim, not the moment - italic, with
  * a dotted line under it that says "hover me" and a title that gives the real moment. */
 .feed-entry-dated {

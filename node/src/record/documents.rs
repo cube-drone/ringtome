@@ -39,6 +39,8 @@ pub enum Format {
     WebmAv1,
     /// Ogg Opus: the canonical audio form. `<audio>`.
     OggOpus,
+    /// A notebook published whole (BOOKS.md): the published tree as JSON. Public only.
+    Book,
 }
 
 impl Format {
@@ -51,6 +53,7 @@ impl Format {
             Some(doc_format::APNG) => Format::Apng,
             Some(doc_format::WEBM_AV1) => Format::WebmAv1,
             Some(doc_format::OGG_OPUS) => Format::OggOpus,
+            Some(doc_format::BOOK) => Format::Book,
             _ => Format::Plaintext,
         }
     }
@@ -63,6 +66,7 @@ impl Format {
             Format::Apng => Some(doc_format::APNG),
             Format::WebmAv1 => Some(doc_format::WEBM_AV1),
             Format::OggOpus => Some(doc_format::OGG_OPUS),
+            Format::Book => Some(doc_format::BOOK),
         }
     }
 
@@ -74,6 +78,7 @@ impl Format {
             Format::Apng => "apng",
             Format::WebmAv1 => "webm",
             Format::OggOpus => "opus",
+            Format::Book => "book",
         }
     }
 
@@ -85,6 +90,7 @@ impl Format {
             "apng" => Some(Format::Apng),
             "webm" => Some(Format::WebmAv1),
             "opus" => Some(Format::OggOpus),
+            "book" => Some(Format::Book),
             _ => None,
         }
     }
@@ -104,6 +110,7 @@ impl Format {
             Format::Apng => "image/apng",
             Format::WebmAv1 => "video/webm",
             Format::OggOpus => "audio/ogg",
+            Format::Book => "application/json",
         }
     }
 }
@@ -499,6 +506,7 @@ pub async fn save_version(
         thumb_hash: save.media.as_ref().and_then(|m| m.thumb_hash),
         preview_hash: save.media.as_ref().and_then(|m| m.preview_hash),
         animation: save.media.as_ref().is_some_and(|m| m.animation),
+        part_of: None, // a private document is nobody's page; the book is a public fact
         refs: save.refs,
         genesis_ms: None, // the edit window is a PUBLIC posture; private notes edit forever
         reply_to: None, // replies are public speech; the link enters at publish (PROJECT_PLAN's Replies)
@@ -571,6 +579,7 @@ pub async fn retitle(
         thumb_hash: head.header.thumb_hash,
         preview_hash: head.header.preview_hash,
         animation: head.header.animation,
+        part_of: head.header.part_of,
         refs: head.header.refs.clone(),
         reply_to: head.header.reply_to,
         thread_root: head.header.thread_root,
@@ -651,6 +660,7 @@ pub async fn save_public_media(
         thumb_hash,
         preview_hash: None,
         animation: ingested.animation,
+        part_of: None, // a twin belongs to the page that embeds it, not to the book
         refs: Vec::new(), // media documents are leaves - they embed nothing
         genesis_ms: None, // and they never edit: absent genesis IS frozen-from-birth
         reply_to: None, // media twins ride their post; the post carries the thread link
@@ -702,6 +712,8 @@ pub struct PublicText<'a> {
     pub settled: bool,
     /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2): carried the same way.
     pub trusted_only: bool,
+    /// The book this is a page of (BOOKS.md): set by a rollout, never by the feed's door.
+    pub part_of: Option<[u8; 16]>,
     /// The author's preferred date off the draft's `display_date` field (PUBLISH.md),
     /// re-read at every publish - a date change inside the edit window re-sorts the post.
     pub dated_ms: Option<i64>,
@@ -722,7 +734,7 @@ pub async fn save_public_text(
     files: &crate::files::FileStore,
     text: PublicText<'_>,
 ) -> Result<[u8; 16], AppError> {
-    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, dated_ms } = text;
+    let PublicText { onto, title, body, format, refs, reply, settled, trusted_only, post_key, dated_ms, part_of } = text;
     // The edit window's anchor, carried in the SIGNED header so a fragment holder with no
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
@@ -817,6 +829,7 @@ pub async fn save_public_text(
         trusted_only,
         dated_ms,
         animation: false, // words, never a loop
+        part_of,
     };
     let payload = header
         .encode()
@@ -840,6 +853,8 @@ pub struct PublishFlags {
     pub settled: bool,
     pub trusted_only: bool,
     pub dated_ms: Option<i64>,
+    /// The book this publish is a page of (BOOKS.md ruling 4); the rollout sets it.
+    pub part_of: Option<[u8; 16]>,
 }
 
 /// The draft's `display_date` claim as the header's stamp (PUBLISH.md). The claim is in the
@@ -922,6 +937,9 @@ pub struct PublicDoc {
     pub trusted_only: bool,
     /// The author's preferred date (PUBLISH.md): what the post sorts and reads by.
     pub dated_ms: Option<i64>,
+    /// The book this is a page of (header key 19): pages stay off shelves and feeds - the
+    /// book is what lists them.
+    pub part_of: Option<[u8; 16]>,
 }
 
 impl PublicDoc {
@@ -1011,7 +1029,7 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
     if quarantined(db).await? {
         return Ok(None);
     }
-    let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
+    let text_only = format!("(format IS NULL OR format IN ({}, {}))", doc_format::MARQUEE, doc_format::BOOK);
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
         Vec<u8>,
@@ -1027,13 +1045,14 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         i64,
         i64,
         Option<i64>,
+        Option<Vec<u8>>,
     );
     let row: Option<Row> = db
         .fetch_optional(
             &format!(
                 "SELECT doc_id, title, format, genesis_ms, head_ms, thumb_hash,
                         reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
-                        trusted_only, dated_ms
+                        trusted_only, dated_ms, part_of
                  FROM doc_heads
                  WHERE lane = 'public' AND doc_id = ? AND {text_only} AND {not_retracted}"
             ),
@@ -1043,10 +1062,11 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         .map_err(AppError::Internal)?;
     match row {
         None => Ok(None),
-        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, dated_ms)) => Ok(Some(PublicDoc {
+        Some((doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, dated_ms, part_of)) => Ok(Some(PublicDoc {
             settled: settled != 0,
             trusted_only: trusted_only != 0,
             dated_ms,
+            part_of: part_of.as_deref().map(hash16).transpose()?,
             reply_to: rr.zip(rd),
             thread_root: tr.zip(td),
             doc_id: doc_id
@@ -1112,7 +1132,7 @@ pub async fn public_docs(
         return Ok(Vec::new());
     }
     // NULL is plaintext (absent on the wire); the only other text format is marquee.
-    let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
+    let text_only = format!("(format IS NULL OR format IN ({}, {}))", doc_format::MARQUEE, doc_format::BOOK);
     // Retracted documents leave THIS shelf too (2026-08-14). `public_doc_ids` had the filter
     // from the day tombstones landed, and every feed reconciliation inherited it - but this
     // query is what the anonymous /id surfaces actually page, so a takedown vanished from
@@ -1133,10 +1153,11 @@ pub async fn public_docs(
         i64,
         i64,
         Option<i64>,
+        Option<Vec<u8>>,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
-                   trusted_only, dated_ms";
+                   trusted_only, dated_ms, part_of";
     let rows: Vec<Row> = match after {
         None => db
             .fetch_all(
@@ -1182,14 +1203,16 @@ type PublicDocRow = (
     i64,
     i64,
     Option<i64>,
+    Option<Vec<u8>>,
 );
 
 fn public_doc_from_row(row: PublicDocRow) -> Result<PublicDoc, AppError> {
-    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, dated_ms) = row;
+    let (doc_id, title, format, genesis_ms, head_ms, thumb_hash, rr, rd, tr, td, settled, trusted_only, dated_ms, part_of) = row;
     Ok(PublicDoc {
         settled: settled != 0,
         trusted_only: trusted_only != 0,
         dated_ms,
+        part_of: part_of.as_deref().map(hash16).transpose()?,
         reply_to: rr.zip(rd),
         thread_root: tr.zip(td),
         doc_id: doc_id
@@ -1221,7 +1244,7 @@ pub async fn public_docs_updated_since(
     if quarantined(db).await? {
         return Ok(Vec::new());
     }
-    let text_only = format!("(format IS NULL OR format = {})", doc_format::MARQUEE);
+    let text_only = format!("(format IS NULL OR format IN ({}, {}))", doc_format::MARQUEE, doc_format::BOOK);
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
         Vec<u8>,
@@ -1237,10 +1260,11 @@ pub async fn public_docs_updated_since(
         i64,
         i64,
         Option<i64>,
+        Option<Vec<u8>>,
     );
     let columns = "doc_id, title, format, genesis_ms, head_ms, thumb_hash, \
                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, \
-                   trusted_only, dated_ms";
+                   trusted_only, dated_ms, part_of";
     let rows: Vec<Row> = db
         .fetch_all(
             &format!(
@@ -1503,11 +1527,11 @@ async fn fold_header(
     db.execute(
         "INSERT OR IGNORE INTO doc_versions
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
-            duration_ms, thumb_hash, preview_hash, animation, refs, timestamp_ms, seq, author_pubkey, lane,
+            duration_ms, thumb_hash, preview_hash, animation, part_of, refs, timestamp_ms, seq, author_pubkey, lane,
             reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only,
             dated_ms)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
-                 :width, :height, :duration_ms, :thumb_hash, :preview_hash, :animation, :refs,
+                 :width, :height, :duration_ms, :thumb_hash, :preview_hash, :animation, :part_of, :refs,
                  :timestamp_ms, :seq, :author_pubkey, :lane,
                  :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
                  :trusted_only, :dated_ms)",
@@ -1532,6 +1556,7 @@ async fn fold_header(
             ":thumb_hash": header.thumb_hash.map(|h| h.to_vec()),
             ":preview_hash": header.preview_hash.map(|h| h.to_vec()),
             ":animation": i64::from(header.animation),
+            ":part_of": header.part_of.map(|p| p.to_vec()),
             ":refs": encode_refs(&header.refs),
             ":timestamp_ms": signed.entry().timestamp_ms,
             ":seq": signed.entry().seq as i64,
@@ -1901,12 +1926,12 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
         db.execute(
             "INSERT INTO doc_heads
                (doc_id, lane, entry_hash, title, format, file_hash, width, height, duration_ms,
-                thumb_hash, preview_hash, animation, logical_heads, diverged, genesis_ms, head_ms,
+                thumb_hash, preview_hash, animation, part_of, logical_heads, diverged, genesis_ms, head_ms,
                 heads_fp, head_bodies,
                 reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled,
                 trusted_only, dated_ms)
              VALUES (:doc_id, :lane, :entry_hash, :title, :format, :file_hash, :width, :height,
-                     :duration_ms, :thumb_hash, :preview_hash, :animation, :logical_heads, :diverged,
+                     :duration_ms, :thumb_hash, :preview_hash, :animation, :part_of, :logical_heads, :diverged,
                      :genesis_ms, :head_ms, :heads_fp, :head_bodies,
                      :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
                      :trusted_only, :dated_ms)
@@ -1922,6 +1947,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                thumb_hash = excluded.thumb_hash,
                preview_hash = excluded.preview_hash,
                animation = excluded.animation,
+               part_of = excluded.part_of,
                logical_heads = excluded.logical_heads,
                diverged = excluded.diverged,
                genesis_ms = excluded.genesis_ms,
@@ -1957,6 +1983,7 @@ async fn refresh_doc_heads(db: &Db, changed: &BTreeSet<[u8; 16]>) -> Result<(), 
                 ":thumb_hash": head.header.thumb_hash.map(|h| h.to_vec()),
                 ":preview_hash": head.header.preview_hash.map(|h| h.to_vec()),
                 ":animation": i64::from(head.header.animation),
+                ":part_of": head.header.part_of.map(|p| p.to_vec()),
                 ":logical_heads": doc.logical_heads.len() as i64,
                 ":diverged": i64::from(doc.diverged()),
                 ":genesis_ms": genesis_ms,
@@ -1987,6 +2014,11 @@ pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
     Ok(())
 }
 
+/// A 16-byte id off a memo column (a document id, e.g. `part_of`).
+fn hash16(b: &[u8]) -> Result<[u8; 16], AppError> {
+    <[u8; 16]>::try_from(b).map_err(|_| AppError::Internal(anyhow!("a memo column holds an id of the wrong width")))
+}
+
 fn hash32(bytes: &[u8]) -> Result<[u8; 32], AppError> {
     bytes
         .try_into()
@@ -2008,6 +2040,7 @@ type VersionRow = (
     Option<Vec<u8>>, // thumb_hash
     Option<Vec<u8>>, // preview_hash
     i64,             // animation (header key 18)
+    Option<Vec<u8>>, // part_of (header key 19)
     Vec<u8>,         // refs (concatenated 16-byte doc ids; empty = none)
     i64,             // timestamp_ms
     i64,             // seq (folded fact; the DAG doesn't use it)
@@ -2037,6 +2070,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         thumb_hash,
         preview_hash,
         animation,
+        part_of,
         refs,
         timestamp_ms,
         _seq,
@@ -2065,6 +2099,7 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         trusted_only: trusted_only != 0,
         dated_ms,
         animation: animation != 0,
+        part_of: part_of.as_deref().map(hash16).transpose()?,
         doc_id,
         parents: decode_parents(&parents)?,
         file_hash: hash32(&file_hash)?,
@@ -2102,9 +2137,9 @@ async fn load_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Doc, AppError> {
     let rows: Vec<VersionRow> = db
         .fetch_all(
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
-                    height, duration_ms, thumb_hash, preview_hash, animation, refs, timestamp_ms, seq,
+                    height, duration_ms, thumb_hash, preview_hash, animation, part_of, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms, part_of
              FROM doc_versions WHERE doc_id = ?1",
             (doc_id.to_vec(),),
         )
@@ -2143,9 +2178,9 @@ pub async fn materialize(db: &Db, keys: &EpochKeys) -> Result<DocumentsView, App
     let rows: Vec<VersionRow> = db
         .fetch_all(
             "SELECT entry_hash, doc_id, parents, title, body_hash, file_hash, format, width,
-                    height, duration_ms, thumb_hash, preview_hash, animation, refs, timestamp_ms, seq,
+                    height, duration_ms, thumb_hash, preview_hash, animation, part_of, refs, timestamp_ms, seq,
                     author_pubkey,
-                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms
+                    reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only, dated_ms, part_of
              FROM doc_versions",
             (),
         )
@@ -2240,6 +2275,7 @@ type HeadTuple = (
     Option<Vec<u8>>, // thumb_hash
     Option<Vec<u8>>, // preview_hash
     i64,             // animation (header key 18)
+    Option<Vec<u8>>, // part_of (header key 19)
     i64,             // logical_heads
     i64,             // diverged
     i64,             // genesis_ms
@@ -2247,7 +2283,7 @@ type HeadTuple = (
 );
 
 const HEAD_COLUMNS: &str = "doc_id, entry_hash, title, format, file_hash, width, height, \
-                            duration_ms, thumb_hash, preview_hash, animation, logical_heads, diverged, \
+                            duration_ms, thumb_hash, preview_hash, animation, part_of, logical_heads, diverged, \
                             genesis_ms, head_ms";
 
 fn head_row(tuple: HeadTuple) -> Result<DocHeadRow, AppError> {
@@ -2263,6 +2299,7 @@ fn head_row(tuple: HeadTuple) -> Result<DocHeadRow, AppError> {
         thumb_hash,
         preview_hash,
         animation,
+        _part_of, // the private list never asks; the public shelf reads it through PublicDoc
         logical_heads,
         diverged,
         genesis_ms,
@@ -2818,7 +2855,7 @@ fn render_segments(
                     }
                     out.push_str("::: conflict\n");
                 }
-                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
+                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book => {
                     unreachable!("media never reaches text merge")
                 }
             },
@@ -2837,7 +2874,7 @@ fn whole_version_conflict(
     names: &BTreeMap<[u8; 32], String>,
 ) -> String {
     match format {
-        Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
+        Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book => {
             unreachable!("media conflicts are keep-both, never synthesized text")
         }
         // Git-style marker fences: every side in full.
@@ -3075,7 +3112,7 @@ pub async fn resolve(
                     let segments = align_heads(&base, &[text_a.as_str(), text_b.as_str()]);
                     render_segments(format, &segments, &[a, b], names)
                 }
-                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
+                Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus | Format::Book => {
                     unreachable!("media never reaches text merge")
                 }
             }),
@@ -3206,6 +3243,7 @@ mod tests {
         let header = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: *doc_id,
@@ -5511,6 +5549,7 @@ mod tests {
             header: DocHeaderPlain {
                 dated_ms: None,
                 animation: false,
+                part_of: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: [1u8; 16],

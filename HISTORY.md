@@ -8260,3 +8260,21 @@ ledger compares each page's head with `published_version`, which the rollout wil
 Field-found (Curtis): the ledger counted the persona's every document - `docs` off the doc
 app is the whole mirror, the list narrows it by bucket - so the column now narrows the same
 way; and the switch reads "publish this entire notebook".
+
+## 2026-09-03 (cont.): BOOKS.md slice 2 - the book on the wire
+
+Header key 19 `part_of` names a page's book; the doc memos carry it (user gen 24); the
+fold keeps parts off the author's feed journals and shelf while a share of a page still
+journals. A book is a public document of a new format, `book` (wire id 6, served as JSON),
+whose body is the published tree - sections, order, pages by public id - minted onto a
+stable id the bucket's `books` fact remembers, a new version per rollout. The rollout is a
+plan on the private kv naming the device (`POST /books/{bucket}/rollout` writes it with the
+session's leaf) that `books::rollout_due` carries out on a 20-second loop and a
+`book-rollout` beat: every unhidden page through `bake::publish` with `part_of` and the
+book's wishes, `published_version` recorded so the column's ledger compares, a still-baking
+picture parking the plan as "baking" to resume next beat, the book minted last so nothing
+half-lands. The column's button asks for it and polls the plan; the feed and the shelf draw
+a book as its table of contents with page links (`parseBook`, pure). Acceptance: three pages
+and a hidden one roll out, the shelf lists only the book, every page names its book and
+records its version, the follower's feed shows one book post and no pages, a page opens
+from the book.

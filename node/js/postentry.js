@@ -67,6 +67,7 @@ import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
 import { useTurbolinks } from './doc/turbolinks.js';
 import { PersonBanner, PersonChip } from './person.js';
+import { parseBook } from './pure/books.js';
 import { useShared, markShared } from './shares.js';
 import { t } from './i18n.js';
 
@@ -406,6 +407,36 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
     </a>`;
 };
 
+/// A book on the feed (BOOKS.md ruling 5): the whole table - sections and pages, each page a
+/// link to its own permalink - under one line saying what it is. The reader's browser
+/// (slice 4) grows out of this.
+const BookSection = ({ section, author, depth }) => html`<li class="book-card-section">
+    ${section.title && html`<span class="book-card-section-title">${section.title}</span>`}
+    <ul class="book-card-list">
+        ${section.pages.map(
+            (p) => html`<li class="book-card-page" key=${p.post}>
+                <a href=${`/id/${author}/post/${p.post}`}>${p.title || t('postentry.untitled-page', 'untitled page')}</a>
+            </li>`
+        )}
+        ${section.sections.map((s, i) => html`<${BookSection} key=${`${depth}-${i}`} section=${s} author=${author} depth=${depth + 1} />`)}
+    </ul>
+</li>`;
+
+const BookCard = ({ book, author }) => {
+    if (!book) return html`<p class="null-sub">${t('postentry.a-book-this-node-cannot-read', 'a book this computer cannot read yet')}</p>`;
+    return html`<div class="book-card">
+        <p class="book-card-head">
+            <${Icons.book} />
+            ${book.count === 1
+                ? t('postentry.a-book-1-page', 'a book · 1 page')
+                : t('postentry.a-book-n-pages', 'a book · {count} pages', { count: book.count })}
+        </p>
+        <ul class="book-card-list">
+            <${BookSection} section=${{ title: '', pages: book.pages, sections: book.sections }} author=${author} depth=${0} />
+        </ul>
+    </div>`;
+};
+
 export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);
@@ -480,7 +511,8 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const title = amended ? amended.title : item.title;
     const tlProfile = useTurbolinks(shownBody || '', item.format);
     const { lead, cut } = leadOf(shownBody || '', emphasis);
-    const shown = wholeThing ? shownBody : lead;
+    // A book's body is its tree, never prose: no lead cut, the card draws the whole table.
+    const shown = item.format === 'book' || wholeThing ? shownBody : lead;
     // Whose labels this reader sees: the register and their ledger, both live. The
     // description key is the author's alone here (one description per post); anyone
     // else's description is shown only at 'everyone', as a label.
@@ -891,13 +923,15 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                       </p>`}
                       ${!!shownBody &&
                       html`<div class="feed-entry-body">
-                          ${item.format === 'marquee'
-                              ? html`<${MarqueeBody}
-                                    source=${shown}
-                                    profile=${tlProfile}
-                                    onUnparsable=${bareSource}
-                                />`
-                              : html`<pre class="reader-plain">${shown}</pre>`}
+                          ${item.format === 'book'
+                              ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
+                              : item.format === 'marquee'
+                                ? html`<${MarqueeBody}
+                                      source=${shown}
+                                      profile=${tlProfile}
+                                      onUnparsable=${bareSource}
+                                  />`
+                                : html`<pre class="reader-plain">${shown}</pre>`}
                           ${cut &&
                           !wholeThing &&
                           html`<button class="feed-entry-more" onClick=${() => setWholeThing(true)}>

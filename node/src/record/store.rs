@@ -246,6 +246,16 @@ impl Store {
 
     /// The store's database handle, for publication machinery that reads public heads
     /// (record::bake) - public-lane reads only through this door.
+    /// The device's signing key for this persona - a rollout mints the book with it.
+    pub fn signer(&self) -> &ed25519_dalek::SigningKey {
+        &self.authorship.signer
+    }
+
+    /// The file layer - a rollout stores the book's payload through it.
+    pub fn files(&self) -> &crate::files::FileStore {
+        &self.files
+    }
+
     pub fn db(&self) -> &Db {
         &self.db
     }
@@ -1032,7 +1042,7 @@ impl Documents<'_> {
         reply: Option<crate::record::documents::ReplyLinks>,
         flags: crate::record::documents::PublishFlags,
     ) -> Result<[u8; 16], AppError> {
-        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms } = flags;
+        let crate::record::documents::PublishFlags { settled, trusted_only, dated_ms, part_of } = flags;
         let view = self.all().await?;
         let doc = view
             .docs
@@ -1133,6 +1143,7 @@ impl Documents<'_> {
                 trusted_only,
                 post_key,
                 dated_ms,
+                part_of,
             },
         )
         .await?;

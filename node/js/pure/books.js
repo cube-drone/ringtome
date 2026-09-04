@@ -26,6 +26,40 @@ export function bookModes(values) {
     return out;
 }
 
+/// The kv rows of the `books` collection as a map of bucket -> the facts the rollout keeps
+/// there: `mode`, and once rolled out `published_as_book` (the book's public id).
+export function bookFacts(values) {
+    const out = {};
+    for (const v of values || []) {
+        try {
+            const parsed = JSON.parse(v.value || 'null');
+            if (parsed && typeof parsed === 'object') out[v.key] = parsed;
+        } catch {
+            /* an unreadable value is no fact */
+        }
+    }
+    return out;
+}
+
+/// A book document's payload (BOOKS.md ruling 9), tolerant of anything that is not one.
+export function parseBook(text) {
+    let raw;
+    try {
+        raw = JSON.parse(text || '');
+    } catch {
+        return null;
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const section = (s) => ({
+        title: String((s && s.title) || ''),
+        pages: Array.isArray(s && s.pages) ? s.pages.filter((p) => p && p.post).map((p) => ({ post: String(p.post), title: String(p.title || '') })) : [],
+        sections: Array.isArray(s && s.sections) ? s.sections.map(section) : [],
+    });
+    const top = section(raw);
+    const count = (s) => s.pages.length + s.sections.reduce((n, x) => n + count(x), 0);
+    return { title: String(raw.title || ''), sections: top.sections, pages: top.pages, count: count(top) };
+}
+
 /// Whether a bucket publishes as a book.
 export function isBookBucket(modes, bucket) {
     return !!bucket && (modes || {})[bucket] === 'book';

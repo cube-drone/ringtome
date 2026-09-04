@@ -1,8 +1,8 @@
 const assert = require('node:assert');
 
-let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger;
+let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook;
 before(async () => {
-    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger } = await import('../../../js/pure/books.js'));
+    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook } = await import('../../../js/pure/books.js'));
 });
 
 describe('books: the private bookkeeping (BOOKS.md slice 1)', () => {
@@ -46,5 +46,18 @@ describe('books: the private bookkeeping (BOOKS.md slice 1)', () => {
         });
         assert.equal(pageStanding({ doc_id: 'x', head: 'v', fields: {} }, new Set(), new Set(['doc:x'])), 'hidden', 'a direct mark hides too');
         assert.equal(pageStanding(null), 'new');
+    });
+});
+
+describe('books: the payload (BOOKS.md slice 2)', () => {
+    it('keeps every fact the rollout writes, and reads a book payload back, counting its pages', () => {
+        const facts = bookFacts([{ key: 'g', value: '{"mode":"book","published_as_book":"abc"}' }, { key: 'x', value: 'nope' }]);
+        assert.deepEqual(facts, { g: { mode: 'book', published_as_book: 'abc' } });
+        const book = parseBook('{"title":"grimoire","sections":[{"title":"part one","pages":[{"post":"p1","title":"one"}],"sections":[{"title":"deeper","pages":[{"post":"p2","title":"two"}],"sections":[]}]}],"pages":[{"post":"p3","title":"three"}]}');
+        assert.equal(book.title, 'grimoire');
+        assert.equal(book.count, 3);
+        assert.equal(book.sections[0].sections[0].pages[0].post, 'p2');
+        assert.equal(parseBook('not json'), null);
+        assert.equal(parseBook('[]'), null);
     });
 });

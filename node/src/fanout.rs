@@ -330,6 +330,10 @@ async fn shelf_page(
         crate::record::documents::public_docs(&db, after, crate::idface::POSTS_PAGE).await?;
     Ok(posts
         .into_iter()
+        // A page of a book is never a feed row of its own (BOOKS.md ruling 4): the book,
+        // and later its updates, are what reach feeds. A rule of the fold, not a courtesy
+        // of the client.
+        .filter(|p| p.part_of.is_none())
         .map(|p| JournalRow {
             // The stamp first: `title` moves out of `p` below, and the display stamp reads it.
             published_ms: p.display_ms(),
@@ -373,6 +377,10 @@ async fn shelf_updated_since(
     }
     Ok(posts
         .into_iter()
+        // A page of a book is never a feed row of its own (BOOKS.md ruling 4): the book,
+        // and later its updates, are what reach feeds. A rule of the fold, not a courtesy
+        // of the client.
+        .filter(|p| p.part_of.is_none())
         .map(|p| JournalRow {
             // The stamp first: `title` moves out of `p` below, and the display stamp reads it.
             published_ms: p.display_ms(),
@@ -1617,7 +1625,7 @@ pub async fn feed_page(
             .fetch_all(
                 "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms
                  FROM feed_journal WHERE reader_root = ?1
-                   AND format IN ('marquee', 'plaintext')
+                   AND format IN ('marquee', 'plaintext', 'book')
                  ORDER BY published_ms DESC, doc_id LIMIT ?2",
                 (reader_root, limit),
             )
@@ -1629,7 +1637,7 @@ pub async fn feed_page(
             .fetch_all(
                 "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms
                  FROM feed_journal WHERE reader_root = ?1
-                   AND format IN ('marquee', 'plaintext')
+                   AND format IN ('marquee', 'plaintext', 'book')
                    AND (published_ms < ?2 OR (published_ms = ?2 AND doc_id > ?3))
                  ORDER BY published_ms DESC, doc_id LIMIT ?4",
                 (reader_root, ms, doc.as_str(), limit),

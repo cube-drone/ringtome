@@ -181,6 +181,10 @@ pub mod doc_format {
     /// Ogg Opus - the canonical audio form. Wild input formats (mp3/aac/flac/wav/vorbis) are
     /// decoded in memory-safe Rust and re-encoded to a fit-to-cap Opus; in-spec Opus passes through.
     pub const OGG_OPUS: u64 = 5;
+    /// A BOOK (BOOKS.md, 2026-09-03): a notebook published whole. The body is the published
+    /// composed taxonomy as JSON - sections, order, page references by public id - and the
+    /// reader is a browser over it. Public only; never a private document's format.
+    pub const BOOK: u64 = 6;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key
@@ -595,6 +599,11 @@ pub struct DocHeaderPlain {
     /// controls, where a video with the same container gets a player. Absent when false.
     /// A media fact, so it rides the twin a bake mints exactly as the dimensions do.
     pub animation: bool,
+    /// The BOOK this document is a page of (BOOKS.md ruling 4, 2026-09-03): the public id
+    /// of the notebook's book document. A part is a real post - a permalink, a turbolink, a
+    /// rebroadcast of its own - but never a feed row of its own: the fold keeps parts out of
+    /// journals, and the book (and its updates) are what reach feeds. Absent when standalone.
+    pub part_of: Option<[u8; 16]>,
 }
 
 impl DocHeaderPlain {
@@ -645,7 +654,8 @@ impl DocHeaderPlain {
             + self.settled as u64
             + self.trusted_only as u64
             + self.dated_ms.is_some() as u64
-            + self.animation as u64;
+            + self.animation as u64
+            + self.part_of.is_some() as u64;
         if self.thread_root.is_some() && self.reply_to.is_none() {
             return Err(ProtoError::BadEntry("a thread root without a parent"));
         }
@@ -732,6 +742,10 @@ impl DocHeaderPlain {
             w.uint(18);
             w.uint(1);
         }
+        if let Some(book) = &self.part_of {
+            w.uint(19);
+            w.bytes(book);
+        }
         Ok(w.into_bytes())
     }
 
@@ -750,6 +764,7 @@ impl DocHeaderPlain {
         let mut trusted_only = false;
         let mut dated_ms: Option<i64> = None;
         let mut animation = false;
+        let mut part_of: Option<[u8; 16]> = None;
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -820,6 +835,7 @@ impl DocHeaderPlain {
                     );
                 }
                 18 => animation = map.uint()? != 0,
+                19 => part_of = Some(map.bytes_fixed::<16>()?),
                 _ => map.skip_value()?,
             }
         }
@@ -844,6 +860,7 @@ impl DocHeaderPlain {
             trusted_only,
             dated_ms,
             animation,
+            part_of,
         };
         if out.title.len() > Self::MAX_TITLE_LEN {
             return Err(ProtoError::BadEntry("title too long"));
@@ -1332,6 +1349,7 @@ mod tests {
         let mut h = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             doc_id: [1u8; 16],
             parents: vec![],
@@ -1365,6 +1383,9 @@ mod tests {
         h.animation = true;
         assert!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().animation, "key 18: a silent loop says so");
         h.animation = false;
+        h.part_of = Some([9u8; 16]);
+        assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap().part_of, Some([9u8; 16]), "key 19: a page names its book");
+        h.part_of = None;
         h.settled = false;
         let open_bytes = h.encode().unwrap();
         assert!(!DocHeaderPlain::decode(&open_bytes).unwrap().settled);
@@ -1653,6 +1674,7 @@ mod tests {
         let base = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1674,6 +1696,7 @@ mod tests {
         let reply = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             reply_to: Some(([5u8; 32], [6u8; 16])),
@@ -1689,6 +1712,7 @@ mod tests {
         let orphan = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             thread_root: Some(([7u8; 32], [8u8; 16])),
@@ -1705,6 +1729,7 @@ mod tests {
         let base = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1728,6 +1753,7 @@ mod tests {
         let empty = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             refs: Vec::new(),
@@ -1743,6 +1769,7 @@ mod tests {
         let over = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             refs: vec![[7u8; 16]; DocHeaderPlain::MAX_REFS + 1],
@@ -1780,6 +1807,7 @@ mod tests {
             let h = DocHeaderPlain {
                 dated_ms: None,
                 animation: false,
+                part_of: None,
                 trusted_only: false,
                 settled: false,
                 doc_id: [9u8; 16],
@@ -1804,6 +1832,7 @@ mod tests {
         let h = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1827,6 +1856,7 @@ mod tests {
         let img = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1850,6 +1880,7 @@ mod tests {
         let vid = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: [9u8; 16],
@@ -1876,6 +1907,7 @@ mod tests {
         let base = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             doc_id: [0u8; 16],
@@ -1898,6 +1930,7 @@ mod tests {
         let too_many = DocHeaderPlain {
             dated_ms: None,
             animation: false,
+            part_of: None,
             trusted_only: false,
             settled: false,
             parents: vec![[0u8; 32]; DocHeaderPlain::MAX_PARENTS + 1],

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 605 phrases across 47 files.
+// 620 phrases across 47 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -176,8 +176,18 @@ export default {
     'doc.bookcol.sections': 'sections',
     'doc.bookcol.unticked-a-hidden-section': 'unticked: a hidden section - it and every page beneath it stay out of the book',
     'doc.bookcol.untitled-section': '(untitled section)',
-    'doc.bookcol.the-rollout-lands-with-the': 'the rollout lands with the next slice - the bookkeeping here is what it will read',
+    'doc.bookcol.settled-means': 'turns off comments and rebroadcasts for the book, as far as this network can honor it',
+    'doc.bookcol.turn-off-rebroadcast-and-comment': 'turn off rebroadcast and comment',
+    'doc.bookcol.trusted-only-means': 'the pages go only to readers you have published trust for',
+    'doc.bookcol.trusted-only': 'trusted only',
+    'doc.bookcol.roll-out-the-changes-the': "roll out the changes: the new and changed pages, and the book's tree as it is now",
+    'doc.bookcol.publish-the-whole-notebook-as': 'publish the whole notebook as one book - every page that is not hidden, and the tree',
+    'doc.bookcol.publish-the-changes': 'publish the changes',
     'doc.bookcol.publish-the-book': 'publish the book',
+    'doc.bookcol.preparing-a-pages-media': "preparing a page's media…",
+    'doc.bookcol.rolling-out-done-of-total': 'rolling out: {done} of {total}',
+    'doc.bookcol.the-rollout-failed': 'the rollout failed',
+    'doc.bookcol.view-the-book': 'view the book',
     'doc.bookcol.this-notebook-publishes-page-by': 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates',
 
     // --- node/js/doc/chips.js ---
@@ -446,6 +456,10 @@ export default {
     'postentry.stop-sharing-this-with-your': 'stop sharing this with your network',
     'postentry.pass-this-along-to-your': 'pass this along to your network',
     'postentry.link': 'link',
+    'postentry.untitled-page': 'untitled page',
+    'postentry.a-book-this-node-cannot-read': 'a book this computer cannot read yet',
+    'postentry.a-book-1-page': 'a book · 1 page',
+    'postentry.a-book-n-pages': 'a book · {count} pages',
     'postentry.passed-this-along': 'passed this along',
     'postentry.vouches-for-this-author': 'vouches for this author',
     'postentry.scheduled-for': 'scheduled for {when}',
@@ -561,6 +575,7 @@ export default {
     'identity.routes.unknown-disposition-other-retirement-repudiation': 'unknown disposition {other:?} (retirement | repudiation)',
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
+    'identity.routes.this-notebook-is-not-switched': 'this notebook is not switched to publish as a book',
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",

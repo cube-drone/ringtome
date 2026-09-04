@@ -77,7 +77,19 @@ deferred". This is that design.
    version it published - `published_version` beside `published_as` - so "changed" is a
    comparison, not a guess); the book bar in the editor; Writer's rows wearing the ledger's
    marks. Nothing public yet: this slice is the private bookkeeping and the surface.
-2. **The book document and `part_of`.** Header key for `part_of`; the fold rule that keeps
+2. ~~**The book document and `part_of`.**~~ Built 2026-09-03: header key 19 `part_of`
+   (user gen 24 on the doc memos); pages publish through the feed's own door carrying it and
+   the book's wishes, and record `published_version`; the fold keeps parts off the author's
+   journals and shelf (a share of a page still journals - "a rebroadcast of its own"); the
+   book is a public document of format `book` (wire id 6, `application/json`) whose body
+   is the tree - sections, order, pages by public id - minted onto a stable id the bucket's
+   `books` fact remembers; the rollout is a plan on the private kv (`book_rollout`, naming
+   the device, written by `POST /books/{bucket}/rollout`) that the book-rollout sweep
+   carries out, resumable page by page, the book minted last; the column polls it. The feed
+   and the shelf draw a book as its table of contents with page links. A trusted book seals
+   each page under its own key and the book under one kept in the `books` fact - the key
+   lane serves per-post keys, and one key per page costs nothing (a deviation from ruling
+   10's wording, not its intent). Acceptance in book_posts.cjs. Header key for `part_of`; the fold rule that keeps
    parts out of feed journals; the page publish through the existing door with `part_of`
    and the book's wishes; the book minted with the tree as its payload (a public form of the
    composed taxonomy: sections, order, page references); the first rollout as a background

@@ -3,7 +3,7 @@
 // rollout, and the button. This slice is the private bookkeeping and the surface; the
 // rollout itself (slice 2) is what the button will do.
 import { h } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from '../net.js';
@@ -12,7 +12,9 @@ import { Icons } from '../icons.js';
 import { PaneHead } from '../panes.js';
 import { t } from '../i18n.js';
 import { rootTitleFor } from '../pure/naming.js';
-import { BOOKS_KV, HIDDEN_KV, bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, bookLedger } from '../pure/books.js';
+import { BOOKS_KV, HIDDEN_KV, bookModes, bookFacts, isBookBucket, hiddenSetOf, hiddenDocsOf, bookLedger } from '../pure/books.js';
+
+const ROLLOUT_KV = 'book_rollout';
 
 const html = htm.bind(h);
 
@@ -21,6 +23,7 @@ const html = htm.bind(h);
 /// so every write re-reads.
 export function useBookFacts(root) {
     const [modes, setModes] = useState({});
+    const [books, setBooks] = useState({}); // bucket -> { mode, published_as_book }
     const [hidden, setHidden] = useState(new Set());
     const [gen, setGen] = useState(0);
     useEffect(() => {
@@ -32,6 +35,7 @@ export function useBookFacts(root) {
         ]).then(([b, h]) => {
             if (!live) return;
             setModes(bookModes(b && b.values));
+            setBooks(bookFacts(b && b.values));
             setHidden(hiddenSetOf(h && h.values));
         });
         return () => {
@@ -52,7 +56,40 @@ export function useBookFacts(root) {
         });
         setGen((g) => g + 1);
     };
-    return { modes, hidden, setBook, mark };
+    const refresh = () => setGen((g) => g + 1);
+    return { modes, books, hidden, setBook, mark, refresh };
+}
+
+/// The rollout plan for a bucket, polled while it moves (BOOKS.md ruling 8): null when there
+/// is none; `{ status, done, total, error, book }` otherwise.
+export function useRolloutPlan(root, bucket, onSettled) {
+    const [plan, setPlan] = useState(null);
+    const [tick, setTick] = useState(0);
+    useEffect(() => {
+        if (!root || !bucket) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/private/kv/${ROLLOUT_KV}`)
+            .then((r) => {
+                if (!live) return;
+                const row = ((r && r.values) || []).find((v) => v.key === bucket);
+                let next = null;
+                try {
+                    next = row ? JSON.parse(row.value || 'null') : null;
+                } catch {
+                    next = null;
+                }
+                setPlan(next);
+                const moving = next && ['pending', 'running', 'baking'].includes(next.status);
+                if (moving) setTimeout(() => live && setTick((n) => n + 1), 1500);
+                else if (next && onSettled) onSettled(next);
+            })
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root, bucket, tick]);
+    return { plan, poke: () => setTick((n) => n + 1) };
 }
 
 /// The bucket's expanded tree off the node (sections carry the hidden marks; the tree is
@@ -95,9 +132,40 @@ function sectionsOf(node, out = [], depth = 0, seen = new Set()) {
     return out;
 }
 
-export const BookColumn = ({ bucket, docs, facts, tree, onTuck, onSelect }) => {
-    const { modes, hidden, setBook, mark } = facts;
+export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }) => {
+    const { modes, books, hidden, setBook, mark, refresh } = facts;
     const on = isBookBucket(modes, bucket);
+    const published = books[bucket] && books[bucket].published_as_book;
+    const [wishes, setWishes] = useState({ settled: false, trusted_only: false });
+    const [asking, setAsking] = useState(false);
+    const [askError, setAskError] = useState(null);
+    const settledPlan = useRef(null);
+    const { plan, poke } = useRolloutPlan(root, bucket, (p) => {
+        // A plan that just came to rest: the facts moved (the book's id, the pages'
+        // published versions) - re-read them once.
+        const key = `${p.status}:${p.done}:${p.book || ''}`;
+        if (settledPlan.current !== key) {
+            settledPlan.current = key;
+            refresh();
+        }
+    });
+    const moving = plan && ['pending', 'running', 'baking'].includes(plan.status);
+    const rolloutFailed = !!plan && plan.status === 'failed';
+    const rollOut = async () => {
+        setAsking(true);
+        setAskError(null);
+        try {
+            await api(`/api/identity/${root}/books/${encodeURIComponent(bucket)}/rollout`, {
+                method: 'POST',
+                body: JSON.stringify(published ? {} : wishes),
+            });
+            poke();
+        } catch (e) {
+            setAskError(e.message);
+        } finally {
+            setAsking(false);
+        }
+    };
     const hiddenDocs = hiddenDocsOf(tree, hidden);
     const ledger = bookLedger(docs, hiddenDocs, hidden);
     const sections = sectionsOf(tree);
@@ -145,11 +213,33 @@ export const BookColumn = ({ bucket, docs, facts, tree, onTuck, onSelect }) => {
                               </label>`
                           )}
                       </div>`}
+                  ${!published &&
+                  html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turns off comments and rebroadcasts for the book, as far as this network can honor it')}>
+                          <input type="checkbox" checked=${wishes.settled} onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))} />
+                          ${t('doc.bookcol.turn-off-rebroadcast-and-comment', 'turn off rebroadcast and comment')}
+                      </label>
+                      <label class="book-switch" title=${t('doc.bookcol.trusted-only-means', 'the pages go only to readers you have published trust for')}>
+                          <input type="checkbox" checked=${wishes.trusted_only} onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))} />
+                          ${t('doc.bookcol.trusted-only', 'trusted only')}
+                      </label>`}
                   <button
                       class="book-publish"
-                      disabled=${true}
-                      title=${t('doc.bookcol.the-rollout-lands-with-the', 'the rollout lands with the next slice - the bookkeeping here is what it will read')}
-                  ><${Icons.docPublic} /> ${t('doc.bookcol.publish-the-book', 'publish the book')}</button>`
+                      disabled=${asking || moving || (ledger.new.length === 0 && ledger.changed.length === 0 && !!published)}
+                      title=${published
+                          ? t('doc.bookcol.roll-out-the-changes-the', 'roll out the changes: the new and changed pages, and the book\'s tree as it is now')
+                          : t('doc.bookcol.publish-the-whole-notebook-as', 'publish the whole notebook as one book - every page that is not hidden, and the tree')}
+                      onClick=${rollOut}
+                  ><${Icons.docPublic} /> ${published ? t('doc.bookcol.publish-the-changes', 'publish the changes') : t('doc.bookcol.publish-the-book', 'publish the book')}</button>
+                  ${moving &&
+                  html`<p class="book-progress">
+                      ${plan.status === 'baking'
+                          ? t('doc.bookcol.preparing-a-pages-media', "preparing a page's media…")
+                          : t('doc.bookcol.rolling-out-done-of-total', 'rolling out: {done} of {total}', { done: plan.done || 0, total: plan.total || 0 })}
+                  </p>`}
+                  ${rolloutFailed && html`<p class="form-error">${plan.error || t('doc.bookcol.the-rollout-failed', 'the rollout failed')}</p>`}
+                  ${askError && html`<p class="form-error">${askError}</p>`}
+                  ${published &&
+                  html`<a class="book-view" href=${`/id/${root}/post/${published}`}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`}`
             : html`<p class="book-off">
                   ${t('doc.bookcol.this-notebook-publishes-page-by', 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates')}
               </p>`}

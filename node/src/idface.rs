@@ -1166,7 +1166,11 @@ pub async fn id_posts(
     let posts = match &dbh {
         Some(db) => crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
             .await
-            .unwrap_or_default(),
+            .unwrap_or_default()
+            .into_iter()
+            // Pages stay off the shelf too (BOOKS.md ruling 4): the book lists them.
+            .filter(|p| p.part_of.is_none())
+            .collect(),
         None => Vec::new(), // nothing held, or unreadable: an empty shelf either way
     };
     // The persona's SHARES join the shelf (Curtis, 2026-09-02: the page defaults to
@@ -1389,6 +1393,8 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
         // window's anchor, and the dossier's honest "when it was actually said".
         "dated_ms": p.dated_ms,
         "minted_ms": p.genesis_ms,
+        // The book this is a page of (BOOKS.md), when it is one.
+        "part_of": p.part_of.map(hex::encode),
         "updated_ms": p.head_ms,
         // Whether a re-publication would still be honoured (PROJECT_PLAN: the edit window
         // anchors on the mint) - Writer's publish bar offers "update" only while it is.

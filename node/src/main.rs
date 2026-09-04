@@ -21,6 +21,7 @@ mod fanout;
 mod fragments;
 mod postkeys;
 mod scheduled;
+mod books;
 mod files;
 mod fold;
 mod identity;
@@ -511,6 +512,17 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("publish-due", publish_beat, state.clone(), scheduled::pass);
+    // Book rollouts (BOOKS.md slice 2): plans the Publish column wrote, carried out here.
+    let rollout_beat = if local_test {
+        std::env::var("RINGTOME_TEST_BOOK_ROLLOUT_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(20))
+    } else {
+        std::time::Duration::from_secs(20)
+    };
+    loops::periodic("book-rollout", rollout_beat, state.clone(), books::pass);
     // WAL maintenance (db::checkpoint_pass): truncate node.db's and every open user db's log
     // on a slow beat - the policy and its reasoning live beside Db::checkpoint.
     loops::periodic(
