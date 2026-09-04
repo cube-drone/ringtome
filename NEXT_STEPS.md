@@ -11,6 +11,7 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ### Localization
 * An in-ui way to cheat your presented language, for testing
  * just fully do french and spanish or something
+* humanize the writing
 
 ### Private Notes
 
@@ -24,33 +25,18 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Public posts and fan-out
 
+* @user (directed comments)
+* pinned posts
+* blocked/hidden tags
+* content warning (18+)
+* public taxonomy
 * Search my posts
 * Search my feed
-* Publishing from Writer — [PUBLISH.md](PUBLISH.md): all three slices built (the date on
-  the wire, scheduling, the Writer chip and status icons, 2026-09-02/03); the arc's
-  residual is the taxonomy position (ruling 8), which waits on a public form for it
-* A race in public_annotations.cjs ("the relayed proof names its carrier", seen red once on
-  2026-09-02, green on the clean-tree rerun): cal's node admits ada speculatively through
-  bea's vouch, the acquisition pass pulls ada's chain on the rig's 2s beat, and the chain
-  fold's note overwrites `learned_via` relay→chain before the test reads it. Settle it one
-  of two ways: keep the FIRST road on conflict (the forensic reading - how it first got
-  here is what the dossier wants), or have the test accept either road. Curtis's call.
-* Post visibility — PROJECT_PLAN's Post visibility: arc closed 2026-09-02 ("settled" and
-  "trusted only" built, sealed bodies and pictures, key lane, feed/discovery filters);
-  the one deferred direction is sharer-scoped share journaling, with its trigger pinned
-* Public annotations — the arc, rulings pinned and sliced in [ANNOTATIONS.md](ANNOTATIONS.md) (2026-08-29): tags, description, date, and bucket go public at publish, third parties annotate on their own chains, everything rides virally, the reader chooses whose labels show
-* Video in public posts: the private half shipped 2026-09-03 (a video the ingest already
-  crushed bakes a WebM twin with its poster, sealed under a trusted post's key; acceptance in
-  video_posts.cjs). Two residuals: (1) the EXTERNAL half - a video URL at publish time has no
-  lane, because the node cannot decode the codec zoo (video-ingest/README.md: that laundering
-  is the browser's job at upload) - refused with the road named; (2) done the same day: header key 18
-  `animation` and the `-loop` spelling, drawn looping by marqueemarkup's renderers - which
-  lands in ringtome when 0.7.2 publishes (bump the deps; add a render claim for the loop
-  attributes to pure/mediakind.cjs then). (3) done the same hour: the upload flow
-  respells the reference from the crushed document. The public twin also carries no
-  hover-preview clip; nothing public reads one yet.
-* Make a whole bucket public in one fell swoop.
-* Disable rebroadcasts (disable comments shipped as slice 6's suppress-all switch; a UI control for the mode register is still owed - PROJECT_PLAN's Replies)
+* mini-links (the kind you see in replies and your notifications) need to display more content
+* Better filters in Lost & Found
+* Publish a taxonomy — [BOOKS.md](BOOKS.md) (2026-09-03): a notebook published as a book;
+  rulings pinned, five slices; slice 1 (book mode and the Publish column) first.
+* External video in public posts? (private works, but linked-external?)
 * Envelope-kept reply evidence has no deletion road: a stranger's reply noted from its
   COMMENT envelope outlives its deletion on the parent-author's node (and in their reply
   count) until that node ever meets the replier's chain or fragment. Surfaced 2026-08-27
@@ -130,9 +116,6 @@ Does a mutual follow+trust make a "friend"?
 ### Mixtape & Radio
 *  a mp3 browser
 
-### Trust
-* Users in your extended trust network get access to the higher-priority higher-tier messages bucket?
-
 ### Desktop
 * tray sidecar, autostart, app-mode window
 * signing the application so it can actually ship to mac/windows boxes
@@ -153,6 +136,7 @@ Does a mutual follow+trust make a "friend"?
 * The "seed" is shared, like a Post would be, and can be rebroadcast, also like a post would be
 
 ### Weird Ideas
+* Chat
 * Anki-Style Flashcards
 * Minesweeper/Solitaire
 * VN Engine

@@ -8229,3 +8229,19 @@ word "settled".
 Then the feed card (Curtis): a post whose private analogue lives in a notebook offers "edit"
 with the note-pencil, straight to that note in Writer, where the publish bar says the changes
 again; the slowly-unlocking lock stays for posts composed in the feed.
+
+## 2026-09-03 (cont.): BOOKS.md
+
+Curtis's brief for publishing a whole notebook - "not 38 posts at once but a title page /
+table of contents", updates as "book GRIMOIRE updated: …" - pinned as BOOKS.md: a Writer
+column rather than an app (the Wikibook lesson: the editing surface was Writer's; the
+difference here is the publication flow, which is one column), the notebook as the book with
+a stable id, hidden marks that never publish, pages as real posts carrying `part_of` and
+kept out of feed journals by the fold, one update post per rollout threaded under the book,
+per-document status replaced by a ledger against the last rollout, pages updatable while the
+book lives, rollouts as background plans, the book's body as Marquee generated from the
+tree. Five slices; the reader's table of contents is where the new UI actually is.
+Amended the same hour: ruling 7 carries Curtis's reason (a post's edits must be checked for
+and propagated across its lifespan; a book's update is a distinct new event, so the window
+is not needed), and ruling 9 is inverted - the book carries the tree as its payload and the
+reader is Writer in read-only mode over it, no generated table-of-contents prose.

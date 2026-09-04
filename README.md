@@ -40,6 +40,8 @@ federated, unapologetically Old Internet.
   Rulings pinned 2026-08-29; in-motion slices mirrored in NEXT_STEPS.
 - [`PUBLISH.md`](PUBLISH.md) — publishing from Writer: the preferred date on the wire,
   scheduled posts, and the publish button (2026-09-02)
+- [`BOOKS.md`](BOOKS.md) — publishing a whole notebook as a book: a Writer column, one glob on
+  the feed, updates threaded under the book, hidden never publishes (rulings and slices, 2026-09-03)
 - [`GLOSSARY.md`](GLOSSARY.md) — the vocabulary: protocol terms, plus the engine-room ↔ cozy-UI
   language mapping.
 - [`STYLE.md`](STYLE.md) — the house style: naming, comments, module shape, testing doctrine, and

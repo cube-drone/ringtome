@@ -1,0 +1,95 @@
+# BOOKS - publishing a whole notebook
+
+Curtis's brief (2026-09-03): "publish a whole book or knowledge base in one go" - a notebook
+whose taxonomy holds dozens of documents, some private, the tree changing over time. What
+reaches feeds is not thirty-eight posts but one glob: the book, and later "GRIMOIRE updated:
+chapter 4 page 3, chapter 4 page 4 …". The plan already framed it (PROJECT_PLAN, the kernel
+layering): "roll out a whole-book update is just re-publishing a composed taxonomy as a new
+public version"; and taxonomy-of-posts publication was "its own design, deliberately
+deferred". This is that design.
+
+## Rulings (Curtis, 2026-09-03)
+
+1. **A book is a Writer column, not an app.** The Wikibook app died because its editing and
+   browsing surface was Writer's; a book's difference is its publication flow, which is one
+   column - "Publish", beside tags, items, and tree - holding a switch, a ledger, hidden
+   marks, and one button. The reader's side (a table of contents, page navigation) is a
+   public page, which no app owns. If a Book app ever earns a tile it will be because the
+   reader-side surface grew a private face.
+2. **The notebook is the book.** A bucket-level switch, "publish as a book", changes what the
+   whole bucket's publication means. The book is minted once, with a stable public id the
+   bucket's private meta remembers (`published_as_book`, the `published_as` pattern); every
+   rollout after the first is a new VERSION of that document, never a new book.
+3. **Hidden never publishes.** A section or a single document can be marked hidden - a
+   private fact beside the taxonomy, never on the document - and no rollout carries it. A
+   document that becomes hidden after it was published is retracted at the next rollout.
+4. **Pages get no feed items of their own.** A page is a real public post (a permalink, a
+   turbolink, a rebroadcast of its own) carrying one new signed header fact, `part_of`
+   (the book's id). The fold skips journaling a part as a standalone feed row, the way it
+   skips a trusted-only row the reader cannot open - a rule of the fold, not a courtesy of
+   the client. The book launches as one glob: the book post, and the pages behind it.
+5. **What reaches feeds is the book and its updates.** One post per rollout, threaded under
+   the book like a reply under its parent: the first says "GRIMOIRE published" with every
+   page; later ones say "GRIMOIRE updated" with the pages that changed, as refs - the header
+   cap of fifty is why the update lists changes rather than the whole book, and why the
+   book's own body carries the full table of contents instead of refs. A reorder with no
+   page changes is a book version and a quiet update the author can suppress.
+6. **Once a book is published, per-document status goes away** (UI-side). Inside a book
+   bucket the editor's publish bar becomes a book bar - "part of GRIMOIRE, changed since the
+   last rollout" - and Writer's rows wear "changed / new / hidden" marks instead of the
+   detective, globe, and clock. What the column tracks is the DIFF against the last rollout:
+   new pages, changed pages, removed pages, moved pages; "publish changes" rolls it out.
+7. **A page under a living book is updatable while the book lives.** The 24-hour edit window
+   stays for ordinary posts; a book is edited for years. Why that is safe (Curtis): a post's
+   edits and deletions have to be checked for and propagated continuously across its
+   lifespan - the window bounds that work - whereas a book's update is a DISTINCT NEW EVENT
+   ("this book has been updated, the following pages changed …"), so readers learn of
+   changes the way they learn of anything else: a new post arrives. The dossier keeps every
+   version's history exactly as it does today.
+8. **A rollout is a plan, executed in the background.** Dozens of bakes are not one HTTP
+   request with a modal: "publish" writes the plan on the bucket's private meta (the
+   scheduled-publish shape - device-durable, naming the minting leaf), the sweep mints
+   pages, the book version, and the update post in order, and the column shows progress
+   and the outcome. A failed page stops the rollout with its reason; nothing half-lands on
+   the feed, because the update post is minted last.
+9. **The book has no generated body; it carries the tree.** The book document's payload is
+   the published composed taxonomy itself - sections, order, page references - and the
+   reader gets a BROWSER over it: a navigable tree to page through the whole thing,
+   essentially Writer in read-only mode (the list, the tree, the reading pane), over public
+   documents instead of private ones. No table-of-contents prose is minted; the tree is the
+   table of contents.
+10. **Wishes are the book's.** Settled and trusted-only are set on the book at its first
+    rollout and inherited by every page (a trusted book seals every page under the book's
+    key). Scheduling a book is not in this arc. Unpublishing a book retracts the book and
+    every page.
+
+## Slices
+
+1. **Book mode and the Publish column.** The bucket switch; hidden marks on sections and
+   documents; the ledger against the last rollout (the rollout records, per page, the private
+   version it published - `published_version` beside `published_as` - so "changed" is a
+   comparison, not a guess); the book bar in the editor; Writer's rows wearing the ledger's
+   marks. Nothing public yet: this slice is the private bookkeeping and the surface.
+2. **The book document and `part_of`.** Header key for `part_of`; the fold rule that keeps
+   parts out of feed journals; the page publish through the existing door with `part_of`
+   and the book's wishes; the book minted with the tree as its payload (a public form of the
+   composed taxonomy: sections, order, page references); the first rollout as a background
+   plan with progress in the column. Acceptance: a notebook of pages rolls out,
+   the follower's feed shows one book post and no pages, every page has a permalink and
+   opens from the book.
+3. **Updates.** A second rollout diffs, re-publishes changed pages under their ids, retracts
+   removed and newly-hidden ones, mints the book's new version and the update post threaded
+   under the book; the feed card for an update ("GRIMOIRE updated: …"). Acceptance: edit two
+   pages, hide one, roll out, the follower sees one update naming two pages and the hidden
+   page's permalink is gone.
+4. **The reader.** Writer in read-only mode over the book's public tree: the list, the tree,
+   the reading pane, page navigation (previous, next, up) - at the book's permalink; the
+   persona shelf's "+ books" toggle; a rebroadcast of a book as one pointer.
+5. **Unpublish, and the edges.** Taking a book down; switching book mode off for a bucket
+   that was published (the book stays public until taken down; the switch only changes
+   what the next publish means); hidden after publish.
+
+## Residuals named at the start
+
+- Scheduling a rollout (ruling 10).
+- A section published on its own (a chapter as a book) - out of scope; hide the rest.
