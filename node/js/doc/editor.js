@@ -29,6 +29,7 @@ import { docStatus, isScheduled, publishedState } from '../pure/feed.js';
 import { Modal } from '../modal.js';
 import { api, apiText } from '../net.js';
 import { sameWords } from '../pure/wordsdiff.js';
+import { pageStanding } from '../pure/books.js';
 import { MarqueeBody, marqueeApology, parseError } from './marqueebody.js';
 import { useDocSession } from './session.js';
 import { LiveMarquee } from './livemarquee.js';
@@ -74,7 +75,7 @@ const rememberCursor = (root, docId, start, end) =>
     cursorMemory.set(`${root}:${docId}`, { start, end });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
-export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) => {
+export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, book }) => {
     const feat = features || featuresOf();
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
@@ -568,6 +569,38 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot }) 
                 </div>`}
             </header>
             ${feat.publish &&
+            book &&
+            (() => {
+                // Inside a book (BOOKS.md ruling 6) the bar speaks for the page's standing
+                // against the last rollout, not its own publication.
+                const page = pageStanding(row, book.hiddenDocs, book.hidden);
+                const hiddenHere = book.hidden.has(`doc:${docId}`);
+                return html`<div class=${page === 'hidden' ? 'publish-bar publish-bar-private' : page === 'current' ? 'publish-bar publish-bar-public' : 'publish-bar publish-bar-scheduled'}>
+                    <span class="publish-bar-standing">
+                        <${Icons.book} />
+                        ${t('doc.editor.part-of-the-book', 'part of the book {bucket}', { bucket: book.bucket })}
+                        ${' - '}
+                        ${page === 'hidden'
+                            ? t('doc.editor.hidden-from-it', 'hidden from it')
+                            : page === 'new'
+                              ? t('doc.editor.new-since-the-last-rollout', 'new since the last rollout')
+                              : page === 'changed'
+                                ? t('doc.editor.changed-since-the-last-rollout', 'changed since the last rollout')
+                                : t('doc.editor.as-published', 'as published')}
+                    </span>
+                    <span class="publish-bar-acts">
+                        <label class="publish-bar-wish" title=${t('doc.editor.a-hidden-page-never-publishes', 'a hidden page never publishes with the book')}>
+                            <input type="checkbox" checked=${hiddenHere} onChange=${(e) => book.mark(`doc:${docId}`, e.currentTarget.checked)} />
+                            ${t('doc.editor.hide-from-the-book', 'hide from the book')}
+                        </label>
+                        <button class="publish-bar-update" disabled=${true} title=${t('doc.editor.the-book-rolls-out-from', 'the book rolls out from the Publish column - the rollout lands with the next slice')}>
+                            <${Icons.update} /> ${t('doc.editor.publish-the-changes', 'publish the changes')}
+                        </button>
+                    </span>
+                </div>`;
+            })()}
+            ${feat.publish &&
+            !book &&
             html`<div
                 class=${standing === 'scheduled'
                     ? 'publish-bar publish-bar-scheduled'

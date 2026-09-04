@@ -8245,3 +8245,18 @@ Amended the same hour: ruling 7 carries Curtis's reason (a post's edits must be 
 and propagated across its lifespan; a book's update is a distinct new event, so the window
 is not needed), and ruling 9 is inverted - the book carries the tree as its payload and the
 reader is Writer in read-only mode over it, no generated table-of-contents prose.
+
+## 2026-09-03 (cont.): BOOKS.md slice 1 - book mode and the Publish column
+
+Private bookkeeping and surface, nothing public: the "publish this notebook as a book"
+switch and the hidden marks (sections and pages) live in two private kv collections, so no
+header and no document changed; Writer grew a fourth column, Publish, tucked by default,
+with the ledger against the last rollout (new / changed / current / hidden), the sections
+with their hidden ticks, and the button - disabled, saying the rollout lands with the next
+slice. Inside a book the editor's publish bar speaks for the page's standing and carries
+"hide from the book"; the rows wear hidden (gray), pending (peach), current (teal). The
+ledger compares each page's head with `published_version`, which the rollout will record.
+`pure/books.js` with claims for the marks, the hidden-by-section walk, and the ledger.
+Field-found (Curtis): the ledger counted the persona's every document - `docs` off the doc
+app is the whole mirror, the list narrows it by bucket - so the column now narrows the same
+way; and the switch reads "publish this entire notebook".

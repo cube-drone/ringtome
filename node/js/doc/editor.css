@@ -200,6 +200,14 @@
 .note-row-status-scheduled {
     color: var(--peach);
 }
+/* Inside a book (BOOKS.md): hidden gray, pending (new or changed since the last rollout)
+ * peach; "current" wears the public teal above. */
+.note-row-status-hidden {
+    color: var(--muted);
+}
+.note-row-status-pending {
+    color: var(--peach);
+}
 
 .note-row-kind {
     font-size: 0.9em;

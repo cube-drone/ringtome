@@ -65,7 +65,14 @@ deferred". This is that design.
 
 ## Slices
 
-1. **Book mode and the Publish column.** The bucket switch; hidden marks on sections and
+1. ~~**Book mode and the Publish column.**~~ Built 2026-09-03: the switch and the hidden
+   marks live in two private kv collections (`books`, `book_hidden` - no header, no document
+   change); the Publish column shows the ledger (new / changed / current / hidden), the
+   sections with their hidden ticks, and the button, disabled until slice 2; the editor's
+   bar inside a book speaks for the page's standing and carries "hide from the book";
+   Writer's rows wear hidden / pending / current. The ledger reads `published_version`,
+   which the rollout will record (slice 2) - until then every page is new. Pure
+   `pure/books.js` with claims. The bucket switch; hidden marks on sections and
    documents; the ledger against the last rollout (the rollout records, per page, the private
    version it published - `published_version` beside `published_as` - so "changed" is a
    comparison, not a guess); the book bar in the editor; Writer's rows wearing the ledger's

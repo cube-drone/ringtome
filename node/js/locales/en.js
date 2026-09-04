@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 577 phrases across 46 files.
+// 605 phrases across 47 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -41,6 +41,10 @@ export default {
     'apps.feed.older-drafts': 'older drafts',
 
     // --- node/js/apps/notes.js ---
+    'apps.notes.hidden-from-the-book': 'hidden from the book',
+    'apps.notes.new-since-the-last-rollout': 'new since the last rollout',
+    'apps.notes.changed-since-the-last-rollout': 'changed since the last rollout',
+    'apps.notes.in-the-book-as-published': 'in the book as published',
     'apps.notes.scheduled-to-publish': 'scheduled to publish',
     'apps.notes.published': 'published',
     'apps.notes.private': 'private',
@@ -159,6 +163,23 @@ export default {
     'doc.annotations.tag': '+ tag',
     'doc.annotations.a-short-description-optional': 'a short description (optional)',
 
+    // --- node/js/doc/bookcol.js ---
+    'doc.bookcol.untitled': 'untitled',
+    'doc.bookcol.publish': 'publish',
+    'doc.bookcol.a-book-publishes-as-one': 'a book publishes as one thing: the whole notebook and its tree, and later its changes as one update at a time - never a page on its own',
+    'doc.bookcol.publish-this-entire-notebook': 'publish this entire notebook',
+    'doc.bookcol.since-the-last-rollout': 'since the last rollout',
+    'doc.bookcol.new': 'new',
+    'doc.bookcol.changed': 'changed',
+    'doc.bookcol.current': 'current',
+    'doc.bookcol.hidden': 'hidden',
+    'doc.bookcol.sections': 'sections',
+    'doc.bookcol.unticked-a-hidden-section': 'unticked: a hidden section - it and every page beneath it stay out of the book',
+    'doc.bookcol.untitled-section': '(untitled section)',
+    'doc.bookcol.the-rollout-lands-with-the': 'the rollout lands with the next slice - the bookkeeping here is what it will read',
+    'doc.bookcol.publish-the-book': 'publish the book',
+    'doc.bookcol.this-notebook-publishes-page-by': 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates',
+
     // --- node/js/doc/chips.js ---
     'doc.chips.the-previous-document': 'the previous document',
     'doc.chips.the-next-document': 'the next document',
@@ -177,6 +198,15 @@ export default {
     'doc.diffpage.private-only': 'private only',
 
     // --- node/js/doc/editor.js ---
+    'doc.editor.part-of-the-book': 'part of the book {bucket}',
+    'doc.editor.hidden-from-it': 'hidden from it',
+    'doc.editor.new-since-the-last-rollout': 'new since the last rollout',
+    'doc.editor.changed-since-the-last-rollout': 'changed since the last rollout',
+    'doc.editor.as-published': 'as published',
+    'doc.editor.a-hidden-page-never-publishes': 'a hidden page never publishes with the book',
+    'doc.editor.hide-from-the-book': 'hide from the book',
+    'doc.editor.the-book-rolls-out-from': 'the book rolls out from the Publish column - the rollout lands with the next slice',
+    'doc.editor.publish-the-changes': 'publish the changes',
     'doc.editor.scheduled-for': 'scheduled for {when}',
     'doc.editor.live-on-your-public-feed': 'live on your public feed',
     'doc.editor.private': 'private',
@@ -421,8 +451,8 @@ export default {
     'postentry.scheduled-for': 'scheduled for {when}',
     'postentry.dated-by-its-author': 'dated by its author - written down {minted}',
     'postentry.edit-this-note-in-writer': 'edit this note in Writer',
-    'postentry.edit': 'edit',
     'postentry.open-this-for-editing': 'open this for editing',
+    'postentry.edit': 'edit',
     'postentry.thread': 'thread',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',

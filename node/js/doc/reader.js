@@ -205,7 +205,7 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
 // Text opens in the editor (the reader half lives inside it - a clean doc is just an editor
 // you haven't typed in); media and unknown formats stay read-only in the Reader.
 // Exported: the wiki mounts this too, so a media page there opens the Reader, not a text editor.
-export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket }) => {
+export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucket, book }) => {
     if (!docId) return html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
     const format = row ? row.format : 'plaintext';
@@ -216,6 +216,7 @@ export const RightColumn = ({ root, docId, docs, features, onDeleted, nav, bucke
             key=${docId}
             nav=${nav}
             bucket=${bucket}
+            book=${book}
             features=${features}
             onDeleted=${onDeleted}
         />`;

@@ -67,6 +67,8 @@ import {
     GlobeHemisphereWest,
     Swap,
     ArrowCounterClockwise,
+    EyeSlash,
+    BookOpen,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -155,6 +157,10 @@ export const Icons = {
     // The publish bar's verbs (PUBLISH.md): say the changes again; take it back.
     update: Swap,
     unpublish: ArrowCounterClockwise,
+    // A notebook published as a book (BOOKS.md): the column and a hidden mark; a page never
+    // rolled out wears `pageNew` above.
+    book: BookOpen,
+    hidden: EyeSlash,
 };
 
 /// The glyph an app's registry entry names. The registry (pure/apps.js) carries a role name rather than

@@ -58,10 +58,10 @@ export const APPS = [
         // no capability. What made the single "complicated notes app" safe to embrace was the
         // tucking: `startsTucked` opens on the plain list, and the tag column and the tree are
         // rails until someone wants them. It is only as monstrous as you choose to make it.
-        features: { tagColumn: true, tree: true },
+        features: { tagColumn: true, tree: true, bookColumn: true },
         // Columns tucked until this device says otherwise (panes.js `useColTucks`). The list is
         // the app; the other two are the powers it can grow.
-        startsTucked: ['tags', 'tree'],
+        startsTucked: ['tags', 'tree', 'publish'],
     },
     {
         id: 'feed',
@@ -143,6 +143,7 @@ const DEFAULT_FEATURES = {
     tree: false, // the document tree pane (doc/tree.js), right of the list
     pin: true, // the pin chip - floats the doc atop the LIST, so list-less apps drop it
     publish: true, // the publish chip (PUBLISH.md): the feed composer has its own Post button
+    bookColumn: false, // the Publish column (BOOKS.md): a notebook published as a book
 };
 
 /// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back

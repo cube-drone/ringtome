@@ -21,7 +21,7 @@ import { RightColumn } from '../doc/reader.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
-import { featuresOf, itemNoun, itemPlural, homeAppFor } from '../pure/apps.js';
+import { featuresOf, itemNoun, itemPlural, homeAppFor, bucketHolds } from '../pure/apps.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
@@ -29,6 +29,8 @@ import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 import { t } from '../i18n.js';
 import { docStatus } from '../pure/feed.js';
+import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
+import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
 
 const html = htm.bind(h);
 
@@ -130,7 +132,29 @@ const Snippet = ({ root, docId, query }) => {
 
 
 // The three status icons (PUBLISH.md ruling 6), on every row.
-const StatusMark = ({ doc }) => {
+const StatusMark = ({ doc, book }) => {
+    // Inside a book, a page's standing against the last rollout replaces its own publish
+    // status (BOOKS.md ruling 6): hidden, new, changed, current.
+    if (book) {
+        const standing = pageStanding(doc, book.hiddenDocs, book.hidden);
+        const icon =
+            standing === 'hidden' ? Icons.hidden : standing === 'new' ? Icons.pageNew : standing === 'changed' ? Icons.update : Icons.docPublic;
+        const title =
+            standing === 'hidden'
+                ? t('apps.notes.hidden-from-the-book', 'hidden from the book')
+                : standing === 'new'
+                  ? t('apps.notes.new-since-the-last-rollout', 'new since the last rollout')
+                  : standing === 'changed'
+                    ? t('apps.notes.changed-since-the-last-rollout', 'changed since the last rollout')
+                    : t('apps.notes.in-the-book-as-published', 'in the book as published');
+        const cls =
+            standing === 'hidden'
+                ? 'note-row-status note-row-status-hidden'
+                : standing === 'current'
+                  ? 'note-row-status note-row-status-public'
+                  : 'note-row-status note-row-status-pending';
+        return html`<span class=${cls} title=${title}><${icon} /></span> `;
+    }
     const status = docStatus(doc);
     const icon =
         status === 'scheduled' ? Icons.scheduled : status === 'public' ? Icons.docPublic : Icons.docPrivate;
@@ -154,7 +178,7 @@ const StatusMark = ({ doc }) => {
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
 // description, no date and no tags is one line tall.
 const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilter, onSelect,
-                   onToggleTag, everything, onFollowHome }) => html`<button
+                   onToggleTag, everything, onFollowHome, book }) => html`<button
     class=${doc.doc_id === selected ? 'note-row selected' : 'note-row'}
     onClick=${() => onSelect(doc.doc_id)}
     draggable=${true}
@@ -163,7 +187,7 @@ const NoteRow = ({ doc, root, bucket, selected, feat, searchQuery, hits, tagFilt
     <span class="note-row-title">
         ${/* The document's standing in public (PUBLISH.md ruling 6): detective for private,
             globe for public, clock for scheduled - each in its own colour. */ ''}
-        <${StatusMark} doc=${doc} />
+        <${StatusMark} doc=${doc} book=${book} />
         ${doc.pinned && html`<span class="note-row-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span> `}
         ${doc.media && doc.media.has_thumb
             ? html`<img
@@ -295,7 +319,21 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
 
     // Column widths: each column left of the editor drags at its right edge (panes.js - the
     // shared resizer strips + `colw:` prefs + CSS-var plumbing).
-    const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree']);
+    const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree', 'publish']);
+    // A notebook published as a book (BOOKS.md): the switch and the hidden marks, and the
+    // tree that says which pages sit beneath a hidden section - read once here, worn by
+    // the rows, the editor's bar, and the Publish column alike.
+    const bookFacts = useBookFacts(root);
+    const bookTree = useBookTree(root, bucket, treeReload);
+    const bookOn = feat.bookColumn && isBookBucket(bookFacts.modes, bucket);
+    const book = bookOn
+        ? {
+              bucket,
+              hidden: bookFacts.hidden,
+              hiddenDocs: hiddenDocsOf(bookTree, bookFacts.hidden),
+              mark: bookFacts.mark,
+          }
+        : null;
 
     // Which order prev/next walks depends on what's showing: with the tree column open they read
     // it as a book (depth-first, and the tree wins when both columns are open); with it tucked or
@@ -377,6 +415,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                     </div>`}
                     ${list.map(
                         (d) => html`<${NoteRow}
+                                  book=${book}
                             key=${d.doc_id}
                             doc=${d}
                             root=${root}
@@ -413,12 +452,25 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
                           onOrder=${setTreeOrder}
                           itemNoun=${noun}
                       />${resizer('tree')}`)}
+                ${feat.bookColumn &&
+                (tucked.has('publish')
+                    ? html`<${Rail} icon=${Icons.book} label="publish" onClick=${() => toggleTuck('publish')} />`
+                    : html`<${BookColumn}
+                          root=${root}
+                          bucket=${bucket}
+                          docs=${(docs || []).filter((d) => bucketHolds(d, app, bucket))}
+                          facts=${bookFacts}
+                          tree=${bookTree}
+                          onTuck=${() => toggleTuck('publish')}
+                          onSelect=${select}
+                      />${resizer('publish')}`)}
                 <${RightColumn}
                     root=${root}
                     docId=${selected}
                     docs=${docs}
                     nav=${nav}
                     bucket=${bucket}
+                    book=${book}
                     features=${feat}
                     onDeleted=${() => {
                         select(null);

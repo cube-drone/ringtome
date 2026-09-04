@@ -127,6 +127,78 @@
     width: var(--w-tree, 270px);
 }
 
+/* The Publish column (BOOKS.md): a notebook published as a book. */
+.notes-columns .book-column {
+    width: var(--w-publish, 260px);
+}
+.book-column {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow-y: auto;
+    font-size: 0.85rem;
+}
+.book-switch,
+.book-section {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.book-off,
+.book-ledger-head {
+    margin: 0;
+    color: var(--ink-soft);
+}
+.book-ledger-head {
+    font-weight: 600;
+    margin-top: 0.4rem;
+}
+.book-ledger {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.2rem 0.6rem;
+    margin: 0;
+}
+.book-ledger dt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--ink-soft);
+}
+.book-ledger dd {
+    margin: 0;
+}
+.book-pages,
+.book-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.book-page {
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: 0.1rem 0.2rem;
+    color: var(--ink);
+    cursor: pointer;
+    border-left: 3px solid var(--peach);
+}
+.book-page-new {
+    border-left-color: var(--peach);
+}
+.book-page-changed {
+    border-left-color: var(--peach);
+    font-style: italic;
+}
+.book-publish {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+}
+
 /* The resizer strip between columns: an invisible grab area that shows a teal seam on hover
    and while dragging. */
 .col-resizer {
