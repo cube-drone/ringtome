@@ -28,7 +28,7 @@ import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { startDocDrag } from '../doc/crosslink.js';
 import { Icons, formatIcon } from '../icons.js';
 import { t } from '../i18n.js';
-import { docStatus } from '../pure/feed.js';
+import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding } from '../pure/books.js';
 
@@ -134,7 +134,9 @@ const Snippet = ({ root, docId, query }) => {
 // The three status icons (PUBLISH.md ruling 6), on every row.
 const StatusMark = ({ doc, book }) => {
     // Inside a book, a page's standing against the last rollout replaces its own publish
-    // status (BOOKS.md ruling 6): hidden, new, changed, current.
+    // status (BOOKS.md ruling 6): hidden, new, changed, current. A picture filed in the
+    // notebook is not a page; it wears nothing here.
+    if (book && !isTextDoc(doc)) return null;
     if (book) {
         const standing = pageStanding(doc, book.hiddenDocs, book.hidden);
         const icon =

@@ -96,7 +96,15 @@ deferred". This is that design.
    plan with progress in the column. Acceptance: a notebook of pages rolls out,
    the follower's feed shows one book post and no pages, every page has a permalink and
    opens from the book.
-3. **Updates.** A second rollout diffs, re-publishes changed pages under their ids, retracts
+3. ~~**Updates.**~~ Built 2026-09-04: a rollout after the first reads the book's last
+   payload back, re-publishes pages whose head moved (under their ids), retracts pages the
+   book named that it no longer does (removed from the notebook, or hidden since - their
+   notes become drafts again), mints the book's new version, and - when anything changed -
+   one update post, "GRIMOIRE updated", a Marquee list of the changed pages as links and the
+   removed ones by name, threaded under the book as a reply; a rollout that changed only the
+   order re-mints the book quietly. The plan reports `changed`, `removed`, `update`. The
+   feed draws an update as an ordinary post under "in reply to: GRIMOIRE"; a bespoke card
+   can come with the reader. Acceptance in book_posts.cjs. A second rollout diffs, re-publishes changed pages under their ids, retracts
    removed and newly-hidden ones, mints the book's new version and the update post threaded
    under the book; the feed card for an update ("GRIMOIRE updated: …"). Acceptance: edit two
    pages, hide one, roll out, the follower sees one update naming two pages and the hidden

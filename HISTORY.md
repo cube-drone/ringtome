@@ -8278,3 +8278,25 @@ a book as its table of contents with page links (`parseBook`, pure). Acceptance:
 and a hidden one roll out, the shelf lists only the book, every page names its book and
 records its version, the follower's feed shows one book post and no pages, a page opens
 from the book.
+
+## 2026-09-04: BOOKS.md slice 3 - updates
+
+A rollout after the first now reads the book's last payload back through the file layer
+(opened with the book's key when sealed), re-publishes the pages whose head moved, retracts
+every page the book named that it no longer does - removed from the notebook or hidden
+since; the takedown's own steps, note released to a draft, the fold drained so the author's
+next feed read is already true - mints the book's new version, and, when anything changed,
+one update post: "GRIMOIRE updated", the changed pages as links and the removed ones by
+name, threaded under the book as a reply so it reaches feeds the way a reply does. A
+reorder-only rollout re-mints the book quietly. The plan reports `changed`, `removed`, and
+`update`. Acceptance: edit two pages, hide one, roll out again - two re-published, one
+retracted with its permalink gone and its note a draft again, the book's tree without it,
+one update naming both, the shelf holding the book and the update and still no pages.
+Field-found (Curtis: "stuck at the publish step... 'this note's words haven't arrived'",
+and "view the book" going to "no such post"): a picture filed in the notebook was treated
+as a page and sent through the text door, which refused it; pages are the notebook's TEXT
+documents now (the column and the rows agree), and a picture rides as a twin of the page
+that embeds it. And the book's id is chosen before the pages roll out so they can carry it,
+which made "view the book" a link to nothing while the rollout was still failing; the
+`books` fact now says `published` only once the book is minted, and the column waits for
+that. The acceptance files a picture in the notebook.

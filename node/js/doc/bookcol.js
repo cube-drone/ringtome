@@ -13,6 +13,7 @@ import { PaneHead } from '../panes.js';
 import { t } from '../i18n.js';
 import { rootTitleFor } from '../pure/naming.js';
 import { BOOKS_KV, HIDDEN_KV, bookModes, bookFacts, isBookBucket, hiddenSetOf, hiddenDocsOf, bookLedger } from '../pure/books.js';
+import { isTextDoc } from '../pure/feed.js';
 
 const ROLLOUT_KV = 'book_rollout';
 
@@ -135,7 +136,8 @@ function sectionsOf(node, out = [], depth = 0, seen = new Set()) {
 export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }) => {
     const { modes, books, hidden, setBook, mark, refresh } = facts;
     const on = isBookBucket(modes, bucket);
-    const published = books[bucket] && books[bucket].published_as_book;
+    // "View the book" only once the book exists: its id is chosen before the pages roll out.
+    const published = books[bucket] && books[bucket].published && books[bucket].published_as_book;
     const [wishes, setWishes] = useState({ settled: false, trusted_only: false });
     const [asking, setAsking] = useState(false);
     const [askError, setAskError] = useState(null);
@@ -167,7 +169,8 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
         }
     };
     const hiddenDocs = hiddenDocsOf(tree, hidden);
-    const ledger = bookLedger(docs, hiddenDocs, hidden);
+    // Pages are the notebook's text documents; a picture filed here rides as a twin.
+    const ledger = bookLedger((docs || []).filter(isTextDoc), hiddenDocs, hidden);
     const sections = sectionsOf(tree);
     const rowsOf = (list, cls) =>
         list.map(

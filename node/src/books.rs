@@ -39,6 +39,14 @@ struct Plan {
     error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     book: Option<String>,
+    /// The update post this rollout minted (BOOKS.md ruling 5) - none on the first rollout,
+    /// where the book itself is the announcement, and none when nothing changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    update: Option<String>,
+    #[serde(default)]
+    changed: usize,
+    #[serde(default)]
+    removed: usize,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
@@ -50,6 +58,11 @@ struct BookFacts {
     /// The sealing key of a trusted-only book, hex - minted at the first rollout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     key: Option<String>,
+    /// True once the book document has actually been minted - the id is chosen before the
+    /// pages roll out (they carry it), so "view the book" must wait for this, not the id
+    /// (field-found 2026-09-04: a link to a book that did not exist yet).
+    #[serde(default)]
+    published: bool,
 }
 
 /// The periodic pass: every agented persona, every plan that is pending or mid-flight.
@@ -146,11 +159,20 @@ async fn rollout(
     // The facts: which pages, which hidden, which book.
     let view = data.documents().all().await?;
     let buckets = data.buckets().all().await?;
+    // Pages are the notebook's TEXT documents. An uploaded picture filed in the notebook is
+    // not a page - it rides as a twin of whichever page embeds it (field-found 2026-09-04:
+    // a picture in the bucket sent the rollout through the text door, which refused it as
+    // "words haven't arrived", and the rollout stuck).
     let mut in_bucket: Vec<[u8; 16]> = buckets
         .into_iter()
         .filter(|(_, names)| names.iter().any(|n| n == bucket))
         .map(|(id, _)| id)
-        .filter(|id| view.docs.get(id).and_then(|d| d.display_head()).is_some())
+        .filter(|id| {
+            view.docs
+                .get(id)
+                .and_then(|d| d.display_head())
+                .is_some_and(|h| crate::record::documents::Format::from_wire(h.header.format).is_mergeable_text())
+        })
         .collect();
     in_bucket.sort();
     let (hidden_rows, _) = data.private_registers(HIDDEN_KV).all().await?;
@@ -227,9 +249,22 @@ async fn rollout(
         None
     };
 
+    // What the book said last time (slice 3): the pages it named, so removed and newly hidden
+    // ones can be retracted and the update can name them; none before the first rollout.
+    let previous = previous_payload(state, data, &book_id, book_key).await?;
+    let previous_pages: BTreeMap<String, String> = previous
+        .as_ref()
+        .map(|p| {
+            let mut out = BTreeMap::new();
+            collect_pages(p, &mut out);
+            out
+        })
+        .unwrap_or_default();
+
     // The pages, through the door - skipping any whose published version is already the head.
     let mut done = 0usize;
     let mut baking = false;
+    let mut changed: Vec<(String, String)> = Vec::new(); // (post hex, title) minted this pass
     let mut published: BTreeMap<[u8; 16], String> = BTreeMap::new();
     for doc_id in &pages {
         let head_hex = view
@@ -258,6 +293,7 @@ async fn rollout(
                 }
                 data.annotations().set_field(doc_id, PUBLISHED_VERSION, &head_hex).await?;
                 published.insert(*doc_id, hex::encode(post_id));
+                changed.push((hex::encode(post_id), titles.get(doc_id).cloned().unwrap_or_default()));
                 done += 1;
                 plan.done = done;
             }
@@ -277,6 +313,29 @@ async fn rollout(
     if baking {
         plan.status = "baking".into();
         return Ok(());
+    }
+
+    // Pages the book named before and does not now - removed from the notebook, or hidden
+    // since (ruling 3) - are retracted: the permalink goes, the note is a draft again, every
+    // reader's journal reconciles on the fold.
+    let now_published: BTreeSet<&String> = published.values().collect();
+    let mut removed: Vec<String> = Vec::new();
+    for (post_hex, title) in &previous_pages {
+        if now_published.contains(post_hex) {
+            continue;
+        }
+        let Some(post_id) = hex::decode(post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else {
+            continue;
+        };
+        if crate::record::documents::public_head(data.db(), &post_id).await?.is_none() {
+            continue; // already gone
+        }
+        data.documents().retract_public(&post_id).await?;
+        if let Some(note) = data.annotations().note_claiming(&post_id).await? {
+            data.annotations().clear_field(&note, store::PUBLISHED_AS).await?;
+            data.annotations().clear_field(&note, PUBLISHED_VERSION).await?;
+        }
+        removed.push(title.clone());
     }
 
     // The book: the tree with its pages' public ids, minted onto the book's id.
@@ -319,6 +378,70 @@ async fn rollout(
             tracing::warn!(error = ?e, "book key memo write failed");
         }
     }
+    if !facts.published {
+        facts.published = true;
+        data.private_registers(BOOKS_KV)
+            .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
+            .await?;
+    }
+
+    // The update (ruling 5): one post per rollout after the first, threaded under the book
+    // like a reply, naming the pages that changed and the ones that went. The first rollout
+    // needs none - the book itself is the announcement - and a rollout that changed nothing
+    // but the tree's order re-mints the book quietly.
+    plan.changed = changed.len();
+    plan.removed = removed.len();
+    if previous.is_some() && (!changed.is_empty() || !removed.is_empty()) {
+        let mut body = String::new();
+        if !changed.is_empty() {
+            body.push_str(&format!("{bucket} updated:\n\n"));
+            for (post, title) in &changed {
+                let shown = if title.is_empty() { "untitled page".to_string() } else { title.clone() };
+                body.push_str(&format!("- [{shown}](/id/{root}/post/{post})\n"));
+            }
+        }
+        if !removed.is_empty() {
+            if !body.is_empty() {
+                body.push('\n');
+            }
+            body.push_str("removed:\n\n");
+            for title in &removed {
+                let shown = if title.is_empty() { "untitled page".to_string() } else { title.clone() };
+                body.push_str(&format!("- {shown}\n"));
+            }
+        }
+        let root_key = crate::pubkey::decode(root).ok_or_else(|| anyhow!("bad root"))?;
+        let target: crate::record::documents::ThreadTarget = (root_key, book_id);
+        let update = crate::record::documents::save_public_text(
+            data.db(),
+            data.signer(),
+            data.files(),
+            crate::record::documents::PublicText {
+                onto: None,
+                title: &format!("{bucket} updated"),
+                body: &body,
+                format: crate::record::documents::Format::Marquee,
+                refs: Vec::new(),
+                reply: Some((target, target)),
+                settled: plan.settled,
+                trusted_only: plan.trusted_only,
+                post_key: book_key,
+                dated_ms: None,
+                part_of: None,
+            },
+        )
+        .await?;
+        if let Some(key) = book_key {
+            if let Err(e) = crate::postkeys::remember(&state.node_db, root, &hex::encode(update), &key).await {
+                tracing::warn!(error = ?e, "update key memo write failed");
+            }
+        }
+        plan.update = Some(hex::encode(update));
+    }
+    // The public lane moved: reconcile every reader's journal against the shelf now, so the
+    // author's own feed read after the 200 already shows the truth (the takedown's idiom).
+    let generation = crate::fold::nudge(state, root);
+    crate::fold::drain(root, generation).await;
     plan.status = "done".into();
     tracing::info!(root = %root, bucket = %bucket, book = %hex::encode(minted), pages = done, "book rolled out");
     Ok(())
@@ -392,5 +515,46 @@ fn section_payload(s: &Section, published: &BTreeMap<[u8; 16], String>, titles: 
             .filter_map(|p| published.get(p).map(|post| PagePayload { post: post.clone(), title: titles.get(p).cloned().unwrap_or_default() }))
             .collect(),
         sections: s.sections.iter().map(|x| section_payload(x, published, titles)).collect(),
+    }
+}
+
+/// The book's last published payload, if the book exists: read back through the file layer
+/// (opened with the book's key when sealed) and parsed loosely - a payload this node cannot
+/// read is treated as none, which only costs the removal pass its memory.
+async fn previous_payload(
+    state: &AppState,
+    data: &store::Store,
+    book_id: &[u8; 16],
+    book_key: Option<[u8; 32]>,
+) -> Result<Option<serde_json::Value>> {
+    let Some(head) = crate::record::documents::public_head(data.db(), book_id).await? else {
+        return Ok(None);
+    };
+    let Some(bytes) = state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await? else {
+        return Ok(None);
+    };
+    let plain = match book_key {
+        Some(key) => match crate::record::private::open_post_body(&bytes, &key) {
+            Some(p) => p,
+            None => return Ok(None),
+        },
+        None => bytes,
+    };
+    Ok(serde_json::from_slice::<serde_json::Value>(&plain).ok())
+}
+
+/// Every page a payload names, post hex -> title, sections walked.
+fn collect_pages(node: &serde_json::Value, out: &mut BTreeMap<String, String>) {
+    if let Some(pages) = node.get("pages").and_then(|p| p.as_array()) {
+        for p in pages {
+            if let Some(post) = p.get("post").and_then(|x| x.as_str()) {
+                out.insert(post.to_string(), p.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string());
+            }
+        }
+    }
+    if let Some(sections) = node.get("sections").and_then(|s| s.as_array()) {
+        for s in sections {
+            collect_pages(s, out);
+        }
     }
 }

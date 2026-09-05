@@ -8,7 +8,7 @@ const assert = require("node:assert");
 const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const { makeUserFetch } = require("./helpers.cjs");
+const { makeUserFetch, makePng } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
 const { HOST_B } = require("./fetch.cjs");
 
@@ -34,6 +34,14 @@ describe("books: a notebook rolls out as one book", function () {
         pages.two = await mk("chapter two", "the second words");
         pages.loose = await mk("a loose page", "unfiled words");
         hiddenId = await mk("the secret page", "never published");
+        // A picture filed in the notebook is not a page (field-found 2026-09-04): it must
+        // neither count nor send the rollout through the text door.
+        const pic = await (await ada(`api/identity/${adaRoot}/docs/binary?title=plate`, { method: "POST", body: makePng(32, 32), file: true })).json();
+        await ada(`api/identity/${adaRoot}/docs/${pic.doc_id}/buckets/${bucket}`, { method: "PUT" });
+        for (let i = 0; i < 60; i++) {
+            if ((await ada(`api/identity/${adaRoot}/docs/${pic.doc_id}/body`)).status === 200) break;
+            await new Promise((r) => setTimeout(r, 300));
+        }
         // The tree: a root by title convention, one section holding two chapters.
         const root = (await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: `wiki:${bucket}` })).json()).taxonomy_id;
         const part = (await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "part one" })).json()).taxonomy_id;
@@ -117,5 +125,48 @@ describe("books: a notebook rolls out as one book", function () {
         const page = await bea(`id/${adaRoot}/docs/${(JSON.parse(await (await bea(`id/${adaRoot}/docs/${book}/body`)).text())).pages[0].post}/body`);
         assert.equal(page.status, 200, "a page opens from the book");
         assert.equal(await page.text(), "unfiled words");
+    });
+
+    it("a second rollout re-publishes changed pages, retracts a newly hidden one, and says so in one update", async () => {
+        // Edit two pages, hide one.
+        const edit = async (docId, body) => {
+            const got = await (await ada(`api/identity/${adaRoot}/docs/${docId}`)).json();
+            const r = await j(ada, `api/identity/${adaRoot}/docs/${docId}`, { title: got.title, body, parents: got.heads.map((h) => h.version), format: "marquee" }, "PUT");
+            assert.equal(r.status, 200, await r.text());
+        };
+        await edit(pages.one, "the first words, revised");
+        await edit(pages.loose, "unfiled words, revised");
+        await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/doc:${pages.two}`, { value: "yes" }, "PUT");
+        const twoPost = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find((d) => d.doc_id === pages.two).fields.published_as;
+        assert.ok(twoPost, "chapter two was published by the first rollout");
+        const asked = await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
+        assert.equal(asked.status, 200, await asked.text());
+        let p = null;
+        for (let i = 0; i < 40; i++) {
+            await beat(undefined, "book-rollout", adaRoot);
+            p = await plan();
+            if (p && (p.status === "done" || p.status === "failed")) break;
+            await new Promise((r) => setTimeout(r, 500));
+        }
+        assert.equal(p.status, "done", `the second rollout came to rest: ${JSON.stringify(p)}`);
+        assert.equal(p.changed, 2, "two pages re-published");
+        assert.equal(p.removed, 1, "one page retracted");
+        assert.ok(p.update, "an update post was minted");
+        // The book's new version no longer names chapter two; its permalink is gone.
+        const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
+        assert.deepEqual(body.sections[0].pages.map((x) => x.title), ["chapter one"]);
+        assert.equal((await ada(`api/id/${adaRoot}/posts/${twoPost}`)).status, 404, "the hidden page's permalink is gone");
+        const two = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find((d) => d.doc_id === pages.two);
+        assert.ok(!two.fields.published_as, "and its note is a draft again");
+        // The update: threaded under the book, naming the two changed pages and the removed one.
+        const update = await (await ada(`api/id/${adaRoot}/posts/${p.update}`)).json();
+        assert.equal(update.title, `${bucket} updated`);
+        assert.ok(update.reply_to && update.reply_to.doc_id === book, "threaded under the book");
+        const words = await (await ada(`id/${adaRoot}/docs/${p.update}/body`)).text();
+        assert.ok(words.includes("[chapter one]") && words.includes("[a loose page]"), `names the changed pages: ${words}`);
+        assert.ok(words.includes("removed:") && words.includes("chapter two"), `names the removed page: ${words}`);
+        // The shelf: the book and the update, still no pages.
+        const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
+        assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`).sort(), [`book:${bucket}`, `marquee:${bucket} updated`]);
     });
 });
