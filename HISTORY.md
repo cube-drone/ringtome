@@ -8440,3 +8440,12 @@ your page with the history entry replaced). The three management items - profile
 computers, log out - fold into a disclosure on your own page where "this is you" used to be
 a link, headed by a gear and "your settings"; only you see it. `/home/persona/profile` and `/home/persona/computers` stay as
 they were beneath it. The dock's lead tile lights on your own page.
+
+## 2026-09-05 (cont.): PEEK.md drafted
+
+Curtis, on the way to public pins: a first look at a stranger mirrors their whole public
+object today, and a persona this node has been made to want can fill the disk - the
+exchange bounds a frame and a blob, never a stream. PEEK.md measures the bounds, proposes
+the rulings (every exchange budgeted; a peek as a shape carried by fragments; identity
+chains capped; a footprint and an expiry per peek; the follow ceiling later) and cuts four
+slices, budgets first. Nothing built yet.

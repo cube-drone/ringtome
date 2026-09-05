@@ -104,6 +104,11 @@ Does a mutual follow+trust make a "friend"?
 * sync-request floods: malicious nodes can DDoS with sync-requests, probably?
 
 ### Sync
+
+* Peeks and budgets — [PEEK.md](PEEK.md) (2026-09-05): every exchange budgeted, a first
+  look at a stranger held as a shape (identity, annotations, twenty posts as fragments)
+  with a footprint and an expiry, the identity chain capped; four slices, budgets first.
+  Pins wait on it.
 * Frontier refresh grew 4 -> 27ms per fold across an 8x80 test-data run (2026-08-28's
   quadratic hunt left it as the one unexamined tail): `memo_public_anchors` or the
   fingerprint walk scales with something - find which, with the "fold legs" line.
