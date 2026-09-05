@@ -18,7 +18,6 @@ import htm from 'htm';
 import { api, xhrUpload } from '../net.js';
 import { Modal } from '../modal.js';
 import { Annotations } from './annotations.js';
-import { ensureTreeRoot } from './tree.js';
 import { takeDocDropSwap, SECTION_DRAG, DOC_DRAG } from './crosslink.js';
 import { parse } from '@cube-drone/marquee-react-renderer';
 import { t } from '../i18n.js';
@@ -71,7 +70,7 @@ const queueLabel = (r) =>
             : `waiting in the processing queue — ${r.queuePos} ahead of it…`
         : QUEUE_WORD[r.queueStatus] || 'processing…';
 
-const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFailed, onIngested }) => {
+const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onIngested }) => {
     // One row per file. `phase`: uploading -> queued -> done | failed.
     const [rows, setRows] = useState(() =>
         files.map((f) => ({
@@ -195,20 +194,11 @@ const UploadFlow = ({ root, bucket, files, onClose, intoTree, onUploaded, onFail
                         { method: 'PUT' }
                     ).catch(() => {});
                 }
-                // A tree-having app (Notes, Wiki) also files the upload into the tree - the
-                // root's last child, same as the list's new-thing button - so it's visible and draggable into
-                // place instead of invisibly unfiled. (The tree row appears once the transcode
-                // lands a version; taxonomy membership itself works immediately.)
-                if (intoTree && bucket) {
-                    ensureTreeRoot(root, bucket)
-                        .then((rid) =>
-                            api(`/api/identity/${root}/taxonomies/${rid}/members/${res.doc_id}`, {
-                                method: 'PUT',
-                                body: JSON.stringify({}),
-                            })
-                        )
-                        .catch(() => {});
-                }
+                // An upload is filed into the NOTEBOOK but never into the tree (Curtis,
+                // 2026-09-05: "if we want a media item in the book we can put it in the
+                // document"): a picture is not a page. Until then every upload joined the
+                // tree as the root's last child, and a book's table of contents grew an
+                // "Images" section nobody asked for.
                 // A rename typed while the bytes were in flight: apply it to the queued job now.
                 if (namesRef.current[i] !== file.name) {
                     renameNow(i, { phase: 'queued', jobId: res.job_id, appliedName: file.name });
@@ -433,13 +423,11 @@ export function mediaReference({ root, format, mimeType, docId, name }) {
  *
  * @param bucket    where landed uploads FILE (may deliberately differ from the doc's own
  *                  bucket - the journal files media into Writer's home, never itself)
- * @param intoTree  also append landed uploads to the bucket's tree root
  * @param cursorPos () => offset in `body` where placeholders insert (null = append)
  */
 export function useUploadCapture({
     root,
     bucket,
-    intoTree,
     format,
     body,
     setBody,
@@ -594,7 +582,6 @@ export function useUploadCapture({
         html`<${UploadFlow}
             root=${root}
             bucket=${bucket}
-            intoTree=${intoTree}
             files=${uploadFiles}
             onUploaded=${onUploaded}
             onFailed=${onUploadFailed}

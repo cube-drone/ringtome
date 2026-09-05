@@ -8360,3 +8360,6 @@ The acceptance then caught what the drive could not: a page hidden by its own ma
 at the tree's top level, and the cover choice took it before checking it was published, so
 the book fell back to its notebook's name. The cover is the first PUBLISHED page in reading
 order now.
+Uploads no longer join the tree (Curtis: media in the taxonomy is "kind of needless: if we
+want a media item in the book we can put it in the document"); they are still filed into
+the notebook. A new text document still lands in the tree as before.

@@ -252,7 +252,6 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
     } = useUploadCapture({
         root,
         bucket,
-        intoTree: !!feat.tree,
         format,
         body,
         setBody,
