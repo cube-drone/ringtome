@@ -484,8 +484,12 @@ fn walk_tree(tree: Option<&store::TaxonomyNode>, hidden: &BTreeSet<String>, in_b
                 if sub.members.is_none() {
                     continue; // a stub: expanded elsewhere
                 }
-                let (ss, ps) = walk(sub, here, hidden, members, hidden_docs, filed, seen);
-                if !here {
+                // The CHILD's own mark decides whether it is listed (field-found 2026-09-04:
+                // a hidden section stayed in the table of contents, emptied); and a section
+                // with nothing to read beneath it - pictures only, or nothing - is left out.
+                let child_hidden = here || hidden.contains(&format!("sec:{}", hex::encode(sub.taxonomy_id)));
+                let (ss, ps) = walk(sub, child_hidden, hidden, members, hidden_docs, filed, seen);
+                if !child_hidden && !(ps.is_empty() && ss.is_empty()) {
                     sections.push(Section { title: sub.title.clone(), pages: ps, sections: ss });
                 }
             } else if members.contains(&m.doc_id) {
@@ -556,5 +560,43 @@ fn collect_pages(node: &serde_json::Value, out: &mut BTreeMap<String, String>) {
         for s in sections {
             collect_pages(s, out);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn leaf(id: u8) -> store::TreeMember {
+        store::TreeMember { root: [0u8; 32], doc_id: [id; 16], taxonomy: None }
+    }
+    fn section(id: u8, title: &str, members: Vec<store::TreeMember>) -> store::TreeMember {
+        store::TreeMember {
+            root: [0u8; 32],
+            doc_id: [id; 16],
+            taxonomy: Some(store::TaxonomyNode { taxonomy_id: [id; 16], title: title.into(), members: Some(members) }),
+        }
+    }
+
+    #[test]
+    fn a_hidden_section_is_left_out_whole_and_an_empty_one_is_not_listed() {
+        let tree = store::TaxonomyNode {
+            taxonomy_id: [1u8; 16],
+            title: "wiki:g".into(),
+            members: Some(vec![
+                leaf(10),
+                section(2, "chapter one", vec![leaf(11)]),
+                section(3, "hidden section", vec![leaf(12), section(4, "deeper", vec![leaf(13)])]),
+                section(5, "images", vec![leaf(99)]), // 99 is not a page (a picture)
+                section(6, "empty", vec![]),
+            ]),
+        };
+        let hidden: BTreeSet<String> = [format!("sec:{}", hex::encode([3u8; 16]))].into_iter().collect();
+        let members: Vec<[u8; 16]> = [10u8, 11, 12, 13].iter().map(|b| [*b; 16]).collect();
+        let (ordered, hidden_docs) = walk_tree(Some(&tree), &hidden, &members);
+        assert_eq!(ordered.sections.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(), vec!["chapter one"]);
+        assert_eq!(ordered.pages, vec![[10u8; 16]]);
+        assert_eq!(hidden_docs, [[12u8; 16], [13u8; 16]].into_iter().collect::<BTreeSet<_>>());
+        assert!(ordered.filed.contains(&[11u8; 16]) && ordered.filed.contains(&[12u8; 16]));
     }
 }

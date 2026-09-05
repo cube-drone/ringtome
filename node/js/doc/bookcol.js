@@ -180,12 +180,15 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
         );
     return html`<aside class="book-column">
         <${PaneHead} label=${t('doc.bookcol.publish', 'publish')} onTuck=${onTuck} />
+        <div class="book-block">
         <label class="book-switch" title=${t('doc.bookcol.a-book-publishes-as-one', 'a book publishes as one thing: the whole notebook and its tree, and later its changes as one update at a time - never a page on its own')}>
             <input type="checkbox" checked=${on} onChange=${(e) => setBook(bucket, e.currentTarget.checked)} />
             <${Icons.book} /> ${t('doc.bookcol.publish-this-entire-notebook', 'publish this entire notebook')}
         </label>
+        </div>
         ${on
-            ? html`<p class="book-ledger-head">${t('doc.bookcol.since-the-last-rollout', 'since the last rollout')}</p>
+            ? html`<div class="book-block">
+                  <p class="book-ledger-head">${t('doc.bookcol.since-the-last-rollout', 'since the last rollout')}</p>
                   <dl class="book-ledger">
                       <dt><${Icons.pageNew} /> ${t('doc.bookcol.new', 'new')}</dt>
                       <dd>${ledger.new.length}</dd>
@@ -201,8 +204,10 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                       ${rowsOf(ledger.new, 'book-page-new')}
                       ${rowsOf(ledger.changed, 'book-page-changed')}
                   </div>`}
+                  </div>
                   ${sections.length > 0 &&
-                  html`<p class="book-ledger-head">${t('doc.bookcol.sections', 'sections')}</p>
+                  html`<div class="book-block">
+                      <p class="book-ledger-head">${t('doc.bookcol.sections', 'sections')}</p>
                       <div class="book-sections">
                           ${sections.map(
                               (s) => html`<label class="book-section" key=${s.id} style=${`padding-left: ${s.depth * 0.8}rem`}>
@@ -215,7 +220,9 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                                   ${s.title || t('doc.bookcol.untitled-section', '(untitled section)')}
                               </label>`
                           )}
-                      </div>`}
+                      </div>
+                  </div>`}
+                  <div class="book-block">
                   ${!published &&
                   html`<label class="book-switch" title=${t('doc.bookcol.settled-means', 'turns off comments and rebroadcasts for the book, as far as this network can honor it')}>
                           <input type="checkbox" checked=${wishes.settled} onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))} />
@@ -232,7 +239,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                           ? t('doc.bookcol.roll-out-the-changes-the', 'roll out the changes: the new and changed pages, and the book\'s tree as it is now')
                           : t('doc.bookcol.publish-the-whole-notebook-as', 'publish the whole notebook as one book - every page that is not hidden, and the tree')}
                       onClick=${rollOut}
-                  ><${Icons.docPublic} /> ${published ? t('doc.bookcol.publish-the-changes', 'publish the changes') : t('doc.bookcol.publish-the-book', 'publish the book')}</button>
+                  >${asking || moving ? html`<span class="status-spin"><${Icons.spinner} /></span>` : html`<${Icons.docPublic} />`} ${published ? t('doc.bookcol.publish-the-changes', 'publish the changes') : t('doc.bookcol.publish-the-book', 'publish the book')}</button>
                   ${moving &&
                   html`<p class="book-progress">
                       ${plan.status === 'baking'
@@ -242,7 +249,8 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   ${rolloutFailed && html`<p class="form-error">${plan.error || t('doc.bookcol.the-rollout-failed', 'the rollout failed')}</p>`}
                   ${askError && html`<p class="form-error">${askError}</p>`}
                   ${published &&
-                  html`<a class="book-view" href=${`/id/${root}/post/${published}`}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`}`
+                  html`<a class="book-view" href=${`/id/${root}/post/${published}`}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`}
+                  </div>`
             : html`<p class="book-off">
                   ${t('doc.bookcol.this-notebook-publishes-page-by', 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates')}
               </p>`}

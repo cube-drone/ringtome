@@ -8300,3 +8300,11 @@ that embeds it. And the book's id is chosen before the pages roll out so they ca
 which made "view the book" a link to nothing while the rollout was still failing; the
 `books` fact now says `published` only once the book is minted, and the column waits for
 that. The acceptance files a picture in the notebook.
+Column polish (Curtis): four blocks with a rule between - the switch, the ledger, the
+sections, the publication with its two options beside its button - and the button's globe
+becomes a spinner while a rollout is asked for or moving.
+Field-found (Curtis: "the book's TOC still contains the Hidden Section, even if it doesn't
+contain any of the documents within"): the walk decided a child section's listing by its
+parent's hidden state, not its own; and a section with only pictures beneath it was listed
+empty. The child's own mark decides now, and a section with nothing to read is left out -
+a unit claim on the walk, and the acceptance grows a hidden section and an empty one.

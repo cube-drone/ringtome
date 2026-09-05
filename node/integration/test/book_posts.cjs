@@ -49,6 +49,15 @@ describe("books: a notebook rolls out as one book", function () {
         await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${pages.one}`, {}, "PUT");
         await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${pages.two}`, {}, "PUT");
         await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${hiddenId}`, {}, "PUT");
+        // A hidden SECTION with a page in it, and an empty section: neither may appear in
+        // the table of contents (field-found 2026-09-04).
+        const secret = await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "hidden section" })).json();
+        const behind = await mk("behind the curtain", "not for the book");
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${secret.taxonomy_id}`, {}, "PUT");
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${secret.taxonomy_id}/members/${behind}`, {}, "PUT");
+        await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/sec:${secret.taxonomy_id}`, { value: "yes" }, "PUT");
+        const empty = await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "images" })).json();
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${root}/members/${empty.taxonomy_id}`, {}, "PUT");
         // Book mode, and the secret page hidden.
         await j(ada, `api/identity/${adaRoot}/private/kv/books/${bucket}`, { value: JSON.stringify({ mode: "book" }) }, "PUT");
         await j(ada, `api/identity/${adaRoot}/private/kv/book_hidden/doc:${hiddenId}`, { value: "yes" }, "PUT");
@@ -85,8 +94,8 @@ describe("books: a notebook rolls out as one book", function () {
         assert.deepEqual(formats, [`book:${bucket}`], `only the book: ${formats}`);
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
         assert.equal(body.title, bucket);
-        assert.equal(body.sections.length, 1);
-        assert.equal(body.sections[0].title, "part one");
+        assert.deepEqual(body.sections.map((s) => s.title), ["part one"], "a hidden section and an empty one are not listed");
+        assert.ok(!JSON.stringify(body).includes("curtain"), "nothing beneath a hidden section publishes");
         assert.deepEqual(body.sections[0].pages.map((p) => p.title), ["chapter one", "chapter two"]);
         assert.deepEqual(body.pages.map((p) => p.title), ["a loose page"], "the unfiled page rides at the top level");
         assert.ok(!JSON.stringify(body).includes("secret"), "hidden never publishes");

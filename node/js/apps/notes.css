@@ -139,6 +139,17 @@
     overflow-y: auto;
     font-size: 0.85rem;
 }
+/* Four blocks, a rule between each (Curtis, 2026-09-04): the switch; the ledger; the
+ * sections; the publication - its options on the same side of the line as its button. */
+.book-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.book-block + .book-block {
+    border-top: 1px solid var(--border);
+    padding-top: 0.6rem;
+}
 .book-switch,
 .book-section {
     display: flex;
