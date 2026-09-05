@@ -10,12 +10,13 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
+import { useLocation } from 'preact-iso';
 import { api } from './net.js';
+import { speakable } from './speakable.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
 import { personaHue, shortcode } from './pure/person.js';
-import { AddressRow, PersonBanner } from './person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 
@@ -514,26 +515,37 @@ export function usePersonaName(current) {
 
 // The persona home: the root of identity management (reached by the dock's persona tile). A small
 // menu - profile, your computers, log out - each its own place under /home/persona.
-export const PersonaHome = ({ persona, session }) => {
-    const current = persona.current;
-    // Live name (mirror-first), so a rename lands here as fast as it does in the header and badge -
-    // not the fetched-at-open snapshot, which only refreshed on reload.
-    const name = usePersonaName(current);
+/// The persona app IS your own /id page now (Curtis, 2026-09-05: the two overlapped, so
+/// "/home/persona" is abandoned as a place and kept as a jump). The dock tile, the console
+/// tile and every sub-page's back button still say /home/persona; this turns them into a
+/// visit to your own page, replacing the history entry so back never lands here twice.
+export const PersonaHome = ({ persona }) => {
+    const loc = useLocation();
+    const root = persona.current && persona.current.root;
+    useEffect(() => {
+        if (root) loc.route(`/id/${speakable(root)}`, true);
+    }, [root]); // eslint-disable-line react-hooks/exhaustive-deps
+    return null;
+};
+
+/// Managing yourself, on your own page: the three items the old persona home carried -
+/// profile, your computers, log out - folded into the disclosure that sits where "this is
+/// you" used to be a link (Curtis, 2026-09-05), under a gear and "your settings". Only the
+/// person in question ever sees it.
+export const PersonaMenu = ({ persona, session }) => {
     const logout = async () => {
         // Heading out forgets this browser: stream stopped, mirror dropped. Confirm first - it's
         // easy to hit by mistake, and coming back means signing in again.
-        if (!confirm('Log out of this browser? You will sign in again to come back.')) return;
+        if (!confirm(t('persona.log-out-of-this-browser', 'Log out of this browser? You will sign in again to come back.'))) return;
         await persona.shutdown();
         session.logout();
     };
     return html`
-        <div class="persona-page">
-            ${/* The Person widget, at banner size - your own face, same component that shows
-                anyone else's (js/person.js). The live name below still feeds the shell's
-                badge; the banner reads the same mirror. */ ''}
-            <${PersonBanner} root=${current.root} current=${current} />
-            ${!name && html`<p class="id-quiet">${t('persona.persona', 'persona {p0}', { p0: shortcode(current.root) })}</p>`}
-            <${AddressRow} root=${current.root} />
+        <details class="you-menu">
+            <summary class="ledger-head">
+                <span class="persona-menu-icon"><${Icons.settings} /></span>
+                ${t('persona.your-settings', 'your settings')}
+            </summary>
             <nav class="persona-menu">
                 <a class="persona-menu-item" href="/home/persona/profile">
                     <span class="persona-menu-icon"><${Icons.profile} /></span>
@@ -557,7 +569,7 @@ export const PersonaHome = ({ persona, session }) => {
                     </span>
                 </button>
             </nav>
-        </div>
+        </details>
     `;
 };
 

@@ -228,8 +228,9 @@ export const PersonRow = ({ root, current, profile, aside }) => {
 };
 
 /// The whole person: picture, names, the shareable address, their bio, and - for anyone who
-/// isn't you - your relationship with them.
-export const PersonCard = ({ root, current, profile, children }) => {
+/// isn't you - your relationship with them. For you, `you` is what sits where the
+/// relationship would: the page's own management disclosure (persona.js PersonaMenu).
+export const PersonCard = ({ root, current, profile, you, children }) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
     return html`
@@ -238,7 +239,7 @@ export const PersonCard = ({ root, current, profile, children }) => {
             <h1 class="person-card-name">${person.primary}</h1>
             ${person.others.length > 0 &&
             html`<p class="person-card-others">${person.others.join(' · ')}</p>`}
-            ${person.isYou && html`<p class="person-card-others"><a href="/home/persona">${t('person.this-is-you', 'this is you')}</a></p>`}
+            ${person.isYou && you}
             ${children}
             <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} />
             ${/* Your relationship sits above their bio: how you stand with someone is the

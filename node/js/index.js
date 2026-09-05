@@ -5,7 +5,8 @@
 //
 // Routes are session-relative and identity-free by design (PROJECT_PLAN, The Client Is a Console).
 // The whole internal UI lives under /home: `/home` is the console, `/home/<app>[/<doc>]` an app, and
-// `/home/persona[/profile|/computers]` is identity management. Root bounces to /home, which keeps
+// `/home/persona` jumps to your own /id page (identity management lives there; its
+// `/profile` and `/computers` sub-pages stay). Root bounces to /home, which keeps
 // the bare paths free for the API and a future public face.
 import { h, render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
@@ -43,6 +44,7 @@ import { slugify, HEX_ID } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
+import { speakable } from './speakable.js';
 
 const html = htm.bind(h);
 
@@ -164,8 +166,9 @@ const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
 // persona is open, routing takes over. The whole internal UI lives under /home (root bounces
 // there, and stays free for the API / a future public face): `/home` is the console,
-// `/home/notes[/<doc_id>]` the notes app, and `/home/persona[/profile|/computers]` is identity
-// management (reached by the dock's persona tile). Routes are session-relative and identity-free by
+// `/home/notes[/<doc_id>]` the notes app, and `/home/persona` jumps to your own /id page -
+// identity management lives there, with `/home/persona/profile` and `/computers` beneath it
+// (reached by the dock's persona tile). Routes are session-relative and identity-free by
 // design (PROJECT_PLAN, The Client Is a Console).
 const Inside = ({ session }) => {
     const persona = usePersona(session.account);
@@ -246,7 +249,11 @@ const Inside = ({ session }) => {
             <span class="quickbar-apps">
                 ${open &&
                 liveApps.map((app) => {
-                    const isActive = !!(appHere && appHere.id === app.id);
+                    // Your own /id page is the persona app's home now: the lead tile lights there.
+                    const isActive =
+                        app.id === 'persona'
+                            ? !!root && loc.path === `/id/${speakable(root)}`
+                            : !!(appHere && appHere.id === app.id);
                     const badge = app.id === BELL_APP_ID && unread > 0 ? unread : 0;
                     // Clicking the app you're already in closes it (back to the launcher).
                     return html`<span class="quickbar-slot" key=${app.id}>
@@ -392,7 +399,7 @@ const Inside = ({ session }) => {
                 onLaunch=${(id) => loc.route('/home/' + id)}
                 personaName=${personaName}
             />
-            <${PersonaHome} path="/home/persona" persona=${persona} session=${session} />
+            <${PersonaHome} path="/home/persona" persona=${persona} />
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
             <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
@@ -402,8 +409,8 @@ const Inside = ({ session }) => {
             <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
             <${PostPage} path="/id/:seg/post/:doc/:page" current=${persona.current} onTitle=${setIdTitle} />
             <${PostPage} path="/id/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
-            <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />
-            <${IdPage} path="/id/:seg/*" current=${persona.current} onTitle=${setIdTitle} />
+            <${IdPage} path="/id/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} />
+            <${IdPage} path="/id/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} />
             <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
         </${Router}>
     `;

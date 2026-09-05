@@ -17,6 +17,7 @@ import { personaHue } from './pure/person.js';
 import { agoUnit } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { PersonCard } from './person.js';
+import { PersonaMenu } from './persona.js';
 import { PublicPosts } from './posts.js';
 import { t, tNodes } from './i18n.js';
 
@@ -56,7 +57,7 @@ const SyncLine = ({ syncedMs, refreshing }) => {
     </p>`;
 };
 
-export const IdPage = ({ seg, current, onTitle }) => {
+export const IdPage = ({ seg, current, persona, session, onTitle }) => {
     const loc = useLocation();
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
     // profile: undefined = loading, null = unreachable, object = served (local or fetched)
@@ -174,7 +175,12 @@ export const IdPage = ({ seg, current, onTitle }) => {
     // public. The profile rides down as a prop: this page had to fetch it to tell reachable
     // from unreachable, and neither the card nor the posts must fetch it twice.
     return html`<${Card}>
-        <${PersonCard} root=${root} current=${current} profile=${profile}>
+        <${PersonCard}
+            root=${root}
+            current=${current}
+            profile=${profile}
+            you=${persona && session && html`<${PersonaMenu} persona=${persona} session=${session} />`}
+        >
             ${profile.foreign &&
             html`<p class="id-words">${t('idpage.reached-across-the-network--', 'reached across the network - not carried on this node')}</p>`}
             ${profile.foreign &&

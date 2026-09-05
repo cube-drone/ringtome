@@ -14,6 +14,7 @@ import {
     X,
     UserCircle,
     IdentificationCard,
+    Gear,
     Desktop,
     HandWaving,
     Tag,
@@ -88,6 +89,7 @@ export const Icons = {
     lock: Lock,
     key: Key,
     profile: IdentificationCard,
+    settings: Gear,
     computers: Desktop,
     logout: HandWaving,
     // editor status + document format (icon-only chips; the tooltip carries the words)

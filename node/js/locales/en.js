@@ -367,7 +367,6 @@ export default {
     'panes.drag-to-resize': 'drag to resize',
 
     // --- node/js/person.js ---
-    'person.this-is-you': 'this is you',
     'person.address': 'address',
     'person.see-this-personas-page': "see this persona's page",
     'person.copied': 'copied!',
@@ -420,6 +419,8 @@ export default {
     'persona.bringing-your-things-across': 'bringing your things across…',
     'persona.become-me-here': 'become me here',
     'persona.never-mind': 'never mind',
+    'persona.your-settings': 'your settings',
+    'persona.log-out-of-this-browser': 'Log out of this browser? You will sign in again to come back.',
     'persona.this-is-your-spare-key': 'This is your spare key.',
     'persona.if-you-ever-lose-every': "If you ever lose every computer that knows you, this - and only this - brings you back. We don't keep a copy. {warning}",
     'persona.we-can-never-show-it': 'We can never show it again.',

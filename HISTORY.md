@@ -8430,3 +8430,13 @@ the app dock tiles and the console tiles, each box re-proportioned to keep it re
 heptagon's point can rise between the flat bottoms above - heptagons don't tessellate, and
 the honest gap beats a collision. Class and token names still say hex; the prose says
 heptagon.
+
+## 2026-09-05 (cont.): your own /id page is the persona home
+
+Curtis: the persona page and your own /id page overlapped, so the persona page is gone as
+a place. `/home/persona` is a jump to `/id/<your address>` now (the dock's lead tile, the
+console tile and the profile/computers pages' back button all still say it, and land on
+your page with the history entry replaced). The three management items - profile, your
+computers, log out - fold into a disclosure on your own page where "this is you" used to be
+a link, headed by a gear and "your settings"; only you see it. `/home/persona/profile` and `/home/persona/computers` stay as
+they were beneath it. The dock's lead tile lights on your own page.

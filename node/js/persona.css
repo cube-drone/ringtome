@@ -1792,3 +1792,20 @@ article:has(.label-emoji-strip) {
         width: 100%;
     }
 }
+
+/* Managing yourself (persona.js PersonaMenu): the disclosure on your own /id page, where "this
+   is you" sits. The summary wears the ledger's head; open, it lists the three items. */
+.you-menu {
+    margin-top: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    text-align: left;
+}
+.you-menu[open] > .ledger-head::after {
+    transform: rotate(90deg);
+}
+.you-menu .persona-menu {
+    margin-top: 0.7rem;
+}
