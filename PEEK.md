@@ -1,4 +1,4 @@
-# PEEK - looking at a stranger without adopting their history
+# PEEK - looking at a stranger without adopting their history, and public pins
 
 Curtis's brief (2026-09-05): a first look at a persona nobody here follows must not mirror
 their whole public object. Today it does: the lens page's foreign fetch runs the ordinary
@@ -12,7 +12,10 @@ peeked or followed once, can fill the disk with nothing standing in its way but 
 Two things to fix, in this order: **every exchange gets a budget**, so no single ask can be
 staggering; and **a peek is a shape, not a mirror** - identity, annotations, the newest
 twenty posts and up to twenty pinned ones, carried as fragments that prove themselves, with
-a footprint ceiling and an expiry. PROJECT_PLAN's "Shallow Sync and the Day-Long-Sync
+a footprint ceiling and an expiry. **Public pins** are the third thing and the arc's
+customer (Curtis, same day): the private pin holds a note to the top of the Writer's
+finder; the public pin holds a post to the top of the author's page, and a peek must fetch
+pinned posts ahead of the window, however deep in the history they sit. PROJECT_PLAN's "Shallow Sync and the Day-Long-Sync
 Problem" designed the suffix machinery this leans on; the fragment lane (Rebroadcast) and
 the annotation-proof road (ANNOTATIONS.md slice 3) are the parts already built.
 
@@ -83,9 +86,25 @@ walks it per entry is unmeasured (residual).
    never a spinner over a mirror.
 10. **Trusted-only is unchanged.** A sealed post peeked shows its title and refuses its
     body, as everywhere.
-11. **Pins are reserved, not built.** A public annotation `pin`, author-only honoured; the
-    peek's pin query and the profile's pinned strip are PINS.md's, written against the seam
-    this document leaves.
+11. **A public pin is a public annotation.** The author says `pin` about their own post on
+    the annotations lane - one signed statement, last-writer-wins per target, retracted to
+    unpin - and it travels wherever the author's chains and proofs travel, with no change to
+    the wire. Only the AUTHOR's pin is honoured: anyone else's `pin` is a label like any
+    other, shown by the display rule or not, never a placement. Books pin like posts; a
+    sealed post pins like an open one (its title shows, its body refuses).
+12. **Pinned first, in place still.** The author's page opens with the pinned strip - most
+    recently pinned first, capped at twenty - above the chronological shelf, which is
+    unchanged: a pin is a highlight, not a move, and a pinned post keeps its place in
+    history and its date. A pinned post wears a pin chip wherever its card shows. The pin
+    itself is set from the post's own page and from the feed card's author affordances
+    (beside the note-pencil), never from the Writer: the private pin and the public pin are
+    two facts about two different shelves and neither implies the other.
+13. **Pinned posts are fetched first, at every depth.** A peek asks for the author's pin
+    proofs before anything else and fetches the pinned ids as fragments beside the newest
+    twenty (ruling 4). A follow's missing-bodies walk takes pinned ids first, so on a slow
+    link the top of the page fills before the backlog. Under the follow ceiling (ruling 8)
+    a pinned post below the floor is acquired by id over the fragment road, never by
+    deepening the chain.
 
 ## Consequences worth saying out loud
 
@@ -124,10 +143,18 @@ walks it per entry is unmeasured (residual).
    node-wide ceilings; least-recently-looked eviction and the expiry; media on demand under
    the ceiling. Acceptance: a peek past its ceiling stops fetching media and says so; an
    unlooked-at peek is gone after the expiry; a follow dial promotes a peek to a mirror.
-4. **The follow ceiling.** Content chains held as suffixes from a floor; bodies newest-first
-   under a per-persona dial; the snapshot residual named where it bites. Acceptance: a
-   follow of a prolific author holds its ceiling's worth, the oldest held entry commits to
-   the prefix, and scrollback backfills on demand.
+4. **Pins.** The `pin` statement and its retraction (route, button on the post page and the
+   feed card, the chip); the pinned strip on the author's page, read from the annotations
+   memo; the pin proofs in the `Shelf` answer and the pinned ids fetched beside the window;
+   the missing-bodies walk ordered pins-first. Acceptance: an author pins a post two hundred
+   deep, a follower's page shows it first and its body arrives before the backlog, a
+   stranger's peek fetches it as a fragment with its labels, unpinning drops it from the
+   strip everywhere while the post stands.
+5. **The follow ceiling.** Content chains held as suffixes from a floor; bodies newest-first
+   under a per-persona dial; a pinned post below the floor acquired by id; the snapshot
+   residual named where it bites. Acceptance: a follow of a prolific author holds its
+   ceiling's worth, the oldest held entry commits to the prefix, a pin below the floor still
+   heads the page, and scrollback backfills on demand.
 
 ## Residuals named at the start
 
@@ -135,4 +162,3 @@ walks it per entry is unmeasured (residual).
   bounded, not cheap.
 - The speculative lane's byte ceiling.
 - Snapshots for fold-based views under a suffix (IM-AOL open items).
-- PINS.md: the annotation, the query, the strip.

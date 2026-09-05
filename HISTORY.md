@@ -8447,5 +8447,6 @@ Curtis, on the way to public pins: a first look at a stranger mirrors their whol
 object today, and a persona this node has been made to want can fill the disk - the
 exchange bounds a frame and a blob, never a stream. PEEK.md measures the bounds, proposes
 the rulings (every exchange budgeted; a peek as a shape carried by fragments; identity
-chains capped; a footprint and an expiry per peek; the follow ceiling later) and cuts four
-slices, budgets first. Nothing built yet.
+chains capped; a footprint and an expiry per peek; public pins as a `pin` annotation with
+a pinned strip and pins-fetched-first; the follow ceiling last) and cuts five slices,
+budgets first. Nothing built yet.
