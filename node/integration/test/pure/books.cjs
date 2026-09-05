@@ -1,8 +1,8 @@
 const assert = require('node:assert');
 
-let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook;
+let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours;
 before(async () => {
-    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook } = await import('../../../js/pure/books.js'));
+    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours } = await import('../../../js/pure/books.js'));
 });
 
 describe('books: the private bookkeeping (BOOKS.md slice 1)', () => {
@@ -59,5 +59,23 @@ describe('books: the payload (BOOKS.md slice 2)', () => {
         assert.equal(book.sections[0].sections[0].pages[0].post, 'p2');
         assert.equal(parseBook('not json'), null);
         assert.equal(parseBook('[]'), null);
+    });
+});
+
+describe('books: reading order (BOOKS.md slice 4)', () => {
+    let book;
+    before(() => { book = parseBook('{"title":"g","sections":[{"title":"part one","pages":[{"post":"p1","title":"one"},{"post":"p2","title":"two"}],"sections":[{"title":"deeper","pages":[{"post":"p3","title":"three"}],"sections":[]}]}],"pages":[{"post":"p0","title":"loose"}]}'); });
+    it('walks top-level pages first, then sections depth-first, each page with its trail', () => {
+        assert.deepEqual(readingOrder(book).map((p) => [p.post, p.trail.join('/')]), [['p0', ''], ['p1', 'part one'], ['p2', 'part one'], ['p3', 'part one/deeper']]);
+        assert.deepEqual(readingOrder(null), []);
+    });
+    it('knows a page\'s neighbours, and that a stranger has none', () => {
+        const n = neighbours(book, 'p2');
+        assert.equal(n.index, 2);
+        assert.equal(n.prev.post, 'p1');
+        assert.equal(n.next.post, 'p3');
+        assert.equal(neighbours(book, 'p0').prev, null);
+        assert.equal(neighbours(book, 'p3').next, null);
+        assert.equal(neighbours(book, 'nope').index, -1);
     });
 });

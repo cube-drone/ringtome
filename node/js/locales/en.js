@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 620 phrases across 47 files.
+// 634 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -189,6 +189,20 @@ export default {
     'doc.bookcol.the-rollout-failed': 'the rollout failed',
     'doc.bookcol.view-the-book': 'view the book',
     'doc.bookcol.this-notebook-publishes-page-by': 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates',
+
+    // --- node/js/doc/bookreader.js ---
+    'doc.bookreader.untitled-page': 'untitled page',
+    'doc.bookreader.untitled-section': '(untitled section)',
+    'doc.bookreader.opening-the-book': 'opening the book…',
+    'doc.bookreader.this-book-cannot-be-read': 'this book cannot be read here yet',
+    'doc.bookreader.a-book': 'a book',
+    'doc.bookreader.the-page-before': 'the page before',
+    'doc.bookreader.previous': 'previous',
+    'doc.bookreader.the-page-after': 'the page after',
+    'doc.bookreader.next': 'next',
+    'doc.bookreader.this-book-has-no-pages': 'this book has no pages yet',
+    'doc.bookreader.these-words-havent-reached': "these words haven't reached this computer, or they are shared only with people the author trusts",
+    'doc.bookreader.this-page-on-its-own': 'this page on its own',
 
     // --- node/js/doc/chips.js ---
     'doc.chips.the-previous-document': 'the previous document',
@@ -522,6 +536,8 @@ export default {
     'posts.plus-rebroadcasts': '+ rebroadcasts',
     'posts.show-their-replies-in': 'show their replies in other peopleu2019s threads',
     'posts.plus-replies': '+ replies',
+    'posts.show-the-books-they-published': 'show the books they published',
+    'posts.plus-books': '+ books',
     'posts.reading-further-back': 'reading further back…',
     'posts.load-more': 'load more',
 

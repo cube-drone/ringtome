@@ -35,6 +35,7 @@ export const PublicPosts = ({ root, posts, more, current }) => {
     // Everything by default; the toggles SUBTRACT (Curtis, 2026-09-02).
     const [withShares, setWithShares] = useState(true);
     const [withReplies, setWithReplies] = useState(true);
+    const [withBooks, setWithBooks] = useState(true);
     // Your own card shows your scheduled posts at the top, badged (PUBLISH.md ruling 5):
     // read off the mirror, only when the page is yours.
     const ownRows = useLive(() => (mine ? openMirror(root).docs.toArray() : []), [root, mine]);
@@ -90,7 +91,7 @@ export const PublicPosts = ({ root, posts, more, current }) => {
     // ORIGINAL author (the card is still that person speaking) and wears this persona as
     // its via line, exactly as the feed renders a passed-along post.
     const items = [...scheduledItems, ...list
-        .filter((p) => (withShares || p.kind !== 'share') && (withReplies || !p.reply_to))
+        .filter((p) => (withShares || p.kind !== 'share') && (withReplies || !p.reply_to) && (withBooks || p.format !== 'book'))
         .map((p) =>
             p.kind === 'share'
                 ? {
@@ -135,6 +136,11 @@ export const PublicPosts = ({ root, posts, more, current }) => {
                     title=${t('posts.show-their-replies-in', 'show their replies in other people\u2019s threads')}
                     onClick=${() => setWithReplies((v) => !v)}
                 >${t('posts.plus-replies', '+ replies')}</button>
+                <button
+                    class=${withBooks ? 'shelf-toggle shelf-toggle-on' : 'shelf-toggle'}
+                    title=${t('posts.show-the-books-they-published', 'show the books they published')}
+                    onClick=${() => setWithBooks((v) => !v)}
+                >${t('posts.plus-books', '+ books')}</button>
             </h2>
             ${items.map(
                 (item) => html`<${PostEntry}

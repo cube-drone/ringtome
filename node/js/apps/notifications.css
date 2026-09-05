@@ -3,7 +3,7 @@
  * person), so it needs no columns, no paging, no search. */
 
 .notif-app {
-    max-width: 44rem;
+    max-width: var(--post-measure); /* the post measure, for consistency (Curtis, 2026-09-04) */
     margin: 0 auto;
     padding: 1rem;
 }

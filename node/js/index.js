@@ -400,6 +400,7 @@ const Inside = ({ session }) => {
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
+            <${PostPage} path="/id/:seg/post/:doc/:page" current=${persona.current} onTitle=${setIdTitle} />
             <${PostPage} path="/id/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg" current=${persona.current} onTitle=${setIdTitle} />
             <${IdPage} path="/id/:seg/*" current=${persona.current} onTitle=${setIdTitle} />

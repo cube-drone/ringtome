@@ -8308,3 +8308,27 @@ contain any of the documents within"): the walk decided a child section's listin
 parent's hidden state, not its own; and a section with only pictures beneath it was listed
 empty. The child's own mark decides now, and a section with nothing to read is left out -
 a unit claim on the walk, and the acceptance grows a hidden section and an empty one.
+
+## 2026-09-04 (cont.): BOOKS.md slice 4 - the reader
+
+At the book's permalink, Writer in read-only mode over the public tree: the tree beside the
+reading pane, previous / up / next along the top with "n / N", a cover with "begin reading"
+when no page is open, and a page's own permalink landing in the same reader with that page
+open - a page is a place in a book first, with "this page on its own" for the bare post. The
+route `/id/:seg/post/:book/:page` addresses a page within its book. Reading order and a
+page's neighbours are pure (`readingOrder`, `neighbours`, with claims). The persona shelf
+gained "+ books". Acceptance: bea rebroadcasts the book, cal - who follows her shares -
+sees the book alone, no page riding along. The arc's five slices: four built; unpublish
+and the edges remain.
+Field-found by the reader drive: the persona page's "recent posts" is a second shelf read
+(the profile's), and it still listed the pages; it filters parts now like the posts read,
+and the acceptance asks the profile too.
+The post measure (Curtis: "about 800px is the sweet spot width for a post containing
+readable content"): one token, `--post-measure`, and every surface that shows a post caps
+itself on it - the feed's cards (centred in their column), the shelf, the permalink (44rem
+before), the diff page (60rem before) - while a book's reader takes the whole page and caps
+only the page it is reading.
+Then (Curtis): the feed's cards sit against the column's left edge rather than centred;
+a person's public page, the People app, and the Notifications app take the post measure too.
+The reader opens on the first page rather than a cover with "begin reading" (Curtis); "up"
+went with the cover - the tree is the table of contents.

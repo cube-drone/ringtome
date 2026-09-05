@@ -9,15 +9,15 @@ const dns = require("node:dns");
 dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch, makePng } = require("./helpers.cjs");
-const { beat, pullAndFold } = require("./beat.cjs");
-const { HOST_B } = require("./fetch.cjs");
+const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
+const { HOST_B, HOST_C } = require("./fetch.cjs");
 
 const base58 = async (host) => (await (await host("api/node")).json()).base58;
 
 describe("books: a notebook rolls out as one book", function () {
     this.timeout(600000);
 
-    let ada, adaRoot, pages = {}, book, hiddenId;
+    let ada, adaRoot, pages = {}, book, hiddenId, bea, beaRoot;
     const bucket = "grimoire";
     const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
@@ -92,6 +92,10 @@ describe("books: a notebook rolls out as one book", function () {
         const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
         const formats = shelf.map((p) => `${p.format}:${p.title}`);
         assert.deepEqual(formats, [`book:${bucket}`], `only the book: ${formats}`);
+        // The persona page's own recent-posts read is a second shelf (field-found 2026-09-04
+        // by the reader drive: the pages were listed there).
+        const profile = await (await ada(`api/id/${adaRoot}/profile`)).json();
+        assert.deepEqual((profile.posts || []).map((p) => `${p.format}:${p.title}`), [`book:${bucket}`], "the profile's shelf agrees");
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
         assert.equal(body.title, bucket);
         assert.deepEqual(body.sections.map((s) => s.title), ["part one"], "a hidden section and an empty one are not listed");
@@ -118,8 +122,8 @@ describe("books: a notebook rolls out as one book", function () {
 
     it("a follower's feed shows one book post and no pages", async function () {
         if (!HOST_B) this.skip();
-        const bea = await makeUserFetch({ prefix: "bookbea", host: HOST_B });
-        const beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
+        bea = await makeUserFetch({ prefix: "bookbea", host: HOST_B });
+        beaRoot = (await (await bea("api/identity", { method: "POST" })).json()).root_pubkey;
         await bea(`api/identity/${beaRoot}/serve`, { method: "POST" });
         const viaAda = await base58(ada);
         if ((await bea(`api/id/${adaRoot}/profile?via=${viaAda}`)).status !== 200) this.skip();
@@ -177,5 +181,25 @@ describe("books: a notebook rolls out as one book", function () {
         // The shelf: the book and the update, still no pages.
         const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
         assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`).sort(), [`book:${bucket}`, `marquee:${bucket} updated`]);
+    });
+
+    it("a rebroadcast of a book is one pointer: the sharer's follower sees the book, no pages", async function () {
+        if (!HOST_B || !HOST_C || !bea) this.skip();
+        const cal = await makeUserFetch({ prefix: "bookcal", host: HOST_C });
+        const calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
+        await cal(`api/identity/${calRoot}/serve`, { method: "POST" });
+        const viaBea = await base58(bea);
+        if ((await cal(`api/id/${beaRoot}/profile?via=${viaBea}`)).status !== 200) this.skip();
+        await j(cal, `api/identity/${calRoot}/private/kv/contact:${beaRoot}/interest_rebroadcasts`, { value: "high" }, "PUT");
+        const shared = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: book });
+        assert.equal(shared.status, 200, await shared.text());
+        let items = [];
+        for (let i = 0; i < 30 && !items.some((it) => it.doc_id === book); i++) {
+            await shareArrives(HOST_C, beaRoot, adaRoot);
+            items = ((await (await cal(`api/identity/${calRoot}/feed`)).json()).items || []).filter((it) => it.author === adaRoot);
+        }
+        const seen = items.map((it) => `${it.format}:${it.title}`);
+        assert.ok(seen.includes(`book:${bucket}`), `the book reached cal by bea's share: ${seen}`);
+        assert.ok(!seen.some((s) => /chapter|loose/.test(s)), `and no page rode along on its own: ${seen}`);
     });
 });

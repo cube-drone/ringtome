@@ -60,6 +60,27 @@ export function parseBook(text) {
     return { title: String(raw.title || ''), sections: top.sections, pages: top.pages, count: count(top) };
 }
 
+/// The book in reading order (BOOKS.md slice 4): every page depth-first with the trail of
+/// section titles above it - what the reader's tree, prev/next, and "up" all walk.
+export function readingOrder(book) {
+    const out = [];
+    const walk = (section, trail) => {
+        for (const p of section.pages) out.push({ post: p.post, title: p.title, trail });
+        for (const s of section.sections) walk(s, [...trail, s.title]);
+    };
+    if (book) walk({ pages: book.pages, sections: book.sections }, []);
+    return out;
+}
+
+/// A page's neighbours in reading order: `{ index, prev, next }` (prev/next are entries or
+/// null); index -1 when the page is not in the book.
+export function neighbours(book, post) {
+    const order = readingOrder(book);
+    const index = order.findIndex((p) => p.post === post);
+    if (index < 0) return { index, prev: null, next: null, order };
+    return { index, prev: index > 0 ? order[index - 1] : null, next: index + 1 < order.length ? order[index + 1] : null, order };
+}
+
 /// Whether a bucket publishes as a book.
 export function isBookBucket(modes, bucket) {
     return !!bucket && (modes || {})[bucket] === 'book';

@@ -424,6 +424,11 @@
 }
 
 /* The /id lens page (idpage.js): the persona-page look with a few quiet extras. */
+/* A person's public page - their posts run on the post measure too (Curtis, 2026-09-04). */
+.persona-page.id-page {
+    max-width: var(--post-measure);
+}
+
 .id-page .id-words {
     color: var(--muted);
     font-size: 0.85rem;
@@ -656,7 +661,7 @@
 
 /* People: the rolodex (apps/people.js). */
 .people-inner {
-    max-width: 560px;
+    max-width: var(--post-measure); /* the same measure as a post, for consistency (Curtis, 2026-09-04) */
     margin: 3vh auto 0;
     display: flex;
     flex-direction: column;
@@ -1166,6 +1171,7 @@ article:has(.label-emoji-strip) {
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
+    max-width: var(--post-measure);
 }
 
 .shelf-toggle {
@@ -1249,8 +1255,13 @@ article:has(.label-emoji-strip) {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    align-items: flex-start; /* every card sits on the post measure, against the column's left edge (Curtis, 2026-09-04) */
     gap: 0.7rem;
     padding-bottom: 2rem;
+}
+.feed-stream > * {
+    width: 100%;
+    max-width: var(--post-measure);
 }
 
 .feed-stream-head {

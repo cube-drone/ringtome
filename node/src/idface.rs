@@ -1780,10 +1780,14 @@ pub async fn id_profile(
     // What they have PUBLISHED - the public lane's documents, newest first. Keyless and
     // lane-checked like everything on this surface; a private note cannot appear here
     // because the query cannot name one.
-    let mut posts = match state.user_dbs.get(&root_hex).await {
+    let mut posts: Vec<crate::record::documents::PublicDoc> = match state.user_dbs.get(&root_hex).await {
         Ok(Some(db)) => crate::record::documents::public_docs(&db, None, POSTS_PAGE + 1)
             .await
-            .unwrap_or_default(),
+            .unwrap_or_default()
+            .into_iter()
+            // Pages stay off this shelf as off the other (BOOKS.md ruling 4).
+            .filter(|p| p.part_of.is_none())
+            .collect(),
         _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
     };
     let posts_more = posts.len() as i64 > POSTS_PAGE;

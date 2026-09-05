@@ -39,10 +39,95 @@
 
 /* The post permalink (postpage.js): one entry under its author's byline. */
 .postpage {
-    max-width: 44rem;
+    max-width: var(--post-measure);
     margin: 0 auto;
     padding: 1rem;
 }
+/* A book's reader takes the whole page - the tree beside the page needs the room - and
+ * caps only the page it is reading on the post measure. */
+.postpage:has(.book-reader) {
+    max-width: none;
+}
+.book-reader-article {
+    max-width: var(--post-measure);
+}
+/* The book reader (BOOKS.md slice 4): the tree beside the page, prev / up / next on top. */
+.book-reader {
+    display: grid;
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+}
+.book-reader-tree {
+    border-right: 1px solid var(--border);
+    padding-right: 0.8rem;
+    font-size: 0.9rem;
+}
+.book-reader-book {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+}
+.book-reader-list {
+    list-style: none;
+    margin: 0;
+    padding-left: 0.9rem;
+}
+.book-reader-list-top {
+    padding-left: 0;
+}
+.book-reader-section-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-weight: 600;
+    margin: 0.35rem 0 0.1rem;
+}
+.book-reader-page {
+    margin: 0.15rem 0;
+}
+.book-reader-page-current > a {
+    font-weight: 600;
+    color: var(--teal);
+}
+.book-reader-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+}
+.book-reader-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.book-reader-where {
+    margin-left: auto;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
+.book-reader-trail,
+.book-reader-permalink {
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    margin: 0.2rem 0;
+}
+.book-reader-title {
+    margin: 0.2rem 0 0.6rem;
+}
+@media (max-width: 720px) {
+    .book-reader {
+        grid-template-columns: 1fr;
+    }
+    .book-reader-tree {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        padding: 0 0 0.6rem;
+    }
+}
+
 .postpage-loading,
 .postpage-missing {
     color: var(--muted);

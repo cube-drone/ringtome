@@ -4,6 +4,13 @@
  * the translucent ones (shadows, the scrim, the marker pen) - so the whole scheme re-tunes from
  * here, and a literal colour anywhere below is a bug. */
 :root {
+    /* The measure of a written post (Curtis, 2026-09-04): about 800px is where readable
+       content sits - narrower crowds, wider puts whole paragraphs on one line. Every surface
+       that shows a post caps itself here: the feed's cards, the shelf, the permalink, the
+       diff page, the reader's page. A BOOK's reader takes the whole page instead - the tree
+       needs the room - and caps only the page it is reading. */
+    --post-measure: 800px;
+
     /* The house panel shape, shared by the app frame and the modal (each layer of a panel wears
        it, so the chrome shows through as a pixel-cornered border): sharp square top corners,
        and the two BOTTOM corners cut back in two 6px steps - a pixel-rounded corner only where

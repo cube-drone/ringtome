@@ -24,10 +24,11 @@ import { parseSpeakable } from './speakable.js';
 import { PostEntry, MiniPost, Composer, publishWithBaking, BakeModal } from './postentry.js';
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
+import { BookReader } from './doc/bookreader.js';
 
 const html = htm.bind(h);
 
-export const PostPage = ({ seg, doc, current, onTitle }) => {
+export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     const loc = useLocation();
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
     const root = parsed && parsed.ok ? parsed.root : null;
@@ -71,6 +72,9 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
         </p>`;
     }
 
+    // A book, or a page of one: the reader (BOOKS.md slice 4) rather than the card.
+    const isBook = !!post && post.format === 'book';
+    const partOf = (post && post.part_of) || null;
     const item = post && {
         author: root,
         doc_id: post.doc_id,
@@ -111,7 +115,13 @@ export const PostPage = ({ seg, doc, current, onTitle }) => {
                 post.thread_root.doc_id !== post.reply_to.doc_id) &&
             html`<${ParentContext} link=${post.thread_root} root=${true} />`}
             ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
-            ${item &&
+            ${/* A book opens as its reader (BOOKS.md slice 4), and so does a page of one:
+                the book's tree beside the page, since a page is a place in a book first. */ ''}
+            ${item && isBook &&
+            html`<${BookReader} root=${root} book=${post.doc_id} page=${page || null} title=${post.title} />`}
+            ${item && !isBook && partOf &&
+            html`<${BookReader} root=${root} book=${partOf} page=${post.doc_id} />`}
+            ${item && !isBook && !partOf &&
             html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} />`}
             ${/* The author's wish (PROJECT_PLAN's Post visibility): a settled post has no thread section and
                 no reply box - just the honest word for why. */ ''}

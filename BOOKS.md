@@ -109,7 +109,14 @@ deferred". This is that design.
    under the book; the feed card for an update ("GRIMOIRE updated: …"). Acceptance: edit two
    pages, hide one, roll out, the follower sees one update naming two pages and the hidden
    page's permalink is gone.
-4. **The reader.** Writer in read-only mode over the book's public tree: the list, the tree,
+4. ~~**The reader.**~~ Built 2026-09-04: at the book's permalink, Writer in read-only mode
+   over the public tree - the tree on the left with the open page marked, the reading pane
+   on the right, previous / next and "n / N" along the top, the first page open when none
+   is asked for (Curtis: "just start at the first page"); a page's own permalink lands in the reader too with that
+   page open (a page is a place in a book first), and "this page on its own" is there for
+   the bare post. Route `/id/:seg/post/:book/:page`. The shelf gained "+ books". Acceptance:
+   a rebroadcast of the book reaches the sharer's follower as the book alone, no pages.
+   Reading order is pure (`readingOrder`, `neighbours`). Writer in read-only mode over the book's public tree: the list, the tree,
    the reading pane, page navigation (previous, next, up) - at the book's permalink; the
    persona shelf's "+ books" toggle; a rebroadcast of a book as one pointer.
 5. **Unpublish, and the edges.** Taking a book down; switching book mode off for a bucket

@@ -87,7 +87,7 @@
 /* The diff page: the public words against the private, a line at a time. */
 .diff-page {
     padding: 1rem 1.2rem;
-    max-width: 60rem;
+    max-width: var(--post-measure);
 }
 .diff-page-head {
     margin-bottom: 0.8rem;
