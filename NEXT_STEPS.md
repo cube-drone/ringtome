@@ -35,7 +35,11 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * mini-links (the kind you see in replies and your notifications) need to display more content
 * Better filters in Lost & Found
 * Publish a taxonomy — [BOOKS.md](BOOKS.md) (2026-09-03): a notebook published as a book;
-  rulings pinned, five slices; slice 1 (book mode and the Publish column) first.
+  rulings pinned, five slices, all built by 2026-09-05. Open: nothing in motion.
+* Edit-orphaned twins: a re-bake mints a fresh media twin and the old one stays public on
+  the author's own shelf (fragment holders reconcile theirs). Found 2026-09-05 beside the
+  takedown fix (`retract_post` entombs a buried post's twins); the edit door should retire
+  the twins its new refs no longer name, with the same "nothing else names it" check.
 * External video in public posts? (private works, but linked-external?)
 * Envelope-kept reply evidence has no deletion road: a stranger's reply noted from its
   COMMENT envelope outlives its deletion on the parent-author's node (and in their reply

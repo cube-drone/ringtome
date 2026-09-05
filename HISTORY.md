@@ -8385,3 +8385,24 @@ The arc's five slices are built.
 Field-found by the drive: the switch replaced the whole `books` value, so switching a
 published notebook off wiped the book's id and left no way to take it down; the switch moves
 only `mode` now and keeps the rollout's facts beside it.
+
+## 2026-09-05 (cont.): combinations - the features stacked, and the takedown that left the picture
+
+Curtis: "our publication flow is now SO feature rich that we're starting to face
+combinatoric expansion of features" - every suite proved one feature with the rest off.
+`combinations.cjs` stacks them and re-asserts each feature's own guarantee with several on
+at once, each claim tagged with the seam it covers. Three stacks: a trusted-only book whose
+title page carries a video, with tags, read by a trusted follower, shared two hops to
+strangers, updated under the same seal, then taken down and the takedown followed to the far
+hop; a scheduled post that is settled and trusted-only with a picture, edited before its day,
+minted by the sweep with every wish intact, refused a reply and a share, then taken down; and
+a page that stood as a sealed post before its notebook rolled out as an open book - same id,
+now a page, the book open and the page still sealed. `RINGTOME_TEST_GREP` on
+`just integration` runs one file's claims against the full rig.
+The stacks found one seam on the first run: a takedown buried the words and left the
+picture. Retraction never read the header's twins, so a sealed picture (or video) stayed
+served at its own URL, key memo and all, to anyone the seal admitted. `retract_post` is the
+one door now - the route, a book's takedown, a rollout's removed pages - and it entombs each
+twin no other standing post of the author names (external bakes are shared per URL between
+posts; private twins are minted per bake). Residual: an EDIT's re-bake mints a fresh twin
+and leaves the old one public on the author's shelf - noted in NEXT_STEPS.

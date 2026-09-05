@@ -561,6 +561,8 @@ clean: kill
 # file, scoped to this band.
 #
 # Boot this checkout's four rig nodes, run the JS integration suite, tear them down.
+# RINGTOME_TEST_GREP=<pattern> runs only the describes/its whose titles match (mocha --grep),
+# still against the full rig - the way to iterate on one file without the 3-minute suite.
 integration: build
     #!/usr/bin/env bash
     set -uo pipefail
@@ -685,7 +687,7 @@ integration: build
         RINGTOME_TEST_HOST_C="127.0.0.1:$pc" RINGTOME_TEST_HOST_DARK="127.0.0.1:$pd" \
         RINGTOME_TEST_HOST_E="127.0.0.1:$pe" \
         RINGTOME_TEST_DISCOVERY_DIR="{{workspace}}/{{test_data}}-dht" \
-        RINGTOME_TEST_DATA_DIR="{{workspace}}/{{test_data}}" npm test
+        RINGTOME_TEST_DATA_DIR="{{workspace}}/{{test_data}}" npm test -- ${RINGTOME_TEST_GREP:+--grep "$RINGTOME_TEST_GREP"}
 
 # The mainline field test: two local nodes on RINGTOME_DISCOVERY=mainline, talking to the REAL
 # public mainline DHT and n0 relay/DNS infrastructure. Seconds when that infrastructure is

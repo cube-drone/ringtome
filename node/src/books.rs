@@ -354,7 +354,7 @@ async fn rollout(
         if crate::record::documents::public_head(data.db(), &post_id).await?.is_none() {
             continue; // already gone
         }
-        data.documents().retract_public(&post_id).await?;
+        data.documents().retract_post(&post_id).await?;
         if let Some(note) = data.annotations().note_claiming(&post_id).await? {
             data.annotations().clear_field(&note, store::PUBLISHED_AS).await?;
             data.annotations().clear_field(&note, PUBLISHED_VERSION).await?;
@@ -740,7 +740,7 @@ pub async fn take_down(state: &AppState, data: &store::Store, root: &str, bucket
             if crate::record::documents::public_head(data.db(), &post_id).await?.is_none() {
                 continue;
             }
-            data.documents().retract_public(&post_id).await?;
+            data.documents().retract_post(&post_id).await?;
             if let Some(note) = data.annotations().note_claiming(&post_id).await? {
                 data.annotations().clear_field(&note, store::PUBLISHED_AS).await?;
                 data.annotations().clear_field(&note, PUBLISHED_VERSION).await?;
@@ -754,13 +754,13 @@ pub async fn take_down(state: &AppState, data: &store::Store, root: &str, bucket
     for p in shelf {
         let under = p.reply_to.as_ref().is_some_and(|(a, d)| a == root && *d == book_hex);
         if under {
-            data.documents().retract_public(&p.doc_id).await?;
+            data.documents().retract_post(&p.doc_id).await?;
             took.updates += 1;
         }
     }
     // The book itself.
     if crate::record::documents::public_head(data.db(), &book_id).await?.is_some() {
-        data.documents().retract_public(&book_id).await?;
+        data.documents().retract_post(&book_id).await?;
         took.book = true;
     }
     facts.published_as_book = None;

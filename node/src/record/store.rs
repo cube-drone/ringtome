@@ -876,6 +876,19 @@ impl Documents<'_> {
         .await
     }
 
+    /// A takedown: the post's tombstone, then one for each twin nothing else names
+    /// (`documents::orphaned_twins`). Every door that buries a post goes through here - the
+    /// route, a book's takedown, a rollout's removed page - so a picture never outlives the
+    /// words it was baked for.
+    pub async fn retract_post(&self, post_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
+        let twins = crate::record::documents::orphaned_twins(&self.store.db, post_id).await?;
+        let signed = self.retract_public(post_id).await?;
+        for twin in twins {
+            self.retract_public(&twin).await?;
+        }
+        Ok(signed)
+    }
+
     /// Undelete a document (LWW set-remove): it reappears in every list with its history intact,
     /// since nothing on the version chain was ever removed. A delete/restore race resolves by
     /// timestamp, like every other LWW fact.

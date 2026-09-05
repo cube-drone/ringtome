@@ -1841,6 +1841,47 @@ pub async fn retract_public(
     .await
 }
 
+/// The twins a post's retraction orphans: its public header's refs, less any that another
+/// standing public post of this persona still names. A private twin is minted per bake and
+/// belongs to one post; an external bake is shared per target URL between an author's posts
+/// (`bake::ensure_bake`), so a takedown must not pull a picture out from under a post that
+/// stands. Found 2026-09-05 by the combinations suite: a takedown buried the words and left
+/// the sealed picture served at its own URL, key memo and all. Read BEFORE the post's own
+/// tombstone lands - a retracted post has no public head to read refs from.
+pub async fn orphaned_twins(db: &Db, post_id: &[u8; 16]) -> Result<Vec<[u8; 16]>, AppError> {
+    let Some(entry) = public_header_entry(db, post_id).await? else {
+        return Ok(Vec::new());
+    };
+    let Payload::Inline(payload) = &entry.entry().payload else {
+        return Ok(Vec::new());
+    };
+    let Ok(header) = DocHeaderPlain::decode(payload) else {
+        return Ok(Vec::new());
+    };
+    if header.refs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(Vec<u8>, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT h.doc_id, v.refs FROM doc_heads h
+             JOIN doc_versions v ON v.entry_hash = h.entry_hash AND v.doc_id = h.doc_id
+             WHERE h.lane = 'public' AND length(v.refs) > 0
+               AND h.doc_id NOT IN (SELECT doc_id FROM public_retractions)",
+            (),
+        )
+        .await
+        .context("reading public refs for a retraction")
+        .map_err(AppError::Internal)?;
+    let mut still_named = std::collections::HashSet::new();
+    for (id, refs) in rows {
+        if id.as_slice() == post_id {
+            continue;
+        }
+        still_named.extend(decode_refs(&refs));
+    }
+    Ok(header.refs.into_iter().filter(|r| !still_named.contains(r)).collect())
+}
+
 /// Fold one `post-retract` tombstone: the document is withdrawn.
 ///
 /// The LWW stamp below settles retractions against OTHER RETRACTIONS - re-retracting is

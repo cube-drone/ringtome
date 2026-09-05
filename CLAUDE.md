@@ -23,6 +23,8 @@
   `.github/workflows/ci.yml` runs that recipe verbatim and nothing else, so green locally is
   green on the action — there is no second bar to reason about, and no "CI will probably be
   fine". Run it freely: since 2026-08-08 it no longer disturbs a running dev network (below).
+  To iterate on one acceptance file, `RINGTOME_TEST_GREP=<title pattern> just integration`
+  runs only the matching claims against the full rig (2026-09-05).
 - **`just ci` and `just integration` are safe beside a running dev network** (2026-08-08).
   They used to bind the same ports `just start*` did, so integration began by killing every
   ringtome on the machine — which is why this file used to demand a warning first. Now each

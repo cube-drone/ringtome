@@ -1793,7 +1793,7 @@ async fn unpublish_handler(
     let reply_pins = crate::record::documents::public_doc(data.db(), &post_id)
         .await?
         .map(|p| (p.reply_to, p.thread_root));
-    let signed = data.documents().retract_public(&post_id).await?;
+    let signed = data.documents().retract_post(&post_id).await?;
     if let Some((reply_to, thread_root)) = reply_pins {
         let mut pins: Vec<(String, String)> = Vec::new();
         pins.extend(reply_to);
