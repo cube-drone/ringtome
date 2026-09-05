@@ -8449,4 +8449,6 @@ exchange bounds a frame and a blob, never a stream. PEEK.md measures the bounds,
 the rulings (every exchange budgeted; a peek as a shape carried by fragments; identity
 chains capped; a footprint and an expiry per peek; public pins as a `pin` annotation with
 a pinned strip and pins-fetched-first; the follow ceiling last) and cuts five slices,
-budgets first. Nothing built yet.
+budgets first. A reviewer's finding the same day - no admission gate on the accept loop, no
+first-frame deadline, transport limits left to the library - joined as ruling 14 and the
+head of slice 1: admission is a budget that refuses rather than queues. Nothing built yet.

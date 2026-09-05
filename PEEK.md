@@ -29,6 +29,9 @@ the annotation-proof road (ANNOTATIONS.md slice 3) are the parts already built.
 | entries per exchange | none | |
 | bytes per persona | none | |
 | free-disk check | none | |
+| concurrent connections | none (one task per accept) | iroh's own defaults, unset by us |
+| first frame | no deadline | the serve side awaits the first stream and frame before the consent gate |
+| exchange wall clock | none | the size budget cuts a flood; a trickle holds its task |
 | retention | inbox tiers only | public chains are never pruned; eviction fires only when nobody wants the persona |
 
 Memory is flat (ingest holds one batch behind the per-identity lock, validating every
@@ -105,6 +108,20 @@ walks it per entry is unmeasured (residual).
     link the top of the page fills before the backlog. Under the follow ceiling (ruling 8)
     a pinned post below the floor is acquired by id over the fragment road, never by
     deepening the chain.
+14. **Admission is a budget too, and it refuses rather than queues.** (A reviewer's
+    finding, 2026-09-05: the accept loop spawns a task per connection with no gate, the
+    serve side awaits its first frame with no deadline, and the transport's limits are
+    whatever the library ships.) Four bounds, all explicit in our code, all dials: a
+    ceiling on concurrent incoming connections, with a smaller allowance for connections
+    that have not yet proven membership or named a persona this node serves - over the
+    ceiling, the connection is closed at accept, never parked on a permit; a first-frame
+    deadline on the serve side; a whole-exchange wall clock on both sides that CLOSES the
+    connection (the 30-second pass keeps detaching the caller's wait; this is the ceiling
+    on the detached work itself); and a per-peer cap on concurrent exchanges, because one
+    endpoint key opening a hundred connections is the cheap flood. Transport limits
+    (idle timeout, concurrent streams) are set by us at endpoint construction, so the
+    defaults are ours. The size budget (ruling 2) assumes an admitted exchange; this is
+    what admits it.
 
 ## Consequences worth saying out loud
 
@@ -125,12 +142,19 @@ walks it per entry is unmeasured (residual).
 - Depth is decided by this node's relationships and never by anything the peer says.
 - Refusal is uniform: a persona over its identity ceiling gets the same silence a stranger
   does.
+- Work is never queued behind a budget: over any admission ceiling the answer is a closed
+  connection now, not a task waiting for later.
 
 ## Slices
 
-1. **Budgets.** Per-exchange entry and byte budgets on both sides (dials, test knobs), the
-   "behind" mark and the beat that continues, the identity-chain ceiling at the gate.
-   Acceptance: a five-thousand-entry chain arrives whole over several passes; a stream that
+1. **Budgets.** Admission first (ruling 14): the connection ceilings, the first-frame
+   deadline, the exchange wall clock, the per-peer cap, the transport limits set in code.
+   Then per-exchange entry and byte budgets on both sides (dials, test knobs), the "behind"
+   mark and the beat that continues, the identity-chain ceiling at the gate. Acceptance: a
+   burst of connections past the ceiling is closed at accept and an honest peer still gets
+   in; a connection that never sends its first frame is gone at the deadline; a one-frame-
+   a-minute exchange is closed at the wall clock; one peer's hundred connections count as
+   one peer; a five-thousand-entry chain arrives whole over several passes; a stream that
    never ends is cut at the budget every pass and the node stays healthy; an identity chain
    over the ceiling is refused and nothing of it is stored.
 2. **The peek.** The foreign fetch becomes a scoped exchange (identity, profile,
