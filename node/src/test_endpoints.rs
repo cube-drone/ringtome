@@ -84,6 +84,15 @@ pub async fn beat(
             tracing::info!(root = %r, fetched, "TEST BEAT: pull");
             Ok(())
         }
+        ("pull-once", Some(r)) => {
+            // ONE budgeted exchange, no continuation (PEEK.md slice 1): the way a claim
+            // watches a cut happen and the behind mark land. ONE candidate too - the
+            // ladder dials its hints in parallel and each winner is its own exchange, so
+            // only the implicit root rung (the founder's serving record) is offered here.
+            let fetched = crate::idface::fetch_foreign_passes(&state, r, &[], 1).await;
+            tracing::info!(root = %r, fetched, behind = state.behind.is_behind(r), "TEST BEAT: pull-once");
+            Ok(())
+        }
         ("fold", Some(r)) => {
             // The fold lane's drainable form: nudge (ledger leg included) and await the
             // run - the chain itself now lives in fold::run_chain, serialized per root,

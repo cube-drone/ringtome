@@ -105,6 +105,10 @@ pub struct AppState {
     /// arm outside it regardless. Empty - refusing nothing - on every real node, forever.
     /// See [`net::p2p::Unplugged`] for the whole argument.
     pub unplugged: net::p2p::Unplugged,
+    /// The gate at accept (PEEK.md ruling 14): connection ceilings and the exchange budgets.
+    pub admission: net::admission::Admission,
+    /// Personas whose last exchange ended short of the peer's frontier (PEEK.md ruling 2).
+    pub behind: net::admission::Behind,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -328,6 +332,7 @@ async fn main() -> anyhow::Result<()> {
     // Reconcile any jobs left in flight by a previous run before the worker starts claiming.
     ingest::reconcile_on_boot(&node_db).await?;
     let unfurl = net::unfurl::Unfurler::new(config.unfurl_rate_per_min);
+    let admission = net::admission::Admission::from_config(&config);
     let state = AppState {
         config,
         node_db,
@@ -345,6 +350,8 @@ async fn main() -> anyhow::Result<()> {
         sweep_marks: Default::default(),
         activity: Default::default(),
         unplugged,
+        admission,
+        behind: net::admission::Behind::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each

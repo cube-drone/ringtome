@@ -12,6 +12,7 @@
 //!   - [`unfurl`]: outbound OpenGraph fetches for the browser's turbolinks (SSRF-guarded,
 //!     globally rate-limited, cached).
 
+pub mod admission;
 pub mod adopt;
 pub mod bodies;
 pub mod deliver;

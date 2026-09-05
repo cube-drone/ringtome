@@ -233,8 +233,21 @@ pub async fn build_endpoint(
         crate::net::discovery::DiscoveryMode::Mainline => Endpoint::builder(presets::N0),
         _ => Endpoint::builder(presets::Minimal),
     };
+    // Transport limits set by us, not left to the library (PEEK.md ruling 14): a connection
+    // that goes quiet is gone in thirty seconds, a keep-alive keeps a long validate from
+    // reading as quiet, and one connection may not fan out into unbounded streams.
+    let transport = iroh::endpoint::QuicTransportConfig::builder()
+        .max_idle_timeout(Some(
+            std::time::Duration::from_secs(30)
+                .try_into()
+                .map_err(|e| anyhow!("idle timeout: {e}"))?,
+        ))
+        .keep_alive_interval(std::time::Duration::from_secs(10))
+        .max_concurrent_bidi_streams(iroh::endpoint::VarInt::from(16u32))
+        .build();
     let endpoint = builder
         .secret_key(secret)
+        .transport_config(transport)
         .alpns(ALPNS.iter().map(|(_, wire)| wire.to_vec()).collect())
         .bind()
         .await
@@ -283,6 +296,23 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                 match incoming.await {
                     Ok(conn) => {
                         let remote = conn.remote_id();
+                        // Admission (PEEK.md ruling 14), before any dispatch so it covers every
+                        // ALPN: over a ceiling the connection is closed now, never parked. The
+                        // blob ALPN is proven at birth - hash-capability over public bytes; the
+                        // rest start unproven and the sync serve promotes its own once the
+                        // consent gate passes. The permit lives as long as the task.
+                        let Some(mut permit) = state
+                            .admission
+                            .try_admit(*remote.as_bytes(), conn.alpn() == crate::files::BLOB_ALPN)
+                        else {
+                            tracing::info!(
+                                %remote,
+                                alpn = alpn_name(conn.alpn()).unwrap_or("unknown"),
+                                "admission: refusing an inbound connection at the ceiling"
+                            );
+                            conn.close(1u8.into(), b"busy");
+                            return;
+                        };
                         // The inbound half of the test gate, before any dispatch, so it covers
                         // every ALPN by construction rather than per handler (see `Unplugged`).
                         if state.unplugged.refuses_inbound(conn.alpn()) {
@@ -312,9 +342,10 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                             if let Err(e) = crate::net::fragment::serve(conn, state).await {
                                 tracing::warn!(%remote, "fragment connection ended with error: {e:#}");
                             }
-                        } else if let Err(e) = crate::net::sync::serve(conn, state).await {
+                        } else if let Err(e) = crate::net::sync::serve(conn, state, &mut permit).await {
                             tracing::warn!(%remote, "sync connection ended with error: {e:#}");
                         }
+                        drop(permit);
                     }
                     Err(e) => tracing::warn!("incoming connection failed: {e}"),
                 }

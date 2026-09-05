@@ -526,6 +526,8 @@ mod tests {
             activity: Default::default(),
             sweep_marks: Default::default(),
             unplugged: Default::default(),
+            admission: crate::net::admission::Admission::new(Default::default()),
+            behind: Default::default(),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

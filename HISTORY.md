@@ -8452,3 +8452,25 @@ a pinned strip and pins-fetched-first; the follow ceiling last) and cuts five sl
 budgets first. A reviewer's finding the same day - no admission gate on the accept loop, no
 first-frame deadline, transport limits left to the library - joined as ruling 14 and the
 head of slice 1: admission is a budget that refuses rather than queues. Nothing built yet.
+
+## 2026-09-05 (cont.): PEEK.md slice 1 - admission and budgets
+
+The exchange has bounds now. `net::admission` gates the accept loop: ceilings on incoming
+connections, on the unproven ones among them, and per peer, refusing at accept rather than
+queueing; the sync serve promotes its seat once the consent gate passes. The serve side
+has a first-frame deadline; both sides have a whole-exchange wall clock that closes the
+connection, which is what bounds a detached task's life; the transport's idle timeout,
+keep-alive and stream ceiling are ours now, set at endpoint construction. Every exchange
+carries a budget per direction in entries and bytes: the requester stops reading at its,
+the responder stops sending at its, and a cut - or a peer whose claimed heads still sit
+above what we hold - marks the persona behind, which the wake pass reads as stale and
+both fetch ladders chain up to eight passes on. The identity-chain ceiling refuses a batch
+whole at the gate for any persona this node does not host. Eight `RINGTOME_*` dials. The
+rig runs a sixty-entry budget so every suite exercises the cut: a hundred-and-fifty-post
+history arrives over passes in `budgets.cjs`; the ceiling and the gate have unit claims.
+The first full rig run found two things: a per-peer cap of eight refusing a quarter of a
+million fragment asks from one node (a peer NODE carries every persona it fronts; the
+defaults are fleet-sized now, 512/256/128), and the polite empty exchange holding its
+unproven seat while it waited for a requester that never closed - bounded to five seconds
+now, then we close. Owed: a misbehaving peer for the rig, so the deadlines and the flood
+get a proof beyond the unit gate; a backoff on the dialer's side of "busy".

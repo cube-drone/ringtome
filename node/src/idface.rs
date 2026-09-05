@@ -441,6 +441,18 @@ pub struct IdQuery {
 /// leaves first; a key that resolves no serving record falls back to being dialed as an
 /// endpoint. The resolve-a-bare-root announce backstop remains NEXT_STEPS.
 pub(crate) async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool {
+    fetch_foreign_passes(state, root_hex, via, crate::net::sync::CONTINUATIONS_PER_WAKE).await
+}
+
+/// `fetch_foreign` with the continuation count named: each winning candidate chains up to
+/// `max_passes` budgeted exchanges while the peer still holds more (PEEK.md ruling 2). One
+/// pass is the test beat's "pull-once", which is how the cut itself is observed.
+pub(crate) async fn fetch_foreign_passes(
+    state: &AppState,
+    root_hex: &str,
+    via: &[String],
+    max_passes: usize,
+) -> bool {
     // Detach, never cancel (2026-08-24, closing REFACTOR's visit-ladder entry): the old
     // shape aborted the also-rans on first success (JoinSet::abort_all) and cancelled each
     // exchange at its 8s deadline (timeout around the future), and every one of those
@@ -475,7 +487,16 @@ pub(crate) async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[Strin
             let exchange_state = task_state.clone();
             let exchange_root = task_root.clone();
             let mut pull = tokio::spawn(async move {
-                crate::net::sync::sync_with_peer(&exchange_state, &exchange_root, addr).await
+                let mut passes = 0;
+                loop {
+                    let stats =
+                        crate::net::sync::sync_with_peer(&exchange_state, &exchange_root, addr.clone())
+                            .await?;
+                    passes += 1;
+                    if !stats.behind || passes >= max_passes.max(1) {
+                        break Ok::<_, anyhow::Error>(stats);
+                    }
+                }
             });
             let outcome = match tokio::time::timeout(FETCH_TIMEOUT, &mut pull).await {
                 Ok(Ok(Ok(stats))) => Some((key_hex, stats.received)),
@@ -678,7 +699,9 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
             continue;
         }
         let fetched_at = fetched.get(&foreign).copied().unwrap_or(0);
-        if now - fetched_at < stale_ms {
+        // A persona the last exchange left behind is stale whatever its stamp says
+        // (PEEK.md ruling 2): the wake pass is how a budgeted history keeps arriving.
+        if now - fetched_at < stale_ms && !state.behind.is_behind(&foreign) {
             continue;
         }
         {

@@ -40,6 +40,10 @@ pub struct ExchangeStats {
     /// Document bodies fetched from this peer after the entry exchange (headers ride sync;
     /// bodies ride iroh-blobs - see `documents::fetch_missing_bodies`).
     pub bodies_fetched: u64,
+    /// The exchange ended short of the peer's frontier - a budget cut on either side, or
+    /// the peer simply held more than one pass carries. A mark, never a fault: the next
+    /// pass continues from the frontier (PEEK.md ruling 2).
+    pub behind: bool,
 }
 
 /// Services that never cross the identity boundary: synced only between an identity's own
@@ -164,14 +168,20 @@ async fn send_missing(
     send: &mut SendStream,
     include_private: bool,
     wanted: &[u32],
-) -> Result<u64> {
+    budget: &mut crate::net::admission::Budget,
+) -> Result<(u64, bool)> {
     let mut sent = 0u64;
     let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted).await?;
     while let Some(bytes) = missing.next().await? {
+        // The send budget (PEEK.md ruling 2): short of the peer's need is a pass, not a
+        // failure - they will see they are still behind and come back.
+        if !budget.take(bytes.len()) {
+            return Ok((sent, true));
+        }
         write_frame(send, &SyncMessage::Entry(bytes)).await?;
         sent += 1;
     }
-    Ok(sent)
+    Ok((sent, false))
 }
 
 /// One chain a peer is behind on: where its ordinary entries resume, plus the fork proof to
@@ -435,6 +445,11 @@ pub(crate) struct IngestOutcome {
     pub received: u64,
     pub rejected: u64,
     pub ledger_moved: bool,
+    /// The read budget ran out before the peer's Done: what follows was never read.
+    pub cut: bool,
+    /// The persona's identity chain would exceed the ceiling (PEEK.md ruling 3): the batch
+    /// was refused whole and the exchange must end.
+    pub over_ceiling: bool,
 }
 
 impl IngestOutcome {
@@ -443,6 +458,8 @@ impl IngestOutcome {
         self.received += batch.received;
         self.rejected += batch.rejected;
         self.ledger_moved |= batch.ledger_moved;
+        self.cut |= batch.cut;
+        self.over_ceiling |= batch.over_ceiling;
     }
 }
 
@@ -467,16 +484,30 @@ async fn ingest_stream(
     root: [u8; 32],
     recv: &mut iroh::endpoint::RecvStream,
     peer_proven: bool,
+    identity_ceiling: Option<usize>,
+    budget: &mut crate::net::admission::Budget,
 ) -> Result<IngestOutcome> {
     let mut total = IngestOutcome::default();
     let mut batch: Vec<Vec<u8>> = Vec::new();
     loop {
         match read_frame(recv).await? {
             Some(SyncMessage::Entry(bytes)) => {
+                // The read budget (PEEK.md ruling 2): the guard against a peer that never
+                // says Done. Stop the stream so the sender hears it, ingest what arrived,
+                // and let the caller mark us behind.
+                if !budget.take(bytes.len()) {
+                    total.cut = true;
+                    let _ = recv.stop(0u8.into());
+                    break;
+                }
                 batch.push(bytes);
                 if batch.len() >= INGEST_BATCH_ENTRIES {
                     let full = std::mem::take(&mut batch);
-                    total.absorb(ingest_batch(db, root, full, peer_proven).await?);
+                    total.absorb(ingest_batch(db, root, full, peer_proven, identity_ceiling).await?);
+                    if total.over_ceiling {
+                        let _ = recv.stop(1u8.into());
+                        return Ok(total);
+                    }
                 }
             }
             Some(SyncMessage::Done) | None => break,
@@ -484,7 +515,7 @@ async fn ingest_stream(
         }
     }
     if !batch.is_empty() {
-        total.absorb(ingest_batch(db, root, batch, peer_proven).await?);
+        total.absorb(ingest_batch(db, root, batch, peer_proven, identity_ceiling).await?);
     }
     Ok(total)
 }
@@ -494,6 +525,7 @@ pub(crate) async fn ingest_batch(
     root: [u8; 32],
     raw: Vec<Vec<u8>>,
     peer_proven: bool,
+    identity_ceiling: Option<usize>,
 ) -> Result<IngestOutcome> {
     // One batch at a time per identity: concurrent exchanges (eager push makes simultaneous
     // bidirectional syncs routine) would race between head-read and insert and die on the
@@ -532,6 +564,25 @@ pub(crate) async fn ingest_batch(
     // it must see both branches of a fork to convict the forker and pick the convergent winner.
     // Resolution is not admission - storage is decided below, against the resolved tree.
     let stored_identity = load_identity_entries(db).await?;
+    // The identity-chain ceiling (PEEK.md ruling 3): authority context is never shallow, so
+    // the only defence against a staggering one is a number. Over it, nothing of this batch
+    // is admitted and the exchange ends; a hosted persona (`None`) trusts its own devices.
+    if let Some(ceiling) = identity_ceiling {
+        if stored_identity.len() + identity_candidates.len() > ceiling {
+            tracing::warn!(
+                root = %hex::encode(root),
+                held = stored_identity.len(),
+                arriving = identity_candidates.len(),
+                ceiling,
+                "identity chain over the ceiling - refused as malformed"
+            );
+            return Ok(IngestOutcome {
+                rejected: (identity_candidates.len() + content_candidates.len()) as u64,
+                over_ceiling: true,
+                ..Default::default()
+            });
+        }
+    }
     let mut tree_input = stored_identity.clone();
     tree_input.extend(identity_candidates.iter().cloned());
     let tree = Crown::build(root, &tree_input)
@@ -759,6 +810,7 @@ pub(crate) async fn ingest_batch(
         received,
         rejected,
         ledger_moved,
+        ..Default::default()
     })
 }
 
@@ -1300,6 +1352,29 @@ pub async fn sync_with_peer_scoped(
     )
     .await
     .map_err(|e| anyhow!("connecting to peer: {e}"))?;
+    // The whole-exchange wall clock (PEEK.md ruling 14): the callers' pass timeout bounds
+    // their WAIT and detaches the work; this bounds the work. Over it, the connection is
+    // closed - a trickle is not an exchange.
+    let wall = state.admission.limits().exchange_wall_clock;
+    match tokio::time::timeout(wall, exchange_on(state, root_hex, &conn, addr, wanted, root)).await {
+        Ok(result) => result,
+        Err(_) => {
+            conn.close(2u8.into(), b"wall clock");
+            bail!("exchange for {root_hex} exceeded the wall clock ({}s)", wall.as_secs())
+        }
+    }
+}
+
+/// The exchange proper, on an open connection - see `sync_with_peer_scoped`, which owns the
+/// dial and the wall clock around this.
+async fn exchange_on(
+    state: &AppState,
+    root_hex: &str,
+    conn: &Connection,
+    addr: EndpointAddr,
+    wanted: &[u32],
+    root: [u8; 32],
+) -> Result<ExchangeStats> {
     // EXISTS, not create - yet. The requester dials to FETCH, and a first fetch is exactly
     // the case where this node holds nothing of theirs (idface::fetch_foreign is the caller) -
     // but the wake pass chases followed strangers on a beat, and minting the shelf on the ASK
@@ -1376,6 +1451,7 @@ pub async fn sync_with_peer_scoped(
                 rejected: 0,
                 sent: 0,
                 bodies_fetched: 0,
+                behind: false,
             });
         }
         None => state.user_dbs.create(root_hex).await?,
@@ -1408,11 +1484,22 @@ pub async fn sync_with_peer_scoped(
         }
     }
 
-    let outcome = ingest_stream(&db, root, &mut recv, peer_proven).await?;
+    let agented = crate::identity::is_agented(&state.node_db, root_hex)
+        .await
+        .unwrap_or(false);
+    let ceiling = if agented { None } else { Some(state.config.identity_chain_ceiling) };
+    let mut read_budget = state.admission.budget();
+    let mut send_budget = state.admission.budget();
+    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, &mut read_budget).await?;
+    if outcome.over_ceiling {
+        conn.close(3u8.into(), b"identity chain over the ceiling");
+        bail!("{root_hex}: identity chain over the ceiling - refused");
+    }
     let (received, rejected) = (outcome.received, outcome.rejected);
 
     // Now send what the peer lacks - private chains only to a proven member.
-    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted).await?;
+    let (sent, _cut_send) =
+        send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted, &mut send_budget).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -1435,6 +1522,24 @@ pub async fn sync_with_peer_scoped(
     write_frame(&mut send, &SyncMessage::Done).await?;
     send.finish().ok();
     conn.closed().await; // responder closes once it has ingested our stream
+
+    // Behind (PEEK.md ruling 2): our read was cut, or the peer's claimed heads still sit
+    // above what we hold now - either way the next pass continues from the frontier. The
+    // mark is what the wake pass reads; clearing it is what a caught-up exchange says.
+    let behind = outcome.cut || {
+        let ours = local_frontiers(&db, peer_proven).await.unwrap_or_default();
+        peer_frontiers.iter().any(|pf| {
+            ours
+                .iter()
+                .find(|f| f.author == pf.author && f.service == pf.service)
+                .is_none_or(|f| f.head < pf.head)
+        })
+    };
+    if behind {
+        state.behind.mark(root_hex);
+    } else {
+        state.behind.clear(root_hex);
+    }
 
     // And what came of the claim. The order matters: our own frontier is recomputed AFTER the
     // ingest, so "do we still disagree" is asked of what we now hold, not what we held when
@@ -1492,19 +1597,56 @@ pub async fn sync_with_peer_scoped(
         rejected,
         sent,
         bodies_fetched,
+        behind,
     })
 }
 
 /// Responder role: called from the accept loop with an established connection.
-pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
-    let (mut send, mut recv) = conn.accept_bi().await.context("accepting sync stream")?;
+pub async fn serve(
+    conn: Connection,
+    state: AppState,
+    permit: &mut crate::net::admission::Permit,
+) -> Result<()> {
+    // The whole-exchange wall clock (PEEK.md ruling 14), the responder's side: over it the
+    // connection is CLOSED, which is what bounds a detached task's life.
+    let wall = state.admission.limits().exchange_wall_clock;
+    match tokio::time::timeout(wall, serve_on(&conn, state, permit)).await {
+        Ok(result) => result,
+        Err(_) => {
+            conn.close(2u8.into(), b"wall clock");
+            bail!("served exchange exceeded the wall clock ({}s)", wall.as_secs())
+        }
+    }
+}
+
+async fn serve_on(
+    conn: &Connection,
+    state: AppState,
+    permit: &mut crate::net::admission::Permit,
+) -> Result<()> {
+    // The first-frame deadline (PEEK.md ruling 14): a connection that opens and says nothing
+    // is holding an unproven seat for nothing.
+    let first_frame = state.admission.limits().first_frame;
+    let (mut send, mut recv, hello) = match tokio::time::timeout(first_frame, async {
+        let (send, mut recv) = conn.accept_bi().await.context("accepting sync stream")?;
+        let hello = read_frame(&mut recv).await?;
+        Ok::<_, anyhow::Error>((send, recv, hello))
+    })
+    .await
+    {
+        Ok(opened) => opened?,
+        Err(_) => {
+            conn.close(1u8.into(), b"first frame deadline");
+            bail!("no first frame within {}ms", first_frame.as_millis());
+        }
+    };
     let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
     let peer_id: [u8; 32] = *conn.remote_id().as_bytes();
 
     // `scope` is the requester's service scope (Hello `wanted`, empty = everything) -
     // distinct from the serve-consent `wanted` gate below, which answers a different
     // question ("do we serve this persona at all").
-    let (root, peer_frontiers, peer_proof, scope) = match read_frame(&mut recv).await? {
+    let (root, peer_frontiers, peer_proof, scope) = match hello {
         Some(SyncMessage::Hello {
             root,
             frontiers,
@@ -1543,9 +1685,18 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         .await?;
         write_frame(&mut send, &SyncMessage::Done).await?;
         send.finish().ok();
-        conn.closed().await;
+        // Wait for the requester to read its polite nothing and go - but not forever: this
+        // seat is UNPROVEN, and a requester that lingers (or was detached and forgotten)
+        // held it for the whole wall clock, which is how the rig drained the pool
+        // (2026-09-05). A few seconds is plenty for two frames; then we close.
+        if tokio::time::timeout(std::time::Duration::from_secs(5), conn.closed()).await.is_err() {
+            conn.close(0u8.into(), b"not served here");
+        }
         return Ok(());
     }
+
+    // Named a persona this node serves: out of the unproven pool (PEEK.md ruling 14).
+    permit.prove();
 
     // They dialed us and named this persona: that is a demand edge, recorded before anything
     // else happens because the asking is the fact, whatever the exchange goes on to transfer.
@@ -1594,7 +1745,9 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         },
     )
     .await?;
-    let sent = send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope).await?;
+    let mut send_budget = state.admission.budget();
+    let (sent, _cut_send) =
+        send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope, &mut send_budget).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -1618,7 +1771,18 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 
     // Then ingest the requester's half of the exchange, in bounded batches - this side takes
     // connections from anyone who speaks the ALPN, so this is the buffer a stranger drives.
-    let outcome = ingest_stream(&db, root, &mut recv, peer_proven).await?;
+    let ceiling = if agented { None } else { Some(state.config.identity_chain_ceiling) };
+    let mut read_budget = state.admission.budget();
+    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, &mut read_budget).await?;
+    if outcome.over_ceiling {
+        conn.close(3u8.into(), b"identity chain over the ceiling");
+        bail!("{root_hex}: identity chain over the ceiling - refused");
+    }
+    if outcome.cut {
+        // A push we could not take whole: we are behind this persona, and the wake pass
+        // continues from the frontier (PEEK.md ruling 2).
+        state.behind.mark(&root_hex);
+    }
     let (received, rejected) = (outcome.received, outcome.rejected);
     tracing::info!(
         root = %root_hex,
@@ -2017,6 +2181,9 @@ pub struct PeerSyncResult {
 /// got dialed. Thirty seconds is generous for a live peer on any network the eager path
 /// cares about; a genuinely slow one still converges by anti-entropy.
 const PEER_PASS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// How many budgeted exchanges one wake may chain while still behind (PEEK.md ruling 2).
+/// The rest is the mark's job.
+pub(crate) const CONTINUATIONS_PER_WAKE: usize = 8;
 
 pub async fn sync_peers(
     state: &AppState,
@@ -2034,7 +2201,17 @@ pub async fn sync_peers(
         let task_peer = peer_id.clone();
         let mut attempt = tokio::spawn(async move {
             let addr = dial_addr(&task_state, &task_peer).await?;
-            sync_with_peer(&task_state, &task_root, addr).await
+            // Continue while behind (PEEK.md ruling 2), a bounded number of passes per
+            // wake: each pass is one budgeted connection, and the mark carries the rest
+            // to the next beat.
+            let mut passes = 0;
+            loop {
+                let stats = sync_with_peer(&task_state, &task_root, addr.clone()).await?;
+                passes += 1;
+                if !stats.behind || passes >= CONTINUATIONS_PER_WAKE {
+                    break Ok::<_, anyhow::Error>(stats);
+                }
+            }
         });
         match tokio::time::timeout(PEER_PASS_TIMEOUT, &mut attempt).await {
             Ok(Ok(Ok(stats))) => {
@@ -2247,8 +2424,55 @@ mod tests {
 
     async fn ingest(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
         let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
-        let outcome = ingest_batch(db, root, raw, false).await.unwrap();
+        let outcome = ingest_batch(db, root, raw, false, None).await.unwrap();
         (outcome.received, outcome.rejected)
+    }
+
+    /// PEEK.md ruling 3: an identity chain that would exceed the ceiling is refused whole,
+    /// at the gate, and nothing past the ceiling is stored - while a hosted persona (no
+    /// ceiling) admits the same entries.
+    #[tokio::test]
+    async fn an_identity_chain_over_the_ceiling_is_refused_at_the_gate() {
+        let s = scenario();
+        let raw = |entries: &[SignedEntry]| -> Vec<Vec<u8>> {
+            entries.iter().map(|e| e.bytes().to_vec()).collect()
+        };
+        // Ceiling 1: the first identity entry fits, the second would make two.
+        let db = test_db().await;
+        let first = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.authorize)), false, Some(1))
+            .await
+            .unwrap();
+        assert_eq!((first.received, first.over_ceiling), (1, false), "one entry sits under a ceiling of one");
+        let second = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.revoke)), false, Some(1))
+            .await
+            .unwrap();
+        assert!(second.over_ceiling, "the second would exceed the ceiling");
+        assert_eq!(second.received, 0, "and nothing of it is admitted");
+        assert_eq!(
+            stored_hashes(&db, &s.root, service::IDENTITY_PUBLIC).await,
+            vec![*s.authorize.hash()],
+            "the chain stands at the ceiling, not past it"
+        );
+        // A batch carrying content beside the over-ceiling identity entries is refused whole.
+        let db2 = test_db().await;
+        let mixed = ingest_batch(
+            &db2,
+            s.root,
+            raw(&[s.authorize.clone(), s.revoke.clone(), s.honest[0].clone()]),
+            false,
+            Some(1),
+        )
+        .await
+        .unwrap();
+        assert!(mixed.over_ceiling);
+        assert_eq!((mixed.received, mixed.rejected), (0, 3), "the whole batch, content included");
+        assert!(stored_hashes(&db2, &s.root, service::IDENTITY_PUBLIC).await.is_empty());
+        // No ceiling (a hosted persona): the same two entries are admitted.
+        let db3 = test_db().await;
+        let hosted = ingest_batch(&db3, s.root, raw(&[s.authorize.clone(), s.revoke.clone()]), false, None)
+            .await
+            .unwrap();
+        assert_eq!((hosted.received, hosted.over_ceiling), (2, false));
     }
 
     async fn stored_hashes(db: &Db, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {
@@ -3035,7 +3259,7 @@ mod tests {
     /// A member-proven ingest: inbox chains are private, so the unproven path never sees them.
     async fn ingest_proven(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
         let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
-        let outcome = ingest_batch(db, root, raw, true).await.unwrap();
+        let outcome = ingest_batch(db, root, raw, true, None).await.unwrap();
         (outcome.received, outcome.rejected)
     }
 
@@ -3077,7 +3301,7 @@ mod tests {
             .iter()
             .map(|e| e.bytes().to_vec())
             .collect();
-        let outcome = ingest_batch(&user_db, root_pk, raw, true).await.unwrap();
+        let outcome = ingest_batch(&user_db, root_pk, raw, true, None).await.unwrap();
         assert_eq!(outcome.rejected, 0, "the fixture's own chains are admissible");
 
         let scanned = chain_ranges(&user_db).await.unwrap();
@@ -3114,10 +3338,10 @@ mod tests {
             .await
             .with_memo(std::sync::Arc::new(node_db.clone()))
             .with_root(root.clone());
-        ingest_batch(&memoed, root_pk, raw.clone(), true).await.unwrap();
+        ingest_batch(&memoed, root_pk, raw.clone(), true, None).await.unwrap();
 
         let bare = crate::db::test_user_db().await;
-        ingest_batch(&bare, root_pk, raw, true).await.unwrap();
+        ingest_batch(&bare, root_pk, raw, true, None).await.unwrap();
 
         let shape = |plan: &[ChainSend]| -> Vec<(String, u32, u64)> {
             plan.iter()
@@ -3239,7 +3463,7 @@ mod tests {
         bytes[i] ^= 0xFF;
         let mut raw: Vec<Vec<u8>> = vec![authorize.bytes().to_vec()];
         raw.push(bytes);
-        let outcome = ingest_batch(&db, root, raw, true).await.unwrap();
+        let outcome = ingest_batch(&db, root, raw, true, None).await.unwrap();
         assert_eq!(outcome.received, 1, "only the authorize landed");
         assert_eq!(outcome.rejected, 1, "a tampered suffix head is refused");
 

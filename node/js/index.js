@@ -51,6 +51,8 @@ const html = htm.bind(h);
 // The app whose heptagon wears the unread badge (an id, not a phrase - hoisted so the
 // strings cop does not read it as words shown to a person).
 const BELL_APP_ID = 'notifications';
+// The persona app's id, hoisted for the same reason: its dock tile lights on your own /id page.
+const PERSONA_APP_ID = 'persona';
 
 // Nothing lives at this address. Internal URLs are session-relative (no identity in them, so
 // they never look shareable - PROJECT_PLAN, The Client Is a Console); an unknown one just
@@ -251,7 +253,7 @@ const Inside = ({ session }) => {
                 liveApps.map((app) => {
                     // Your own /id page is the persona app's home now: the lead tile lights there.
                     const isActive =
-                        app.id === 'persona'
+                        app.id === PERSONA_APP_ID
                             ? !!root && loc.path === `/id/${speakable(root)}`
                             : !!(appHere && appHere.id === app.id);
                     const badge = app.id === BELL_APP_ID && unread > 0 ? unread : 0;
@@ -260,7 +262,7 @@ const Inside = ({ session }) => {
                         <button
                             class=${[
                                 'quickbar-hex',
-                                app.id === 'persona' ? 'quickbar-hex-lead' : '',
+                                app.id === PERSONA_APP_ID ? 'quickbar-hex-lead' : '',
                                 isActive ? 'active' : '',
                             ]
                                 .filter(Boolean)

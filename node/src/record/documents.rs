@@ -5563,7 +5563,7 @@ mod tests {
                 .await
                 .unwrap();
         let root = key.verifying_key().to_bytes();
-        crate::net::sync::ingest_batch(&reader, root, raw, true)
+        crate::net::sync::ingest_batch(&reader, root, raw, true, None)
             .await
             .unwrap();
 

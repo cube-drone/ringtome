@@ -147,16 +147,26 @@ walks it per entry is unmeasured (residual).
 
 ## Slices
 
-1. **Budgets.** Admission first (ruling 14): the connection ceilings, the first-frame
-   deadline, the exchange wall clock, the per-peer cap, the transport limits set in code.
-   Then per-exchange entry and byte budgets on both sides (dials, test knobs), the "behind"
-   mark and the beat that continues, the identity-chain ceiling at the gate. Acceptance: a
-   burst of connections past the ceiling is closed at accept and an honest peer still gets
-   in; a connection that never sends its first frame is gone at the deadline; a one-frame-
-   a-minute exchange is closed at the wall clock; one peer's hundred connections count as
-   one peer; a five-thousand-entry chain arrives whole over several passes; a stream that
-   never ends is cut at the budget every pass and the node stays healthy; an identity chain
-   over the ceiling is refused and nothing of it is stored.
+1. ~~**Budgets.**~~ Built 2026-09-05. Admission first (ruling 14): `net::admission` holds
+   the connection ceilings (total, unproven, per peer) and refuses at accept; the sync
+   serve promotes its seat out of the unproven pool once the consent gate passes; the
+   first-frame deadline and the whole-exchange wall clock close the connection on both
+   sides; the transport's idle timeout, keep-alive and stream ceiling are set at endpoint
+   construction. Then the budgets: one per direction per exchange, on both sides; the
+   requester stops reading (and stops the stream) at its budget, the responder stops
+   sending at its; either cut, or a peer whose claimed heads still sit above what we hold,
+   marks the persona BEHIND - the wake pass treats a behind persona as stale, and both
+   fetch ladders chain up to eight budgeted passes per wake. The identity-chain ceiling
+   refuses a batch whole at the gate for any persona this node does not host, and the
+   exchange ends. Every number is a `RINGTOME_*` dial (config.rs). Acceptance, as built:
+   the rig runs a sixty-entry budget and a hundred-and-fifty-post history arrives over
+   passes, one exchange carrying a budget's worth and marking behind, the continuation
+   converging, a caught-up pass moving nothing (`budgets.cjs`); the ceiling refuses at the
+   gate and the chain stands at the ceiling, not past it (unit); the admission gate's
+   ceilings, pool and per-peer cap refuse rather than queue (unit). **Not proven by a
+   test**, because the rig has no misbehaving peer: the first-frame deadline, the wall
+   clock, and the flood at accept - each is a `timeout` or a counter read straight off the
+   dial, and a fake peer that never says Done or never sends Hello is its own residual.
 2. **The peek.** The foreign fetch becomes a scoped exchange (identity, profile,
    annotations) plus a `Shelf` fragment request answering the newest N post proofs and the
    author's pin proofs, then `Want` per post; the lens page and the profile read merge
@@ -184,5 +194,11 @@ walks it per entry is unmeasured (residual).
 
 - Measure whether any check walks an identity chain per entry; the ceiling makes it
   bounded, not cheap.
+- A misbehaving peer for the rig: never says Done, never sends Hello, trickles one frame a
+  minute, opens a hundred connections - the proofs slice 1's deadlines and ceilings still
+  owe.
+- A refused dial is retried at once: the first rig run under a too-small per-peer cap saw
+  one node's fragment sweep refused a quarter of a million times in half an hour. Refusal
+  is cheap, but the dialer owes a backoff on "busy" - the flood's other half.
 - The speculative lane's byte ceiling.
 - Snapshots for fold-based views under a suffix (IM-AOL open items).

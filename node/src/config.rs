@@ -66,6 +66,25 @@ pub struct Config {
     /// bound that the transcode enforces on media output. A legitimate note is always kilobytes;
     /// this only caps a novel-stuffer. Override with `RINGTOME_MAX_DOCUMENT_BYTES`.
     pub max_document_bytes: usize,
+    /// Admission (PEEK.md ruling 14, `net::admission`): incoming connections held at once,
+    /// how many of those may still be unproven, and how many one peer may hold. Over any of
+    /// them a connection is closed at accept. `RINGTOME_ADMIT_MAX_CONNECTIONS`,
+    /// `RINGTOME_ADMIT_MAX_UNPROVEN`, `RINGTOME_ADMIT_MAX_PER_PEER`.
+    pub admit_max_connections: usize,
+    pub admit_max_unproven: usize,
+    pub admit_max_per_peer: usize,
+    /// The exchange budgets (PEEK.md ruling 2): entries and bytes one direction of one
+    /// exchange may carry before it ends short and the requester is marked behind.
+    /// `RINGTOME_SYNC_BUDGET_ENTRIES`, `RINGTOME_SYNC_BUDGET_BYTES`.
+    pub sync_budget_entries: u64,
+    pub sync_budget_bytes: u64,
+    /// The serve side's first-frame deadline and both sides' whole-exchange wall clock, in
+    /// milliseconds. `RINGTOME_SYNC_FIRST_FRAME_MS`, `RINGTOME_SYNC_EXCHANGE_MAX_MS`.
+    pub sync_first_frame_ms: u64,
+    pub sync_exchange_max_ms: u64,
+    /// The identity-chain ceiling (PEEK.md ruling 3): a persona this node does not host whose
+    /// identity entries would exceed it is refused at the gate. `RINGTOME_IDENTITY_CHAIN_CEILING`.
+    pub identity_chain_ceiling: usize,
     /// How long a changed identity must sit quiet before its peers get an eager push - batches
     /// a burst of writes into one exchange. Local writes ring the eager loop's doorbell
     /// (`Db::nudge_sync`) so the debounce clock starts at the write itself; the ~1s tick then
@@ -208,6 +227,23 @@ impl Config {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(10 * 1024 * 1024);
 
+        // Admission and exchange dials (PEEK.md slice 1). Every one refuses rather than
+        // queues; the defaults are sized for a small multi-tenant node.
+        let dial = |name: &str, default: u64| -> u64 {
+            env::var(name).ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(default)
+        };
+        // Sized for fleets, not for one visitor: a peer NODE carries every persona it fronts,
+        // so one peer legitimately holds dozens of connections at once (the five-node rig
+        // found a cap of eight refusing a quarter of a million fragment asks, 2026-09-05).
+        let admit_max_connections = dial("RINGTOME_ADMIT_MAX_CONNECTIONS", 512) as usize;
+        let admit_max_unproven = dial("RINGTOME_ADMIT_MAX_UNPROVEN", 256) as usize;
+        let admit_max_per_peer = dial("RINGTOME_ADMIT_MAX_PER_PEER", 128) as usize;
+        let sync_budget_entries = dial("RINGTOME_SYNC_BUDGET_ENTRIES", 5_000);
+        let sync_budget_bytes = dial("RINGTOME_SYNC_BUDGET_BYTES", 64 * 1024 * 1024);
+        let sync_first_frame_ms = dial("RINGTOME_SYNC_FIRST_FRAME_MS", 10_000);
+        let sync_exchange_max_ms = dial("RINGTOME_SYNC_EXCHANGE_MAX_MS", 10 * 60 * 1000);
+        let identity_chain_ceiling = dial("RINGTOME_IDENTITY_CHAIN_CEILING", 10_000) as usize;
+
         // Floored at 8: a cache too small to hold the handles one request touches would
         // thrash on a single operation, which is worse than any descriptor it saves.
         let max_open_databases = env::var("RINGTOME_MAX_OPEN_DATABASES")
@@ -285,6 +321,14 @@ impl Config {
             discovery,
             max_upload_bytes,
             max_document_bytes,
+            admit_max_connections,
+            admit_max_unproven,
+            admit_max_per_peer,
+            sync_budget_entries,
+            sync_budget_bytes,
+            sync_first_frame_ms,
+            sync_exchange_max_ms,
+            identity_chain_ceiling,
             max_open_databases,
             sync_debounce_ms,
             pow_requested_bits,
