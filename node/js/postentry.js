@@ -423,8 +423,26 @@ const BookSection = ({ section, author, depth }) => html`<li class="book-card-se
 </li>`;
 
 const BookCard = ({ book, author }) => {
+    // The title page's words ride the card in full (BOOKS.md ruling 11), then the table.
+    const cover = book && book.cover ? book.cover.post : null;
+    const [coverWords, setCoverWords] = useState(undefined);
+    useEffect(() => {
+        if (!cover) {
+            setCoverWords(undefined);
+            return undefined;
+        }
+        let live = true;
+        apiText(`/id/${author}/docs/${cover}/body`)
+            .then((text) => live && setCoverWords(text))
+            .catch(() => live && setCoverWords(null));
+        return () => {
+            live = false;
+        };
+    }, [author, cover]);
+    const coverProfile = useTurbolinks(coverWords || '', 'marquee');
     if (!book) return html`<p class="null-sub">${t('postentry.a-book-this-node-cannot-read', 'a book this computer cannot read yet')}</p>`;
     return html`<div class="book-card">
+        ${!!coverWords && html`<div class="book-card-cover"><${MarqueeBody} source=${coverWords} profile=${coverProfile} onUnparsable=${bareSource} /></div>`}
         <p class="book-card-head">
             <${Icons.book} />
             ${book.count === 1

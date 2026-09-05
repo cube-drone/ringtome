@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 634 phrases across 48 files.
+// 636 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -168,6 +168,9 @@ export default {
     'doc.bookcol.publish': 'publish',
     'doc.bookcol.a-book-publishes-as-one': 'a book publishes as one thing: the whole notebook and its tree, and later its changes as one update at a time - never a page on its own',
     'doc.bookcol.publish-this-entire-notebook': 'publish this entire notebook',
+    'doc.bookcol.titled': 'titled',
+    'doc.bookcol.the-first-page-names-the': 'the first page in reading order names the book and opens it',
+    'doc.bookcol.untitled---the-first-page': 'untitled - the first page in reading order will name the book',
     'doc.bookcol.since-the-last-rollout': 'since the last rollout',
     'doc.bookcol.new': 'new',
     'doc.bookcol.changed': 'changed',
@@ -195,14 +198,13 @@ export default {
     'doc.bookreader.untitled-section': '(untitled section)',
     'doc.bookreader.opening-the-book': 'opening the book…',
     'doc.bookreader.this-book-cannot-be-read': 'this book cannot be read here yet',
-    'doc.bookreader.a-book': 'a book',
     'doc.bookreader.the-page-before': 'the page before',
     'doc.bookreader.previous': 'previous',
     'doc.bookreader.the-page-after': 'the page after',
     'doc.bookreader.next': 'next',
+    'doc.bookreader.a-book': 'a book',
     'doc.bookreader.this-book-has-no-pages': 'this book has no pages yet',
     'doc.bookreader.these-words-havent-reached': "these words haven't reached this computer, or they are shared only with people the author trusts",
-    'doc.bookreader.this-page-on-its-own': 'this page on its own',
 
     // --- node/js/doc/chips.js ---
     'doc.chips.the-previous-document': 'the previous document',

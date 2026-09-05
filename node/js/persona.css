@@ -1485,6 +1485,9 @@ article:has(.label-emoji-strip) {
     font-size: 0.75em;
 }
 /* A book on the feed (BOOKS.md): the table of contents as nested lists, pages as links. */
+.book-card-cover {
+    margin-bottom: 0.8rem;
+}
 .book-card-head {
     display: inline-flex;
     align-items: center;

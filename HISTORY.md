@@ -8332,3 +8332,31 @@ Then (Curtis): the feed's cards sit against the column's left edge rather than c
 a person's public page, the People app, and the Notifications app take the post measure too.
 The reader opens on the first page rather than a cover with "begin reading" (Curtis); "up"
 went with the cover - the tree is the table of contents.
+Field-found (Curtis: links in the book reloaded the page, the buttons did not): the shell's
+LocationProvider intercepts only `/home` anchors by design, so the reader's own links route
+in place by hand now, modifier-clicks left to the browser.
+And a page taller than 800px repeats previous / next at its foot (Curtis), measured with a
+ResizeObserver rather than guessed.
+Then (Curtis: the per-page link offers little "except a place for comments to get very
+lost"): the link is gone, and a page's page threads, replies, and dossier on the book -
+one conversation per book, whichever page you arrived at.
+
+## 2026-09-04 (cont.): the title page (BOOKS.md ruling 11)
+
+Curtis: a book titled "default" after its notebook, its feed post the bare table, was wrong;
+the book should adopt its first page as a title page. Now the rollout takes the first page
+in reading order (top-level pages first, then the sections) as the cover: the book is titled
+by it, the payload names it, the feed's book card carries that page's words in full before
+the table, and the book's public labels are restated as the union of every page's tags (a
+post's own cap) plus the notebook as its bucket - unsaid again when a tag goes. The Publish
+column says "titled X" with a link to the page. `titlePageOf` (pure) walks the private tree
+the same way, hidden skipped. Acceptance: the loose page at the top level names the book on
+the shelf, the profile, the follower's feed, and the sharer's follower's feed, the cover
+names it, and the book's tags read alpha and beta.
+Field-found by the drive: the column named a different title page than the rollout did -
+its walk visited sections before unfiled pages; the rollout and the reader put unfiled pages
+first. The column walks the same order now, pinned by the pure claim.
+The acceptance then caught what the drive could not: a page hidden by its own mark can sit
+at the tree's top level, and the cover choice took it before checking it was published, so
+the book fell back to its notebook's name. The cover is the first PUBLISHED page in reading
+order now.

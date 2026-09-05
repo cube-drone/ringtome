@@ -75,6 +75,9 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     // A book, or a page of one: the reader (BOOKS.md slice 4) rather than the card.
     const isBook = !!post && post.format === 'book';
     const partOf = (post && post.part_of) || null;
+    // A book's comments live in one place (Curtis, 2026-09-04: a per-page thread is "a place
+    // for comments to get very lost"): a page's page threads and replies on the BOOK.
+    const threadDoc = partOf || doc;
     const item = post && {
         author: root,
         doc_id: post.doc_id,
@@ -145,12 +148,12 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                 ${item.mine &&
                 html`<${HeldReplies}
                     root=${root}
-                    doc=${doc}
+                    doc=${threadDoc}
                     onNod=${() => setRefreshKey((k) => k + 1)}
                 />`}
                 <${Thread}
                     author=${root}
-                    doc=${doc}
+                    doc=${threadDoc}
                     current=${current}
                     depth=${0}
                     extra=${said}
@@ -163,11 +166,11 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                 current.root &&
                 html`<${ReplyBox}
                     current=${current}
-                    parent=${{ author: root, doc_id: doc }}
+                    parent=${{ author: root, doc_id: threadDoc }}
                     onReplied=${(mint) => setSaid((have) => [...have, mint])}
                 />`}
             </section>`}
-            ${item && html`<${PostDossier} author=${root} doc=${doc} />`}
+            ${item && html`<${PostDossier} author=${root} doc=${threadDoc} />`}
         </div>
     `;
 };

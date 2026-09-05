@@ -33,6 +33,9 @@ describe("books: a notebook rolls out as one book", function () {
         pages.one = await mk("chapter one", "the first words");
         pages.two = await mk("chapter two", "the second words");
         pages.loose = await mk("a loose page", "unfiled words");
+        // Tags on two pages: the book's labels are their union (ruling 11).
+        await ada(`api/identity/${adaRoot}/docs/${pages.one}/annotations/tags/alpha`, { method: "PUT" });
+        await ada(`api/identity/${adaRoot}/docs/${pages.loose}/annotations/tags/beta`, { method: "PUT" });
         hiddenId = await mk("the secret page", "never published");
         // A picture filed in the notebook is not a page (field-found 2026-09-04): it must
         // neither count nor send the rollout through the text door.
@@ -91,13 +94,20 @@ describe("books: a notebook rolls out as one book", function () {
     it("the shelf lists the book and none of its pages; the book carries the tree", async () => {
         const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
         const formats = shelf.map((p) => `${p.format}:${p.title}`);
-        assert.deepEqual(formats, [`book:${bucket}`], `only the book: ${formats}`);
+        assert.deepEqual(formats, ["book:a loose page"], `only the book, titled by its first page: ${formats}`);
         // The persona page's own recent-posts read is a second shelf (field-found 2026-09-04
         // by the reader drive: the pages were listed there).
         const profile = await (await ada(`api/id/${adaRoot}/profile`)).json();
-        assert.deepEqual((profile.posts || []).map((p) => `${p.format}:${p.title}`), [`book:${bucket}`], "the profile's shelf agrees");
+        assert.deepEqual((profile.posts || []).map((p) => `${p.format}:${p.title}`), ["book:a loose page"], "the profile's shelf agrees");
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
-        assert.equal(body.title, bucket);
+        // The title page (ruling 11): the first page in reading order - the loose page sits
+        // at the top level, before the section - names the book and rides as its cover.
+        assert.equal(body.title, "a loose page");
+        assert.ok(body.cover && body.cover.title === "a loose page", "the cover names the title page");
+        const head = await (await ada(`api/id/${adaRoot}/posts/${book}`)).json();
+        assert.equal(head.title, "a loose page", "the book's post wears the title page's title");
+        const tags = (head.annotations || []).filter((a) => a.key === "tag").map((a) => a.value).sort();
+        assert.deepEqual(tags, ["alpha", "beta"], "the book's tags are the union of its pages' tags");
         assert.deepEqual(body.sections.map((s) => s.title), ["part one"], "a hidden section and an empty one are not listed");
         assert.ok(!JSON.stringify(body).includes("curtain"), "nothing beneath a hidden section publishes");
         assert.deepEqual(body.sections[0].pages.map((p) => p.title), ["chapter one", "chapter two"]);
@@ -134,7 +144,7 @@ describe("books: a notebook rolls out as one book", function () {
             items = ((await (await bea(`api/identity/${beaRoot}/feed`)).json()).items || []).filter((it) => it.author === adaRoot);
             if (!items.some((it) => it.doc_id === book)) await new Promise((r) => setTimeout(r, 300));
         }
-        assert.deepEqual(items.map((it) => `${it.format}:${it.title}`), [`book:${bucket}`], `one book, no pages: ${JSON.stringify(items.map((i) => i.title))}`);
+        assert.deepEqual(items.map((it) => `${it.format}:${it.title}`), ["book:a loose page"], `one book, no pages: ${JSON.stringify(items.map((i) => i.title))}`);
         const page = await bea(`id/${adaRoot}/docs/${(JSON.parse(await (await bea(`id/${adaRoot}/docs/${book}/body`)).text())).pages[0].post}/body`);
         assert.equal(page.status, 200, "a page opens from the book");
         assert.equal(await page.text(), "unfiled words");
@@ -180,7 +190,7 @@ describe("books: a notebook rolls out as one book", function () {
         assert.ok(words.includes("removed:") && words.includes("chapter two"), `names the removed page: ${words}`);
         // The shelf: the book and the update, still no pages.
         const shelf = (await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [];
-        assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`).sort(), [`book:${bucket}`, `marquee:${bucket} updated`]);
+        assert.deepEqual(shelf.map((x) => `${x.format}:${x.title}`).sort(), ["book:a loose page", `marquee:${bucket} updated`]);
     });
 
     it("a rebroadcast of a book is one pointer: the sharer's follower sees the book, no pages", async function () {
@@ -199,7 +209,8 @@ describe("books: a notebook rolls out as one book", function () {
             items = ((await (await cal(`api/identity/${calRoot}/feed`)).json()).items || []).filter((it) => it.author === adaRoot);
         }
         const seen = items.map((it) => `${it.format}:${it.title}`);
-        assert.ok(seen.includes(`book:${bucket}`), `the book reached cal by bea's share: ${seen}`);
-        assert.ok(!seen.some((s) => /chapter|loose/.test(s)), `and no page rode along on its own: ${seen}`);
+        assert.ok(seen.includes("book:a loose page"), `the book reached cal by bea's share: ${seen}`);
+        // The book is titled after its first page now, so look past it: no PAGE item rode along.
+        assert.ok(!seen.some((s) => !s.startsWith("book:") && /chapter|loose/.test(s)), `and no page rode along on its own: ${seen}`);
     });
 });

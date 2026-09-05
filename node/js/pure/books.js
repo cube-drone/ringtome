@@ -57,7 +57,44 @@ export function parseBook(text) {
     });
     const top = section(raw);
     const count = (s) => s.pages.length + s.sections.reduce((n, x) => n + count(x), 0);
-    return { title: String(raw.title || ''), sections: top.sections, pages: top.pages, count: count(top) };
+    const cover = raw.cover && raw.cover.post ? { post: String(raw.cover.post), title: String(raw.cover.title || '') } : null;
+    return { title: String(raw.title || ''), cover, sections: top.sections, pages: top.pages, count: count(top) };
+}
+
+/// The page a book borrows its title from (BOOKS.md ruling 11): the first page in reading
+/// order over the PRIVATE tree - top-level pages first, then sections depth-first, hidden
+/// ones skipped - else the first page of the notebook by id. Returns a doc id, or null.
+export function titlePageOf(tree, docs, hidden) {
+    const hiddenDocs = hiddenDocsOf(tree, hidden || new Set());
+    const isPage = (id) => docs.some((d) => d.doc_id === id) && !hiddenDocs.has(id) && !(hidden && hidden.has(`doc:${id}`));
+    // The same order the rollout and the reader use: the tree's top-level pages, then the
+    // notebook's unfiled pages (by id), then the sections depth-first.
+    const filedIds = new Set();
+    const collect = (node, seen) => {
+        if (!node || seen.has(node.taxonomy_id)) return;
+        seen.add(node.taxonomy_id);
+        for (const m of node.members || []) {
+            if (m.taxonomy) collect(m.taxonomy, seen);
+            else if (m.doc_id) filedIds.add(m.doc_id);
+        }
+    };
+    collect(tree, new Set());
+    const top = tree ? (tree.members || []).filter((m) => !m.taxonomy && m.doc_id && isPage(m.doc_id)).map((m) => m.doc_id) : [];
+    if (top.length) return top[0];
+    const loose = docs.map((d) => d.doc_id).filter((id) => !filedIds.has(id) && isPage(id)).sort();
+    if (loose.length) return loose[0];
+    const walk = (node, seen) => {
+        if (!node || seen.has(node.taxonomy_id)) return null;
+        seen.add(node.taxonomy_id);
+        for (const m of node.members || []) {
+            if (!m.taxonomy || !m.taxonomy.members || (hidden && hidden.has(`sec:${m.taxonomy.taxonomy_id}`))) continue;
+            for (const x of m.taxonomy.members || []) if (!x.taxonomy && x.doc_id && isPage(x.doc_id)) return x.doc_id;
+            const deeper = walk(m.taxonomy, seen);
+            if (deeper) return deeper;
+        }
+        return null;
+    };
+    return walk(tree, new Set());
 }
 
 /// The book in reading order (BOOKS.md slice 4): every page depth-first with the trail of

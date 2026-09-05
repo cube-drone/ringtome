@@ -156,6 +156,13 @@
     align-items: center;
     gap: 0.4rem;
 }
+.book-title-line {
+    margin: 0;
+    color: var(--ink-soft);
+}
+.book-title-link {
+    font-weight: 600;
+}
 .book-off,
 .book-ledger-head {
     margin: 0;

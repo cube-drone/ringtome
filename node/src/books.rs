@@ -145,8 +145,28 @@ struct SectionPayload {
 #[derive(serde::Serialize)]
 struct BookPayload {
     title: String,
+    /// The title page (BOOKS.md ruling 11): the first page in reading order, whose title
+    /// the book borrows and whose words the book's post carries before the table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cover: Option<PagePayload>,
     sections: Vec<SectionPayload>,
     pages: Vec<PagePayload>,
+}
+
+/// The first PUBLISHED page in reading order among the sections, depth-first. (The
+/// top-level pages are the caller's to check first; a page hidden by its own mark can
+/// stand at the top level of the tree and must not be taken for the cover - field-found
+/// 2026-09-05, when the acceptance's hidden page named nothing and the book fell back to
+/// its notebook's name.)
+fn first_section_page(ordered: &Ordered, published: &BTreeMap<[u8; 16], String>) -> Option<[u8; 16]> {
+    fn in_section(s: &Section, published: &BTreeMap<[u8; 16], String>) -> Option<[u8; 16]> {
+        s.pages
+            .iter()
+            .copied()
+            .find(|p| published.contains_key(p))
+            .or_else(|| s.sections.iter().find_map(|x| in_section(x, published)))
+    }
+    ordered.sections.iter().find_map(|s| in_section(s, published))
 }
 
 async fn rollout(
@@ -338,14 +358,31 @@ async fn rollout(
         removed.push(title.clone());
     }
 
-    // The book: the tree with its pages' public ids, minted onto the book's id.
+    // The book: the tree with its pages' public ids, minted onto the book's id. Its title
+    // page is the first page in reading order (ruling 11): the book borrows that title.
+    let top: Vec<[u8; 16]> = ordered
+        .pages
+        .iter()
+        .chain(pages.iter().filter(|p| !ordered.filed.contains(*p)))
+        .copied()
+        .collect();
+    let cover_doc = top
+        .iter()
+        .copied()
+        .find(|p| published.contains_key(p))
+        .or_else(|| first_section_page(&ordered, &published));
+    let cover = cover_doc.and_then(|d| published.get(&d).map(|post| PagePayload { post: post.clone(), title: titles.get(&d).cloned().unwrap_or_default() }));
+    let book_title = cover
+        .as_ref()
+        .map(|c| c.title.clone())
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| bucket.to_string());
     let payload = BookPayload {
-        title: bucket.to_string(),
+        title: book_title.clone(),
+        cover,
         sections: ordered.sections.iter().map(|s| section_payload(s, &published, &titles)).collect(),
-        pages: ordered
-            .pages
+        pages: top
             .iter()
-            .chain(pages.iter().filter(|p| !ordered.filed.contains(*p)))
             .filter_map(|p| published.get(p).map(|post| PagePayload { post: post.clone(), title: titles.get(p).cloned().unwrap_or_default() }))
             .collect(),
     };
@@ -360,7 +397,7 @@ async fn rollout(
         data.files(),
         crate::record::documents::PublicText {
             onto: Some((book_id, parents)),
-            title: bucket,
+            title: &book_title,
             body: &body,
             format: crate::record::documents::Format::Book,
             refs: Vec::new(),
@@ -377,6 +414,11 @@ async fn rollout(
         if let Err(e) = crate::postkeys::remember(&state.node_db, root, &hex::encode(minted), &key).await {
             tracing::warn!(error = ?e, "book key memo write failed");
         }
+    }
+    // The book's labels (ruling 11): every tag on every page, as one union, plus the
+    // notebook as its bucket - restated the way a post's own draft labels are.
+    if let Err(e) = restate_book_labels(data, root, &minted, bucket, &pages).await {
+        tracing::warn!(error = ?e, "the book's labels could not be restated; the book stands");
     }
     if !facts.published {
         facts.published = true;
@@ -520,6 +562,50 @@ fn section_payload(s: &Section, published: &BTreeMap<[u8; 16], String>, titles: 
             .collect(),
         sections: s.sections.iter().map(|x| section_payload(x, published, titles)).collect(),
     }
+}
+
+/// The union of every page's tags, said in public about the book (capped like a post's
+/// own), plus the notebook as the book's bucket; whatever was said before and is not wanted
+/// now is unsaid.
+async fn restate_book_labels(
+    data: &store::Store,
+    root: &str,
+    book: &[u8; 16],
+    bucket: &str,
+    pages: &[[u8; 16]],
+) -> Result<()> {
+    const CAP: usize = 32;
+    let root_key = crate::pubkey::decode(root).ok_or_else(|| anyhow!("bad root"))?;
+    let mut desired: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut tags: BTreeSet<String> = BTreeSet::new();
+    for page in pages {
+        for tag in data.annotations().tags(page).await? {
+            let tag = tag.trim().to_string();
+            if !tag.is_empty() && tag.chars().count() <= ringtome_proto::PublicAnnotation::MAX_TAG_CHARS {
+                tags.insert(tag);
+            }
+        }
+    }
+    for tag in tags.into_iter().take(CAP) {
+        desired.insert(("tag".into(), tag));
+    }
+    if bucket.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN {
+        desired.insert(("bucket".into(), bucket.to_string()));
+    }
+    let stated: BTreeSet<(String, String)> = data
+        .public_annotations()
+        .of(root, book)
+        .await?
+        .into_iter()
+        .map(|r| (r.key, r.value))
+        .collect();
+    for (k, v) in desired.difference(&stated) {
+        data.public_annotations().say(&root_key, book, k, v, true).await?;
+    }
+    for (k, v) in stated.difference(&desired) {
+        data.public_annotations().say(&root_key, book, k, v, false).await?;
+    }
+    Ok(())
 }
 
 /// The book's last published payload, if the book exists: read back through the file layer

@@ -1,8 +1,8 @@
 const assert = require('node:assert');
 
-let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours;
+let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours, titlePageOf;
 before(async () => {
-    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours } = await import('../../../js/pure/books.js'));
+    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours, titlePageOf } = await import('../../../js/pure/books.js'));
 });
 
 describe('books: the private bookkeeping (BOOKS.md slice 1)', () => {
@@ -77,5 +77,21 @@ describe('books: reading order (BOOKS.md slice 4)', () => {
         assert.equal(neighbours(book, 'p0').prev, null);
         assert.equal(neighbours(book, 'p3').next, null);
         assert.equal(neighbours(book, 'nope').index, -1);
+    });
+});
+
+describe('books: the title page (BOOKS.md ruling 11)', () => {
+    it('is the first page in reading order over the private tree, hidden skipped, else the first loose page', () => {
+        const docs = [{ doc_id: 'p1' }, { doc_id: 'p2' }, { doc_id: 'p3' }, { doc_id: 'z' }];
+        const tree = { taxonomy_id: 'root', members: [
+            { doc_id: 'p1', doc: {} },
+            { doc_id: 's', taxonomy: { taxonomy_id: 's', members: [{ doc_id: 'p2', doc: {} }] } },
+        ] };
+        assert.equal(titlePageOf(tree, docs, new Set()), 'p1');
+        assert.equal(titlePageOf(tree, docs, new Set(['doc:p1'])), 'p3', 'a hidden top page yields to the first UNFILED page, before any section - the rollout and the reader agree');
+        assert.equal(titlePageOf(tree, [{ doc_id: 'p1' }, { doc_id: 'p2' }], new Set(['doc:p1'])), 'p2', 'with nothing unfiled, the first section page');
+        assert.equal(titlePageOf(null, docs, new Set()), 'p1', 'no tree: the first page by id');
+        assert.equal(titlePageOf(null, [{ doc_id: 'z' }], new Set(['doc:z'])), null);
+        assert.equal(parseBook('{"title":"t","cover":{"post":"c","title":"Cover"},"sections":[],"pages":[]}').cover.title, 'Cover');
     });
 });

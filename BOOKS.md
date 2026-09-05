@@ -63,6 +63,12 @@ deferred". This is that design.
     key). Scheduling a book is not in this arc. Unpublishing a book retracts the book and
     every page.
 
+11. **The title page** (Curtis, 2026-09-04). A book adopts the first page in reading order
+    as its title page: the book is titled by it, the book's feed post carries that page's
+    words in full and then the table of contents, and the Publish column shows the borrowed
+    title with a link to the page it comes from. The book's tags are the union of every tag
+    on every page in the book (its notebook rides as its bucket, as a post's would).
+
 ## Slices
 
 1. ~~**Book mode and the Publish column.**~~ Built 2026-09-03: the switch and the hidden
@@ -114,7 +120,9 @@ deferred". This is that design.
    on the right, previous / next and "n / N" along the top, the first page open when none
    is asked for (Curtis: "just start at the first page"); a page's own permalink lands in the reader too with that
    page open (a page is a place in a book first), and "this page on its own" is there for
-   the bare post. Route `/id/:seg/post/:book/:page`. The shelf gained "+ books". Acceptance:
+   the bare post. Route `/id/:seg/post/:book/:page`. Amended the same day: no "this page on
+   its own" link, and a page's page threads, replies, and dossier on the BOOK - comments live
+   in one place (Curtis: a per-page thread is "a place for comments to get very lost"). The shelf gained "+ books". Acceptance:
    a rebroadcast of the book reaches the sharer's follower as the book alone, no pages.
    Reading order is pure (`readingOrder`, `neighbours`). Writer in read-only mode over the book's public tree: the list, the tree,
    the reading pane, page navigation (previous, next, up) - at the book's permalink; the
