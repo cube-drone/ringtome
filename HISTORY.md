@@ -8406,3 +8406,16 @@ one door now - the route, a book's takedown, a rollout's removed pages - and it 
 twin no other standing post of the author names (external bakes are shared per URL between
 posts; private twins are minted per bake). Residual: an EDIT's re-bake mints a fresh twin
 and leaves the old one public on the author's shelf - noted in NEXT_STEPS.
+
+## 2026-09-05 (cont.): the mini-card says its first words, and whose
+
+Curtis: an untitled post's mini-card (the bell, "in reply to", the thread root) "should try
+its best to extract some useful words from the post rather than just reading 'link'", and
+every card should carry "the smallest user-identification hex to identify the post's
+provenance". The card now says the author's description if they wrote one, else the body's
+first nine usable words with an ellipsis when there were more (`pure/excerpt.js`: pictures
+and addresses are not words, a link is its text, markup sheds its punctuation, a book's body
+is a table), and "link" only when the post offers nothing. The card fetches the head and
+body itself, so a sealed body the reader cannot open stays sealed - the door refuses and the
+card says "link". Every card wears the author's four-hex shortcode, which moved to
+`pure/person.js` so the card and the persona home spell it the same way.

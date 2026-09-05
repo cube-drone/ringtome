@@ -14,14 +14,14 @@ import { api } from './net.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
-import { personaHue } from './pure/person.js';
+import { personaHue, shortcode } from './pure/person.js';
 import { AddressRow, PersonBanner } from './person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 
 const html = htm.bind(h);
 
-export const shortcode = (rootHex) => rootHex.slice(0, 4);
+export { shortcode };
 
 // The persona layer, as a hook. `current` is null while checking, while the account has no
 // personas, and during the ceremony; the caller branches on `state`.

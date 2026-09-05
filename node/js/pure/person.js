@@ -33,3 +33,8 @@ export const PERSON_SIZES = ['mini', 'small'];
 export function signalLevel(value) {
     return bandOrdinal(value) ?? 0;
 }
+
+/// The smallest hex that still says WHOSE: the root's first four hex digits, the same
+/// shortcode the persona home and the computers list wear. Provenance in a glance, never
+/// an address - the speakable form is for addressing.
+export const shortcode = (rootHex) => (rootHex || '').slice(0, 4);

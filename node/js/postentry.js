@@ -23,6 +23,8 @@ import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
+import { shortcode } from './pure/person.js';
+import { descriptionOf, excerpt } from './pure/excerpt.js';
 import { nameToEmoji } from 'gemoji';
 // The reaction palette under the open tag input (Curtis, 2026-08-31): the nine in pole
 // position, then the whole gemoji table - the same table the marquee editor's `:` completions
@@ -391,9 +393,36 @@ const ShareButton = ({ item, current }) => {
 /// A post, REFERRED to - the mini-card (2026-08-26): title and date in a small clickable
 /// footprint, for surfaces that mention a post rather than show it (the bell's rebroadcast
 /// rows first). Not a compact PostEntry on purpose: the one-component ruling covers "a
-/// post, shown", and this shows nothing of the post's body - it is a dressed link, and a
-/// missing title degrades to the feed's own word for that, "link".
+/// post, shown", and this shows nothing of the post's body beyond a mention's worth - it
+/// is a dressed link. An untitled post says its first words instead (Curtis, 2026-09-05):
+/// the author's description if they wrote one, else the body's first nine usable words,
+/// fetched here so a sealed body a reader cannot open stays sealed (the door refuses, the
+/// card falls back to "link"). Every card wears the author's shortcode: provenance.
 export const MiniPost = ({ author, doc_id, title, published_ms }) => {
+    const [words, setWords] = useState('');
+    useEffect(() => {
+        setWords('');
+        if (title || !author || !doc_id) return undefined;
+        let live = true;
+        (async () => {
+            try {
+                const head = await api(`/api/id/${author}/posts/${doc_id}`);
+                const said = descriptionOf(head.annotations, author);
+                if (said) {
+                    if (live) setWords(said);
+                    return;
+                }
+                if (head.format === 'book' || head.trusted_only) return; // a table, or sealed: no peeking
+                const body = await apiText(`/id/${author}/docs/${doc_id}/body`);
+                if (live) setWords(excerpt(body, head.format));
+            } catch {
+                /* the post has left the shelf, or its words refuse this reader: "link" */
+            }
+        })();
+        return () => {
+            live = false;
+        };
+    }, [author, doc_id, title]);
     const when =
         published_ms &&
         new Date(published_ms).toLocaleDateString(undefined, {
@@ -402,8 +431,9 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
             day: 'numeric',
         });
     return html`<a class="minipost" href=${`/id/${speakable(author)}/post/${doc_id}`}>
-        <span class="minipost-title">${title || t('postentry.link', 'link')}</span>
+        <span class=${title ? 'minipost-title' : 'minipost-words'}>${title || words || t('postentry.link', 'link')}</span>
         ${when && html`<span class="minipost-when">${when}</span>`}
+        <span class="minipost-who" title=${speakable(author)}>${shortcode(author)}</span>
     </a>`;
 };
 

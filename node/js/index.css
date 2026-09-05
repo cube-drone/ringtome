@@ -186,6 +186,14 @@
 .minipost-title {
     font-weight: 600;
 }
+.minipost-words {
+    font-style: italic;
+}
+.minipost-who {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 0.75em;
+    color: var(--muted);
+}
 .minipost-when {
     font-size: 0.8em;
     color: var(--muted);
