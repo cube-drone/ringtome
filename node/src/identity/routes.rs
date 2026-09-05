@@ -45,6 +45,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/peers", get(peers_handler))
         .route("/api/identity/{root}/docs/{doc_id}/publish", post(publish_handler))
         .route("/api/identity/{root}/books/{bucket}/rollout", post(book_rollout_handler))
+        .route("/api/identity/{root}/books/{bucket}", delete(book_takedown_handler))
         .route("/api/identity/{root}/posts/{post_id}", delete(unpublish_handler))
         .route(
             "/api/identity/{root}/rebroadcasts",
@@ -1556,6 +1557,25 @@ async fn book_rollout_handler(
         .set(&bucket, &plan.to_string())
         .await?;
     Ok(Json(BookRolloutResponse { status: "pending" }))
+}
+
+/// Take a book down whole (BOOKS.md slice 5): the book, its pages, its updates.
+async fn book_takedown_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, bucket)): Path<(String, String)>,
+) -> Result<Json<crate::books::Takedown>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let took = crate::books::take_down(&state, &data, &root, &bucket)
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("no published book") {
+                AppError::BadRequest(crate::msg!("identity.routes.this-notebook-has-no-published", "this notebook has no published book"))
+            } else {
+                AppError::Internal(e)
+            }
+        })?;
+    Ok(Json(took))
 }
 
 /// Resolve a reply's links from the PARENT's own held header: the mirror's public shelf

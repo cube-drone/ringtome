@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 639 phrases across 48 files.
+// 648 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -164,6 +164,13 @@ export default {
     'doc.annotations.a-short-description-optional': 'a short description (optional)',
 
     // --- node/js/doc/bookcol.js ---
+    'doc.bookcol.take-the-book-and-every': 'take the book and every page back off the network',
+    'doc.bookcol.unpublish-the-book': 'unpublish the book',
+    'doc.bookcol.take-it-down': 'take it down',
+    'doc.bookcol.removes-the-book-and-every': "removes the book and every page from other people's feeds and shares, but very slowly; the pages stay in this notebook as drafts",
+    'doc.bookcol.taking-it-down': 'taking it down…',
+    'doc.bookcol.yes-take-it-down': 'yes, take it down',
+    'doc.bookcol.keep-it': 'keep it',
     'doc.bookcol.untitled': 'untitled',
     'doc.bookcol.publish': 'publish',
     'doc.bookcol.a-book-publishes-as-one': 'a book publishes as one thing: the whole notebook and its tree, and later its changes as one update at a time - never a page on its own',
@@ -191,6 +198,7 @@ export default {
     'doc.bookcol.rolling-out-done-of-total': 'rolling out: {done} of {total}',
     'doc.bookcol.the-rollout-failed': 'the rollout failed',
     'doc.bookcol.view-the-book': 'view the book',
+    'doc.bookcol.this-notebooks-book-is-still': "this notebook's book is still public - switch back on to update it, or take it down; switched off, the pages publish one by one again",
     'doc.bookcol.this-notebook-publishes-page-by': 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates',
 
     // --- node/js/doc/bookreader.js ---
@@ -597,6 +605,7 @@ export default {
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
     'identity.routes.this-notebook-is-not-switched': 'this notebook is not switched to publish as a book',
+    'identity.routes.this-notebook-has-no-published': 'this notebook has no published book',
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",

@@ -10,6 +10,7 @@ import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { Icons } from '../icons.js';
 import { PaneHead } from '../panes.js';
+import { Modal } from '../modal.js';
 import { t } from '../i18n.js';
 import { rootTitleFor } from '../pure/naming.js';
 import { BOOKS_KV, HIDDEN_KV, bookModes, bookFacts, isBookBucket, hiddenSetOf, hiddenDocsOf, bookLedger, titlePageOf } from '../pure/books.js';
@@ -44,9 +45,15 @@ export function useBookFacts(root) {
         };
     }, [root, gen]);
     const setBook = async (bucket, on) => {
+        // The switch moves ONE fact; the rollout's own facts beside it (the book's id, that
+        // it is published, its key) stay - field-found 2026-09-05: switching off wiped them,
+        // and a book still public had no "take it down" left.
+        const kept = { ...(books[bucket] || {}) };
+        if (on) kept.mode = 'book';
+        else delete kept.mode;
         await api(`/api/identity/${root}/private/kv/${BOOKS_KV}/${encodeURIComponent(bucket)}`, {
             method: 'PUT',
-            body: JSON.stringify({ value: on ? JSON.stringify({ mode: 'book' }) : '' }),
+            body: JSON.stringify({ value: Object.keys(kept).length ? JSON.stringify(kept) : '' }),
         });
         setGen((g) => g + 1);
     };
@@ -153,6 +160,42 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
     });
     const moving = plan && ['pending', 'running', 'baking'].includes(plan.status);
     const rolloutFailed = !!plan && plan.status === 'failed';
+    const [askingTakedown, setAskingTakedown] = useState(false);
+    const [takingDown, setTakingDown] = useState(false);
+    const takeDown = async () => {
+        setTakingDown(true);
+        setAskError(null);
+        try {
+            await api(`/api/identity/${root}/books/${encodeURIComponent(bucket)}`, { method: 'DELETE' });
+            refresh();
+            poke();
+        } catch (e) {
+            setAskError(e.message);
+        } finally {
+            setTakingDown(false);
+            setAskingTakedown(false);
+        }
+    };
+    const takedownUi = html`<button
+            class="book-unpublish"
+            disabled=${takingDown || moving}
+            title=${t('doc.bookcol.take-the-book-and-every', 'take the book and every page back off the network')}
+            onClick=${() => setAskingTakedown(true)}
+        ><${Icons.unpublish} /> ${t('doc.bookcol.unpublish-the-book', 'unpublish the book')}</button>
+        ${askingTakedown &&
+        html`<${Modal} title=${t('doc.bookcol.take-it-down', 'take it down')} onClose=${() => !takingDown && setAskingTakedown(false)}>
+            <p class="feed-unpublish-warn">
+                ${t('doc.bookcol.removes-the-book-and-every', "removes the book and every page from other people's feeds and shares, but very slowly; the pages stay in this notebook as drafts")}
+            </p>
+            <div class="feed-unpublish-acts">
+                <button class="feed-unpublish-go" disabled=${takingDown} onClick=${takeDown}>
+                    ${takingDown ? t('doc.bookcol.taking-it-down', 'taking it down…') : t('doc.bookcol.yes-take-it-down', 'yes, take it down')}
+                </button>
+                <button class="feed-unpublish-no" disabled=${takingDown} onClick=${() => setAskingTakedown(false)}>
+                    ${t('doc.bookcol.keep-it', 'keep it')}
+                </button>
+            </div>
+        </${Modal}>`}`;
     const rollOut = async () => {
         setAsking(true);
         setAskError(null);
@@ -259,9 +302,15 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   ${askError && html`<p class="form-error">${askError}</p>`}
                   ${published &&
                   html`<a class="book-view" href=${`/id/${root}/post/${published}`}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`}
+                  ${published && takedownUi}
                   </div>`
-            : html`<p class="book-off">
-                  ${t('doc.bookcol.this-notebook-publishes-page-by', 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates')}
-              </p>`}
+            : html`<div class="book-block">
+                  <p class="book-off">
+                      ${published
+                          ? t('doc.bookcol.this-notebooks-book-is-still', "this notebook's book is still public - switch back on to update it, or take it down; switched off, the pages publish one by one again")
+                          : t('doc.bookcol.this-notebook-publishes-page-by', 'this notebook publishes page by page; switched on, it publishes as one book - the tree and all - and afterwards its changes as updates')}
+                  </p>
+                  ${published && takedownUi}
+              </div>`}
     </aside>`;
 };

@@ -8368,3 +8368,20 @@ now; the reader lists every tag with how many pages carry it, most-carried first
 selection filters the table to the pages carrying all of them (Writer's own rule), emptied
 sections dropped, navigation still walking the whole book. `bookTags` and `filterBook`,
 pure, with claims; the acceptance reads the tags off the payload.
+
+## 2026-09-05 (cont.): BOOKS.md slice 5 - taking a book down
+
+`DELETE /books/{bucket}` retracts every page the book's last payload names, every update
+threaded under the book, and the book itself, releases each note to a draft, forgets the
+book's id and key in the bucket's facts (a tombstone is final for the id; the next rollout
+mints a fresh book), drops any pending plan, and drains the fold. The Publish column offers
+"unpublish the book" through the house modal with the deletion copy that under-promises, in
+both states of the switch - switched off with a book still public, it says so. One wire
+edge closed on the way: `part_of` is carried on re-publication like the reply link, so a
+page re-published from its own bar stays a page rather than becoming a standalone post.
+Acceptance: the takedown reports the book, three pages, one update; every permalink 404s;
+every note is a draft again; the shelf is empty; a fresh rollout mints a different book.
+The arc's five slices are built.
+Field-found by the drive: the switch replaced the whole `books` value, so switching a
+published notebook off wiped the book's id and left no way to take it down; the switch moves
+only `mode` now and keeps the rollout's facts beside it.

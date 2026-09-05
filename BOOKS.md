@@ -129,7 +129,14 @@ deferred". This is that design.
    Reading order is pure (`readingOrder`, `neighbours`). Writer in read-only mode over the book's public tree: the list, the tree,
    the reading pane, page navigation (previous, next, up) - at the book's permalink; the
    persona shelf's "+ books" toggle; a rebroadcast of a book as one pointer.
-5. **Unpublish, and the edges.** Taking a book down; switching book mode off for a bucket
+5. ~~**Unpublish, and the edges.**~~ Built 2026-09-05: `DELETE /books/{bucket}` takes the
+   book down whole - every page it names, every update threaded under it, the book itself -
+   with the takedown's own steps (notes back to drafts, the fold drained) and the bucket's
+   facts forgetting the id, so the next rollout mints a fresh book (a tombstone is final).
+   The column offers "unpublish the book" through the house modal, in both states of the
+   switch: switched off with a book still public it says so, and a re-published page keeps
+   its book (`part_of` is carried like the reply link, so the ordinary bar cannot make a page
+   a standalone post). Hidden after publish landed with slice 3. Taking a book down; switching book mode off for a bucket
    that was published (the book stays public until taken down; the switch only changes
    what the next publish means); hidden after publish.
 

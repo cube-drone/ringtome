@@ -739,6 +739,9 @@ pub async fn save_public_text(
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
     // genesis never moves.
+    // A page stays a page across re-publication (BOOKS.md ruling 4, 2026-09-05): the book
+    // it belongs to is carried like the reply link, never re-supplied by the feed's door.
+    let mut inherited_part_of: Option<[u8; 16]> = None;
     let (doc_id, parents, genesis_ms, reply_to, thread_root, settled, trusted_only) = match onto {
         Some((id, parents)) => {
             // CARRIED from the previous header's own claim, never re-derived: the mint's
@@ -752,14 +755,15 @@ pub async fn save_public_text(
                     ringtome_proto::Payload::Inline(payload) => {
                         DocHeaderPlain::decode(payload)
                             .ok()
-                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only))
+                            .map(|h| (h.genesis_ms, h.reply_to, h.thread_root, h.settled, h.trusted_only, h.part_of))
                     }
                     _ => None,
                 },
                 None => None,
             };
-            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted) =
+            let (carried_genesis, carried_reply, carried_root, carried_settled, carried_trusted, carried_part_of) =
                 carried.unwrap_or_default();
+            inherited_part_of = carried_part_of;
             let genesis = match carried_genesis {
                 Some(g) => g,
                 None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
@@ -829,7 +833,7 @@ pub async fn save_public_text(
         trusted_only,
         dated_ms,
         animation: false, // words, never a loop
-        part_of,
+        part_of: part_of.or(inherited_part_of),
     };
     let payload = header
         .encode()

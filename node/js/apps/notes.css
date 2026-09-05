@@ -226,6 +226,12 @@
     gap: 0.3rem;
     align-self: flex-start;
 }
+.book-unpublish {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
 
 /* The resizer strip between columns: an invisible grab area that shows a teal seam on hover
    and while dragging. */

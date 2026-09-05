@@ -705,3 +705,73 @@ mod tests {
         assert!(ordered.filed.contains(&[11u8; 16]) && ordered.filed.contains(&[12u8; 16]));
     }
 }
+
+/// What a takedown took (BOOKS.md slice 5).
+#[derive(serde::Serialize, Default)]
+pub struct Takedown {
+    pub pages: usize,
+    pub updates: usize,
+    pub book: bool,
+}
+
+/// Take a book down whole (ruling 10): every page the book names, every update threaded
+/// under it, and the book itself are retracted; each page's note becomes a draft again;
+/// the bucket's book facts forget the id (a tombstone is final for it - the next rollout
+/// mints a fresh book) and the pending plan, if any, is dropped. The fold is drained so the
+/// author's next read is already true - the takedown's own idiom.
+pub async fn take_down(state: &AppState, data: &store::Store, root: &str, bucket: &str) -> Result<Takedown> {
+    let (facts_json, _) = data.private_registers(BOOKS_KV).all().await?;
+    let mut facts: BookFacts = facts_json
+        .iter()
+        .find(|r| r.key == bucket)
+        .and_then(|r| serde_json::from_str(&r.value).ok())
+        .unwrap_or_default();
+    let Some(book_id) = facts.published_as_book.as_deref().and_then(|h| hex::decode(h).ok()).and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else {
+        return Err(anyhow!("this notebook has no published book"));
+    };
+    let book_key = facts.key.as_deref().and_then(|h| hex::decode(h).ok()).and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
+    let mut took = Takedown::default();
+    // The pages, off the book's last payload.
+    if let Some(previous) = previous_payload(state, data, &book_id, book_key).await? {
+        let mut named = BTreeMap::new();
+        collect_pages(&previous, &mut named);
+        for post_hex in named.keys() {
+            let Some(post_id) = hex::decode(post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else { continue };
+            if crate::record::documents::public_head(data.db(), &post_id).await?.is_none() {
+                continue;
+            }
+            data.documents().retract_public(&post_id).await?;
+            if let Some(note) = data.annotations().note_claiming(&post_id).await? {
+                data.annotations().clear_field(&note, store::PUBLISHED_AS).await?;
+                data.annotations().clear_field(&note, PUBLISHED_VERSION).await?;
+            }
+            took.pages += 1;
+        }
+    }
+    // The updates threaded under the book.
+    let book_hex = hex::encode(book_id);
+    let shelf = crate::record::documents::public_docs(data.db(), None, 10_000).await?;
+    for p in shelf {
+        let under = p.reply_to.as_ref().is_some_and(|(a, d)| a == root && *d == book_hex);
+        if under {
+            data.documents().retract_public(&p.doc_id).await?;
+            took.updates += 1;
+        }
+    }
+    // The book itself.
+    if crate::record::documents::public_head(data.db(), &book_id).await?.is_some() {
+        data.documents().retract_public(&book_id).await?;
+        took.book = true;
+    }
+    facts.published_as_book = None;
+    facts.published = false;
+    facts.key = None;
+    data.private_registers(BOOKS_KV)
+        .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
+        .await?;
+    data.private_registers(ROLLOUT_KV).set(bucket, "").await?;
+    let generation = crate::fold::nudge(state, root);
+    crate::fold::drain(root, generation).await;
+    tracing::info!(root = %root, bucket = %bucket, pages = took.pages, updates = took.updates, "book taken down");
+    Ok(took)
+}

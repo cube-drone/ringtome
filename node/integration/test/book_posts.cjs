@@ -216,4 +216,38 @@ describe("books: a notebook rolls out as one book", function () {
         // The book is titled after its first page now, so look past it: no PAGE item rode along.
         assert.ok(!seen.some((s) => !s.startsWith("book:") && /chapter|loose/.test(s)), `and no page rode along on its own: ${seen}`);
     });
+
+    it("taking the book down takes the pages and the updates with it, and the next rollout is a fresh book", async () => {
+        const before = await plan();
+        const updatePost = before && before.update;
+        const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
+        const pagePosts = [...body.sections[0].pages, ...body.pages].map((p) => p.post);
+        const took = await ada(`api/identity/${adaRoot}/books/${bucket}`, { method: "DELETE" });
+        const tookText = await took.text();
+        assert.equal(took.status, 200, tookText);
+        const report = JSON.parse(tookText);
+        assert.equal(report.book, true);
+        assert.equal(report.pages, pagePosts.length, "every page the book named");
+        assert.equal(report.updates, updatePost ? 1 : 0, "the update threaded under it");
+        assert.equal((await ada(`api/id/${adaRoot}/posts/${book}`)).status, 404, "the book is gone");
+        for (const p of pagePosts) assert.equal((await ada(`api/id/${adaRoot}/posts/${p}`)).status, 404, "a page is gone");
+        if (updatePost) assert.equal((await ada(`api/id/${adaRoot}/posts/${updatePost}`)).status, 404, "the update is gone");
+        const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs;
+        assert.ok(docs.filter((d) => d.buckets && d.buckets.includes(bucket)).every((d) => !d.fields.published_as), "every note is a draft again");
+        const facts = (await (await ada(`api/identity/${adaRoot}/private/kv/books`)).json()).values.find((v) => v.key === bucket);
+        assert.equal(JSON.parse(facts.value).published_as_book, undefined, "the book id is forgotten");
+        assert.deepEqual((await (await ada(`api/id/${adaRoot}/posts`)).json()).posts || [], [], "the shelf is empty");
+        // A fresh rollout mints a fresh book.
+        await j(ada, `api/identity/${adaRoot}/books/${bucket}/rollout`, {});
+        let p = null;
+        for (let i = 0; i < 40; i++) {
+            await beat(undefined, "book-rollout", adaRoot);
+            p = await plan();
+            if (p && (p.status === "done" || p.status === "failed")) break;
+            await new Promise((r) => setTimeout(r, 500));
+        }
+        assert.equal(p.status, "done", JSON.stringify(p));
+        assert.notEqual(p.book, book, "a new id: a tombstone is final for the old one");
+        assert.equal((await ada(`api/id/${adaRoot}/posts/${p.book}`)).status, 200, "and it stands");
+    });
 });
