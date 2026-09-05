@@ -8,7 +8,7 @@
 //! crate's PNG could never be reproduced bit-for-bit in a browser.
 
 /// The persona's hue - the same number `pure/person.js` derives, and the same one the
-/// hexagon's ring wears.
+/// heptagon's ring wears.
 pub fn hue(root: &[u8; 32]) -> u32 {
     (u32::from(root[0]) * 65536 + u32::from(root[1]) * 256 + u32::from(root[2])) % 360
 }

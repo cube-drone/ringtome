@@ -42,7 +42,7 @@ body {
    space the footer doesn't, and its inner layer scrolls INSIDE the border (the page never
    scrolls) - so the footer sits below it, never over it.
 
-   The chunky border is drawn like the hexagon tiles: two clip-path layers sharing one polygon
+   The chunky border is drawn like the heptagon tiles: two clip-path layers sharing one polygon
    whose corners STEP like pixels (a staircase), not a smooth arc. The outer layer is the dark
    frame (its 10px padding is the visible border thickness); the inner layer is the surface,
    clipped to the same jagged shape, so the dark shows through as a pixel-cornered border. No

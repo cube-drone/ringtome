@@ -1,12 +1,12 @@
-/* The Person widget family (js/person.js): one persona at four sizes. The hexagon is the
-   through-line - the same six-sided face in a list, a header, or a card, ringed in the
+/* The Person widget family (js/person.js): one persona at four sizes. The heptagon is the
+   through-line - the same seven-sided face in a list, a header, or a card, ringed in the
    colour their root derives. */
 
 .person-hex {
     display: inline-flex;
     flex-shrink: 0;
     padding: 2px; /* the ring: the parent's background showing past the inner clip */
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    clip-path: var(--face-clip);
 }
 
 .person-hex-img {
@@ -15,25 +15,25 @@
     display: block;
     object-fit: cover;
     background: inherit; /* the ring's colour, until the picture paints over it */
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    clip-path: var(--face-clip);
 }
 
 .person-hex-mini {
     width: 1.4rem;
-    height: 1.6rem;
+    height: 1.365rem; /* regular heptagon: h = w * 0.9749 */
 }
 
 .person-hex-small {
     width: 2rem;
-    height: 2.3rem;
+    height: 1.95rem;
 }
 
 .person-hex-card {
     width: 4.5rem;
-    height: 5.1rem;
+    height: 4.39rem;
 }
 
-/* The chip: a hexagon that says who it is when you point at it. Inline in prose, it needs
+/* The chip: a heptagon that says who it is when you point at it. Inline in prose, it needs
    air on both sides or it crowds the words it sits between. */
 .person-chip {
     position: relative;

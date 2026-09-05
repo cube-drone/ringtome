@@ -13,7 +13,7 @@
 //
 // The shape: a 5x5 grid, mirrored left-to-right (columns 0..2 are drawn, 3..4 reflect), so
 // the figure is symmetric and reads as a face-ish glyph at 22px as well as 72px. Symmetry is
-// what makes small identicons memorable, and mirroring means the hexagon's clipped corners
+// what makes small identicons memorable, and mirroring means the heptagon's clipped corners
 // take away the same thing on both sides.
 import { personaHue } from './person.js';
 
@@ -27,7 +27,7 @@ export function identiconSvg(rootHex) {
     const hue = personaHue(hex);
     // Three tones from the persona's own hue: the ring's colour is the ink, a shifted
     // sibling adds character, and a pale wash of the same family is the ground - so the
-    // identicon and the hexagon's ring always read as one object.
+    // identicon and the heptagon's ring always read as one object.
     const ink = `hsl(${hue}, 62%, 42%)`;
     const accent = `hsl(${(hue + 42) % 360}, 68%, 58%)`;
     const ground = `hsl(${hue}, 34%, 92%)`;

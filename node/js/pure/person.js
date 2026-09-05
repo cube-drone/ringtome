@@ -1,7 +1,7 @@
 // What a person LOOKS like, as rules: the colour their root derives, and the order their
 // three names line up in. Pure - the Person widget family (js/person.js) renders these; every
 // surface that shows a human (People rows, the id page, your own persona home, the mini
-// hexagons that will eventually stud posts and comments) goes through the same two answers,
+// heptagons that will eventually stud posts and comments) goes through the same two answers,
 // so a persona is the same colour and the same name wherever they appear.
 
 import { bandOrdinal } from './contact.js';

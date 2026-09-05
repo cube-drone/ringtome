@@ -1,7 +1,7 @@
 // How big to draw an app tile's name, and when to finally give up and cut it.
 //
-// A hexagon is a hostile place for a word: the nameplate strip sits in the lower third, where the
-// hexagon has already begun narrowing, and the label is uppercase and heavy, so it runs out of
+// A heptagon is a hostile place for a word: the nameplate strip sits in the lower third, where the
+// heptagon has already begun narrowing, and the label is uppercase and heavy, so it runs out of
 // room fast. The old rule was a hard cut at 11 characters, which is how "Lost & Found" reached a
 // user as "LOST & FOUN…" - a name truncated one character before the word that carries it.
 //

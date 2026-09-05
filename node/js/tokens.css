@@ -20,6 +20,11 @@
         100% calc(100% - 12px), calc(100% - 6px) calc(100% - 12px), calc(100% - 6px) calc(100% - 6px), calc(100% - 12px) calc(100% - 6px), calc(100% - 12px) 100%,
         12px 100%, 12px calc(100% - 6px), 6px calc(100% - 6px), 6px calc(100% - 12px), 0 calc(100% - 12px)
     );
+    /* The house face shape (Curtis, 2026-09-05, "pure silliness": every heptagon became a
+       heptagon): a regular pointy-top heptagon, filling its box - which wants an aspect of
+       height = width * 0.9749 to be regular. Persona faces, the app dock and the console
+       tiles all clip to this one polygon. */
+    --face-clip: polygon(50% 0, 90.1% 19.8%, 100% 64.3%, 72.3% 100%, 27.7% 100%, 0 64.3%, 9.9% 19.8%);
     --bg: #e7dbc3;            /* page: warm sand */
     --surface: #f6efe0;      /* cards, inputs, tiles: cream (a touch lighter than the sand) */
     --surface-2: #efe3cd;    /* chips, secondary fills */
@@ -41,7 +46,7 @@
     --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */
     --dock-text: #fbf6ec;    /* light text that sits on the teal dock */
 
-    --hex-border-dark: #bf9152;   /* the outer 2px ring of an application hexagon: caramel */
+    --hex-border-dark: #bf9152;   /* the outer 2px ring of an application heptagon: caramel */
     --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */
 
     --marker: #f3e08c;                      /* search hits: a warm highlighter pen */

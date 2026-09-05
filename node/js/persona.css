@@ -1317,7 +1317,7 @@ article:has(.label-emoji-strip) {
     font-size: 0.72em;
 }
 
-/* The chip brings its own hexagon and label; all this row does is set the scale it sits at and
+/* The chip brings its own heptagon and label; all this row does is set the scale it sits at and
  * keep the icon from growing with it. */
 .feed-entry-via .person-chip {
     font-size: 1em;

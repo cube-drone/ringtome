@@ -46,7 +46,7 @@ import { DiffPage } from './doc/diffpage.js';
 
 const html = htm.bind(h);
 
-// The app whose hexagon wears the unread badge (an id, not a phrase - hoisted so the
+// The app whose heptagon wears the unread badge (an id, not a phrase - hoisted so the
 // strings cop does not read it as words shown to a person).
 const BELL_APP_ID = 'notifications';
 
@@ -227,7 +227,7 @@ const Inside = ({ session }) => {
         docSegment: pathParts[3],
     });
 
-    // The Quickbar: the persistent bottom bar, now purely the app dock - a hexagon per app (icon
+    // The Quickbar: the persistent bottom bar, now purely the app dock - a heptagon per app (icon
     // only, the console glyphs without their names), a fast switch between apps. The tiles run
     // TALLER than the bar and bottom-align, so their teal rim pokes up above it; within the bar
     // that rim is the same teal as the backdrop and vanishes, so it only reads on the part above.
@@ -261,7 +261,7 @@ const Inside = ({ session }) => {
                             title=${appLabel(app, personaName)}
                             onClick=${() => loc.route(isActive ? '/home' : '/home/' + app.id)}
                         ><span class="quickbar-hex-face"><${iconFor(app)} /></span></button>
-                        ${/* Outside the hexagon, not inside it: the hex is clip-pathed,
+                        ${/* Outside the heptagon, not inside it: the hex is clip-pathed,
                             and a badge within it would be cut to the shape. */ ''}
                         ${badge > 0 &&
                         html`<span class="quickbar-badge">${badge > 99 ? '99+' : badge}</span>`}

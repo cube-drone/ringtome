@@ -8,16 +8,17 @@
     justify-content: center;
 }
 
-/* Honeycomb: fixed-width rows, every other row shifted half a cell so hexagons nestle, rows
-   pulled up 25% of a hexagon's height (their points slot into the row above). The hexagon and
+/* The comb: fixed-width rows, every other row shifted half a cell so the tiles nestle, rows
+   pulled up as far as a heptagon's point can rise between the flat bottoms of the row above
+   (heptagons don't tessellate - the honest gap beats a collision). The heptagon and
    its double border are three nested clipped layers - outer dark ring, inner light ring, then
    the surface face. Corners are sharp: clip-path polygons can't round, so the "tiny rounding"
    would need an SVG shape (a follow-up). All the sizes are tokens here, tunable. */
 .hex-comb {
     --hex-w: 156px;
-    --hex-h: 180px;               /* regular pointy-top: h = w * 1.1547 */
+    --hex-h: 152px;               /* regular pointy-top heptagon: h = w * 0.9749 */
     --hex-gap: 6px;
-    --hex-clip: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+    --hex-clip: var(--face-clip);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -29,11 +30,11 @@
 }
 
 .hex-row + .hex-row {
-    /* Even gap on every side: a regular hexagon's neighbours all sit one center-distance
-       (hex-w + gap) away, so the row advance is that distance times sin(60deg) = √3/2. Pulling
-       up by exactly hex-h/4 (the touching amount) is what made diagonal neighbours tighter than
-       row neighbours. */
-    margin-top: calc((var(--hex-w) + var(--hex-gap)) * 0.866025 - var(--hex-h));
+    /* A lower tile's point rises between two upper tiles' bottom corners: those corners sit
+       46px either side of the point (half a cell less 22.3% of a width), and the heptagon's
+       shoulder is 22px below its apex at that offset - so 10% of a height is the rise that
+       keeps a gap, where the heptagon's slotted a full 25%. */
+    margin-top: calc(var(--hex-h) * -0.1);
 }
 
 .hex-row.shift {
@@ -121,7 +122,7 @@
 
 /* The name: a horizontal nameplate strip in the lower third, filled with the hex-background
    colour and laid OVER everything else (the diagonal fill and the icon), so the name always reads
-   cleanly. Clipped to the hexagon by the face, so it stays within the border.
+   cleanly. Clipped to the heptagon by the face, so it stays within the border.
 
    The 1rem here is the FULL size, and a long name overrides it inline with something smaller
    (pure/tilelabel.js): the strip is a fixed budget, so the type shrinks to stay inside it rather

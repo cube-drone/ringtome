@@ -93,7 +93,7 @@ fn page(title: &str, card: String) -> String {
 }
 
 /// The persona's colour dot beside their name - the same hue their identicon and the
-/// console's hexagon ring wear (crate::identicon::hue is the one source).
+/// console's heptagon ring wear (crate::identicon::hue is the one source).
 fn chip(root: &[u8; 32]) -> String {
     format!(
         r#"<span class="chip" style="background: hsl({}, 60%, 55%)"></span>"#,

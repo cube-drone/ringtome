@@ -4,15 +4,15 @@
 // with a `mode` prop, or several components? SEVERAL - but over ONE hook. Everything
 // upstream of rendering is identical at every size (resolve the three names, the avatar, the
 // hue, your relationship facts, is-this-you, where clicking goes), so that lives once, in
-// `usePerson`. The DOM shapes below are genuinely unlike each other - a mini hexagon is one
+// `usePerson`. The DOM shapes below are genuinely unlike each other - a mini heptagon is one
 // element with a hover label; the full card carries an address row and the relationship
 // panel - and a single component switching between them would be four disjoint branches
 // sharing a props union where half the props are inert in each mode. The one place a prop IS
 // right: mini and small are the SAME shape at different sizes (size varies continuously,
 // shape does not), so the chip takes a `size`.
 //
-//   PersonChip   - a hexagon of their picture, their name on hover. Studs lists and prose.
-//   PersonBanner - the inline header: hexagon + names + address, filling a row.
+//   PersonChip   - a heptagon of their picture, their name on hover. Studs lists and prose.
+//   PersonBanner - the inline header: heptagon + names + address, filling a row.
 //   PersonCard   - everything: picture, names, address, bio, and your relationship.
 //
 // Data depth, not display mode, is the hook's one option: `profile` (already fetched by the
@@ -135,7 +135,7 @@ export function usePerson(root, { current, profile: given } = {}) {
     };
 }
 
-// The hexagon itself: their picture clipped to six sides, ringed in their colour (a
+// The heptagon itself: their picture clipped to seven sides, ringed in their colour (a
 // clip-path can't take a border, so the ring is the parent's background showing through its
 // padding). A persona who hasn't chosen a picture wears their IDENTICON - derived from the
 // root, drawn identically by the anonymous face (pure/identicon.js and its Rust twin), so
@@ -155,7 +155,7 @@ export const PersonHex = ({ person, size = 'small' }) => html`
     </span>
 `;
 
-/// The smallest shape: a hexagon that says who it is when you point at it, and takes you to
+/// The smallest shape: a heptagon that says who it is when you point at it, and takes you to
 /// them when you click. `size` is mini (inline, sits in a line of text) or small.
 export const PersonChip = ({ root, current, size = 'small', profile }) => {
     const person = usePerson(root, { current, profile });
@@ -177,7 +177,7 @@ export const PersonChip = ({ root, current, size = 'small', profile }) => {
 };
 
 // Their names, stacked: the one you call them by, then the others they also answer to.
-// Shared by every shape wider than a hexagon, so a persona reads the same in a header and
+// Shared by every shape wider than a heptagon, so a persona reads the same in a header and
 // in a list.
 const PersonNames = ({ person }) => html`
     <span class="person-names">
@@ -187,7 +187,7 @@ const PersonNames = ({ person }) => html`
     </span>
 `;
 
-/// The inline header: the hexagon plus their names, filling the width it's given. What a
+/// The inline header: the heptagon plus their names, filling the width it's given. What a
 /// page wears at the top when the page is *about* this person.
 export const PersonBanner = ({ root, current, profile, actions }) => {
     const person = usePerson(root, { current, profile });

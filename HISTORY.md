@@ -8420,3 +8420,13 @@ body itself, so a sealed body the reader cannot open stays sealed - the door ref
 card says "link". Every card wears the author's hexagon - the same face the feed and the
 bell use, their name on hover - rather than a hex code (Curtis: "display it as a profile
 icon"); the shortcode moved to `pure/person.js` on the way and stays there.
+
+## 2026-09-05 (cont.): heptagons
+
+Curtis, "pure silliness": every hexagon in the UI became a heptagon. One clip token
+(`--face-clip`, a regular pointy-top heptagon) now shapes the persona faces at every size,
+the app dock tiles and the console tiles, each box re-proportioned to keep it regular
+(h = w * 0.9749). The console comb keeps its shifted rows, pulled up only as far as a
+heptagon's point can rise between the flat bottoms above - heptagons don't tessellate, and
+the honest gap beats a collision. Class and token names still say hex; the prose says
+heptagon.

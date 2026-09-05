@@ -23,7 +23,7 @@
 @import "./tokens.css";       /* the palette: every colour in the app, and the panel clip */
 @import "./shell.css";        /* the reset, the app frame, the unified header, the switcher */
 @import "./auth.css";         /* the front door: sign in, register, recover */
-@import "./quickbar.css";     /* the bottom dock: app hexagons and the corner clock */
+@import "./quickbar.css";     /* the bottom dock: app heptagons and the corner clock */
 @import "./persona.css";      /* onboarding ceremonies, the persona pages, your computers */
 @import "./console.css";      /* the launcher honeycomb */
 @import "./doc/surface.css";  /* the framed card one document lives in, reader and editor alike */

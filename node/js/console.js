@@ -22,7 +22,7 @@ function chunk(arr, n) {
     return rows;
 }
 
-// One hexagon: three nested clipped layers make the double border - the outer carries the dark
+// One heptagon: three nested clipped layers make the double border - the outer carries the dark
 // ring, the middle the lighter ring, the face the surface and content.
 function Hex(app, key, onLaunch, personaName) {
     // A long name SHRINKS rather than being cut - the rule and its calibration live in

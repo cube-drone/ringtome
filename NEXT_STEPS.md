@@ -34,8 +34,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 * Search my feed
 * mini-links (the kind you see in replies and your notifications) need to display more content
 * Better filters in Lost & Found
-* Publish a taxonomy — [BOOKS.md](BOOKS.md) (2026-09-03): a notebook published as a book;
-  rulings pinned, five slices, all built by 2026-09-05. Open: nothing in motion.
 * Edit-orphaned twins: a re-bake mints a fresh media twin and the old one stays public on
   the author's own shelf (fragment holders reconcile theirs). Found 2026-09-05 beside the
   takedown fix (`retract_post` entombs a buried post's twins); the edit door should retire
@@ -74,9 +72,6 @@ A new kind of document that's held in an unencrypted chain that's not public,
 but only shared with folks who match a predicate (either "friend" or "in a group").
 
 Does a mutual follow+trust make a "friend"?
-
-* "followers-only" posts?
-* "friends-only" posts
 
 * Define and manage group membership
 * Groups-only posts

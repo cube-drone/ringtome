@@ -396,7 +396,7 @@ const ShareButton = ({ item, current }) => {
 /// is a dressed link. An untitled post says its first words instead (Curtis, 2026-09-05):
 /// the author's description if they wrote one, else the body's first nine usable words,
 /// fetched here so a sealed body a reader cannot open stays sealed (the door refuses, the
-/// card falls back to "link"). Every card wears the author's hexagon (Curtis, 2026-09-05:
+/// card falls back to "link"). Every card wears the author's heptagon (Curtis, 2026-09-05:
 /// "display it as a profile icon"): provenance at a glance, their name when you point at it.
 export const MiniPost = ({ author, doc_id, title, published_ms }) => {
     const person = usePerson(author);
@@ -736,7 +736,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                 ${t('postentry.vouches-for-this-author', 'vouches for this author')}
             </p>`}
             ${/* The banner, not the chip (2026-08-06): a feed item is a person speaking, and
-                the face-plus-names row says who at a glance where the mini hexagon made you
+                the face-plus-names row says who at a glance where the mini heptagon made you
                 hover. The when and - for your own posts - the unlock ride its actions slot. */ ''}
             <${PersonBanner}
                 root=${item.author}
