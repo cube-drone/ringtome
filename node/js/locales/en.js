@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 636 phrases across 48 files.
+// 639 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -203,6 +203,9 @@ export default {
     'doc.bookreader.the-page-after': 'the page after',
     'doc.bookreader.next': 'next',
     'doc.bookreader.a-book': 'a book',
+    'doc.bookreader.no-page-carries-all-of': 'no page carries all of those tags',
+    'doc.bookreader.selected---click-to-lift': 'selected - click to lift it',
+    'doc.bookreader.n-pages-carry-this-tag': '{count} pages carry this tag - click to show only those',
     'doc.bookreader.this-book-has-no-pages': 'this book has no pages yet',
     'doc.bookreader.these-words-havent-reached': "these words haven't reached this computer, or they are shared only with people the author trusts",
 

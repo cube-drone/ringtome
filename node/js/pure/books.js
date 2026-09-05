@@ -52,7 +52,11 @@ export function parseBook(text) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     const section = (s) => ({
         title: String((s && s.title) || ''),
-        pages: Array.isArray(s && s.pages) ? s.pages.filter((p) => p && p.post).map((p) => ({ post: String(p.post), title: String(p.title || '') })) : [],
+        pages: Array.isArray(s && s.pages)
+            ? s.pages
+                  .filter((p) => p && p.post)
+                  .map((p) => ({ post: String(p.post), title: String(p.title || ''), tags: Array.isArray(p.tags) ? p.tags.map(String) : [] }))
+            : [],
         sections: Array.isArray(s && s.sections) ? s.sections.map(section) : [],
     });
     const top = section(raw);
@@ -97,12 +101,34 @@ export function titlePageOf(tree, docs, hidden) {
     return walk(tree, new Set());
 }
 
+/// Every tag in the book, with how many pages carry it - most-carried first, then by name
+/// (Curtis, 2026-09-05: listed under the table of contents, a filter over it).
+export function bookTags(book) {
+    const counts = new Map();
+    for (const p of readingOrder(book)) for (const tag of p.tags || []) counts.set(tag, (counts.get(tag) || 0) + 1);
+    return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || (a.tag < b.tag ? -1 : 1));
+}
+
+/// The book with only the pages carrying EVERY selected tag (Writer's own rule), sections
+/// left empty dropped; the book itself when nothing is selected.
+export function filterBook(book, selected) {
+    if (!book || !selected || selected.size === 0) return book;
+    const keep = (p) => [...selected].every((tag) => (p.tags || []).includes(tag));
+    const prune = (section) => ({
+        title: section.title,
+        pages: section.pages.filter(keep),
+        sections: section.sections.map(prune).filter((s) => s.pages.length > 0 || s.sections.length > 0),
+    });
+    const top = prune({ title: '', pages: book.pages, sections: book.sections });
+    return { ...book, pages: top.pages, sections: top.sections };
+}
+
 /// The book in reading order (BOOKS.md slice 4): every page depth-first with the trail of
 /// section titles above it - what the reader's tree, prev/next, and "up" all walk.
 export function readingOrder(book) {
     const out = [];
     const walk = (section, trail) => {
-        for (const p of section.pages) out.push({ post: p.post, title: p.title, trail });
+        for (const p of section.pages) out.push({ post: p.post, title: p.title, tags: p.tags || [], trail });
         for (const s of section.sections) walk(s, [...trail, s.title]);
     };
     if (book) walk({ pages: book.pages, sections: book.sections }, []);

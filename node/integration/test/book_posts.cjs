@@ -104,6 +104,9 @@ describe("books: a notebook rolls out as one book", function () {
         // at the top level, before the section - names the book and rides as its cover.
         assert.equal(body.title, "a loose page");
         assert.ok(body.cover && body.cover.title === "a loose page", "the cover names the title page");
+        // Each page carries its tags in the payload (the reader's filter, 2026-09-05).
+        assert.deepEqual(body.pages[0].tags, ["beta"], "the loose page carries beta");
+        assert.deepEqual(body.sections[0].pages[0].tags, ["alpha"], "chapter one carries alpha");
         const head = await (await ada(`api/id/${adaRoot}/posts/${book}`)).json();
         assert.equal(head.title, "a loose page", "the book's post wears the title page's title");
         const tags = (head.annotations || []).filter((a) => a.key === "tag").map((a) => a.value).sort();

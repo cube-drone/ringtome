@@ -1,8 +1,8 @@
 const assert = require('node:assert');
 
-let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours, titlePageOf;
+let bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours, titlePageOf, bookTags, filterBook;
 before(async () => {
-    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours, titlePageOf } = await import('../../../js/pure/books.js'));
+    ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours, titlePageOf, bookTags, filterBook } = await import('../../../js/pure/books.js'));
 });
 
 describe('books: the private bookkeeping (BOOKS.md slice 1)', () => {
@@ -93,5 +93,24 @@ describe('books: the title page (BOOKS.md ruling 11)', () => {
         assert.equal(titlePageOf(null, docs, new Set()), 'p1', 'no tree: the first page by id');
         assert.equal(titlePageOf(null, [{ doc_id: 'z' }], new Set(['doc:z'])), null);
         assert.equal(parseBook('{"title":"t","cover":{"post":"c","title":"Cover"},"sections":[],"pages":[]}').cover.title, 'Cover');
+    });
+});
+
+describe('books: the tags under the table of contents (2026-09-05)', () => {
+    let book;
+    before(() => {
+        book = parseBook('{"title":"g","sections":[{"title":"part one","pages":[{"post":"p1","title":"one","tags":["beef","goop"]},{"post":"p2","title":"two","tags":["goop"]}],"sections":[{"title":"deeper","pages":[{"post":"p3","title":"three","tags":["beef"]}],"sections":[]}]}],"pages":[{"post":"p0","title":"loose","tags":[]}]}');
+    });
+    it('lists every tag with its count, most-carried first', () => {
+        assert.deepEqual(bookTags(book), [{ tag: 'beef', count: 2 }, { tag: 'goop', count: 2 }]);
+    });
+    it('filters the table to pages carrying every selected tag, dropping emptied sections', () => {
+        const goop = filterBook(book, new Set(['goop']));
+        assert.deepEqual(readingOrder(goop).map((p) => p.post), ['p1', 'p2']);
+        assert.equal(goop.sections[0].sections.length, 0, 'the deeper section emptied and went');
+        const both = filterBook(book, new Set(['beef', 'goop']));
+        assert.deepEqual(readingOrder(both).map((p) => p.post), ['p1']);
+        assert.equal(filterBook(book, new Set()), book, 'nothing selected: the book itself');
+        assert.deepEqual(readingOrder(filterBook(book, new Set(['nope']))), []);
     });
 });

@@ -8363,3 +8363,8 @@ order now.
 Uploads no longer join the tree (Curtis: media in the taxonomy is "kind of needless: if we
 want a media item in the book we can put it in the document"); they are still filed into
 the notebook. A new text document still lands in the tree as before.
+The book's tags under the table of contents (Curtis): each page's tags ride the payload
+now; the reader lists every tag with how many pages carry it, most-carried first, and a
+selection filters the table to the pages carrying all of them (Writer's own rule), emptied
+sections dropped, navigation still walking the whole book. `bookTags` and `filterBook`,
+pure, with claims; the acceptance reads the tags off the payload.

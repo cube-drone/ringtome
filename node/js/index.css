@@ -92,6 +92,45 @@
     font-weight: 600;
     color: var(--teal);
 }
+/* The book's tags under the table: chips, a selected one filled - the label chips' clothes. */
+.book-reader-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.8rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+}
+.book-reader-tag {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    border: 1px dashed var(--border);
+    background: var(--surface);
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+.book-reader-tag-on {
+    border-style: solid;
+    background: color-mix(in srgb, var(--surface-2) 84%, var(--ink) 16%);
+    color: var(--ink);
+}
+.book-reader-tag-count {
+    background: var(--ink-soft);
+    color: var(--surface);
+    border-radius: 999px;
+    padding: 0 0.4em;
+    font-size: 0.85em;
+}
+.book-reader-none {
+    margin: 0.4rem 0 0;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
 .book-reader-nav {
     display: flex;
     align-items: center;

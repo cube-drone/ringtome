@@ -133,6 +133,10 @@ pub async fn rollout_due(state: &AppState, only_root: Option<&str>) -> Result<us
 struct PagePayload {
     post: String,
     title: String,
+    /// The page's tags (Curtis, 2026-09-05): the reader lists the book's tags under the
+    /// table of contents and filters the table by them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -371,7 +375,29 @@ async fn rollout(
         .copied()
         .find(|p| published.contains_key(p))
         .or_else(|| first_section_page(&ordered, &published));
-    let cover = cover_doc.and_then(|d| published.get(&d).map(|post| PagePayload { post: post.clone(), title: titles.get(&d).cloned().unwrap_or_default() }));
+    // Every page's tags, once, for the payload (the reader's filter) and the labels below.
+    let mut page_tags: BTreeMap<[u8; 16], Vec<String>> = BTreeMap::new();
+    for doc_id in &pages {
+        let mut tags: Vec<String> = data
+            .annotations()
+            .tags(doc_id)
+            .await?
+            .into_iter()
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
+        tags.sort();
+        tags.dedup();
+        page_tags.insert(*doc_id, tags);
+    }
+    let page_payload = |d: &[u8; 16]| -> Option<PagePayload> {
+        published.get(d).map(|post| PagePayload {
+            post: post.clone(),
+            title: titles.get(d).cloned().unwrap_or_default(),
+            tags: page_tags.get(d).cloned().unwrap_or_default(),
+        })
+    };
+    let cover = cover_doc.and_then(|d| page_payload(&d));
     let book_title = cover
         .as_ref()
         .map(|c| c.title.clone())
@@ -380,11 +406,8 @@ async fn rollout(
     let payload = BookPayload {
         title: book_title.clone(),
         cover,
-        sections: ordered.sections.iter().map(|s| section_payload(s, &published, &titles)).collect(),
-        pages: top
-            .iter()
-            .filter_map(|p| published.get(p).map(|post| PagePayload { post: post.clone(), title: titles.get(p).cloned().unwrap_or_default() }))
-            .collect(),
+        sections: ordered.sections.iter().map(|s| section_payload(s, &page_payload)).collect(),
+        pages: top.iter().filter_map(&page_payload).collect(),
     };
     let body = serde_json::to_string(&payload)?;
     let parents = crate::record::documents::public_head(data.db(), &book_id)
@@ -552,15 +575,11 @@ fn walk_tree(tree: Option<&store::TaxonomyNode>, hidden: &BTreeSet<String>, in_b
     (Ordered { sections, pages, filed }, hidden_docs)
 }
 
-fn section_payload(s: &Section, published: &BTreeMap<[u8; 16], String>, titles: &BTreeMap<[u8; 16], String>) -> SectionPayload {
+fn section_payload(s: &Section, page: &dyn Fn(&[u8; 16]) -> Option<PagePayload>) -> SectionPayload {
     SectionPayload {
         title: s.title.clone(),
-        pages: s
-            .pages
-            .iter()
-            .filter_map(|p| published.get(p).map(|post| PagePayload { post: post.clone(), title: titles.get(p).cloned().unwrap_or_default() }))
-            .collect(),
-        sections: s.sections.iter().map(|x| section_payload(x, published, titles)).collect(),
+        pages: s.pages.iter().filter_map(page).collect(),
+        sections: s.sections.iter().map(|x| section_payload(x, page)).collect(),
     }
 }
 

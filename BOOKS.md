@@ -120,7 +120,9 @@ deferred". This is that design.
    on the right, previous / next and "n / N" along the top, the first page open when none
    is asked for (Curtis: "just start at the first page"); a page's own permalink lands in the reader too with that
    page open (a page is a place in a book first), and "this page on its own" is there for
-   the bare post. Route `/id/:seg/post/:book/:page`. Amended the same day: no "this page on
+   the bare post. Route `/id/:seg/post/:book/:page`. The book's tags sit under the table of
+   contents (each page's tags ride the payload), and selecting them filters the table to the
+   pages carrying every selected tag - Writer's own rule (Curtis, 2026-09-05). Amended the same day: no "this page on
    its own" link, and a page's page threads, replies, and dossier on the BOOK - comments live
    in one place (Curtis: a per-page thread is "a place for comments to get very lost"). The shelf gained "+ books". Acceptance:
    a rebroadcast of the book reaches the sharer's follower as the book alone, no pages.

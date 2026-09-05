@@ -10,7 +10,7 @@ import { useLocation } from 'preact-iso';
 import { apiText } from '../net.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
-import { parseBook, neighbours } from '../pure/books.js';
+import { parseBook, neighbours, bookTags, filterBook } from '../pure/books.js';
 import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
 
@@ -44,6 +44,16 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     const loc = useLocation();
     const [payload, setPayload] = useState(undefined); // undefined loading, null unreadable
     const [words, setWords] = useState(undefined);
+    // The book's tags under the table, a filter over it (Curtis, 2026-09-05): every
+    // selected tag must be carried, Writer's own rule. Navigation walks the whole book.
+    const [picked, setPicked] = useState(new Set());
+    const toggleTag = (tag) =>
+        setPicked((have) => {
+            const next = new Set(have);
+            if (next.has(tag)) next.delete(tag);
+            else next.add(tag);
+            return next;
+        });
     // No page asked for opens the first page (Curtis, 2026-09-04: "just start at the first
     // page") - the tree beside it is the table of contents.
     const firstPost = payload ? (neighbours(payload, '').order[0] || {}).post || null : null;
@@ -101,10 +111,27 @@ export const BookReader = ({ root, book, page: asked, title }) => {
         </button>
         ${here && html`<span class="book-reader-where">${nav.index + 1} / ${nav.order.length}</span>`}
     </nav>`;
+    const tags = bookTags(payload);
+    const shownBook = filterBook(payload, picked);
     return html`<section class="book-reader">
         <aside class="book-reader-tree">
             <p class="book-reader-book"><${Icons.book} /> ${title || payload.title || t('doc.bookreader.a-book', 'a book')}</p>
-            <${Tree} section=${{ pages: payload.pages, sections: payload.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} />
+            <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} />
+            ${picked.size > 0 && shownBook.pages.length === 0 && shownBook.sections.length === 0 &&
+            html`<p class="book-reader-none">${t('doc.bookreader.no-page-carries-all-of', 'no page carries all of those tags')}</p>`}
+            ${tags.length > 0 &&
+            html`<div class="book-reader-tags">
+                ${tags.map(
+                    ({ tag, count }) => html`<button
+                        key=${tag}
+                        class=${picked.has(tag) ? 'book-reader-tag book-reader-tag-on' : 'book-reader-tag'}
+                        title=${picked.has(tag)
+                            ? t('doc.bookreader.selected---click-to-lift', 'selected - click to lift it')
+                            : t('doc.bookreader.n-pages-carry-this-tag', '{count} pages carry this tag - click to show only those', { count })}
+                        onClick=${() => toggleTag(tag)}
+                    >${tag} <span class="book-reader-tag-count">${count}</span></button>`
+                )}
+            </div>`}
         </aside>
         <div class="book-reader-pane">
             ${steps}
