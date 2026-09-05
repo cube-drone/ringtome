@@ -190,9 +190,8 @@
     font-style: italic;
 }
 .minipost-who {
-    font-family: var(--mono, ui-monospace, monospace);
-    font-size: 0.75em;
-    color: var(--muted);
+    display: inline-flex;
+    align-self: center;
 }
 .minipost-when {
     font-size: 0.8em;

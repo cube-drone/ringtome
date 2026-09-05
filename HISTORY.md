@@ -8417,5 +8417,6 @@ first nine usable words with an ellipsis when there were more (`pure/excerpt.js`
 and addresses are not words, a link is its text, markup sheds its punctuation, a book's body
 is a table), and "link" only when the post offers nothing. The card fetches the head and
 body itself, so a sealed body the reader cannot open stays sealed - the door refuses and the
-card says "link". Every card wears the author's four-hex shortcode, which moved to
-`pure/person.js` so the card and the persona home spell it the same way.
+card says "link". Every card wears the author's hexagon - the same face the feed and the
+bell use, their name on hover - rather than a hex code (Curtis: "display it as a profile
+icon"); the shortcode moved to `pure/person.js` on the way and stays there.

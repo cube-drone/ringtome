@@ -23,7 +23,6 @@ import { usePrefMap, setPref, sealKey, SEAL_PREFIX } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
-import { shortcode } from './pure/person.js';
 import { descriptionOf, excerpt } from './pure/excerpt.js';
 import { nameToEmoji } from 'gemoji';
 // The reaction palette under the open tag input (Curtis, 2026-08-31): the nine in pole
@@ -68,7 +67,7 @@ import { Editor } from './doc/editor.js';
 import { useDocDetail } from './doc/detail.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
 import { useTurbolinks } from './doc/turbolinks.js';
-import { PersonBanner, PersonChip } from './person.js';
+import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
 import { parseBook } from './pure/books.js';
 import { useShared, markShared } from './shares.js';
 import { t } from './i18n.js';
@@ -397,8 +396,10 @@ const ShareButton = ({ item, current }) => {
 /// is a dressed link. An untitled post says its first words instead (Curtis, 2026-09-05):
 /// the author's description if they wrote one, else the body's first nine usable words,
 /// fetched here so a sealed body a reader cannot open stays sealed (the door refuses, the
-/// card falls back to "link"). Every card wears the author's shortcode: provenance.
+/// card falls back to "link"). Every card wears the author's hexagon (Curtis, 2026-09-05:
+/// "display it as a profile icon"): provenance at a glance, their name when you point at it.
 export const MiniPost = ({ author, doc_id, title, published_ms }) => {
+    const person = usePerson(author);
     const [words, setWords] = useState('');
     useEffect(() => {
         setWords('');
@@ -431,9 +432,9 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
             day: 'numeric',
         });
     return html`<a class="minipost" href=${`/id/${speakable(author)}/post/${doc_id}`}>
+        <span class="minipost-who" title=${person.primary}><${PersonHex} person=${person} size="mini" /></span>
         <span class=${title ? 'minipost-title' : 'minipost-words'}>${title || words || t('postentry.link', 'link')}</span>
         ${when && html`<span class="minipost-when">${when}</span>`}
-        <span class="minipost-who" title=${speakable(author)}>${shortcode(author)}</span>
     </a>`;
 };
 
