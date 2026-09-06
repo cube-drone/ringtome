@@ -107,7 +107,8 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             .await;
             FragmentMessage::Replies { proofs, cursor }
         }
-        _ => return Err(anyhow!("expected a Want, WantDeaths, or WantReplies")),
+        Some(FragmentMessage::WantShelf { author, limit }) => shelf_for(&state, &author, limit).await,
+        _ => return Err(anyhow!("expected a Want, WantDeaths, WantReplies, or WantShelf")),
     };
     write_frame(&mut send, &answer).await?;
     send.finish().ok();
@@ -329,6 +330,32 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
 /// document we know to be dead is dead no matter what we still have lying around. Only then
 /// our own fragment ledger, so a live fragment can be relayed one more hop by a node that
 /// never held the author either.
+/// The shelf door (PEEK.md slice 2): the author's newest post ids off a chain this node
+/// holds - its own, or a mirror it keeps for a follower. Pages stay off (BOOKS.md ruling 4),
+/// and a speculative mirror answers nothing, for the reasons `from_held_chain` gives. A
+/// node holding no chain answers an empty shelf: "nothing to say" is a fact, not a fault.
+async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentMessage {
+    let author_hex = hex::encode(author);
+    let limit = limit.clamp(1, ringtome_proto::fragment::MAX_SHELF_IDS as u64) as i64;
+    let posts = match state.user_dbs.get(&author_hex).await {
+        Ok(Some(db)) => {
+            if crate::speculative::speculative_only(state, &author_hex).await.unwrap_or(true) {
+                Vec::new()
+            } else {
+                crate::record::documents::public_docs(&db, None, limit)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|p| p.part_of.is_none())
+                    .map(|p| p.doc_id)
+                    .collect()
+            }
+        }
+        _ => Vec::new(),
+    };
+    FragmentMessage::Shelf { posts, pinned: Vec::new() }
+}
+
 async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {
     let author_hex = hex::encode(author);
     let mut answer = answer_inner(state, &author_hex, doc_id).await;
@@ -426,6 +453,11 @@ async fn from_held_chain(
     // speculates about. Falling through leaves the tombstone and fragment shelves to
     // answer, exactly as they did before the mirror existed.
     if crate::speculative::speculative_only(state, author_hex).await? {
+        return Ok(None);
+    }
+    // A mirror held at PEEK depth (PEEK.md ruling 4) carries no posts chain at all: it must
+    // not answer "unknown" for words the fragment ledger beside it holds. Fall through.
+    if crate::idface::peek_held(state, author_hex).await {
         return Ok(None);
     }
     // `public_doc_ids` already filters retractions, so absence here IS the withdrawal signal -
@@ -657,6 +689,41 @@ pub async fn fetch(
         }
     }
     Fetched::Unknown
+}
+
+/// One document from one named endpoint, verified at the edge exactly as `fetch` does - for
+/// the peek, which already knows who answered for the persona and asks them directly.
+pub async fn fetch_from(
+    state: &AppState,
+    endpoint_id: &str,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> Result<Fetched> {
+    ask(state, endpoint_id, author, doc_id).await
+}
+
+/// The shelf question to one named endpoint (PEEK.md slice 2): `(posts, pinned)`, newest
+/// first, ids only. Nothing here is believed - every id is then fetched and verified on its
+/// own; a lying shelf costs at most a handful of refused fragments.
+pub async fn fetch_shelf_from(
+    state: &AppState,
+    endpoint_id: &str,
+    author: &[u8; 32],
+    limit: u64,
+) -> Result<(Vec<[u8; 16]>, Vec<[u8; 16]>)> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for a shelf: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(&mut send, &FragmentMessage::WantShelf { author: *author, limit }).await?;
+    send.finish().ok();
+    let answer = read_frame(&mut recv).await?;
+    conn.close(0u8.into(), b"done");
+    match answer {
+        Some(FragmentMessage::Shelf { posts, pinned }) => Ok((posts, pinned)),
+        other => Err(anyhow!("unexpected answer to a shelf request: {other:?}")),
+    }
 }
 
 /// Ask one peer for a page of its death log, verifying every proof at this edge before a byte

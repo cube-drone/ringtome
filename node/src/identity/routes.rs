@@ -1604,12 +1604,20 @@ async fn resolve_reply_link(
         },
         _ => None,
     };
-    let header = match header {
+    let mut header = match header {
         Some(h) => Some(h),
         None => crate::fragments::held_header(&state.node_db, &author_hex, &doc_hex)
             .await
             .map_err(AppError::Internal)?,
     };
+    // A peek follows the eye (PEEK.md ruling 5): the parent of a reply to a peeked author
+    // is fetched by id over the fragment road, right now, rather than refused.
+    if header.is_none() && crate::idface::peek_held(state, &author_hex).await {
+        crate::fragments::fetch_post(state, &author_hex, &author, &doc).await;
+        header = crate::fragments::held_header(&state.node_db, &author_hex, &doc_hex)
+            .await
+            .map_err(AppError::Internal)?;
+    }
     let Some(header) = header else {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.cant-reply-to-a-post",
@@ -2370,6 +2378,24 @@ async fn private_kv_put_handler(
     // memo-bearing collections; every other private register keeps the fast path.
     if collection.starts_with("contact:") || collection == "comments" {
         crate::fold::fold_now(&state, &root).await;
+    }
+    // Promotion (PEEK.md ruling 7): a dial on a persona this node holds only as a PEEK is
+    // the demand signal for the whole mirror - fetched now, bounded by the page's patience,
+    // so "follow, then open their page" finds their history rather than the next beat.
+    if let Some(foreign) = collection.strip_prefix("contact:") {
+        let dialed = matches!(key.as_str(), "interest" | "trust" | "interest_rebroadcasts")
+            && !req.value.trim().is_empty();
+        if dialed
+            && crate::idface::has_fetched(&state.node_db, foreign).await.unwrap_or(false)
+            && !crate::idface::holds_posts_chain(&state, foreign).await
+        {
+            let promoted = tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                crate::idface::promote_peek(&state, foreign),
+            )
+            .await;
+            tracing::info!(foreign = %foreign, promoted = ?promoted.ok(), "a dial promoted a peek");
+        }
     }
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,

@@ -197,7 +197,7 @@ fn user_db_opens_are_deliberate() {
         // how we answer from our own copy of that author's chain. Per-request, not per-persona:
         // the loop this test guards against would be opening every author we hold to answer one
         // question, which is exactly what the (author, doc_id) key avoids.
-        ("net/fragment.rs", 2),
+        ("net/fragment.rs", 3),
         // One open per HELD PERSONA per reaper round (half-hourly; the harness shortens it) -
         // the one legitimate whole-corpus walk: mark-and-sweep is DEFINED as seeing every
         // reference, and any error aborts the run rather than reaping blind.

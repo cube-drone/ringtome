@@ -447,12 +447,169 @@ pub(crate) async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[Strin
 /// `fetch_foreign` with the continuation count named: each winning candidate chains up to
 /// `max_passes` budgeted exchanges while the peer still holds more (PEEK.md ruling 2). One
 /// pass is the test beat's "pull-once", which is how the cut itself is observed.
+/// Held at PEEK depth (PEEK.md ruling 1): not this node's own, and nobody's dial here names
+/// them - follow, rebroadcast interest, or trust alike (the eviction sweep's "nobody wants"
+/// question; a rebroadcast-only follow is a relationship whose shares chain must arrive
+/// whole, which the first full rig run proved by refusing every share in the tree). Depth
+/// is a fact about OUR relationships, so this is the one question every door asks.
+pub(crate) async fn peek_held(state: &AppState, root_hex: &str) -> bool {
+    if crate::identity::is_agented(&state.node_db, root_hex).await.unwrap_or(false) {
+        return false;
+    }
+    // A speculative mirror (Discovery slice 1) is held on a reader's trust rollup, not on a
+    // dial - quiet by design, and at whatever depth its own pass chose. Not a peek.
+    if crate::speculative::fetched_at(&state.node_db, root_hex).await.ok().flatten().is_some() {
+        return false;
+    }
+    crate::net::subscriptions::dialed_by(&state.node_db, root_hex)
+        .await
+        .map(|d| d.is_empty())
+        .unwrap_or(false)
+}
+
+/// Whether this node holds the persona's POSTS chain at all - the mark of a full mirror as
+/// against a peek's, whatever the dials say right now.
+pub(crate) async fn holds_posts_chain(state: &AppState, root_hex: &str) -> bool {
+    crate::net::frontier::held(&state.node_db, root_hex)
+        .await
+        .map(|h| h.iter().any(|r| r.service == ringtome_proto::registry::service::POSTS))
+        .unwrap_or(false)
+}
+
+/// Promotion (PEEK.md ruling 7): a dial just landed on a persona held as a peek, so fetch
+/// them whole NOW, through the ladder the peek already knows - the demand signal is the
+/// dial, and "follow, then open their page" must find the mirror, not the next beat.
+pub(crate) async fn promote_peek(state: &AppState, root_hex: &str) -> bool {
+    let via = stored_tree_leaves(state, root_hex).await;
+    fetch_foreign_at(state, root_hex, &via, crate::net::sync::CONTINUATIONS_PER_WAKE, Some(false)).await
+}
+
+/// How many posts a peek carries (PEEK.md ruling 4), and how long the page waits for them.
+const PEEK_POSTS: u64 = 20;
+const PEEK_SHELF_WAIT: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// The peek's shelf (PEEK.md ruling 4): ask the node that just answered for the persona
+/// which posts are newest (and pinned), then fetch each as a fragment - its own signed
+/// header, verified here, its labels riding along - and want its body. Bounded by the
+/// page's patience: what lands in time renders now, the rest lands behind the page
+/// (ruling 9, render at first entry). Returns how many posts the ledger holds afterwards.
+async fn peek_shelf(state: &AppState, root_hex: &str, endpoint_id: &str) -> usize {
+    let Some(author) = crate::pubkey::decode(root_hex) else {
+        return 0;
+    };
+    let shelf = tokio::time::timeout(
+        PEEK_SHELF_WAIT,
+        crate::net::fragment::fetch_shelf_from(state, endpoint_id, &author, PEEK_POSTS),
+    )
+    .await;
+    let (posts, pinned) = match shelf {
+        Ok(Ok(lists)) => lists,
+        Ok(Err(e)) => {
+            tracing::debug!(root = %root_hex, via = %endpoint_id, "peek: shelf refused: {e:#}");
+            return 0;
+        }
+        Err(_) => {
+            tracing::debug!(root = %root_hex, via = %endpoint_id, "peek: shelf did not answer in time");
+            return 0;
+        }
+    };
+    let mut wanted: Vec<[u8; 16]> = Vec::new();
+    // The face first: the profile names its avatar by document id, and a peek that shows
+    // the name without the face is half a look.
+    if let Ok(fields) = public_profile(state, root_hex).await {
+        if let Some(avatar) = profile_value(&fields, "avatar")
+            .and_then(|h| hex::decode(h).ok())
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        {
+            wanted.push(avatar);
+        }
+    }
+    for id in pinned.into_iter().chain(posts) {
+        if !wanted.contains(&id) {
+            wanted.push(id);
+        }
+    }
+    wanted.truncate((PEEK_POSTS * 2 + 1) as usize);
+    let mut tasks = tokio::task::JoinSet::new();
+    for doc_id in wanted {
+        let doc_hex = hex::encode(doc_id);
+        if let Ok(Some(_)) = crate::fragments::held(&state.node_db, root_hex, &doc_hex).await {
+            continue;
+        }
+        let task_state = state.clone();
+        let task_root = root_hex.to_string();
+        let task_via = endpoint_id.to_string();
+        tasks.spawn(async move {
+            let fetched = crate::net::fragment::fetch_from(&task_state, &task_via, &author, &doc_id).await;
+            if let Ok(crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by)) = fetched {
+                if crate::fragments::remember(&task_state.node_db, &task_root, &task_root, &verified, &entry, &auth_path)
+                    .await
+                    .is_ok()
+                {
+                    // The words, the thumbnail and the preview alike: a face is its thumbnail.
+                    let mut hashes = vec![verified.header.file_hash];
+                    hashes.extend(verified.header.thumb_hash);
+                    hashes.extend(verified.header.preview_hash);
+                    for h in &hashes {
+                        let _ = crate::net::bodies::want(&task_state.node_db, &task_root, h).await;
+                    }
+                    if let Some(ep) = served_by {
+                        let _ = crate::fragments::note_deliverer(&task_state.node_db, &task_root, &ep).await;
+                    }
+                }
+            }
+        });
+    }
+    // Wait the page's patience, then let the rest finish detached (never aborted: a late
+    // fragment is a warmer shelf, and an abort mid-dial is the zombie the ladder learned
+    // to avoid).
+    let deadline = tokio::time::sleep(PEEK_SHELF_WAIT);
+    tokio::pin!(deadline);
+    loop {
+        tokio::select! {
+            joined = tasks.join_next() => { if joined.is_none() { break; } }
+            _ = &mut deadline => {
+                tasks.detach_all();
+                break;
+            }
+        }
+    }
+    // The bytes cross with the look, not behind it (the face test's "no second trip"): heal
+    // inline from the node that answered, bounded like everything else on this page; what
+    // the deadline leaves standing, the wants and the sweep finish.
+    let _ = tokio::time::timeout(PEEK_SHELF_WAIT, crate::net::bodies::heal_from(state, root_hex, root_hex)).await;
+    crate::fragments::shelf_of(&state.node_db, root_hex, PEEK_POSTS as i64)
+        .await
+        .map(|s| s.len())
+        .unwrap_or(0)
+}
+
 pub(crate) async fn fetch_foreign_passes(
     state: &AppState,
     root_hex: &str,
     via: &[String],
     max_passes: usize,
 ) -> bool {
+    fetch_foreign_at(state, root_hex, via, max_passes, None).await
+}
+
+/// `fetch_foreign_passes` with the depth named: `Some(true)` peeks, `Some(false)` pulls
+/// whole, `None` asks the relationships (`peek_held`).
+async fn fetch_foreign_at(
+    state: &AppState,
+    root_hex: &str,
+    via: &[String],
+    max_passes: usize,
+    depth: Option<bool>,
+) -> bool {
+    // Depth (PEEK.md ruling 1): nobody here follows them, so this is a PEEK - the scoped
+    // exchange for identity, profile and annotations, then the shelf as fragments. A
+    // followed persona takes the ordinary full pull.
+    let peek = match depth {
+        Some(p) => p,
+        None => peek_held(state, root_hex).await,
+    };
+    let scope: &'static [u32] = if peek { crate::net::sync::PEEK_SCOPE } else { &[] };
     // Detach, never cancel (2026-08-24, closing REFACTOR's visit-ladder entry): the old
     // shape aborted the also-rans on first success (JoinSet::abort_all) and cancelled each
     // exchange at its 8s deadline (timeout around the future), and every one of those
@@ -489,9 +646,13 @@ pub(crate) async fn fetch_foreign_passes(
             let mut pull = tokio::spawn(async move {
                 let mut passes = 0;
                 loop {
-                    let stats =
-                        crate::net::sync::sync_with_peer(&exchange_state, &exchange_root, addr.clone())
-                            .await?;
+                    let stats = crate::net::sync::sync_with_peer_scoped(
+                        &exchange_state,
+                        &exchange_root,
+                        addr.clone(),
+                        scope,
+                    )
+                    .await?;
                     passes += 1;
                     if !stats.behind || passes >= max_passes.max(1) {
                         break Ok::<_, anyhow::Error>(stats);
@@ -520,10 +681,14 @@ pub(crate) async fn fetch_foreign_passes(
     drop(tx); // the channel closes when the last candidate reports (or none were spawnable)
     while let Some(outcome) = rx.recv().await {
         if let Some((key_hex, received)) = outcome {
-            tracing::info!(root = %root_hex, via = %key_hex, received,
+            tracing::info!(root = %root_hex, via = %key_hex, received, peek,
                 "fetched foreign identity on member request");
             if let Err(e) = record_foreign_fetch(state, root_hex, &key_hex).await {
                 tracing::warn!(root = %root_hex, "could not record foreign fetch: {e:#}");
+            }
+            if peek {
+                let held = peek_shelf(state, root_hex, &key_hex).await;
+                tracing::info!(root = %root_hex, via = %key_hex, held, "peek: shelf fetched as fragments");
             }
             return true;
         }
@@ -919,7 +1084,18 @@ async fn public_doc_bytes(
                 let speculative_only = crate::speculative::speculative_only(state, &root_hex)
                     .await
                     .map_err(AppError::Internal)?;
-                let fragment_first = if speculative_only { from_fragments().await? } else { None };
+                // A peek's mirror (PEEK.md ruling 4) has no posts lane either: its words
+                // live on the fragment ledger, so it reads fragment-first like a hunch does.
+                // And a peek FOLLOWS THE EYE (ruling 5): a document it never fetched - a
+                // page of a shared book, a post past the newest twenty - is asked for by id
+                // over the fragment road from the author's own nodes, right now, so the
+                // reader who clicked it gets it rather than a shrug.
+                let peek = peek_held(state, &root_hex).await;
+                let mut fragment_first = if speculative_only || peek { from_fragments().await? } else { None };
+                if peek && fragment_first.is_none() {
+                    crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
+                    fragment_first = from_fragments().await?;
+                }
                 match fragment_first {
                     Some(facts) => Some(facts),
                     None => {
@@ -1186,15 +1362,30 @@ pub async fn id_posts(
     // One more than the page, to learn whether there IS a further page without counting the
     // whole shelf - the extra row is the answer and never reaches the reader.
     let dbh = state.user_dbs.get(&root_hex).await.ok().flatten();
-    let posts = match &dbh {
-        Some(db) => crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            // Pages stay off the shelf too (BOOKS.md ruling 4): the book lists them.
-            .filter(|p| p.part_of.is_none())
-            .collect(),
-        None => Vec::new(), // nothing held, or unreadable: an empty shelf either way
+    let hosted_here = crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(false);
+    let posts = if !hosted_here && peek_held(&state, &root_hex).await {
+        // A peek's shelf is the fragment ledger's (PEEK.md ruling 4): one page, no further.
+        if after.is_some() {
+            Vec::new()
+        } else {
+            crate::fragments::shelf_of(&state.node_db, &root_hex, POSTS_PAGE)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|p| p.part_of.is_none())
+                .collect()
+        }
+    } else {
+        match &dbh {
+            Some(db) => crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                // Pages stay off the shelf too (BOOKS.md ruling 4): the book lists them.
+                .filter(|p| p.part_of.is_none())
+                .collect(),
+            None => Vec::new(), // nothing held, or unreadable: an empty shelf either way
+        }
     };
     // The persona's SHARES join the shelf (Curtis, 2026-09-02: the page defaults to
     // everything - posts, rebroadcasts, replies - and the client's toggles subtract).
@@ -1454,7 +1645,22 @@ pub async fn id_post(
             return Err(AppError::NotFound(crate::msg!("idface.no-such-post-here-2", "no such post here")));
         }
     };
-    let post = crate::record::documents::public_doc(&db_for_labels, &doc_id).await?;
+    let mut post = crate::record::documents::public_doc(&db_for_labels, &doc_id).await?;
+    // A peek's permalink (PEEK.md rulings 4 and 5): the mirror has no posts lane, so the
+    // fragment ledger answers - fetched by id right now if the peek never held it.
+    let mut fragment_refs: Option<Vec<[u8; 16]>> = None;
+    if post.is_none() && peek_held(&state, &root_hex).await {
+        if crate::fragments::held(&state.node_db, &root_hex, &doc).await.ok().flatten().is_none() {
+            crate::fragments::fetch_post(&state, &root_hex, &root, &doc_id).await;
+        }
+        if let Some((p, refs)) = crate::fragments::public_doc_of(&state.node_db, &root_hex, &doc)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            fragment_refs = Some(refs);
+            post = Some(p);
+        }
+    }
     match post {
         Some(p) => {
             let n = crate::replies::known_counts(
@@ -1473,7 +1679,9 @@ pub async fn id_post(
             // The refs are public facts (they ride the signed header and every fragment);
             // naming them here lets a reader's renderer - and the twins acceptance - ask
             // for exactly the documents the post embeds.
-            if let Ok(Some(entry)) =
+            if let Some(refs) = &fragment_refs {
+                v["refs"] = serde_json::json!(refs.iter().map(hex::encode).collect::<Vec<_>>());
+            } else if let Ok(Some(entry)) =
                 crate::record::documents::public_header_entry(&db_for_labels, &doc_id).await
             {
                 if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
@@ -1803,15 +2011,27 @@ pub async fn id_profile(
     // What they have PUBLISHED - the public lane's documents, newest first. Keyless and
     // lane-checked like everything on this surface; a private note cannot appear here
     // because the query cannot name one.
-    let mut posts: Vec<crate::record::documents::PublicDoc> = match state.user_dbs.get(&root_hex).await {
-        Ok(Some(db)) => crate::record::documents::public_docs(&db, None, POSTS_PAGE + 1)
+    // A PEEK (PEEK.md ruling 4) holds no posts chain: its shelf is the fragment ledger's -
+    // the newest posts the peek fetched, each the author's own signed header.
+    let peek = !hosted && peek_held(&state, &root_hex).await;
+    let mut posts: Vec<crate::record::documents::PublicDoc> = if peek {
+        crate::fragments::shelf_of(&state.node_db, &root_hex, POSTS_PAGE)
             .await
             .unwrap_or_default()
             .into_iter()
-            // Pages stay off this shelf as off the other (BOOKS.md ruling 4).
             .filter(|p| p.part_of.is_none())
-            .collect(),
-        _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
+            .collect()
+    } else {
+        match state.user_dbs.get(&root_hex).await {
+            Ok(Some(db)) => crate::record::documents::public_docs(&db, None, POSTS_PAGE + 1)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                // Pages stay off this shelf as off the other (BOOKS.md ruling 4).
+                .filter(|p| p.part_of.is_none())
+                .collect(),
+            _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
+        }
     };
     let posts_more = posts.len() as i64 > POSTS_PAGE;
     posts.truncate(POSTS_PAGE as usize);
@@ -1878,6 +2098,9 @@ pub async fn id_profile(
         "root": root_hex,
         "speakable": speakable::speakable(&root),
         "foreign": !hosted,
+        // A look, not a mirror (PEEK.md ruling 9): nobody here follows them, so this node
+        // holds their identity, profile, labels and newest posts, and no history.
+        "peek": peek,
         // Whether an address minted here may wear this node's ORIGIN: only for personas it
         // actually serves. A foreign persona's address mints origin-free, which re-homes at
         // whatever node the reader has.

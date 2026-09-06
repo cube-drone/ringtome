@@ -181,8 +181,10 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
             profile=${profile}
             you=${persona && session && html`<${PersonaMenu} persona=${persona} session=${session} />`}
         >
-            ${profile.foreign &&
+            ${profile.foreign && !profile.peek &&
             html`<p class="id-words">${t('idpage.reached-across-the-network--', 'reached across the network - not carried on this node')}</p>`}
+            ${profile.peek &&
+            html`<p class="id-words">${t('idpage.a-look-at-their-newest', 'a look at their newest posts - follow them to keep up')}</p>`}
             ${profile.foreign &&
             html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} />`}
         <//>

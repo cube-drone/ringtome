@@ -8474,3 +8474,30 @@ defaults are fleet-sized now, 512/256/128), and the polite empty exchange holdin
 unproven seat while it waited for a requester that never closed - bounded to five seconds
 now, then we close. Owed: a misbehaving peer for the rig, so the deadlines and the flood
 get a proof beyond the unit gate; a backoff on the dialer's side of "busy".
+
+## 2026-09-05 (cont.): PEEK.md slice 2 - the peek
+
+A first look at a stranger is a shape now, not a mirror. Depth is one question every door
+asks - not hosted here, and nobody here follows them - and a peek runs the scoped exchange
+for identity, profile and annotations only, with the serve side narrowing a peeked
+persona's pushes to the same scope and the gate refusing the rest. The fragment door
+gained the shelf question: ids only, newest first, with a pinned list that waits for
+slice 4. The peek fetches each id through the ordinary want-and-have road from the node
+that answered, each post the author's own signed header verified at the edge with its
+labels riding along, and wants the bodies. The profile, the shelf page, the fragment door
+and the body route all read fragment-first for a peek - the body route had been asking a
+peek's mirror for words it never held - and the lens page says it is a look. The follow
+dial promotes a peek to a mirror on the next wake. A document the peek never held is
+fetched by id on read. Acceptance: thirty posts looked at from another node, twenty arrive
+as fragments with their labels, no posts chain exists there, a body opens, and the follow
+brings the chain.
+The full rig found three seams on the way. Depth must count every dial - a rebroadcast-only
+follow judged as a stranger had its shares chain refused, and the whole share tree went red.
+The published follow and trust edges belong in the peek's scope, or "trust reveals" never
+reaches a peeking node. And the journal's vanish sweep judged shares against a peek's empty
+posts lane and buried them all; it stands aside for a peek now. Then the wider suite found
+the same assumption - "a mirror exists, so the posts chain is here" - in five more places:
+the speculative lane's quiet mirrors (not peeks; they hang on a trust rollup), a follow dial
+(promotes a peek in its own request now), the avatar (fetched first with the shelf), the
+reply door (fetches an unheld parent by id), and the replies memo's sweep (stands aside like
+the vanish sweep). The permalink reads fragment-first for a peek too.

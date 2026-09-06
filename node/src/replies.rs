@@ -140,6 +140,12 @@ async fn refresh_inner(state: &AppState, author_root: &str, force: bool) -> Resu
     let Ok(Some(db)) = state.user_dbs.get(author_root).await else {
         return Ok(()); // nothing held of them: the fragment path owns any rows
     };
+    // A PEEK's mirror (PEEK.md ruling 4) holds no posts lane: reading its empty shelf as
+    // "no replies" and sweeping the door-learned rows would bury every thread of theirs -
+    // the fragment path owns the rows for a peek exactly as for nothing held.
+    if crate::idface::peek_held(state, author_root).await {
+        return Ok(());
+    }
     // The fingerprint gate (2026-08-28): a POSTS move that touched no reply - the common
     // one, a plain post - must not rewrite and re-stamp every reply row. (count, newest
     // head) changes on every reply add, edit, or deletion, and a boot-reset mark makes the

@@ -113,7 +113,16 @@ pub enum FragmentMessage {
     /// words: the asker fetches the words through the ordinary `Want` machinery. A page
     /// shorter than the server's page size means the index is drained.
     Replies { proofs: Vec<ReplyProof>, cursor: u64 },
+    /// The shelf question (PEEK.md slice 2): the author's newest `limit` post ids, and the
+    /// ids they have pinned (slice 4 fills that; empty until then). Ids only, on purpose -
+    /// each post then travels the ordinary `Want`/`Have` road, proving itself and carrying
+    /// its own labels, so the shelf answer stays kilobytes whatever the history's size.
+    WantShelf { author: [u8; 32], limit: u64 },
+    Shelf { posts: Vec<[u8; 16]>, pinned: Vec<[u8; 16]> },
 }
+
+/// Cap on ids per shelf list, enforced at decode.
+pub const MAX_SHELF_IDS: usize = 64;
 
 /// One death in a batch: whose document, which document, and the author's signed word for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +174,8 @@ const TAG_WANT_REPLIES: u64 = 6;
 const TAG_REPLIES: u64 = 7;
 const TAG_WANT_KEY: u64 = 8;
 const TAG_KEY: u64 = 9;
+const TAG_WANT_SHELF: u64 = 10;
+const TAG_SHELF: u64 = 11;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -175,6 +186,24 @@ impl FragmentMessage {
                 w.uint(TAG_WANT);
                 w.bytes(author);
                 w.bytes(doc_id);
+            }
+            Self::WantShelf { author, limit } => {
+                w.array(3);
+                w.uint(TAG_WANT_SHELF);
+                w.bytes(author);
+                w.uint(*limit);
+            }
+            Self::Shelf { posts, pinned } => {
+                w.array(3);
+                w.uint(TAG_SHELF);
+                w.array(posts.len() as u64);
+                for id in posts {
+                    w.bytes(id);
+                }
+                w.array(pinned.len() as u64);
+                for id in pinned {
+                    w.bytes(id);
+                }
             }
             Self::Have { entry, auth_path, annotations } => {
                 w.array(4);
@@ -311,6 +340,24 @@ impl FragmentMessage {
                 Self::Gone { entry, auth_path }
             }
             (TAG_UNKNOWN, 1) => Self::Unknown,
+            (TAG_WANT_SHELF, 3) => Self::WantShelf {
+                author: r.bytes_fixed::<32>()?,
+                limit: r.uint()?,
+            },
+            (TAG_SHELF, 3) => {
+                let mut lists: [Vec<[u8; 16]>; 2] = [Vec::new(), Vec::new()];
+                for list in lists.iter_mut() {
+                    let count = r.array()?;
+                    if count > MAX_SHELF_IDS as u64 {
+                        return Err(ProtoError::BadEntry("shelf list too long"));
+                    }
+                    for _ in 0..count {
+                        list.push(r.bytes_fixed::<16>()?);
+                    }
+                }
+                let [posts, pinned] = lists;
+                Self::Shelf { posts, pinned }
+            }
             (TAG_WANT_DEATHS, 2) => Self::WantDeaths { since: r.uint()? },
             (TAG_DEATHS, 3) => {
                 let count = r.array()?;
@@ -578,6 +625,20 @@ pub fn verify_retraction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shelf_messages_round_trip_and_refuse_a_long_list() {
+        for message in [
+            FragmentMessage::WantShelf { author: [1u8; 32], limit: 20 },
+            FragmentMessage::Shelf { posts: vec![[2u8; 16], [3u8; 16]], pinned: vec![[4u8; 16]] },
+            FragmentMessage::Shelf { posts: Vec::new(), pinned: Vec::new() },
+        ] {
+            let bytes = message.encode();
+            assert_eq!(FragmentMessage::decode(&bytes).unwrap(), message);
+        }
+        let long = FragmentMessage::Shelf { posts: vec![[9u8; 16]; MAX_SHELF_IDS + 1], pinned: Vec::new() };
+        assert!(FragmentMessage::decode(&long.encode()).is_err(), "a list past the cap is refused");
+    }
 
     #[test]
     fn messages_round_trip() {

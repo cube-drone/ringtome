@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 648 phrases across 48 files.
+// 649 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -343,6 +343,7 @@ export default {
     'idpage.none-of-the-computers-its': 'none of the computers its address points at answered.',
     'idpage.its-address-carries-no-hints': 'its address carries no hints about where to find it.',
     'idpage.reached-across-the-network--': 'reached across the network - not carried on this node',
+    'idpage.a-look-at-their-newest': 'a look at their newest posts - follow them to keep up',
 
     // --- node/js/index.js ---
     'index.theres-nothing-at-this-address': "there's nothing at this address. {home}.",

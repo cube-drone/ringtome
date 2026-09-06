@@ -167,12 +167,34 @@ walks it per entry is unmeasured (residual).
    test**, because the rig has no misbehaving peer: the first-frame deadline, the wall
    clock, and the flood at accept - each is a `timeout` or a counter read straight off the
    dial, and a fake peer that never says Done or never sends Hello is its own residual.
-2. **The peek.** The foreign fetch becomes a scoped exchange (identity, profile,
-   annotations) plus a `Shelf` fragment request answering the newest N post proofs and the
-   author's pin proofs, then `Want` per post; the lens page and the profile read merge
-   mirror and fragments; bodies on demand. Acceptance: a stranger with two hundred posts is
-   looked at, twenty arrive as fragments with their labels, no posts chain exists here, the
-   page renders and says it is a peek.
+2. ~~**The peek.**~~ Built 2026-09-05. Depth is one question every door asks
+   (`idface::peek_held`: not hosted, nobody here follows them). The foreign fetch runs the
+   scoped exchange for a peek (`PEEK_SCOPE`: identity, profile, the published follow and
+   trust edges - what "trust reveals" reads - and annotations) and the serve
+   side narrows a peeked persona's pushes to the same scope, the gate refusing anything
+   past it. The fragment door gained the shelf question - `WantShelf`/`Shelf`, ids only,
+   newest first, a `pinned` list empty until slice 4 - and the peek fetches each id through
+   the ordinary `Want`/`Have` road from the node that answered, verified at the edge, labels
+   riding, bodies wanted and healed, the profile's avatar fetched first. The profile, the
+   shelf page, the permalink, the fragment door and the body route all read fragment-first
+   for a peek, and the permalink, the body route and the reply door fetch a document the
+   peek never held - a page of a shared book, a post past the newest twenty, the parent of
+   a reply - by id over the fragment road on read (ruling 5, "bodies follow the eye"); the
+   lens page says "a look at their newest posts - follow them to keep up"; a dial on a
+   peeked persona promotes it to a mirror right there in the dial's own request (ruling
+   7), bounded by the page's patience, so "follow, then open their page" finds history. Depth counts EVERY dial - follow, rebroadcast interest, trust -
+   as the eviction sweep does: the first full rig run judged a rebroadcast-only follow a
+   stranger and refused the whole share tree. And the journal's vanish sweep does not judge
+   a peek: its mirror has no posts lane, and every journaled share of a peeked author read
+   as vanished until it stood aside. The replies memo's sweep is the same shape and stands
+   aside the same way. And a speculative mirror (Discovery slice 1) is not a peek: it is
+   held on a reader's trust rollup, not on a dial, at whatever depth its own pass chose. Acceptance (`peek.cjs`): a stranger with thirty posts is looked at from
+   another node; the page says peek, carries the name, and lists exactly the newest twenty;
+   identity, profile and annotations chains are held and no posts chain is; the twenty are
+   fragments with their labels; a body opens from the ledger; the follow brings the posts
+   chain and the page stops being a peek. **Deferred to slice 3:** bodies are still wanted
+   for every fragment on arrival (words and pictures alike); ruling 5's "media on demand"
+   comes with the footprint ceiling.
 3. **Footprint and expiry.** The peek registry with last-look and bytes; per-peek and
    node-wide ceilings; least-recently-looked eviction and the expiry; media on demand under
    the ceiling. Acceptance: a peek past its ceiling stops fetching media and says so; an

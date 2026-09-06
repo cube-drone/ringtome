@@ -850,7 +850,7 @@ pub async fn serving_header(
 /// fold or sweep should wait on a network round trip it only benefits from. The public-edge
 /// mint's eager-knock idiom: the sweep exists for the doors that were shut, not as the normal
 /// path to an open one.
-fn heal_soon(state: &crate::AppState, author_root: &str, origin_root: &str) {
+pub(crate) fn heal_soon(state: &crate::AppState, author_root: &str, origin_root: &str) {
     let state = state.clone();
     let author = author_root.to_string();
     let origin = origin_root.to_string();
@@ -1035,6 +1035,77 @@ pub async fn held_header(
         return Ok(None);
     };
     Ok(ringtome_proto::registry::DocHeaderPlain::decode(payload).ok())
+}
+
+/// The fragment ledger as a SHELF (PEEK.md slice 2): everything held of one author, newest
+/// first, in the shape the public shelf speaks - the stored entry IS the header, so every
+/// flag the face shows comes off the author's own signature.
+pub async fn shelf_of(
+    node_db: &Db,
+    author_root: &str,
+    limit: i64,
+) -> Result<Vec<crate::record::documents::PublicDoc>> {
+    let rows: Vec<(Vec<u8>,)> = node_db
+        .fetch_all(
+            "SELECT entry FROM fragments WHERE author_root = ?1
+             ORDER BY COALESCE(genesis_ms, fetched_ms) DESC LIMIT ?2",
+            (author_root, limit),
+        )
+        .await
+        .context("reading an author's fragments as a shelf")?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (entry,) in rows {
+        if let Some((doc, _refs)) = doc_from_entry(&entry) {
+            out.push(doc);
+        }
+    }
+    out.sort_by(|a, b| b.display_ms().cmp(&a.display_ms()).then(a.doc_id.cmp(&b.doc_id)));
+    Ok(out)
+}
+
+/// One fragment in the public shelf's shape, with the header's refs (its media twins)
+/// beside it - the permalink read's payload for a peek.
+pub async fn public_doc_of(
+    node_db: &Db,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<Option<(crate::record::documents::PublicDoc, Vec<[u8; 16]>)>> {
+    let row: Option<(Vec<u8>,)> = node_db
+        .fetch_optional(
+            "SELECT entry FROM fragments WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_id),
+        )
+        .await
+        .context("reading a fragment as a public document")?;
+    Ok(row.and_then(|(entry,)| doc_from_entry(&entry)))
+}
+
+/// The stored entry IS the header: decode it into the shelf's shape. Every flag the face
+/// shows comes off the author's own signature.
+fn doc_from_entry(entry: &[u8]) -> Option<(crate::record::documents::PublicDoc, Vec<[u8; 16]>)> {
+    let signed = ringtome_proto::SignedEntry::decode(entry).ok()?;
+    let ringtome_proto::Payload::Inline(payload) = &signed.entry().payload else { return None };
+    let h = ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()?;
+    let link = |l: Option<([u8; 32], [u8; 16])>| l.map(|(a, d)| (hex::encode(a), hex::encode(d)));
+    let stamp = signed.entry().timestamp_ms;
+    let refs = h.refs.clone();
+    Some((
+        crate::record::documents::PublicDoc {
+            reply_to: link(h.reply_to),
+            thread_root: link(h.thread_root),
+            doc_id: h.doc_id,
+            title: h.title,
+            format: h.format,
+            genesis_ms: h.genesis_ms.unwrap_or(stamp),
+            head_ms: stamp,
+            thumb_hash: h.thumb_hash,
+            settled: h.settled,
+            trusted_only: h.trusted_only,
+            dated_ms: h.dated_ms,
+            part_of: h.part_of,
+        },
+        refs,
+    ))
 }
 
 pub async fn held(node_db: &Db, author_root: &str, doc_id: &str) -> Result<Option<Fragment>> {

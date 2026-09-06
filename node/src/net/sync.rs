@@ -485,6 +485,7 @@ async fn ingest_stream(
     recv: &mut iroh::endpoint::RecvStream,
     peer_proven: bool,
     identity_ceiling: Option<usize>,
+    allowed: Option<&[u32]>,
     budget: &mut crate::net::admission::Budget,
 ) -> Result<IngestOutcome> {
     let mut total = IngestOutcome::default();
@@ -503,7 +504,7 @@ async fn ingest_stream(
                 batch.push(bytes);
                 if batch.len() >= INGEST_BATCH_ENTRIES {
                     let full = std::mem::take(&mut batch);
-                    total.absorb(ingest_batch(db, root, full, peer_proven, identity_ceiling).await?);
+                    total.absorb(ingest_batch(db, root, full, peer_proven, identity_ceiling, allowed).await?);
                     if total.over_ceiling {
                         let _ = recv.stop(1u8.into());
                         return Ok(total);
@@ -515,7 +516,7 @@ async fn ingest_stream(
         }
     }
     if !batch.is_empty() {
-        total.absorb(ingest_batch(db, root, batch, peer_proven, identity_ceiling).await?);
+        total.absorb(ingest_batch(db, root, batch, peer_proven, identity_ceiling, allowed).await?);
     }
     Ok(total)
 }
@@ -526,6 +527,7 @@ pub(crate) async fn ingest_batch(
     raw: Vec<Vec<u8>>,
     peer_proven: bool,
     identity_ceiling: Option<usize>,
+    allowed: Option<&[u32]>,
 ) -> Result<IngestOutcome> {
     // One batch at a time per identity: concurrent exchanges (eager push makes simultaneous
     // bidirectional syncs routine) would race between head-read and insert and die on the
@@ -547,7 +549,12 @@ pub(crate) async fn ingest_batch(
     for bytes in raw {
         match SignedEntry::decode(&bytes) {
             Ok(e) if e.verify().is_ok() => {
-                if !peer_proven && is_private_service(e.entry().chain.service) {
+                // The depth's scope (PEEK.md ruling 1): what this node holds a persona at is
+                // decided here, and nothing the peer offers past it is admitted. Private
+                // chains from an unproven peer are refused on the same line, for the reason
+                // the docs above give.
+                let svc = e.entry().chain.service;
+                if allowed.is_some_and(|a| !a.contains(&svc)) || (!peer_proven && is_private_service(svc)) {
                     rejected += 1;
                 } else if e.entry().chain.service == service::IDENTITY_PUBLIC {
                     identity_candidates.push(e);
@@ -1490,7 +1497,8 @@ async fn exchange_on(
     let ceiling = if agented { None } else { Some(state.config.identity_chain_ceiling) };
     let mut read_budget = state.admission.budget();
     let mut send_budget = state.admission.budget();
-    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, &mut read_budget).await?;
+    let allowed = if wanted.is_empty() { None } else { Some(wanted) };
+    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget).await?;
     if outcome.over_ceiling {
         conn.close(3u8.into(), b"identity chain over the ceiling");
         bail!("{root_hex}: identity chain over the ceiling - refused");
@@ -1667,10 +1675,9 @@ async fn serve_on(
     let agented = crate::identity::is_agented(&state.node_db, &root_hex)
         .await
         .map_err(|e| anyhow!("checking identity: {e}"))?;
+    let followers = crate::net::subscriptions::followers_of(&state.node_db, &root_hex).await?;
     let wanted = agented
-        || !crate::net::subscriptions::followers_of(&state.node_db, &root_hex)
-            .await?
-            .is_empty()
+        || !followers.is_empty()
         || crate::idface::has_fetched(&state.node_db, &root_hex).await?;
     if !wanted {
         write_frame(
@@ -1697,6 +1704,21 @@ async fn serve_on(
 
     // Named a persona this node serves: out of the unproven pool (PEEK.md ruling 14).
     permit.prove();
+
+    // Depth (PEEK.md ruling 1): a persona nobody here follows is held as a PEEK, whatever the
+    // pusher offers - the exchange narrows to the peek's chains in both directions, and the
+    // gate refuses anything past them.
+    let peek = crate::idface::peek_held(&state, &root_hex).await;
+    let scope: Vec<u32> = if peek {
+        if scope.is_empty() {
+            PEEK_SCOPE.to_vec()
+        } else {
+            scope.into_iter().filter(|s| PEEK_SCOPE.contains(s)).collect()
+        }
+    } else {
+        scope
+    };
+    let allowed: Option<&[u32]> = if peek { Some(PEEK_SCOPE) } else { None };
 
     // They dialed us and named this persona: that is a demand edge, recorded before anything
     // else happens because the asking is the fact, whatever the exchange goes on to transfer.
@@ -1773,7 +1795,7 @@ async fn serve_on(
     // connections from anyone who speaks the ALPN, so this is the buffer a stranger drives.
     let ceiling = if agented { None } else { Some(state.config.identity_chain_ceiling) };
     let mut read_budget = state.admission.budget();
-    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, &mut read_budget).await?;
+    let outcome = ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget).await?;
     if outcome.over_ceiling {
         conn.close(3u8.into(), b"identity chain over the ceiling");
         bail!("{root_hex}: identity chain over the ceiling - refused");
@@ -2181,6 +2203,18 @@ pub struct PeerSyncResult {
 /// got dialed. Thirty seconds is generous for a live peer on any network the eager path
 /// cares about; a genuinely slow one still converges by anti-entropy.
 const PEER_PASS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// A peek's scope (PEEK.md ruling 4): the chains a persona nobody here follows is held at -
+/// identity (authority), profile, the published follow and trust edges (small, and what
+/// "trust reveals" reads: a peeking node must learn it was trusted), and the annotations
+/// lane (small, and wrong as a suffix). The posts never come off the posts chain; they
+/// come through the fragment door.
+pub const PEEK_SCOPE: &[u32] = &[
+    service::IDENTITY_PUBLIC,
+    service::PROFILE_PUBLIC,
+    service::FOLLOWS_PUBLIC,
+    service::ANNOTATIONS_PUBLIC,
+];
+
 /// How many budgeted exchanges one wake may chain while still behind (PEEK.md ruling 2).
 /// The rest is the mark's job.
 pub(crate) const CONTINUATIONS_PER_WAKE: usize = 8;
@@ -2424,7 +2458,7 @@ mod tests {
 
     async fn ingest(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
         let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
-        let outcome = ingest_batch(db, root, raw, false, None).await.unwrap();
+        let outcome = ingest_batch(db, root, raw, false, None, None).await.unwrap();
         (outcome.received, outcome.rejected)
     }
 
@@ -2439,11 +2473,11 @@ mod tests {
         };
         // Ceiling 1: the first identity entry fits, the second would make two.
         let db = test_db().await;
-        let first = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.authorize)), false, Some(1))
+        let first = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.authorize)), false, Some(1), None)
             .await
             .unwrap();
         assert_eq!((first.received, first.over_ceiling), (1, false), "one entry sits under a ceiling of one");
-        let second = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.revoke)), false, Some(1))
+        let second = ingest_batch(&db, s.root, raw(std::slice::from_ref(&s.revoke)), false, Some(1), None)
             .await
             .unwrap();
         assert!(second.over_ceiling, "the second would exceed the ceiling");
@@ -2461,6 +2495,7 @@ mod tests {
             raw(&[s.authorize.clone(), s.revoke.clone(), s.honest[0].clone()]),
             false,
             Some(1),
+            None,
         )
         .await
         .unwrap();
@@ -2469,7 +2504,7 @@ mod tests {
         assert!(stored_hashes(&db2, &s.root, service::IDENTITY_PUBLIC).await.is_empty());
         // No ceiling (a hosted persona): the same two entries are admitted.
         let db3 = test_db().await;
-        let hosted = ingest_batch(&db3, s.root, raw(&[s.authorize.clone(), s.revoke.clone()]), false, None)
+        let hosted = ingest_batch(&db3, s.root, raw(&[s.authorize.clone(), s.revoke.clone()]), false, None, None)
             .await
             .unwrap();
         assert_eq!((hosted.received, hosted.over_ceiling), (2, false));
@@ -3259,7 +3294,7 @@ mod tests {
     /// A member-proven ingest: inbox chains are private, so the unproven path never sees them.
     async fn ingest_proven(db: &Db, root: [u8; 32], entries: &[SignedEntry]) -> (u64, u64) {
         let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
-        let outcome = ingest_batch(db, root, raw, true, None).await.unwrap();
+        let outcome = ingest_batch(db, root, raw, true, None, None).await.unwrap();
         (outcome.received, outcome.rejected)
     }
 
@@ -3301,7 +3336,7 @@ mod tests {
             .iter()
             .map(|e| e.bytes().to_vec())
             .collect();
-        let outcome = ingest_batch(&user_db, root_pk, raw, true, None).await.unwrap();
+        let outcome = ingest_batch(&user_db, root_pk, raw, true, None, None).await.unwrap();
         assert_eq!(outcome.rejected, 0, "the fixture's own chains are admissible");
 
         let scanned = chain_ranges(&user_db).await.unwrap();
@@ -3338,10 +3373,10 @@ mod tests {
             .await
             .with_memo(std::sync::Arc::new(node_db.clone()))
             .with_root(root.clone());
-        ingest_batch(&memoed, root_pk, raw.clone(), true, None).await.unwrap();
+        ingest_batch(&memoed, root_pk, raw.clone(), true, None, None).await.unwrap();
 
         let bare = crate::db::test_user_db().await;
-        ingest_batch(&bare, root_pk, raw, true, None).await.unwrap();
+        ingest_batch(&bare, root_pk, raw, true, None, None).await.unwrap();
 
         let shape = |plan: &[ChainSend]| -> Vec<(String, u32, u64)> {
             plan.iter()
@@ -3463,7 +3498,7 @@ mod tests {
         bytes[i] ^= 0xFF;
         let mut raw: Vec<Vec<u8>> = vec![authorize.bytes().to_vec()];
         raw.push(bytes);
-        let outcome = ingest_batch(&db, root, raw, true, None).await.unwrap();
+        let outcome = ingest_batch(&db, root, raw, true, None, None).await.unwrap();
         assert_eq!(outcome.received, 1, "only the authorize landed");
         assert_eq!(outcome.rejected, 1, "a tampered suffix head is refused");
 

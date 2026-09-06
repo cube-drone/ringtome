@@ -762,7 +762,7 @@ pub async fn revoke_key(
     // views). An empty batch through the ordinary gate: one sweeper, no second code path.
     // Failure doesn't unwind the revocation - the next real ingest runs the same sweep.
     let root_pk = pubkey::require(root_hex, "root pubkey")?;
-    if let Err(e) = crate::net::sync::ingest_batch(&db, root_pk, Vec::new(), false, None).await {
+    if let Err(e) = crate::net::sync::ingest_batch(&db, root_pk, Vec::new(), false, None, None).await {
         tracing::error!(root = %root_hex, "post-revocation sweep failed: {e}");
     }
 

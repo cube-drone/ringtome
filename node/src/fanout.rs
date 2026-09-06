@@ -1232,6 +1232,14 @@ async fn retract_vanished(state: &AppState, author_root: &str, force: bool) -> R
     else {
         return Ok(0); // nothing of theirs held: nothing to reconcile against
     };
+    // A PEEK's mirror (PEEK.md ruling 4) holds no posts lane at all, so "not on their shelf
+    // here" would read every journaled share of theirs as vanished (the first rig run under
+    // the peek did exactly that, hiding the trust reveal). A peek's words live on the
+    // fragment ledger, whose own death road (`fragments::mirror_retractions`, the deaths
+    // page) is the judge; this sweep has nothing to reconcile against.
+    if crate::idface::peek_held(state, author_root).await {
+        return Ok(0);
+    }
     // The vanish gate (2026-08-28, the quadratic fold): this reconcile diffs every journaled
     // id against every live id, and it used to run on every POSTS move - a new post paid
     // for a takedown that never happened, at a cost that grew with both lists. Nothing can
