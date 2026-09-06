@@ -1231,6 +1231,27 @@ pub(crate) async fn entries_past_watermarks(
 /// WHERE clause (the `apply_profile_set` discipline): concurrent catch-ups may interleave
 /// freely, and the row only ever moves forward - a racing fold that finished earlier can never
 /// drag the watermark back.
+/// Pull a view watermark DOWN so entries that arrived beneath it get folded (PEEK.md slice
+/// 5: a backfill under the follow ceiling lands older seqs than the lane has folded, and
+/// "past the watermark" would never see them). The next catch-up re-folds from `below_seq`
+/// up - idempotent for what was folded already, and bounded by what is held.
+pub(crate) async fn lower_watermark(
+    db: &Db,
+    author_hex: &str,
+    service_id: u32,
+    below_seq: i64,
+) -> Result<(), AppError> {
+    db.execute(
+        "UPDATE view_watermarks SET folded_seq = ?3
+         WHERE author_pubkey = ?1 AND service = ?2 AND folded_seq > ?3",
+        (author_hex, i64::from(service_id), below_seq),
+    )
+    .await
+    .context("lowering view watermark")
+    .map_err(AppError::Internal)?;
+    Ok(())
+}
+
 pub(crate) async fn advance_watermark(
     db: &Db,
     author_hex: &str,

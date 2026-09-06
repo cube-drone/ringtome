@@ -30,7 +30,10 @@ const { sql, HOST_B, HOST_C, HOST_E } = require("./fetch.cjs");
 
 const SQUIRREL = path.join(__dirname, "..", "..", "..", "sample_media", "animated_color_squirrel.gif");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const base58 = async (host) => (await (await host("api/node")).json()).base58;
+const base58 = async (host) => {
+    const { toBase58 } = await import("../../js/speakable.js");
+    return toBase58((await (await host("api/node")).json()).endpoint_id);
+};
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 const dial = (who, mine, theirs, key, value) => j(who, `api/identity/${mine}/private/kv/contact:${theirs}/${key}`, { value }, "PUT");
 

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 656 phrases across 48 files.
+// 657 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -332,6 +332,7 @@ export default {
 
     // --- node/js/idpage.js ---
     'idpage.synced': 'synced {when}',
+    'idpage.fetching-their-newest-posts': 'fetching their newest posts…',
     'idpage.checking-for-anything-newer': 'checking for anything newer',
     'idpage.thats-not-an-address': "that's not an address",
     'idpage.the-path-after-should-be': "The path after {path} should be a persona's address - two words and a key, like {example}",

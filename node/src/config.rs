@@ -92,6 +92,11 @@ pub struct Config {
     pub peek_max_bytes: u64,
     pub peek_total_bytes: u64,
     pub peek_expiry_ms: i64,
+    /// The follow ceiling (PEEK.md ruling 8): how many newest POSTS entries a follow of a
+    /// persona this node does not host fetches at first - a suffix whose oldest entry
+    /// commits to the prefix; scrollback backfills beneath it on demand. Zero is whole.
+    /// `RINGTOME_FOLLOW_POSTS_CEILING`.
+    pub follow_posts_ceiling: u64,
     /// How long a changed identity must sit quiet before its peers get an eager push - batches
     /// a burst of writes into one exchange. Local writes ring the eager loop's doorbell
     /// (`Db::nudge_sync`) so the debounce clock starts at the write itself; the ~1s tick then
@@ -253,6 +258,7 @@ impl Config {
         let peek_max_bytes = dial("RINGTOME_PEEK_MAX_BYTES", 64 * 1024 * 1024);
         let peek_total_bytes = dial("RINGTOME_PEEK_TOTAL_BYTES", 2 * 1024 * 1024 * 1024);
         let peek_expiry_ms = dial("RINGTOME_PEEK_EXPIRY_MS", 7 * 24 * 60 * 60 * 1000) as i64;
+        let follow_posts_ceiling = dial("RINGTOME_FOLLOW_POSTS_CEILING", 5_000);
 
         // Floored at 8: a cache too small to hold the handles one request touches would
         // thrash on a single operation, which is worse than any descriptor it saves.
@@ -342,6 +348,7 @@ impl Config {
             peek_max_bytes,
             peek_total_bytes,
             peek_expiry_ms,
+            follow_posts_ceiling,
             max_open_databases,
             sync_debounce_ms,
             pow_requested_bits,

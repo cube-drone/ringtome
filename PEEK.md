@@ -78,12 +78,17 @@ walks it per entry is unmeasured (residual).
    signal the doctrine names; the ordinary follow machinery takes over and the peek's
    fragments are superseded by the mirror. Nothing a peek fetched is wasted: fragments
    already sit beside mirrors and the body route reads both.
-8. **A follow has a ceiling too (later).** The same attack through the follow dial - "the
-   UI makes it very easy to trigger a sync" - is bounded per pass by ruling 2 today, and
-   per persona by a storage dial once content chains can be HELD as suffixes: the posts
-   chain kept from a floor with the oldest held entry's `prev_hash` committing to the
-   prefix (the plan's shallow sync, `service_allows_suffix` widened - "a design act", done
-   here on purpose). Fold-based views under a suffix want snapshots; that residual stands.
+8. **A follow has a ceiling too.** The same attack through the follow dial - "the UI makes
+   it very easy to trigger a sync" - is bounded per pass by ruling 2, and per persona by
+   the follow ceiling: a follow of a persona this node does not host fetches the posts
+   chain as a SUFFIX of its newest entries (`RINGTOME_FOLLOW_POSTS_CEILING`), the oldest
+   held entry's `prev_hash` committing to the prefix (the plan's shallow sync; the posts
+   chain joined the suffix-capable list for FOREIGN gates only - "a design act", done here
+   on purpose; a hosted persona's own chains are never shallow). Scrollback backfills
+   beneath the floor on demand, in bounded exchanges walked DOWN from the floor, and a
+   backfill is admitted only if its top entry hash-matches the floor's commitment. The
+   honest costs, named: an old post edited inside the suffix is dated by its earliest held
+   version, and fold-based views under a suffix still want snapshots (residual).
 9. **Render at first entry.** The lens page shows what is in hand and says what it is: a
    peek reads "a look at their newest posts - follow them to keep up" in the house voice,
    never a spinner over a mirror.
@@ -233,11 +238,22 @@ walks it per entry is unmeasured (residual).
    fetches it beside the newest twenty, which never reach it, labels riding; unpinning
    empties the strip on the author's page, the follower's, and the peek's next look, while
    the post stands everywhere.
-5. **The follow ceiling.** Content chains held as suffixes from a floor; bodies newest-first
-   under a per-persona dial; a pinned post below the floor acquired by id; the snapshot
-   residual named where it bites. Acceptance: a follow of a prolific author holds its
-   ceiling's worth, the oldest held entry commits to the prefix, a pin below the floor still
-   heads the page, and scrollback backfills on demand.
+5. ~~**The follow ceiling.**~~ Built 2026-09-05. The Hello gained a depth slot
+   (`ceiling`, `below`; arity 6, older shapes read as whole): the responder sends a peer
+   holding nothing of a content chain its newest `ceiling` entries, and a peer holding a
+   suffix up to `below` entries beneath its floor, walked downward so a budget cut still
+   joins. The gate, on a foreign persona only, adopts a posts suffix from nothing and
+   extends one beneath its floor only when the backfill's top entry hash-matches the
+   floor's `prev_hash` - refused whole otherwise - then lowers the lane's view watermark
+   so the fold sees what landed beneath it, and the frontier memo re-reads the floor. The
+   pager backfills when a page comes up short on a follow held from a floor; a pin
+   beneath the floor is fetched by id; a followed mirror lacking an old document reads
+   the fragment ledger and fetches by id. Acceptance (`follow_ceiling.cjs`): a follow of a
+   three-hundred-post stranger under the rig's two-hundred ceiling holds a suffix from a
+   floor above zero, the pinned post beneath it heads the page with its words, and paging
+   back backfills the whole history and brings the floor to the genesis; the gate's unit
+   claim adopts a suffix, refuses a forged backfill, admits the honest one, and shows a
+   hosted gate admitting no suffix at all.
 
 ## Residuals named at the start
 
@@ -250,4 +266,5 @@ walks it per entry is unmeasured (residual).
   one node's fragment sweep refused a quarter of a million times in half an hour. Refusal
   is cheap, but the dialer owes a backoff on "busy" - the flood's other half.
 - The speculative lane's byte ceiling.
-- Snapshots for fold-based views under a suffix (IM-AOL open items).
+- Snapshots for fold-based views under a suffix (IM-AOL open items): the lane re-folds
+  from the lowered watermark after a backfill, which is correct and bounded but not free.

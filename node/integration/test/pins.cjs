@@ -15,7 +15,10 @@ const { HOST_B, HOST_C } = require("./fetch.cjs");
 
 const POSTS = 60;
 const DEEP = 3;
-const base58 = async (host) => (await (await host("api/node")).json()).base58;
+const base58 = async (host) => {
+    const { toBase58 } = await import("../../js/speakable.js");
+    return toBase58((await (await host("api/node")).json()).endpoint_id);
+};
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
 (HOST_B && HOST_C ? describe : describe.skip)("public pins: the author's pin heads their page, travels, and is fetched first", function () {

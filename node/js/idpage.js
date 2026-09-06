@@ -32,7 +32,7 @@ const Card = ({ children }) => html`<div class="persona-page id-page">${children
 // written here, and a timestamp would be answering a question nobody asked. For a foreign one it
 // is the honest caption on everything above it, because what is shown is what this node holds,
 // which is what it last managed to fetch.
-const SyncLine = ({ syncedMs, refreshing }) => {
+const SyncLine = ({ syncedMs, refreshing, peek }) => {
     // Re-render on a slow beat so "a minute ago" doesn't sit there being wrong for an hour.
     const [, tick] = useState(0);
     useEffect(() => {
@@ -52,7 +52,9 @@ const SyncLine = ({ syncedMs, refreshing }) => {
         ${when && html`<span title=${new Date(syncedMs).toLocaleString()}>${t('idpage.synced', 'synced {when}', { when })}</span>`}
         ${refreshing &&
         html`<span class="id-sync-now">
-            <span class="status-spin"><${Icons.spinner} /></span> ${t('idpage.checking-for-anything-newer', 'checking for anything newer')}
+            <span class="status-spin"><${Icons.spinner} /></span> ${peek
+                ? t('idpage.fetching-their-newest-posts', 'fetching their newest posts…')
+                : t('idpage.checking-for-anything-newer', 'checking for anything newer')}
         </span>`}
     </p>`;
 };
@@ -90,11 +92,14 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
                 .then((p) => {
                     if (!live) return;
                     setProfile(p);
-                    if (p.refreshing && tries > 0) timer = setTimeout(() => look(tries - 1), 1500);
+                    // A peek's posts land behind the answer (PEEK.md ruling 9): keep asking
+                    // while the node says they are still arriving, a little longer than a
+                    // plain revalidation warrants.
+                    if (p.refreshing && tries > 0) timer = setTimeout(() => look(tries - 1), p.peek ? 1000 : 1500);
                 })
                 .catch(() => live && setProfile(null));
         };
-        look(4);
+        look(12);
         return () => {
             live = false;
             if (timer) clearTimeout(timer);
@@ -158,7 +163,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
     const words = speak.split('-').slice(0, 2).join('-');
 
     if (profile === undefined) {
-        return html`<${Card}><p class="id-quiet">${t('idpage.looking-around', 'looking around…')}</p><//>`;
+        return html`<${Card}><p class="id-quiet id-sync-now"><span class="status-spin"><${Icons.spinner} /></span> ${t('idpage.looking-around', 'looking around…')}</p><//>`;
     }
 
     if (profile === null) {
@@ -192,7 +197,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
             ${profile.peek_full &&
             html`<p class="id-words">${t('idpage.this-look-is-full', 'this look is full - follow them to keep everything')}</p>`}
             ${profile.foreign &&
-            html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} />`}
+            html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} peek=${profile.peek} />`}
         <//>
         <${PublicPosts}
             root=${root}

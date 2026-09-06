@@ -16,7 +16,10 @@ const { sql, HOST_B } = require("./fetch.cjs");
 
 const POSTS = 20;
 const BODY = "x".repeat(4000);
-const base58 = async (host) => (await (await host("api/node")).json()).base58;
+const base58 = async (host) => {
+    const { toBase58 } = await import("../../js/speakable.js");
+    return toBase58((await (await host("api/node")).json()).endpoint_id);
+};
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
 (HOST_B ? describe : describe.skip)("a peek's footprint and expiry", function () {
@@ -45,6 +48,11 @@ const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.s
         const r = await bea(`api/id/${adaRoot}/profile?via=${await base58(ada)}`);
         if (r.status !== 200) this.skip();
         posts = (await r.json()).posts || [];
+        // The shelf lands behind the answer (ruling 9): wait for the headers.
+        for (let i = 0; i < 30 && posts.length < POSTS; i++) {
+            await new Promise((res) => setTimeout(res, 400));
+            posts = ((await (await bea(`api/id/${adaRoot}/profile`)).json()).posts) || [];
+        }
     });
 
     it("the look stops at its ceiling: some bodies crossed in shelf order, the rest are refused with the word, and the page says it is full", async () => {
@@ -80,9 +88,17 @@ const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.s
         assert.deepEqual(after, { chains: 0, fragments: 0, registry: 0 }, `the peek is gone: ${JSON.stringify(after)}`);
         const again = await bea(`api/id/${adaRoot}/profile?via=${await base58(ada)}`);
         assert.equal(again.status, 200);
-        const prof = await again.json();
+        let prof = await again.json();
         assert.equal(prof.peek, true, "peeked again");
+        // The shelf lands behind the answer (ruling 9): wait for it as the page does.
+        for (let i = 0; i < 30 && (prof.posts || []).length < POSTS; i++) {
+            await new Promise((res) => setTimeout(res, 400));
+            prof = await (await bea(`api/id/${adaRoot}/profile`)).json();
+        }
         assert.equal((prof.posts || []).length, POSTS, "the shelf came again");
+        for (let i = 0; i < 30 && Number((await held()).fragments) < POSTS; i++) {
+            await new Promise((res) => setTimeout(res, 400));
+        }
     });
 
     it("a peek somebody keeps looking at is not expired under a real expiry", async () => {

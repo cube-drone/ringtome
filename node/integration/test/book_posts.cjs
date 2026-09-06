@@ -12,7 +12,10 @@ const { makeUserFetch, makePng } = require("./helpers.cjs");
 const { beat, pullAndFold, shareArrives } = require("./beat.cjs");
 const { HOST_B, HOST_C } = require("./fetch.cjs");
 
-const base58 = async (host) => (await (await host("api/node")).json()).base58;
+const base58 = async (host) => {
+    const { toBase58 } = await import("../../js/speakable.js");
+    return toBase58((await (await host("api/node")).json()).endpoint_id);
+};
 
 describe("books: a notebook rolls out as one book", function () {
     this.timeout(600000);

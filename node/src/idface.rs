@@ -549,7 +549,21 @@ async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Vec<crate:
                 .flatten()
                 .map(|(p, _)| p)
         } else {
-            crate::record::documents::public_doc(&db, &id).await.ok().flatten()
+            match crate::record::documents::public_doc(&db, &id).await.ok().flatten() {
+                Some(p) => Some(p),
+                None => {
+                    // Beneath the follow ceiling's floor (PEEK.md ruling 13): acquired by id
+                    // over the fragment road, never by deepening the chain.
+                    if let Some(author) = crate::pubkey::decode(root_hex) {
+                        crate::fragments::fetch_post(state, root_hex, &author, &id).await;
+                    }
+                    crate::fragments::public_doc_of(&state.node_db, root_hex, &hex::encode(id))
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|(p, _)| p)
+                }
+            }
         };
         if let Some(p) = doc {
             out.push(p);
@@ -708,6 +722,37 @@ pub(crate) async fn fetch_foreign_passes(
     fetch_foreign_at(state, root_hex, via, max_passes, None).await
 }
 
+/// How far one scrollback backfill reaches beneath the floor (PEEK.md slice 5).
+const BACKFILL_ENTRIES: u64 = 200;
+
+/// Scrollback's backfill (PEEK.md ruling 8): the pager ran out of what a follow holds and
+/// the posts chain has a floor above zero - ask the author's nodes for the entries beneath
+/// it, one bounded exchange, and let the caller read again.
+pub(crate) async fn backfill(state: &AppState, root_hex: &str) -> bool {
+    let via = stored_tree_leaves(state, root_hex).await;
+    fetch_foreign_with(
+        state,
+        root_hex,
+        &via,
+        1,
+        Some(false),
+        crate::net::sync::Ask { ceiling: state.config.follow_posts_ceiling, below: BACKFILL_ENTRIES },
+    )
+    .await
+}
+
+/// The posts chain's floor as this node holds it - zero when whole or absent.
+pub(crate) async fn posts_floor(state: &AppState, root_hex: &str) -> u64 {
+    crate::net::frontier::memo_chains(&state.node_db, root_hex)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, svc, _, _, _)| *svc == ringtome_proto::registry::service::POSTS)
+        .map(|(_, _, floor, _, _)| floor)
+        .max()
+        .unwrap_or(0)
+}
+
 /// `fetch_foreign_passes` with the depth named: `Some(true)` peeks, `Some(false)` pulls
 /// whole, `None` asks the relationships (`peek_held`).
 async fn fetch_foreign_at(
@@ -716,6 +761,18 @@ async fn fetch_foreign_at(
     via: &[String],
     max_passes: usize,
     depth: Option<bool>,
+) -> bool {
+    let ask = crate::net::sync::Ask { ceiling: state.config.follow_posts_ceiling, below: 0 };
+    fetch_foreign_with(state, root_hex, via, max_passes, depth, ask).await
+}
+
+async fn fetch_foreign_with(
+    state: &AppState,
+    root_hex: &str,
+    via: &[String],
+    max_passes: usize,
+    depth: Option<bool>,
+    ask: crate::net::sync::Ask,
 ) -> bool {
     // Depth (PEEK.md ruling 1): nobody here follows them, so this is a PEEK - the scoped
     // exchange for identity, profile and annotations, then the shelf as fragments. A
@@ -761,11 +818,12 @@ async fn fetch_foreign_at(
             let mut pull = tokio::spawn(async move {
                 let mut passes = 0;
                 loop {
-                    let stats = crate::net::sync::sync_with_peer_scoped(
+                    let stats = crate::net::sync::sync_with_peer_asking(
                         &exchange_state,
                         &exchange_root,
                         addr.clone(),
                         scope,
+                        ask,
                     )
                     .await?;
                     passes += 1;
@@ -803,8 +861,20 @@ async fn fetch_foreign_at(
             }
             if peek {
                 state.peeked.mark(root_hex);
-                let held = peek_shelf(state, root_hex, &key_hex).await;
-                tracing::info!(root = %root_hex, via = %key_hex, held, "peek: shelf fetched as fragments");
+                // The shelf lands BEHIND the answer (ruling 9, render at first entry - Curtis,
+                // 2026-09-05: "my first look at the page is completely blank"): the page gets
+                // the persona the moment their chains are here and says the posts are still
+                // arriving; the in-flight set is what it reads, and it polls until clear.
+                let shelf_state = state.clone();
+                let shelf_root = root_hex.to_string();
+                let shelf_via = key_hex.clone();
+                if state.refreshing.lock().unwrap().insert(root_hex.to_string()) {
+                    tokio::spawn(async move {
+                        let held = peek_shelf(&shelf_state, &shelf_root, &shelf_via).await;
+                        shelf_state.refreshing.lock().unwrap().remove(&shelf_root);
+                        tracing::info!(root = %shelf_root, via = %shelf_via, held, "peek: shelf fetched as fragments");
+                    });
+                }
             } else {
                 state.peeked.clear(root_hex);
             }
@@ -1222,6 +1292,24 @@ async fn public_doc_bytes(
                     crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
                     fragment_first = from_fragments().await?;
                 }
+                // A FOLLOW held from a floor (PEEK.md ruling 8) may lack an old document
+                // too - a pin beneath the floor, a link into deep history: the ledger, then
+                // by id over the fragment road. Only while the posts chain HAS a floor: a
+                // whole mirror lacking a document lacks it for a reason (retracted,
+                // disproven), and must not fetch it back. Never for a persona hosted here.
+                if !peek
+                    && !speculative_only
+                    && fragment_first.is_none()
+                    && !hosted_here(state, &root_hex).await.unwrap_or(false)
+                    && posts_floor(state, &root_hex).await > 0
+                    && crate::record::documents::public_head(&db, &doc_id).await?.is_none()
+                {
+                    fragment_first = from_fragments().await?;
+                    if fragment_first.is_none() {
+                        crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
+                        fragment_first = from_fragments().await?;
+                    }
+                }
                 match fragment_first {
                     Some(facts) => Some(facts),
                     None => {
@@ -1555,6 +1643,24 @@ pub async fn id_posts(
         }
     };
     let mut posts = posts;
+    // Scrollback backfills on demand (PEEK.md ruling 8): a page that came up short on a
+    // follow held from a floor asks the author's nodes for what lies beneath, then reads
+    // again - the reader paging back is the demand.
+    if !hosted_here
+        && session.is_some()
+        && posts.len() as i64 <= POSTS_PAGE
+        && posts_floor(&state, &root_hex).await > 0
+        && tokio::time::timeout(std::time::Duration::from_secs(8), backfill(&state, &root_hex)).await.unwrap_or(false)
+    {
+        if let Some(db) = &dbh {
+            posts = crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|p| p.part_of.is_none())
+                .collect();
+        }
+    }
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
     // The persona's SHARES join the shelf (Curtis, 2026-09-02: the page defaults to
     // everything - posts, rebroadcasts, replies - and the client's toggles subtract).
@@ -1832,10 +1938,20 @@ pub async fn id_post(
     // A peek's permalink (PEEK.md rulings 4 and 5): the mirror has no posts lane, so the
     // fragment ledger answers - fetched by id right now if the peek never held it.
     let mut fragment_refs: Option<Vec<[u8; 16]>> = None;
-    if post.is_none() && peek_held(&state, &root_hex).await {
-        touch_look(&state, &root_hex).await;
+    let peek_here = peek_held(&state, &root_hex).await;
+    // A peek's permalink, or a follow's beneath its floor - never a whole mirror's missing
+    // document, which is missing for a reason (retracted, disproven).
+    let beneath_floor = !peek_here
+        && !hosted_here(&state, &root_hex).await.unwrap_or(false)
+        && posts_floor(&state, &root_hex).await > 0;
+    if post.is_none() && (peek_here || beneath_floor) {
+        if peek_here {
+            touch_look(&state, &root_hex).await;
+        }
+        // A peek's permalink, or a follow's beneath its floor (PEEK.md rulings 4, 8, 13):
+        // the ledger answers, fetched by id right now if it never held the document.
         if crate::fragments::held(&state.node_db, &root_hex, &doc).await.ok().flatten().is_none()
-            && peek_room(&state, &root_hex).await
+            && (!peek_here || peek_room(&state, &root_hex).await)
         {
             crate::fragments::fetch_post(&state, &root_hex, &root, &doc_id).await;
         }
@@ -2195,6 +2311,9 @@ pub async fn id_profile(
                 if !fetch_foreign(&state, &root_hex, &via).await {
                     return Err(AppError::NotFound(crate::msg!("idface.not-carried-here-and-none", "not carried here, and none of the address's computers answered")));
                 }
+                // A peek's shelf is still landing behind this answer: say so, and the page
+                // keeps asking until it has arrived.
+                refreshing = state.refreshing.lock().unwrap().contains(&root_hex);
             }
             // Something held: answer NOW and revalidate behind it. A visit is the demand
             // signal the pull model is built on, so it always means "go and look" - but the
@@ -2204,6 +2323,7 @@ pub async fn id_profile(
                 if now - at >= FOREIGN_REVALIDATE_MS {
                     refreshing = spawn_revalidate(&state, root_hex.clone(), via);
                 }
+                refreshing = refreshing || state.refreshing.lock().unwrap().contains(&root_hex);
             }
         }
     }

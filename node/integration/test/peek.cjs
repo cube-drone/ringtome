@@ -18,7 +18,10 @@ const { sql, HOST_B } = require("./fetch.cjs");
 const POSTS = 30;
 const PEEK_POSTS = 20;
 const SERVICE_POSTS = 3;
-const base58 = async (host) => (await (await host("api/node")).json()).base58;
+const base58 = async (host) => {
+    const { toBase58 } = await import("../../js/speakable.js");
+    return toBase58((await (await host("api/node")).json()).endpoint_id);
+};
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
 (HOST_B ? describe : describe.skip)("a peek: a stranger's identity, labels and newest posts, and no history", function () {

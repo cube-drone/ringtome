@@ -13,7 +13,10 @@ const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
 const { HOST_B } = require("./fetch.cjs");
 
-const base58 = async (host) => (await (await host("api/node")).json()).base58;
+const base58 = async (host) => {
+    const { toBase58 } = await import("../../js/speakable.js");
+    return toBase58((await (await host("api/node")).json()).endpoint_id);
+};
 const j = (who, path, body, method = "POST") => who(path, { method, body: JSON.stringify(body) });
 
 (HOST_B ? describe : describe.skip)("trust without interest: known, not followed", function () {

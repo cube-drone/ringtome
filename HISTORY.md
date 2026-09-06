@@ -8553,3 +8553,37 @@ scenario across two nodes. Found on the way: a dial's promotion had judged "was 
 the dials, which the fold had just rewritten, so a peeked persona somebody then followed
 was never fetched whole; the fetch ladder remembers peek depth in memory now, and the dial
 and the wake pass both promote on that mark.
+
+## 2026-09-05 (cont.): PEEK.md slice 5 - the follow ceiling
+
+Content chains can be held as suffixes now. The Hello carries a depth slot - a ceiling of
+newest entries for a chain the requester holds nothing of, and a count to send beneath the
+floor of one it holds - and older Hellos still read as whole. The responder plans a
+ceilinged suffix and a backfill range walked down from the floor, so a budget cut leaves a
+run that still joins. The gate admits a posts suffix from nothing on a foreign persona
+only, and extends one beneath its floor only when the backfill's top entry hash-matches the
+floor's own `prev_hash`, refused whole otherwise; then it lowers the lane's view watermark
+so the fold sees what landed beneath it, and the frontier memo re-reads the floor. The
+pager backfills when a page comes up short on a follow held from a floor; a pin beneath
+the floor is fetched by id; a followed mirror lacking an old document falls to the fragment
+ledger and fetches by id. The rig runs a two-hundred-entry ceiling. Found on the way: an
+upward backfill cut by the exchange budget could never join the floor, and a backfill that
+did join stayed invisible beneath the view watermark - both are what the downward walk and
+the lowered watermark are for. And the by-id road for a followed mirror's missing document
+had to be gated on the chain actually having a floor: a whole mirror lacking a document
+lacks it for a reason, and the repudiation suite caught it fetching a disproven post back.
+The arc's five slices are built.
+
+## 2026-09-05 (cont.): a first look renders at first entry
+
+Curtis, as a stranger looking at someone for the first time: "my first look at the page is
+completely blank" until the peek finished. The profile had been waiting on the peek's
+fragment fetches before answering. Now the persona answers the moment their chains land,
+the shelf lands behind it on its own task, and the answer says so - the page polls while
+the node says the posts are still arriving and wears the house spinner both while it looks
+and while they land (ruling 9, render at first entry, finally kept).
+The drive's screenshot showed the address row minting a hint that read as a run of ones and
+the word "undefined": the node endpoint answers only `endpoint_id`, seven suites had been
+sending the literal word as a hint, and the server's base58 decoder padded it up into a
+bogus thirty-two-byte key. The decoder refuses anything but a true key now (a unit claim
+pins it) and the suites spell the hint from the endpoint id.

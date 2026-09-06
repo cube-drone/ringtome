@@ -430,7 +430,13 @@ describe("the avatar (public documents, tenant zero)", function () {
         );
         // The bytes crossed in the same exchange (keyless public backfill): B can serve the
         // thumbnail itself, no second trip to A.
-        const thumb = await bMember(`id/${root2}/docs/${avatarDoc}/thumb`);
+        // The face lands with the look's shelf, behind the answer (PEEK.md ruling 9): a
+        // moment, never a second trip to A.
+        let thumb = await bMember(`id/${root2}/docs/${avatarDoc}/thumb`);
+        for (let i = 0; i < 30 && thumb.status !== 200; i++) {
+            await new Promise((r) => setTimeout(r, 400));
+            thumb = await bMember(`id/${root2}/docs/${avatarDoc}/thumb`);
+        }
         assert.equal(thumb.status, 200, "the face crossed, not just the name");
         assert.equal(thumb.headers.get("content-type"), "image/avif");
         assert.ok((await thumb.arrayBuffer()).byteLength > 0);

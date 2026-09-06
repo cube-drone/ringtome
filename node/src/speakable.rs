@@ -161,16 +161,29 @@ fn from_base58(s: &str) -> Option<[u8; 32]> {
     }
     let zeros = s.bytes().take_while(|&b| b == b'1').count();
     bytes.extend(std::iter::repeat_n(0u8, zeros));
-    if bytes.len() > 32 {
+    // Exactly thirty-two bytes, leading '1's counted as the zero bytes they encode - never
+    // padded up from a short string (2026-09-05: the word "undefined", every character of
+    // it a base58 digit, decoded to a bogus key that a page then minted into addresses).
+    if bytes.len() != 32 {
         return None;
     }
-    bytes.resize(32, 0);
     bytes.reverse();
     Some(bytes.try_into().expect("resized to 32"))
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_short_base58_string_is_not_a_key() {
+        assert!(from_base58("undefined").is_none(), "padding a short string up to a key is a forgery of a key");
+        assert!(from_base58("").is_none());
+        let key = [0x11u8; 32];
+        assert_eq!(from_base58(&to_base58(&key)), Some(key), "a real key still round-trips");
+        let mut leading = [0u8; 32];
+        leading[31] = 7;
+        assert_eq!(from_base58(&to_base58(&leading)), Some(leading), "leading zero bytes ride as '1's");
+    }
+
     use super::*;
 
     /// The cross-language goldens - identical strings pinned in

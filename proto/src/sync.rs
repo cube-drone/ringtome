@@ -137,6 +137,14 @@ pub enum SyncMessage {
         /// serves and claims only the named services - scoping only ever NARROWS what the
         /// unscoped exchange would have carried, never widens it.
         wanted: Vec<u32>,
+        /// The depth slot (PEEK.md slice 5, the follow ceiling). `ceiling`: for a content
+        /// chain the requester holds nothing of, send at most this many NEWEST entries - a
+        /// suffix, whose oldest entry's `prev_hash` commits to the prefix. `below`: for a
+        /// chain the requester holds from a floor above zero, also send up to this many
+        /// entries directly beneath that floor - scrollback's backfill. Zero is "whole", the
+        /// pre-ceiling shape (arity-5 Hellos decode to zeros).
+        ceiling: u64,
+        below: u64,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -153,6 +161,8 @@ impl SyncMessage {
                 frontiers,
                 proof,
                 wanted,
+                ceiling,
+                below,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
@@ -160,7 +170,7 @@ impl SyncMessage {
                 if wanted.len() > MAX_WANTED_SERVICES {
                     return Err(ProtoError::BadEntry("too many wanted services"));
                 }
-                w.array(5);
+                w.array(6);
                 w.uint(TAG_HELLO);
                 w.bytes(root);
                 w.array(frontiers.len() as u64);
@@ -189,6 +199,10 @@ impl SyncMessage {
                 for service in wanted {
                     w.uint(u64::from(*service));
                 }
+                // The depth slot: [ceiling, below].
+                w.array(2);
+                w.uint(*ceiling);
+                w.uint(*below);
             }
             SyncMessage::Entry(bytes) => {
                 if bytes.len() > MAX_ENTRY_BYTES {
@@ -213,7 +227,7 @@ impl SyncMessage {
         let mut r = Reader::new(bytes);
         let arity = r.array()?;
         let msg = match (r.uint()?, arity) {
-            (TAG_HELLO, arity @ (4 | 5)) => {
+            (TAG_HELLO, arity @ 4..=6) => {
                 let root = r.bytes_fixed::<32>()?;
                 let n = r.array()?;
                 if n > MAX_FRONTIERS as u64 {
@@ -253,7 +267,7 @@ impl SyncMessage {
                 };
                 // Arity 4 is the pre-scoping shape: an unscoped Hello. Kept decodable so
                 // old frames and captures still read; encode always writes arity 5.
-                let wanted = if arity == 5 {
+                let wanted = if arity >= 5 {
                     let n = r.array()?;
                     if n > MAX_WANTED_SERVICES as u64 {
                         return Err(ProtoError::BadEntry("too many wanted services"));
@@ -269,11 +283,22 @@ impl SyncMessage {
                 } else {
                     Vec::new()
                 };
+                // Arity 6 carries the depth slot; older shapes mean "whole".
+                let (ceiling, below) = if arity == 6 {
+                    if r.array()? != 2 {
+                        return Err(ProtoError::BadEntry("depth must be [ceiling, below]"));
+                    }
+                    (r.uint()?, r.uint()?)
+                } else {
+                    (0, 0)
+                };
                 SyncMessage::Hello {
                     root,
                     frontiers,
                     proof,
                     wanted,
+                    ceiling,
+                    below,
                 }
             }
             (TAG_ENTRY, 2) => {
@@ -317,6 +342,8 @@ mod tests {
             ],
             proof: None,
             wanted: vec![],
+            ceiling: 0,
+            below: 0,
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -326,12 +353,16 @@ mod tests {
                 sig: [1u8; 64],
             }),
             wanted: vec![],
+            ceiling: 0,
+            below: 0,
         };
         let scoped = SyncMessage::Hello {
             root: [7u8; 32],
             frontiers: vec![],
             proof: None,
             wanted: vec![0, 2],
+            ceiling: 0,
+            below: 0,
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
@@ -360,6 +391,8 @@ mod tests {
                 frontiers: vec![],
                 proof: None,
                 wanted: vec![],
+                ceiling: 0,
+                below: 0,
             }
         );
     }
@@ -371,6 +404,8 @@ mod tests {
             frontiers: vec![],
             proof: None,
             wanted: (0..(MAX_WANTED_SERVICES as u32 + 1)).collect(),
+            ceiling: 0,
+            below: 0,
         };
         assert_eq!(
             msg.encode(),
@@ -410,6 +445,8 @@ mod tests {
             }],
             proof: None,
             wanted: vec![],
+            ceiling: 0,
+            below: 0,
         };
         assert!(bad.encode().is_err());
 

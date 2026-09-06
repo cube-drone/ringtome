@@ -237,7 +237,14 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
         const first = await (await us(`api/id/${far}/profile${via}`)).json();
         const nameOf = (p) => (p.fields || []).find((f) => f.field === "name")?.value;
         assert.equal(nameOf(first), "Before", "the first visit fetched them");
-        assert.equal(first.refreshing, false, "nothing left running - that visit did the work");
+        // The first look answers as soon as the persona's chains land and says its shelf is
+        // still arriving (PEEK.md ruling 9); "nothing left running" is true a moment later.
+        let settled = first;
+        for (let i = 0; i < 20 && settled.refreshing; i++) {
+            await new Promise((r) => setTimeout(r, 400));
+            settled = await (await us(`api/id/${far}/profile`)).json();
+        }
+        assert.equal(settled.refreshing, false, "nothing left running - that visit did the work");
         // The page says where its words came from, and a first sight IS a sync: saying "just
         // now" beats saying nothing, which is what an unset stamp would render as.
         assert.ok(first.synced_ms > 0, "the first visit reports when it synced - now");

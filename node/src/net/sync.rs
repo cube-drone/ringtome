@@ -75,6 +75,21 @@ pub fn service_allows_suffix(svc: u32) -> bool {
     svc == service::INBOX_TRUSTED || svc == service::INBOX_STRANGER
 }
 
+/// The content chains a FOLLOW may hold as a suffix (PEEK.md ruling 8, the design act the
+/// suffix list's own comment named): the posts chain, on a persona this node does not host.
+/// The oldest held entry's `prev_hash` commits to the whole prefix, so everything held
+/// verifies as authored and a backfill must hash-match the commitment or be refused. A
+/// hosted persona's own chains are never shallow - agenting stays full-fat - which is why
+/// this is asked beside "is this a foreign gate" and never alone.
+pub const CEILING_SERVICES: &[u32] = &[service::POSTS];
+
+/// What one exchange asks for beyond its scope (PEEK.md slice 5): the Hello's depth slot.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Ask {
+    pub ceiling: u64,
+    pub below: u64,
+}
+
 // `service::REBROADCASTS` is deliberately in NEITHER list above: it is public (a rebroadcast is
 // a public act - the whole point is that other people see what you shared) and it is whole, not
 // suffixed (the pointers are small, and a reader who holds only the tail of your shares would
@@ -168,10 +183,11 @@ async fn send_missing(
     send: &mut SendStream,
     include_private: bool,
     wanted: &[u32],
+    ask: Ask,
     budget: &mut crate::net::admission::Budget,
 ) -> Result<(u64, bool)> {
     let mut sent = 0u64;
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted).await?;
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, ask).await?;
     while let Some(bytes) = missing.next().await? {
         // The send budget (PEEK.md ruling 2): short of the peer's need is a pass, not a
         // failure - they will see they are still behind and come back.
@@ -194,6 +210,9 @@ struct ChainSend {
     evidence: Option<Vec<u8>>,
     /// The first seq the peer lacks.
     from_seq: u64,
+    /// A range BENEATH the peer's floor to send first (PEEK.md slice 5, scrollback's
+    /// backfill): `(from, to)` inclusive.
+    backfill: Option<(u64, u64)>,
 }
 
 /// A peer's missing entries, yielded one at a time and read a page at a time - the whole
@@ -209,6 +228,9 @@ pub(crate) struct MissingEntries<'a> {
     chains: std::vec::IntoIter<ChainSend>,
     /// The chain being drained: `(author_hex, service, next page's first seq)`.
     current: Option<(String, u32, u64)>,
+    /// The bounded range beneath the peer's floor still to send, `(lowest, next)` inclusive,
+    /// walked downward from `next`.
+    backfill: Option<(String, u32, u64, u64)>,
     /// Read and not yet yielded: at most one page, plus a leading fork proof.
     page: VecDeque<Vec<u8>>,
     /// Whether the current chain may have more pages (the last one came back full).
@@ -222,13 +244,15 @@ impl<'a> MissingEntries<'a> {
         peer_frontiers: &[Frontier],
         include_private: bool,
         wanted: &[u32],
+        ask: Ask,
     ) -> Result<MissingEntries<'a>> {
         Ok(MissingEntries {
             db,
-            chains: missing_plan(db, peer_frontiers, include_private, wanted)
+            chains: missing_plan(db, peer_frontiers, include_private, wanted, ask)
                 .await?
                 .into_iter(),
             current: None,
+            backfill: None,
             page: VecDeque::new(),
             more: false,
         })
@@ -239,6 +263,20 @@ impl<'a> MissingEntries<'a> {
         loop {
             if let Some(bytes) = self.page.pop_front() {
                 return Ok(Some(bytes));
+            }
+            // The backfill beneath the peer's floor goes first, walked DOWNWARD from the
+            // floor: a budget cut then leaves a run that still joins the floor's commitment,
+            // where a cut of an upward walk would leave the genesis and no join at all.
+            if let Some((author_hex, service, lowest, next)) = self.backfill.clone() {
+                let rows = chain_page_down(self.db, &author_hex, service, next, lowest).await?;
+                match rows.last() {
+                    Some((last_seq, _)) if *last_seq > lowest => {
+                        self.backfill = Some((author_hex, service, lowest, last_seq - 1));
+                    }
+                    _ => self.backfill = None,
+                }
+                self.page.extend(rows.into_iter().map(|(_, bytes)| bytes));
+                continue;
             }
             // The current chain may have more: read one page. A short page (or none) means
             // this chain is finished, and the next loop turn moves on.
@@ -259,6 +297,9 @@ impl<'a> MissingEntries<'a> {
             match self.chains.next() {
                 Some(chain) => {
                     self.page.extend(chain.evidence);
+                    self.backfill = chain
+                        .backfill
+                        .map(|(from, to)| (chain.author_hex.clone(), chain.service, from, to));
                     self.current = Some((chain.author_hex, chain.service, chain.from_seq));
                     self.more = true;
                 }
@@ -290,10 +331,15 @@ async fn missing_plan(
     peer_frontiers: &[Frontier],
     include_private: bool,
     wanted: &[u32],
+    ask: Ask,
 ) -> Result<Vec<ChainSend>> {
     let peer: HashMap<([u8; 32], u32), (u64, [u8; 32])> = peer_frontiers
         .iter()
         .map(|f| ((f.author, f.service), (f.head, f.head_hash)))
+        .collect();
+    let peer_floor: HashMap<([u8; 32], u32), u64> = peer_frontiers
+        .iter()
+        .map(|f| ((f.author, f.service), f.floor))
         .collect();
 
     // Which chains do we hold? From the MEMO (2026-08-10, the full-chain audit) - this was a
@@ -305,19 +351,22 @@ async fn missing_plan(
     // we lack costs an empty page and nothing else; a memo that missed one delays that chain
     // to the next exchange, and the memo is reconciled against the log at every database open
     // and healed by the frontier sweep. Neither direction can lose history.
-    let mut chains: Vec<(String, i64)> = match (db.memo(), db.root()) {
+    let mut chains: Vec<(String, i64, Option<u64>)> = match (db.memo(), db.root()) {
         (Some(memo), Some(root)) => crate::net::frontier::memo_chains(memo, root)
             .await?
             .into_iter()
-            .map(|(author_hex, svc, _, _, _)| (author_hex, i64::from(svc)))
+            .map(|(author_hex, svc, _, head, _)| (author_hex, i64::from(svc), Some(head)))
             .collect(),
         _ => db
-            .fetch_all(
+            .fetch_all::<(String, i64)>(
                 "SELECT DISTINCT author_pubkey, service FROM entries",
                 (),
             )
             .await
-            .context("listing chains")?,
+            .context("listing chains")?
+            .into_iter()
+            .map(|(a, s)| (a, s, None))
+            .collect(),
     };
     // **Identity chains strictly first** - the module's own promise, and the reason this is
     // sorted rather than taken in whatever order a table hands back: the authority context has
@@ -327,7 +376,7 @@ async fn missing_plan(
     chains.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
 
     let mut plan = Vec::new();
-    for (author_hex, svc) in chains {
+    for (author_hex, svc, memo_head) in chains {
         if !include_private && is_private_service(svc as u32) {
             continue;
         }
@@ -341,8 +390,34 @@ async fn missing_plan(
         let author = pubkey::decode(&author_hex)
             .ok_or_else(|| anyhow!("corrupt author pubkey in entries table"))?;
         let claimed = peer.get(&(author, svc as u32));
-        let from_seq = claimed.map(|(head, _)| head + 1).unwrap_or(0);
-
+        let mut from_seq = claimed.map(|(head, _)| head + 1).unwrap_or(0);
+        let mut backfill = None;
+        if CEILING_SERVICES.contains(&(svc as u32)) {
+            // The follow ceiling (PEEK.md slice 5): a peer holding nothing of this chain and
+            // asking for a ceiling gets its newest `ceiling` entries - a suffix; a peer
+            // holding a suffix and asking for `below` gets that many beneath its floor.
+            if claimed.is_none() && ask.ceiling > 0 {
+                let head = match memo_head {
+                    Some(h) => Some(h),
+                    None => db
+                        .fetch_optional::<(i64,)>(
+                            "SELECT MAX(seq) FROM entries WHERE author_pubkey = ?1 AND service = ?2",
+                            (author_hex.as_str(), svc),
+                        )
+                        .await
+                        .context("reading a chain's head for the ceiling")?
+                        .map(|(h,)| h as u64),
+                };
+                if let Some(head) = head {
+                    from_seq = from_seq.max((head + 1).saturating_sub(ask.ceiling));
+                }
+            }
+            if let (Some(floor), true) = (peer_floor.get(&(author, svc as u32)), ask.below > 0) {
+                if *floor > 0 {
+                    backfill = Some((floor.saturating_sub(ask.below), floor - 1));
+                }
+            }
+        }
         let mut evidence = None;
         if let Some((peer_head, peer_hash)) = claimed {
             let ours: Option<(Vec<u8>, Vec<u8>)> = db
@@ -365,6 +440,7 @@ async fn missing_plan(
             service: svc as u32,
             evidence,
             from_seq,
+            backfill,
         });
     }
     Ok(plan)
@@ -373,6 +449,33 @@ async fn missing_plan(
 /// One page of a chain's entries from `from_seq` up, as `(seq, bytes)` in seq order. The seq
 /// rides along so the caller advances by what it actually read rather than by a count, which
 /// keeps paging correct over a shallow-held chain whose floor is not zero.
+/// A page of a chain within `[lowest, from_seq]` in DESCENDING seq - the backfill's walk
+/// down from the floor.
+async fn chain_page_down(
+    db: &Db,
+    author_hex: &str,
+    service: u32,
+    from_seq: u64,
+    lowest: u64,
+) -> Result<Vec<(u64, Vec<u8>)>> {
+    let rows: Vec<(i64, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT seq, bytes FROM entries
+             WHERE author_pubkey = ?1 AND service = ?2 AND seq <= ?3 AND seq >= ?4
+             ORDER BY seq DESC LIMIT ?5",
+            (
+                author_hex,
+                i64::from(service),
+                from_seq as i64,
+                lowest as i64,
+                SEND_PAGE_ENTRIES as i64,
+            ),
+        )
+        .await
+        .context("reading a page of entries to backfill")?;
+    Ok(rows.into_iter().map(|(s, b)| (s as u64, b)).collect())
+}
+
 async fn chain_page(
     db: &Db,
     author_hex: &str,
@@ -411,7 +514,7 @@ pub(crate) async fn missing_for_peer(
     wanted: &[u32],
 ) -> Result<Vec<Vec<u8>>> {
     let mut out = Vec::new();
-    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted).await?;
+    let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, Ask::default()).await?;
     while let Some(bytes) = missing.next().await? {
         out.push(bytes);
     }
@@ -726,7 +829,34 @@ pub(crate) async fn ingest_batch(
         match tree.status(&author) {
             KeyStatus::Active => {
                 let mut prev = stored_chain_head(db, &author, svc).await?;
+                // The follow ceiling (PEEK.md ruling 8): on a FOREIGN gate the posts chain may
+                // be held as a suffix - adopted from nothing at a seq above zero, or extended
+                // BENEATH its floor by a backfill whose top entry must hash-match the floor's
+                // own `prev_hash`, the commitment the suffix carried all along.
+                let suffix_ok = service_allows_suffix(svc)
+                    || (identity_ceiling.is_some() && CEILING_SERVICES.contains(&svc));
+                let floor_entry = if suffix_ok { stored_chain_floor(db, &author, svc).await? } else { None };
+                let floor_seq = floor_entry.as_ref().map(|f| f.entry().seq);
+                let mut backfill: Vec<SignedEntry> = Vec::new();
+                let mut entries = entries;
+                entries.sort_by_key(|e| e.entry().seq);
                 for e in entries {
+                    // Beneath our floor: a backfill candidate, verified as a chain on its own
+                    // and joined to the floor below, never mixed with the forward walk.
+                    if let (Some(fs), true) = (floor_seq, suffix_ok) {
+                        if e.entry().seq < fs {
+                            let link_ok = match backfill.last() {
+                                Some(last) => validate_next(Some(last), &e).is_ok(),
+                                None => e.verify().is_ok(),
+                            };
+                            if link_ok {
+                                backfill.push(e);
+                            } else {
+                                rejected += 1;
+                            }
+                            continue;
+                        }
+                    }
                     if let Some(p) = &prev {
                         if e.entry().seq <= p.entry().seq {
                             // At or below our head: usually a duplicate resend - but a valid
@@ -764,7 +894,7 @@ pub(crate) async fn ingest_batch(
                                 Some(p) => e.entry().seq > p.entry().seq + 1,
                                 None => e.entry().seq > 0,
                             };
-                            if gap && service_allows_suffix(svc) && e.verify().is_ok() {
+                            if gap && suffix_ok && e.verify().is_ok() {
                                 // Contiguity is an invariant of the holdings, not just the
                                 // wire: drop the stale prefix so [floor..head] stays a range
                                 // rather than a range with a hole the pager would mis-serve.
@@ -787,6 +917,32 @@ pub(crate) async fn ingest_batch(
                                 rejected += 1;
                             }
                         }
+                    }
+                }
+                // The backfill's join: its top entry must be exactly what the floor's
+                // `prev_hash` committed to, and its run must end right beneath the floor.
+                // Anything else is refused whole - a prefix that does not hash-match the
+                // commitment in hand is the forgery shallow holding must never admit.
+                if let (Some(floor), false) = (&floor_entry, backfill.is_empty()) {
+                    let top = backfill.last().expect("non-empty");
+                    let joins = top.entry().seq + 1 == floor.entry().seq
+                        && *top.hash() == floor.entry().prev_hash;
+                    if joins {
+                        for e in &backfill {
+                            store_entry(db, e).await?;
+                            apply_content_views(db, e).await?;
+                            received += 1;
+                        }
+                        // The lane folds past a watermark; these landed beneath it. Lower
+                        // it to the backfill's lowest seq so the next catch-up folds them.
+                        let lowest = backfill.first().map(|e| e.entry().seq as i64).unwrap_or(0);
+                        crate::record::imaol::lower_watermark(db, &hex::encode(author), svc, lowest - 1)
+                            .await
+                            .map_err(|e| anyhow!("lowering the view watermark after a backfill: {e}"))?;
+                    } else {
+                        tracing::warn!(author = %hex::encode(author), service = svc,
+                            "a backfill did not hash-match the floor's commitment - refused");
+                        rejected += backfill.len() as u64;
                     }
                 }
             }
@@ -1208,6 +1364,20 @@ async fn stored_chain_head(db: &Db, author: &[u8; 32], svc: u32) -> Result<Optio
         .transpose()
 }
 
+/// The oldest entry we hold of a chain - the floor a suffix commits from.
+async fn stored_chain_floor(db: &Db, author: &[u8; 32], svc: u32) -> Result<Option<SignedEntry>> {
+    let row: Option<(Vec<u8>,)> = db
+        .fetch_optional(
+            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2
+         ORDER BY seq ASC LIMIT 1",
+            (hex::encode(author), i64::from(svc)),
+        )
+        .await
+        .context("reading stored chain floor")?;
+    row.map(|(b,)| SignedEntry::decode(&b).map_err(|e| anyhow!("stored entry fails decode: {e}")))
+        .transpose()
+}
+
 async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
     let entry_meta = (
         hex::encode(e.entry().chain.author),
@@ -1221,6 +1391,8 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
     // chains we merely hold, we never append to them, so losing our copy risks no re-genesis;
     // the sibling re-supplies its suffix on the next sync.
     if !service_allows_suffix(e.entry().chain.service) {
+        // (The inbox tiers alone: a posts suffix under the follow ceiling is journaled like
+        // any held chain - it is what a rebuild replays.)
         db.journal_append(e.bytes())
             .context("journaling synced entry")?;
     }
@@ -1350,6 +1522,21 @@ pub async fn sync_with_peer_scoped(
     addr: EndpointAddr,
     wanted: &[u32],
 ) -> Result<ExchangeStats> {
+    // The ordinary follow asks at the follow ceiling (PEEK.md ruling 8); a scoped exchange
+    // that excludes the posts chain is unaffected by it.
+    let ask = Ask { ceiling: state.config.follow_posts_ceiling, below: 0 };
+    sync_with_peer_asking(state, root_hex, addr, wanted, ask).await
+}
+
+/// `sync_with_peer_scoped` with the depth named (PEEK.md slice 5): `below` asks the peer for
+/// entries beneath the posts chain's floor - scrollback's backfill.
+pub async fn sync_with_peer_asking(
+    state: &AppState,
+    root_hex: &str,
+    addr: EndpointAddr,
+    wanted: &[u32],
+    ask: Ask,
+) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
     let conn = crate::net::p2p::dial(
         &state.unplugged,
@@ -1363,7 +1550,7 @@ pub async fn sync_with_peer_scoped(
     // their WAIT and detaches the work; this bounds the work. Over it, the connection is
     // closed - a trickle is not an exchange.
     let wall = state.admission.limits().exchange_wall_clock;
-    match tokio::time::timeout(wall, exchange_on(state, root_hex, &conn, addr, wanted, root)).await {
+    match tokio::time::timeout(wall, exchange_on(state, root_hex, &conn, addr, wanted, ask, root)).await {
         Ok(result) => result,
         Err(_) => {
             conn.close(2u8.into(), b"wall clock");
@@ -1380,6 +1567,7 @@ async fn exchange_on(
     conn: &Connection,
     addr: EndpointAddr,
     wanted: &[u32],
+    ask: Ask,
     root: [u8; 32],
 ) -> Result<ExchangeStats> {
     // EXISTS, not create - yet. The requester dials to FETCH, and a first fetch is exactly
@@ -1407,6 +1595,8 @@ async fn exchange_on(
             frontiers,
             proof: our_member_proof(state, root, &our_id, &peer_id).await,
             wanted: wanted.to_vec(),
+            ceiling: ask.ceiling,
+            below: ask.below,
         },
     )
     .await?;
@@ -1417,7 +1607,9 @@ async fn exchange_on(
             root: peer_root,
             frontiers,
             proof,
-            wanted: _, // the responder echoes our scope; our own `wanted` is authoritative
+            // (the responder echoes our scope and zeros for depth; our own `wanted` and
+            // `ask` are authoritative)
+            ..
         }) => {
             if peer_root != root {
                 bail!("peer answered for a different identity");
@@ -1507,7 +1699,7 @@ async fn exchange_on(
 
     // Now send what the peer lacks - private chains only to a proven member.
     let (sent, _cut_send) =
-        send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted, &mut send_budget).await?;
+        send_missing(&db, &peer_frontiers, &mut send, peer_proven, wanted, Ask::default(), &mut send_budget).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -1547,6 +1739,14 @@ async fn exchange_on(
         state.behind.mark(root_hex);
     } else {
         state.behind.clear(root_hex);
+    }
+    // A backfill moved the FLOOR, which no head move notices: reconcile the memo from the
+    // entries so the next Hello claims the deeper range and the pager knows how far back
+    // this node now reaches.
+    if ask.below > 0 && received > 0 {
+        if let Err(e) = crate::net::frontier::reconcile_from_entries(state, root_hex).await {
+            tracing::debug!(root = %root_hex, error = ?e, "floor reconcile after a backfill failed");
+        }
     }
 
     // And what came of the claim. The order matters: our own frontier is recomputed AFTER the
@@ -1654,13 +1854,15 @@ async fn serve_on(
     // `scope` is the requester's service scope (Hello `wanted`, empty = everything) -
     // distinct from the serve-consent `wanted` gate below, which answers a different
     // question ("do we serve this persona at all").
-    let (root, peer_frontiers, peer_proof, scope) = match hello {
+    let (root, peer_frontiers, peer_proof, scope, ask) = match hello {
         Some(SyncMessage::Hello {
             root,
             frontiers,
             proof,
             wanted,
-        }) => (root, frontiers, proof, wanted),
+            ceiling,
+            below,
+        }) => (root, frontiers, proof, wanted, Ask { ceiling, below }),
         other => bail!("expected Hello, got {other:?}"),
     };
     let root_hex = hex::encode(root);
@@ -1687,6 +1889,8 @@ async fn serve_on(
                 frontiers: vec![],
                 proof: None,
                 wanted: scope.clone(),
+                ceiling: 0,
+                below: 0,
             },
         )
         .await?;
@@ -1764,12 +1968,14 @@ async fn serve_on(
             frontiers: scoped_frontiers(local_frontiers(&db, peer_proven).await?, &scope),
             proof: our_member_proof(&state, root, &our_id, &peer_id).await,
             wanted: scope.clone(),
+            ceiling: 0,
+            below: 0,
         },
     )
     .await?;
     let mut send_budget = state.admission.budget();
     let (sent, _cut_send) =
-        send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope, &mut send_budget).await?;
+        send_missing(&db, &peer_frontiers, &mut send, peer_proven, &scope, ask, &mut send_budget).await?;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -2460,6 +2666,51 @@ mod tests {
         let raw = entries.iter().map(|e| e.bytes().to_vec()).collect();
         let outcome = ingest_batch(db, root, raw, false, None, None).await.unwrap();
         (outcome.received, outcome.rejected)
+    }
+
+    /// PEEK.md ruling 8: on a FOREIGN gate the posts chain may be held as a suffix - adopted
+    /// from nothing at a seq above zero - and extended beneath its floor only by a backfill
+    /// whose top entry hash-matches the floor's own `prev_hash`. A hosted gate (no identity
+    /// ceiling) admits no such thing.
+    #[tokio::test]
+    async fn a_foreign_posts_suffix_is_adopted_and_a_backfill_must_match_the_floor() {
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut k_posts = Chain::new(2, service::POSTS);
+        let k = k_posts.pk();
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }.encode().unwrap(),
+        );
+        let posts: Vec<SignedEntry> = (0..6u8).map(|n| k_posts.append(entry_type::POST, vec![0xa0, n])).collect();
+        let raw = |entries: &[SignedEntry]| -> Vec<Vec<u8>> { entries.iter().map(|e| e.bytes().to_vec()).collect() };
+        let root = root_chain.pk();
+        let foreign = Some(10_000usize);
+
+        // A suffix from nothing: seqs 3..=5 land on a foreign gate, floor 3.
+        let db = test_db().await;
+        ingest_batch(&db, root, raw(std::slice::from_ref(&authorize)), false, foreign, None).await.unwrap();
+        let got = ingest_batch(&db, root, raw(&posts[3..]), false, foreign, None).await.unwrap();
+        assert_eq!((got.received, got.rejected), (3, 0), "the suffix is adopted");
+        assert_eq!(stored_hashes(&db, &k, service::POSTS).await, hashes(&posts[3..]));
+
+        // A forged backfill: the same key, the same seqs 1..=2, different words - its top
+        // hash is not what post 3's prev_hash committed to. Refused whole.
+        let mut forged = Chain::new(2, service::POSTS);
+        let fake: Vec<SignedEntry> = (0..3u8).map(|n| forged.append(entry_type::POST, vec![0xbb, n])).collect();
+        let bad = ingest_batch(&db, root, raw(&fake[1..]), false, foreign, None).await.unwrap();
+        assert_eq!((bad.received, bad.rejected), (0, 2), "a backfill that does not match the commitment is refused");
+        assert_eq!(stored_hashes(&db, &k, service::POSTS).await, hashes(&posts[3..]), "nothing of it stored");
+
+        // The honest backfill: seqs 1..=2 join post 3 by hash. Admitted; the floor lowers.
+        let good = ingest_batch(&db, root, raw(&posts[1..3]), false, foreign, None).await.unwrap();
+        assert_eq!((good.received, good.rejected), (2, 0));
+        assert_eq!(stored_hashes(&db, &k, service::POSTS).await, hashes(&posts[1..]), "the chain now runs from 1");
+
+        // A hosted gate (no ceiling) admits no suffix at all: from nothing, seq 3 is a gap.
+        let hosted = test_db().await;
+        ingest_batch(&hosted, root, raw(std::slice::from_ref(&authorize)), false, None, None).await.unwrap();
+        let refused = ingest_batch(&hosted, root, raw(&posts[3..]), false, None, None).await.unwrap();
+        assert_eq!(refused.received, 0, "a hosted persona's chains are never shallow");
     }
 
     /// PEEK.md ruling 3: an identity chain that would exceed the ceiling is refused whole,
@@ -3383,8 +3634,8 @@ mod tests {
                 .map(|c| (c.author_hex.clone(), c.service, c.from_seq))
                 .collect()
         };
-        let from_memo = missing_plan(&memoed, &[], true, &[]).await.unwrap();
-        let from_scan = missing_plan(&bare, &[], true, &[]).await.unwrap();
+        let from_memo = missing_plan(&memoed, &[], true, &[], Ask::default()).await.unwrap();
+        let from_scan = missing_plan(&bare, &[], true, &[], Ask::default()).await.unwrap();
 
         assert!(!from_memo.is_empty(), "the memo knows which chains we hold");
         assert_eq!(
