@@ -337,23 +337,29 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
 async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentMessage {
     let author_hex = hex::encode(author);
     let limit = limit.clamp(1, ringtome_proto::fragment::MAX_SHELF_IDS as u64) as i64;
-    let posts = match state.user_dbs.get(&author_hex).await {
+    let (posts, pinned) = match state.user_dbs.get(&author_hex).await {
         Ok(Some(db)) => {
             if crate::speculative::speculative_only(state, &author_hex).await.unwrap_or(true) {
-                Vec::new()
+                (Vec::new(), Vec::new())
             } else {
-                crate::record::documents::public_docs(&db, None, limit)
+                let posts = crate::record::documents::public_docs(&db, None, limit)
                     .await
                     .unwrap_or_default()
                     .into_iter()
                     .filter(|p| p.part_of.is_none())
                     .map(|p| p.doc_id)
-                    .collect()
+                    .collect();
+                // The author's pins (PEEK.md ruling 13): named first, so a peek fetches
+                // them ahead of the window however deep they sit.
+                let pinned = crate::record::imaol::pinned_docs(&db, &author_hex)
+                    .await
+                    .unwrap_or_default();
+                (posts, pinned)
             }
         }
-        _ => Vec::new(),
+        _ => (Vec::new(), Vec::new()),
     };
-    FragmentMessage::Shelf { posts, pinned: Vec::new() }
+    FragmentMessage::Shelf { posts, pinned }
 }
 
 async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {

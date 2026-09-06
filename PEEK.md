@@ -95,10 +95,11 @@ walks it per entry is unmeasured (residual).
     the wire. Only the AUTHOR's pin is honoured: anyone else's `pin` is a label like any
     other, shown by the display rule or not, never a placement. Books pin like posts; a
     sealed post pins like an open one (its title shows, its body refuses).
-12. **Pinned first, in place still.** The author's page opens with the pinned strip - most
-    recently pinned first, capped at twenty - above the chronological shelf, which is
-    unchanged: a pin is a highlight, not a move, and a pinned post keeps its place in
-    history and its date. A pinned post wears a pin chip wherever its card shows. The pin
+12. **Pinned first, and only once.** The author's page opens with the pinned strip - most
+    recently pinned first, capped at twenty - above the chronological shelf, and the page
+    leaves the pinned posts OUT of that shelf (Curtis, 2026-09-05: "we just saw it"). The
+    shelf itself is unchanged underneath - the API's pages still list them in place, feeds
+    still journal them by their dates - only the page hides what its strip already shows. A pinned post wears a pin chip wherever its card shows. The pin
     itself is set from the post's own page and from the feed card's author affordances
     (beside the note-pencil), never from the Writer: the private pin and the public pin are
     two facts about two different shelves and neither implies the other.
@@ -216,13 +217,22 @@ walks it per entry is unmeasured (residual).
    hour's expiry a just-looked-at peek stays. Found on the way: a re-fetch after an eviction
    in one process died reopening a journal the eviction had deleted - eviction forgets the
    journal's first-look memo and the heads file now, and the chain-heads memo with them.
-4. **Pins.** The `pin` statement and its retraction (route, button on the post page and the
-   feed card, the chip); the pinned strip on the author's page, read from the annotations
-   memo; the pin proofs in the `Shelf` answer and the pinned ids fetched beside the window;
-   the missing-bodies walk ordered pins-first. Acceptance: an author pins a post two hundred
-   deep, a follower's page shows it first and its body arrives before the backlog, a
-   stranger's peek fetches it as a fragment with its labels, unpinning drops it from the
-   strip everywhere while the post stands.
+4. ~~**Pins.**~~ Built 2026-09-05. No new wire and no new route: a pin is the author's
+   `pin = yes` on the public-annotations lane about their own post, said and retracted
+   through the label routes that already exist, and honoured only when the annotator is
+   the author (`imaol::pinned_docs` reads the author's own chain: most recently pinned
+   first, twenty at most). The profile answers a `pinned` strip beside the shelf - the
+   mirror's posts, or for a peek whatever the ledger holds - and the page opens with it
+   above "recent posts", which leaves them out. The card wears a pinned chip
+   and, for the author, a push-pin toggle beside the takedown; the author's own pin never
+   shows as a plain label, anyone else's does. The shelf answer's `pinned` list is filled
+   from the serving node's chain, so a peek fetches the pins ahead of the window; the
+   missing-bodies walk moves pinned bodies to the front. Acceptance (`pins.cjs`): the
+   author pins a post deep in a sixty-post history and their page opens with it; a
+   follower's page opens with it, labels along, and its body serves; a stranger's peek
+   fetches it beside the newest twenty, which never reach it, labels riding; unpinning
+   empties the strip on the author's page, the follower's, and the peek's next look, while
+   the post stands everywhere.
 5. **The follow ceiling.** Content chains held as suffixes from a floor; bodies newest-first
    under a per-persona dial; a pinned post below the floor acquired by id; the snapshot
    residual named where it bites. Acceptance: a follow of a prolific author holds its

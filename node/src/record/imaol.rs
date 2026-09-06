@@ -647,6 +647,27 @@ pub async fn annotations_of(
         .collect())
 }
 
+/// The author's PINS (PEEK.md ruling 11): their own present `pin` statements about their
+/// own posts, most recently pinned first, capped at the strip's twenty. Only the author's
+/// chain is read - anyone else's `pin` is a label, never a placement.
+pub async fn pinned_docs(db: &Db, author_hex: &str) -> Result<Vec<[u8; 16]>, AppError> {
+    catch_up_annotations(db).await?;
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT target_doc FROM public_annotations
+             WHERE target_author = ?1 AND key = 'pin' AND present = 1
+             ORDER BY timestamp_ms DESC, seq DESC LIMIT 20",
+            (author_hex,),
+        )
+        .await
+        .context("reading the author's pins")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(d,)| <[u8; 16]>::try_from(d.as_slice()).ok())
+        .collect())
+}
+
 async fn annotation_rows(
     db: &Db,
     (author, doc): (&str, &[u8; 16]),

@@ -193,6 +193,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
         <${PublicPosts}
             root=${root}
             posts=${profile.posts}
+            pinned=${profile.pinned}
             more=${profile.posts_more}
             current=${current}
         />

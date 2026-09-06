@@ -220,6 +220,35 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 /// Says what it costs before it does it: a retraction travels to followers' feeds and to anyone
 /// holding a shared copy, but it cannot reach a node that never comes back online, and it cannot
 /// unsee. Promising erasure would be a lie the protocol cannot keep.
+/// The author's own pin (PEEK.md rulings 11-12): one public annotation, `pin`, said about
+/// their own post and retracted to unpin - the page's strip reads it, the card wears it.
+/// Beside the note-pencil and the takedown, for the author only; never from the Writer.
+const pinnedByAuthor = (item) =>
+    (item.annotations || []).some((a) => a.key === PIN_KEY && a.annotator === item.author);
+
+const PinButton = ({ item, current, pinned, onPinned }) => {
+    const [busy, setBusy] = useState(false);
+    const base = `/api/identity/${current.root}/public-annotations/${item.author}/${item.doc_id}`;
+    return html`<button
+        class=${pinned ? 'feed-pin feed-pin-on' : 'feed-pin'}
+        title=${pinned
+            ? t('postentry.unpin-this-from-your-page', 'unpin this from your page')
+            : t('postentry.pin-this-to-the-top', 'pin this to the top of your page')}
+        disabled=${busy}
+        onClick=${async () => {
+            setBusy(true);
+            try {
+                if (pinned) await api(`${base}/${PIN_KEY}/${PIN_VALUE}`, { method: 'DELETE' });
+                else await api(base, { method: 'PUT', body: JSON.stringify({ key: PIN_KEY, value: PIN_VALUE }) });
+                onPinned(!pinned);
+            } catch {
+                /* the next click retries; the chip stays honest to what the server holds */
+            }
+            setBusy(false);
+        }}
+    ><${Icons.pin} /></button>`;
+};
+
 const UnpublishButton = ({ item, current, editing, onTakenDown }) => {
     const [asking, setAsking] = useState(false);
     const [going, setGoing] = useState(false);
@@ -398,6 +427,9 @@ const ShareButton = ({ item, current }) => {
 /// fetched here so a sealed body a reader cannot open stays sealed (the door refuses, the
 /// card falls back to "link"). Every card wears the author's heptagon (Curtis, 2026-09-05:
 /// "display it as a profile icon"): provenance at a glance, their name when you point at it.
+const PIN_KEY = 'pin';
+const PIN_VALUE = 'yes';
+
 export const MiniPost = ({ author, doc_id, title, published_ms }) => {
     const person = usePerson(author);
     const [words, setWords] = useState('');
@@ -498,6 +530,10 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     // upstream still names the row; the next feed read reconciles, and until then null is
     // the truthful render.
     const [gone, setGone] = useState(false);
+    // The author's pin, as the card knows it: the header's labels say it, the toggle moves
+    // it, and a fresh row from the server wins (PEEK.md ruling 12).
+    const [pinned, setPinned] = useState(pinnedByAuthor(item));
+    useEffect(() => setPinned(pinnedByAuthor(item)), [item]);
     // The words as this reader last CONFIRMED them: after an in-place edit, the session's
     // own buffer - already in hand, already acknowledged by the publish - never a refetch of
     // what the user just typed.
@@ -675,7 +711,11 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const shownLabels = [
         ...baseLabels,
         ...saidLabels.filter((a) => !baseLabels.some((b) => labelKey(b) === labelKey(a))),
-    ].filter((a) => !retractedLabels.includes(labelKey(a)));
+    ]
+        .filter((a) => !retractedLabels.includes(labelKey(a)))
+        // The author's own pin is chrome (the chip above), not a label; anyone else's is a
+        // label like any other (PEEK.md ruling 11).
+        .filter((a) => !(a.key === PIN_KEY && a.annotator === item.author));
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
@@ -781,6 +821,8 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                               title=${t('postentry.open-this-for-editing', 'open this for editing')}
                               onClick=${() => setOpen(true)}
                           >${t('postentry.edit', 'edit')}</button>`)}
+                    ${editing && !open && item.kind !== 'share' && !item.private_doc &&
+                    html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`}
                     ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}`}
             />
             ${!open &&
@@ -824,8 +866,10 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     published_ms=${item.reply_to.published_ms}
                 />
             </p>`}
-            ${!open && (shownLabels.length > 0 || !!current || item.trusted_only || item.settled) &&
+            ${!open && (shownLabels.length > 0 || !!current || item.trusted_only || item.settled || pinned) &&
             html`<div class="feed-entry-labels">
+                ${pinned &&
+                html`<span class="label-chip label-chip-flag" title=${t('postentry.pinned-chip-title', 'the author pinned this to the top of their page')}><${Icons.pin} /> ${t('postentry.pinned', 'pinned')}</span>`}
                 ${/* The author's wishes wear chips of their own, first in the row (Curtis,
                     2026-09-03: "I didn't know that this post was trusted-only") - chrome,
                     not labels: nobody said them, the header did. */ ''}

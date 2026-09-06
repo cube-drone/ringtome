@@ -109,8 +109,7 @@ Does a mutual follow+trust make a "friend"?
   look at a stranger held as a shape (identity, annotations, twenty posts as fragments)
   with a footprint and an expiry, the identity chain capped; public pins (a `pin`
   annotation, the pinned strip, pinned fetched first) as slice 4; five slices. Slices 1
-  (admission and budgets), 2 (the peek) and 3 (footprint and expiry) built 2026-09-05;
-  pins next. Residual: a misbehaving peer
+  through 4 built 2026-09-05; the follow ceiling (slice 5) remains. Residual: a misbehaving peer
   for the rig, so the deadlines and the flood ceiling get a proof beyond the unit gate.
 * Frontier refresh grew 4 -> 27ms per fold across an 8x80 test-data run (2026-08-28's
   quadratic hunt left it as the one unexamined tail): `memo_public_anchors` or the

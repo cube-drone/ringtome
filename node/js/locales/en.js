@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 651 phrases across 48 files.
+// 656 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -473,6 +473,8 @@ export default {
     'postentry.posting': 'posting…',
     'postentry.post-the-changes': 'post the changes',
     'postentry.post': 'post',
+    'postentry.unpin-this-from-your-page': 'unpin this from your page',
+    'postentry.pin-this-to-the-top': 'pin this to the top of your page',
     'postentry.take-this-post-back-off': 'take this post back off the network',
     'postentry.take-it-down': 'take it down',
     'postentry.this-removes-it-from-other': "removes it from other people's feeds and shares, but very slowly",
@@ -499,6 +501,8 @@ export default {
     'postentry.thread': 'thread',
     'postentry.in-reply-to-name': 'in reply to {name}',
     'postentry.in-reply-to': 'in reply to',
+    'postentry.pinned-chip-title': 'the author pinned this to the top of their page',
+    'postentry.pinned': 'pinned',
     'postentry.trusted-only-chip-title': 'the author shares these words only with people they trust',
     'postentry.trusted-only': 'trusted only',
     'postentry.settled-chip-title': 'the author turned off rebroadcast and comment on this post',
@@ -546,6 +550,7 @@ export default {
     'postpage.continue-this-thread': 'continue this thread',
 
     // --- node/js/posts.js ---
+    'posts.pinned': 'pinned',
     'posts.recent-posts': 'recent posts',
     'posts.show-what-they-passed-along': 'show what they passed along',
     'posts.plus-rebroadcasts': '+ rebroadcasts',

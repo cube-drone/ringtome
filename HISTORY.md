@@ -8519,3 +8519,17 @@ process died reopening a journal the eviction had deleted; eviction forgets the 
 first-look memo, the heads file and the chain-heads memo now. The eviction acceptance had
 been asserting that bug in honesty's clothes - a 404 on the visit after eviction - and
 asserts the doctrine now: the visit re-mints the persona as a peek.
+
+## 2026-09-05 (cont.): PEEK.md slice 4 - public pins
+
+A pin is the author's own `pin` statement on the public-annotations lane about their own
+post, said and retracted through the label routes that already existed - no new wire, no
+new route - and honoured only when the annotator is the author. The profile answers a
+pinned strip, most recently pinned first, twenty at most, and the page opens with it above
+the shelf, which leaves the pinned posts out (Curtis: "we just saw it"). The card wears a pinned chip and, for the
+author, a push-pin toggle beside the takedown; the author's own pin is chrome, anyone
+else's a label. The shelf answer names the author's pins so a peek fetches them ahead of
+the window, and the missing-bodies walk moves pinned bodies to the front. Acceptance: a pin
+deep in a sixty-post history heads the author's page, a follower's page with its labels and
+body, and a stranger's peek, which never reaches it through the window; unpinning empties
+every strip while the post stands.

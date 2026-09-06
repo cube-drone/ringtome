@@ -25,7 +25,7 @@ const html = htm.bind(h);
 /// The stream on a person's page: what they have said in public, newest first, and as far
 /// back as the reader cares to go. The profile brought the first page; each further one is
 /// asked for by hand, because reading someone's whole history is a decision, not a default.
-export const PublicPosts = ({ root, posts, more, current }) => {
+export const PublicPosts = ({ root, posts, pinned, more, current }) => {
     const [extra, setExtra] = useState([]);
     const [hasMore, setHasMore] = useState(!!more);
     const [loading, setLoading] = useState(false);
@@ -85,12 +85,33 @@ export const PublicPosts = ({ root, posts, more, current }) => {
         setLoading(false);
     };
 
-    if (!list.length && !scheduledItems.length) return null; // nothing said in public yet
+    // The pinned strip (PEEK.md ruling 12): the author's pins, most recently pinned first,
+    // above the shelf - and OUT of the shelf below (Curtis, 2026-09-05: "we just saw it").
+    const pinnedIds = new Set((pinned || []).map((p) => p.doc_id));
+    const pinnedItems = (pinned || []).map((p) => ({
+        author: root,
+        doc_id: p.doc_id,
+        title: p.title,
+        format: p.format,
+        published_ms: p.published_ms,
+        dated_ms: p.dated_ms,
+        minted_ms: p.minted_ms,
+        replies: p.replies,
+        reply_to: p.reply_to,
+        thread_root: p.thread_root,
+        trusted_only: p.trusted_only,
+        settled: p.settled,
+        annotations: p.annotations,
+        mine,
+    }));
+
+    if (!list.length && !scheduledItems.length && !pinnedItems.length) return null; // nothing said in public yet
 
     // The profile's rows, dressed as the shared entry's item shape - a share keeps its
     // ORIGINAL author (the card is still that person speaking) and wears this persona as
     // its via line, exactly as the feed renders a passed-along post.
     const items = [...scheduledItems, ...list
+        .filter((p) => p.kind === 'share' || !pinnedIds.has(p.doc_id))
         .filter((p) => (withShares || p.kind !== 'share') && (withReplies || !p.reply_to) && (withBooks || p.format !== 'book'))
         .map((p) =>
             p.kind === 'share'
@@ -123,6 +144,18 @@ export const PublicPosts = ({ root, posts, more, current }) => {
         )];
 
     return html`
+        ${pinnedItems.length > 0 &&
+        html`<section class="public-posts public-posts-pinned">
+            <h2 class="public-posts-head">${t('posts.pinned', 'pinned')}</h2>
+            ${pinnedItems.map(
+                (item) => html`<${PostEntry}
+                    key=${`pinned:${item.doc_id}`}
+                    item=${item}
+                    current=${current}
+                    editing=${mine ? editingFor(item.doc_id) : null}
+                />`
+            )}
+        </section>`}
         <section class="public-posts">
             <h2 class="public-posts-head">
                 ${t('posts.recent-posts', 'recent posts')}

@@ -2598,6 +2598,25 @@ pub async fn fetch_missing_bodies(
                 }
             }
         }
+        // Pinned first (PEEK.md ruling 13): on a slow link the top of the author's page
+        // fills before the backlog. The author's pins, their bodies moved to the front.
+        if !missing.is_empty() {
+            let mut front: Vec<iroh_blobs::Hash> = Vec::new();
+            for doc_id in crate::record::imaol::pinned_docs(&db, root_hex).await.unwrap_or_default() {
+                if let Ok(Some(head)) = public_head(&db, &doc_id).await {
+                    for h in std::iter::once(head.file_hash).chain(head.thumb_hash) {
+                        let hash = iroh_blobs::Hash::from_bytes(h);
+                        if missing.contains(&hash) && !front.contains(&hash) {
+                            front.push(hash);
+                        }
+                    }
+                }
+            }
+            if !front.is_empty() {
+                missing.retain(|h| !front.contains(h));
+                missing.splice(0..0, front);
+            }
+        }
 
         // The PRIVATE lane needs this node's own keys to even read which bodies exist -
         // agented identities only.

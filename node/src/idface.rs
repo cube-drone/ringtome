@@ -536,6 +536,33 @@ pub(crate) async fn looked_within(node_db: &crate::db::Db, root_hex: &str, now: 
     row.is_some_and(|(looked,)| now - looked < expiry_ms)
 }
 
+/// The author's pinned posts as this node holds them (PEEK.md ruling 12): the pins off the
+/// author's own annotations chain (mirror or peek alike carry it), each resolved to the
+/// post - the mirror's shelf, or for a peek whatever the ledger fetched. A pin whose post
+/// is not here yet is simply not in the strip until it lands.
+async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Vec<crate::record::documents::PublicDoc> {
+    let Ok(Some(db)) = state.user_dbs.get(root_hex).await else {
+        return Vec::new();
+    };
+    let ids = crate::record::imaol::pinned_docs(&db, root_hex).await.unwrap_or_default();
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let doc = if peek {
+            crate::fragments::public_doc_of(&state.node_db, root_hex, &hex::encode(id))
+                .await
+                .ok()
+                .flatten()
+                .map(|(p, _)| p)
+        } else {
+            crate::record::documents::public_doc(&db, &id).await.ok().flatten()
+        };
+        if let Some(p) = doc {
+            out.push(p);
+        }
+    }
+    out
+}
+
 /// The peek's footprint, measured now and written to the registry (PEEK.md ruling 6).
 pub(crate) async fn peek_bytes(state: &AppState, root_hex: &str) -> u64 {
     let bytes = crate::fragments::bytes_of_author(state, root_hex).await.unwrap_or(0);
@@ -2148,6 +2175,9 @@ pub async fn id_profile(
     };
     let posts_more = posts.len() as i64 > POSTS_PAGE;
     posts.truncate(POSTS_PAGE as usize);
+    // The pinned strip (PEEK.md ruling 12): the author's own pins, most recently pinned
+    // first, each the post as this node holds it - the mirror's, or for a peek the ledger's.
+    let pinned: Vec<crate::record::documents::PublicDoc> = pinned_here(&state, &root_hex, peek).await;
     // How to REACH this persona, as this node honestly knows it - the `?via=` hints any
     // address minted here should carry (Addressing: hints are keys, never addresses).
     //
@@ -2206,6 +2236,8 @@ pub async fn id_profile(
         })
         .collect();
     attach_annotations(&state, &root_hex, &mut profile_posts).await;
+    let mut pinned_posts: Vec<serde_json::Value> = pinned.iter().map(|p| post_json(p, 0)).collect();
+    attach_annotations(&state, &root_hex, &mut pinned_posts).await;
 
     Ok(axum::Json(serde_json::json!({
         "root": root_hex,
@@ -2229,6 +2261,8 @@ pub async fn id_profile(
         // does: a persona we host has no "last synced" - its words are written here.
         "synced_ms": synced_ms,
         "posts": profile_posts,
+        // The pinned strip (PEEK.md ruling 12): above the shelf, in place in it still.
+        "pinned": pinned_posts,
         // Whether the shelf goes further back than this first page.
         "posts_more": posts_more,
         "fields": fields.iter().map(|f| serde_json::json!({

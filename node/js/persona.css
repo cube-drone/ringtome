@@ -1809,3 +1809,25 @@ article:has(.label-emoji-strip) {
 .you-menu .persona-menu {
     margin-top: 0.7rem;
 }
+
+/* The author's pin toggle (postentry.js PinButton, PEEK.md ruling 12): the takedown's
+   shape, lit when the post is pinned. */
+.feed-pin {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+}
+.feed-pin-on {
+    color: var(--ink);
+    border-color: var(--teal);
+}
+/* The pinned strip above the shelf (posts.js): a little air before "recent posts". */
+.public-posts-pinned {
+    margin-bottom: 1.2rem;
+}
