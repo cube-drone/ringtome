@@ -25,7 +25,14 @@ const html = htm.bind(h);
 /// The stream on a person's page: what they have said in public, newest first, and as far
 /// back as the reader cares to go. The profile brought the first page; each further one is
 /// asked for by hand, because reading someone's whole history is a decision, not a default.
-export const PublicPosts = ({ root, posts, pinned, more, current }) => {
+export const PublicPosts = ({ root, posts, pinned, more, current, fields }) => {
+    // The page already knows who this is - its profile answer carries the name and the
+    // face - and its cards must not fall back to the browser's own mirror, which knows only
+    // the people the reader follows (Curtis, 2026-09-05: "Dart Green" on the page, their
+    // speakable words on every post).
+    const field = (name) => ((fields || []).find((f) => f.field === name) || {}).value;
+    const authorName = field('name');
+    const authorAvatar = field('avatar');
     const [extra, setExtra] = useState([]);
     const [hasMore, setHasMore] = useState(!!more);
     const [loading, setLoading] = useState(false);
@@ -102,6 +109,8 @@ export const PublicPosts = ({ root, posts, pinned, more, current }) => {
         trusted_only: p.trusted_only,
         settled: p.settled,
         annotations: p.annotations,
+        author_name: authorName,
+        author_avatar: authorAvatar,
         mine,
     }));
 
@@ -139,6 +148,8 @@ export const PublicPosts = ({ root, posts, pinned, more, current }) => {
                       trusted_only: p.trusted_only,
                       settled: p.settled,
                       annotations: p.annotations,
+                      author_name: authorName,
+                      author_avatar: authorAvatar,
                       mine,
                   }
         )];

@@ -8587,3 +8587,11 @@ the word "undefined": the node endpoint answers only `endpoint_id`, seven suites
 sending the literal word as a hint, and the server's base58 decoder padded it up into a
 bogus thirty-two-byte key. The decoder refuses anything but a true key now (a unit claim
 pins it) and the suites spell the hint from the endpoint id.
+
+## 2026-09-05 (cont.): a stranger's page names their posts
+
+Curtis, on a stranger's page: "Dart Green" at the top, their speakable words on every post.
+The page had the name from its own profile answer and built its cards without it, so each
+card fell back to the browser's mirror, which knows only the people the reader follows.
+The page stamps the profile's name and face onto every card it renders now, the pinned
+strip included.

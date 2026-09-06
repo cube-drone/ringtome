@@ -203,6 +203,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
             root=${root}
             posts=${profile.posts}
             pinned=${profile.pinned}
+            fields=${profile.fields}
             more=${profile.posts_more}
             current=${current}
         />
