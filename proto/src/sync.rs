@@ -137,7 +137,7 @@ pub enum SyncMessage {
         /// serves and claims only the named services - scoping only ever NARROWS what the
         /// unscoped exchange would have carried, never widens it.
         wanted: Vec<u32>,
-        /// The depth slot (PEEK.md slice 5, the follow ceiling). `ceiling`: for a content
+        /// The depth slot (PROJECT_PLAN's Peeks, slice 5, the follow ceiling). `ceiling`: for a content
         /// chain the requester holds nothing of, send at most this many NEWEST entries - a
         /// suffix, whose oldest entry's `prev_hash` commits to the prefix. `below`: for a
         /// chain the requester holds from a floor above zero, also send up to this many

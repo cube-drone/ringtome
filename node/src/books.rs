@@ -1,4 +1,4 @@
-//! A notebook published as a book (BOOKS.md slice 2): the rollout.
+//! A notebook published as a book (PROJECT_PLAN's Books, slice 2): the rollout.
 //!
 //! The Publish column writes a PLAN into the persona's private kv (`book_rollout`, keyed by
 //! the bucket's name) naming the minting device; this sweep, on the author's node, carries
@@ -39,7 +39,7 @@ struct Plan {
     error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     book: Option<String>,
-    /// The update post this rollout minted (BOOKS.md ruling 5) - none on the first rollout,
+    /// The update post this rollout minted (PROJECT_PLAN's Books, ruling 5) - none on the first rollout,
     /// where the book itself is the announcement, and none when nothing changed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     update: Option<String>,
@@ -149,7 +149,7 @@ struct SectionPayload {
 #[derive(serde::Serialize)]
 struct BookPayload {
     title: String,
-    /// The title page (BOOKS.md ruling 11): the first page in reading order, whose title
+    /// The title page (PROJECT_PLAN's Books, ruling 11): the first page in reading order, whose title
     /// the book borrows and whose words the book's post carries before the table.
     #[serde(skip_serializing_if = "Option::is_none")]
     cover: Option<PagePayload>,
@@ -706,7 +706,7 @@ mod tests {
     }
 }
 
-/// What a takedown took (BOOKS.md slice 5).
+/// What a takedown took (PROJECT_PLAN's Books, slice 5).
 #[derive(serde::Serialize, Default)]
 pub struct Takedown {
     pub pages: usize,

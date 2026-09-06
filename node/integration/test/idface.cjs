@@ -430,7 +430,7 @@ describe("the avatar (public documents, tenant zero)", function () {
         );
         // The bytes crossed in the same exchange (keyless public backfill): B can serve the
         // thumbnail itself, no second trip to A.
-        // The face lands with the look's shelf, behind the answer (PEEK.md ruling 9): a
+        // The face lands with the look's shelf, behind the answer (PROJECT_PLAN's Peeks, ruling 9): a
         // moment, never a second trip to A.
         let thumb = await bMember(`id/${root2}/docs/${avatarDoc}/thumb`);
         for (let i = 0; i < 30 && thumb.status !== 200; i++) {

@@ -105,11 +105,11 @@ pub struct AppState {
     /// arm outside it regardless. Empty - refusing nothing - on every real node, forever.
     /// See [`net::p2p::Unplugged`] for the whole argument.
     pub unplugged: net::p2p::Unplugged,
-    /// The gate at accept (PEEK.md ruling 14): connection ceilings and the exchange budgets.
+    /// The gate at accept (PROJECT_PLAN's Peeks, ruling 14): connection ceilings and the exchange budgets.
     pub admission: net::admission::Admission,
-    /// Personas whose last exchange ended short of the peer's frontier (PEEK.md ruling 2).
+    /// Personas whose last exchange ended short of the peer's frontier (PROJECT_PLAN's Peeks, ruling 2).
     pub behind: net::admission::Behind,
-    /// Personas this node fetched at PEEK depth and has not fetched whole since (PEEK.md
+    /// Personas this node fetched at PEEK depth and has not fetched whole since (PROJECT_PLAN's Peeks
     /// ruling 7): what a dial promotes, and what the wake pass treats as stale. In memory -
     /// after a boot the relationships decide the depth of the next fetch anyway.
     pub peeked: net::admission::Behind,
@@ -524,7 +524,7 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("publish-due", publish_beat, state.clone(), scheduled::pass);
-    // Book rollouts (BOOKS.md slice 2): plans the Publish column wrote, carried out here.
+    // Book rollouts (PROJECT_PLAN's Books, slice 2): plans the Publish column wrote, carried out here.
     let rollout_beat = if local_test {
         std::env::var("RINGTOME_TEST_BOOK_ROLLOUT_MS")
             .ok()

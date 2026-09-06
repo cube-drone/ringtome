@@ -238,7 +238,7 @@ const { HOST_B, sql: sqlOn } = require("./fetch.cjs");
         const nameOf = (p) => (p.fields || []).find((f) => f.field === "name")?.value;
         assert.equal(nameOf(first), "Before", "the first visit fetched them");
         // The first look answers as soon as the persona's chains land and says its shelf is
-        // still arriving (PEEK.md ruling 9); "nothing left running" is true a moment later.
+        // still arriving (PROJECT_PLAN's Peeks, ruling 9); "nothing left running" is true a moment later.
         let settled = first;
         for (let i = 0; i < 20 && settled.refreshing; i++) {
             await new Promise((r) => setTimeout(r, 400));

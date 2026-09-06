@@ -1,4 +1,4 @@
-//! Admission and budgets (PEEK.md slice 1): the bounds an exchange assumes.
+//! Admission and budgets (PROJECT_PLAN's Peeks, slice 1): the bounds an exchange assumes.
 //!
 //! Before this module the accept loop spawned a task per incoming connection with no gate,
 //! the serve side awaited its first frame with no deadline, and an admitted exchange ran to

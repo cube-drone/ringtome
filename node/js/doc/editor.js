@@ -570,7 +570,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
             ${feat.publish &&
             book &&
             (() => {
-                // Inside a book (BOOKS.md ruling 6) the bar speaks for the page's standing
+                // Inside a book (PROJECT_PLAN's Books, ruling 6) the bar speaks for the page's standing
                 // against the last rollout, not its own publication.
                 const page = pageStanding(row, book.hiddenDocs, book.hidden);
                 const hiddenHere = book.hidden.has(`doc:${docId}`);

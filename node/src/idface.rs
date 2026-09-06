@@ -449,9 +449,9 @@ pub(crate) async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[Strin
 }
 
 /// `fetch_foreign` with the continuation count named: each winning candidate chains up to
-/// `max_passes` budgeted exchanges while the peer still holds more (PEEK.md ruling 2). One
+/// `max_passes` budgeted exchanges while the peer still holds more (PROJECT_PLAN's Peeks, ruling 2). One
 /// pass is the test beat's "pull-once", which is how the cut itself is observed.
-/// Held at PEEK depth (PEEK.md ruling 1): not this node's own, and nobody's dial here names
+/// Held at PEEK depth (PROJECT_PLAN's Peeks, ruling 1): not this node's own, and nobody's dial here names
 /// them - follow, rebroadcast interest, or trust alike (the eviction sweep's "nobody wants"
 /// question; a rebroadcast-only follow is a relationship whose shares chain must arrive
 /// whole, which the first full rig run proved by refusing every share in the tree). Depth
@@ -471,7 +471,7 @@ pub(crate) async fn peek_held(state: &AppState, root_hex: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Promotion (PEEK.md ruling 7): a dial just landed on a persona held as a peek, so fetch
+/// Promotion (PROJECT_PLAN's Peeks, ruling 7): a dial just landed on a persona held as a peek, so fetch
 /// them whole NOW, through the ladder the peek already knows - the demand signal is the
 /// dial, and "follow, then open their page" must find the mirror, not the next beat.
 pub(crate) async fn promote_peek(state: &AppState, root_hex: &str) -> bool {
@@ -479,13 +479,13 @@ pub(crate) async fn promote_peek(state: &AppState, root_hex: &str) -> bool {
     fetch_foreign_at(state, root_hex, &via, crate::net::sync::CONTINUATIONS_PER_WAKE, Some(false)).await
 }
 
-/// How many posts a peek carries (PEEK.md ruling 4), and how long the page waits for them.
+/// How many posts a peek carries (PROJECT_PLAN's Peeks, ruling 4), and how long the page waits for them.
 const PEEK_POSTS: u64 = 20;
 const PEEK_SHELF_WAIT: std::time::Duration = std::time::Duration::from_secs(6);
 /// How often a look is written down - a reload loop is one look.
 const PEEK_LOOK_THROTTLE_MS: i64 = 60 * 1000;
 
-/// A member looked at this peek (PEEK.md ruling 6): the expiry and the node-wide budget's
+/// A member looked at this peek (PROJECT_PLAN's Peeks, ruling 6): the expiry and the node-wide budget's
 /// least-recently-looked order read the stamp. Throttled in memory so a page's dozen reads
 /// are one write.
 pub(crate) async fn touch_look(state: &AppState, root_hex: &str) {
@@ -511,7 +511,7 @@ pub(crate) async fn touch_look(state: &AppState, root_hex: &str) {
 }
 
 /// The peek registry, for the eviction sweep: every fetched root with its last look and
-/// its measured footprint (PEEK.md ruling 6). Owner's read - `foreign_fetches` is this
+/// its measured footprint (PROJECT_PLAN's Peeks, ruling 6). Owner's read - `foreign_fetches` is this
 /// module's table.
 pub(crate) async fn peek_registry(node_db: &crate::db::Db) -> anyhow::Result<Vec<(String, i64, i64)>> {
     node_db
@@ -521,7 +521,7 @@ pub(crate) async fn peek_registry(node_db: &crate::db::Db) -> anyhow::Result<Vec
 }
 
 /// Whether somebody here looked at this persona within the expiry - the keeper a peek
-/// holds its mirror by (PEEK.md ruling 6): a look is the rest clock a peek is judged on.
+/// holds its mirror by (PROJECT_PLAN's Peeks, ruling 6): a look is the rest clock a peek is judged on.
 pub(crate) async fn looked_within(node_db: &crate::db::Db, root_hex: &str, now: i64, expiry_ms: i64) -> bool {
     let row: Option<(i64,)> = node_db
         .fetch_optional("SELECT looked_ms FROM foreign_fetches WHERE root_pubkey = ?1", (root_hex,))
@@ -531,7 +531,7 @@ pub(crate) async fn looked_within(node_db: &crate::db::Db, root_hex: &str, now: 
     row.is_some_and(|(looked,)| now - looked < expiry_ms)
 }
 
-/// The author's pinned posts as this node holds them (PEEK.md ruling 12): the pins off the
+/// The author's pinned posts as this node holds them (PROJECT_PLAN's Peeks, ruling 12): the pins off the
 /// author's own annotations chain (mirror or peek alike carry it), each resolved to the
 /// post - the mirror's shelf, or for a peek whatever the ledger fetched. A pin whose post
 /// is not here yet is simply not in the strip until it lands.
@@ -552,7 +552,7 @@ async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Vec<crate:
             match crate::record::documents::public_doc(&db, &id).await.ok().flatten() {
                 Some(p) => Some(p),
                 None => {
-                    // Beneath the follow ceiling's floor (PEEK.md ruling 13): acquired by id
+                    // Beneath the follow ceiling's floor (PROJECT_PLAN's Peeks, ruling 13): acquired by id
                     // over the fragment road, never by deepening the chain.
                     if let Some(author) = crate::pubkey::decode(root_hex) {
                         crate::fragments::fetch_post(state, root_hex, &author, &id).await;
@@ -572,7 +572,7 @@ async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Vec<crate:
     out
 }
 
-/// The peek's footprint, measured now and written to the registry (PEEK.md ruling 6).
+/// The peek's footprint, measured now and written to the registry (PROJECT_PLAN's Peeks, ruling 6).
 pub(crate) async fn peek_bytes(state: &AppState, root_hex: &str) -> u64 {
     let bytes = crate::fragments::bytes_of_author(state, root_hex).await.unwrap_or(0);
     let _ = state
@@ -585,14 +585,14 @@ pub(crate) async fn peek_bytes(state: &AppState, root_hex: &str) -> u64 {
     bytes
 }
 
-/// Whether this peek may still fetch (PEEK.md ruling 6): under its byte ceiling. Every
+/// Whether this peek may still fetch (PROJECT_PLAN's Peeks, ruling 6): under its byte ceiling. Every
 /// road that fetches for a peek - the shelf, the on-demand reads, the reply door - asks
 /// this first; over the ceiling, the peek keeps what it has and the page says so.
 pub(crate) async fn peek_room(state: &AppState, root_hex: &str) -> bool {
     peek_bytes(state, root_hex).await < state.config.peek_max_bytes
 }
 
-/// The peek's shelf (PEEK.md ruling 4): ask the node that just answered for the persona
+/// The peek's shelf (PROJECT_PLAN's Peeks, ruling 4): ask the node that just answered for the persona
 /// which posts are newest (and pinned), then fetch each as a fragment - its own signed
 /// header, verified here, its labels riding along - and want its body. Bounded by the
 /// page's patience: what lands in time renders now, the rest lands behind the page
@@ -722,10 +722,10 @@ pub(crate) async fn fetch_foreign_passes(
     fetch_foreign_at(state, root_hex, via, max_passes, None).await
 }
 
-/// How far one scrollback backfill reaches beneath the floor (PEEK.md slice 5).
+/// How far one scrollback backfill reaches beneath the floor (PROJECT_PLAN's Peeks, slice 5).
 const BACKFILL_ENTRIES: u64 = 200;
 
-/// Scrollback's backfill (PEEK.md ruling 8): the pager ran out of what a follow holds and
+/// Scrollback's backfill (PROJECT_PLAN's Peeks, ruling 8): the pager ran out of what a follow holds and
 /// the posts chain has a floor above zero - ask the author's nodes for the entries beneath
 /// it, one bounded exchange, and let the caller read again.
 pub(crate) async fn backfill(state: &AppState, root_hex: &str) -> bool {
@@ -774,7 +774,7 @@ async fn fetch_foreign_with(
     depth: Option<bool>,
     ask: crate::net::sync::Ask,
 ) -> bool {
-    // Depth (PEEK.md ruling 1): nobody here follows them, so this is a PEEK - the scoped
+    // Depth (PROJECT_PLAN's Peeks, ruling 1): nobody here follows them, so this is a PEEK - the scoped
     // exchange for identity, profile and annotations, then the shelf as fragments. A
     // followed persona takes the ordinary full pull.
     let peek = match depth {
@@ -1053,7 +1053,7 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
         }
         let fetched_at = fetched.get(&foreign).copied().unwrap_or(0);
         // A persona the last exchange left behind is stale whatever its stamp says
-        // (PEEK.md ruling 2): the wake pass is how a budgeted history keeps arriving. So is
+        // (PROJECT_PLAN's Peeks, ruling 2): the wake pass is how a budgeted history keeps arriving. So is
         // one held at PEEK depth that somebody here now dials (ruling 7): the dial is the
         // demand, and the whole mirror is owed on the next beat.
         if now - fetched_at < stale_ms && !state.behind.is_behind(&foreign) && !state.peeked.is_behind(&foreign) {
@@ -1274,7 +1274,7 @@ async fn public_doc_bytes(
                 let speculative_only = crate::speculative::speculative_only(state, &root_hex)
                     .await
                     .map_err(AppError::Internal)?;
-                // A peek's mirror (PEEK.md ruling 4) has no posts lane either: its words
+                // A peek's mirror (PROJECT_PLAN's Peeks, ruling 4) has no posts lane either: its words
                 // live on the fragment ledger, so it reads fragment-first like a hunch does.
                 // And a peek FOLLOWS THE EYE (ruling 5): a document it never fetched - a
                 // page of a shared book, a post past the newest twenty - is asked for by id
@@ -1292,7 +1292,7 @@ async fn public_doc_bytes(
                     crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
                     fragment_first = from_fragments().await?;
                 }
-                // A FOLLOW held from a floor (PEEK.md ruling 8) may lack an old document
+                // A FOLLOW held from a floor (PROJECT_PLAN's Peeks, ruling 8) may lack an old document
                 // too - a pin beneath the floor, a link into deep history: the ledger, then
                 // by id over the fragment road. Only while the posts chain HAS a floor: a
                 // whole mirror lacking a document lacks it for a reason (retracted,
@@ -1414,7 +1414,7 @@ async fn public_doc_bytes(
         .await
         .map_err(AppError::Internal)?
     else {
-        // A peek at its ceiling never wanted these bytes (PEEK.md ruling 6): say so, rather
+        // A peek at its ceiling never wanted these bytes (PROJECT_PLAN's Peeks, ruling 6): say so, rather
         // than promising bodies that are not on their way.
         if peek_held(state, &root_hex).await && !peek_room(state, &root_hex).await {
             return Err(AppError::NotFound(crate::msg!("idface.this-look-is-full", "this look is full - follow them to keep everything")));
@@ -1619,7 +1619,7 @@ pub async fn id_posts(
     let hosted_here = crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(false);
     let posts = if !hosted_here && peek_held(&state, &root_hex).await {
         touch_look(&state, &root_hex).await;
-        // A peek's shelf is the fragment ledger's (PEEK.md ruling 4): one page, no further.
+        // A peek's shelf is the fragment ledger's (PROJECT_PLAN's Peeks, ruling 4): one page, no further.
         if after.is_some() {
             Vec::new()
         } else {
@@ -1636,14 +1636,14 @@ pub async fn id_posts(
                 .await
                 .unwrap_or_default()
                 .into_iter()
-                // Pages stay off the shelf too (BOOKS.md ruling 4): the book lists them.
+                // Pages stay off the shelf too (PROJECT_PLAN's Books, ruling 4): the book lists them.
                 .filter(|p| p.part_of.is_none())
                 .collect(),
             None => Vec::new(), // nothing held, or unreadable: an empty shelf either way
         }
     };
     let mut posts = posts;
-    // Scrollback backfills on demand (PEEK.md ruling 8): a page that came up short on a
+    // Scrollback backfills on demand (PROJECT_PLAN's Peeks, ruling 8): a page that came up short on a
     // follow held from a floor asks the author's nodes for what lies beneath, then reads
     // again - the reader paging back is the demand.
     if !hosted_here
@@ -1827,7 +1827,7 @@ pub async fn id_posts(
     .into_response())
 }
 
-/// Attach every known label to a page of post JSON (ANNOTATIONS.md slice 2's read, on the
+/// Attach every known label to a page of post JSON (PROJECT_PLAN's Public annotations, slice 2's read, on the
 /// two surfaces that missed it): one page-scoped memo read, bylines for the annotators,
 /// the author's own labels first. The reader's display register filters at the client.
 async fn attach_annotations(
@@ -1896,7 +1896,7 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
         // window's anchor, and the dossier's honest "when it was actually said".
         "dated_ms": p.dated_ms,
         "minted_ms": p.genesis_ms,
-        // The book this is a page of (BOOKS.md), when it is one.
+        // The book this is a page of (PROJECT_PLAN's Books), when it is one.
         "part_of": p.part_of.map(hex::encode),
         "updated_ms": p.head_ms,
         // Whether a re-publication would still be honoured (PROJECT_PLAN: the edit window
@@ -1935,7 +1935,7 @@ pub async fn id_post(
         }
     };
     let mut post = crate::record::documents::public_doc(&db_for_labels, &doc_id).await?;
-    // A peek's permalink (PEEK.md rulings 4 and 5): the mirror has no posts lane, so the
+    // A peek's permalink (PROJECT_PLAN's Peeks, ruling 4 and 5): the mirror has no posts lane, so the
     // fragment ledger answers - fetched by id right now if the peek never held it.
     let mut fragment_refs: Option<Vec<[u8; 16]>> = None;
     let peek_here = peek_held(&state, &root_hex).await;
@@ -1948,7 +1948,7 @@ pub async fn id_post(
         if peek_here {
             touch_look(&state, &root_hex).await;
         }
-        // A peek's permalink, or a follow's beneath its floor (PEEK.md rulings 4, 8, 13):
+        // A peek's permalink, or a follow's beneath its floor (PROJECT_PLAN's Peeks, ruling 4, 8, 13):
         // the ledger answers, fetched by id right now if it never held the document.
         if crate::fragments::held(&state.node_db, &root_hex, &doc).await.ok().flatten().is_none()
             && (!peek_here || peek_room(&state, &root_hex).await)
@@ -1975,7 +1975,7 @@ pub async fn id_post(
             .copied()
             .next()
             .unwrap_or(0);
-            // The author's own public annotations ride the permalink read (ANNOTATIONS.md
+            // The author's own public annotations ride the permalink read (PROJECT_PLAN's Public annotations
             // slice 1) - from the author's shelf, so a mirror-holding node answers too.
             let mut v = post_json(&p, n);
             // The refs are public facts (they ride the signed header and every fragment);
@@ -1998,7 +1998,7 @@ pub async fn id_post(
             }
             // The author's own statements straight off their shelf (read-your-writes for a
             // fresh publish), merged with everything the memo knows - others' labels with
-            // their annotator (ANNOTATIONS.md slice 2). Names ride from the byline cache.
+            // their annotator (PROJECT_PLAN's Public annotations, slice 2). Names ride from the byline cache.
             let doc_hex = hex::encode(p.doc_id);
             let mut labels: Vec<(String, String, String)> = Vec::new();
             if let Ok(rows) =
@@ -2332,7 +2332,7 @@ pub async fn id_profile(
     // What they have PUBLISHED - the public lane's documents, newest first. Keyless and
     // lane-checked like everything on this surface; a private note cannot appear here
     // because the query cannot name one.
-    // A PEEK (PEEK.md ruling 4) holds no posts chain: its shelf is the fragment ledger's -
+    // A PEEK (PROJECT_PLAN's Peeks, ruling 4) holds no posts chain: its shelf is the fragment ledger's -
     // the newest posts the peek fetched, each the author's own signed header.
     let peek = !hosted && peek_held(&state, &root_hex).await;
     let mut peek_full = false;
@@ -2353,7 +2353,7 @@ pub async fn id_profile(
                 .await
                 .unwrap_or_default()
                 .into_iter()
-                // Pages stay off this shelf as off the other (BOOKS.md ruling 4).
+                // Pages stay off this shelf as off the other (PROJECT_PLAN's Books, ruling 4).
                 .filter(|p| p.part_of.is_none())
                 .collect(),
             _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
@@ -2362,7 +2362,7 @@ pub async fn id_profile(
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
     let posts_more = posts.len() as i64 > POSTS_PAGE;
     posts.truncate(POSTS_PAGE as usize);
-    // The pinned strip (PEEK.md ruling 12): the author's own pins, most recently pinned
+    // The pinned strip (PROJECT_PLAN's Peeks, ruling 12): the author's own pins, most recently pinned
     // first, each the post as this node holds it - the mirror's, or for a peek the ledger's.
     let mut pinned: Vec<crate::record::documents::PublicDoc> = pinned_here(&state, &root_hex, peek).await;
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut pinned).await;
@@ -2431,10 +2431,10 @@ pub async fn id_profile(
         "root": root_hex,
         "speakable": speakable::speakable(&root),
         "foreign": !hosted,
-        // A look, not a mirror (PEEK.md ruling 9): nobody here follows them, so this node
+        // A look, not a mirror (PROJECT_PLAN's Peeks, ruling 9): nobody here follows them, so this node
         // holds their identity, profile, labels and newest posts, and no history.
         "peek": peek,
-        // The look is at its ceiling (PEEK.md ruling 6): what is here stays, nothing more
+        // The look is at its ceiling (PROJECT_PLAN's Peeks, ruling 6): what is here stays, nothing more
         // is fetched, and following them is the way to the rest.
         "peek_full": peek_full,
         // Whether an address minted here may wear this node's ORIGIN: only for personas it
@@ -2449,7 +2449,7 @@ pub async fn id_profile(
         // does: a persona we host has no "last synced" - its words are written here.
         "synced_ms": synced_ms,
         "posts": profile_posts,
-        // The pinned strip (PEEK.md ruling 12): above the shelf, in place in it still.
+        // The pinned strip (PROJECT_PLAN's Peeks, ruling 12): above the shelf, in place in it still.
         "pinned": pinned_posts,
         // Whether the shelf goes further back than this first page.
         "posts_more": posts_more,

@@ -676,7 +676,7 @@ struct FeedItem {
     /// twice (Curtis, 2026-08-28).
     #[serde(skip_serializing_if = "Option::is_none")]
     thread_root: Option<ReplyCard>,
-    /// Every label this node knows on the post (ANNOTATIONS.md slice 2): the author's own
+    /// Every label this node knows on the post (PROJECT_PLAN's Public annotations, slice 2): the author's own
     /// first, then others' with the annotator's byline. All of them - the reader's display
     /// register decides at the client which annotators render.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1507,7 +1507,7 @@ pub(crate) async fn after_posted(
             }
         }
     }
-    // The draft's annotations, restated in public about the new post (ANNOTATIONS.md
+    // The draft's annotations, restated in public about the new post (PROJECT_PLAN's Public annotations
     // slice 1) - best-effort, like the pins: a label must not unsay the words.
     {
         let self_root = hex_fixed::<32>(&root, "root")?;
@@ -1537,7 +1537,7 @@ struct BookRolloutResponse {
     status: &'static str,
 }
 
-/// Ask for a rollout (BOOKS.md ruling 8): the plan lands on the persona's private kv naming
+/// Ask for a rollout (PROJECT_PLAN's Books, ruling 8): the plan lands on the persona's private kv naming
 /// THIS device's leaf as the one that mints - so two devices cannot race - and the
 /// book-rollout sweep carries it out in the background. The Publish column polls the plan.
 async fn book_rollout_handler(
@@ -1574,7 +1574,7 @@ async fn book_rollout_handler(
     Ok(Json(BookRolloutResponse { status: "pending" }))
 }
 
-/// Take a book down whole (BOOKS.md slice 5): the book, its pages, its updates.
+/// Take a book down whole (PROJECT_PLAN's Books, slice 5): the book, its pages, its updates.
 async fn book_takedown_handler(
     session: Session,
     State(state): State<AppState>,
@@ -1625,7 +1625,7 @@ async fn resolve_reply_link(
             .await
             .map_err(AppError::Internal)?,
     };
-    // A peek follows the eye (PEEK.md ruling 5): the parent of a reply to a peeked author
+    // A peek follows the eye (PROJECT_PLAN's Peeks, ruling 5): the parent of a reply to a peeked author
     // is fetched by id over the fragment road, right now, rather than refused.
     if header.is_none()
         && crate::idface::peek_held(state, &author_hex).await
@@ -2091,7 +2091,7 @@ async fn rebroadcasts_handler(
 }
 
 /// GET `/api/identity/{root}/public-annotations/{author}/{doc}` - this persona's PRESENT
-/// public statements about one post (ANNOTATIONS.md slice 1): their own labels on their
+/// public statements about one post (PROJECT_PLAN's Public annotations, slice 1): their own labels on their
 /// own post, or what they say about somebody else's.
 async fn public_annotations_handler(
     session: Session,
@@ -2137,7 +2137,7 @@ async fn public_annotation_put_handler(
     // nothing rang it for this append - the memo waited for the frontier sweep. Drain it
     // here, the contact-dial's read-your-writes idiom.
     crate::fold::fold_now(&state, &root).await;
-    // The tagged notice (ANNOTATIONS.md slice 4), to the post's author when that is
+    // The tagged notice (PROJECT_PLAN's Public annotations, slice 4), to the post's author when that is
     // somebody else: the annotation entry itself is the evidence, and the recipient's gate
     // drops it when they already pull us (the derived fold speaks there). A murmur, so
     // best-effort beside the statement, and knocked eagerly like a share's.
@@ -2192,12 +2192,12 @@ async fn public_annotation_delete_handler(
     }))
 }
 
-/// Caps on what publish replicates (ANNOTATIONS.md: "within reason" is counts and lengths,
+/// Caps on what publish replicates (PROJECT_PLAN's Public annotations: "within reason" is counts and lengths,
 /// never a category exclusion). Past the cap, the rest is skipped with a warning - the words
 /// must not fail with a label.
 const REPLICATED_TAGS_CAP: usize = 32;
 
-/// Publish-time replication (ANNOTATIONS.md slice 1): every annotation the draft carries -
+/// Publish-time replication (PROJECT_PLAN's Public annotations, slice 1): every annotation the draft carries -
 /// tags, every set field (description, the claimed date), and its buckets - restated as
 /// public statements on this persona's chain, about the freshly minted post. Copy, don't
 /// flip: the draft keeps its private facts. Best-effort beside the publish, like the pins.
@@ -2397,7 +2397,7 @@ async fn private_kv_put_handler(
     if collection.starts_with("contact:") || collection == "comments" {
         crate::fold::fold_now(&state, &root).await;
     }
-    // Promotion (PEEK.md ruling 7): a dial on a persona this node holds only as a PEEK is
+    // Promotion (PROJECT_PLAN's Peeks, ruling 7): a dial on a persona this node holds only as a PEEK is
     // the demand signal for the whole mirror - fetched now, bounded by the page's patience,
     // so "follow, then open their page" finds their history rather than the next beat.
     if let Some(foreign) = collection.strip_prefix("contact:") {

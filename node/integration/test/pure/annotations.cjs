@@ -1,4 +1,4 @@
-// The display register: whose labels render (ANNOTATIONS.md ruling 5).
+// The display register: whose labels render (PROJECT_PLAN's Public annotations, ruling 5).
 const assert = require('node:assert');
 
 let visibleAnnotations, groupLabels, isEmojiTag;

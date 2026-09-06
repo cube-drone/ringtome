@@ -42,7 +42,7 @@ pub struct ExchangeStats {
     pub bodies_fetched: u64,
     /// The exchange ended short of the peer's frontier - a budget cut on either side, or
     /// the peer simply held more than one pass carries. A mark, never a fault: the next
-    /// pass continues from the frontier (PEEK.md ruling 2).
+    /// pass continues from the frontier (PROJECT_PLAN's Peeks, ruling 2).
     pub behind: bool,
 }
 
@@ -75,7 +75,7 @@ pub fn service_allows_suffix(svc: u32) -> bool {
     svc == service::INBOX_TRUSTED || svc == service::INBOX_STRANGER
 }
 
-/// The content chains a FOLLOW may hold as a suffix (PEEK.md ruling 8, the design act the
+/// The content chains a FOLLOW may hold as a suffix (PROJECT_PLAN's Peeks, ruling 8, the design act the
 /// suffix list's own comment named): the posts chain, on a persona this node does not host.
 /// The oldest held entry's `prev_hash` commits to the whole prefix, so everything held
 /// verifies as authored and a backfill must hash-match the commitment or be refused. A
@@ -83,7 +83,7 @@ pub fn service_allows_suffix(svc: u32) -> bool {
 /// this is asked beside "is this a foreign gate" and never alone.
 pub const CEILING_SERVICES: &[u32] = &[service::POSTS];
 
-/// What one exchange asks for beyond its scope (PEEK.md slice 5): the Hello's depth slot.
+/// What one exchange asks for beyond its scope (PROJECT_PLAN's Peeks, slice 5): the Hello's depth slot.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Ask {
     pub ceiling: u64,
@@ -189,7 +189,7 @@ async fn send_missing(
     let mut sent = 0u64;
     let mut missing = MissingEntries::plan(db, peer_frontiers, include_private, wanted, ask).await?;
     while let Some(bytes) = missing.next().await? {
-        // The send budget (PEEK.md ruling 2): short of the peer's need is a pass, not a
+        // The send budget (PROJECT_PLAN's Peeks, ruling 2): short of the peer's need is a pass, not a
         // failure - they will see they are still behind and come back.
         if !budget.take(bytes.len()) {
             return Ok((sent, true));
@@ -210,7 +210,7 @@ struct ChainSend {
     evidence: Option<Vec<u8>>,
     /// The first seq the peer lacks.
     from_seq: u64,
-    /// A range BENEATH the peer's floor to send first (PEEK.md slice 5, scrollback's
+    /// A range BENEATH the peer's floor to send first (PROJECT_PLAN's Peeks, slice 5, scrollback's
     /// backfill): `(from, to)` inclusive.
     backfill: Option<(u64, u64)>,
 }
@@ -393,7 +393,7 @@ async fn missing_plan(
         let mut from_seq = claimed.map(|(head, _)| head + 1).unwrap_or(0);
         let mut backfill = None;
         if CEILING_SERVICES.contains(&(svc as u32)) {
-            // The follow ceiling (PEEK.md slice 5): a peer holding nothing of this chain and
+            // The follow ceiling (PROJECT_PLAN's Peeks, slice 5): a peer holding nothing of this chain and
             // asking for a ceiling gets its newest `ceiling` entries - a suffix; a peer
             // holding a suffix and asking for `below` gets that many beneath its floor.
             if claimed.is_none() && ask.ceiling > 0 {
@@ -550,7 +550,7 @@ pub(crate) struct IngestOutcome {
     pub ledger_moved: bool,
     /// The read budget ran out before the peer's Done: what follows was never read.
     pub cut: bool,
-    /// The persona's identity chain would exceed the ceiling (PEEK.md ruling 3): the batch
+    /// The persona's identity chain would exceed the ceiling (PROJECT_PLAN's Peeks, ruling 3): the batch
     /// was refused whole and the exchange must end.
     pub over_ceiling: bool,
 }
@@ -596,7 +596,7 @@ async fn ingest_stream(
     loop {
         match read_frame(recv).await? {
             Some(SyncMessage::Entry(bytes)) => {
-                // The read budget (PEEK.md ruling 2): the guard against a peer that never
+                // The read budget (PROJECT_PLAN's Peeks, ruling 2): the guard against a peer that never
                 // says Done. Stop the stream so the sender hears it, ingest what arrived,
                 // and let the caller mark us behind.
                 if !budget.take(bytes.len()) {
@@ -652,7 +652,7 @@ pub(crate) async fn ingest_batch(
     for bytes in raw {
         match SignedEntry::decode(&bytes) {
             Ok(e) if e.verify().is_ok() => {
-                // The depth's scope (PEEK.md ruling 1): what this node holds a persona at is
+                // The depth's scope (PROJECT_PLAN's Peeks, ruling 1): what this node holds a persona at is
                 // decided here, and nothing the peer offers past it is admitted. Private
                 // chains from an unproven peer are refused on the same line, for the reason
                 // the docs above give.
@@ -674,7 +674,7 @@ pub(crate) async fn ingest_batch(
     // it must see both branches of a fork to convict the forker and pick the convergent winner.
     // Resolution is not admission - storage is decided below, against the resolved tree.
     let stored_identity = load_identity_entries(db).await?;
-    // The identity-chain ceiling (PEEK.md ruling 3): authority context is never shallow, so
+    // The identity-chain ceiling (PROJECT_PLAN's Peeks, ruling 3): authority context is never shallow, so
     // the only defence against a staggering one is a number. Over it, nothing of this batch
     // is admitted and the exchange ends; a hosted persona (`None`) trusts its own devices.
     if let Some(ceiling) = identity_ceiling {
@@ -829,7 +829,7 @@ pub(crate) async fn ingest_batch(
         match tree.status(&author) {
             KeyStatus::Active => {
                 let mut prev = stored_chain_head(db, &author, svc).await?;
-                // The follow ceiling (PEEK.md ruling 8): on a FOREIGN gate the posts chain may
+                // The follow ceiling (PROJECT_PLAN's Peeks, ruling 8): on a FOREIGN gate the posts chain may
                 // be held as a suffix - adopted from nothing at a seq above zero, or extended
                 // BENEATH its floor by a backfill whose top entry must hash-match the floor's
                 // own `prev_hash`, the commitment the suffix carried all along.
@@ -1522,13 +1522,13 @@ pub async fn sync_with_peer_scoped(
     addr: EndpointAddr,
     wanted: &[u32],
 ) -> Result<ExchangeStats> {
-    // The ordinary follow asks at the follow ceiling (PEEK.md ruling 8); a scoped exchange
+    // The ordinary follow asks at the follow ceiling (PROJECT_PLAN's Peeks, ruling 8); a scoped exchange
     // that excludes the posts chain is unaffected by it.
     let ask = Ask { ceiling: state.config.follow_posts_ceiling, below: 0 };
     sync_with_peer_asking(state, root_hex, addr, wanted, ask).await
 }
 
-/// `sync_with_peer_scoped` with the depth named (PEEK.md slice 5): `below` asks the peer for
+/// `sync_with_peer_scoped` with the depth named (PROJECT_PLAN's Peeks, slice 5): `below` asks the peer for
 /// entries beneath the posts chain's floor - scrollback's backfill.
 pub async fn sync_with_peer_asking(
     state: &AppState,
@@ -1546,7 +1546,7 @@ pub async fn sync_with_peer_asking(
     )
     .await
     .map_err(|e| anyhow!("connecting to peer: {e}"))?;
-    // The whole-exchange wall clock (PEEK.md ruling 14): the callers' pass timeout bounds
+    // The whole-exchange wall clock (PROJECT_PLAN's Peeks, ruling 14): the callers' pass timeout bounds
     // their WAIT and detaches the work; this bounds the work. Over it, the connection is
     // closed - a trickle is not an exchange.
     let wall = state.admission.limits().exchange_wall_clock;
@@ -1723,7 +1723,7 @@ async fn exchange_on(
     send.finish().ok();
     conn.closed().await; // responder closes once it has ingested our stream
 
-    // Behind (PEEK.md ruling 2): our read was cut, or the peer's claimed heads still sit
+    // Behind (PROJECT_PLAN's Peeks, ruling 2): our read was cut, or the peer's claimed heads still sit
     // above what we hold now - either way the next pass continues from the frontier. The
     // mark is what the wake pass reads; clearing it is what a caught-up exchange says.
     let behind = outcome.cut || {
@@ -1815,7 +1815,7 @@ pub async fn serve(
     state: AppState,
     permit: &mut crate::net::admission::Permit,
 ) -> Result<()> {
-    // The whole-exchange wall clock (PEEK.md ruling 14), the responder's side: over it the
+    // The whole-exchange wall clock (PROJECT_PLAN's Peeks, ruling 14), the responder's side: over it the
     // connection is CLOSED, which is what bounds a detached task's life.
     let wall = state.admission.limits().exchange_wall_clock;
     match tokio::time::timeout(wall, serve_on(&conn, state, permit)).await {
@@ -1832,7 +1832,7 @@ async fn serve_on(
     state: AppState,
     permit: &mut crate::net::admission::Permit,
 ) -> Result<()> {
-    // The first-frame deadline (PEEK.md ruling 14): a connection that opens and says nothing
+    // The first-frame deadline (PROJECT_PLAN's Peeks, ruling 14): a connection that opens and says nothing
     // is holding an unproven seat for nothing.
     let first_frame = state.admission.limits().first_frame;
     let (mut send, mut recv, hello) = match tokio::time::timeout(first_frame, async {
@@ -1906,10 +1906,10 @@ async fn serve_on(
         return Ok(());
     }
 
-    // Named a persona this node serves: out of the unproven pool (PEEK.md ruling 14).
+    // Named a persona this node serves: out of the unproven pool (PROJECT_PLAN's Peeks, ruling 14).
     permit.prove();
 
-    // Depth (PEEK.md ruling 1): a persona nobody here follows is held as a PEEK, whatever the
+    // Depth (PROJECT_PLAN's Peeks, ruling 1): a persona nobody here follows is held as a PEEK, whatever the
     // pusher offers - the exchange narrows to the peek's chains in both directions, and the
     // gate refuses anything past them.
     let peek = crate::idface::peek_held(&state, &root_hex).await;
@@ -2008,7 +2008,7 @@ async fn serve_on(
     }
     if outcome.cut {
         // A push we could not take whole: we are behind this persona, and the wake pass
-        // continues from the frontier (PEEK.md ruling 2).
+        // continues from the frontier (PROJECT_PLAN's Peeks, ruling 2).
         state.behind.mark(&root_hex);
     }
     let (received, rejected) = (outcome.received, outcome.rejected);
@@ -2409,7 +2409,7 @@ pub struct PeerSyncResult {
 /// got dialed. Thirty seconds is generous for a live peer on any network the eager path
 /// cares about; a genuinely slow one still converges by anti-entropy.
 const PEER_PASS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-/// A peek's scope (PEEK.md ruling 4): the chains a persona nobody here follows is held at -
+/// A peek's scope (PROJECT_PLAN's Peeks, ruling 4): the chains a persona nobody here follows is held at -
 /// identity (authority), profile, the published follow and trust edges (small, and what
 /// "trust reveals" reads: a peeking node must learn it was trusted), and the annotations
 /// lane (small, and wrong as a suffix). The posts never come off the posts chain; they
@@ -2421,7 +2421,7 @@ pub const PEEK_SCOPE: &[u32] = &[
     service::ANNOTATIONS_PUBLIC,
 ];
 
-/// How many budgeted exchanges one wake may chain while still behind (PEEK.md ruling 2).
+/// How many budgeted exchanges one wake may chain while still behind (PROJECT_PLAN's Peeks, ruling 2).
 /// The rest is the mark's job.
 pub(crate) const CONTINUATIONS_PER_WAKE: usize = 8;
 
@@ -2441,7 +2441,7 @@ pub async fn sync_peers(
         let task_peer = peer_id.clone();
         let mut attempt = tokio::spawn(async move {
             let addr = dial_addr(&task_state, &task_peer).await?;
-            // Continue while behind (PEEK.md ruling 2), a bounded number of passes per
+            // Continue while behind (PROJECT_PLAN's Peeks, ruling 2), a bounded number of passes per
             // wake: each pass is one budgeted connection, and the mark carries the rest
             // to the next beat.
             let mut passes = 0;
@@ -2668,7 +2668,7 @@ mod tests {
         (outcome.received, outcome.rejected)
     }
 
-    /// PEEK.md ruling 8: on a FOREIGN gate the posts chain may be held as a suffix - adopted
+    /// PROJECT_PLAN's Peeks, ruling 8: on a FOREIGN gate the posts chain may be held as a suffix - adopted
     /// from nothing at a seq above zero - and extended beneath its floor only by a backfill
     /// whose top entry hash-matches the floor's own `prev_hash`. A hosted gate (no identity
     /// ceiling) admits no such thing.
@@ -2713,7 +2713,7 @@ mod tests {
         assert_eq!(refused.received, 0, "a hosted persona's chains are never shallow");
     }
 
-    /// PEEK.md ruling 3: an identity chain that would exceed the ceiling is refused whole,
+    /// PROJECT_PLAN's Peeks, ruling 3: an identity chain that would exceed the ceiling is refused whole,
     /// at the gate, and nothing past the ceiling is stored - while a hosted persona (no
     /// ceiling) admits the same entries.
     #[tokio::test]

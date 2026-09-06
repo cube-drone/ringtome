@@ -233,7 +233,7 @@ pub async fn build_endpoint(
         crate::net::discovery::DiscoveryMode::Mainline => Endpoint::builder(presets::N0),
         _ => Endpoint::builder(presets::Minimal),
     };
-    // Transport limits set by us, not left to the library (PEEK.md ruling 14): a connection
+    // Transport limits set by us, not left to the library (PROJECT_PLAN's Peeks, ruling 14): a connection
     // that goes quiet is gone in thirty seconds, a keep-alive keeps a long validate from
     // reading as quiet, and one connection may not fan out into unbounded streams.
     let transport = iroh::endpoint::QuicTransportConfig::builder()
@@ -296,7 +296,7 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                 match incoming.await {
                     Ok(conn) => {
                         let remote = conn.remote_id();
-                        // Admission (PEEK.md ruling 14), before any dispatch so it covers every
+                        // Admission (PROJECT_PLAN's Peeks, ruling 14), before any dispatch so it covers every
                         // ALPN: over a ceiling the connection is closed now, never parked. The
                         // blob ALPN is proven at birth - hash-capability over public bytes; the
                         // rest start unproven and the sync serve promotes its own once the

@@ -1,5 +1,5 @@
 /*
-    PEEK.md slice 1: every exchange has a budget. The rig runs every node with a sixty-entry
+    PROJECT_PLAN's Peeks, slice 1: every exchange has a budget. The rig runs every node with a sixty-entry
     budget per direction (justfile: RINGTOME_SYNC_BUDGET_ENTRIES=60), far under the default
     five thousand, so a persona with a hundred and fifty posts cannot arrive in one exchange:
     one pass carries a budget's worth and leaves the requester provably behind; the wake's
@@ -10,7 +10,7 @@
     connection that never sends its first frame, an exchange that trickles past the wall
     clock, a flood of connections past the ceiling. Those bounds live in net::admission
     (unit-tested as a gate) and in sync.rs's deadlines; the rig has no malicious peer to
-    drive them, and a fake one is its own arc (PEEK.md residuals).
+    drive them, and a fake one is its own arc (PROJECT_PLAN's Peeks residuals).
 */
 const assert = require("node:assert");
 const dns = require("node:dns");

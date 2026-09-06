@@ -134,7 +134,7 @@ const Snippet = ({ root, docId, query }) => {
 // The three status icons (PUBLISH.md ruling 6), on every row.
 const StatusMark = ({ doc, book }) => {
     // Inside a book, a page's standing against the last rollout replaces its own publish
-    // status (BOOKS.md ruling 6): hidden, new, changed, current. A picture filed in the
+    // status (PROJECT_PLAN's Books, ruling 6): hidden, new, changed, current. A picture filed in the
     // notebook is not a page; it wears nothing here.
     if (book && !isTextDoc(doc)) return null;
     if (book) {
@@ -322,7 +322,7 @@ export const DocsApp = ({ app, current, docId, searchQuery, searchKind, bucket }
     // Column widths: each column left of the editor drags at its right edge (panes.js - the
     // shared resizer strips + `colw:` prefs + CSS-var plumbing).
     const { resizer, colStyle } = useColWidths(root, app.id, ['tags', 'list', 'tree', 'publish']);
-    // A notebook published as a book (BOOKS.md): the switch and the hidden marks, and the
+    // A notebook published as a book (PROJECT_PLAN's Books): the switch and the hidden marks, and the
     // tree that says which pages sit beneath a hidden section - read once here, worn by
     // the rows, the editor's bar, and the Publish column alike.
     const bookFacts = useBookFacts(root);

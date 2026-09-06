@@ -8595,3 +8595,12 @@ The page had the name from its own profile answer and built its cards without it
 card fell back to the browser's mirror, which knows only the people the reader follows.
 The page stamps the profile's name and face onto every card it renders now, the pinned
 strip included.
+
+## 2026-09-06: ANNOTATIONS.md, BOOKS.md and PEEK.md folded into PROJECT_PLAN.md
+
+Three working documents closed: public annotations (labels on posts, the dossier), books
+(publishing a whole notebook), and peeks, ceilings and pins. Each became a section of
+PROJECT_PLAN.md beside "Post visibility" - the shape, the rulings with their numbers kept
+(the code cites them), the invariants, the dials, the residuals - and the files are gone.
+Every citation in the code and the tests now names the plan's section. The
+moment-by-moment record of how each was built stays here.

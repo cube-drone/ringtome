@@ -705,7 +705,7 @@ CREATE TABLE foreign_fetches (
     root_pubkey   TEXT    PRIMARY KEY,
     fetched_at_ms INTEGER NOT NULL,  -- last successful fetch; freshness TTL reads this
     last_via      TEXT,              -- the endpoint key that answered; first refresh candidate
-    -- The peek registry (PEEK.md slice 3): when a member here last LOOKED (the expiry and the
+    -- The peek registry (PROJECT_PLAN's Peeks, slice 3): when a member here last LOOKED (the expiry and the
     -- node-wide budget's LRU read this), and the peek's footprint in bytes as last measured
     -- (fragments and their blobs). Both idle for a mirror somebody follows.
     looked_ms     INTEGER NOT NULL DEFAULT 0,
@@ -769,7 +769,7 @@ CREATE INDEX post_replies_by_reply ON post_replies (reply_doc, reply_author);
 -- otherwise grow with every reply this node knows about anyone.
 CREATE INDEX post_replies_by_replier ON post_replies (reply_author, noted_ms);
 
--- Annotation proofs (ANNOTATIONS.md slice 3): the annotator's exact signed statement and
+-- Annotation proofs (PROJECT_PLAN's Public annotations, slice 3): the annotator's exact signed statement and
 -- its packed delegation path, kept so a label that arrived by fragment can ride the NEXT
 -- fragment onward - virality is a relay of proofs, never of hearsay. One proof per live
 -- statement; a retraction learned by proof deletes it (and its memo row).
@@ -785,7 +785,7 @@ CREATE TABLE annotation_proofs (
 );
 CREATE INDEX annotation_proofs_by_target ON annotation_proofs (target_author, target_doc);
 
--- The annotations memo (ANNOTATIONS.md slice 2): every public annotation this node can
+-- The annotations memo (PROJECT_PLAN's Public annotations, slice 2): every public annotation this node can
 -- verify, from the chains it holds - the author's own labels and anyone else's - one row
 -- per (target, annotator, key, value). Folded on the fold lane per annotator, incremental
 -- by stamp; a retraction on the chain deletes the row. Reads are page-scoped by the posts

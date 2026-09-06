@@ -3757,6 +3757,179 @@ still transcribes to the bell (only a malicious client sends one); a double-tapp
 publish mints one redundant version (the nonce moves the ciphertext hash past the no-op
 bounce); key rotation on revocation is future-posts-only.
 
+### Public annotations: labels on posts (settled 2026-08-29, built 2026-08-29..31)
+
+What a post is said to be, by whom. Tags, description, claimed date and bucket are private
+facts on a draft; publishing restates them as PUBLIC speech, carried the way everything
+public here is carried. Folded here from ANNOTATIONS.md when the arc closed (2026-09-06);
+the moment-by-moment record is HISTORY's.
+
+**The shape.**
+
+1. **A statement on the SPEAKER's chain.** `ANNOTATIONS_PUBLIC` (service 12) holds LWW
+   statements keyed `(target author, target doc, key, value)` - one per tag, one per
+   single-valued key - present or retracted; the same statement whoever speaks, never a
+   shared object. Codec caps: key 64, value 1024, a tag 32; a label past its cap is refused
+   with words.
+2. **Publishing replicates the draft's annotations, all of them, bucket included** - as a
+   DIFF against what the chain already says, so an untouched re-post mints nothing and a
+   tag removed from the draft is retracted in public on the next post.
+3. **Later edits are statements, not versions.** Posts freeze after the edit window; the
+   chain keeps labels mutable for life.
+4. **Two roads to a reader.** By subscription, a node folds an annotator's chain into the
+   node-level `doc_annotations` memo. Virally, a post's fragment (`Have`) carries every
+   proof the relaying node knows - `(annotator, signed entry, auth path)`, byte-budgeted
+   under the frame, the author's first - each verified at the receiving edge against its
+   own annotator and bound to exactly the post it rode with; received proofs are kept for
+   the next hop. Virality is a relay of proofs, never hearsay.
+5. **The reader decides what shows** - amended 2026-08-31 to one rule: everyone's labels,
+   a blocked annotator's never. The old author/followed/everyone register is not read.
+6. **Provenance is always on the label.** The author's labels render plain; anyone else's
+   carry the annotator's byline. Identical labels collapse into one chip worn by everyone
+   who said it, and a chip you have not said is the agree button.
+7. **A third party's label on your post is news** - `notice_kind::TAGGED`, both roads, the
+   comment notice's murmur-grade twin, carrying the label's own words.
+
+**Beyond labels.** The dossier (`GET /api/id/{root}/posts/{doc}/dossier`, the post page's
+folded "post history") names the road every reply and label arrived by - `chain`,
+`fragment`, `envelope`, `door`, or `relay:<endpoint>` for a proof that rode a fragment - so
+carriage has a name and a harassed author can reverse-engineer a vector. Pins (below) and
+the book's restated labels are statements on this lane too.
+
+**Invariants.** Annotations are the speaker's signed claims; no relay can mint, alter or
+re-target one. Everything verifies offline, per statement. Nothing grows unbounded: caps at
+mint and at relay, page-scoped memo reads. The memo is disposable. Not folksonomy-as-truth:
+no global namespace, no vote count - people saying things under their own names.
+
+**Residuals.** A retraction reaches fragment-held labels only when a fragment carries it or
+the annotator's chain is met; the door-learn road records no endpoint; public buckets as
+browsable collections and search over public tags are consumers still to build.
+
+### Books: publishing a whole notebook (settled 2026-09-03, built 2026-09-03..05)
+
+A notebook whose taxonomy holds dozens of documents publishes as one glob: the book, and
+later "GRIMOIRE updated: …". Folded here from BOOKS.md when the arc closed (2026-09-06).
+
+**The rulings.**
+
+1. **A book is a Writer column, not an app**: "Publish", beside tags, items and tree, holding
+   a switch, a ledger, hidden marks and one button. The reader's side is a public page.
+2. **The notebook is the book.** A bucket-level switch changes what the bucket's publication
+   means; the book is minted once onto a stable id the bucket's private facts remember
+   (`books`), and every later rollout is a new VERSION of it.
+3. **Hidden never publishes** - a section or a document marked hidden (`book_hidden`, a
+   private fact beside the taxonomy) is left out, and one hidden after publication is
+   retracted at the next rollout.
+4. **Pages get no feed items of their own.** A page is a real public post carrying header
+   key 19, `part_of`; the fold keeps parts off journals and shelves as a rule of the fold.
+   `part_of` is carried on re-publication like the reply link.
+5. **What reaches feeds is the book and its updates**: one post per rollout, threaded under
+   the book like a reply - "published" with every page, "updated" naming the changed pages
+   as links and the removed ones by name; an order-only rollout re-mints the book quietly.
+6. **Once published, per-document status goes away**: the editor's bar becomes a book bar,
+   Writer's rows wear changed / new / hidden, and the column tracks the DIFF against the
+   last rollout through `published_version` beside `published_as`.
+7. **A page under a living book is updatable while the book lives** - a book's update is a
+   distinct new event, so the edit window that bounds ordinary posts does not apply.
+8. **A rollout is a plan executed in the background** (`book_rollout` on the private kv,
+   naming the minting device; `POST /books/{bucket}/rollout`; the book-rollout sweep mints
+   pages, then the book, then the update - the update last so nothing half-lands).
+9. **The book has no generated body; it carries the tree.** Format `book` (wire id 6,
+   `application/json`): sections, order, pages with their tags. The reader is Writer in
+   read-only mode over it - route `/id/:seg/post/:book/:page`, the first page open by
+   default, in-place navigation, the book's tags under the table filtering it - and
+   threads, replies and the dossier live on the BOOK, never per page.
+10. **Wishes are the book's**: settled and trusted-only set at the first rollout and
+    inherited by every page (a trusted book seals each page under its own key and the book
+    under one the bucket's facts keep). Unpublishing (`DELETE /books/{bucket}`) retracts the
+    book, every page it names and every update, releases the notes to drafts, and forgets
+    the id, so the next rollout mints a fresh book.
+11. **The title page.** The first published page in reading order titles the book, its
+    words ride the book's feed post in full ahead of the table, and the book's tags are the
+    union of its pages' tags.
+
+**Residuals.** Scheduling a rollout; a section published on its own.
+
+### Peeks, ceilings and pins (settled and built 2026-09-05)
+
+A first look at a stranger used to mirror their whole public object, and a persona this
+node had been made to want could fill the disk - the exchange bounded a frame and a blob,
+never a stream. Folded here from PEEK.md when the arc closed (2026-09-06); the rulings keep
+their numbers, since the code cites them.
+
+**The rulings.**
+
+1. **Three depths, chosen by relationship, never by the peer.** *Hosted*: whole. *Followed*
+   (any dial - follow, rebroadcast interest, or trust): the mirror, under the follow ceiling.
+   *Peeked* (nobody here dials them, not a speculative mirror): a shape, below. Depth is a
+   fact about OUR relationships; what a peer offers never widens it.
+2. **Every exchange has a budget** in entries and bytes, per direction, on both sides
+   (`RINGTOME_SYNC_BUDGET_ENTRIES`, `_BYTES`). A cut, or a peer whose claimed heads sit
+   above what we hold, marks the persona BEHIND; the wake pass reads it as stale and the
+   fetch ladders chain up to eight passes per wake.
+3. **Identity chains: whole, first, and capped** (`RINGTOME_IDENTITY_CHAIN_CEILING`) - over
+   it, a persona this node does not host is refused at the gate.
+4. **A peek is** identity, profile, the published follow and trust edges, and the
+   annotations chain (`PEEK_SCOPE`, a scoped exchange), the newest twenty posts and up to
+   twenty pinned ones as fragments through the shelf question on the fragment door
+   (`WantShelf`/`Shelf`, ids only), each verified with its labels riding, and bodies on
+   demand. A peek's mirror has no posts lane: the profile, the shelf page, the permalink,
+   the fragment door and the body route read fragment-first for it, and fetch a document
+   it never held by id on read. The serve side narrows a peeked persona's pushes to the
+   same scope.
+5. **Bodies follow the eye.** A peek fetches words and thumbnails in shelf order while it
+   has room; media comes when opened. A follow fetches pinned bodies first.
+6. **A peek has a footprint and an expiry**: the fetch registry stamps every look and
+   measures the peek's bytes (`RINGTOME_PEEK_MAX_BYTES`, `_TOTAL_BYTES`, `_EXPIRY_MS`);
+   past its ceiling the reads say "this look is full"; the eviction sweep retires a peek
+   nobody has looked at, and the least recently looked-at when all peeks exceed the budget;
+   a looked-at peek keeps, a peek's own fragments do not.
+7. **Promotion is the dial.** A dial on a peeked (or never-fetched) persona fetches them
+   whole in the dial's own request, bounded, then detached; the fetch ladder remembers peek
+   depth in memory so the dial and the wake pass both promote on it.
+8. **A follow has a ceiling too** (`RINGTOME_FOLLOW_POSTS_CEILING`): the posts chain of a
+   persona this node does not host is fetched as a SUFFIX of its newest entries, the oldest
+   held entry's `prev_hash` committing to the prefix. The Hello's depth slot asks for the
+   ceiling and, beneath a held floor, for a backfill walked DOWN from the floor so a budget
+   cut still joins; the gate, on a foreign persona only, adopts a suffix and admits a
+   backfill only when its top entry hash-matches the floor's commitment, then lowers the
+   lane's view watermark so the fold sees what landed. Scrollback backfills when a page
+   comes up short. Honest costs: an old post edited inside the suffix is dated by its
+   earliest held version; the re-fold after a backfill is bounded, not free.
+9. **Render at first entry.** The persona answers the moment its chains land; the shelf
+   lands behind it and the page polls, spinning, while the node says the posts are still
+   arriving. A peek says "a look at their newest posts - follow them to keep up".
+10. **Trusted-only is unchanged**: a sealed post peeked shows its title and refuses its
+    body.
+11. **A public pin is a public annotation** - `pin = yes`, said and retracted through the
+    label routes, honoured only when the annotator is the author.
+12. **Pinned first, and only once.** The author's page opens with the pinned strip - most
+    recently pinned first, twenty at most - and leaves the pinned posts out of "recent
+    posts"; the API's pages and the feed keep them in place. Every card wears a pinned chip;
+    the author's card wears a push-pin toggle beside the takedown.
+13. **Pinned posts are fetched first at every depth**: the shelf answer names the pins, the
+    missing-bodies walk moves pinned bodies to the front, and a pin beneath a follow's
+    floor is fetched by id over the fragment road.
+14. **Admission is a budget too, and it refuses rather than queues** (`net::admission`):
+    ceilings on concurrent connections, on the unproven among them, and per peer, closed at
+    accept over any of them; a first-frame deadline; a whole-exchange wall clock that
+    closes the connection on both sides; transport limits set by us at endpoint
+    construction (`RINGTOME_ADMIT_*`, `RINGTOME_SYNC_FIRST_FRAME_MS`,
+    `RINGTOME_SYNC_EXCHANGE_MAX_MS`).
+
+**Invariants.** No exchange transfers more than its budget; no chain grows past its
+ceiling on a node that did not host it. A peek never holds a posts chain; every post it
+holds proves itself alone. Work is never queued behind a budget. Refusal is uniform.
+
+**Trust without interest keeps the identity.** A person you trust but do not read is
+someone you KNOW: any dial fetches them and keeps them fresh, the bell and the thread know
+their name, the trusted default admits their replies, and their page hides only what they
+seal from you.
+
+**Residuals.** A misbehaving peer for the rig (the deadlines and the flood ceiling have unit
+proofs only); a backoff on the dialer's side of "busy"; snapshots for fold-based views under
+a suffix.
+
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
 There is no roster of an identity's nodes, no membership protocol, and no coordinator (**No Central Authority**, Doctrine). Each node's picture of the

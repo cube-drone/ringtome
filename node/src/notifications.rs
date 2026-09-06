@@ -35,7 +35,7 @@ pub const KIND_REBROADCAST: &str = "rebroadcast";
 pub const KIND_COMMENT: &str = "comment";
 
 /// "Someone you follow labelled your post." The derived twin of
-/// `deliver::notice_kind::TAGGED` (ANNOTATIONS.md slice 4) - a murmur; the row's doc is
+/// `deliver::notice_kind::TAGGED` (PROJECT_PLAN's Public annotations, slice 4) - a murmur; the row's doc is
 /// the post, and rows collapse per (reader, annotator, post): three tags from one person
 /// on one post are one line in the bell.
 pub const KIND_TAGGED: &str = "tagged";
@@ -153,7 +153,7 @@ async fn refresh_from_inner(
     let comment_leg = has_posts
         && (crate::replies::replies_moved(state, &db, author_root, "comment-notices").await?
             || force);
-    // The labels leg (ANNOTATIONS.md slice 4) reads the whole folded view: it is small
+    // The labels leg (PROJECT_PLAN's Public annotations, slice 4) reads the whole folded view: it is small
     // (one row per statement, tombstones included) and the leg diffs against standing rows.
     let labels = if has_labels {
         crate::record::imaol::public_annotations(&db)
@@ -286,7 +286,7 @@ async fn refresh_from_inner(
     // as everything above. Deletion has no retraction entry to read - a deleted reply's
     // header simply leaves the shelf - so the fold diffs: rows this author no longer backs
     // recede with the pass that noticed (the replies memo's sweep, one table over).
-    // "Someone you follow labelled your post" (ANNOTATIONS.md slice 4). The reader is the
+    // "Someone you follow labelled your post" (PROJECT_PLAN's Public annotations, slice 4). The reader is the
     // post's author; the row collapses per (reader, annotator, post). Same follow-edge
     // rule as the share leg; recedes by diff when the annotator withdraws every label on
     // that post.

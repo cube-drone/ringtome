@@ -1,4 +1,4 @@
-//! The annotations memo (ANNOTATIONS.md slice 2): what every post is said to be, by whom,
+//! The annotations memo (PROJECT_PLAN's Public annotations, slice 2): what every post is said to be, by whom,
 //! as this node can verify it from the chains it holds.
 //!
 //! Source: each held persona's `ANNOTATIONS_PUBLIC` chain, folded on the fold lane per
@@ -153,7 +153,7 @@ pub async fn for_posts(
 }
 
 // ---------------------------------------------------------------------------------------------
-// The viral road (ANNOTATIONS.md slice 3): labels ride the fragment as the annotator's own
+// The viral road (PROJECT_PLAN's Public annotations, slice 3): labels ride the fragment as the annotator's own
 // signed proofs, verified at the receiving edge, noted into the memo, and KEPT - so the
 // next hop's fragment carries them onward. Virality is a relay of proofs, never hearsay.
 

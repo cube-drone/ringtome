@@ -49,7 +49,7 @@ pub struct BeatRequest {
     pub at_ms: Option<i64>,
     /// The "evict" pass's peek expiry, in milliseconds. Absent, ZERO - the beat's posture is
     /// "evict NOW, on claims, never on clocks", and a peek's look is a clock exactly as the
-    /// mtime grace is (PEEK.md slice 3). A claim that wants the real expiry names one.
+    /// mtime grace is (PROJECT_PLAN's Peeks, slice 3). A claim that wants the real expiry names one.
     pub peek_expiry_ms: Option<i64>,
 }
 
@@ -89,7 +89,7 @@ pub async fn beat(
             Ok(())
         }
         ("pull-once", Some(r)) => {
-            // ONE budgeted exchange, no continuation (PEEK.md slice 1): the way a claim
+            // ONE budgeted exchange, no continuation (PROJECT_PLAN's Peeks, slice 1): the way a claim
             // watches a cut happen and the behind mark land. ONE candidate too - the
             // ladder dials its hints in parallel and each winner is its own exchange, so
             // only the implicit root rung (the founder's serving record) is offered here.

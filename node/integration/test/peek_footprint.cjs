@@ -1,5 +1,5 @@
 /*
-    PEEK.md slice 3: a peek has a footprint and an expiry. The rig runs every node with a
+    PROJECT_PLAN's Peeks, slice 3: a peek has a footprint and an expiry. The rig runs every node with a
     32 KB per-peek ceiling (justfile: RINGTOME_PEEK_MAX_BYTES=32768), so a stranger whose
     posts are four kilobytes each cannot all cross: the look fetches bodies in shelf order
     until the ceiling, wants nothing past it, and says so. The evict beat (whose default peek

@@ -104,7 +104,7 @@ pub mod notice_kind {
     /// your post is conversation, so the classifier tiers it by sender like a public edge,
     /// never as a murmur.
     pub const COMMENT: u32 = 3;
-    /// "I labelled your post" (ANNOTATIONS.md slice 4) - evidence is the sender's own
+    /// "I labelled your post" (PROJECT_PLAN's Public annotations, slice 4) - evidence is the sender's own
     /// signed public annotation naming the recipient as the post's author. A murmur, like
     /// a share: news, not conversation. The claim's `doc_id` is the post.
     pub const TAGGED: u32 = 4;
@@ -1062,7 +1062,7 @@ mod tests {
         SignedEnvelope::create(&envelope, leaf).unwrap()
     }
 
-    /// ANNOTATIONS.md slice 4: a tagged notice's evidence is the sender's own annotation
+    /// PROJECT_PLAN's Public annotations, slice 4: a tagged notice's evidence is the sender's own annotation
     /// naming the recipient's post; a withdrawn label and a label on somebody else's post
     /// both refuse.
     #[test]

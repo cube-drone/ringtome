@@ -1,5 +1,5 @@
 /*
-    PEEK.md slice 2: a peek is a shape, not a mirror. A member on another node looks at a
+    PROJECT_PLAN's Peeks, slice 2: a peek is a shape, not a mirror. A member on another node looks at a
     stranger nobody there follows: the node syncs the stranger's identity, profile and
     annotations chains (scoped), asks the answering node for the shelf, and fetches the
     newest twenty posts as fragments - each the author's own signed header, verified at

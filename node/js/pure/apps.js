@@ -143,7 +143,7 @@ const DEFAULT_FEATURES = {
     tree: false, // the document tree pane (doc/tree.js), right of the list
     pin: true, // the pin chip - floats the doc atop the LIST, so list-less apps drop it
     publish: true, // the publish chip (PUBLISH.md): the feed composer has its own Post button
-    bookColumn: false, // the Publish column (BOOKS.md): a notebook published as a book
+    bookColumn: false, // the Publish column (PROJECT_PLAN's Books): a notebook published as a book
 };
 
 /// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back

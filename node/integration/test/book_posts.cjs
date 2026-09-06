@@ -1,5 +1,5 @@
 /*
-    BOOKS.md slice 2: a notebook rolls out as one book. Pages publish through the door
+    PROJECT_PLAN's Books, slice 2: a notebook rolls out as one book. Pages publish through the door
     carrying `part_of`; the fold keeps them off feeds and shelves; the book document carries
     the tree; hidden never publishes. The follower's feed shows one book post and no pages,
     and every page has a permalink that opens from the book.

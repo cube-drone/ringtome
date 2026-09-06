@@ -5,7 +5,7 @@ before(async () => {
     ({ bookModes, isBookBucket, hiddenSetOf, hiddenDocsOf, pageStanding, bookLedger, bookFacts, parseBook, readingOrder, neighbours, titlePageOf, bookTags, filterBook } = await import('../../../js/pure/books.js'));
 });
 
-describe('books: the private bookkeeping (BOOKS.md slice 1)', () => {
+describe("books: the private bookkeeping (PROJECT_PLAN's Books, slice 1)", () => {
     it('reads the switch and the hidden marks off kv rows', () => {
         const modes = bookModes([{ key: 'grimoire', value: '{"mode":"book"}' }, { key: 'junk', value: 'not json' }, { key: 'off', value: '{}' }]);
         assert.deepEqual(modes, { grimoire: 'book' });
@@ -49,7 +49,7 @@ describe('books: the private bookkeeping (BOOKS.md slice 1)', () => {
     });
 });
 
-describe('books: the payload (BOOKS.md slice 2)', () => {
+describe("books: the payload (PROJECT_PLAN's Books, slice 2)", () => {
     it('keeps every fact the rollout writes, and reads a book payload back, counting its pages', () => {
         const facts = bookFacts([{ key: 'g', value: '{"mode":"book","published_as_book":"abc"}' }, { key: 'x', value: 'nope' }]);
         assert.deepEqual(facts, { g: { mode: 'book', published_as_book: 'abc' } });
@@ -62,7 +62,7 @@ describe('books: the payload (BOOKS.md slice 2)', () => {
     });
 });
 
-describe('books: reading order (BOOKS.md slice 4)', () => {
+describe("books: reading order (PROJECT_PLAN's Books, slice 4)", () => {
     let book;
     before(() => { book = parseBook('{"title":"g","sections":[{"title":"part one","pages":[{"post":"p1","title":"one"},{"post":"p2","title":"two"}],"sections":[{"title":"deeper","pages":[{"post":"p3","title":"three"}],"sections":[]}]}],"pages":[{"post":"p0","title":"loose"}]}'); });
     it('walks top-level pages first, then sections depth-first, each page with its trail', () => {
@@ -80,7 +80,7 @@ describe('books: reading order (BOOKS.md slice 4)', () => {
     });
 });
 
-describe('books: the title page (BOOKS.md ruling 11)', () => {
+describe("books: the title page (PROJECT_PLAN's Books, ruling 11)", () => {
     it('is the first page in reading order over the private tree, hidden skipped, else the first loose page', () => {
         const docs = [{ doc_id: 'p1' }, { doc_id: 'p2' }, { doc_id: 'p3' }, { doc_id: 'z' }];
         const tree = { taxonomy_id: 'root', members: [

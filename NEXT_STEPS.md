@@ -26,10 +26,8 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 ### Public posts and fan-out
 
 * @user (directed comments)
-* pinned posts
 * blocked/hidden tags
 * content warning (18+)
-* public taxonomy
 * Search my posts
 * Search my feed
 * mini-links (the kind you see in replies and your notifications) need to display more content
@@ -105,7 +103,7 @@ Does a mutual follow+trust make a "friend"?
 
 ### Sync
 
-* Peeks and budgets — [PEEK.md](PEEK.md) (2026-09-05): every exchange budgeted, a first
+* Peeks and budgets — PROJECT_PLAN's "Peeks, ceilings and pins" (2026-09-05): every exchange budgeted, a first
   look at a stranger held as a shape (identity, annotations, twenty posts as fragments)
   with a footprint and an expiry, the identity chain capped; public pins (a `pin`
   annotation, the pinned strip, pinned fetched first) as slice 4; five slices, all built

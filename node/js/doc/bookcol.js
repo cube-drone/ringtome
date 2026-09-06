@@ -1,4 +1,4 @@
-// The Publish column (BOOKS.md slice 1): a notebook published as a book. One column beside
+// The Publish column (PROJECT_PLAN's Books, slice 1): a notebook published as a book. One column beside
 // tags, items, and tree - the switch, the hidden marks, the ledger against the last
 // rollout, and the button. This slice is the private bookkeeping and the surface; the
 // rollout itself (slice 2) is what the button will do.
@@ -68,7 +68,7 @@ export function useBookFacts(root) {
     return { modes, books, hidden, setBook, mark, refresh };
 }
 
-/// The rollout plan for a bucket, polled while it moves (BOOKS.md ruling 8): null when there
+/// The rollout plan for a bucket, polled while it moves (PROJECT_PLAN's Books, ruling 8): null when there
 /// is none; `{ status, done, total, error, book }` otherwise.
 export function useRolloutPlan(root, bucket, onSettled) {
     const [plan, setPlan] = useState(null);

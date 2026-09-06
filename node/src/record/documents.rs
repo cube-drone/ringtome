@@ -39,7 +39,7 @@ pub enum Format {
     WebmAv1,
     /// Ogg Opus: the canonical audio form. `<audio>`.
     OggOpus,
-    /// A notebook published whole (BOOKS.md): the published tree as JSON. Public only.
+    /// A notebook published whole (PROJECT_PLAN's Books): the published tree as JSON. Public only.
     Book,
 }
 
@@ -712,7 +712,7 @@ pub struct PublicText<'a> {
     pub settled: bool,
     /// Trusted readers only (PROJECT_PLAN's Post visibility slice 2): carried the same way.
     pub trusted_only: bool,
-    /// The book this is a page of (BOOKS.md): set by a rollout, never by the feed's door.
+    /// The book this is a page of (PROJECT_PLAN's Books): set by a rollout, never by the feed's door.
     pub part_of: Option<[u8; 16]>,
     /// The author's preferred date off the draft's `display_date` field (PUBLISH.md),
     /// re-read at every publish - a date change inside the edit window re-sorts the post.
@@ -739,7 +739,7 @@ pub async fn save_public_text(
     // chain knows when this document freezes. A mint anchors at its own moment; a further
     // version carries the post's memoized genesis forward unchanged - an honest author's
     // genesis never moves.
-    // A page stays a page across re-publication (BOOKS.md ruling 4, 2026-09-05): the book
+    // A page stays a page across re-publication (PROJECT_PLAN's Books, ruling 4, 2026-09-05): the book
     // it belongs to is carried like the reply link, never re-supplied by the feed's door.
     let mut inherited_part_of: Option<[u8; 16]> = None;
     let (doc_id, parents, genesis_ms, reply_to, thread_root, settled, trusted_only) = match onto {
@@ -857,7 +857,7 @@ pub struct PublishFlags {
     pub settled: bool,
     pub trusted_only: bool,
     pub dated_ms: Option<i64>,
-    /// The book this publish is a page of (BOOKS.md ruling 4); the rollout sets it.
+    /// The book this publish is a page of (PROJECT_PLAN's Books, ruling 4); the rollout sets it.
     pub part_of: Option<[u8; 16]>,
 }
 
@@ -2598,7 +2598,7 @@ pub async fn fetch_missing_bodies(
                 }
             }
         }
-        // Pinned first (PEEK.md ruling 13): on a slow link the top of the author's page
+        // Pinned first (PROJECT_PLAN's Peeks, ruling 13): on a slow link the top of the author's page
         // fills before the backlog. The author's pins, their bodies moved to the front.
         if !missing.is_empty() {
             let mut front: Vec<iroh_blobs::Hash> = Vec::new();

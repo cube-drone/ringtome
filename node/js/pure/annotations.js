@@ -1,4 +1,4 @@
-// Whose labels a reader sees (ANNOTATIONS.md ruling 5, simplified 2026-08-31 - the
+// Whose labels a reader sees (PROJECT_PLAN's Public annotations, ruling 5, simplified 2026-08-31 - the
 // author/followed/everyone dial was too conservative and fussy, Curtis's words): everyone's,
 // always. A label is a claim under a name, and the name is the safeguard; the one filter
 // that survives is the block, because a blocked annotator never shows anywhere. The

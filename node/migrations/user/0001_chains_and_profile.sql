@@ -96,7 +96,7 @@ CREATE TABLE doc_versions (
     preview_hash  BLOB,
     animation     INTEGER NOT NULL DEFAULT 0, -- header key 18: the bytes were an animated image
                                              --   before the crush - a silent loop (2026-09-03)
-    part_of       BLOB,                  -- header key 19: the book this is a page of (BOOKS.md)
+    part_of       BLOB,                  -- header key 19: the book this is a page of (PROJECT_PLAN's Books)
     refs          BLOB    NOT NULL DEFAULT X'', -- concatenated 16-byte ids of the documents this
                                                 --   body embeds (2026-08-14): the header's derived
                                                 --   index, folded out so "which media does this
@@ -138,7 +138,7 @@ CREATE TABLE doc_heads (
     thumb_hash    BLOB,
     preview_hash  BLOB,
     animation     INTEGER NOT NULL DEFAULT 0, -- header key 18, off the display head
-    part_of       BLOB,                  -- header key 19, off the display head (BOOKS.md)
+    part_of       BLOB,                  -- header key 19, off the display head (PROJECT_PLAN's Books)
     logical_heads INTEGER NOT NULL,     -- how many logical heads the resolver kept
     diverged      INTEGER NOT NULL,     -- logical_heads > 1, precomputed for the list read
     genesis_ms    INTEGER NOT NULL,     -- claimed stamp of the parentless/earliest version
@@ -282,7 +282,7 @@ CREATE TABLE rebroadcasts (
     PRIMARY KEY (author_root, doc_id)
 );
 
--- Public annotations (ANNOTATIONS.md slice 1): this persona's own statements about posts -
+-- Public annotations (PROJECT_PLAN's Public annotations, slice 1): this persona's own statements about posts -
 -- the author's labels replicated at publish, and anything they say about anyone else's
 -- post - folded LWW from the annotations-public chain, one row per (target, key, value).
 -- `present` 0 is the folded retraction, kept so an older statement cannot win it back.

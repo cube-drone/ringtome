@@ -228,7 +228,7 @@ impl Store {
         Rebroadcasts { store: self }
     }
 
-    /// This persona's public annotation statements (ANNOTATIONS.md).
+    /// This persona's public annotation statements (PROJECT_PLAN's Public annotations).
     pub fn public_annotations(&self) -> PublicAnnotations<'_> {
         PublicAnnotations { store: self }
     }

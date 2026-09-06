@@ -92,7 +92,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields }) => {
         setLoading(false);
     };
 
-    // The pinned strip (PEEK.md ruling 12): the author's pins, most recently pinned first,
+    // The pinned strip (PROJECT_PLAN's Peeks, ruling 12): the author's pins, most recently pinned first,
     // above the shelf - and OUT of the shelf below (Curtis, 2026-09-05: "we just saw it").
     const pinnedIds = new Set((pinned || []).map((p) => p.doc_id));
     const pinnedItems = (pinned || []).map((p) => ({

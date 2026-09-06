@@ -347,7 +347,7 @@ const base58 = async (host) => {
         // And the member surface answers honestly. A visit is a demand signal (this module's
         // "recreation is demand-driven and therefore safe"), so the door does not say
         // "nothing held" - it re-mints the persona at the depth the relationships admit,
-        // which for a stranger nobody dials is a PEEK (PEEK.md ruling 1), and says so. Until
+        // which for a stranger nobody dials is a PEEK (PROJECT_PLAN's Peeks, ruling 1), and says so. Until
         // 2026-09-05 this claim expected a 404 here: the re-fetch was failing on a journal
         // the eviction had deleted, and the 404 was that bug wearing honesty's clothes.
         const again = await cora(`api/id/${authorRoot}/profile`);

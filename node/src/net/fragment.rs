@@ -330,8 +330,8 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
 /// document we know to be dead is dead no matter what we still have lying around. Only then
 /// our own fragment ledger, so a live fragment can be relayed one more hop by a node that
 /// never held the author either.
-/// The shelf door (PEEK.md slice 2): the author's newest post ids off a chain this node
-/// holds - its own, or a mirror it keeps for a follower. Pages stay off (BOOKS.md ruling 4),
+/// The shelf door (PROJECT_PLAN's Peeks, slice 2): the author's newest post ids off a chain this node
+/// holds - its own, or a mirror it keeps for a follower. Pages stay off (PROJECT_PLAN's Books, ruling 4),
 /// and a speculative mirror answers nothing, for the reasons `from_held_chain` gives. A
 /// node holding no chain answers an empty shelf: "nothing to say" is a fact, not a fault.
 async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentMessage {
@@ -349,7 +349,7 @@ async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentM
                     .filter(|p| p.part_of.is_none())
                     .map(|p| p.doc_id)
                     .collect();
-                // The author's pins (PEEK.md ruling 13): named first, so a peek fetches
+                // The author's pins (PROJECT_PLAN's Peeks, ruling 13): named first, so a peek fetches
                 // them ahead of the window however deep they sit.
                 let pinned = crate::record::imaol::pinned_docs(&db, &author_hex)
                     .await
@@ -365,7 +365,7 @@ async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentM
 async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {
     let author_hex = hex::encode(author);
     let mut answer = answer_inner(state, &author_hex, doc_id).await;
-    // The labels ride the words (ANNOTATIONS.md slice 3): every proof this node can attach,
+    // The labels ride the words (PROJECT_PLAN's Public annotations, slice 3): every proof this node can attach,
     // in one place for every Have - the mirror's, the fragment ledger's, whichever shelf
     // answered. Attach-after keeps the sources honest about the WORDS and this line honest
     // about the labels.
@@ -461,7 +461,7 @@ async fn from_held_chain(
     if crate::speculative::speculative_only(state, author_hex).await? {
         return Ok(None);
     }
-    // A mirror held at PEEK depth (PEEK.md ruling 4) carries no posts chain at all: it must
+    // A mirror held at PEEK depth (PROJECT_PLAN's Peeks, ruling 4) carries no posts chain at all: it must
     // not answer "unknown" for words the fragment ledger beside it holds. Fall through.
     if crate::idface::peek_held(state, author_hex).await {
         return Ok(None);
@@ -708,7 +708,7 @@ pub async fn fetch_from(
     ask(state, endpoint_id, author, doc_id).await
 }
 
-/// The shelf question to one named endpoint (PEEK.md slice 2): `(posts, pinned)`, newest
+/// The shelf question to one named endpoint (PROJECT_PLAN's Peeks, slice 2): `(posts, pinned)`, newest
 /// first, ids only. Nothing here is believed - every id is then fetched and verified on its
 /// own; a lying shelf costs at most a handful of refused fragments.
 pub async fn fetch_shelf_from(

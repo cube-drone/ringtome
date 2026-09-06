@@ -1,5 +1,5 @@
 /*
-    PEEK.md slice 4: public pins. A pin is the author's own `pin` statement on the public
+    PROJECT_PLAN's Peeks, slice 4: public pins. A pin is the author's own `pin` statement on the public
     annotations lane about their own post - it travels wherever their chain and proofs do,
     the page opens with the pinned strip, and a peek fetches the pinned posts ahead of the
     window however deep they sit. Unpinning retracts the statement: the strip empties

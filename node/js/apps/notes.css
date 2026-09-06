@@ -127,7 +127,7 @@
     width: var(--w-tree, 270px);
 }
 
-/* The Publish column (BOOKS.md): a notebook published as a book. */
+/* The Publish column (PROJECT_PLAN's Books): a notebook published as a book. */
 .notes-columns .book-column {
     width: var(--w-publish, 260px);
 }

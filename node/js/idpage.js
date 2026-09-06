@@ -92,7 +92,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
                 .then((p) => {
                     if (!live) return;
                     setProfile(p);
-                    // A peek's posts land behind the answer (PEEK.md ruling 9): keep asking
+                    // A peek's posts land behind the answer (PROJECT_PLAN's Peeks, ruling 9): keep asking
                     // while the node says they are still arriving, a little longer than a
                     // plain revalidation warrants.
                     if (p.refreshing && tries > 0) timer = setTimeout(() => look(tries - 1), p.peek ? 1000 : 1500);

@@ -1,4 +1,4 @@
-// The book reader (BOOKS.md slice 4): Writer in read-only mode over a book's public tree.
+// The book reader (PROJECT_PLAN's Books, slice 4): Writer in read-only mode over a book's public tree.
 // The tree on the left, the reading pane on the right, prev / up / next along the top -
 // over public documents, at the book's permalink. A page's own permalink lands here too,
 // with that page open, because a page is a place in a book before it is a post.

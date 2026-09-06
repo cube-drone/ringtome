@@ -159,7 +159,7 @@ export const Icons = {
     // The publish bar's verbs (PUBLISH.md): say the changes again; take it back.
     update: Swap,
     unpublish: ArrowCounterClockwise,
-    // A notebook published as a book (BOOKS.md): the column and a hidden mark; a page never
+    // A notebook published as a book (PROJECT_PLAN's Books): the column and a hidden mark; a page never
     // rolled out wears `pageNew` above.
     book: BookOpen,
     hidden: EyeSlash,

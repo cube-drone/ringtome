@@ -66,14 +66,14 @@ pub struct Config {
     /// bound that the transcode enforces on media output. A legitimate note is always kilobytes;
     /// this only caps a novel-stuffer. Override with `RINGTOME_MAX_DOCUMENT_BYTES`.
     pub max_document_bytes: usize,
-    /// Admission (PEEK.md ruling 14, `net::admission`): incoming connections held at once,
+    /// Admission (PROJECT_PLAN's Peeks, ruling 14, `net::admission`): incoming connections held at once,
     /// how many of those may still be unproven, and how many one peer may hold. Over any of
     /// them a connection is closed at accept. `RINGTOME_ADMIT_MAX_CONNECTIONS`,
     /// `RINGTOME_ADMIT_MAX_UNPROVEN`, `RINGTOME_ADMIT_MAX_PER_PEER`.
     pub admit_max_connections: usize,
     pub admit_max_unproven: usize,
     pub admit_max_per_peer: usize,
-    /// The exchange budgets (PEEK.md ruling 2): entries and bytes one direction of one
+    /// The exchange budgets (PROJECT_PLAN's Peeks, ruling 2): entries and bytes one direction of one
     /// exchange may carry before it ends short and the requester is marked behind.
     /// `RINGTOME_SYNC_BUDGET_ENTRIES`, `RINGTOME_SYNC_BUDGET_BYTES`.
     pub sync_budget_entries: u64,
@@ -82,17 +82,17 @@ pub struct Config {
     /// milliseconds. `RINGTOME_SYNC_FIRST_FRAME_MS`, `RINGTOME_SYNC_EXCHANGE_MAX_MS`.
     pub sync_first_frame_ms: u64,
     pub sync_exchange_max_ms: u64,
-    /// The identity-chain ceiling (PEEK.md ruling 3): a persona this node does not host whose
+    /// The identity-chain ceiling (PROJECT_PLAN's Peeks, ruling 3): a persona this node does not host whose
     /// identity entries would exceed it is refused at the gate. `RINGTOME_IDENTITY_CHAIN_CEILING`.
     pub identity_chain_ceiling: usize,
-    /// The peek's footprint (PEEK.md ruling 6): bytes one peek may hold (fragments and their
+    /// The peek's footprint (PROJECT_PLAN's Peeks, ruling 6): bytes one peek may hold (fragments and their
     /// blobs) before it stops fetching; bytes all peeks may hold before the least recently
     /// looked at is evicted; and how long an unlooked-at peek lives. `RINGTOME_PEEK_MAX_BYTES`,
     /// `RINGTOME_PEEK_TOTAL_BYTES`, `RINGTOME_PEEK_EXPIRY_MS`.
     pub peek_max_bytes: u64,
     pub peek_total_bytes: u64,
     pub peek_expiry_ms: i64,
-    /// The follow ceiling (PEEK.md ruling 8): how many newest POSTS entries a follow of a
+    /// The follow ceiling (PROJECT_PLAN's Peeks, ruling 8): how many newest POSTS entries a follow of a
     /// persona this node does not host fetches at first - a suffix whose oldest entry
     /// commits to the prefix; scrollback backfills beneath it on demand. Zero is whole.
     /// `RINGTOME_FOLLOW_POSTS_CEILING`.
@@ -239,7 +239,7 @@ impl Config {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(10 * 1024 * 1024);
 
-        // Admission and exchange dials (PEEK.md slice 1). Every one refuses rather than
+        // Admission and exchange dials (PROJECT_PLAN's Peeks, slice 1). Every one refuses rather than
         // queues; the defaults are sized for a small multi-tenant node.
         let dial = |name: &str, default: u64| -> u64 {
             env::var(name).ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(default)

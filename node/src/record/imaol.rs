@@ -538,7 +538,7 @@ async fn catch_up_rebroadcasts(db: &Db) -> Result<(), AppError> {
     Ok(())
 }
 
-/// State one public annotation (ANNOTATIONS.md slice 1): `target` carries `key = value`,
+/// State one public annotation (PROJECT_PLAN's Public annotations, slice 1): `target` carries `key = value`,
 /// or with `present` false no longer does. LWW per (target, key, value) - restating
 /// overwrites, never stacks.
 pub async fn publish_annotation(
@@ -574,7 +574,7 @@ pub struct AnnotationRow {
 }
 
 /// Every statement this speaker has folded, retractions as tombstones - the annotations
-/// memo's source (ANNOTATIONS.md slice 2), filtered by stamp at the caller.
+/// memo's source (PROJECT_PLAN's Public annotations, slice 2), filtered by stamp at the caller.
 pub async fn public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError> {
     catch_up_annotations(db).await?;
     type Row = (String, Vec<u8>, String, String, i64, i64);
@@ -602,7 +602,7 @@ pub async fn public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError>
         .collect())
 }
 
-/// The signed entry behind one PRESENT statement, for serving as a proof (ANNOTATIONS.md
+/// The signed entry behind one PRESENT statement, for serving as a proof (PROJECT_PLAN's Public annotations
 /// slice 3): the stored hash resolves through the entries log, so the bytes are the
 /// annotator's own, byte for byte.
 pub async fn annotation_entry(
@@ -647,7 +647,7 @@ pub async fn annotations_of(
         .collect())
 }
 
-/// The author's PINS (PEEK.md ruling 11): their own present `pin` statements about their
+/// The author's PINS (PROJECT_PLAN's Peeks, ruling 11): their own present `pin` statements about their
 /// own posts, most recently pinned first, capped at the strip's twenty. Only the author's
 /// chain is read - anyone else's `pin` is a label, never a placement.
 pub async fn pinned_docs(db: &Db, author_hex: &str) -> Result<Vec<[u8; 16]>, AppError> {
@@ -1231,7 +1231,7 @@ pub(crate) async fn entries_past_watermarks(
 /// WHERE clause (the `apply_profile_set` discipline): concurrent catch-ups may interleave
 /// freely, and the row only ever moves forward - a racing fold that finished earlier can never
 /// drag the watermark back.
-/// Pull a view watermark DOWN so entries that arrived beneath it get folded (PEEK.md slice
+/// Pull a view watermark DOWN so entries that arrived beneath it get folded (PROJECT_PLAN's Peeks slice
 /// 5: a backfill under the follow ceiling lands older seqs than the lane has folded, and
 /// "past the watermark" would never see them). The next catch-up re-folds from `below_seq`
 /// up - idempotent for what was folded already, and bounded by what is held.

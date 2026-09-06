@@ -140,7 +140,7 @@ async fn refresh_inner(state: &AppState, author_root: &str, force: bool) -> Resu
     let Ok(Some(db)) = state.user_dbs.get(author_root).await else {
         return Ok(()); // nothing held of them: the fragment path owns any rows
     };
-    // A PEEK's mirror (PEEK.md ruling 4) holds no posts lane: reading its empty shelf as
+    // A PEEK's mirror (PROJECT_PLAN's Peeks, ruling 4) holds no posts lane: reading its empty shelf as
     // "no replies" and sweeping the door-learned rows would bury every thread of theirs -
     // the fragment path owns the rows for a peek exactly as for nothing held.
     if crate::idface::peek_held(state, author_root).await {

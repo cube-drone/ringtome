@@ -1,5 +1,5 @@
 /*
-    PEEK.md slice 5: the follow ceiling. The rig runs every node with a two-hundred-entry
+    PROJECT_PLAN's Peeks, slice 5: the follow ceiling. The rig runs every node with a two-hundred-entry
     posts ceiling (justfile: RINGTOME_FOLLOW_POSTS_CEILING=200), so a follow of a stranger
     with three hundred posts holds their newest two hundred as a SUFFIX - the oldest held
     entry's prev_hash committing to the prefix - and no more, until scrollback asks: paging

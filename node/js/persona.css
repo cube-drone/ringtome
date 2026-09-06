@@ -950,7 +950,7 @@
     color: var(--coral);
 }
 
-/* The labels row (ANNOTATIONS.md): the author's chips plain, others' dressed with a byline. */
+/* The labels row (PROJECT_PLAN's Public annotations): the author's chips plain, others' dressed with a byline. */
 .feed-entry-labels {
     display: flex;
     flex-wrap: wrap;
@@ -1484,7 +1484,7 @@ article:has(.label-emoji-strip) {
     color: var(--faint);
     font-size: 0.75em;
 }
-/* A book on the feed (BOOKS.md): the table of contents as nested lists, pages as links. */
+/* A book on the feed (PROJECT_PLAN's Books): the table of contents as nested lists, pages as links. */
 .book-card-cover {
     margin-bottom: 0.8rem;
 }
@@ -1810,7 +1810,7 @@ article:has(.label-emoji-strip) {
     margin-top: 0.7rem;
 }
 
-/* The author's pin toggle (postentry.js PinButton, PEEK.md ruling 12): the takedown's
+/* The author's pin toggle (postentry.js PinButton, PROJECT_PLAN's Peeks, ruling 12): the takedown's
    shape, lit when the post is pinned. */
 .feed-pin {
     display: inline-flex;

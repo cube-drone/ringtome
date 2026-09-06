@@ -1,4 +1,4 @@
-// A notebook published as a book (BOOKS.md slice 1): the private bookkeeping, pure.
+// A notebook published as a book (PROJECT_PLAN's Books, slice 1): the private bookkeeping, pure.
 //
 // Two private kv collections carry the facts, so no header and no document changes:
 //   `books`        - key: the bucket's name, value: JSON `{"mode":"book"}` - the switch.
@@ -41,7 +41,7 @@ export function bookFacts(values) {
     return out;
 }
 
-/// A book document's payload (BOOKS.md ruling 9), tolerant of anything that is not one.
+/// A book document's payload (PROJECT_PLAN's Books, ruling 9), tolerant of anything that is not one.
 export function parseBook(text) {
     let raw;
     try {
@@ -65,7 +65,7 @@ export function parseBook(text) {
     return { title: String(raw.title || ''), cover, sections: top.sections, pages: top.pages, count: count(top) };
 }
 
-/// The page a book borrows its title from (BOOKS.md ruling 11): the first page in reading
+/// The page a book borrows its title from (PROJECT_PLAN's Books, ruling 11): the first page in reading
 /// order over the PRIVATE tree - top-level pages first, then sections depth-first, hidden
 /// ones skipped - else the first page of the notebook by id. Returns a doc id, or null.
 export function titlePageOf(tree, docs, hidden) {
@@ -123,7 +123,7 @@ export function filterBook(book, selected) {
     return { ...book, pages: top.pages, sections: top.sections };
 }
 
-/// The book in reading order (BOOKS.md slice 4): every page depth-first with the trail of
+/// The book in reading order (PROJECT_PLAN's Books, slice 4): every page depth-first with the trail of
 /// section titles above it - what the reader's tree, prev/next, and "up" all walk.
 export function readingOrder(book) {
     const out = [];

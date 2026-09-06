@@ -220,7 +220,7 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
 /// Says what it costs before it does it: a retraction travels to followers' feeds and to anyone
 /// holding a shared copy, but it cannot reach a node that never comes back online, and it cannot
 /// unsee. Promising erasure would be a lie the protocol cannot keep.
-/// The author's own pin (PEEK.md rulings 11-12): one public annotation, `pin`, said about
+/// The author's own pin (PROJECT_PLAN's Peeks, ruling 11-12): one public annotation, `pin`, said about
 /// their own post and retracted to unpin - the page's strip reads it, the card wears it.
 /// Beside the note-pencil and the takedown, for the author only; never from the Writer.
 const pinnedByAuthor = (item) =>
@@ -476,7 +476,7 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
     </a>`;
 };
 
-/// A book on the feed (BOOKS.md ruling 5): the whole table - sections and pages, each page a
+/// A book on the feed (PROJECT_PLAN's Books, ruling 5): the whole table - sections and pages, each page a
 /// link to its own permalink - under one line saying what it is. The reader's browser
 /// (slice 4) grows out of this.
 const BookSection = ({ section, author, depth }) => html`<li class="book-card-section">
@@ -492,7 +492,7 @@ const BookSection = ({ section, author, depth }) => html`<li class="book-card-se
 </li>`;
 
 const BookCard = ({ book, author }) => {
-    // The title page's words ride the card in full (BOOKS.md ruling 11), then the table.
+    // The title page's words ride the card in full (PROJECT_PLAN's Books, ruling 11), then the table.
     const cover = book && book.cover ? book.cover.post : null;
     const [coverWords, setCoverWords] = useState(undefined);
     useEffect(() => {
@@ -537,7 +537,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     // the truthful render.
     const [gone, setGone] = useState(false);
     // The author's pin, as the card knows it: the header's labels say it, the toggle moves
-    // it, and a fresh row from the server wins (PEEK.md ruling 12).
+    // it, and a fresh row from the server wins (PROJECT_PLAN's Peeks, ruling 12).
     // Re-synced from the FACT, never the row object: the page rebuilds its rows on every
     // render, and keying on the object reset the toggle's own state from a row that did not
     // carry the pin yet (Curtis, 2026-09-05: "it darkened for a second, then went back").
@@ -724,7 +724,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     ]
         .filter((a) => !retractedLabels.includes(labelKey(a)))
         // The author's own pin is chrome (the chip above), not a label; anyone else's is a
-        // label like any other (PEEK.md ruling 11).
+        // label like any other (PROJECT_PLAN's Peeks, ruling 11).
         .filter((a) => !(a.key === PIN_KEY && a.annotator === item.author));
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
@@ -858,7 +858,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                     published_ms=${item.thread_root.published_ms}
                 />
             </p>`}
-            ${/* The labels (ANNOTATIONS.md slice 2): the author's own plain, anyone else's
+            ${/* The labels (PROJECT_PLAN's Public annotations, slice 2): the author's own plain, anyone else's
                 with the annotator's byline - never an anonymous cloud - and only the
                 annotators the reader's display register admits. The author's description
                 is the one description; others' descriptions are tags-grade and ride the
@@ -934,7 +934,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                         >×</button>`}
                     </span>`;
                 })}
-                ${/* Say something about any post - yours or anyone's (ANNOTATIONS.md
+                ${/* Say something about any post - yours or anyone's (PROJECT_PLAN's Public annotations
                     slice 4): the statement lands on YOUR chain, bylined as yours
                     everywhere it travels. */ ''}
                 ${!!current &&

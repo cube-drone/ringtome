@@ -55,7 +55,7 @@ const sentence = (r) => {
     // A comment is conversation, first-class by ruling (PROJECT_PLAN's Replies slice 4): the verb,
     // and the mini-card - YOUR post, whose permalink is where the thread assembles - as
     // the object. Same sentence shape as the share, different weight by tier.
-    // A label on your post (ANNOTATIONS.md slice 4): a murmur, the verb and the card.
+    // A label on your post (PROJECT_PLAN's Public annotations, slice 4): a murmur, the verb and the card.
     if (r.kind === 'tagged') {
         if (r.detail) {
             // The words themselves - "labelled" without the label is half the news.

@@ -1,5 +1,5 @@
 /*
-    The annotations arc, slice 1 (ANNOTATIONS.md): the wire and the mint.
+    The annotations arc, slice 1 (PROJECT_PLAN's Public annotations): the wire and the mint.
 
     A public annotation is a statement on the SPEAKER's chain - LWW per (target, key,
     value), one statement per tag, retracted by restating it absent. Publishing a draft
@@ -165,7 +165,7 @@ describe("public annotations: the wire and the mint", function () {
             body: JSON.stringify({ key: "tag", value: "goopy" }),
         });
         assert.equal(put.status, 200, await put.text());
-        // The tagged notice, envelope road (ANNOTATIONS.md slice 4): ada does not follow
+        // The tagged notice, envelope road (PROJECT_PLAN's Public annotations, slice 4): ada does not follow
         // bea yet, so the news arrives at her door - a murmur naming her post.
         await beat(HOST_B, "outbox");
         {

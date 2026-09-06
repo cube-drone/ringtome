@@ -106,14 +106,14 @@ pub async fn evict_pass_with_grace_and_expiry(
             .await?
             .is_empty();
         // A SHARE's fragments keep a mirror; a peek's own fragments are the peek's and go
-        // with it (PEEK.md ruling 6) - they must not make a peek immortal.
+        // with it (PROJECT_PLAN's Peeks, ruling 6) - they must not make a peek immortal.
         let has_fragments = crate::fragments::any_shared_for_author(&state.node_db, &root).await?;
         let demanded = crate::speculative::demand_exists(&state.node_db, &root).await?;
         let rested = state
             .user_dbs
             .db_mtime_ms(&root)
             .is_none_or(|mt| now - mt >= grace_ms);
-        // A peek somebody looked at within the expiry keeps (PEEK.md ruling 6): the look is
+        // A peek somebody looked at within the expiry keeps (PROJECT_PLAN's Peeks, ruling 6): the look is
         // the rest clock a peek is judged by, and `expire_peeks` above is its judge.
         let looked = crate::idface::looked_within(&state.node_db, &root, now, peek_expiry_ms).await;
         if !evictable(hosted_here, dialed, has_fragments, demanded, rested, looked) {
@@ -131,7 +131,7 @@ pub async fn evict_pass_with_grace_and_expiry(
 /// The mechanics for one mirror: files first (the authoritative act), then every trace -
 /// each through its table's owner, best-effort in a fixed order so a partial failure leaves
 /// only forgettable residue for the next beat.
-/// The peeks' own retirement (PEEK.md ruling 6): a peek nobody has looked at for the expiry
+/// The peeks' own retirement (PROJECT_PLAN's Peeks, ruling 6): a peek nobody has looked at for the expiry
 /// goes, and when every peek together exceeds the node-wide budget the least recently
 /// looked at go until it fits. Both ignore the mtime grace - the look is the rest clock a
 /// peek is judged by - and both take the peek's fragments with the mirror.
@@ -196,7 +196,7 @@ mod tests {
     fn every_keeper_keeps() {
         let gone = |h, d, f, de, r, l| evictable(h, d, f, de, r, l);
         assert!(gone(false, false, false, false, true, false));
-        assert!(!gone(false, false, false, false, true, true), "a peek somebody looked at keeps (PEEK.md ruling 6)");
+        assert!(!gone(false, false, false, false, true, true), "a peek somebody looked at keeps (PROJECT_PLAN's Peeks, ruling 6)");
         assert!(!gone(true, false, false, false, true, false), "hosted keeps");
         assert!(!gone(false, true, false, false, true, false), "a dial keeps");
         assert!(!gone(false, false, true, false, true, false), "a SHARE's fragment keeps (a peek's own does not reach here)");

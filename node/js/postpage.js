@@ -72,7 +72,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
         </p>`;
     }
 
-    // A book, or a page of one: the reader (BOOKS.md slice 4) rather than the card.
+    // A book, or a page of one: the reader (PROJECT_PLAN's Books, slice 4) rather than the card.
     const isBook = !!post && post.format === 'book';
     const partOf = (post && post.part_of) || null;
     // A book's comments live in one place (Curtis, 2026-09-04: a per-page thread is "a place
@@ -118,7 +118,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                 post.thread_root.doc_id !== post.reply_to.doc_id) &&
             html`<${ParentContext} link=${post.thread_root} root=${true} />`}
             ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
-            ${/* A book opens as its reader (BOOKS.md slice 4), and so does a page of one:
+            ${/* A book opens as its reader (PROJECT_PLAN's Books, slice 4), and so does a page of one:
                 the book's tree beside the page, since a page is a place in a book first. */ ''}
             ${item && isBook &&
             html`<${BookReader} root=${root} book=${post.doc_id} page=${page || null} title=${post.title} />`}

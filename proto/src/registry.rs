@@ -47,7 +47,7 @@ pub mod service {
     /// share-noise spending those slots let a burst of shares evict a stranger's follow.
     /// Its own chain, its own keep - the only thing a murmur can drown is another murmur.
     pub const INBOX_MURMURS: u32 = 11;
-    /// Public annotations (ANNOTATIONS.md, 2026-08-29): what a post is said to be, by whom.
+    /// Public annotations (PROJECT_PLAN's Public annotations, 2026-08-29): what a post is said to be, by whom.
     /// LWW statements on the SPEAKER's chain keyed (target author, target doc, key, value) -
     /// the author's own labels replicated at publish, anyone else's about anyone's post.
     /// Public and whole, like rebroadcasts: a reader holding only the tail would mis-fold a
@@ -181,7 +181,7 @@ pub mod doc_format {
     /// Ogg Opus - the canonical audio form. Wild input formats (mp3/aac/flac/wav/vorbis) are
     /// decoded in memory-safe Rust and re-encoded to a fit-to-cap Opus; in-spec Opus passes through.
     pub const OGG_OPUS: u64 = 5;
-    /// A BOOK (BOOKS.md, 2026-09-03): a notebook published whole. The body is the published
+    /// A BOOK (PROJECT_PLAN's Books, 2026-09-03): a notebook published whole. The body is the published
     /// composed taxonomy as JSON - sections, order, page references by public id - and the
     /// reader is a browser over it. Public only; never a private document's format.
     pub const BOOK: u64 = 6;
@@ -599,7 +599,7 @@ pub struct DocHeaderPlain {
     /// controls, where a video with the same container gets a player. Absent when false.
     /// A media fact, so it rides the twin a bake mints exactly as the dimensions do.
     pub animation: bool,
-    /// The BOOK this document is a page of (BOOKS.md ruling 4, 2026-09-03): the public id
+    /// The BOOK this document is a page of (PROJECT_PLAN's Books, ruling 4, 2026-09-03): the public id
     /// of the notebook's book document. A part is a real post - a permalink, a turbolink, a
     /// rebroadcast of its own - but never a feed row of its own: the fold keeps parts out of
     /// journals, and the book (and its updates) are what reach feeds. Absent when standalone.
@@ -1340,7 +1340,7 @@ impl PublicAnnotation {
 mod tests {
     use super::*;
 
-    /// ANNOTATIONS.md slice 1: the statement round-trips, a retraction is the same shape
+    /// PROJECT_PLAN's Public annotations, slice 1: the statement round-trips, a retraction is the same shape
     /// absent, and the codec refuses what no well-behaved speaker could have minted.
     /// PROJECT_PLAN's Post visibility slice 1: the settled wish rides the signed header (key 15), absent
     /// when false, and round-trips.

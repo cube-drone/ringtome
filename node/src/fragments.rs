@@ -912,7 +912,7 @@ pub async fn any_shared_for_author(node_db: &Db, author_root: &str) -> Result<bo
     Ok(row.is_some())
 }
 
-/// The peek's footprint on this ledger (PEEK.md ruling 6): every fragment of the author
+/// The peek's footprint on this ledger (PROJECT_PLAN's Peeks, ruling 6): every fragment of the author
 /// and every blob those fragments name that this node holds, in bytes.
 pub async fn bytes_of_author(state: &crate::AppState, author_root: &str) -> Result<u64> {
     let rows: Vec<(Vec<u8>,)> = state
@@ -1082,7 +1082,7 @@ pub async fn held_header(
     Ok(ringtome_proto::registry::DocHeaderPlain::decode(payload).ok())
 }
 
-/// The fragment ledger as a SHELF (PEEK.md slice 2): everything held of one author, newest
+/// The fragment ledger as a SHELF (PROJECT_PLAN's Peeks, slice 2): everything held of one author, newest
 /// first, in the shape the public shelf speaks - the stored entry IS the header, so every
 /// flag the face shows comes off the author's own signature.
 pub async fn shelf_of(

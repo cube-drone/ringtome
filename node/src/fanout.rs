@@ -330,7 +330,7 @@ async fn shelf_page(
         crate::record::documents::public_docs(&db, after, crate::idface::POSTS_PAGE).await?;
     Ok(posts
         .into_iter()
-        // A page of a book is never a feed row of its own (BOOKS.md ruling 4): the book,
+        // A page of a book is never a feed row of its own (PROJECT_PLAN's Books, ruling 4): the book,
         // and later its updates, are what reach feeds. A rule of the fold, not a courtesy
         // of the client.
         .filter(|p| p.part_of.is_none())
@@ -377,7 +377,7 @@ async fn shelf_updated_since(
     }
     Ok(posts
         .into_iter()
-        // A page of a book is never a feed row of its own (BOOKS.md ruling 4): the book,
+        // A page of a book is never a feed row of its own (PROJECT_PLAN's Books, ruling 4): the book,
         // and later its updates, are what reach feeds. A rule of the fold, not a courtesy
         // of the client.
         .filter(|p| p.part_of.is_none())
@@ -1232,7 +1232,7 @@ async fn retract_vanished(state: &AppState, author_root: &str, force: bool) -> R
     else {
         return Ok(0); // nothing of theirs held: nothing to reconcile against
     };
-    // A PEEK's mirror (PEEK.md ruling 4) holds no posts lane at all, so "not on their shelf
+    // A PEEK's mirror (PROJECT_PLAN's Peeks, ruling 4) holds no posts lane at all, so "not on their shelf
     // here" would read every journaled share of theirs as vanished (the first rig run under
     // the peek did exactly that, hiding the trust reveal). A peek's words live on the
     // fragment ledger, whose own death road (`fragments::mirror_retractions`, the deaths

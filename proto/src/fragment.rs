@@ -74,7 +74,7 @@ pub enum FragmentMessage {
     Key { key: Vec<u8> },
     Want { author: [u8; 32], doc_id: [u8; 16] },
     /// The words' proof - and, riding beside it, every annotation proof the answering node
-    /// chose to attach (ANNOTATIONS.md slice 3): the author's labels and third parties'
+    /// chose to attach (PROJECT_PLAN's Public annotations, slice 3): the author's labels and third parties'
     /// alike, each the ANNOTATOR's own signed statement with its delegation path, verified
     /// at the receiving edge against its annotator. The label set is best-effort and
     /// budget-capped - a fragment with no labels is still the fragment.
@@ -113,7 +113,7 @@ pub enum FragmentMessage {
     /// words: the asker fetches the words through the ordinary `Want` machinery. A page
     /// shorter than the server's page size means the index is drained.
     Replies { proofs: Vec<ReplyProof>, cursor: u64 },
-    /// The shelf question (PEEK.md slice 2): the author's newest `limit` post ids, and the
+    /// The shelf question (PROJECT_PLAN's Peeks, slice 2): the author's newest `limit` post ids, and the
     /// ids they have pinned (slice 4 fills that; empty until then). Ids only, on purpose -
     /// each post then travels the ordinary `Want`/`Have` road, proving itself and carrying
     /// its own labels, so the shelf answer stays kilobytes whatever the history's size.
@@ -854,7 +854,7 @@ mod tests {
         SignedEntry::create(&entry, signer).unwrap().bytes().to_vec()
     }
 
-    /// ANNOTATIONS.md slice 3: an annotation proof verifies against exactly the post it
+    /// PROJECT_PLAN's Public annotations, slice 3: an annotation proof verifies against exactly the post it
     /// rode with, carries retractions like anything else, and refuses the re-target and
     /// the stranger's signature.
     #[test]

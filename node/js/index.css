@@ -51,7 +51,7 @@
 .book-reader-article {
     max-width: var(--post-measure);
 }
-/* The book reader (BOOKS.md slice 4): the tree beside the page, prev / up / next on top. */
+/* The book reader (PROJECT_PLAN's Books, slice 4): the tree beside the page, prev / up / next on top. */
 .book-reader {
     display: grid;
     grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
