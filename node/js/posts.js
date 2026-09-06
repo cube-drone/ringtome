@@ -73,7 +73,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current }) => {
         try {
             const cursor = postCursor(list);
             const page = await api(
-                `/api/id/${root}/posts?after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}`
+                `/api/id/${root}/posts?after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}${current ? `&as=${current.root}` : ''}`
             );
             setExtra((e) => mergePosts(e, page.posts));
             // Trust the server's own answer about whether the shelf goes further, rather than

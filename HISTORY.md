@@ -8533,3 +8533,23 @@ the window, and the missing-bodies walk moves pinned bodies to the front. Accept
 deep in a sixty-post history heads the author's page, a follower's page with its labels and
 body, and a stranger's peek, which never reaches it through the window; unpinning empties
 every strip while the post stands.
+
+## 2026-09-05 (cont.): trust without interest keeps the identity
+
+Curtis, as Glue Duo trusting but not following Lurk Stuck: Lurk's sealed post showed on
+their page as a hollow card, Lurk's reply to Glue's own post read "in reply to: link", the
+thread under Glue's post called Lurk by their speakable words, and the bell called them "a
+stranger". One root: a trust dial set from a notification fetched nothing, so the node
+never held Lurk at all, and four surfaces read "not followed" as "unknown". Now a dial of
+any kind fetches the persona and the wake pass keeps every dialed persona fresh at the
+lowest eagerness; the bell knows a dialed sender's name and drops the stranger word; the
+thread door hands back the repliers' bylines (healing the cache from a held mirror on the
+spot) and the reply cards wear them; the trusted default admits any dialed replier rather
+than only followed ones; the profile and the shelf page take the viewing persona (`?as=`)
+and hide a trusted-only post its author does not open for them, as the feed does; the
+reply card finds a parent held anywhere on the node, the reader's own post included; and
+the mini-card takes the title it fetched. Acceptance: `trusted_known.cjs` walks the whole
+scenario across two nodes. Found on the way: a dial's promotion had judged "was a peek" by
+the dials, which the fold had just rewritten, so a peeked persona somebody then followed
+was never fetched whole; the fetch ladder remembers peek depth in memory now, and the dial
+and the wake pass both promote on that mark.

@@ -67,6 +67,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
     // fetch an off-shelf persona at request time (idface.rs) - the URL carries exactly the
     // keys the fetch wants.
     const via = (loc.query && loc.query.via) || '';
+    const viewer = current ? current.root : '';
 
     // The profile, and then the profile again if the node is still fetching it.
     //
@@ -79,7 +80,10 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
         if (!root) return;
         let live = true;
         let timer = null;
-        const url = `/api/id/${root}/profile${via ? `?via=${encodeURIComponent(via)}` : ''}`;
+        // `as`: the viewing persona, for the sealed-post rule (a trusted-only post its author
+        // does not open for you is not listed, as in the feed).
+        const params = [via && `via=${encodeURIComponent(via)}`, viewer && `as=${viewer}`].filter(Boolean);
+        const url = `/api/id/${root}/profile${params.length ? `?${params.join('&')}` : ''}`;
         // Bounded: a peer that never answers must not leave a page polling forever.
         const look = (tries) => {
             api(url)
@@ -95,7 +99,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
             live = false;
             if (timer) clearTimeout(timer);
         };
-    }, [root, via]);
+    }, [root, via, viewer]);
 
     // Your nickname for them, live off the contacts mirror - first of the three names a
     // person wears (nickname / self-name / speakable words).

@@ -424,6 +424,10 @@ pub struct IdQuery {
     /// Comma-separated node endpoint keys - the address's own `?via=` hints, passed through
     /// by the lens page. Hints are keys, never addresses; anything unparseable is skipped.
     pub via: Option<String>,
+    /// The VIEWING persona's root, hex - the reader the sealed-post rule is asked for: a
+    /// trusted-only post the viewer cannot open is not listed at all, as the feed does.
+    #[serde(rename = "as")]
+    pub as_root: Option<String>,
 }
 
 /// Fetch a foreign identity's PUBLIC chains at request time: dial the candidate node keys IN
@@ -464,15 +468,6 @@ pub(crate) async fn peek_held(state: &AppState, root_hex: &str) -> bool {
     crate::net::subscriptions::dialed_by(&state.node_db, root_hex)
         .await
         .map(|d| d.is_empty())
-        .unwrap_or(false)
-}
-
-/// Whether this node holds the persona's POSTS chain at all - the mark of a full mirror as
-/// against a peek's, whatever the dials say right now.
-pub(crate) async fn holds_posts_chain(state: &AppState, root_hex: &str) -> bool {
-    crate::net::frontier::held(&state.node_db, root_hex)
-        .await
-        .map(|h| h.iter().any(|r| r.service == ringtome_proto::registry::service::POSTS))
         .unwrap_or(false)
 }
 
@@ -807,8 +802,11 @@ async fn fetch_foreign_at(
                 tracing::warn!(root = %root_hex, "could not record foreign fetch: {e:#}");
             }
             if peek {
+                state.peeked.mark(root_hex);
                 let held = peek_shelf(state, root_hex, &key_hex).await;
                 tracing::info!(root = %root_hex, via = %key_hex, held, "peek: shelf fetched as fragments");
+            } else {
+                state.peeked.clear(root_hex);
             }
             return true;
         }
@@ -985,8 +983,10 @@ pub async fn refresh_followed_pass(state: crate::AppState) -> anyhow::Result<()>
         }
         let fetched_at = fetched.get(&foreign).copied().unwrap_or(0);
         // A persona the last exchange left behind is stale whatever its stamp says
-        // (PEEK.md ruling 2): the wake pass is how a budgeted history keeps arriving.
-        if now - fetched_at < stale_ms && !state.behind.is_behind(&foreign) {
+        // (PEEK.md ruling 2): the wake pass is how a budgeted history keeps arriving. So is
+        // one held at PEEK depth that somebody here now dials (ruling 7): the dial is the
+        // demand, and the whole mirror is owed on the next beat.
+        if now - fetched_at < stale_ms && !state.behind.is_behind(&foreign) && !state.peeked.is_behind(&foreign) {
             continue;
         }
         {
@@ -1433,6 +1433,41 @@ pub struct PostsQuery {
     /// The cursor: the `published_ms` and `doc_id` of the last post already shown.
     pub after_ms: Option<i64>,
     pub after_doc: Option<String>,
+    /// The viewing persona's root, hex (see `IdQuery::as_root`).
+    #[serde(rename = "as")]
+    pub as_root: Option<String>,
+}
+
+/// The feed's sealed-post rule, on the shelf (Curtis, 2026-09-05: a trusted-only post from
+/// someone who does not trust you "I shouldn't see ... we just hide that"): drop every
+/// trusted-only post unless the viewer is the author or the author publishes trust for
+/// them. Checked against the author's own published edges as this node holds them; fails
+/// closed when it holds none.
+async fn hide_sealed(
+    state: &AppState,
+    session: &Option<Session>,
+    author_hex: &str,
+    viewer: Option<&str>,
+    posts: &mut Vec<crate::record::documents::PublicDoc>,
+) {
+    if !posts.iter().any(|p| p.trusted_only) || viewer == Some(author_hex) {
+        return;
+    }
+    // No viewer named, a member session, and the author lives here: the author's own
+    // reads (their page, their shelf) name no viewer and must see their own sealed posts.
+    if viewer.is_none() && session.is_some() && hosted_here(state, author_hex).await.unwrap_or(false) {
+        return;
+    }
+    let trusted = match (viewer, state.user_dbs.get(author_hex).await) {
+        (Some(v), Ok(Some(db))) => crate::record::imaol::published_edges(&db)
+            .await
+            .map(|e| e.get(v).is_some_and(|row| row.edge.trust.is_some()))
+            .unwrap_or(false),
+        _ => false,
+    };
+    if !trusted {
+        posts.retain(|p| !p.trusted_only);
+    }
 }
 
 /// GET `/api/id/{root}/posts` - further back down someone's public shelf.
@@ -1519,6 +1554,8 @@ pub async fn id_posts(
             None => Vec::new(), // nothing held, or unreadable: an empty shelf either way
         }
     };
+    let mut posts = posts;
+    hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
     // The persona's SHARES join the shelf (Curtis, 2026-09-02: the page defaults to
     // everything - posts, rebroadcasts, replies - and the client's toggles subtract).
     // Same stamp-keyset cursor as the posts, stamped by when they passed it along; a
@@ -1625,6 +1662,9 @@ pub async fn id_posts(
                 else {
                     continue;
                 };
+                // The parent's card: this author's own shelf, any OTHER author's shelf this
+                // node holds (the reader's own post, a friend's - Curtis, 2026-09-05: "we
+                // know about that post, because it's ours"), then the fragment ledger.
                 let resolved: Option<(Option<String>, Option<i64>)> = if *pa == root_hex {
                     match &dbh {
                         Some(db) => crate::record::documents::public_doc(db, &id)
@@ -1635,11 +1675,22 @@ pub async fn id_posts(
                         None => None,
                     }
                 } else {
-                    crate::fragments::serving_header(&state.node_db, pa, &id)
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|h| (Some(h.title), None))
+                    let held = match state.user_dbs.get(pa).await {
+                        Ok(Some(db)) => crate::record::documents::public_doc(&db, &id)
+                            .await
+                            .ok()
+                            .flatten()
+                            .map(|d| (Some(d.title), Some(d.genesis_ms))),
+                        _ => None,
+                    };
+                    match held {
+                        Some(card) => Some(card),
+                        None => crate::fragments::serving_header(&state.node_db, pa, &id)
+                            .await
+                            .ok()
+                            .flatten()
+                            .map(|h| (Some(h.title), None)),
+                    }
                 };
                 if let Some((title, ms)) = resolved {
                     cards.insert((pa.clone(), pd.clone()), (title, ms));
@@ -1958,7 +2009,22 @@ pub async fn id_post_replies(
             });
         }
     }
-    Ok(axum::Json(serde_json::json!({ "replies": replies, "more": more, "seeking": seeking }))
+    // The repliers' bylines ride the answer (Curtis, 2026-09-05: a trusted-but-unread
+    // replier rendered as their speakable words): the page's own mirror knows only the
+    // people the reader follows, and this node knows everyone it holds.
+    let authors: Vec<String> = replies
+        .iter()
+        .map(|r| r.author.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let bylines: serde_json::Map<String, serde_json::Value> = crate::profiles::bylines_healed(&state, &authors)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(root, b)| (root, serde_json::json!({ "name": b.name, "avatar": b.avatar })))
+        .collect();
+    Ok(axum::Json(serde_json::json!({ "replies": replies, "more": more, "seeking": seeking, "bylines": bylines }))
         .into_response())
 }
 
@@ -2028,7 +2094,7 @@ pub async fn id_post_dossier(
 
     let mut names: Vec<String> = labels.iter().map(|(a, ..)| a.clone()).collect();
     names.extend(replies.iter().filter_map(|r| r["author"].as_str().map(String::from)));
-    let bylines = crate::profiles::bylines(&state.node_db, &names)
+    let bylines = crate::profiles::bylines_healed(&state, &names)
         .await
         .unwrap_or_default();
 
@@ -2088,7 +2154,7 @@ pub async fn id_profile(
     let mut refreshing = false;
     let mut synced_ms: Option<i64> = None;
     if !hosted {
-        let Some(_member) = session else {
+        let Some(_member) = session.as_ref() else {
             return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-5", "no such persona here")));
         };
         let now = crate::clock::now_ms();
@@ -2173,11 +2239,13 @@ pub async fn id_profile(
             _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
         }
     };
+    hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
     let posts_more = posts.len() as i64 > POSTS_PAGE;
     posts.truncate(POSTS_PAGE as usize);
     // The pinned strip (PEEK.md ruling 12): the author's own pins, most recently pinned
     // first, each the post as this node holds it - the mirror's, or for a peek the ledger's.
-    let pinned: Vec<crate::record::documents::PublicDoc> = pinned_here(&state, &root_hex, peek).await;
+    let mut pinned: Vec<crate::record::documents::PublicDoc> = pinned_here(&state, &root_hex, peek).await;
+    hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut pinned).await;
     // How to REACH this persona, as this node honestly knows it - the `?via=` hints any
     // address minted here should carry (Addressing: hints are keys, never addresses).
     //

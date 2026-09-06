@@ -556,7 +556,7 @@ pub async fn curation_mode(node_db: &Db, root: &str) -> String {
 
 /// The bit itself: does this author's node SPEAK about this reply - to the door, and on
 /// every public read of their post's thread. An explicit verdict outranks the mode; the
-/// trusted default serves followed repliers and holds strangers for the nod; 'all' flips
+/// trusted default serves repliers the author dials and holds strangers for the nod; 'all' flips
 /// the choice into suppressing; 'none' is the "no comments" switch. Suppression mutes the
 /// author's amplification, never the reply's existence on its own author's chain.
 pub async fn servable(state: &AppState, root: &str, replier: &str, reply_doc: &str) -> bool {
@@ -578,8 +578,11 @@ pub async fn servable(state: &AppState, root: &str, replier: &str, reply_doc: &s
         MODE_NONE => false,
         MODE_ALL => true,
         _ => {
+            // The trusted default admits everyone the author KNOWS - any dial: followed,
+            // trusted, or read for rebroadcasts (Curtis, 2026-09-05: a trusted-but-unread
+            // replier is no stranger) - and holds the rest for the nod.
             verdict.as_deref() == Some(VERDICT_APPROVED)
-                || crate::net::subscriptions::follows(&state.node_db, root, replier)
+                || crate::net::subscriptions::dials(&state.node_db, root, replier)
                     .await
                     .unwrap_or(false)
         }

@@ -86,6 +86,27 @@ pub async fn forget(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<(
     Ok(())
 }
 
+/// `bylines`, healing on the way: a root the cache has no row for but whose mirror this node
+/// holds gets refreshed right now and read again. A thread or a bell must never show the
+/// speakable words for a persona whose profile sits in a database one open away (Curtis,
+/// 2026-09-05: "we have forgotten Lurk Stuck's name and profile picture").
+pub async fn bylines_healed(state: &AppState, roots: &[String]) -> Result<std::collections::BTreeMap<String, Byline>> {
+    let mut known = bylines(&state.node_db, roots).await?;
+    let mut healed = false;
+    for root in roots {
+        if known.contains_key(root) {
+            continue;
+        }
+        if matches!(state.user_dbs.get(root).await, Ok(Some(_))) && refresh(state, root).await.is_ok() {
+            healed = true;
+        }
+    }
+    if healed {
+        known = bylines(&state.node_db, roots).await?;
+    }
+    Ok(known)
+}
+
 pub async fn bylines(node_db: &Db, roots: &[String]) -> Result<std::collections::BTreeMap<String, Byline>> {
     let mut out = std::collections::BTreeMap::new();
     if roots.is_empty() {

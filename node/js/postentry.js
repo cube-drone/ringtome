@@ -440,6 +440,12 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
         (async () => {
             try {
                 const head = await api(`/api/id/${author}/posts/${doc_id}`);
+                // The title the caller lacked, first (Curtis, 2026-09-05: a reply's parent
+                // read "link" although the post had a title and the node held it).
+                if (head.title) {
+                    if (live) setWords(head.title);
+                    return;
+                }
                 const said = descriptionOf(head.annotations, author);
                 if (said) {
                     if (live) setWords(said);
@@ -532,8 +538,12 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     const [gone, setGone] = useState(false);
     // The author's pin, as the card knows it: the header's labels say it, the toggle moves
     // it, and a fresh row from the server wins (PEEK.md ruling 12).
-    const [pinned, setPinned] = useState(pinnedByAuthor(item));
-    useEffect(() => setPinned(pinnedByAuthor(item)), [item]);
+    // Re-synced from the FACT, never the row object: the page rebuilds its rows on every
+    // render, and keying on the object reset the toggle's own state from a row that did not
+    // carry the pin yet (Curtis, 2026-09-05: "it darkened for a second, then went back").
+    const serverPinned = pinnedByAuthor(item);
+    const [pinned, setPinned] = useState(serverPinned);
+    useEffect(() => setPinned(serverPinned), [serverPinned]);
     // The words as this reader last CONFIRMED them: after an in-place edit, the session's
     // own buffer - already in hand, already acknowledged by the publish - never a refetch of
     // what the user just typed.

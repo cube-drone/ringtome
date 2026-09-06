@@ -109,6 +109,10 @@ pub struct AppState {
     pub admission: net::admission::Admission,
     /// Personas whose last exchange ended short of the peer's frontier (PEEK.md ruling 2).
     pub behind: net::admission::Behind,
+    /// Personas this node fetched at PEEK depth and has not fetched whole since (PEEK.md
+    /// ruling 7): what a dial promotes, and what the wake pass treats as stale. In memory -
+    /// after a boot the relationships decide the depth of the next fetch anyway.
+    pub peeked: net::admission::Behind,
 }
 
 /// Who has touched this node lately: account id -> last authenticated request, in memory.
@@ -352,6 +356,7 @@ async fn main() -> anyhow::Result<()> {
         unplugged,
         admission,
         behind: net::admission::Behind::default(),
+        peeked: net::admission::Behind::default(),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each

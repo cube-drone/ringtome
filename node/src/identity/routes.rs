@@ -1141,19 +1141,34 @@ async fn notification_items(
             delivered_unowned.push(n);
         }
     }
+    // A delivered sender the reader DIALS - trusts, say, without reading - is known, not a
+    // stranger (Curtis, 2026-09-05: "we KNOW who they are ... we're just not interested"):
+    // the row wears their byline, since a dial fetches them, and drops the stranger word.
+    let mut known: std::collections::BTreeSet<String> = Default::default();
+    for n in &delivered_unowned {
+        if crate::net::subscriptions::dials(&state.node_db, root, &n.sender_root)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            known.insert(n.sender_root.clone());
+        }
+    }
+    let known_bylines = crate::profiles::bylines_healed(state, &known.iter().cloned().collect::<Vec<_>>())
+        .await
+        .map_err(AppError::Internal)?;
     items.extend(delivered_unowned.into_iter().map(|n| NotificationItem {
         seen: n.timestamp_ms <= watermark,
-        stranger: true,
+        stranger: !known.contains(&n.sender_root),
         // The delivered path's inbox rows collapse per (sender, kind) by design - a bounded
         // pool cannot key on every object a stranger might mention - but the evidence names
         // its document, so a murmur carries its MOST RECENT share's doc (2026-08-25):
         // "which post" beats "some post", and the collapse semantics are unchanged.
         doc_id: n.doc_id.unwrap_or_default(),
-        // The one thing a stranger's row now says out loud - and the ONLY name on it, since
-        // author_name stays None: nothing has been fetched about them.
+        // The one thing a stranger's row says out loud - and the ONLY name on it, since
+        // nothing has been fetched about them. A known sender's byline is the cache's.
         claimed_name: n.display_name,
-        author_name: None,
-        author_avatar: None,
+        author_name: known_bylines.get(&n.sender_root).and_then(|b| b.name.clone()),
+        author_avatar: known_bylines.get(&n.sender_root).and_then(|b| b.avatar.clone()),
         author: n.sender_root,
         kind: n.kind,
         trust: n.trust,
@@ -2388,16 +2403,27 @@ async fn private_kv_put_handler(
     if let Some(foreign) = collection.strip_prefix("contact:") {
         let dialed = matches!(key.as_str(), "interest" | "trust" | "interest_rebroadcasts")
             && !req.value.trim().is_empty();
-        if dialed
-            && crate::idface::has_fetched(&state.node_db, foreign).await.unwrap_or(false)
-            && !crate::idface::holds_posts_chain(&state, foreign).await
-        {
-            let promoted = tokio::time::timeout(
-                std::time::Duration::from_secs(8),
-                crate::idface::promote_peek(&state, foreign),
-            )
-            .await;
-            tracing::info!(foreign = %foreign, promoted = ?promoted.ok(), "a dial promoted a peek");
+        // A never-fetched persona too (Curtis, 2026-09-05): a trust dial turned from a
+        // notification's chip is a relationship, and the identity behind it must be held.
+        // A full mirror that simply holds no posts is neither, and is left alone (the
+        // first rig run under this hook re-fetched every quiet friend on every dial).
+        // "Was a peek" is what the fetch ladder REMEMBERS, not what the dials say now: the
+        // fold above has just written this very dial, so the relationships already call the
+        // persona followed while the mirror still holds only a peek's chains.
+        let unheld = matches!(state.user_dbs.get(foreign).await, Ok(None));
+        if dialed && (unheld || state.peeked.is_behind(foreign)) {
+            // Waited for briefly, then DETACHED - never aborted (the fetch ladder's own
+            // discipline): a dial must answer in a moment even when the persona's nodes
+            // are slow or dark, and a fetch that lands late just leaves a warmer mirror.
+            let task_state = state.clone();
+            let task_foreign = foreign.to_string();
+            let mut fetch = tokio::spawn(async move {
+                crate::idface::promote_peek(&task_state, &task_foreign).await
+            });
+            match tokio::time::timeout(std::time::Duration::from_millis(2500), &mut fetch).await {
+                Ok(done) => tracing::info!(foreign = %foreign, promoted = ?done.ok(), "a dial promoted a peek"),
+                Err(_) => tracing::info!(foreign = %foreign, "a dial's fetch still in flight - detached"),
+            }
         }
     }
     Ok(Json(PrivateWriteResponse {

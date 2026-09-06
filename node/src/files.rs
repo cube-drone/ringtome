@@ -528,6 +528,7 @@ mod tests {
             unplugged: Default::default(),
             admission: crate::net::admission::Admission::new(Default::default()),
             behind: Default::default(),
+            peeked: Default::default(),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);
 

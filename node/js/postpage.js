@@ -481,6 +481,7 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey }) => {
                 key=${`${r.author}:${r.doc_id}`}
                 author=${r.author}
                 doc=${r.doc_id}
+                byline=${((page && page.bylines) || {})[r.author]}
                 current=${current}
                 depth=${depth}
             />`
@@ -488,7 +489,7 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey }) => {
     </div>`;
 };
 
-const ThreadReply = ({ author, doc, current, depth }) => {
+const ThreadReply = ({ author, doc, byline, current, depth }) => {
     // undefined = loading, null = not readable here (the memo knew it, the shelf moved -
     // a takedown between fold and render), object = the reply's header.
     const [post, setPost] = useState(undefined);
@@ -521,6 +522,10 @@ const ThreadReply = ({ author, doc, current, depth }) => {
         published_ms: post.published_ms,
         replies: post.replies,
         annotations: post.annotations,
+        // The door's byline for the replier: what this node knows of them, whoever the
+        // reader follows (the page's mirror knows only those).
+        author_name: byline && byline.name,
+        author_avatar: byline && byline.avatar,
         mine: !!(current && current.root === author),
     };
     return html`<div class="thread-reply">

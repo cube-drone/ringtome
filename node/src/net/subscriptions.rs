@@ -463,10 +463,13 @@ pub async fn follows(
 pub async fn followed_foreign(node_db: &crate::db::Db) -> Result<Vec<(String, String, i64)>> {
     let rows: Vec<(String, String, i64)> = node_db
         .fetch_all(
+            // EVERY dial (Curtis, 2026-09-05: "trusting someone but not being interested in
+            // them means that they shouldn't show up in our feeds, but we should still keep
+            // track of their identity"): a trust-only relationship keeps the persona's mirror
+            // fresh - name, face, published edges - at the lowest eagerness, behind everyone
+            // somebody reads.
             "SELECT foreign_root, local_root, MAX(COALESCE(eagerness, 0), COALESCE(rebroadcast, 0))
-             FROM subscriptions
-             WHERE (eagerness IS NOT NULL AND eagerness > 0)
-                OR (rebroadcast IS NOT NULL AND rebroadcast > 0)",
+             FROM subscriptions",
             (),
         )
         .await
@@ -494,6 +497,20 @@ pub async fn followed_foreign(node_db: &crate::db::Db) -> Result<Vec<(String, St
 ///
 /// Hosted personas only: a foreign persona's database is their public lane as we fetched it,
 /// and carries no ledger of ours to read.
+/// Whether `local_root` holds ANY dial on `foreign_root` - trust, interest, or rebroadcast.
+/// The relationship question a byline or a "stranger" label turns on: a person you trust
+/// but do not read is someone you KNOW, never a stranger at the door.
+pub async fn dials(node_db: &crate::db::Db, local_root: &str, foreign_root: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM subscriptions WHERE local_root = ?1 AND foreign_root = ?2",
+            (local_root, foreign_root),
+        )
+        .await
+        .context("checking a dial")?;
+    Ok(row.is_some())
+}
+
 pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
     let hosted = crate::identity::hosted_roots_with_accounts(&state.node_db)
         .await
