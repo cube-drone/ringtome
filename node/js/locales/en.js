@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 649 phrases across 48 files.
+// 651 phrases across 48 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -344,6 +344,7 @@ export default {
     'idpage.its-address-carries-no-hints': 'its address carries no hints about where to find it.',
     'idpage.reached-across-the-network--': 'reached across the network - not carried on this node',
     'idpage.a-look-at-their-newest': 'a look at their newest posts - follow them to keep up',
+    'idpage.this-look-is-full': 'this look is full - follow them to keep everything',
 
     // --- node/js/index.js ---
     'index.theres-nothing-at-this-address': "there's nothing at this address. {home}.",
@@ -656,6 +657,7 @@ export default {
     'idface.nothing-of-theirs-is-held': 'nothing of theirs is held here',
     'idface.no-such-persona-here': 'no such persona here',
     'idface.no-such-document': 'no such document',
+    'idface.this-look-is-full': 'this look is full - follow them to keep everything',
     'idface.no-such-public-document-here': 'no such public document here',
     'idface.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'idface.this-document-has-no-thumbnail': 'this document has no thumbnail',

@@ -344,9 +344,16 @@ const base58 = async (host) => {
         );
         assert.equal(bylines.length, 0, "the byline cache forgot them");
 
-        // And the member surface answers honestly: nothing of theirs is held here any more.
-        const gone = await cora(`api/id/${authorRoot}/profile`);
-        assert.equal(gone.status, 404, "the profile door says nothing of theirs is held");
+        // And the member surface answers honestly. A visit is a demand signal (this module's
+        // "recreation is demand-driven and therefore safe"), so the door does not say
+        // "nothing held" - it re-mints the persona at the depth the relationships admit,
+        // which for a stranger nobody dials is a PEEK (PEEK.md ruling 1), and says so. Until
+        // 2026-09-05 this claim expected a 404 here: the re-fetch was failing on a journal
+        // the eviction had deleted, and the 404 was that bug wearing honesty's clothes.
+        const again = await cora(`api/id/${authorRoot}/profile`);
+        const againText = await again.text();
+        assert.equal(again.status, 200, againText);
+        assert.equal(JSON.parse(againText).peek, true, "the visit re-minted them as a peek, not a mirror");
 
         // The friend's node still follows the author: their mirror must survive the same
         // sweep - eviction is for chains NOBODY wants, and a subscription is wanting.

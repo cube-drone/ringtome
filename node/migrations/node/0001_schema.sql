@@ -704,7 +704,12 @@ CREATE INDEX ingest_job_account_idx ON ingest_job (account, seq);
 CREATE TABLE foreign_fetches (
     root_pubkey   TEXT    PRIMARY KEY,
     fetched_at_ms INTEGER NOT NULL,  -- last successful fetch; freshness TTL reads this
-    last_via      TEXT               -- the endpoint key that answered; first refresh candidate
+    last_via      TEXT,              -- the endpoint key that answered; first refresh candidate
+    -- The peek registry (PEEK.md slice 3): when a member here last LOOKED (the expiry and the
+    -- node-wide budget's LRU read this), and the peek's footprint in bytes as last measured
+    -- (fragments and their blobs). Both idle for a mirror somebody follows.
+    looked_ms     INTEGER NOT NULL DEFAULT 0,
+    bytes         INTEGER NOT NULL DEFAULT 0
 );
 
 -- ---------------------------------------------------------------------------------------------

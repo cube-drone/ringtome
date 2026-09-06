@@ -40,7 +40,7 @@ const USER_SCHEMA: &str = include_str!("../migrations/user/0001_chains_and_profi
 /// or re-syncs; node accounts are dev accounts). Bump the generation whenever the schema file
 /// changes. A real migration ladder is launch-gated work, built alongside the backup story,
 /// when databases exist whose data must survive a schema change in place.
-const NODE_SCHEMA_GENERATION: i64 = 39; // 39: feed_journal.dated_ms + minted_ms - a backdated card wears its date differently (PUBLISH.md, 2026-09-02)
+const NODE_SCHEMA_GENERATION: i64 = 40; // 40: foreign_fetches.looked_ms + bytes - the peek registry (PEEK.md slice 3, 2026-09-05)
 const USER_SCHEMA_GENERATION: i64 = 24; // 24: part_of on the doc memos (header key 19) - a notebook published as a book (BOOKS.md, 2026-09-03)
 
 /// How long a write waits on a busy connection before failing.
@@ -907,10 +907,16 @@ impl UserDbManager {
     /// by definition re-fetchable from the network that minted it.
     pub async fn evict_mirror(&self, root_pubkey: &str) -> Result<()> {
         self.handles.invalidate(root_pubkey).await;
+        // The journal's first-look memo too (found 2026-09-05 by PEEK.md slice 3, the first
+        // re-fetch after an eviction in one process): with the .jnl gone, a root still
+        // marked validated took the REOPEN path and died on the missing file - "recreation
+        // is demand-driven and safe" had never been crossed.
+        self.validated_journals.lock().unwrap().remove(root_pubkey);
         let path = self.path_for(root_pubkey);
         let wal = path.with_extension("db-wal");
         let journal = self.journal_path_for(root_pubkey);
-        for f in [&path, &wal, &journal] {
+        let heads = self.heads_path_for(root_pubkey);
+        for f in [&path, &wal, &journal, &heads] {
             match std::fs::remove_file(f) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

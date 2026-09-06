@@ -1612,7 +1612,10 @@ async fn resolve_reply_link(
     };
     // A peek follows the eye (PEEK.md ruling 5): the parent of a reply to a peeked author
     // is fetched by id over the fragment road, right now, rather than refused.
-    if header.is_none() && crate::idface::peek_held(state, &author_hex).await {
+    if header.is_none()
+        && crate::idface::peek_held(state, &author_hex).await
+        && crate::idface::peek_room(state, &author_hex).await
+    {
         crate::fragments::fetch_post(state, &author_hex, &author, &doc).await;
         header = crate::fragments::held_header(&state.node_db, &author_hex, &doc_hex)
             .await

@@ -85,6 +85,13 @@ pub struct Config {
     /// The identity-chain ceiling (PEEK.md ruling 3): a persona this node does not host whose
     /// identity entries would exceed it is refused at the gate. `RINGTOME_IDENTITY_CHAIN_CEILING`.
     pub identity_chain_ceiling: usize,
+    /// The peek's footprint (PEEK.md ruling 6): bytes one peek may hold (fragments and their
+    /// blobs) before it stops fetching; bytes all peeks may hold before the least recently
+    /// looked at is evicted; and how long an unlooked-at peek lives. `RINGTOME_PEEK_MAX_BYTES`,
+    /// `RINGTOME_PEEK_TOTAL_BYTES`, `RINGTOME_PEEK_EXPIRY_MS`.
+    pub peek_max_bytes: u64,
+    pub peek_total_bytes: u64,
+    pub peek_expiry_ms: i64,
     /// How long a changed identity must sit quiet before its peers get an eager push - batches
     /// a burst of writes into one exchange. Local writes ring the eager loop's doorbell
     /// (`Db::nudge_sync`) so the debounce clock starts at the write itself; the ~1s tick then
@@ -243,6 +250,9 @@ impl Config {
         let sync_first_frame_ms = dial("RINGTOME_SYNC_FIRST_FRAME_MS", 10_000);
         let sync_exchange_max_ms = dial("RINGTOME_SYNC_EXCHANGE_MAX_MS", 10 * 60 * 1000);
         let identity_chain_ceiling = dial("RINGTOME_IDENTITY_CHAIN_CEILING", 10_000) as usize;
+        let peek_max_bytes = dial("RINGTOME_PEEK_MAX_BYTES", 64 * 1024 * 1024);
+        let peek_total_bytes = dial("RINGTOME_PEEK_TOTAL_BYTES", 2 * 1024 * 1024 * 1024);
+        let peek_expiry_ms = dial("RINGTOME_PEEK_EXPIRY_MS", 7 * 24 * 60 * 60 * 1000) as i64;
 
         // Floored at 8: a cache too small to hold the handles one request touches would
         // thrash on a single operation, which is worse than any descriptor it saves.
@@ -329,6 +339,9 @@ impl Config {
             sync_first_frame_ms,
             sync_exchange_max_ms,
             identity_chain_ceiling,
+            peek_max_bytes,
+            peek_total_bytes,
+            peek_expiry_ms,
             max_open_databases,
             sync_debounce_ms,
             pow_requested_bits,

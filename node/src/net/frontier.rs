@@ -123,6 +123,12 @@ pub async fn forget_persona(node_db: &Db, root_hex: &str) -> Result<()> {
         )
         .await
         .context("forgetting an evicted persona's frontiers")?;
+    // The write-time memo of what this persona's chains reached (the frontier's own source):
+    // an evicted mirror must not leave heads claiming chains whose files are gone.
+    node_db
+        .execute("DELETE FROM chain_heads WHERE root_pubkey = ?1", (root_hex,))
+        .await
+        .context("forgetting a persona's chain heads")?;
     Ok(())
 }
 

@@ -195,10 +195,27 @@ walks it per entry is unmeasured (residual).
    chain and the page stops being a peek. **Deferred to slice 3:** bodies are still wanted
    for every fragment on arrival (words and pictures alike); ruling 5's "media on demand"
    comes with the footprint ceiling.
-3. **Footprint and expiry.** The peek registry with last-look and bytes; per-peek and
-   node-wide ceilings; least-recently-looked eviction and the expiry; media on demand under
-   the ceiling. Acceptance: a peek past its ceiling stops fetching media and says so; an
-   unlooked-at peek is gone after the expiry; a follow dial promotes a peek to a mirror.
+3. ~~**Footprint and expiry.**~~ Built 2026-09-05. The fetch registry is the peek registry
+   now: every look stamps `looked_ms` (throttled to one write a minute) and the footprint -
+   the author's fragments and every blob they name that this node holds - is measured into
+   `bytes` whenever a peek fetches. Three dials: `RINGTOME_PEEK_MAX_BYTES` (64 MB),
+   `RINGTOME_PEEK_TOTAL_BYTES` (2 GB), `RINGTOME_PEEK_EXPIRY_MS` (seven days). Every road
+   that fetches for a peek asks for room first: the shelf fetches bodies one document at a
+   time in shelf order and wants nothing past the ceiling, and the on-demand reads, the
+   reply door and the body route refuse past it with "this look is full - follow them to
+   keep everything", which the page says too. The eviction sweep judges peeks by their
+   looks: a peek nobody has looked at for the expiry goes whole (mirror, its own fragments,
+   the registry row), and when every peek together exceeds the node-wide budget the least
+   recently looked-at go until it fits; a looked-at peek is a keeper, and a peek's own
+   fragments are not (a share's still are). Media on demand was already the peek's
+   behaviour (its fragments never obliged their twins); the ceiling now bounds it.
+   Acceptance (`peek_footprint.cjs`): a stranger with twenty four-kilobyte posts is looked
+   at under the rig's 32 KB ceiling - the headers all come, bodies cross in shelf order
+   until the ceiling, the rest are refused with the word and the page says full; the evict
+   beat with a zero expiry retires the peek whole and a fresh look peeks again; under an
+   hour's expiry a just-looked-at peek stays. Found on the way: a re-fetch after an eviction
+   in one process died reopening a journal the eviction had deleted - eviction forgets the
+   journal's first-look memo and the heads file now, and the chain-heads memo with them.
 4. **Pins.** The `pin` statement and its retraction (route, button on the post page and the
    feed card, the chip); the pinned strip on the author's page, read from the annotations
    memo; the pin proofs in the `Shelf` answer and the pinned ids fetched beside the window;

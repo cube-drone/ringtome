@@ -183,8 +183,10 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
         >
             ${profile.foreign && !profile.peek &&
             html`<p class="id-words">${t('idpage.reached-across-the-network--', 'reached across the network - not carried on this node')}</p>`}
-            ${profile.peek &&
+            ${profile.peek && !profile.peek_full &&
             html`<p class="id-words">${t('idpage.a-look-at-their-newest', 'a look at their newest posts - follow them to keep up')}</p>`}
+            ${profile.peek_full &&
+            html`<p class="id-words">${t('idpage.this-look-is-full', 'this look is full - follow them to keep everything')}</p>`}
             ${profile.foreign &&
             html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} />`}
         <//>

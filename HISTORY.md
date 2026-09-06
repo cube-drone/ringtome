@@ -8501,3 +8501,21 @@ the speculative lane's quiet mirrors (not peeks; they hang on a trust rollup), a
 (promotes a peek in its own request now), the avatar (fetched first with the shelf), the
 reply door (fetches an unheld parent by id), and the replies memo's sweep (stands aside like
 the vanish sweep). The permalink reads fragment-first for a peek too.
+
+## 2026-09-05 (cont.): PEEK.md slice 3 - footprint and expiry
+
+A peek has a footprint and an expiry. The fetch registry became the peek registry (node
+schema generation 40): every look stamps it, and the footprint - the author's fragments
+and every blob they name - is measured into it whenever a peek fetches. Three dials: bytes
+per peek, bytes for all peeks, and how long an unlooked-at peek lives. Every road that
+fetches for a peek asks for room first; the shelf fetches bodies one at a time in shelf
+order and wants nothing past the ceiling; past it the reads refuse with "this look is
+full - follow them to keep everything" and the page says so. The eviction sweep judges
+peeks by their looks: unlooked-at past the expiry goes whole, over the node-wide budget
+the least recently looked-at go first, a looked-at peek keeps, and a peek's own fragments
+no longer keep a mirror the way a share's do. The test beat's evict forces the expiry to
+zero as it forces the grace. Found on the way: the first re-fetch after an eviction in one
+process died reopening a journal the eviction had deleted; eviction forgets the journal's
+first-look memo, the heads file and the chain-heads memo now. The eviction acceptance had
+been asserting that bug in honesty's clothes - a 404 on the visit after eviction - and
+asserts the doctrine now: the visit re-mints the persona as a peek.

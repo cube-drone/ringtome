@@ -47,6 +47,10 @@ pub struct BeatRequest {
     /// schedules a post for next year and rings the beat as if next year had come.
     #[serde(default)]
     pub at_ms: Option<i64>,
+    /// The "evict" pass's peek expiry, in milliseconds. Absent, ZERO - the beat's posture is
+    /// "evict NOW, on claims, never on clocks", and a peek's look is a clock exactly as the
+    /// mtime grace is (PEEK.md slice 3). A claim that wants the real expiry names one.
+    pub peek_expiry_ms: Option<i64>,
 }
 
 /// Ring one background pass, NOW, and return when it has completed - the test suite's
@@ -193,7 +197,8 @@ pub async fn beat(
         ("evict", _) => {
             // Grace ZERO: a rung eviction gates on claims (hosted, dials, fragments,
             // demand), never on clocks - the forced-due posture of every sweep beat.
-            crate::eviction::evict_pass_with_grace(state.clone(), 0).await
+            let expiry = req.peek_expiry_ms.unwrap_or(0);
+            crate::eviction::evict_pass_with_grace_and_expiry(state.clone(), 0, expiry).await
         }
         (other, _) => {
             return Err(AppError::BadRequest(crate::msg!(

@@ -898,15 +898,60 @@ pub async fn blob_refs(node_db: &Db) -> Result<Vec<[u8; 32]>> {
 /// Does ANY fragment row stand behind this author here? The eviction sweep's share-side
 /// keeper (PROJECT_PLAN's Discovery, slice 4): a fragment is a reader-facing promise, and a chain mirror
 /// with fragments beside it stays until the shares themselves retire.
-pub async fn any_for_author(node_db: &Db, author_root: &str) -> Result<bool> {
+/// Fragments of this author that a SHARE brought - origin someone else - as against the
+/// peek's own, whose origin is the author. A share's fragment is a reader-facing promise
+/// that keeps the mirror (eviction's keeper); a peek's is the peek's, and expires with it.
+pub async fn any_shared_for_author(node_db: &Db, author_root: &str) -> Result<bool> {
     let row: Option<(i64,)> = node_db
         .fetch_optional(
-            "SELECT 1 FROM fragments WHERE author_root = ?1 LIMIT 1",
+            "SELECT 1 FROM fragments WHERE author_root = ?1 AND origin_root != ?1 LIMIT 1",
             (author_root,),
         )
         .await
-        .context("probing an author's fragment shelf")?;
+        .context("probing an author's shared fragments")?;
     Ok(row.is_some())
+}
+
+/// The peek's footprint on this ledger (PEEK.md ruling 6): every fragment of the author
+/// and every blob those fragments name that this node holds, in bytes.
+pub async fn bytes_of_author(state: &crate::AppState, author_root: &str) -> Result<u64> {
+    let rows: Vec<(Vec<u8>,)> = state
+        .node_db
+        .fetch_all("SELECT entry FROM fragments WHERE author_root = ?1", (author_root,))
+        .await
+        .context("measuring an author's fragments")?;
+    let mut total = 0u64;
+    let mut hashes: Vec<[u8; 32]> = Vec::new();
+    for (entry,) in rows {
+        total += entry.len() as u64;
+        let Ok(signed) = ringtome_proto::SignedEntry::decode(&entry) else { continue };
+        let ringtome_proto::Payload::Inline(payload) = &signed.entry().payload else { continue };
+        let Ok(h) = ringtome_proto::DocHeaderPlain::decode(payload) else { continue };
+        hashes.push(h.file_hash);
+        hashes.extend(h.thumb_hash);
+        hashes.extend(h.preview_hash);
+    }
+    hashes.sort_unstable();
+    hashes.dedup();
+    for h in hashes {
+        if let Some(n) = state.files.size_of(iroh_blobs::Hash::from_bytes(h)).await {
+            total += n;
+        }
+    }
+    Ok(total)
+}
+
+/// Drop everything a PEEK fetched of this author - the fragments whose origin is the author
+/// themselves. Shares' fragments (another origin) stay; they retire on their own schedule.
+pub async fn forget_peek(node_db: &Db, author_root: &str) -> Result<u64> {
+    let n = node_db
+        .execute(
+            "DELETE FROM fragments WHERE author_root = ?1 AND origin_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("forgetting a peek's fragments")?;
+    Ok(n)
 }
 
 /// Forget an evicted author's deliverer stamps - endpoints that served chains this node no

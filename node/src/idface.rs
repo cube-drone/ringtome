@@ -340,9 +340,9 @@ async fn record_foreign_fetch(state: &AppState, root_hex: &str, via: &str) -> Re
     state
         .node_db
         .execute(
-            "INSERT INTO foreign_fetches (root_pubkey, fetched_at_ms, last_via)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(root_pubkey) DO UPDATE SET fetched_at_ms = ?2, last_via = ?3",
+            "INSERT INTO foreign_fetches (root_pubkey, fetched_at_ms, last_via, looked_ms)
+             VALUES (?1, ?2, ?3, ?2)
+             ON CONFLICT(root_pubkey) DO UPDATE SET fetched_at_ms = ?2, last_via = ?3, looked_ms = ?2",
             (root_hex, crate::clock::now_ms(), via),
         )
         .await
@@ -487,6 +487,74 @@ pub(crate) async fn promote_peek(state: &AppState, root_hex: &str) -> bool {
 /// How many posts a peek carries (PEEK.md ruling 4), and how long the page waits for them.
 const PEEK_POSTS: u64 = 20;
 const PEEK_SHELF_WAIT: std::time::Duration = std::time::Duration::from_secs(6);
+/// How often a look is written down - a reload loop is one look.
+const PEEK_LOOK_THROTTLE_MS: i64 = 60 * 1000;
+
+/// A member looked at this peek (PEEK.md ruling 6): the expiry and the node-wide budget's
+/// least-recently-looked order read the stamp. Throttled in memory so a page's dozen reads
+/// are one write.
+pub(crate) async fn touch_look(state: &AppState, root_hex: &str) {
+    let now = crate::clock::now_ms();
+    if state
+        .sweep_marks
+        .last("peek-look", root_hex)
+        .is_some_and(|t| now - t < PEEK_LOOK_THROTTLE_MS)
+    {
+        return;
+    }
+    state.sweep_marks.record("peek-look", root_hex, now);
+    if let Err(e) = state
+        .node_db
+        .execute(
+            "UPDATE foreign_fetches SET looked_ms = ?2 WHERE root_pubkey = ?1",
+            (root_hex, now),
+        )
+        .await
+    {
+        tracing::debug!(root = %root_hex, error = ?e, "could not stamp a look");
+    }
+}
+
+/// The peek registry, for the eviction sweep: every fetched root with its last look and
+/// its measured footprint (PEEK.md ruling 6). Owner's read - `foreign_fetches` is this
+/// module's table.
+pub(crate) async fn peek_registry(node_db: &crate::db::Db) -> anyhow::Result<Vec<(String, i64, i64)>> {
+    node_db
+        .fetch_all("SELECT root_pubkey, looked_ms, bytes FROM foreign_fetches", ())
+        .await
+        .map_err(|e| anyhow::anyhow!("reading the peek registry: {e}"))
+}
+
+/// Whether somebody here looked at this persona within the expiry - the keeper a peek
+/// holds its mirror by (PEEK.md ruling 6): a look is the rest clock a peek is judged on.
+pub(crate) async fn looked_within(node_db: &crate::db::Db, root_hex: &str, now: i64, expiry_ms: i64) -> bool {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional("SELECT looked_ms FROM foreign_fetches WHERE root_pubkey = ?1", (root_hex,))
+        .await
+        .ok()
+        .flatten();
+    row.is_some_and(|(looked,)| now - looked < expiry_ms)
+}
+
+/// The peek's footprint, measured now and written to the registry (PEEK.md ruling 6).
+pub(crate) async fn peek_bytes(state: &AppState, root_hex: &str) -> u64 {
+    let bytes = crate::fragments::bytes_of_author(state, root_hex).await.unwrap_or(0);
+    let _ = state
+        .node_db
+        .execute(
+            "UPDATE foreign_fetches SET bytes = ?2 WHERE root_pubkey = ?1",
+            (root_hex, bytes as i64),
+        )
+        .await;
+    bytes
+}
+
+/// Whether this peek may still fetch (PEEK.md ruling 6): under its byte ceiling. Every
+/// road that fetches for a peek - the shelf, the on-demand reads, the reply door - asks
+/// this first; over the ceiling, the peek keeps what it has and the page says so.
+pub(crate) async fn peek_room(state: &AppState, root_hex: &str) -> bool {
+    peek_bytes(state, root_hex).await < state.config.peek_max_bytes
+}
 
 /// The peek's shelf (PEEK.md ruling 4): ask the node that just answered for the persona
 /// which posts are newest (and pinned), then fetch each as a fragment - its own signed
@@ -530,8 +598,16 @@ async fn peek_shelf(state: &AppState, root_hex: &str, endpoint_id: &str) -> usiz
         }
     }
     wanted.truncate((PEEK_POSTS * 2 + 1) as usize);
+    if !peek_room(state, root_hex).await {
+        tracing::info!(root = %root_hex, "peek: at its ceiling - nothing more fetched");
+        return crate::fragments::shelf_of(&state.node_db, root_hex, PEEK_POSTS as i64)
+            .await
+            .map(|s| s.len())
+            .unwrap_or(0);
+    }
+    let started = std::time::Instant::now();
     let mut tasks = tokio::task::JoinSet::new();
-    for doc_id in wanted {
+    for (index, doc_id) in wanted.into_iter().enumerate() {
         let doc_hex = hex::encode(doc_id);
         if let Ok(Some(_)) = crate::fragments::held(&state.node_db, root_hex, &doc_hex).await {
             continue;
@@ -546,38 +622,55 @@ async fn peek_shelf(state: &AppState, root_hex: &str, endpoint_id: &str) -> usiz
                     .await
                     .is_ok()
                 {
+                    if let Some(ep) = served_by {
+                        let _ = crate::fragments::note_deliverer(&task_state.node_db, &task_root, &ep).await;
+                    }
                     // The words, the thumbnail and the preview alike: a face is its thumbnail.
                     let mut hashes = vec![verified.header.file_hash];
                     hashes.extend(verified.header.thumb_hash);
                     hashes.extend(verified.header.preview_hash);
-                    for h in &hashes {
-                        let _ = crate::net::bodies::want(&task_state.node_db, &task_root, h).await;
-                    }
-                    if let Some(ep) = served_by {
-                        let _ = crate::fragments::note_deliverer(&task_state.node_db, &task_root, &ep).await;
-                    }
+                    return Some((index, hashes));
                 }
             }
+            None
         });
     }
     // Wait the page's patience, then let the rest finish detached (never aborted: a late
     // fragment is a warmer shelf, and an abort mid-dial is the zombie the ladder learned
     // to avoid).
+    let mut landed: Vec<(usize, Vec<[u8; 32]>)> = Vec::new();
     let deadline = tokio::time::sleep(PEEK_SHELF_WAIT);
     tokio::pin!(deadline);
     loop {
         tokio::select! {
-            joined = tasks.join_next() => { if joined.is_none() { break; } }
+            joined = tasks.join_next() => match joined {
+                None => break,
+                Some(Ok(Some(hit))) => landed.push(hit),
+                Some(_) => {}
+            },
             _ = &mut deadline => {
                 tasks.detach_all();
                 break;
             }
         }
     }
-    // The bytes cross with the look, not behind it (the face test's "no second trip"): heal
-    // inline from the node that answered, bounded like everything else on this page; what
-    // the deadline leaves standing, the wants and the sweep finish.
-    let _ = tokio::time::timeout(PEEK_SHELF_WAIT, crate::net::bodies::heal_from(state, root_hex, root_hex)).await;
+    landed.sort_by_key(|(i, _)| *i);
+    // The bytes cross with the look, not behind it (the face test's "no second trip") -
+    // one document at a time, in shelf order, each wanted and fetched only while the peek
+    // has room (ruling 6) and the page has patience. Past either, nothing more is even
+    // wanted: what the ceiling refuses, the sweep must not fetch later.
+    if let Ok(addr) = crate::net::sync::dial_addr(state, endpoint_id).await {
+        for (_, hashes) in landed {
+            if started.elapsed() > PEEK_SHELF_WAIT * 2 || !peek_room(state, root_hex).await {
+                break;
+            }
+            for h in &hashes {
+                let _ = crate::net::bodies::want(&state.node_db, root_hex, h).await;
+            }
+            crate::net::bodies::fetch_wanted(state, root_hex, addr.clone()).await;
+        }
+    }
+    peek_bytes(state, root_hex).await;
     crate::fragments::shelf_of(&state.node_db, root_hex, PEEK_POSTS as i64)
         .await
         .map(|s| s.len())
@@ -1092,7 +1185,13 @@ async fn public_doc_bytes(
                 // reader who clicked it gets it rather than a shrug.
                 let peek = peek_held(state, &root_hex).await;
                 let mut fragment_first = if speculative_only || peek { from_fragments().await? } else { None };
+                if peek {
+                    touch_look(state, &root_hex).await;
+                }
                 if peek && fragment_first.is_none() {
+                    if !peek_room(state, &root_hex).await {
+                        return Err(AppError::NotFound(crate::msg!("idface.this-look-is-full", "this look is full - follow them to keep everything")));
+                    }
                     crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
                     fragment_first = from_fragments().await?;
                 }
@@ -1200,6 +1299,11 @@ async fn public_doc_bytes(
         .await
         .map_err(AppError::Internal)?
     else {
+        // A peek at its ceiling never wanted these bytes (PEEK.md ruling 6): say so, rather
+        // than promising bodies that are not on their way.
+        if peek_held(state, &root_hex).await && !peek_room(state, &root_hex).await {
+            return Err(AppError::NotFound(crate::msg!("idface.this-look-is-full", "this look is full - follow them to keep everything")));
+        }
         return Err(AppError::NotFound(crate::msg!("idface.the-bytes-havent-arrived-here", "the bytes haven't arrived here yet - headers travel ahead of bodies")));
     };
     // A sealed body opens at the door (PROJECT_PLAN's Post visibility slice 2b): what the store holds and
@@ -1364,6 +1468,7 @@ pub async fn id_posts(
     let dbh = state.user_dbs.get(&root_hex).await.ok().flatten();
     let hosted_here = crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(false);
     let posts = if !hosted_here && peek_held(&state, &root_hex).await {
+        touch_look(&state, &root_hex).await;
         // A peek's shelf is the fragment ledger's (PEEK.md ruling 4): one page, no further.
         if after.is_some() {
             Vec::new()
@@ -1650,7 +1755,10 @@ pub async fn id_post(
     // fragment ledger answers - fetched by id right now if the peek never held it.
     let mut fragment_refs: Option<Vec<[u8; 16]>> = None;
     if post.is_none() && peek_held(&state, &root_hex).await {
-        if crate::fragments::held(&state.node_db, &root_hex, &doc).await.ok().flatten().is_none() {
+        touch_look(&state, &root_hex).await;
+        if crate::fragments::held(&state.node_db, &root_hex, &doc).await.ok().flatten().is_none()
+            && peek_room(&state, &root_hex).await
+        {
             crate::fragments::fetch_post(&state, &root_hex, &root, &doc_id).await;
         }
         if let Some((p, refs)) = crate::fragments::public_doc_of(&state.node_db, &root_hex, &doc)
@@ -2014,6 +2122,11 @@ pub async fn id_profile(
     // A PEEK (PEEK.md ruling 4) holds no posts chain: its shelf is the fragment ledger's -
     // the newest posts the peek fetched, each the author's own signed header.
     let peek = !hosted && peek_held(&state, &root_hex).await;
+    let mut peek_full = false;
+    if peek {
+        touch_look(&state, &root_hex).await;
+        peek_full = !peek_room(&state, &root_hex).await;
+    }
     let mut posts: Vec<crate::record::documents::PublicDoc> = if peek {
         crate::fragments::shelf_of(&state.node_db, &root_hex, POSTS_PAGE)
             .await
@@ -2101,6 +2214,9 @@ pub async fn id_profile(
         // A look, not a mirror (PEEK.md ruling 9): nobody here follows them, so this node
         // holds their identity, profile, labels and newest posts, and no history.
         "peek": peek,
+        // The look is at its ceiling (PEEK.md ruling 6): what is here stays, nothing more
+        // is fetched, and following them is the way to the rest.
+        "peek_full": peek_full,
         // Whether an address minted here may wear this node's ORIGIN: only for personas it
         // actually serves. A foreign persona's address mints origin-free, which re-homes at
         // whatever node the reader has.
