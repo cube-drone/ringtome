@@ -599,6 +599,8 @@ mod tests {
             Tier::Trusted
         );
         assert_eq!(classify(notice_kind::COMMENT, &facts(&[])), Tier::Stranger);
+        assert_eq!(classify(notice_kind::MENTIONED, &facts(&[])), Tier::Stranger, "a mention tiers by sender");
+        assert_eq!(classify(notice_kind::MENTIONED, &facts(&[("trust", "high")])), Tier::Trusted);
     }
 
     #[test]

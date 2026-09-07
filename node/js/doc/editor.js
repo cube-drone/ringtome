@@ -18,7 +18,7 @@
 // stream must never repaint. The mirror is watched, never rendered into the textarea; the
 // save response fast-forwards our parents without a refetch.
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { readPref, setPref, viewModeKey } from '../mirror/prefs.js';
@@ -37,7 +37,8 @@ import { useTurbolinks } from './turbolinks.js';
 import { Annotations } from './annotations.js';
 import { useUploadCapture } from './upload.js';
 import { stripSelfOrigin } from '../pure/portable.js';
-import { emojiCompletions, linkCompletions, mediaCompletions } from './completions.js';
+import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
+import { userCardHtml, userSpanHtml, useUserCards } from './usercard.js';
 import { slugPathFor } from './address.js';
 import { featuresOf, editorModes } from '../pure/apps.js';
 import { Icons } from '../icons.js';
@@ -290,6 +291,17 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
     // Turbolink cards for whatever the buffer holds - resolves via the node's unfurl
     // endpoint; the profile's identity changes as cards land, re-rendering every surface.
     const tlProfile = useTurbolinks(body, format);
+    // The live preview's profile wears the user card's string hook (doc/usercard.js); the
+    // side-by-side and read-only previews get the person's row through MarqueeBody itself.
+    // The faces generation rides the profile object so a landed name is a fresh identity,
+    // which is what makes the compartment repaint (the turbolink pattern).
+    const facesGen = useUserCards(body, format);
+    const liveProfile = useMemo(
+        () => ({ ...tlProfile, directive: userCardHtml, span: userSpanHtml, faces: facesGen }),
+        [tlProfile, facesGen]
+    );
+    // One picker instance per editor: it caches the roster it fetched on the first `@`.
+    const mentionSource = useMemo(() => mentionCompletions(), []);
 
     // The scroll-sync/caret ref quartet (their story is with the sync closures, below).
     const previewRef = useRef(null); // MarqueeHandle
@@ -451,11 +463,12 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         if (mode === 'interactive' && format === 'marquee') {
             return html`<${LiveMarquee}
                 body=${body}
-                profile=${tlProfile}
+                profile=${liveProfile}
                 completions=${[
                     emojiCompletions,
                     linkCompletions(root, bucket),
                     mediaCompletions(root, bucket),
+                    mentionSource,
                 ]}
                 initialSelection=${recallCursor(root, docId)}
                 onCursor=${(start, end) => rememberCursor(root, docId, start, end)}

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 657 phrases across 48 files.
+// 660 phrases across 49 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -63,6 +63,8 @@ export default {
     'apps.notifications.labelled-a-post-words': 'labelled one of your posts "{words}"',
     'apps.notifications.labelled': 'labelled',
     'apps.notifications.labelled-one-of-your-posts': 'labelled one of your posts',
+    'apps.notifications.mentioned-you-in': 'mentioned you in',
+    'apps.notifications.mentioned-you-in-a-post': 'mentioned you in a post',
     'apps.notifications.replied-on': 'replied on',
     'apps.notifications.replied-to-one-of-your': 'replied to one of your posts',
     'apps.notifications.shared': 'shared',
@@ -329,6 +331,9 @@ export default {
 
     // --- node/js/doc/upload.js ---
     'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
+
+    // --- node/js/doc/usercard.js ---
+    'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
 
     // --- node/js/idpage.js ---
     'idpage.synced': 'synced {when}',

@@ -7,7 +7,10 @@
 // bucket's files - each a source in this module, handed to LiveMarquee by the hosting editor.
 import { nameToEmoji } from 'gemoji';
 
+import { api } from '../net.js';
 import { openMirror } from '../mirror.js';
+import { speakable } from '../speakable.js';
+import { mentionQuery, mentionShape, userCardSource, userSpanSource } from '../pure/mentions.js';
 import { slugPathFor } from './address.js';
 import { slugify, MEDIA_EXT } from '../pure/naming.js';
 import { OWN_MEDIA_KINDS, loopSuffix } from '../pure/mediakind.js';
@@ -206,5 +209,56 @@ export function mediaCompletions(root, bucket) {
                 };
             });
         return { from: word.from + prefixLen, options };
+    };
+}
+
+/// How long a fetched roster serves the picker before the next `@` asks again.
+const ROSTER_TTL_MS = 60_000;
+
+/// `@` at a word start (2026-09-06): a picker over the personas this node knows - the same
+/// list the People app shows - filtered as you type ("@Butt Di" finds Butt Diamonds), and
+/// filled as a user card in the shape the line asks for: on a line of its own, the leaf
+/// directive `:::user id=/id/<address>:::`; among words, the span
+/// `[user id=/id/<address>]Their Name[/user]` - both dressed as the person by the
+/// renderers. One roster fetch per editor per minute; a failed fetch offers whatever was
+/// last known. The word-start rule (pure/mentions.js) keeps an email address's `@` from
+/// opening it.
+export function mentionCompletions() {
+    let roster = null;
+    let fetchedAt = 0;
+    return async (context) => {
+        const line = context.state.doc.lineAt(context.pos);
+        const q = mentionQuery(context.state.sliceDoc(line.from, context.pos));
+        if (!q) return null;
+        const at = line.from + q.from; // the `@` itself
+        if (!roster || Date.now() - fetchedAt > ROSTER_TTL_MS) {
+            try {
+                roster = await api('/api/directory');
+                fetchedAt = Date.now();
+            } catch {
+                roster = roster || [];
+            }
+        }
+        const options = roster.map((person) => {
+            const address = person.speakable || speakable(person.root);
+            return {
+                label: person.name || address,
+                detail: person.name ? address : undefined,
+                apply: (view, _completion, _from, to) => {
+                    const here = view.state.doc.lineAt(at);
+                    const before = view.state.sliceDoc(here.from, at);
+                    const after = view.state.sliceDoc(to, here.to);
+                    const text =
+                        mentionShape(before, after) === 'span'
+                            ? userSpanSource(address, person.name)
+                            : userCardSource(address);
+                    view.dispatch({
+                        changes: { from: at, to, insert: text },
+                        selection: { anchor: at + text.length },
+                    });
+                },
+            };
+        });
+        return { from: at + 1, options, validFor: /^[^\n@]{0,40}$/ };
     };
 }

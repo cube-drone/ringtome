@@ -108,6 +108,13 @@ pub mod notice_kind {
     /// signed public annotation naming the recipient as the post's author. A murmur, like
     /// a share: news, not conversation. The claim's `doc_id` is the post.
     pub const TAGGED: u32 = 4;
+    /// "I mentioned you in a post" (2026-09-06) - evidence is the sender's own signed
+    /// public annotation `mention=<recipient>` on the SENDER's own post. The claim's
+    /// `doc_id` is that post - the sender's, not the recipient's, which is the one kind
+    /// whose card points away from the reader's shelf. Conversation, not a murmur: a
+    /// stranger naming you is exactly what the stranger pool is for, so the classifier
+    /// tiers it by sender like a comment.
+    pub const MENTIONED: u32 = 5;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -115,6 +122,7 @@ pub mod notice_kind {
             REBROADCAST => "rebroadcast",
             COMMENT => "comment",
             TAGGED => "tagged",
+            MENTIONED => "mentioned",
             _ => "unknown-kind",
         }
     }
@@ -656,6 +664,35 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
             };
             (None, None, Some(a.target_doc), Some(words))
         }
+        notice_kind::MENTIONED => {
+            if evidence.entry().chain.service != crate::registry::service::ANNOTATIONS_PUBLIC
+                || evidence.entry().entry_type != crate::registry::entry_type::PUBLIC_ANNOTATION
+            {
+                return Err(ProtoError::ChainViolation(
+                    "a mention notice needs the sender's own annotation",
+                ));
+            }
+            let crate::Payload::Inline(payload) = &evidence.entry().payload else {
+                return Err(ProtoError::BadEntry("annotation payload must be inline"));
+            };
+            let a = crate::registry::PublicAnnotation::decode(payload)?;
+            // The binding, twice over: the statement is about the SENDER's own post, and
+            // the mentioned root is the RECIPIENT - anything else is news for another door.
+            if a.target_author != envelope.sender_root {
+                return Err(ProtoError::ChainViolation(
+                    "the mention is on somebody else's post",
+                ));
+            }
+            if a.mentioned() != Some(envelope.recipient_root) {
+                return Err(ProtoError::ChainViolation(
+                    "the mention names somebody else",
+                ));
+            }
+            if a.is_retraction() {
+                return Err(ProtoError::BadEntry("the mention was withdrawn"));
+            }
+            (None, None, Some(a.target_doc), None)
+        }
         _ => return Err(ProtoError::BadEntry("unknown notice kind")),
     };
 
@@ -1020,11 +1057,21 @@ mod tests {
 
     /// One annotation entry on `signer`'s chain, labelling a post.
     fn annotation_entry(signer: &SigningKey, target: ([u8; 32], [u8; 16]), present: bool) -> SignedEntry {
+        statement_entry(signer, target, "tag", "goopy", present)
+    }
+
+    fn statement_entry(
+        signer: &SigningKey,
+        target: ([u8; 32], [u8; 16]),
+        key: &str,
+        value: &str,
+        present: bool,
+    ) -> SignedEntry {
         let payload = crate::registry::PublicAnnotation {
             target_author: target.0,
             target_doc: target.1,
-            key: "tag".into(),
-            value: "goopy".into(),
+            key: key.into(),
+            value: value.into(),
             present,
         }
         .encode()
@@ -1048,11 +1095,15 @@ mod tests {
     }
 
     fn tagged_notice(root: &SigningKey, leaf: &SigningKey, recipient: [u8; 32], evidence: SignedEntry) -> SignedEnvelope {
+        notice_of(root, leaf, recipient, notice_kind::TAGGED, evidence)
+    }
+
+    fn notice_of(root: &SigningKey, leaf: &SigningKey, recipient: [u8; 32], kind: u32, evidence: SignedEntry) -> SignedEnvelope {
         let envelope = Envelope {
             sender_root: pubkey(root),
             signer: pubkey(leaf),
             recipient_root: recipient,
-            kind: notice_kind::TAGGED,
+            kind,
             auth_path: vec![authorize(root, leaf, 0).bytes().to_vec()],
             evidence: Some(evidence.bytes().to_vec()),
             greeting: None,
@@ -1077,6 +1128,29 @@ mod tests {
         assert_eq!(claim.detail.as_deref(), Some("goopy"), "the words ride the claim");
         assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, ([8u8; 32], post), true))).is_err());
         assert!(verify_claim(&tagged_notice(&root, &leaf, recipient, annotation_entry(&leaf, (recipient, post), false))).is_err());
+    }
+
+    /// A mention (2026-09-06): the evidence is the sender's `mention=<recipient>` on the
+    /// sender's OWN post; a mention of somebody else, a mention on somebody else's post,
+    /// and a withdrawn mention all refuse. The claim's post is the sender's.
+    #[test]
+    fn a_mention_notice_verifies_and_names_the_senders_post() {
+        let root = key(1);
+        let leaf = key(2);
+        let me = pubkey(&root);
+        let recipient = [7u8; 32];
+        let post = [6u8; 16];
+        let mention = |target: [u8; 32], named: [u8; 32], present: bool| {
+            statement_entry(&leaf, (target, post), "mention", &hex::encode(named), present)
+        };
+        let claim = verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention(me, recipient, true))).unwrap();
+        assert_eq!(claim.kind, notice_kind::MENTIONED);
+        assert_eq!(claim.doc_id, Some(post), "the card points at the SENDER's post");
+        assert_eq!(claim.detail, None);
+        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention(me, [8u8; 32], true))).is_err(), "names somebody else");
+        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention([8u8; 32], recipient, true))).is_err(), "on somebody else's post");
+        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, mention(me, recipient, false))).is_err(), "withdrawn");
+        assert!(verify_claim(&notice_of(&root, &leaf, recipient, notice_kind::MENTIONED, annotation_entry(&leaf, (me, post), true))).is_err(), "a tag is not a mention");
     }
 
     fn comment_notice(

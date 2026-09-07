@@ -8604,3 +8604,36 @@ PROJECT_PLAN.md beside "Post visibility" - the shape, the rulings with their num
 (the code cites them), the invariants, the dials, the residuals - and the files are gone.
 Every citation in the code and the tests now names the plan's section. The
 moment-by-moment record of how each was built stays here.
+
+## 2026-09-06: mentions - a user card in the words
+
+Curtis asked for a way to summon a person into a post: type `@` at a word start, pick
+someone you know, and a user card lands in the words; publish, and the person it names is
+told. The card is Marquee's leaf directive `:::user id=/id/<address>:::` on its own line
+(the grammar makes directives blocks - a `:::user` inline is text, which settled where the
+picker puts it). Publishing restates each card as a `mention=<root>` statement on the
+author's own labels chain, diffed like the tags (an edit that drops the card retracts it;
+a card naming the author says nothing), and a fresh notice kind "mentioned" rides the
+tagged notice's two roads: an envelope sealed at publish with the statement as evidence
+(bound twice: the sender's own post, the recipient's root), and the labels leg of the fold
+for readers who follow the author. It tiers by sender like a comment. The bell says
+"mentioned you in" with the AUTHOR's post as the card, the one row whose card points away
+from the reader's shelf; the server skips its title join for that kind and the card asks
+the author's shelf itself. Every body surface renders the card as the person's row through
+the react renderer's directive hook, wired once in MarqueeBody - their heptagon and full
+name when known, their words otherwise (Curtis's follow-up the same day); the live editor's
+preview draws the same card from a face cache the editor fills as profiles land. The card
+is the smallest shape that still carries a name: the small heptagon, the names beside it,
+sized to its content (Curtis, later the same day). Then the inline shape: Marquee's span
+protocol is the inline twin of the directive, so `[user id=/id/<address>]Name[/user]` is
+the same card in a line of text, the mini heptagon and the name; the picker fills the
+block when the line holds nothing but the summons and the span when there are words around
+it (Curtis's rule), the scanner reads both, and the suite's friend is named both ways and
+counted once. The live editor showed the span as dimmed source: marquee-codemirror rendered
+only links and emoji as inline widgets and never asked the profile's span hook. Fixed
+upstream - an embedder span the profile claims is a rendered widget when the cursor is
+away, source beside it, like a link - and released as Marquee 0.8.0 (a behaviour change
+earns the minor); ringtome's JS ranges and Rust pins moved to 0.8.0 in lockstep. The `@` rule is pure and tested (an email address never opens
+the picker); the acceptance suite `mentions.cjs` walks the restating, both roads, the
+dedupe, and the retraction. PROJECT_PLAN gained "Mentions: a user card in the words";
+NEXT_STEPS lost its "@user" wish.

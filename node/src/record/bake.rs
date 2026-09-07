@@ -64,6 +64,70 @@ pub fn media_refs(body: &str, root_hex: &str) -> Vec<MediaRef> {
     found
 }
 
+/// The user cards in a body (2026-09-06): every `:::user id=/id/<address>:::` block and
+/// every `[user id=/id/<address>]name[/user]` span whose address parses to a root - worded
+/// with its checksum verified, bare base58, or hex - in document order, once each.
+/// Mismatched words refuse here as they do at the /id door: a card whose words lie names
+/// nobody. The same parser as the media pre-pass, for the same reason.
+pub fn mentions(body: &str) -> Vec<[u8; 32]> {
+    let Ok(doc) = marquee_parser::parse(body) else {
+        return Vec::new();
+    };
+    let mut found: Vec<[u8; 32]> = Vec::new();
+    each_directive(&doc, &mut |name, attrs| {
+        if name != "user" {
+            return;
+        }
+        if let Some(root) = attrs.get("id").and_then(|id| card_root(id)) {
+            if !found.contains(&root) {
+                found.push(root);
+            }
+        }
+    });
+    found
+}
+
+/// A card's `id` attribute, resolved: `/id/<segment>` (the page's own path, which is what
+/// the picker writes) or the bare segment, with any query or fragment ignored.
+pub fn card_root(id: &str) -> Option<[u8; 32]> {
+    let seg = id.trim();
+    let seg = seg.strip_prefix("/id/").unwrap_or(seg);
+    let seg = seg.split(['?', '#', '/']).next()?;
+    match crate::speakable::parse(seg)? {
+        crate::speakable::Parsed::Ok(root) => Some(root),
+        crate::speakable::Parsed::Mismatch { .. } => None,
+    }
+}
+
+fn each_directive(
+    node: &marquee_parser::Node,
+    on_directive: &mut impl FnMut(&str, &marquee_parser::Attrs),
+) {
+    use marquee_parser::Node;
+    match node {
+        // A span carries a name and attributes exactly as a directive does - the inline
+        // shape of the same card.
+        Node::Directive { name, attrs, children } | Node::Span { name, attrs, children } => {
+            on_directive(name, attrs);
+            for child in children {
+                each_directive(child, on_directive);
+            }
+        }
+        Node::Document { children, .. }
+        | Node::Paragraph { children }
+        | Node::Heading { children, .. }
+        | Node::Blockquote { children }
+        | Node::List { children, .. }
+        | Node::ListItem { children }
+        | Node::Link { children, .. } => {
+            for child in children {
+                each_directive(child, on_directive);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn walk(node: &marquee_parser::Node, on_embed: &mut impl FnMut(&str)) {
     use marquee_parser::Node;
     match node {
@@ -661,5 +725,30 @@ mod tests {
         let to = "/id/ROOT/docs/PUB/body/media.avif".to_string();
         let out = rewrite(&body, &[(from, to.clone())]);
         assert_eq!(out, format!("![t]({to}) tail"));
+    }
+
+    /// The user cards (2026-09-06): worded, bare and hex spellings all resolve; a card
+    /// whose words lie, a card inline in a sentence, and a card naming nothing are not
+    /// mentions; the same persona twice is one mention.
+    #[test]
+    fn user_cards_resolve_to_roots_once_each() {
+        let root = [9u8; 32];
+        let worded = crate::speakable::speakable(&root);
+        let (_, _, key) = {
+            let mut it = worded.splitn(3, '-');
+            (it.next().unwrap(), it.next().unwrap(), it.next().unwrap())
+        };
+        let body = format!(
+            "hello\n:::user id=/id/{worded}:::\nagain :::user id=/id/{worded}::: inline is text\n:::user id={key}:::\n:::user id=/id/{}:::\n:::user id=/id/wrong-words-{key}:::\n:::user id=/id/nobody:::\n:::media src=x:::\n",
+            hex::encode(root)
+        );
+        assert_eq!(mentions(&body), vec![root], "one root, however it was spelled");
+        let other = [3u8; 32];
+        let two = format!(":::user id=/id/{}:::\n\n:::user id=/id/{}:::\n", hex::encode(other), hex::encode(root));
+        assert_eq!(mentions(&two), vec![other, root], "document order");
+        let inline = format!("a word for [user id=/id/{}]a friend[/user] mid-sentence, and [wave]not [user id=/id/{}]again[/user][/wave]", hex::encode(other), hex::encode(other));
+        assert_eq!(mentions(&inline), vec![other], "the span is the inline card, once");
+        assert!(mentions("no cards here").is_empty());
+        assert_eq!(card_root(&format!("/id/{worded}?via=abc")), Some(root), "a query is ignored");
     }
 }

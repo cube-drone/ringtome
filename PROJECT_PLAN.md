@@ -3930,6 +3930,58 @@ seal from you.
 proofs only); a backoff on the dialer's side of "busy"; snapshots for fold-based views under
 a suffix.
 
+### Mentions: a user card in the words (settled and built 2026-09-06)
+
+A post can name a person. The author summons a **user card** in the editor and the persona
+it names hears of it on the bell. Everything below rides machinery that already existed - the
+markup's directive grammar, the labels lane, the tagged notice's two roads - so the arc is
+small and its rules are few.
+
+1. **The card has two shapes, one name.** The block: the leaf directive
+   `:::user id=/id/<address>:::` on a line of its own (Marquee makes every directive a block,
+   so a `:::user` inline in a sentence is text). The inline: the span
+   `[user id=/id/<address>]Their Name[/user]`, sitting in the line of text with the person's
+   name inside it, so a renderer that knows no `user` span still shows who was meant. The
+   address is any spelling the `/id/` door accepts - worded with its checksum verified, bare
+   base58, or hex - and a card whose words lie names nobody, exactly as the door refuses them.
+2. **`@` at a word start opens the people picker** - the start of a line or after whitespace,
+   never inside a word, so an email address's `@` stays text. It offers the personas this
+   node knows (the directory the People app shows), filters as you type across the spaces of
+   a name, and fills the shape the line asks for: the block when the line holds nothing but
+   the summons, the span when there are words around it (Curtis's rule).
+3. **Every renderer dresses the card as the person**: the feed card, the reader, the post
+   page and the book reader all render bodies through one component, which hands the react
+   renderer a directive hook and a span hook - a `user` card becomes the person: the block,
+   the small heptagon beside their full name when the node knows it (their words when it
+   does not), sized to its content; the span, the mini heptagon and the name in the line.
+   The live editor's preview renders through the string profile, so it draws the same shapes
+   from a face cache the editor fills as the profiles land - words alone until then.
+4. **Publishing restates each card, either shape, as a public statement** `mention=<root hex>` on the
+   author's own labels chain, about the post - diffed with every other label, so a re-publish
+   that keeps its cards says nothing new and an edit that drops a card retracts the
+   statement. A card naming the author says nothing: you cannot mention yourself. The wire
+   refuses a `mention` whose value is not a root.
+5. **The mentioned persona's bell carries a fresh kind, "mentioned"**, by the two roads a tag
+   travels. The envelope road: at publish, each freshly minted mention is sealed to the
+   persona it names with the statement as evidence, and the verifier binds it twice - the
+   statement is about the SENDER's own post, and the root it names is the RECIPIENT; the
+   recipient's gate drops it when they already pull the author. The derived road: the labels
+   leg of the notifications fold turns a `mention` the author says about their own post into
+   a row for the reader it names, when that reader is hosted here and follows the author,
+   collapsing per (reader, post) and receding with the retraction. The two roads dedupe on
+   the kind's one name.
+6. **A mention is conversation, not a murmur**: it tiers by sender like a comment, so a
+   stranger naming you lands in the stranger ring and a friend's lands with the friends'.
+7. **The row's card is the author's post** - the one kind whose mini-card points away from
+   the reader's own shelf. The bell does not join a title for it from the reader's store;
+   the card asks the author's shelf for its title itself, the way a reply's parent does.
+
+Residuals: the picker knows only the directory (personas this node has met); mentioning
+someone by pasting an address the node has never seen works, but the card's row will dress
+itself only once the address is fetched. A mention on a trusted-only post is restated like
+any other label on a sealed post - the statement is public while the words are not - and the
+notice says "mentioned you in" a post the reader may not be able to open.
+
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
 There is no roster of an identity's nodes, no membership protocol, and no coordinator (**No Central Authority**, Doctrine). Each node's picture of the

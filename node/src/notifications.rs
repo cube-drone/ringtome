@@ -39,6 +39,11 @@ pub const KIND_COMMENT: &str = "comment";
 /// the post, and rows collapse per (reader, annotator, post): three tags from one person
 /// on one post are one line in the bell.
 pub const KIND_TAGGED: &str = "tagged";
+/// `deliver::notice_kind::MENTIONED` (2026-09-06) - the author's own post carries a user
+/// card naming the reader, restated as `mention=<reader>` on the author's labels chain.
+/// The row's doc is the AUTHOR's post, the one kind whose card points away from the
+/// reader's own shelf; tiered by sender like a comment, never a murmur.
+pub const KIND_MENTIONED: &str = "mentioned";
 
 /// One notification, as the endpoint serves it.
 #[derive(Debug, serde::Serialize)]
@@ -296,7 +301,27 @@ async fn refresh_from_inner(
         // Curtis, 2026-08-31), stamped by the newest of them.
         let mut fresh: std::collections::BTreeMap<(String, String), (Vec<String>, i64)> =
             Default::default();
+        // The mentions (2026-09-06) ride the same leg: a `mention=<reader>` the author
+        // says about their OWN post is news for the reader it names - hosted here,
+        // following the author - and collapses per (reader, post) like a label does.
+        let mut fresh_mentions: std::collections::BTreeMap<(String, String), i64> =
+            Default::default();
         for l in labels.iter().filter(|l| l.present) {
+            if l.key == ringtome_proto::PublicAnnotation::MENTION_KEY {
+                let named = &l.value;
+                if l.target_author != author_root
+                    || !hosted.contains(named)
+                    || named == author_root
+                    || !crate::net::subscriptions::follows(&state.node_db, named, author_root).await?
+                {
+                    continue;
+                }
+                let e = fresh_mentions
+                    .entry((named.clone(), hex::encode(l.target_doc)))
+                    .or_insert(0);
+                *e = (*e).max(l.received_at_ms);
+                continue;
+            }
             if !hosted.contains(&l.target_author) || l.target_author == author_root {
                 continue;
             }
@@ -344,6 +369,36 @@ async fn refresh_from_inner(
             if !fresh.contains_key(&(reader.clone(), doc.clone())) {
                 touched.insert(reader.clone());
                 delete_row(&state.node_db, &reader, author_root, KIND_TAGGED, &doc).await?;
+            }
+        }
+        for ((reader, doc_hex), newest_ms) in &fresh_mentions {
+            touched.insert(reader.clone());
+            upsert_row(
+                &state.node_db,
+                reader,
+                author_root,
+                KIND_MENTIONED,
+                doc_hex,
+                None,
+                None,
+                None,
+                *newest_ms,
+            )
+            .await?;
+        }
+        let standing: Vec<(String, String)> = state
+            .node_db
+            .fetch_all(
+                "SELECT reader_root, doc_id FROM notifications
+                 WHERE author_root = ?1 AND kind = ?2",
+                (author_root, KIND_MENTIONED),
+            )
+            .await
+            .context("reading standing mention rows")?;
+        for (reader, doc) in standing {
+            if !fresh_mentions.contains_key(&(reader.clone(), doc.clone())) {
+                touched.insert(reader.clone());
+                delete_row(&state.node_db, &reader, author_root, KIND_MENTIONED, &doc).await?;
             }
         }
     }

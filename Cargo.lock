@@ -1250,9 +1250,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-html-renderer"
-version = "0.7.2"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb814bf0f79c28053737b1ffb682f205872a95d328a4134b1438cdc48e8552bd"
+checksum = "1b91e0f2cb48fa947b35cd44b613625583c5d62c7aab7e4911e583964478c973"
 dependencies = [
  "cube-drone-marquee-parser",
  "serde_json",
@@ -1261,9 +1261,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-markup"
-version = "0.7.2"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac8c64e67c16d69db915b5b23332c737414aa514723835cb99c6ccd01476f21c"
+checksum = "0aa68ed4acbca9787ce478395db711c8a832cb5efaa4a245acd6aab0c27643b2"
 dependencies = [
  "base64",
  "cube-drone-marquee-html-renderer",
@@ -1276,9 +1276,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-parser"
-version = "0.7.2"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f837130929be2e18c26b926f34b5c87910b80f14d509148a21694bd8f01b1c31"
+checksum = "c4433b7ae514f9878f26f1f16225d6c2f8ed3ba5efc688d38596a05c6168c3ba"
 dependencies = [
  "serde",
  "serde_json",

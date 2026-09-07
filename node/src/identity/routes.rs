@@ -1051,8 +1051,13 @@ async fn notifications_handler(
     let (mut items, watermark) = notification_items(&state, &data, &root).await?;
 
     // The mini-card join: every row that names a doc names one of the READER's own posts,
-    // and their store is already open - one shelf read per doc'd row, page-bounded.
-    for item in items.iter_mut().filter(|i| !i.doc_id.is_empty()) {
+    // and their store is already open - one shelf read per doc'd row, page-bounded. The
+    // one exception is a mention (2026-09-06), whose doc is the AUTHOR's post: the client's
+    // card asks the author's shelf for its title itself, the way a reply's parent does.
+    for item in items
+        .iter_mut()
+        .filter(|i| !i.doc_id.is_empty() && i.kind != crate::notifications::KIND_MENTIONED)
+    {
         let Some(doc_id) = hex::decode(&item.doc_id)
             .ok()
             .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
@@ -1511,8 +1516,9 @@ pub(crate) async fn after_posted(
     // slice 1) - best-effort, like the pins: a label must not unsay the words.
     {
         let self_root = hex_fixed::<32>(&root, "root")?;
-        if let Err(e) = replicate_annotations(data, &self_root, &doc_id, &post_id).await {
-            tracing::warn!(error = ?e, "annotation replication failed; the post stands");
+        match replicate_annotations(data, &self_root, &doc_id, &post_id).await {
+            Ok(mentions) => mention_notices(&state, data, &root, mentions).await,
+            Err(e) => tracing::warn!(error = ?e, "annotation replication failed; the post stands"),
         }
     }
     // The schedule mark, if this mint fulfilled one, is spent.
@@ -2207,12 +2213,15 @@ const REPLICATED_TAGS_CAP: usize = 32;
 /// chain does not already make are minted, and statements the draft no longer carries are
 /// retracted - so a re-publish with untouched labels grows the chain by nothing, and
 /// removing a tag from the draft and posting again takes it back in public.
+/// Returns the mention statements this pass minted fresh - `(mentioned root hex, the
+/// signed statement)` - for the envelope road to announce; a re-publish that keeps its
+/// cards mints none and rings nobody twice.
 async fn replicate_annotations(
     data: &store::Store,
     self_root: &[u8; 32],
     draft_id: &[u8; 16],
     post_id: &[u8; 16],
-) -> Result<(), AppError> {
+) -> Result<Vec<(String, ringtome_proto::SignedEntry)>, AppError> {
     // Refuse, never truncate (2026-08-31): a label past its cap is skipped with a warning
     // rather than quietly shortened - the draft's word is the author's word or nothing.
     // Tags cap at 32 characters, everything else at the wire's value cap.
@@ -2257,6 +2266,32 @@ async fn replicate_annotations(
             desired.insert(("bucket".into(), bucket));
         }
     }
+    // The user cards in the words (2026-09-06): each `:::user id=/id/...:::` becomes a
+    // `mention=<root>` statement about the post - the label lane carrying "this post
+    // names you", diffed like every other label so an edit that drops the card takes the
+    // statement back. A card naming the author says nothing: you cannot mention yourself.
+    {
+        let docs = data.documents();
+        let view = docs.all().await?;
+        if let Some(doc) = view.docs.get(draft_id) {
+            let format = doc
+                .display_head()
+                .map(|h| crate::record::documents::Format::from_wire(h.header.format))
+                .unwrap_or(crate::record::documents::Format::Plaintext);
+            if format == crate::record::documents::Format::Marquee {
+                if let Some(body) = docs.resolved(doc).await?.body {
+                    for named in crate::record::bake::mentions(&body) {
+                        if &named != self_root {
+                            desired.insert((
+                                ringtome_proto::PublicAnnotation::MENTION_KEY.into(),
+                                hex::encode(named),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
     let stated: std::collections::BTreeSet<(String, String)> = data
         .public_annotations()
         .of(&hex::encode(self_root), post_id)
@@ -2264,13 +2299,61 @@ async fn replicate_annotations(
         .into_iter()
         .map(|r| (r.key, r.value))
         .collect();
+    let mut fresh_mentions = Vec::new();
     for (k, v) in desired.difference(&stated) {
-        data.public_annotations().say(self_root, post_id, k, v, true).await?;
+        let signed = data.public_annotations().say(self_root, post_id, k, v, true).await?;
+        if k == ringtome_proto::PublicAnnotation::MENTION_KEY {
+            fresh_mentions.push((v.clone(), signed));
+        }
     }
     for (k, v) in stated.difference(&desired) {
         data.public_annotations().say(self_root, post_id, k, v, false).await?;
     }
-    Ok(())
+    Ok(fresh_mentions)
+}
+
+/// The mention notice's envelope road (2026-09-06): every card minted fresh by this
+/// publish is sealed to the persona it names, with the statement as evidence - the
+/// tagged notice's shape, pointed the other way. The recipient's gate drops it when they
+/// already pull this author (the derived fold speaks there); best-effort beside the words,
+/// knocked eagerly like a share's.
+async fn mention_notices(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    mentions: Vec<(String, ringtome_proto::SignedEntry)>,
+) {
+    if mentions.is_empty() {
+        return;
+    }
+    for (named_hex, signed) in mentions {
+        let Ok(named) = hex_fixed::<32>(&named_hex, "mentioned root") else {
+            continue;
+        };
+        match data
+            .notices()
+            .seal(
+                &named,
+                &signed,
+                ringtome_proto::deliver::notice_kind::MENTIONED,
+                state.config.pow_requested_bits,
+            )
+            .await
+        {
+            Ok(envelope) => {
+                if let Err(e) = crate::outbox::queue(&state.node_db, root, &named_hex, &envelope).await {
+                    tracing::warn!(named = %named_hex, error = ?e, "could not queue a mention notice");
+                }
+            }
+            Err(e) => tracing::warn!(named = %named_hex, error = ?e, "could not seal a mention notice"),
+        }
+    }
+    let eager = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::outbox::sweep(eager).await {
+            tracing::debug!(error = ?e, "eager mention-notice delivery failed");
+        }
+    });
 }
 
 #[derive(serde::Serialize)]
@@ -4819,6 +4902,8 @@ mod notification_dedup_tests {
         for (derived, delivered) in [
             (crate::notifications::KIND_PUBLIC_EDGE, notice_kind::PUBLIC_EDGE),
             (crate::notifications::KIND_REBROADCAST, notice_kind::REBROADCAST),
+            (crate::notifications::KIND_TAGGED, notice_kind::TAGGED),
+            (crate::notifications::KIND_MENTIONED, notice_kind::MENTIONED),
         ] {
             assert_eq!(
                 derived,

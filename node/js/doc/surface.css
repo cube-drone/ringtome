@@ -199,6 +199,48 @@
     padding: 0.7rem 0.9rem;
 }
 
+/* A user card in the words (2026-09-06): the person's row, boxed, on its own line. The
+   live editor's preview shows the address as a chip instead; a card naming nobody says so. */
+.user-card {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    padding: 0.25rem 0.6rem 0.25rem 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+}
+.user-card-names {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.user-card-names strong {
+    font-size: 0.95rem;
+}
+.user-card-names small {
+    color: var(--muted);
+}
+.user-card-bad {
+    color: var(--muted);
+    font-style: italic;
+}
+/* The inline shape: the mini heptagon and the name, sitting in the line of text. */
+.user-span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    vertical-align: middle;
+    color: inherit;
+    text-decoration: none;
+    font-weight: 600;
+}
+
 .reader-plain {
     background: var(--paper);
     border: 1px solid var(--border);

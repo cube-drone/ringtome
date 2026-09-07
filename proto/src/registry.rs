@@ -1270,6 +1270,30 @@ impl PublicAnnotation {
     /// "north-american-birds". Descriptions keep the wire's full value cap.
     pub const MAX_TAG_CHARS: usize = 32;
     pub const TAG_KEY: &'static str = "tag";
+    /// A mention (2026-09-06): a user card in the words, restated as `mention=<root hex>`
+    /// on the AUTHOR's own post - the labels lane carries "this post names you" the way
+    /// it carries "this post is about birds", and the mentioned persona's bell rides the
+    /// same two roads a tag does. The value is the mentioned root, hex, nothing else.
+    pub const MENTION_KEY: &'static str = "mention";
+
+    /// The value of a mention statement, when it is one: the mentioned root.
+    pub fn mentioned(&self) -> Option<[u8; 32]> {
+        if self.key != Self::MENTION_KEY {
+            return None;
+        }
+        // Sixty-four hex digits, by hand: the proto crate carries no hex dependency outside
+        // its tests, and a root is the only thing this ever decodes.
+        let v = self.value.as_bytes();
+        if v.len() != 64 {
+            return None;
+        }
+        let nibble = |b: u8| (b as char).to_digit(16).map(|d| d as u8);
+        let mut out = [0u8; 32];
+        for (i, pair) in v.chunks(2).enumerate() {
+            out[i] = nibble(pair[0])? << 4 | nibble(pair[1])?;
+        }
+        Some(out)
+    }
 
     fn well_formed(&self) -> Result<(), ProtoError> {
         if self.key.len() > Self::MAX_KEY_LEN || self.key.is_empty() {
@@ -1280,6 +1304,9 @@ impl PublicAnnotation {
         }
         if self.key == Self::TAG_KEY && self.value.chars().count() > Self::MAX_TAG_CHARS {
             return Err(ProtoError::BadEntry("tag length"));
+        }
+        if self.key == Self::MENTION_KEY && self.mentioned().is_none() {
+            return Err(ProtoError::BadEntry("a mention names a root, hex"));
         }
         Ok(())
     }

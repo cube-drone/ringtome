@@ -17,6 +17,8 @@
 import { h } from 'preact';
 import htm from 'htm';
 import { Marquee, parse } from '@cube-drone/marquee-react-renderer';
+
+import { marqueeHooks } from './usercard.js';
 import { t } from '../i18n.js';
 
 const html = htm.bind(h);
@@ -53,6 +55,7 @@ export const MarqueeBody = ({ source, profile, handle, onNodeClick, onUnparsable
         source=${source}
         animate="visible"
         profile=${profile}
+        hooks=${marqueeHooks}
         onNodeClick=${onNodeClick}
     /></div>`;
 };

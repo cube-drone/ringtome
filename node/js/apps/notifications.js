@@ -67,6 +67,13 @@ const sentence = (r) => {
             ? t('apps.notifications.labelled', 'labelled')
             : t('apps.notifications.labelled-one-of-your-posts', 'labelled one of your posts');
     }
+    // A user card naming you in THEIR post (2026-09-06): the verb, and the card is their
+    // post - the one row whose mini-card points away from your own shelf.
+    if (r.kind === 'mentioned') {
+        return r.doc_id
+            ? t('apps.notifications.mentioned-you-in', 'mentioned you in')
+            : t('apps.notifications.mentioned-you-in-a-post', 'mentioned you in a post');
+    }
     if (r.kind === 'comment') {
         return r.doc_id
             ? t('apps.notifications.replied-on', 'replied on')
@@ -210,10 +217,13 @@ export const NotificationsApp = ({ current }) => {
                                           link to its own page - title joined server-side
                                           (the reader's own post), degrading to a bare
                                           "link" when the post has left the shelf. */ ''}
-                                      ${(r.kind === 'rebroadcast' || r.kind === 'comment' || r.kind === 'tagged') &&
+                                      ${(r.kind === 'rebroadcast' ||
+                                          r.kind === 'comment' ||
+                                          r.kind === 'tagged' ||
+                                          r.kind === 'mentioned') &&
                                       r.doc_id &&
                                       html`<${MiniPost}
-                                          author=${root}
+                                          author=${r.kind === 'mentioned' ? r.author : root}
                                           doc_id=${r.doc_id}
                                           title=${r.doc_title}
                                           published_ms=${r.doc_published_ms}

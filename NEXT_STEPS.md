@@ -25,7 +25,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Public posts and fan-out
 
-* @user (directed comments)
 * blocked/hidden tags
 * content warning (18+)
 * Search my posts
