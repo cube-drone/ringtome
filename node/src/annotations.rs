@@ -109,6 +109,63 @@ pub async fn forget(
     Ok(())
 }
 
+/// The facets (2026-09-07): how often each bucket and each tag appears across `posts` -
+/// counted per POST, however many people said it. Buckets are the author's own (a bucket
+/// is where they filed it), and the automatic "feed" bucket stays out (every composed post
+/// is in it, so it says nothing - the card hides the same chip). Tags are anyone's, the
+/// way the cards show them (Curtis, 2026-09-07: the list had counted only the author's).
+/// Sorted by count, then by value, buckets and tags apart. One IN query, like `for_posts`.
+pub async fn label_counts(
+    node_db: &Db,
+    posts: &[(String, String)],
+) -> Result<(Vec<(String, i64)>, Vec<(String, i64)>)> {
+    let docs: Vec<String> = posts
+        .iter()
+        .map(|(_, d)| d)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|d| format!("'{d}'"))
+        .collect();
+    if docs.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let wanted: std::collections::HashSet<&(String, String)> = posts.iter().collect();
+    let rows: Vec<(String, String, String, String, String)> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT target_author, target_doc, annotator, key, value FROM doc_annotations
+                 WHERE target_doc IN ({}) AND key IN ('bucket', 'tag')",
+                docs.join(",")
+            ),
+            (),
+        )
+        .await
+        .context("counting labels")?;
+    let mut seen: std::collections::HashSet<(String, String, String, String)> = Default::default();
+    let mut buckets: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut tags: std::collections::BTreeMap<String, i64> = Default::default();
+    for (ta, td, annotator, key, value) in rows {
+        if !wanted.contains(&(ta.clone(), td.clone())) {
+            continue;
+        }
+        if key == "bucket" && (annotator != ta || value == "feed") {
+            continue;
+        }
+        if !seen.insert((ta, td, key.clone(), value.clone())) {
+            continue; // said by two people: one post, one count
+        }
+        let into = if key == "bucket" { &mut buckets } else { &mut tags };
+        *into.entry(value).or_insert(0) += 1;
+    }
+    let sorted = |m: std::collections::BTreeMap<String, i64>| {
+        let mut v: Vec<(String, i64)> = m.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        v
+    };
+    Ok((sorted(buckets), sorted(tags)))
+}
+
 /// Every known label on each of these posts - the page's dressing, one IN query. The
 /// author's own first (they filed it), then others by arrival; the display register
 /// decides at the client which of the others render.

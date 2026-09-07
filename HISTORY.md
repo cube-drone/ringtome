@@ -8672,3 +8672,28 @@ the typing and show the node's results in place of the list. The acceptance suit
 `search.cjs` walks body words, prefixes, two terms, the sealed post from both sides, the
 whole shelf, and a title standing in before its body lands. A sealed post's words are
 sealed at rest, so the index knows only its title - a NEXT_STEPS residual.
+
+## 2026-09-07: facets - every bucket and every tag over the feed and a person's shelf
+
+Curtis asked for a list of every bucket and every tag across the feed and a person's page,
+sorted by how often each appears, buckets first, folded to the top few and expanding to
+the rest, hidden when there is nothing to pick from - and for picking to narrow the whole
+set, several at once, in tandem with the search box. The node counts (`/feed/labels`,
+`/id/<seg>/labels`): the author's own statements only, over exactly the rows the reader may
+see (the feed's readable filter, now a shared helper; the shelf's sealed rule), buckets and
+tags apart, by count then by name. The narrowing joined the search's door: `bucket=` and
+`tag=` repeat on the query string beside `q=`, parsed off the raw query since the framework's
+form parser will not fill a list, and `Narrow` judges labels first - buckets widen among
+themselves (a post lives in one), tags each narrow, and the words narrow what survives, the
+body index spent only on label survivors. The strip (facets.js) folds each row to six with
+"and N more…", a picked value never folding away; the pure fold rule and the toggle have
+tests, and the acceptance suite `facets.cjs` counts, orders, narrows by each shape and both
+together, and keeps a sealed post's labels out of an untrusted viewer's counts. Later
+the same day Curtis saw comments naming people wearing a root hex as a chip: the mention
+statement's wire form is the mentioned root, and the card dressed every label it saw. A
+mention is machinery, not a label - hidden at display only, the way the default bucket and
+the author's own pin already are; the card in the words shows who. And the tag list had
+counted only the author's own labels while the cards show everyone's: the facets now count
+tags from anyone, once per post however many said it, buckets still the author's own - and
+the automatic "feed" bucket, which every composed post is in, stays out of the list as its
+chip already stays off the card.

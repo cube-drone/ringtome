@@ -725,7 +725,12 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
         .filter((a) => !retractedLabels.includes(labelKey(a)))
         // The author's own pin is chrome (the chip above), not a label; anyone else's is a
         // label like any other (PROJECT_PLAN's Peeks, ruling 11).
-        .filter((a) => !(a.key === PIN_KEY && a.annotator === item.author));
+        .filter((a) => !(a.key === PIN_KEY && a.annotator === item.author))
+        // A mention is machinery, not a label (Curtis, 2026-09-07: comments naming people
+        // wore a root hex as a chip): the statement's wire form is the mentioned root, and
+        // the card in the words already shows WHO. Hidden at display only - the statement
+        // still replicates and rings the bell it names.
+        .filter((a) => a.key !== 'mention');
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.

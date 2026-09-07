@@ -54,6 +54,7 @@ import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '.
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch } from '../postsearch.js';
+import { LabelFacets, NO_PICKS, useLabels } from '../facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { t } from '../i18n.js';
 import {
@@ -361,7 +362,11 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
     // The header's search (2026-09-07): the node answers over the whole journal
     // (postsearch.js), and its results stand in for the stream while a query is open -
     // the interest dials still shape them, and your own posts still bypass.
-    const search = useSearch(root ? `/api/identity/${root}/feed` : null, searchQuery);
+    // The facet strip (facets.js): the whole journal's buckets and tags, picks narrowing
+    // the stream through the same door as the words.
+    const [picks, setPicks] = useState(NO_PICKS);
+    const labels = useLabels(root ? `/api/identity/${root}/feed/labels` : null, items.length);
+    const search = useSearch(root ? `/api/identity/${root}/feed` : null, searchQuery, picks);
     const shown = search.active
         ? mergeFeed([], search.results || []).filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot))
         : [...(scheduled || []), ...visible];
@@ -377,6 +382,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
             ${/* No unread filter, and no unread anything (2026-08-09): a feed is a river you
                 dip into, not an inbox to empty. The fresh-updates bar above is the one "what
                 arrived" affordance, and it is per-visit, in memory, costing no chain. */ ''}
+            <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} />
             <div class="feed-stream-head">
                 <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
                 ${stop !== null &&

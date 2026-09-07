@@ -69,6 +69,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/nodes", post(authorize_node_handler))
         .route("/api/identity/{root}/sync", post(sync_handler))
         .route("/api/identity/{root}/feed", get(feed_handler))
+        .route("/api/identity/{root}/feed/labels", get(feed_labels_handler))
         .route(
             "/api/identity/{root}/notifications",
             get(notifications_handler),
@@ -720,6 +721,60 @@ struct Sharer {
     avatar: Option<String>,
 }
 
+/// The journal rows this reader may see: a trusted-only post stays unless the author
+/// publishes trust for the reader (or is the reader). Shared by the page and the facets.
+async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanout::FeedRow>) -> Vec<crate::fanout::FeedRow> {
+        let mut trusted_here: std::collections::HashMap<String, bool> = Default::default();
+        let mut keep = Vec::with_capacity(rows.len());
+        for r in rows {
+            if !r.trusted_only || r.author_root == root {
+                keep.push(r);
+                continue;
+            }
+            let ok = match trusted_here.get(&r.author_root) {
+                Some(v) => *v,
+                None => {
+                    let v = match state.user_dbs.get(&r.author_root).await {
+                        Ok(Some(db)) => crate::record::imaol::published_edges(&db)
+                            .await
+                            .map(|e| e.get(root).is_some_and(|row| row.edge.trust.is_some()))
+                            .unwrap_or(false),
+                        _ => false,
+                    };
+                    trusted_here.insert(r.author_root.clone(), v);
+                    v
+                }
+            };
+            if ok {
+                keep.push(r);
+            }
+        }
+    keep
+}
+
+/// GET `/api/identity/{root}/feed/labels` - the facets (2026-09-07): every bucket and every
+/// tag across the reader's WHOLE journal with how often each appears, buckets first, the
+/// author's own statements only, over exactly the rows the reader may see.
+async fn feed_labels_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _owned = store::open(&state, &session.account.id, &root).await?;
+    let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
+        .await
+        .map_err(AppError::Internal)?;
+    let rows = readable_feed_rows(&state, &root, rows).await;
+    let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+    let (buckets, tags) = crate::annotations::label_counts(&state.node_db, &pairs)
+        .await
+        .map_err(AppError::Internal)?;
+    let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
+        v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
+    };
+    Ok(Json(serde_json::json!({ "buckets": facet(buckets), "tags": facet(tags) })))
+}
+
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly
 /// chronological, dressed with everything a row needs to render: byline from the cache (never
 /// a database per face) and `mine` for the reader's own posts (which appear like anyone
@@ -737,6 +792,7 @@ async fn feed_handler(
     State(state): State<AppState>,
     Path(root): Path<String>,
     axum::extract::Query(q): axum::extract::Query<FeedQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Ownership is the only reason to open the reader's own store here (the feed itself is a
     // node.db memo), and `store::open` is that check.
@@ -746,8 +802,8 @@ async fn feed_handler(
         _ => None,
     };
     let page = crate::idface::POSTS_PAGE;
-    let terms = crate::search::terms(q.q.as_deref().unwrap_or(""));
-    let (mut rows, more) = if terms.is_empty() {
+    let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
+    let (mut rows, more) = if narrow.is_empty() {
         let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1)
             .await
             .map_err(AppError::Internal)?;
@@ -767,7 +823,7 @@ async fn feed_handler(
                 updated_ms: r.updated_ms,
             })
             .collect();
-        let keep = crate::search::matching(&state, &candidates, &terms)
+        let keep = crate::search::matching(&state, &candidates, &narrow)
             .await
             .map_err(AppError::Internal)?;
         let mut all = all;
@@ -786,34 +842,7 @@ async fn feed_handler(
     // the row appears the moment the author trusts this reader; fails closed when the
     // author's chains are not mirrored here, exactly as the body gate would. The author-db
     // opens are bounded by the page's DISTINCT flagged authors - ordinarily zero.
-    {
-        let mut trusted_here: std::collections::HashMap<String, bool> = Default::default();
-        let mut keep = Vec::with_capacity(rows.len());
-        for r in rows {
-            if !r.trusted_only || r.author_root == root {
-                keep.push(r);
-                continue;
-            }
-            let ok = match trusted_here.get(&r.author_root) {
-                Some(v) => *v,
-                None => {
-                    let v = match state.user_dbs.get(&r.author_root).await {
-                        Ok(Some(db)) => crate::record::imaol::published_edges(&db)
-                            .await
-                            .map(|e| e.get(&root).is_some_and(|row| row.edge.trust.is_some()))
-                            .unwrap_or(false),
-                        _ => false,
-                    };
-                    trusted_here.insert(r.author_root.clone(), v);
-                    v
-                }
-            };
-            if ok {
-                keep.push(r);
-            }
-        }
-        rows = keep;
-    }
+    rows = readable_feed_rows(&state, &root, rows).await;
 
     // Who else passed each of these along - two indexed node.db reads for the whole page, never
     // per row (`fanout::followed_sharers` argues for deriving this rather than storing it).

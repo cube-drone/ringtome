@@ -1,0 +1,43 @@
+/* The facet strip (facets.js): two rows of chips - buckets, then tags - each folded to its
+   top few with a "more" that opens the rest. Chips wear the shelf-toggle look. */
+.facets {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin: 0.4rem 0 0.8rem;
+}
+.facet-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+}
+.facet-row-label {
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin-right: 0.2rem;
+}
+.facet-chip,
+.facet-more {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.6rem;
+    cursor: pointer;
+}
+.facet-chip-on {
+    background: var(--surface-2);
+    border-style: solid;
+    color: var(--ink);
+}
+.facet-count {
+    color: var(--muted);
+    font-size: 0.7rem;
+}
+.facet-more {
+    border-style: dotted;
+    color: var(--muted);
+}

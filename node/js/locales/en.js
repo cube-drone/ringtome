@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 665 phrases across 49 files.
+// 669 phrases across 50 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -336,6 +336,12 @@ export default {
 
     // --- node/js/doc/usercard.js ---
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
+
+    // --- node/js/facets.js ---
+    'facets.and-n-more': 'and {n} more…',
+    'facets.fewer': 'fewer',
+    'facets.buckets': 'in',
+    'facets.tags': 'tagged',
 
     // --- node/js/idpage.js ---
     'idpage.synced': 'synced {when}',
@@ -679,6 +685,8 @@ export default {
     'idface.this-document-has-no-thumbnail': 'this document has no thumbnail',
     'idface.the-bytes-havent-arrived-here': "the bytes haven't arrived here yet - headers travel ahead of bodies",
     'idface.the-key-hasnt-arrived': "the key hasn't arrived here yet - it travels only between trusted computers",
+    'idface.no-such-persona-here-4': 'no such persona here',
+    'idface.no-such-persona-here-5': 'no such persona here',
     'idface.no-such-persona-here-2': 'no such persona here',
     'idface.no-such-persona-here-3': 'no such persona here',
     'idface.that-cursor-isnt-a-document': "that cursor isn't a document id",
@@ -693,8 +701,6 @@ export default {
     'idface.no-such-persona-here-12': 'no such persona here',
     'idface.no-such-persona-here-13': 'no such persona here',
     'idface.that-isnt-a-document-id-3': "that isn't a document id",
-    'idface.no-such-persona-here-4': 'no such persona here',
-    'idface.no-such-persona-here-5': 'no such persona here',
     'idface.not-carried-here-and-none': "not carried here, and none of the address's computers answered",
 
     // --- node/src/main.rs ---

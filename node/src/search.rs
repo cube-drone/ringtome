@@ -52,6 +52,46 @@ pub fn hits(tokens: &str, terms: &[String]) -> bool {
         .all(|t| tokens.split(' ').any(|tok| tok.starts_with(t.as_str())))
 }
 
+/// What a listing narrows by (2026-09-07): the words, the buckets, the tags - together.
+/// Buckets are OR (a post lives in one bucket, so picking two widens to either) and the
+/// author's own; tags are AND (each tag narrows) and anyone's, as the cards show them; the
+/// words narrow what survives. Parsed off the raw query string, since `bucket=` and `tag=`
+/// repeat.
+#[derive(Default, Debug)]
+pub struct Narrow {
+    pub terms: Vec<String>,
+    pub buckets: Vec<String>,
+    pub tags: Vec<String>,
+}
+
+impl Narrow {
+    pub fn parse(raw_query: Option<&str>, q: Option<&str>) -> Self {
+        let mut n = Narrow { terms: terms(q.unwrap_or("")), ..Default::default() };
+        for (k, v) in url::form_urlencoded::parse(raw_query.unwrap_or("").as_bytes()) {
+            let v = v.trim();
+            if v.is_empty() {
+                continue;
+            }
+            match &*k {
+                "bucket" => n.buckets.push(v.to_string()),
+                "tag" => n.tags.push(v.to_string()),
+                _ => {}
+            }
+        }
+        n
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.terms.is_empty() && self.buckets.is_empty() && self.tags.is_empty()
+    }
+
+    /// The label half of the judgment, given the author's own buckets and tags on a post.
+    pub fn labels_admit(&self, buckets: &[String], tags: &[String]) -> bool {
+        (self.buckets.is_empty() || self.buckets.iter().any(|b| buckets.contains(b)))
+            && self.tags.iter().all(|t| tags.contains(t))
+    }
+}
+
 /// One candidate the caller wants judged: who, which, the title (the fallback bag), and the
 /// post's update stamp as the listing knows it (the currency key).
 pub struct Candidate {
@@ -138,17 +178,41 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
     Ok(Some(tokens))
 }
 
-/// Judge `candidates` (newest first) against `terms`: the indices of those that match, at
-/// most `RESULTS_CAP`, indexing bodies on the way within `INDEX_PER_QUERY`.
-pub async fn matching(state: &AppState, candidates: &[Candidate], terms: &[String]) -> Result<Vec<usize>> {
+/// Judge `candidates` (newest first) against `narrow`: the indices of those that match, at
+/// most `RESULTS_CAP`. Labels first (one memo read for the whole set), then the words -
+/// indexing bodies on the way within `INDEX_PER_QUERY`, spent only on label survivors.
+pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narrow) -> Result<Vec<usize>> {
+    let labelled = if narrow.buckets.is_empty() && narrow.tags.is_empty() {
+        None
+    } else {
+        let pairs: Vec<(String, String)> = candidates.iter().map(|c| (c.author_root.clone(), c.doc_hex.clone())).collect();
+        Some(crate::annotations::for_posts(&state.node_db, &pairs).await?)
+    };
     let mut budget = INDEX_PER_QUERY;
     let mut out = Vec::new();
     for (i, c) in candidates.iter().enumerate() {
-        let bag = match bag_for(state, c, &mut budget).await? {
-            Some(b) => b,
-            None => tokens_of(&c.title, ""),
+        if let Some(known) = &labelled {
+            let (mut buckets, mut tags) = (Vec::new(), Vec::new());
+            for a in known.get(&(c.author_root.clone(), c.doc_hex.clone())).map(|v| v.as_slice()).unwrap_or(&[]) {
+                match a.key.as_str() {
+                    "bucket" if a.annotator == c.author_root => buckets.push(a.value.clone()),
+                    "tag" => tags.push(a.value.clone()),
+                    _ => {}
+                }
+            }
+            if !narrow.labels_admit(&buckets, &tags) {
+                continue;
+            }
+        }
+        let bag = if narrow.terms.is_empty() {
+            String::new()
+        } else {
+            match bag_for(state, c, &mut budget).await? {
+                Some(b) => b,
+                None => tokens_of(&c.title, ""),
+            }
         };
-        if hits(&bag, terms) {
+        if hits(&bag, &narrow.terms) {
             out.push(i);
             if out.len() >= RESULTS_CAP {
                 break;
@@ -203,5 +267,20 @@ mod tests {
         assert!(hits(&bag, &terms("")), "no terms: everything matches");
         assert_eq!(terms("  sour-dough, ROSE "), vec!["dough", "rose", "sour"]);
         assert!(terms("x").is_empty(), "a one-letter term is not a term - the box shows everything until a word");
+    }
+
+    /// Buckets widen (OR), tags narrow (AND), and the raw query string carries both.
+    #[test]
+    fn narrowing_parses_repeats_and_judges_labels() {
+        let n = Narrow::parse(Some("bucket=feed&bucket=recipes&tag=bread&tag=slow&q=ignored%20here"), Some("Sour"));
+        assert_eq!(n.buckets, vec!["feed", "recipes"]);
+        assert_eq!(n.tags, vec!["bread", "slow"]);
+        assert_eq!(n.terms, vec!["sour"]);
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(n.labels_admit(&s(&["recipes"]), &s(&["bread", "slow", "extra"])), "either bucket, every tag");
+        assert!(!n.labels_admit(&s(&["recipes"]), &s(&["bread"])), "a missing tag refuses");
+        assert!(!n.labels_admit(&s(&["photos"]), &s(&["bread", "slow"])), "neither bucket refuses");
+        assert!(Narrow::parse(None, None).is_empty());
+        assert!(Narrow::default().labels_admit(&[], &[]), "nothing picked admits everything");
     }
 }

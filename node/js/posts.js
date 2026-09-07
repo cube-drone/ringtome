@@ -20,6 +20,7 @@ import { PostEntry, useOwnPostEditing } from './postentry.js';
 import { publishedState } from './pure/feed.js';
 import { t } from './i18n.js';
 import { useSearch } from './postsearch.js';
+import { LabelFacets, NO_PICKS, useLabels } from './facets.js';
 
 const html = htm.bind(h);
 
@@ -155,7 +156,10 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
     // query is open. Hooks before the early return below, as always.
-    const search = useSearch(`/api/id/${root}/posts${current ? `?as=${current.root}` : ''}`, searchQuery);
+    const [picks, setPicks] = useState(NO_PICKS);
+    const viewer = current ? `?as=${current.root}` : '';
+    const labels = useLabels(`/api/id/${root}/labels${viewer}`, (posts || []).length);
+    const search = useSearch(`/api/id/${root}/posts${viewer}`, searchQuery, picks);
     const shownItems = search.active
         ? (search.results || []).map((p) => ({ ...p, author: root, author_name: authorName, author_avatar: authorAvatar, mine }))
         : items;
@@ -163,6 +167,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     if (!search.active && !list.length && !scheduledItems.length && !pinnedItems.length) return null; // nothing said in public yet
 
     return html`
+        <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} />
         ${shownPinned.length > 0 &&
         html`<section class="public-posts public-posts-pinned">
             <h2 class="public-posts-head">${t('posts.pinned', 'pinned')}</h2>

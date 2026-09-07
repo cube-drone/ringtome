@@ -1590,11 +1590,56 @@ async fn shelf_readable(
             .is_some())
 }
 
+/// GET `/api/id/{seg}/labels?as=` - the facets (2026-09-07): every bucket and every tag
+/// across the WHOLE shelf this node holds for the persona, with how often each appears,
+/// buckets first, over exactly the posts the viewer may see.
+pub async fn id_labels(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path(seg): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<PostsQuery>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-4", "no such persona here")));
+    };
+    let root_hex = hex::encode(root);
+    if !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-5", "no such persona here")));
+    }
+    let mut posts = whole_shelf(&state, &root_hex).await;
+    hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
+    let pairs: Vec<(String, String)> = posts.iter().map(|p| (root_hex.clone(), hex::encode(p.doc_id))).collect();
+    let (buckets, tags) = crate::annotations::label_counts(&state.node_db, &pairs)
+        .await
+        .map_err(AppError::Internal)?;
+    let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
+        v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
+    };
+    Ok(axum::Json(serde_json::json!({ "buckets": facet(buckets), "tags": facet(tags) })))
+}
+
+/// The whole shelf this node holds for a persona - a peek's fragments or the chain - for
+/// the search and the facets; no backfill, no cursor: what is here.
+async fn whole_shelf(state: &AppState, root_hex: &str) -> Vec<crate::record::documents::PublicDoc> {
+    let hosted_here = crate::identity::is_agented(&state.node_db, root_hex).await.unwrap_or(false);
+    let all: Vec<crate::record::documents::PublicDoc> = if !hosted_here && peek_held(state, root_hex).await {
+        touch_look(state, root_hex).await;
+        crate::fragments::shelf_of(&state.node_db, root_hex, 5000).await.unwrap_or_default()
+    } else {
+        match state.user_dbs.get(root_hex).await.ok().flatten() {
+            Some(db) => crate::record::documents::public_docs(&db, None, 5000).await.unwrap_or_default(),
+            None => Vec::new(),
+        }
+    };
+    all.into_iter().filter(|p| p.part_of.is_none()).collect()
+}
+
 pub async fn id_posts(
     session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
     axum::extract::Query(query): axum::extract::Query<PostsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here-2", "no such persona here")));
@@ -1620,22 +1665,12 @@ pub async fn id_posts(
     // whole shelf - the extra row is the answer and never reaches the reader.
     let dbh = state.user_dbs.get(&root_hex).await.ok().flatten();
     let hosted_here = crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(false);
-    let terms = crate::search::terms(query.q.as_deref().unwrap_or(""));
-    let searching = !terms.is_empty();
+    let narrow = crate::search::Narrow::parse(raw.as_deref(), query.q.as_deref());
+    let searching = !narrow.is_empty();
     let page = if searching { crate::search::RESULTS_CAP as i64 } else { POSTS_PAGE };
     let posts = if searching {
-        // The whole shelf this node holds - a peek's fragments or the chain - judged by
-        // the index; no backfill and no cursor: a search reads what is here.
-        let all: Vec<crate::record::documents::PublicDoc> = if !hosted_here && peek_held(&state, &root_hex).await {
-            touch_look(&state, &root_hex).await;
-            crate::fragments::shelf_of(&state.node_db, &root_hex, 5000).await.unwrap_or_default()
-        } else {
-            match &dbh {
-                Some(db) => crate::record::documents::public_docs(db, None, 5000).await.unwrap_or_default(),
-                None => Vec::new(),
-            }
-        };
-        let all: Vec<_> = all.into_iter().filter(|p| p.part_of.is_none()).collect();
+        // The whole shelf, judged by the labels and the index (search.rs).
+        let all = whole_shelf(&state, &root_hex).await;
         let candidates: Vec<crate::search::Candidate> = all
             .iter()
             .map(|p| crate::search::Candidate {
@@ -1645,7 +1680,7 @@ pub async fn id_posts(
                 updated_ms: p.head_ms,
             })
             .collect();
-        let keep = crate::search::matching(&state, &candidates, &terms)
+        let keep = crate::search::matching(&state, &candidates, &narrow)
             .await
             .map_err(AppError::Internal)?;
         all.into_iter()
