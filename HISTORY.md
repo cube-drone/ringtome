@@ -8642,7 +8642,11 @@ the node lists nowhere ("Stamp Hub", Curtis, 2026-09-07) was not offered; it now
 your contacts mirror first, worn as you call them, and the directory second. And a block
 fill now moves the caret to the next line - the card's closer must end its line, so typing
 on it made an invalid directive; the bare media embed, a block by the same sugar, does the
-same, while the span and the explicit `![` form stay in the line (Curtis's rule). The `@` rule is pure and tested (an email address never opens
+same, while the span and the explicit `![` form stay in the line (Curtis's rule).
+Curtis's ci run then caught the retraction claim red once: publish restated the labels but
+never drained the fold lane, so a read right after the 200 raced the sweep and still saw
+the mention. The publish door now drains it before answering - the label doors'
+read-your-writes idiom, extended to the mint. The `@` rule is pure and tested (an email address never opens
 the picker); the acceptance suite `mentions.cjs` walks the restating, both roads, the
 dedupe, and the retraction. PROJECT_PLAN gained "Mentions: a user card in the words";
 NEXT_STEPS lost its "@user" wish.

@@ -1716,6 +1716,13 @@ async fn publish_handler(
     match crate::record::bake::publish(&state, &data, &root, &doc_id, reply, flags).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
             after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
+            // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
+            // user card still listed the mention on the very next read): the restated
+            // statements reach the memo through the fold lane, which nothing else rings
+            // for this append. Drain it here - the label doors' read-your-writes idiom.
+            // The sweeps that also mint (books, schedules) answer nobody and leave it to
+            // the beat.
+            crate::fold::fold_now(&state, &root).await;
             Ok(Json(PublishResponse {
                 post_id: Some(hex::encode(post_id)),
                 scheduled_for: None,
