@@ -1524,6 +1524,9 @@ pub struct PostsQuery {
     /// The viewing persona's root, hex (see `IdQuery::as_root`).
     #[serde(rename = "as")]
     pub as_root: Option<String>,
+    /// A search (search.rs, 2026-09-07): the whole held shelf narrowed to the posts whose
+    /// words say this, newest first, one deep page and no cursor; shares stand aside.
+    pub q: Option<String>,
 }
 
 /// The feed's sealed-post rule, on the shelf (Curtis, 2026-09-05: a trusted-only post from
@@ -1617,7 +1620,40 @@ pub async fn id_posts(
     // whole shelf - the extra row is the answer and never reaches the reader.
     let dbh = state.user_dbs.get(&root_hex).await.ok().flatten();
     let hosted_here = crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(false);
-    let posts = if !hosted_here && peek_held(&state, &root_hex).await {
+    let terms = crate::search::terms(query.q.as_deref().unwrap_or(""));
+    let searching = !terms.is_empty();
+    let page = if searching { crate::search::RESULTS_CAP as i64 } else { POSTS_PAGE };
+    let posts = if searching {
+        // The whole shelf this node holds - a peek's fragments or the chain - judged by
+        // the index; no backfill and no cursor: a search reads what is here.
+        let all: Vec<crate::record::documents::PublicDoc> = if !hosted_here && peek_held(&state, &root_hex).await {
+            touch_look(&state, &root_hex).await;
+            crate::fragments::shelf_of(&state.node_db, &root_hex, 5000).await.unwrap_or_default()
+        } else {
+            match &dbh {
+                Some(db) => crate::record::documents::public_docs(db, None, 5000).await.unwrap_or_default(),
+                None => Vec::new(),
+            }
+        };
+        let all: Vec<_> = all.into_iter().filter(|p| p.part_of.is_none()).collect();
+        let candidates: Vec<crate::search::Candidate> = all
+            .iter()
+            .map(|p| crate::search::Candidate {
+                author_root: root_hex.clone(),
+                doc_hex: hex::encode(p.doc_id),
+                title: p.title.clone(),
+                updated_ms: p.head_ms,
+            })
+            .collect();
+        let keep = crate::search::matching(&state, &candidates, &terms)
+            .await
+            .map_err(AppError::Internal)?;
+        all.into_iter()
+            .enumerate()
+            .filter(|(i, _)| keep.contains(i))
+            .map(|(_, p)| p)
+            .collect()
+    } else if !hosted_here && peek_held(&state, &root_hex).await {
         touch_look(&state, &root_hex).await;
         // A peek's shelf is the fragment ledger's (PROJECT_PLAN's Peeks, ruling 4): one page, no further.
         if after.is_some() {
@@ -1646,7 +1682,8 @@ pub async fn id_posts(
     // Scrollback backfills on demand (PROJECT_PLAN's Peeks, ruling 8): a page that came up short on a
     // follow held from a floor asks the author's nodes for what lies beneath, then reads
     // again - the reader paging back is the demand.
-    if !hosted_here
+    if !searching
+        && !hosted_here
         && session.is_some()
         && posts.len() as i64 <= POSTS_PAGE
         && posts_floor(&state, &root_hex).await > 0
@@ -1672,6 +1709,9 @@ pub async fn id_posts(
         None => Vec::new(),
     };
     shares.retain(|s| s.version_seen.is_some());
+    if searching {
+        shares.clear();
+    }
     if let Some((ms, doc)) = &after {
         let doc_hex = hex::encode(doc);
         shares.retain(|s| {
@@ -1679,7 +1719,7 @@ pub async fn id_posts(
                 || (s.received_at_ms == *ms && hex::encode(s.doc_id) > doc_hex)
         });
     }
-    shares.truncate((POSTS_PAGE + 1) as usize); // the view is already newest-first
+    shares.truncate((page + 1) as usize); // the view is already newest-first
     enum Shelf {
         Post(usize),
         Share(usize),
@@ -1694,8 +1734,8 @@ pub async fn id_posts(
         merged.push((s.received_at_ms, hex::encode(s.doc_id), Shelf::Share(i)));
     }
     merged.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    let more = merged.len() as i64 > POSTS_PAGE;
-    merged.truncate(POSTS_PAGE as usize);
+    let more = merged.len() as i64 > page;
+    merged.truncate(page as usize);
     // The reply counts, one page-scoped memo read for the whole shelf page.
     let pairs: Vec<(String, String)> = posts
         .iter()

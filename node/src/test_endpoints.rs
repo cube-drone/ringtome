@@ -175,6 +175,7 @@ pub async fn beat(
             Ok(())
         }
         ("journal-fill", _) => crate::fanout::fill_pass(state.clone()).await,
+        ("search-index", _) => crate::search::index_pass(state.clone()).await,
         ("book-rollout", scope) => {
             let n = crate::books::rollout_due(&state, scope).await?;
             tracing::info!(touched = n, "TEST BEAT: book-rollout");

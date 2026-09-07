@@ -2433,7 +2433,7 @@ pub struct SearchRow {
 
 /// Normalize text into the bag: lowercase alphanumeric runs, 2..=32 chars. Unicode-aware
 /// (`char::is_alphanumeric`), so accented words and CJK runs index as written.
-fn tokenize_into(text: &str, out: &mut std::collections::BTreeSet<String>) {
+pub(crate) fn tokenize_into(text: &str, out: &mut std::collections::BTreeSet<String>) {
     for run in text.split(|c: char| !c.is_alphanumeric()) {
         if run.is_empty() {
             continue;

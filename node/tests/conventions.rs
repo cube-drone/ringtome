@@ -41,6 +41,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("subscriptions", vec!["net/subscriptions.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
         ("feed_journal", vec!["fanout.rs"]),
+        ("post_search", vec!["search.rs"]),
         ("feed_shares", vec!["fanout.rs"]),
         ("notifications", vec!["notifications.rs"]),
         ("outbound_notices", vec!["outbox.rs"]),
@@ -217,6 +218,9 @@ fn user_db_opens_are_deliberate() {
         ("identity/routes.rs", 9),
                                    // + resolve_reply_link: one parent-mirror open per reply publish (2026-08-26)
         ("replies.rs", 4),
+        // search.rs (2026-09-07): one open when a body is INDEXED - inside the per-request
+        // budget, never per candidate; currency is the listing's own stamp.
+        ("search.rs", 1),
         ("annotations.rs", 2),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
                                   // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the
                                   // root being folded - serialized per root, never a persona loop (2026-08-26)

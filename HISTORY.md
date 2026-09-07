@@ -8650,3 +8650,25 @@ read-your-writes idiom, extended to the mint. The `@` rule is pure and tested (a
 the picker); the acceptance suite `mentions.cjs` walks the restating, both roads, the
 dedupe, and the retraction. PROJECT_PLAN gained "Mentions: a user card in the words";
 NEXT_STEPS lost its "@user" wish.
+
+## 2026-09-07: search over the feed and a person's page
+
+Curtis asked for a text search in the place the search bar sits everywhere else. The first
+cut filtered the cards on screen, fetching their bodies behind the scenes; Curtis ruled it
+insufficient - the journal holds every item the reader was ever served, a synced person's
+chain is their whole shelf, and a search should reach all of it. So the node answers.
+`post_search` (node schema 41, owned by search.rs) is one token bag per public post this
+node holds the words of, keyed by the body's blob hash - the private notes' `doc_search`
+idiom, node-wide - and `?q=` on the feed and on a person's shelf narrows the whole journal
+or the whole held shelf through it: every term a prefix of some token, case-blind, one
+deep page and no cursor, shares standing aside. Filling is lazy and bounded: a search
+indexes the bodies it meets that are present and unindexed, four hundred at most, and the
+slow beat walks the backlog behind every reader's journal; nothing fetches, and a post
+whose words have not arrived matches on its title alone. The sealed-post rule holds on
+both surfaces. The shell's header slot serves the feed - a plain box, no notes-kinds
+funnel, the registry's `plainSearch` saying so - and a person's page, whose header grew
+the same box (a post's own page has nothing to narrow); the pages debounce a beat behind
+the typing and show the node's results in place of the list. The acceptance suite
+`search.cjs` walks body words, prefixes, two terms, the sealed post from both sides, the
+whole shelf, and a title standing in before its body lands. A sealed post's words are
+sealed at rest, so the index knows only its title - a NEXT_STEPS residual.

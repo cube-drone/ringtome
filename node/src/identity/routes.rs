@@ -593,6 +593,9 @@ struct ServeResponse {
 struct FeedQuery {
     before_ms: Option<i64>,
     before_doc: Option<String>,
+    /// A search (search.rs, 2026-09-07): the whole journal narrowed to the posts whose
+    /// words say this, newest first, one deep page and no cursor.
+    q: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -743,11 +746,39 @@ async fn feed_handler(
         _ => None,
     };
     let page = crate::idface::POSTS_PAGE;
-    let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1)
-        .await
-        .map_err(AppError::Internal)?;
-    let more = rows.len() as i64 > page;
-    rows.truncate(page as usize);
+    let terms = crate::search::terms(q.q.as_deref().unwrap_or(""));
+    let (mut rows, more) = if terms.is_empty() {
+        let mut rows = crate::fanout::feed_page(&state.node_db, &root, before, page + 1)
+            .await
+            .map_err(AppError::Internal)?;
+        let more = rows.len() as i64 > page;
+        rows.truncate(page as usize);
+        (rows, more)
+    } else {
+        let all = crate::fanout::feed_all(&state.node_db, &root, 5000)
+            .await
+            .map_err(AppError::Internal)?;
+        let candidates: Vec<crate::search::Candidate> = all
+            .iter()
+            .map(|r| crate::search::Candidate {
+                author_root: r.author_root.clone(),
+                doc_hex: r.doc_id.clone(),
+                title: r.title.clone(),
+                updated_ms: r.updated_ms,
+            })
+            .collect();
+        let keep = crate::search::matching(&state, &candidates, &terms)
+            .await
+            .map_err(AppError::Internal)?;
+        let mut all = all;
+        let mut i = 0;
+        all.retain(|_| {
+            let k = keep.contains(&i);
+            i += 1;
+            k
+        });
+        (all, false)
+    };
 
     // A sealed post this reader cannot open is not SHOWN at all (Curtis, 2026-09-02: "I'd
     // prefer it if the feed didn't show feed items I can't see") - a hollow card is just an

@@ -53,6 +53,7 @@ import { api } from '../net.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
+import { useSearch } from '../postsearch.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { t } from '../i18n.js';
 import {
@@ -210,7 +211,7 @@ export function scheduledPlan(doc) {
     }
 }
 
-const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor }) => {
+const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, searchQuery }) => {
     const [items, setItems] = useState([]);
     const [more, setMore] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -357,7 +358,13 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor }) =
     );
     // Your scheduled posts ride at the TOP (Curtis, 2026-09-02): a future time sorts later
     // than anything that exists, and the badge says why nobody else sees them yet.
-    const shown = [...(scheduled || []), ...visible];
+    // The header's search (2026-09-07): the node answers over the whole journal
+    // (postsearch.js), and its results stand in for the stream while a query is open -
+    // the interest dials still shape them, and your own posts still bypass.
+    const search = useSearch(root ? `/api/identity/${root}/feed` : null, searchQuery);
+    const shown = search.active
+        ? mergeFeed([], search.results || []).filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot))
+        : [...(scheduled || []), ...visible];
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
@@ -398,6 +405,15 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor }) =
             html`<p class="null-sub">
                 ${t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
             </p>`}
+            ${search.active &&
+            search.searching &&
+            html`<p class="null-sub"><span class="waiting-dot"></span> ${t('apps.feed.searching', 'searching…')}</p>`}
+            ${search.active &&
+            !search.searching &&
+            shown.length === 0 &&
+            html`<p class="null-sub">
+                ${search.error || t('apps.feed.nothing-in-your-feed-says-that', 'nothing in your feed says that.')}
+            </p>`}
             ${items.length > 0 &&
             visible.length === 0 &&
             !loading &&
@@ -416,7 +432,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor }) =
     `;
 };
 
-export const FeedApp = ({ current }) => {
+export const FeedApp = ({ current, searchQuery }) => {
     const root = current && current.root;
     const [posting, setPosting] = useState(false);
     const [error, setError] = useState(null);
@@ -712,6 +728,7 @@ export const FeedApp = ({ current }) => {
                     fresh=${fresh}
                     scheduled=${scheduledItems}
                     editingFor=${editingFor}
+                    searchQuery=${searchQuery}
                 />
             </div>
         </div>

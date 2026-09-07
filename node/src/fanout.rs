@@ -1617,6 +1617,21 @@ fn hex_in_list<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
 /// question this draft does not pretend to answer. The reader's interest dials affect only how
 /// items RENDER (size, opacity, truncation) - which is the client's business, off its own
 /// mirror, where those dials live.
+/// The reader's whole journal, newest first, for the search (search.rs): every row this
+/// node ever served them, capped only as a sanity bound.
+pub async fn feed_all(node_db: &crate::db::Db, reader: &str, cap: i64) -> Result<Vec<FeedRow>> {
+    let rows: Vec<JournalTuple> = node_db
+        .fetch_all(
+            "SELECT author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms
+             FROM feed_journal WHERE reader_root = ?1
+             ORDER BY published_ms DESC, doc_id LIMIT ?2",
+            (reader, cap),
+        )
+        .await
+        .context("reading the whole journal")?;
+    Ok(rows.into_iter().map(journal_row).collect())
+}
+
 pub async fn feed_page(
     node_db: &crate::db::Db,
     reader_root: &str,
@@ -1655,24 +1670,31 @@ pub async fn feed_page(
     .context("reading a feed page")?;
     Ok(rows
         .into_iter()
-        .map(
-            |(author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms)| FeedRow {
-                author_root,
-                via_root,
-                suggested_via,
-                doc_id,
-                title,
-                format,
-                published_ms,
-                updated_ms,
-                arrived_ms,
-                dated_ms,
-                minted_ms,
-                settled: settled != 0,
-                trusted_only: trusted_only != 0,
-            },
-        )
+        .map(journal_row)
         .collect())
+}
+
+/// One journal row's columns, as every journal SELECT lists them.
+type JournalTuple = (String, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64, i64, i64, Option<i64>, i64);
+
+fn journal_row(
+    (author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, dated_ms, minted_ms): JournalTuple,
+) -> FeedRow {
+    FeedRow {
+        author_root,
+        via_root,
+        suggested_via,
+        doc_id,
+        title,
+        format,
+        published_ms,
+        updated_ms,
+        arrived_ms,
+        dated_ms,
+        minted_ms,
+        settled: settled != 0,
+        trusted_only: trusted_only != 0,
+    }
 }
 
 #[cfg(test)]

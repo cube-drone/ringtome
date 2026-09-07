@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 660 phrases across 49 files.
+// 665 phrases across 49 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -27,6 +27,8 @@ export default {
     'apps.feed.the-feed': 'the feed',
     'apps.feed.how-far-past-the-people': 'how far past the people you chose this feed may reach',
     'apps.feed.nothing-here-yet---follow': 'nothing here yet - follow someone, or write something on the left.',
+    'apps.feed.searching': 'searching…',
+    'apps.feed.nothing-in-your-feed-says-that': 'nothing in your feed says that.',
     'apps.feed.nothing-at-this-selectivity': 'nothing at this selectivity - slide toward Explorer to widen the feed.',
     'apps.feed.reading-further-back': 'reading further back…',
     'apps.feed.couldnt-reach-further-back--': "couldn't reach further back - try again",
@@ -359,6 +361,7 @@ export default {
     'index.show': 'show',
     'index.rotates-all-files-only-documents': 'rotates: all files / only documents / only media',
     'index.looking-that-up': 'looking that up…',
+    'index.filter-their-posts': 'filter their posts…',
     'index.back-to-people': 'back to People',
     'index.back-to-their-page': 'back to their page',
     'index.close': 'close',
@@ -564,6 +567,8 @@ export default {
     'posts.plus-replies': '+ replies',
     'posts.show-the-books-they-published': 'show the books they published',
     'posts.plus-books': '+ books',
+    'posts.searching': 'searching…',
+    'posts.nothing-they-said-says-that': 'nothing they said says that.',
     'posts.reading-further-back': 'reading further back…',
     'posts.load-more': 'load more',
 

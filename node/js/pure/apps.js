@@ -74,9 +74,11 @@ export const APPS = [
         // Feed has a style so its drafts have somewhere to live, but it is not a notebook
         // app, and the shell used to read `style` as "wears the documents chrome" - which
         // put a bucket switcher over a single eponymous bucket and a search box over a
-        // component that never receives the query. Both are said outright now.
+        // component that never received the query. Both are said outright now: the feed
+        // takes the header's search as a PLAIN text filter over its cards (2026-09-07) -
+        // no notes-kinds funnel beside it, since a feed has one kind of thing in it.
         soleBucket: true,
-        searchable: false,
+        plainSearch: true,
         bucketNoun: 'Feed',
         itemNoun: 'post',
         // No read-only tab: a post's read view is the feed itself, and the composer is for

@@ -19,13 +19,14 @@ import { recentPosts, mergePosts, postCursor } from './pure/feed.js';
 import { PostEntry, useOwnPostEditing } from './postentry.js';
 import { publishedState } from './pure/feed.js';
 import { t } from './i18n.js';
+import { useSearch } from './postsearch.js';
 
 const html = htm.bind(h);
 
 /// The stream on a person's page: what they have said in public, newest first, and as far
 /// back as the reader cares to go. The profile brought the first page; each further one is
 /// asked for by hand, because reading someone's whole history is a decision, not a default.
-export const PublicPosts = ({ root, posts, pinned, more, current, fields }) => {
+export const PublicPosts = ({ root, posts, pinned, more, current, fields, searchQuery }) => {
     // The page already knows who this is - its profile answer carries the name and the
     // face - and its cards must not fall back to the browser's own mirror, which knows only
     // the people the reader follows (Curtis, 2026-09-05: "Dart Green" on the page, their
@@ -114,8 +115,6 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields }) => {
         mine,
     }));
 
-    if (!list.length && !scheduledItems.length && !pinnedItems.length) return null; // nothing said in public yet
-
     // The profile's rows, dressed as the shared entry's item shape - a share keeps its
     // ORIGINAL author (the card is still that person speaking) and wears this persona as
     // its via line, exactly as the feed renders a passed-along post.
@@ -153,12 +152,21 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields }) => {
                       mine,
                   }
         )];
+    // The header's search (2026-09-07): the node answers over the whole held shelf
+    // (postsearch.js); its results stand in for the shelf and the pinned strip while a
+    // query is open. Hooks before the early return below, as always.
+    const search = useSearch(`/api/id/${root}/posts${current ? `?as=${current.root}` : ''}`, searchQuery);
+    const shownItems = search.active
+        ? (search.results || []).map((p) => ({ ...p, author: root, author_name: authorName, author_avatar: authorAvatar, mine }))
+        : items;
+    const shownPinned = search.active ? [] : pinnedItems;
+    if (!search.active && !list.length && !scheduledItems.length && !pinnedItems.length) return null; // nothing said in public yet
 
     return html`
-        ${pinnedItems.length > 0 &&
+        ${shownPinned.length > 0 &&
         html`<section class="public-posts public-posts-pinned">
             <h2 class="public-posts-head">${t('posts.pinned', 'pinned')}</h2>
-            ${pinnedItems.map(
+            ${shownPinned.map(
                 (item) => html`<${PostEntry}
                     key=${`pinned:${item.doc_id}`}
                     item=${item}
@@ -186,7 +194,14 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields }) => {
                     onClick=${() => setWithBooks((v) => !v)}
                 >${t('posts.plus-books', '+ books')}</button>
             </h2>
-            ${items.map(
+            ${search.active &&
+            search.searching &&
+            html`<p class="null-sub"><span class="waiting-dot"></span> ${t('posts.searching', 'searching…')}</p>`}
+            ${search.active &&
+            !search.searching &&
+            shownItems.length === 0 &&
+            html`<p class="null-sub">${search.error || t('posts.nothing-they-said-says-that', 'nothing they said says that.')}</p>`}
+            ${shownItems.map(
                 (item) => html`<${PostEntry}
                     key=${`${item.kind || 'post'}:${item.doc_id}`}
                     item=${item}

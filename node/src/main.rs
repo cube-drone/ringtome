@@ -35,6 +35,7 @@ mod message;
 mod net;
 mod notifications;
 mod outbox;
+mod search;
 mod profiles;
 mod pubkey;
 mod publish;
@@ -511,6 +512,9 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
+    // The public text index's backlog walk (search.rs): a bounded slice per beat, so the
+    // first search over a deep journal is rarely the one that pays for reading it.
+    loops::periodic("search-index", fill_beat, state.clone(), search::index_pass);
     // Scheduled publishes (PUBLISH.md slice 2): drafts whose preferred date lay in the
     // future mint when their moment comes. A minute is plenty - the date is a day at an
     // hour, never a deadline - and LOCAL_TEST may shorten it.

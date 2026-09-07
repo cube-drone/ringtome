@@ -59,7 +59,7 @@ const SyncLine = ({ syncedMs, refreshing, peek }) => {
     </p>`;
 };
 
-export const IdPage = ({ seg, current, persona, session, onTitle }) => {
+export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery }) => {
     const loc = useLocation();
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
     // profile: undefined = loading, null = unreachable, object = served (local or fetched)
@@ -206,6 +206,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle }) => {
             fields=${profile.fields}
             more=${profile.posts_more}
             current=${current}
+            searchQuery=${searchQuery}
         />
     <//>`;
 };

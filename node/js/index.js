@@ -217,10 +217,13 @@ const Inside = ({ session }) => {
     // it on app switch - a filter you set in one app shouldn't silently empty another.
     const [searchKind, setSearchKind] = useState('all');
     const appHereId = appHere ? appHere.id : null;
+    // A person's page filters too (2026-09-07), from the same slot; the query is the
+    // page's, so walking to another person - or another app - starts it blank.
+    const idSeg = inId ? loc.path.split('/')[2] || '' : null;
     useEffect(() => {
         setQuery('');
         setSearchKind('all');
-    }, [appHereId]);
+    }, [appHereId, idSeg]);
 
     // The bucket in view, and the way to change it (buckets.js owns the state machine: the
     // last-open memory, cozy addresses outranking it, and the deep-link correction).
@@ -297,6 +300,19 @@ const Inside = ({ session }) => {
             <span class="app-header-lead">
                 <span class="app-header-title">${idTitle || ''}</span>
             </span>
+            ${/* The person's page filters their posts from the header's search slot, the
+                place a search bar sits everywhere else (2026-09-07). A post's page has
+                nothing to narrow, so the slot stays empty there. */ ''}
+            ${!loc.path.includes('/post/') &&
+            html`<span class="app-header-search-box">
+                <input
+                    class="app-header-search"
+                    type="search"
+                    placeholder=${t('index.filter-their-posts', 'filter their posts…')}
+                    value=${query}
+                    onInput=${(e) => setQuery(e.currentTarget.value)}
+                />
+            </span>`}
             <span class="app-header-actions">
                 <button
                     class="app-header-btn"
@@ -339,7 +355,8 @@ const Inside = ({ session }) => {
                     value=${query}
                     onInput=${(e) => setQuery(e.currentTarget.value)}
                 />
-                <${SearchOptions} kind=${searchKind} onKind=${setSearchKind} />
+                ${!appHere.plainSearch &&
+                html`<${SearchOptions} kind=${searchKind} onKind=${setSearchKind} />`}
             </span>`}
             <span class="app-header-actions">
                 ${inDoc &&
@@ -405,14 +422,14 @@ const Inside = ({ session }) => {
             <${Profile} path="/home/persona/profile" current=${persona.current} />
             <${Computers} path="/home/persona/computers" current=${persona.current} />
             <${PeopleApp} path="/home/people" current=${persona.current} searchQuery=${query} />
-            <${FeedApp} path="/home/feed" current=${persona.current} />
+            <${FeedApp} path="/home/feed" current=${persona.current} searchQuery=${query} />
             <${NotificationsApp} path="/home/notifications" current=${persona.current} />
             <${PersonDemo} path="/id/:seg/ui-demo" current=${persona.current} />
             <${DiffPage} path="/home/:app/:doc/diff" current=${persona.current} />
             <${PostPage} path="/id/:seg/post/:doc/:page" current=${persona.current} onTitle=${setIdTitle} />
             <${PostPage} path="/id/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
-            <${IdPage} path="/id/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} />
-            <${IdPage} path="/id/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} />
+            <${IdPage} path="/id/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
+            <${IdPage} path="/id/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
             <${SlugRoute} default current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
         </${Router}>
     `;

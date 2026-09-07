@@ -858,3 +858,17 @@ CREATE TABLE speculative_fetches (
     depth         TEXT    NOT NULL DEFAULT 'posts' -- what the mirror HOLDS: a posts-depth
                                        -- pull supersedes headers and is never downgraded
 );
+
+-- The public text index (2026-09-07, search.rs): one token bag per public post this node
+-- holds the words of, stamped with the post's update time as the caller's listing knows it
+-- (the journal's `updated_ms`, the shelf's head time) so an edit re-indexes, an unchanged
+-- body never reads twice, and currency is judged without opening the author's database.
+-- The feed's and a person's page's search (`?q=`) narrow their candidates through it; a
+-- post whose body has not arrived matches on its title alone.
+CREATE TABLE post_search (
+    author_root TEXT    NOT NULL,
+    doc_id      TEXT    NOT NULL,
+    updated_ms  INTEGER NOT NULL,
+    tokens      TEXT    NOT NULL,
+    PRIMARY KEY (author_root, doc_id)
+);
