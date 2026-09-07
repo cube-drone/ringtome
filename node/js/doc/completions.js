@@ -10,6 +10,7 @@ import { nameToEmoji } from 'gemoji';
 import { api } from '../net.js';
 import { openMirror } from '../mirror.js';
 import { speakable } from '../speakable.js';
+import { standingFacts } from '../pure/people.js';
 import { mentionQuery, mentionShape, userCardSource, userSpanSource } from '../pure/mentions.js';
 import { slugPathFor } from './address.js';
 import { slugify, MEDIA_EXT } from '../pure/naming.js';
@@ -201,9 +202,14 @@ export function mediaCompletions(root, bucket) {
                         // A silent animation is spelled `-loop` (pure/mediakind.js), so the
                         // renderer draws it looping rather than with a player.
                         const embed = `![${label}](/api/identity/${root}/docs/${d.doc_id}/body/${slug}${loopSuffix(d.media && d.media.animation)}.${MEDIA_EXT[d.format]})`;
+                        // The bare form fills a BLOCK - a media paragraph of its own - so
+                        // the caret moves to the next line (Curtis, 2026-09-07: a block
+                        // fill that leaves you typing on its line just breaks the block).
+                        // The explicit `![` form is inline by intent and stays put.
+                        const text = explicit ? embed : `${embed}\n`;
                         view.dispatch({
-                            changes: { from: from - prefixLen, to, insert: embed },
-                            selection: { anchor: from - prefixLen + embed.length },
+                            changes: { from: from - prefixLen, to, insert: text },
+                            selection: { anchor: from - prefixLen + text.length },
                         });
                     },
                 };
@@ -215,15 +221,18 @@ export function mediaCompletions(root, bucket) {
 /// How long a fetched roster serves the picker before the next `@` asks again.
 const ROSTER_TTL_MS = 60_000;
 
-/// `@` at a word start (2026-09-06): a picker over the personas this node knows - the same
-/// list the People app shows - filtered as you type ("@Butt Di" finds Butt Diamonds), and
-/// filled as a user card in the shape the line asks for: on a line of its own, the leaf
-/// directive `:::user id=/id/<address>:::`; among words, the span
-/// `[user id=/id/<address>]Their Name[/user]` - both dressed as the person by the
-/// renderers. One roster fetch per editor per minute; a failed fetch offers whatever was
+/// `@` at a word start (2026-09-06): a picker over the people you know, filtered as you type
+/// ("@Butt Di" finds Butt Diamonds), and filled as a user card in the shape the line asks
+/// for: on a line of its own, the leaf directive `:::user id=/id/<address>:::`; among words,
+/// the span `[user id=/id/<address>]Their Name[/user]` - both dressed as the person by the
+/// renderers. Two rosters, yours first (Curtis, 2026-09-07: "Stamp Hub", a friend, was
+/// not offered): everyone your ledger holds a standing relationship with, off the contacts
+/// mirror, worn as you call them - your nickname, their name, their words - and then the
+/// node's directory, the same list the People app shows, for people you have met but not
+/// dialed. One directory fetch per editor per minute; a failed fetch offers whatever was
 /// last known. The word-start rule (pure/mentions.js) keeps an email address's `@` from
 /// opening it.
-export function mentionCompletions() {
+export function mentionCompletions(root) {
     let roster = null;
     let fetchedAt = 0;
     return async (context) => {
@@ -239,19 +248,33 @@ export function mentionCompletions() {
                 roster = roster || [];
             }
         }
-        const options = roster.map((person) => {
-            const address = person.speakable || speakable(person.root);
+        const people = new Map();
+        for (const c of await openMirror(root).contacts.toArray()) {
+            if (c.root === root || !standingFacts(c.facts)) continue;
+            const nickname = (c.facts || {}).nickname;
+            people.set(c.root, { root: c.root, name: c.name || '', label: nickname || c.name || '' });
+        }
+        for (const d of roster) {
+            if (d.root === root || people.has(d.root)) continue;
+            people.set(d.root, { root: d.root, name: d.name || '', label: d.name || '' });
+        }
+        const options = [...people.values()].map((person) => {
+            const address = speakable(person.root);
             return {
-                label: person.name || address,
-                detail: person.name ? address : undefined,
+                label: person.label || address,
+                detail: person.label ? address : undefined,
                 apply: (view, _completion, _from, to) => {
                     const here = view.state.doc.lineAt(at);
                     const before = view.state.sliceDoc(here.from, at);
                     const after = view.state.sliceDoc(to, here.to);
+                    // The block card ends with a line break so typing continues on the
+                    // next line: a leaf directive's closer must end its line, and anything
+                    // typed after it would make the card an invalid directive (Curtis,
+                    // 2026-09-07). The span is in the line by intent and stays put.
                     const text =
                         mentionShape(before, after) === 'span'
                             ? userSpanSource(address, person.name)
-                            : userCardSource(address);
+                            : `${userCardSource(address)}\n`;
                     view.dispatch({
                         changes: { from: at, to, insert: text },
                         selection: { anchor: at + text.length },

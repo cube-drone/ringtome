@@ -8633,7 +8633,16 @@ counted once. The live editor showed the span as dimmed source: marquee-codemirr
 only links and emoji as inline widgets and never asked the profile's span hook. Fixed
 upstream - an embedder span the profile claims is a rendered widget when the cursor is
 away, source beside it, like a link - and released as Marquee 0.8.0 (a behaviour change
-earns the minor); ringtome's JS ranges and Rust pins moved to 0.8.0 in lockstep. The `@` rule is pure and tested (an email address never opens
+earns the minor); ringtome's JS ranges and Rust pins moved to 0.8.0 in lockstep. The
+test-data generator gained `mention-someone` (2026-09-07): a post naming one person who has
+gone public, inline or as a block card, so a seeded network has cards and "mentioned you
+in" rows to look at; personas now carry a `served` flag that `go-public` flips. The picker
+had drawn from the directory alone, which never consults follows - so a friend you dial but
+the node lists nowhere ("Stamp Hub", Curtis, 2026-09-07) was not offered; it now draws from
+your contacts mirror first, worn as you call them, and the directory second. And a block
+fill now moves the caret to the next line - the card's closer must end its line, so typing
+on it made an invalid directive; the bare media embed, a block by the same sugar, does the
+same, while the span and the explicit `![` form stay in the line (Curtis's rule). The `@` rule is pure and tested (an email address never opens
 the picker); the acceptance suite `mentions.cjs` walks the restating, both roads, the
 dedupe, and the retraction. PROJECT_PLAN gained "Mentions: a user card in the words";
 NEXT_STEPS lost its "@user" wish.

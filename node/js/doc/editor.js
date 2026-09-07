@@ -301,7 +301,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
         [tlProfile, facesGen]
     );
     // One picker instance per editor: it caches the roster it fetched on the first `@`.
-    const mentionSource = useMemo(() => mentionCompletions(), []);
+    const mentionSource = useMemo(() => mentionCompletions(root), [root]);
 
     // The scroll-sync/caret ref quartet (their story is with the sync closures, below).
     const previewRef = useRef(null); // MarqueeHandle

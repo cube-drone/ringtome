@@ -3945,10 +3945,11 @@ small and its rules are few.
    address is any spelling the `/id/` door accepts - worded with its checksum verified, bare
    base58, or hex - and a card whose words lie names nobody, exactly as the door refuses them.
 2. **`@` at a word start opens the people picker** - the start of a line or after whitespace,
-   never inside a word, so an email address's `@` stays text. It offers the personas this
-   node knows (the directory the People app shows), filters as you type across the spaces of
-   a name, and fills the shape the line asks for: the block when the line holds nothing but
-   the summons, the span when there are words around it (Curtis's rule).
+   never inside a word, so an email address's `@` stays text. It offers the people you know
+   - everyone your ledger holds a standing relationship with, worn as you call them, and then
+   the node's directory for people you have met but not dialed - filters as you type across
+   the spaces of a name, and fills the shape the line asks for: the block when the line holds
+   nothing but the summons, the span when there are words around it (Curtis's rule).
 3. **Every renderer dresses the card as the person**: the feed card, the reader, the post
    page and the book reader all render bodies through one component, which hands the react
    renderer a directive hook and a span hook - a `user` card becomes the person: the block,
@@ -3976,9 +3977,9 @@ small and its rules are few.
    the reader's own shelf. The bell does not join a title for it from the reader's store;
    the card asks the author's shelf for its title itself, the way a reply's parent does.
 
-Residuals: the picker knows only the directory (personas this node has met); mentioning
-someone by pasting an address the node has never seen works, but the card's row will dress
-itself only once the address is fetched. A mention on a trusted-only post is restated like
+Residuals: the picker knows your contacts and the node's directory; mentioning someone by
+pasting an address the node has never seen works, but the card will dress itself only once
+the address is fetched. A mention on a trusted-only post is restated like
 any other label on a sealed post - the statement is public while the words are not - and the
 notice says "mentioned you in" a post the reader may not be able to open.
 

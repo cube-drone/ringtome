@@ -20,8 +20,9 @@
 //   - Throwing is fine - a failed action is logged and the run continues, because one refused
 //     dial must not cost the other twenty thousand actions.
 //
-// TODO, deliberately left on the surface: richer Marquee (spans, headers) and posts with
-// IMAGES - the media pipeline wants real bytes, which wants a small corpus checked in.
+// TODO, deliberately left on the surface: richer Marquee (headers, effects - the user span
+// arrived with `mention-someone`) and posts with IMAGES - the media pipeline wants real
+// bytes, which wants a small corpus checked in.
 //
 // Reproducible: same seed, same network (modulo wall-clock timestamps). The seed prints at
 // start; pass it back to replay. Credentials land in testdata-state.json beside this script,
@@ -286,6 +287,45 @@ const ACTIONS = [
         run: async (ctx, p) => {
             // Serve: consent to the anonymous shelf and the directory. Idempotent.
             await api(p, 'POST', `/api/identity/${p.root}/serve`);
+            p.served = true; // visible now: a persona `mention-someone` may name
+        },
+    },
+    {
+        // A mention (2026-09-06): a post that names one VISIBLE person with a user card.
+        // Inline when the sentence has words around it - `[user id=/id/...]Name[/user]`, the
+        // shape the `@` picker fills mid-sentence - or the block card on a line of its own.
+        // Publish restates the card as a mention statement and rings the named person's
+        // bell by whichever road applies, so a seeded network has "mentioned you in" rows
+        // and cards to look at. Only the served are named: a card naming a dark persona is
+        // one nobody can dress, and no button reaches it. Early rounds find nobody public
+        // and return silently, like the share action.
+        name: 'mention-someone',
+        weight: 8,
+        run: async (ctx, p, rng) => {
+            const them = ctx.pick(rng, ctx.personas.filter((o) => o.root !== p.root && o.served));
+            if (!them) return;
+            // Meet them first when they live elsewhere, as the picker's directory implies
+            // - so the card can dress itself with their name on this node.
+            if (them.base !== p.base) {
+                const via = await ctx.endpointOf(them.base);
+                await api(p, 'GET', `/api/id/${them.root}/profile?via=${via}`);
+            }
+            const { speakable } = await import('../js/speakable.js');
+            const address = speakable(them.root);
+            const inline = rng() < 0.6;
+            const card = inline
+                ? `[user id=/id/${address}]${them.name}[/user]`
+                : `:::user id=/id/${address}:::`;
+            const body = inline
+                ? `${ctx.lorem(rng, 1).replace(/\.$/, '')} ${card} ${ctx.lorem(rng, 1)}`
+                : `${ctx.lorem(rng, 1)}\n\n${card}\n\n${ctx.lorem(rng, 1)}`;
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: rng() < 0.5 ? `For ${them.name}` : '',
+                body,
+                format: 'marquee',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+            await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`);
         },
     },
     {
@@ -609,6 +649,7 @@ for (const base of nodes) {
         const p = {
             base, bases: [base], root: made.root_pubkey, username: who.username,
             fetch: s.fetch, buckets: [], name: who.display,
+            served: false, // born dark; `go-public` flips it
             // What this persona has made, so the actions below have something to revisit:
             // private notes as { doc_id, head } (head is the parent an edit asserts), the
             // taxonomies they have started, and what they currently pass along. A life needs
