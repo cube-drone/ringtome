@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 694 phrases across 52 files.
+// 696 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -162,6 +162,7 @@ export default {
     'copyinto.copy-into-private-notes': 'copy into private notes',
     'copyinto.copied-into': 'copied into {bucket}',
     'copyinto.open-the-copy': 'open the copy',
+    'copyinto.a-book-copies-whole-into': 'a book copies whole into a fresh notebook',
     'copyinto.plus-new-bucket': '+ new bucket',
     'copyinto.copy': 'copy',
     'copyinto.copy-this-into-your-private': 'copy this into your private notes',
@@ -664,12 +665,13 @@ export default {
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',
-    'identity.routes.a-private-note-is-your-own': 'a private note to copy must be one of your own',
-    'identity.routes.no-such-note-to-copy': 'no such note to copy',
-    'identity.routes.those-words-havent-arrived': "those words haven't arrived on this computer yet",
     'identity.routes.no-such-post-to-copy': 'no such post to copy',
     'identity.routes.those-words-arent-readable-here': "those words aren't readable here yet",
+    'identity.routes.a-private-note-is-your-own': 'a private note to copy must be one of your own',
+    'identity.routes.no-such-note-to-copy': 'no such note to copy',
     'identity.routes.only-words-copy': 'only a post of words copies into notes',
+    'identity.routes.those-words-havent-arrived': "those words haven't arrived on this computer yet",
+    'identity.routes.a-book-copies-into-a-fresh': 'a book copies whole into a fresh notebook - name a new one',
     'identity.routes.bad-multipart-body-e': 'bad multipart body: {e}',
     'identity.routes.bad-multipart-part-name-e': 'bad multipart part {name:?}: {e}',
     'identity.routes.missing-video-part': 'missing `video` part',

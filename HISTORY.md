@@ -8762,4 +8762,11 @@ pre-ticked, the feed's post button deferring to it; the seal is a default, not a
 The generator also gained `publish-a-little-book` (Curtis): a fresh notebook with three or
 four pages, two nested under a part, the tree named for the notebook as the wiki names it,
 book mode on, a rollout asked for and left to the sweep - so a seeded shelf carries books
-within a minute of the run.
+within a minute of the run. Then Curtis asked what a book copies as - it had been refused as not
+prose - and ruled: whole, into a fresh notebook, never an existing bucket. The copy door
+was carved into a reader, a chain rule and a minter, and a book walks its table: the wiki
+root named for the new notebook, a taxonomy per section, every page a copy with the chain,
+book mode switched on; the modal offers a book only the new-notebook box. The suite's
+book grew a pictured page when Curtis asked whether the media comes too: it does, through
+the same minter as a lone post, and the copied page owns its picture with ada in its
+provenance.

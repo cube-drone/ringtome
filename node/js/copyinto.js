@@ -28,6 +28,9 @@ export const CopyIntoModal = ({ current, source, onClose, onDone }) => {
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null); // { doc_id, bucket }
     const names = [...new Set((roster || []).map((b) => b.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    // A book copies whole into a FRESH notebook (Curtis, 2026-09-08): no existing bucket
+    // is offered, only a name for the new one.
+    const book = source.format === 'book';
     const copy = async (bucket, isNew) => {
         const name = (bucket || '').trim();
         if (!name || busy) return;
@@ -49,10 +52,12 @@ export const CopyIntoModal = ({ current, source, onClose, onDone }) => {
         ${done
             ? html`<p class="copy-done">
                   ${t('copyinto.copied-into', 'copied into {bucket}', { bucket: done.bucket })}
-                  ${' '}<a href=${slugify(done.bucket) === 'feed' ? '/home/feed' : `/home/${slugify(done.bucket)}/${done.doc_id}`}>${t('copyinto.open-the-copy', 'open the copy')}</a>
+                  ${' '}<a href=${book ? `/home/${slugify(done.bucket)}` : slugify(done.bucket) === 'feed' ? '/home/feed' : `/home/${slugify(done.bucket)}/${done.doc_id}`}>${t('copyinto.open-the-copy', 'open the copy')}</a>
               </p>`
             : html`<div class="copy-buckets">
-                  ${names.map(
+                  ${book && html`<p class="null-sub">${t('copyinto.a-book-copies-whole-into', 'a book copies whole into a fresh notebook')}</p>`}
+                  ${!book &&
+                  names.map(
                       (name) => html`<button key=${name} class="copy-bucket" disabled=${busy} onClick=${() => copy(name, false)}>
                           ${name}
                       </button>`
@@ -61,7 +66,7 @@ export const CopyIntoModal = ({ current, source, onClose, onDone }) => {
                       class="copy-new-bucket"
                       onSubmit=${(e) => {
                           e.preventDefault();
-                          copy(fresh, !names.includes(fresh.trim()));
+                          copy(fresh, book || !names.includes(fresh.trim()));
                       }}
                   >
                       <input
@@ -88,7 +93,7 @@ export const CopyButton = ({ item, current }) => {
         ${open &&
         html`<${CopyIntoModal}
             current=${current}
-            source=${{ author: item.author, doc_id: item.doc_id, private: !!item.private_doc }}
+            source=${{ author: item.author, doc_id: item.doc_id, private: !!item.private_doc, format: item.format }}
             onClose=${() => setOpen(false)}
         />`}`;
 };

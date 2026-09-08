@@ -4016,6 +4016,12 @@ own notes into another bucket - and a copy remembers where it came from.
    own seals the post, the editor's box comes pre-ticked, and the feed's post button honours
    it unless its own toggle says otherwise. The wish is the copier's to clear - what a
    trusted reader can read they can retype, so the seal is a default, not a lock.
+6. **A book copies whole, into a fresh notebook.** The door offers no existing bucket for a
+   book - only a name for a new one - and rebuilds the book's tree there: the wiki root
+   named for the notebook, a taxonomy per section, the pages in order, each page a copy
+   with the chain (the book's own provenance rides along), then switches the notebook to
+   book mode so the copier can roll it out as their own. A page that will not open is
+   skipped and the book goes on without it.
 
 Residuals: a chain is what the source's author said, so a source that dropped its credits
 drops them for everyone downstream; the fresh twins a posted copy mints carry no

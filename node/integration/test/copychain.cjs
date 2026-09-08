@@ -183,6 +183,79 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.ok(!(shelfForCal.posts || []).some((x) => x.doc_id === beaSealed), "and hidden from a viewer bea does not trust");
     });
 
+    it("a book copies whole into a fresh notebook: the tree rebuilt, every page a copy with the chain, book mode on - and never into an existing bucket", async () => {
+        // Ada's little book: three pages, two of them in a part.
+        const mk = async (title, body) => {
+            const d = await (await j(ada, `api/identity/${adaRoot}/docs`, { title, body, format: "marquee" })).json();
+            await ada(`api/identity/${adaRoot}/docs/${d.doc_id}/buckets/grimoire`, { method: "PUT" });
+            return d.doc_id;
+        };
+        await j(ada, `api/identity/${adaRoot}/buckets`, { name: "grimoire", app: "default" });
+        const opening = await mk("on bread", "why bread");
+        const c1 = await mk("chapter one", "the first words");
+        // Chapter two carries a picture, so the copy must carry it too.
+        const plate = await (await ada(`api/identity/${adaRoot}/docs/binary?title=crumb`, { method: "POST", body: makePng(24, 24), file: true })).json();
+        for (let i = 0; i < 100; i++) {
+            if ((await ada(`api/identity/${adaRoot}/docs/${plate.doc_id}/body`)).status === 200) break;
+            await wait(400);
+        }
+        await ada(`api/identity/${adaRoot}/docs/${plate.doc_id}/buckets/grimoire`, { method: "PUT" });
+        const c2 = await mk("chapter two", `the second words\n\n![crumb](/api/identity/${adaRoot}/docs/${plate.doc_id}/body/crumb.avif)`);
+        const tree = (await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "wiki:grimoire" })).json()).taxonomy_id;
+        const part = (await (await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: "part one" })).json()).taxonomy_id;
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${tree}/members/${opening}`, {}, "PUT");
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${tree}/members/${part}`, {}, "PUT");
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${c1}`, {}, "PUT");
+        await j(ada, `api/identity/${adaRoot}/taxonomies/${part}/members/${c2}`, {}, "PUT");
+        await j(ada, `api/identity/${adaRoot}/private/kv/books/grimoire`, { value: JSON.stringify({ mode: "book" }) }, "PUT");
+        const asked = await j(ada, `api/identity/${adaRoot}/books/grimoire/rollout`, {});
+        assert.equal(asked.status, 200, await asked.text());
+        let plan = null;
+        for (let i = 0; i < 120; i++) {
+            await beat(HOST, "book-rollout", adaRoot);
+            const kv = await (await ada(`api/identity/${adaRoot}/private/kv/book_rollout`)).json();
+            const row = (kv.values || []).find((v) => v.key === "grimoire");
+            plan = row ? JSON.parse(row.value) : null;
+            if (plan && (plan.status === "done" || plan.status === "failed")) break;
+            await wait(500);
+        }
+        assert.ok(plan && plan.status === "done" && plan.book, `the rollout came to rest: ${JSON.stringify(plan)}`);
+        await pullAndFold(HOST_B, adaRoot);
+        const table = await bodyArrives(bea, adaRoot, plan.book);
+        assert.ok(table && JSON.parse(table).sections.length === 1, `the book's table reached bea: ${table}`);
+        const refused = await j(bea, `api/identity/${beaRoot}/docs/copy`, { author: adaRoot, doc_id: plan.book, bucket: "clippings" });
+        assert.equal(refused.status, 400, "a book will not go into an existing bucket");
+        const r = await j(bea, `api/identity/${beaRoot}/docs/copy`, { author: adaRoot, doc_id: plan.book, bucket: "ada-grimoire", new: true });
+        const said = await r.text();
+        assert.equal(r.status, 200, said);
+        const docs = (await (await bea(`api/identity/${beaRoot}/docs`)).json()).docs || [];
+        const pages = docs.filter((d) => (d.buckets || []).includes("ada-grimoire"));
+        assert.deepEqual(pages.map((d) => d.title).sort(), ["chapter one", "chapter two", "on bread"], "every page, in the new notebook");
+        for (const d of pages) {
+            const labels = await noteLabels(bea, beaRoot, d.doc_id);
+            assert.deepEqual(JSON.parse(labels.fields.provenance), [adaRoot], `${d.title} carries ada`);
+        }
+        // The picture came along: chapter two's copy points at bea's own media document,
+        // which lands through the ingest with the same provenance.
+        const two = pages.find((d) => d.title === "chapter two");
+        const twoNote = await (await bea(`api/identity/${beaRoot}/docs/${two.doc_id}`)).json();
+        const m = twoNote.body.match(new RegExp(`/api/identity/${beaRoot}/docs/([0-9a-f]{32})/body/`));
+        assert.ok(m, `the page's words point at bea's own picture: ${twoNote.body}`);
+        let landed = false;
+        for (let i = 0; i < 100 && !landed; i++) {
+            landed = (await bea(`api/identity/${beaRoot}/docs/${m[1]}/body`)).status === 200;
+            if (!landed) await wait(400);
+        }
+        assert.ok(landed, "the book's picture ingested on bea's node");
+        assert.deepEqual(JSON.parse((await noteLabels(bea, beaRoot, m[1])).fields.provenance), [adaRoot], "with ada in its provenance");
+        const tx = await (await bea(`api/identity/${beaRoot}/taxonomies`)).json();
+        const titles = (Array.isArray(tx) ? tx : tx.taxonomies || []).map((x) => x.title);
+        assert.ok(titles.includes("wiki:ada-grimoire") && titles.includes("part one"), `the tree was rebuilt: ${JSON.stringify(titles)}`);
+        const facts = await (await bea(`api/identity/${beaRoot}/private/kv/books`)).json();
+        const mode = (facts.values || []).find((v) => v.key === "ada-grimoire");
+        assert.ok(mode && JSON.parse(mode.value).mode === "book", "the notebook is in book mode, ready to roll out as bea's own");
+    });
+
     it("copying your own post adds nobody, and copying your own private note carries its chain", async () => {
         const own = await (await j(ada, `api/identity/${adaRoot}/docs/copy`, { author: adaRoot, doc_id: adaPost, bucket: "clippings", new: true })).json();
         const ownLabels = await noteLabels(ada, adaRoot, own.doc_id);

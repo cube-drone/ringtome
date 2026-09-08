@@ -2761,117 +2761,101 @@ struct DocCopy {
     private: bool,
 }
 
-/// POST `/api/identity/{root}/docs/copy` - copy a post into private notes (Curtis,
-/// 2026-09-08): any post, yours or anyone's, public or one of your own private notes,
-/// becomes a fresh private note in the bucket you name - title, words, format, and the
-/// author's own tags - with a PROVENANCE stack: the source's author (when that is somebody
-/// else) and everyone the source itself descended from, oldest first, so a chain of copies
-/// carries every author along. The words come through the body door, sealed posts
-/// included, so a copy is exactly what you could read. Media embeds keep pointing at the
-/// source's own public files (a residual, PROJECT_PLAN's Copying a post).
-async fn docs_copy_handler(
-    session: Session,
-    State(state): State<AppState>,
-    Path(root): Path<String>,
-    Json(req): Json<DocCopy>,
-) -> Result<Json<DocCreated>, AppError> {
-    let data = store::open(&state, &session.account.id, &root).await?;
-    let author_hex = req.author.to_lowercase();
-    let doc_hex = req.doc_id.to_lowercase();
-    let doc_id = hex_fixed::<16>(&doc_hex, "doc id")?;
-    let (title, body, format, tags, inherited, sealed): (String, Vec<u8>, crate::record::documents::Format, Vec<String>, Vec<String>, bool) =
-        if req.private {
-            if author_hex != root {
-                return Err(AppError::BadRequest(crate::msg!("identity.routes.a-private-note-is-your-own", "a private note to copy must be one of your own")));
-            }
-            let docs = data.documents();
-            let view = docs.all().await?;
-            let doc = view
-                .docs
-                .get(&doc_id)
-                .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-note-to-copy", "no such note to copy")))?;
-            let format = doc
-                .display_head()
-                .map(|h| crate::record::documents::Format::from_wire(h.header.format))
-                .unwrap_or(crate::record::documents::Format::Plaintext);
-            let resolved = docs.resolved(doc).await?;
-            let body = resolved
-                .body
-                .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.those-words-havent-arrived", "those words haven't arrived on this computer yet")))?;
-            let tags = data.annotations().tags(&doc_id).await?;
-            let inherited = data
-                .annotations()
-                .field(&doc_id, store::PROVENANCE)
-                .await?
-                .map(|v| provenance_roots(&v))
-                .unwrap_or_default();
-            let sealed = data
-                .annotations()
-                .field(&doc_id, store::SEAL_WISH)
-                .await?
-                .is_some_and(|v| v.trim() == "yes");
-            (resolved.title, body.into_bytes(), format, tags, inherited, sealed)
-        } else {
-            let head = match crate::fragments::serving_header(&state.node_db, &author_hex, &doc_id).await.ok().flatten() {
-                Some(h) => Some((h.title, h.format, h.trusted_only)),
-                None => held_public_header(&state, &author_hex, &doc_hex).await?.map(|h| (h.title, h.format, h.trusted_only)),
-            };
-            let Some((title, format, sealed)) = head else {
-                return Err(AppError::NotFound(crate::msg!("identity.routes.no-such-post-to-copy", "no such post to copy")));
-            };
-            let format = crate::record::documents::Format::from_wire(format);
-            let resp = crate::idface::public_doc_bytes(&state, &Some(session.clone()), &author_hex, &doc_hex, false, None).await?;
-            if resp.status() != StatusCode::OK {
-                return Err(AppError::BadRequest(crate::msg!("identity.routes.those-words-arent-readable-here", "those words aren't readable here yet")));
-            }
-            let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-                .await
-                .map_err(|e| AppError::Internal(anyhow::anyhow!("reading the source body: {e}")))?
-                .to_vec();
-            let known = crate::annotations::for_posts(&state.node_db, &[(author_hex.clone(), doc_hex.clone())])
-                .await
-                .map_err(AppError::Internal)?;
-            let own: Vec<&crate::annotations::KnownAnnotation> = known
-                .get(&(author_hex.clone(), doc_hex.clone()))
-                .map(|v| v.iter().filter(|a| a.annotator == author_hex).collect())
-                .unwrap_or_default();
-            let tags = own.iter().filter(|a| a.key == "tag").map(|a| a.value.clone()).collect();
-            let inherited = own.iter().filter(|a| a.key == store::PROVENANCE).map(|a| a.value.clone()).collect();
-            (title, body, format, tags, inherited, sealed)
-        };
-    if !matches!(format, crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext) {
-        return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
+/// What the copy door learned about a public source before copying it.
+struct PublicSource {
+    title: String,
+    body: Vec<u8>,
+    format: crate::record::documents::Format,
+    tags: Vec<String>,
+    inherited: Vec<String>,
+    sealed: bool,
+}
+
+/// Read a public post as the copy door sees it: head, words through the body door (sealed
+/// posts included, for those who may), the author's own tags and provenance statements.
+async fn read_public_source(
+    state: &AppState,
+    session: &Session,
+    author_hex: &str,
+    doc_hex: &str,
+    doc_id: &[u8; 16],
+) -> Result<PublicSource, AppError> {
+    let head = match crate::fragments::serving_header(&state.node_db, author_hex, doc_id).await.ok().flatten() {
+        Some(h) => Some((h.title, h.format, h.trusted_only)),
+        None => held_public_header(state, author_hex, doc_hex).await?.map(|h| (h.title, h.format, h.trusted_only)),
+    };
+    let Some((title, format, sealed)) = head else {
+        return Err(AppError::NotFound(crate::msg!("identity.routes.no-such-post-to-copy", "no such post to copy")));
+    };
+    let format = crate::record::documents::Format::from_wire(format);
+    let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, doc_hex, false, None).await?;
+    if resp.status() != StatusCode::OK {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.those-words-arent-readable-here", "those words aren't readable here yet")));
     }
-    // The chain: the source's author first when it is somebody else, then everyone the
-    // source descended from - each once, never yourself.
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("reading the source body: {e}")))?
+        .to_vec();
+    let known = crate::annotations::for_posts(&state.node_db, &[(author_hex.to_string(), doc_hex.to_string())])
+        .await
+        .map_err(AppError::Internal)?;
+    let own: Vec<&crate::annotations::KnownAnnotation> = known
+        .get(&(author_hex.to_string(), doc_hex.to_string()))
+        .map(|v| v.iter().filter(|a| a.annotator == author_hex).collect())
+        .unwrap_or_default();
+    let tags = own.iter().filter(|a| a.key == "tag").map(|a| a.value.clone()).collect();
+    let inherited = own.iter().filter(|a| a.key == store::PROVENANCE).map(|a| a.value.clone()).collect();
+    Ok(PublicSource { title, body, format, tags, inherited, sealed })
+}
+
+/// The chain a copy carries: the source's author when that is somebody else, then everyone
+/// the source descended from - each once, never yourself.
+fn provenance_chain(root: &str, author_hex: &str, inherited: &[String], extra: &[String]) -> Vec<String> {
     let mut chain: Vec<String> = Vec::new();
     if author_hex != root {
-        chain.push(author_hex.clone());
+        chain.push(author_hex.to_string());
     }
-    for r in inherited {
-        if r != root && !chain.contains(&r) {
-            chain.push(r);
+    for r in inherited.iter().chain(extra.iter()) {
+        if r != root && !chain.contains(r) {
+            chain.push(r.clone());
         }
     }
-    let provenance = (!chain.is_empty()).then(|| serde_json::to_string(&chain).unwrap_or_default());
-    if req.new {
-        data.buckets().define(&req.bucket, "default").await?;
-    }
-    // The embedded media (Curtis, 2026-09-08): a published body's twins become the copier's
-    // own media documents - the twin's bytes through the body door, into the ingest queue
-    // like an upload (it crushes, thumbs and encrypts them), filed in the same bucket with
-    // the same provenance - and the copy's words point at them, in the picker's own private
-    // spelling, so the copy is whole on its own and the bake mints fresh twins when it is
-    // posted. A copy of your own private note keeps its embeds: they are already yours.
+    chain
+}
+
+/// Mint one private note from a source's words: the bucket is already defined. The
+/// embedded media (Curtis, 2026-09-08): a published body's twins become the copier's own
+/// media documents - the twin's bytes through the body door, into the ingest queue like an
+/// upload (it crushes, thumbs and encrypts them), filed in the same bucket with the same
+/// provenance - and the copy's words point at them, in the picker's own private spelling,
+/// so the copy is whole on its own and the bake mints fresh twins when it is posted. A
+/// twin that will not open stays the source's: the link still works for those who may.
+#[allow(clippy::too_many_arguments)] // a copy IS these facts; a params struct would name them worse
+async fn mint_copy(
+    state: &AppState,
+    session: &Session,
+    data: &store::Store,
+    root: &str,
+    author_hex: &str,
+    title: &str,
+    body: Vec<u8>,
+    format: crate::record::documents::Format,
+    tags: &[String],
+    chain: &[String],
+    sealed: bool,
+    bucket: &str,
+    rewrite_media: bool,
+) -> Result<[u8; 16], AppError> {
+    let provenance = (!chain.is_empty()).then(|| serde_json::to_string(chain).unwrap_or_default());
     let mut body = body;
-    if !req.private && format == crate::record::documents::Format::Marquee {
+    if rewrite_media && format == crate::record::documents::Format::Marquee {
         let text = String::from_utf8_lossy(&body).into_owned();
         let mut swaps: Vec<(String, String)> = Vec::new();
-        for (target, twin) in crate::record::bake::public_media_refs(&text, &author_hex) {
+        for (target, twin) in crate::record::bake::public_media_refs(&text, author_hex) {
             let twin_hex = hex::encode(twin);
-            let resp = crate::idface::public_doc_bytes(&state, &Some(session.clone()), &author_hex, &twin_hex, false, None).await?;
+            let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, &twin_hex, false, None).await?;
             if resp.status() != StatusCode::OK {
-                continue; // a twin that will not open stays the source's: the link still works for those who may
+                continue;
             }
             let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
                 .await
@@ -2883,16 +2867,16 @@ async fn docs_copy_handler(
                     &state.node_db,
                     crate::ingest::Upload {
                         account: &session.account.id.to_string(),
-                        root: &root,
+                        root,
                         doc_id: media_doc,
                         parents: &[],
-                        title: &title,
+                        title,
                         bytes: &bytes,
                         audio: None,
                     },
                 )
                 .await?;
-            data.buckets().place(&media_doc, &req.bucket).await?;
+            data.buckets().place(&media_doc, bucket).await?;
             if let Some(p) = &provenance {
                 data.annotations().set_field(&media_doc, store::PROVENANCE, p).await?;
             }
@@ -2906,10 +2890,10 @@ async fn docs_copy_handler(
             body = crate::record::bake::rewrite(&text, &swaps).into_bytes();
         }
     }
-    let (new_doc, _version) = data.documents().create(&title, &body, format).await?;
-    data.buckets().place(&new_doc, &req.bucket).await?;
+    let (new_doc, _version) = data.documents().create(title, &body, format).await?;
+    data.buckets().place(&new_doc, bucket).await?;
     for tag in tags {
-        if let Err(e) = data.annotations().tag(&new_doc, &tag).await {
+        if let Err(e) = data.annotations().tag(&new_doc, tag).await {
             tracing::debug!(error = ?e, "a copied tag did not take");
         }
     }
@@ -2922,6 +2906,190 @@ async fn docs_copy_handler(
     if sealed {
         data.annotations().set_field(&new_doc, store::SEAL_WISH, "yes").await?;
     }
+    Ok(new_doc)
+}
+
+/// A published book's table, as the copy door reads it (books.rs writes it).
+#[derive(Deserialize, Default)]
+struct TableIn {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    cover: Option<PageIn>,
+    #[serde(default)]
+    sections: Vec<SectionIn>,
+    #[serde(default)]
+    pages: Vec<PageIn>,
+}
+#[derive(Deserialize, Default)]
+struct SectionIn {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    pages: Vec<PageIn>,
+    #[serde(default)]
+    sections: Vec<SectionIn>,
+}
+#[derive(Deserialize, Default)]
+struct PageIn {
+    #[serde(default)]
+    post: String,
+}
+
+/// Copy one page of a book under `parent`, in the tree's order.
+#[allow(clippy::too_many_arguments)]
+async fn copy_page(
+    state: &AppState,
+    session: &Session,
+    data: &store::Store,
+    root: &str,
+    self_root: &[u8; 32],
+    author_hex: &str,
+    page: &PageIn,
+    bucket: &str,
+    parent: &[u8; 16],
+    book_chain: &[String],
+) -> Result<(), AppError> {
+    let Ok(doc_id) = hex_fixed::<16>(&page.post, "page") else { return Ok(()) };
+    let src = match read_public_source(state, session, author_hex, &page.post, &doc_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!(error = ?e, page = %page.post, "a page would not copy; the book goes on without it");
+            return Ok(());
+        }
+    };
+    let chain = provenance_chain(root, author_hex, &src.inherited, book_chain);
+    let note = mint_copy(state, session, data, root, author_hex, &src.title, src.body, src.format, &src.tags, &chain, src.sealed, bucket, true).await?;
+    data.taxonomies().place(parent, self_root, &note, None).await?;
+    Ok(())
+}
+
+/// A section of a book: its own taxonomy under `parent`, its pages and sub-sections inside.
+#[allow(clippy::too_many_arguments)]
+fn copy_section<'a>(
+    state: &'a AppState,
+    session: &'a Session,
+    data: &'a store::Store,
+    root: &'a str,
+    self_root: &'a [u8; 32],
+    author_hex: &'a str,
+    section: &'a SectionIn,
+    bucket: &'a str,
+    parent: &'a [u8; 16],
+    book_chain: &'a [String],
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), AppError>> + Send + 'a>> {
+    Box::pin(async move {
+        let node = data.taxonomies().create(&section.title).await?;
+        data.taxonomies().place(parent, self_root, &node, None).await?;
+        for page in &section.pages {
+            copy_page(state, session, data, root, self_root, author_hex, page, bucket, &node, book_chain).await?;
+        }
+        for sub in &section.sections {
+            copy_section(state, session, data, root, self_root, author_hex, sub, bucket, &node, book_chain).await?;
+        }
+        Ok(())
+    })
+}
+
+/// POST `/api/identity/{root}/docs/copy` - copy a post into private notes (Curtis,
+/// 2026-09-08): any post, yours or anyone's, public or one of your own private notes,
+/// becomes a fresh private note in the bucket you name - title, words, format, and the
+/// author's own tags - with a PROVENANCE stack: the source's author (when that is somebody
+/// else) and everyone the source itself descended from, oldest first, so a chain of copies
+/// carries every author along. The words come through the body door, sealed posts
+/// included, so a copy is exactly what you could read.
+///
+/// A BOOK copies whole (Curtis's ruling, 2026-09-08): never into an existing bucket - the
+/// door asks for a fresh notebook, rebuilds the book's tree in it (the wiki root named for
+/// the notebook, a taxonomy per section, the pages in order, each a copy with the chain),
+/// and switches the notebook to book mode, so the copier can roll it out as their own.
+async fn docs_copy_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<DocCopy>,
+) -> Result<Json<DocCreated>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let self_root = hex_fixed::<32>(&root, "root")?;
+    let author_hex = req.author.to_lowercase();
+    let doc_hex = req.doc_id.to_lowercase();
+    let doc_id = hex_fixed::<16>(&doc_hex, "doc id")?;
+    if req.private {
+        if author_hex != root {
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.a-private-note-is-your-own", "a private note to copy must be one of your own")));
+        }
+        let docs = data.documents();
+        let view = docs.all().await?;
+        let doc = view
+            .docs
+            .get(&doc_id)
+            .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-note-to-copy", "no such note to copy")))?;
+        let format = doc
+            .display_head()
+            .map(|h| crate::record::documents::Format::from_wire(h.header.format))
+            .unwrap_or(crate::record::documents::Format::Plaintext);
+        if !matches!(format, crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext) {
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
+        }
+        let resolved = docs.resolved(doc).await?;
+        let body = resolved
+            .body
+            .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.those-words-havent-arrived", "those words haven't arrived on this computer yet")))?;
+        let tags = data.annotations().tags(&doc_id).await?;
+        let inherited = data
+            .annotations()
+            .field(&doc_id, store::PROVENANCE)
+            .await?
+            .map(|v| provenance_roots(&v))
+            .unwrap_or_default();
+        let sealed = data
+            .annotations()
+            .field(&doc_id, store::SEAL_WISH)
+            .await?
+            .is_some_and(|v| v.trim() == "yes");
+        if req.new {
+            data.buckets().define(&req.bucket, "default").await?;
+        }
+        let chain = provenance_chain(&root, &author_hex, &inherited, &[]);
+        let new_doc = mint_copy(&state, &session, &data, &root, &author_hex, &resolved.title, body.into_bytes(), format, &tags, &chain, sealed, &req.bucket, false).await?;
+        return Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }));
+    }
+    let src = read_public_source(&state, &session, &author_hex, &doc_hex, &doc_id).await?;
+    if src.format == crate::record::documents::Format::Book {
+        if !req.new {
+            return Err(AppError::BadRequest(crate::msg!("identity.routes.a-book-copies-into-a-fresh", "a book copies whole into a fresh notebook - name a new one")));
+        }
+        let table: TableIn = serde_json::from_slice(&src.body)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("reading the book's table: {e}")))?;
+        data.buckets().define(&req.bucket, "default").await?;
+        let book_chain = provenance_chain(&root, &author_hex, &src.inherited, &[]);
+        let tree = data.taxonomies().create(&format!("wiki:{}", req.bucket)).await?;
+        // The cover is a page the table also lists (its first); each post copies once.
+        let mut seen: std::collections::HashSet<String> = Default::default();
+        if let Some(cover) = &table.cover {
+            seen.insert(cover.post.clone());
+            copy_page(&state, &session, &data, &root, &self_root, &author_hex, cover, &req.bucket, &tree, &book_chain).await?;
+        }
+        for page in table.pages.iter().filter(|p| seen.insert(p.post.clone())) {
+            copy_page(&state, &session, &data, &root, &self_root, &author_hex, page, &req.bucket, &tree, &book_chain).await?;
+        }
+        for section in &table.sections {
+            copy_section(&state, &session, &data, &root, &self_root, &author_hex, section, &req.bucket, &tree, &book_chain).await?;
+        }
+        data.private_registers(crate::books::BOOKS_KV)
+            .set(&req.bucket, &serde_json::json!({ "mode": "book" }).to_string())
+            .await?;
+        let _ = table.title;
+        return Ok(Json(DocCreated { doc_id: hex::encode(tree), version: String::new() }));
+    }
+    if !matches!(src.format, crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext) {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
+    }
+    if req.new {
+        data.buckets().define(&req.bucket, "default").await?;
+    }
+    let chain = provenance_chain(&root, &author_hex, &src.inherited, &[]);
+    let new_doc = mint_copy(&state, &session, &data, &root, &author_hex, &src.title, src.body, src.format, &src.tags, &chain, src.sealed, &req.bucket, true).await?;
     Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }))
 }
 
