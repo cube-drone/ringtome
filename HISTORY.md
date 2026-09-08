@@ -8816,3 +8816,10 @@ stylesheets and the tokens carry the shapes. Two honest costs, the panel's own: 
 cuts a border and a drop shadow at the corners, so a one-pixel border stops a step early
 and the five shadowed floating boxes lost their shadows at the clipped corners - the
 house answer, where it matters, is layering, as the frame does.
+
+## 2026-09-08: the post card's heptagon stands square
+
+Curtis: the face on posts was taller than wide. The card restates the small face in `em`
+so a quiet post's author shrinks with its words, and that restatement still carried the
+hexagon's height - 2.3em on a 2em width - while a regular heptagon wants 0.9749 of its
+width. Now 1.95em, as person.css says in rem.

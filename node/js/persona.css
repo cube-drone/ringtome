@@ -1595,7 +1595,7 @@ article:has(.label-emoji-strip) {
 
 .feed-entry .person-hex-small {
     width: 2em;
-    height: 2.3em;
+    height: 1.95em; /* regular heptagon: h = w * 0.9749 (the old 2.3em was the hexagon's) */
 }
 
 .feed-entry .person-banner .person-name-primary {
