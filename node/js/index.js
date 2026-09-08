@@ -41,7 +41,7 @@ import { BucketSwitcher, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
-import { slugify, HEX_ID } from './pure/naming.js';
+import { slugify, HEX_ID, BUCKET_PREFIX } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
@@ -122,8 +122,9 @@ const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
     // we've already left is ignored at render, not just at set.
     const [resolved, setResolved] = useState(null); // { path, hit: {appId,docId} | 'nope' }
     const lastView = useRef(null);
-    const segs = loc.path.split('/').filter(Boolean).slice(1); // drop the 'home'
-    const app0 = segs.length ? appById(segs[0]) : null;
+    const cozy = loc.path.startsWith(`/${BUCKET_PREFIX}/`);
+    const segs = loc.path.split('/').filter(Boolean).slice(1); // drop the 'home' or 'in'
+    const app0 = !cozy && segs.length ? appById(segs[0]) : null;
     const syncHit =
         app0 && segs.length === 1
             ? { appId: app0.id, docId: null }
@@ -134,7 +135,7 @@ const SlugRoute = ({ current, searchQuery, searchKind, bucket }) => {
         if (syncHit) return; // exact already - nothing to resolve
         let alive = true;
         const path = loc.path;
-        resolveSlugPath(current.root, segs)
+        resolveSlugPath(current.root, segs, { cozy })
             .then((h) =>
                 alive &&
                 setResolved({ path, hit: h ? { appId: h.appId, docId: h.docId } : 'nope' })
@@ -193,11 +194,14 @@ const Inside = ({ session }) => {
     // the app is the bucket's rail, and the URL itself names the bucket.
     const root = persona.current && persona.current.root;
     const roster = useLive(() => (root ? openMirror(root).buckets.toArray() : []), [root]);
-    const pathParts = loc.path.split('/'); // ['', 'home', '<app-or-bucket>', '<doc?>']
+    // Two floors (2026-09-08): `/home/<app>/...` is an app's, `/in/<bucket>/...` a bucket's -
+    // disjoint by construction, so a new app never shadows a notebook somebody named.
+    const pathParts = loc.path.split('/'); // ['', 'home'|'in', '<app-or-bucket>', '<doc?>']
+    const inBuckets = pathParts[1] === BUCKET_PREFIX;
     const seg = pathParts[2] || '';
-    const appDirect = appById(seg);
+    const appDirect = inBuckets ? null : appById(seg);
     const cozyBucketRow =
-        !appDirect && seg ? (roster || []).find((b) => slugify(b.name) === seg) || null : null;
+        inBuckets && seg ? (roster || []).find((b) => slugify(b.name) === seg) || null : null;
     const appHere =
         appDirect || (cozyBucketRow ? appForStyle(appTypeOf(cozyBucketRow.name, roster)) : null);
     const inDoc = !!(appHere && pathParts[3]);

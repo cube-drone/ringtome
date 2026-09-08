@@ -14,7 +14,7 @@ import { t } from './i18n.js';
 import { Icons } from './icons.js';
 import { Modal } from './modal.js';
 import { openMirror, useLive } from './mirror.js';
-import { slugify } from './pure/naming.js';
+import { bucketHref } from './pure/naming.js';
 
 const html = htm.bind(h);
 
@@ -52,7 +52,7 @@ export const CopyIntoModal = ({ current, source, onClose, onDone }) => {
         ${done
             ? html`<p class="copy-done">
                   ${t('copyinto.copied-into', 'copied into {bucket}', { bucket: done.bucket })}
-                  ${' '}<a href=${book ? `/home/${slugify(done.bucket)}` : slugify(done.bucket) === 'feed' ? '/home/feed' : `/home/${slugify(done.bucket)}/${done.doc_id}`}>${t('copyinto.open-the-copy', 'open the copy')}</a>
+                  ${' '}<a href=${book || bucketHref(done.bucket) === '/home/feed' ? bucketHref(done.bucket) : `${bucketHref(done.bucket)}/${done.doc_id}`}>${t('copyinto.open-the-copy', 'open the copy')}</a>
               </p>`
             : html`<div class="copy-buckets">
                   ${book && html`<p class="null-sub">${t('copyinto.a-book-copies-whole-into', 'a book copies whole into a fresh notebook')}</p>`}

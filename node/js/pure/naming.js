@@ -60,8 +60,23 @@ export const pathSegments = (segs) => (segs || []).filter(Boolean).map((s) => de
 /// practice - but a pure function should not depend on its caller's ordering, and the module's
 /// doctrine is that ties are deterministic and boring. (The colliding bucket's own links may still
 /// resolve nowhere; a derived address is a pointer, never authority.)
-export function bucketFor(seg, roster) {
-    const app = appById(seg);
+/// Where a bucket lives (Curtis, 2026-09-08): apps own `/home/<app>`, and every other
+/// bucket lives under its own word, `/in/<slug>`, so a new app can never shadow a
+/// notebook somebody already named - the two namespaces are disjoint by construction. An
+/// app's home bucket (the one that wears the app's style name) keeps the app's address.
+export const BUCKET_PREFIX = 'in';
+
+/// The address of a bucket's own list: `/home/<app>` for an app's home bucket, else
+/// `/in/<slug>`.
+export function bucketHref(bucketName) {
+    const app = appForStyle(bucketName);
+    return app && bucketName === app.style ? `/home/${app.id}` : `/${BUCKET_PREFIX}/${slugify(bucketName)}`;
+}
+
+export function bucketFor(seg, roster, { cozy = false } = {}) {
+    // Under `/home/`, an app id names the app's home bucket; under `/in/` only buckets
+    // answer, whatever they are called.
+    const app = cozy ? null : appById(seg);
     if (app && app.style) return { name: app.style, app };
     const name = (roster || [])
         .map((b) => b.name)
@@ -107,12 +122,16 @@ const lowest = (ids) => ids.slice().sort()[0];
  * @param rows  `{ roster, docs, tree }` - the bucket roster, every doc row, and the bucket's
  *              expanded tree (null when it has none, or when `needsTree` said not to bother)
  */
-export function matchSlugPath(segs, { roster, docs, tree } = {}) {
+export function matchSlugPath(segs, { roster, docs, tree } = {}, { cozy = false } = {}) {
     const parts = pathSegments(segs);
-    if (parts.length < 2) return null;
-    const found = bucketFor(parts[0], roster);
+    if (parts.length < 1) return null;
+    const found = bucketFor(parts[0], roster, { cozy });
     if (!found || !found.app) return null;
     const { name: bucketName, app } = found;
+    // A bare bucket address - `/home/<bucket>` - is the bucket's own list in its app
+    // (Curtis, 2026-09-08: a copied book's new notebook answered "nothing here" while its
+    // pages answered fine).
+    if (parts.length === 1) return { appId: app.id, docId: null };
     const last = parts[parts.length - 1];
     const mids = parts.slice(1, -1);
 
@@ -156,7 +175,8 @@ export function matchSlugPath(segs, { roster, docs, tree } = {}) {
 
 /**
  * The canonical cozy path FOR a document - what the copy-link chip writes:
- * `/home/<bucket>/<sections...>/<slug>`. Home buckets wear their app id; the tree path is the
+ * `/in/<bucket>/<sections...>/<slug>`, or `/home/<app>/...` for an app's home bucket
+ * (2026-09-08). The tree path is the
  * doc's first occurrence; a slug that would lose its own tie (an earlier-id sibling shares it),
  * or an empty title, falls back to the honest id tail.
  *
@@ -169,8 +189,10 @@ export function buildSlugPath(row, rows = {}) {
     const docId = row.doc_id;
     const bucketName = bucketNameFor(row, rows.bucket);
     const app = appForStyle(appTypeOf(bucketName, rows.roster));
-    const head = app && bucketName === app.style ? app.id : slugify(bucketName);
+    const home = !!(app && bucketName === app.style);
+    const head = home ? app.id : slugify(bucketName);
     if (!head) return null;
+    const prefix = home ? 'home' : BUCKET_PREFIX;
 
     // The doc's first-occurrence path down the tree - but only when every section along it can be
     // SPELLED. A section titled "???" is legal and slugifies to nothing, so it cannot appear in a
@@ -192,9 +214,9 @@ export function buildSlugPath(row, rows = {}) {
     const slug = slugify(row.title || '');
     if (slug) {
         const pretty = [head, ...mids, slug];
-        const hit = matchSlugPath(pretty, rows);
-        if (hit && hit.docId === docId) return `/home/${pretty.join('/')}`;
+        const hit = matchSlugPath(pretty, rows, { cozy: !home });
+        if (hit && hit.docId === docId) return `/${prefix}/${pretty.join('/')}`;
     }
     // The honest tail: a canonical id resolves directly, whatever the sections say.
-    return `/home/${[head, ...mids, docId].join('/')}`;
+    return `/${prefix}/${[head, ...mids, docId].join('/')}`;
 }

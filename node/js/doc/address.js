@@ -43,16 +43,17 @@ async function treeFor(root, bucketName) {
 /// Resolve a cozy path (segments after `/home`) to `{ appId, docId }`, or null. The rules are in
 /// naming.js; this reads the roster first so it knows which bucket's tree to ask for - and skips
 /// the tree entirely when the path can't need one.
-export async function resolveSlugPath(root, segs) {
+export async function resolveSlugPath(root, segs, { cozy = false } = {}) {
     const parts = pathSegments(segs);
-    if (parts.length < 2) return null;
+    if (parts.length < 1) return null;
     const db = openMirror(root);
     const roster = await db.buckets.toArray();
-    const found = bucketFor(parts[0], roster);
+    const found = bucketFor(parts[0], roster, { cozy });
     if (!found || !found.app) return null;
+    if (parts.length === 1) return { appId: found.app.id, docId: null }; // the bucket's own list
     const tree = needsTree(parts) ? await treeFor(root, found.name) : null;
     const docs = await db.docs.toArray();
-    return matchSlugPath(parts, { roster, docs, tree });
+    return matchSlugPath(parts, { roster, docs, tree }, { cozy });
 }
 
 /// The canonical cozy path FOR a document - what the copy-link chip writes, and what the address

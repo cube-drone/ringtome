@@ -4027,6 +4027,25 @@ Residuals: a chain is what the source's author said, so a source that dropped it
 drops them for everyone downstream; the fresh twins a posted copy mints carry no
 provenance statements of their own - the post does.
 
+### Local addresses: three floors (settled 2026-09-08)
+
+The console's own addresses live on three floors that can never meet:
+
+- **`/home/<app>`** is an app's - the launcher's tiles, the persona pages beneath
+  `/home/persona`, an app's home bucket at the app's own address (`/home/notes/<doc>`).
+- **`/in/<bucket>`** is a bucket's - every notebook that is not an app's home bucket, at its
+  slug, its documents and sections beneath it (`/in/cook-book/starters/soup`); a bare
+  `/in/<bucket>` is the bucket's own list. Under `/in/` only buckets answer, whatever they
+  are called, so a notebook named "feed" is still a notebook.
+- **`/id/<persona>`** is a person's, as before.
+
+Why disjoint rather than shared with apps resolving first: a shared floor makes every new
+app a name grab. A reserved list of app ids protects only the apps that exist on launch
+day; the first app shipped afterwards either shadows every notebook a person already gave
+that name or takes an awkward name to avoid them. Disjoint floors cost one short word and
+end the conversation. One constant names the word; the pure address builder writes the
+floor and the resolver reads it; every hand-written link goes through one `bucketHref`.
+
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
 There is no roster of an identity's nodes, no membership protocol, and no coordinator (**No Central Authority**, Doctrine). Each node's picture of the

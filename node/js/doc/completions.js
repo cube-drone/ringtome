@@ -13,7 +13,7 @@ import { speakable } from '../speakable.js';
 import { standingFacts } from '../pure/people.js';
 import { mentionQuery, mentionShape, userCardSource, userSpanSource } from '../pure/mentions.js';
 import { slugPathFor } from './address.js';
-import { slugify, MEDIA_EXT } from '../pure/naming.js';
+import { slugify, bucketHref, MEDIA_EXT } from '../pure/naming.js';
 import { OWN_MEDIA_KINDS, loopSuffix } from '../pure/mediakind.js';
 
 /// Plain membership - the app rule (`bucketHolds`) mirrored for the pickers, ONE copy for
@@ -137,7 +137,7 @@ export function linkCompletions(root, bucket) {
                     apply: (view, _completion, from, to) => {
                         // Replace from the opening bracket (one before the match region CM
                         // hands us - the region starts after `[` so titles filter cleanly).
-                        const idText = `[${label}](/home/${slugify(bucket)}/${d.doc_id})`;
+                        const idText = `[${label}](${bucketHref(bucket)}/${d.doc_id})`;
                         view.dispatch({
                             changes: { from: from - 1, to, insert: idText },
                             selection: { anchor: from - 1 + idText.length },

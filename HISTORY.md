@@ -8769,4 +8769,21 @@ root named for the new notebook, a taxonomy per section, every page a copy with 
 book mode switched on; the modal offers a book only the new-notebook box. The suite's
 book grew a pictured page when Curtis asked whether the media comes too: it does, through
 the same minter as a lone post, and the copied page owns its picture with ada in its
-provenance.
+provenance. Curtis then followed a copied book's link to its new notebook and found
+"nothing at this address": the cozy resolver knew only addresses of two segments or more,
+so `/home/<bucket>/<page>` answered while `/home/<bucket>` did not. A bare bucket address
+is now the bucket's own list in its app.
+
+## 2026-09-08: buckets move to their own floor - `/in/<bucket>`
+
+Curtis followed a copied book's link and, once the bare-bucket address was fixed, saw the
+deeper trouble: buckets and apps shared `/home/`, apps resolving first, so a notebook named
+after an app lost its address - and a reservation list would only freeze the app namespace
+at launch, since any app shipped later would shadow notebooks people had already named.
+Ruled: disjoint floors. Apps keep `/home/<app>`; every other bucket lives at `/in/<slug>`,
+one constant (`BUCKET_PREFIX`) naming the word; an app's home bucket keeps the app's
+address. The pure builder writes the floor and the resolver reads it (under `/in/` only
+buckets answer, whatever they are called), the shell parses either, the node serves the
+app at both, and the hand-written links - the copy modal, the link picker, the drag
+cross-link - go through one `bucketHref`. The round-trip claims read the floor off the
+path they built. No install base, so no migration: a rename.

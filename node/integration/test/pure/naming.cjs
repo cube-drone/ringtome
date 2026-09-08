@@ -22,7 +22,9 @@ const doc = (n, title, buckets = ['default']) => ({ doc_id: id(n), title, bucket
 const tax = (tid, title, members) => ({ taxonomy_id: tid, title, members });
 const inTree = (t) => ({ doc_id: t.taxonomy_id, taxonomy: t });   // a section member
 const leaf = (d) => ({ doc_id: d.doc_id, doc: { title: d.title } }); // a document member
-const segsOf = (path) => path.replace(/^\/home\//, '').split('/');
+// A built path wears one of two floors (2026-09-08): `/home/<app>/...` or `/in/<bucket>/...`.
+const segsOf = (path) => path.replace(/^\/(home|in)\//, '').split('/');
+const cozyOf = (path) => path.startsWith('/in/');
 
 describe('slugify', () => {
     it('lowercases and hyphenates runs of anything that is not a letter or number', () => {
@@ -131,9 +133,10 @@ describe('matchSlugPath', () => {
     const roster = [{ name: 'Cook Book', app: 'feed' }];
     const docs = [doc(1, 'Soup', ['Cook Book']), doc(2, 'Bread', ['Cook Book'])];
 
-    it('needs at least a bucket and a tail', () => {
-        assert.equal(matchSlugPath(['notes'], { roster, docs }), null);
+    it("a bare bucket is the bucket's own list; nothing at all is nothing (2026-09-08)", () => {
+        assert.deepEqual(matchSlugPath(['notes'], { roster, docs }), { appId: 'notes', docId: null });
         assert.equal(matchSlugPath([], { roster, docs }), null);
+        assert.equal(matchSlugPath(['no-such-bucket'], { roster, docs }), null);
     });
 
     it('takes a canonical tail as-is, without consulting anything', () => {
@@ -228,7 +231,7 @@ describe('buildSlugPath', () => {
         const roster = [{ name: 'Cook Book', app: 'feed' }];
         const d = doc(1, 'Soup', ['Cook Book']);
         assert.equal(buildSlugPath(d, { roster, docs: [d], bucket: 'Cook Book' }),
-            '/home/cook-book/soup');
+            '/in/cook-book/soup');
     });
 
     it('falls back to the honest id when the title slugs to nothing', () => {
@@ -329,7 +332,7 @@ describe('build -> match round trip', () => {
             for (const row of docs) {
                 const path = buildSlugPath(row, { roster, docs, tree, bucket });
                 assert.ok(path, `seed ${seed}: no path for ${row.doc_id}`);
-                const hit = matchSlugPath(segsOf(path), { roster, docs, tree });
+                const hit = matchSlugPath(segsOf(path), { roster, docs, tree }, { cozy: cozyOf(path) });
                 assert.ok(hit, `seed ${seed}: ${path} resolved to nothing`);
                 assert.equal(hit.docId, row.doc_id,
                     `seed ${seed}: ${path} resolved to ${hit.docId}, wanted ${row.doc_id} ` +
@@ -346,7 +349,7 @@ describe('build -> match round trip', () => {
             const { roster, docs, bucket } = world(rand);
             for (const row of docs) {
                 const path = buildSlugPath(row, { roster, docs, tree: null, bucket });
-                const hit = matchSlugPath(segsOf(path), { roster, docs, tree: null });
+                const hit = matchSlugPath(segsOf(path), { roster, docs, tree: null }, { cozy: cozyOf(path) });
                 assert.equal(hit && hit.docId, row.doc_id, `seed ${seed}: ${path}`);
             }
         }
