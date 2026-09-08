@@ -36,6 +36,7 @@ mod net;
 mod notifications;
 mod outbox;
 mod search;
+mod selectivity;
 mod profiles;
 mod pubkey;
 mod publish;

@@ -365,8 +365,11 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
     // The facet strip (facets.js): the whole journal's buckets and tags, picks narrowing
     // the stream through the same door as the words.
     const [picks, setPicks] = useState(NO_PICKS);
-    const labels = useLabels(root ? `/api/identity/${root}/feed/labels` : null, items.length);
-    const search = useSearch(root ? `/api/identity/${root}/feed` : null, searchQuery, picks);
+    // The dial narrows the lists and the search too (Curtis, 2026-09-08): the node counts
+    // and matches only what the feed at this stop shows.
+    const stopParam = stopKey && stopKey !== 'explorer' ? `?stop=${encodeURIComponent(stopKey)}` : '';
+    const labels = useLabels(root ? `/api/identity/${root}/feed/labels${stopParam}` : null, items.length);
+    const search = useSearch(root ? `/api/identity/${root}/feed` : null, searchQuery, picks, { stop: stopKey });
     const shown = search.active
         ? mergeFeed([], search.results || []).filter((item) => item.mine || visibleAt(stopKey, item, factsByRoot))
         : [...(scheduled || []), ...visible];

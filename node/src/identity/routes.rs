@@ -598,6 +598,15 @@ struct FeedQuery {
     /// A search (search.rs, 2026-09-07): the whole journal narrowed to the posts whose
     /// words say this, newest first, one deep page and no cursor.
     q: Option<String>,
+    /// The selectivity dial's stop (2026-09-08): a search and the facets count only what
+    /// the dial shows. The plain page ignores it - the browser applies the dial to the
+    /// page it holds, as it always has.
+    stop: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct LabelsQuery {
+    stop: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -722,6 +731,44 @@ struct Sharer {
     avatar: Option<String>,
 }
 
+/// The journal rows the reader's selectivity dial shows at `stop` (selectivity.rs, the
+/// browser's rule on the node): the reader's own rows always, the rest by the author and
+/// sharer dials off the ledger and the path strength of a suggestion. No stop, or
+/// Explorer, keeps everything. One ledger read for the whole set.
+async fn rows_at_stop(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    rows: Vec<crate::fanout::FeedRow>,
+    stop: Option<&str>,
+) -> Result<Vec<crate::fanout::FeedRow>, AppError> {
+    let Some(stop) = stop.filter(|s| !s.is_empty() && *s != "explorer") else { return Ok(rows) };
+    let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
+    let levels = if rows.iter().any(|r| r.suggested_via.is_some()) {
+        crate::speculative::levels_for(&state.node_db, root)
+            .await
+            .map_err(AppError::Internal)?
+    } else {
+        Default::default()
+    };
+    Ok(rows
+        .into_iter()
+        .filter(|r| {
+            if r.author_root == root {
+                return true;
+            }
+            let level = r.suggested_via.as_ref().and_then(|_| levels.get(&r.author_root)).map(String::as_str);
+            let view = crate::selectivity::RowView {
+                author: &r.author_root,
+                via: r.via_root.as_deref(),
+                suggested_via: r.suggested_via.as_deref(),
+                suggested_level: level,
+            };
+            crate::selectivity::visible_at(stop, &view, &facts)
+        })
+        .collect())
+}
+
 /// The journal rows this reader may see: a trusted-only post stays unless the author
 /// publishes trust for the reader (or is the reader). Shared by the page and the facets.
 async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanout::FeedRow>) -> Vec<crate::fanout::FeedRow> {
@@ -760,12 +807,15 @@ async fn feed_labels_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<LabelsQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let _owned = store::open(&state, &session.account.id, &root).await?;
+    let owned = store::open(&state, &session.account.id, &root).await?;
     let rows = crate::fanout::feed_all(&state.node_db, &root, 5000)
         .await
         .map_err(AppError::Internal)?;
     let rows = readable_feed_rows(&state, &root, rows).await;
+    // The dial (2026-09-08): the lists count only what the feed at this stop shows.
+    let rows = rows_at_stop(&state, &owned, &root, rows, q.stop.as_deref()).await?;
     let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
     let (buckets, tags) = crate::annotations::label_counts(&state.node_db, &pairs)
         .await
@@ -815,6 +865,7 @@ async fn feed_handler(
         let all = crate::fanout::feed_all(&state.node_db, &root, 5000)
             .await
             .map_err(AppError::Internal)?;
+        let all = rows_at_stop(&state, &_owned, &root, all, q.stop.as_deref()).await?;
         let candidates: Vec<crate::search::Candidate> = all
             .iter()
             .map(|r| crate::search::Candidate {

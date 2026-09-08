@@ -83,6 +83,22 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual(ids(await (await ada(`api/id/${adaRoot}/posts?tag=pudding&as=${adaRoot}`)).json()), [sealed]);
     });
 
+    it("the selectivity dial narrows the lists and the search: at 'high interest only' a low-interest author's labels vanish, and return with the dial", async () => {
+        // bea follows ada at 'high' (the setup): the strict stop keeps ada's labels.
+        let f = await (await bea(`api/identity/${beaRoot}/feed/labels?stop=high`)).json();
+        assert.ok((f.buckets || []).some((x) => x.value === "recipes"), `at 'high', a high-interest author counts: ${JSON.stringify(f.buckets)}`);
+        await j(bea, `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, { value: "low" }, "PUT");
+        f = await (await bea(`api/identity/${beaRoot}/feed/labels?stop=high`)).json();
+        assert.deepEqual(f.buckets, [], "at 'high', a low-interest author's buckets are gone");
+        assert.deepEqual(f.tags, [], "and their tags");
+        assert.deepEqual(ids(await (await bea(`api/identity/${beaRoot}/feed?tag=bread&stop=high`)).json()), [], "the search narrows the same way");
+        f = await (await bea(`api/identity/${beaRoot}/feed/labels`)).json();
+        assert.ok((f.buckets || []).some((x) => x.value === "recipes"), "Explorer counts everything");
+        await j(bea, `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, { value: "high" }, "PUT");
+        f = await (await bea(`api/identity/${beaRoot}/feed/labels?stop=high`)).json();
+        assert.ok((f.buckets || []).some((x) => x.value === "recipes"), "and the dial back up brings them back");
+    });
+
     it("a tag somebody else put on a post counts in the reader's feed, as the cards show it, once per post", async () => {
         const put = await bea(`api/identity/${beaRoot}/public-annotations/${adaRoot}/${a2}`, {
             method: "PUT",

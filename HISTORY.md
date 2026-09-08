@@ -8787,3 +8787,16 @@ buckets answer, whatever they are called), the shell parses either, the node ser
 app at both, and the hand-written links - the copy modal, the link picker, the drag
 cross-link - go through one `bucketHref`. The round-trip claims read the floor off the
 path they built. No install base, so no migration: a rename.
+
+## 2026-09-08: the selectivity dial reaches the facets and the search
+
+Curtis turned the feed's dial from Explorer down to "high interest only" and watched the
+feed shrink while the bucket and tag lists kept counting the whole journal. The dial's rule
+lived only in the browser, over the page in hand; the lists and the search answer over the
+whole journal on the node. So the rule was ported - `selectivity.rs`, the six stops, the
+author dial leading, the sharer dial following, the path strength trailing - with the pure
+suite's cases transcribed as its tests so the two copies cannot drift, and the feed's
+labels door and its search take `stop=` and count or match only what the dial shows, the
+reader's own rows always. The plain page is untouched: the browser still applies the dial
+to the page it holds. The facets suite turns the dial with the interest ledger and watches
+the lists empty and refill.

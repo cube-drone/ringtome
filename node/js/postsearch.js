@@ -11,19 +11,23 @@ const DEBOUNCE_MS = 250;
 
 /// The query string the node's narrowing reads: `q=` for the words, `bucket=` and `tag=`
 /// repeated for the picks (facets.js).
-export function narrowParams(query, picks) {
+export function narrowParams(query, picks, extra = {}) {
     const parts = [];
     const q = (query || '').trim();
     if (q) parts.push(`q=${encodeURIComponent(q)}`);
     for (const b of (picks && picks.buckets) || []) parts.push(`bucket=${encodeURIComponent(b)}`);
     for (const g of (picks && picks.tags) || []) parts.push(`tag=${encodeURIComponent(g)}`);
+    // The feed's selectivity dial rides along (2026-09-08) so the node narrows what the
+    // dial shows; it never makes a search on its own.
+    const stop = extra.stop && extra.stop !== 'explorer' ? extra.stop : null;
+    if (stop && parts.length) parts.push(`stop=${encodeURIComponent(stop)}`);
     return parts.join('&');
 }
 
 /// `{ active, results, searching, error }` - `active` while there are words or picks;
 /// `results` the items the node returned (null until the first answer).
-export function useSearch(url, query, picks) {
-    const q = narrowParams(query, picks);
+export function useSearch(url, query, picks, extra = {}) {
+    const q = narrowParams(query, picks, extra);
     const active = q.length > 0;
     const [state, setState] = useState({ for: '', results: null, error: null });
     useEffect(() => {
