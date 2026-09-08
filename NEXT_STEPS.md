@@ -25,8 +25,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Public posts and fan-out
 
-* blocked/hidden tags
-* content warning (18+)
 * mini-links (the kind you see in replies and your notifications) need to display more content
 * Search inside sealed posts: a trusted-only post's words are sealed at rest, so the text
   index (search.rs, 2026-09-07) knows only its title - even for the author, even for a

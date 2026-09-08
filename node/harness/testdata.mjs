@@ -49,7 +49,9 @@ const BUCKET_STYLES = ['default'];
 /// The labels the generator says about other people's posts - short and few on purpose, so
 /// the same word lands on many posts and the display register's stops have distinct sets to
 /// show ("everyone's labels" should look different from "people I follow").
-const LABELS = ['goopy', 'mighty', 'saucy', 'gentle', 'loud', 'nice', 'odd', 'sharp'];
+/// `nsfw` rides along (2026-09-07) so a seeded feed has posts the default blur list
+/// catches - one draw in nine, from anyone who tags.
+const LABELS = ['goopy', 'mighty', 'saucy', 'gentle', 'loud', 'nice', 'odd', 'sharp', 'nsfw'];
 
 const ACTIONS = [
     {
@@ -238,7 +240,10 @@ const ACTIONS = [
         run: async (ctx, p, rng) => {
             const note = ctx.pick(rng, p.notes);
             if (!note) return;
-            const tag = ctx.pick(rng, WORDS);
+            // Mostly the wordlist (a long tail of tags), sometimes the short label set - so
+            // an author's own published post can carry `nsfw` and the default blur has
+            // something to catch (2026-09-07).
+            const tag = rng() < 0.125 ? ctx.pick(rng, LABELS) : ctx.pick(rng, WORDS);
             await api(p, 'PUT',
                 `/api/identity/${p.root}/docs/${note.doc_id}/annotations/tags/${encodeURIComponent(tag)}`);
         },

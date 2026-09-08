@@ -10,6 +10,7 @@ import {
     Path,
     NotePencil,
     PushPin,
+    Biohazard,
     CaretLeft,
     X,
     UserCircle,
@@ -80,6 +81,8 @@ export const Icons = {
     notes: NotePencil,
     // actions and chrome
     pin: PushPin,
+    // Content control (2026-09-07): the blur and hide lists, under your settings.
+    biohazard: Biohazard,
     back: CaretLeft,
     forward: CaretRight,
     plus: Plus,

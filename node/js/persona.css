@@ -1831,3 +1831,70 @@ article:has(.label-emoji-strip) {
 .public-posts-pinned {
     margin-bottom: 1.2rem;
 }
+
+/* Content warnings (warnings.js, 2026-09-07): the veil over a blurred post's words, and the
+   two tag lists on the profile page. The veiled body keeps a bounded height so the card
+   does not jump when clicked through; nothing under the veil takes a click or a selection. */
+.feed-entry-veil {
+    position: relative;
+}
+.feed-entry-body-veiled {
+    filter: blur(22px) saturate(0.4);
+    pointer-events: none;
+    user-select: none;
+    max-height: 18rem;
+    overflow: hidden;
+}
+.feed-entry-unveil {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: fit-content;
+    height: fit-content;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.9rem;
+    cursor: pointer;
+}
+.warn-lists {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    margin: 0.6rem 0 1rem;
+}
+.warn-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+}
+.warn-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.1rem 0.3rem 0.1rem 0.6rem;
+    font-size: 0.8rem;
+}
+.warn-chip-x {
+    background: none;
+    border: 0;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+    padding: 0 0.2rem;
+}
+.warn-add {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.15rem 0.6rem;
+    width: 9rem;
+}

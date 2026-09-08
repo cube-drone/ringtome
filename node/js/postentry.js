@@ -71,6 +71,8 @@ import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
 import { parseBook } from './pure/books.js';
 import { useShared, markShared } from './shares.js';
 import { t } from './i18n.js';
+import { useWarnings } from './warnings.js';
+import { warningFor } from './pure/warnings.js';
 
 const html = htm.bind(h);
 
@@ -524,7 +526,7 @@ const BookCard = ({ book, author }) => {
     </div>`;
 };
 
-export const PostEntry = ({ item, current, interest, editing, quote }) => {
+export const PostEntry = ({ item, current, interest, editing, quote, standalone = false }) => {
     const [body, setBody] = useState(undefined);
     const [wholeThing, setWholeThing] = useState(false);
     const [open, setOpen] = useState(false);
@@ -619,6 +621,20 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     if (factsByRoot) for (const c of contactRows || []) factsByRoot[c.root] = c.facts || {};
     // Labels said or retracted from THIS card, this session - the overlay idiom: shown at
     // once, deduped when the dressed rows eventually agree.
+    // Content warnings (2026-09-07): the reader's blur and hide lists against the tags the
+    // author, the reader, or anyone the reader trusts put on this post. Hidden posts leave
+    // the page (their own page shows them blurred - you asked for it by address); blurred
+    // ones keep their front matter and veil the rest until clicked through.
+    const warnLists = useWarnings(current && current.root);
+    const warning = warningFor(item.annotations, {
+        author: item.author,
+        me: current && current.root,
+        factsByRoot,
+        blur: warnLists.blur,
+        hide: warnLists.hide,
+    });
+    const [revealed, setRevealed] = useState(false);
+    const veiled = !revealed && (warning.kind === 'blur' || (warning.kind === 'hide' && standalone));
     const [saidLabels, setSaidLabels] = useState([]);
     const [retractedLabels, setRetractedLabels] = useState([]);
     const [tagging, setTagging] = useState(false);
@@ -735,6 +751,7 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
     if (gone) return null;
+    if (warning.kind === 'hide' && !standalone) return null;
 
     return html`
         <article
@@ -1030,6 +1047,19 @@ export const PostEntry = ({ item, current, interest, editing, quote }) => {
                               : html`<span class="waiting-dot"></span> ${t('postentry.these-words-havent-reached-this', "these words haven't reached this computer.")}`}
                       </p>`}
                       ${!!shownBody &&
+                      veiled &&
+                      html`<div class="feed-entry-veil">
+                          <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
+                              ${item.format === 'marquee'
+                                  ? html`<${MarqueeBody} source=${shown} profile=${tlProfile} onUnparsable=${bareSource} />`
+                                  : html`<pre class="reader-plain">${shown}</pre>`}
+                          </div>
+                          <button class="feed-entry-unveil" onClick=${() => setRevealed(true)}>
+                              ${t('postentry.tagged-show-anyway', 'tagged {tags} - show anyway', { tags: warning.tags.join(', ') })}
+                          </button>
+                      </div>`}
+                      ${!!shownBody &&
+                      !veiled &&
                       html`<div class="feed-entry-body">
                           ${item.format === 'book'
                               ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`

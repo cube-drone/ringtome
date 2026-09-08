@@ -8697,3 +8697,20 @@ counted only the author's own labels while the cards show everyone's: the facets
 tags from anyone, once per post however many said it, buckets still the author's own - and
 the automatic "feed" bucket, which every composed post is in, stays out of the list as its
 chip already stays off the card.
+
+## 2026-09-07: content warnings by tag - blur, and hide
+
+Curtis's brief: in the profile, two lists of tags. Tags on the BLUR list - "nsfw", "porn",
+"assault", "death", "gore", "sexual assault" and "18+" by default - leave a post's front
+matter in view (byline, title, labels) and put an aggressive blur over the rest until
+clicked through; tags on the HIDE list (empty by default) keep the post off the page. A tag
+counts when the author, the reader, or anyone the reader trusts said it - the same people
+whose word the reader already takes on a card. The lists live as two private registers on
+the persona (`content_warnings/blur` and `/hide`, JSON arrays), so they travel to every
+computer; the browser-local pref store was the wrong home for a profile setting. The
+judgment is pure and tested (case- and spacing-blind, hide outranks blur, a stranger's tag
+never counts, an emptied list stays empty while an absent one means the defaults); the card
+does the rest in one place - hidden posts return nothing, blurred ones render their words
+under a veil with a "tagged gore - show anyway" button - and a post's own page shows a hidden
+post blurred rather than nothing, since you asked for it by address. NEXT_STEPS lost its
+"blocked/hidden tags" and "content warning (18+)" wishes.

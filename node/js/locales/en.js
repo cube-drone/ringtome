@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 669 phrases across 50 files.
+// 679 phrases across 51 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -453,8 +453,11 @@ export default {
     'persona.your-name-and-how-you': 'your name and how you appear',
     'persona.your-computers-2': 'your computers',
     'persona.the-machines-that-carry-this': 'the machines that carry this persona',
+    'persona.content-control': 'content control',
+    'persona.what-gets-blurred-or-hidden': 'what gets blurred, and what stays off your pages',
     'persona.log-out': 'log out',
     'persona.forget-this-browser-and-head': 'forget this browser and head out',
+    'persona.content-control-2': 'content control',
     'persona.saved': 'saved',
     'persona.profile-2': 'profile',
     'persona.your-avatar': 'your avatar',
@@ -533,6 +536,7 @@ export default {
     'postentry.plus-tag': '+ tag',
     'postentry.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
+    'postentry.tagged-show-anyway': 'tagged {tags} - show anyway',
     'postentry.the-whole-thing': 'the whole thing',
     'postentry.1-reply': '1 reply',
     'postentry.n-replies': '{n} replies',
@@ -577,6 +581,14 @@ export default {
     'posts.nothing-they-said-says-that': 'nothing they said says that.',
     'posts.reading-further-back': 'reading further back…',
     'posts.load-more': 'load more',
+
+    // --- node/js/warnings.js ---
+    'warnings.remove': 'remove',
+    'warnings.add-a-tag': 'add a tag…',
+    'warnings.blurred-tags': 'blurred',
+    'warnings.blurred-hint': 'posts tagged with these are partially hidden but still accessible',
+    'warnings.hidden-tags': 'hidden',
+    'warnings.hidden-hint': 'posts tagged with these will not be displayed on your feed at all',
 
     // --- node/src/auth.rs ---
     'auth.password-cant-be-empty': "password can't be empty",

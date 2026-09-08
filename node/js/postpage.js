@@ -125,7 +125,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
             ${item && !isBook && partOf &&
             html`<${BookReader} root=${root} book=${partOf} page=${post.doc_id} />`}
             ${item && !isBook && !partOf &&
-            html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} />`}
+            html`<${PostEntry} key=${item.doc_id} item=${item} current=${current} editing=${null} quote=${false} standalone=${true} />`}
             ${/* The author's wish (PROJECT_PLAN's Post visibility): a settled post has no thread section and
                 no reply box - just the honest word for why. */ ''}
             ${item &&

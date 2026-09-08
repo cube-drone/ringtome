@@ -19,6 +19,7 @@ import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.j
 import { personaHue, shortcode } from './pure/person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
+import { WarningLists } from './warnings.js';
 
 const html = htm.bind(h);
 
@@ -561,6 +562,13 @@ export const PersonaMenu = ({ persona, session }) => {
                         <small>${t('persona.the-machines-that-carry-this', 'the machines that carry this persona')}</small>
                     </span>
                 </a>
+                <a class="persona-menu-item" href="/home/persona/content">
+                    <span class="persona-menu-icon"><${Icons.biohazard} /></span>
+                    <span class="persona-menu-label">
+                        <strong>${t('persona.content-control', 'content control')}</strong>
+                        <small>${t('persona.what-gets-blurred-or-hidden', 'what gets blurred, and what stays off your pages')}</small>
+                    </span>
+                </a>
                 <button class="persona-menu-item persona-menu-danger" onClick=${logout}>
                     <span class="persona-menu-icon"><${Icons.logout} /></span>
                     <span class="persona-menu-label">
@@ -577,6 +585,21 @@ export const PersonaMenu = ({ persona, session }) => {
 // save mints a permanent chain record, so nothing here saves on its own. The draft holds
 // your typing; `commit` writes it; a mirror echo (a rename on another computer) is adopted
 // only while your draft is clean, exactly the shadow contract minus the autosave.
+/// Content control (Curtis, 2026-09-07): its own page under your settings, the biohazard
+/// on the door - the blur and hide tag lists (warnings.js), which lived on the profile page
+/// for an afternoon.
+export const ContentControl = ({ current }) => {
+    if (!current) return null;
+    return html`
+        <div class="persona-page">
+            <div class="persona-page-head">
+                <h1 class="persona-page-title">${t('persona.content-control-2', 'content control')}</h1>
+            </div>
+            <${WarningLists} root=${current.root} />
+        </div>
+    `;
+};
+
 function useProfileDraft(root, field) {
     const live = useLive(() => openMirror(root).profile.get(field), [root, field]);
     const mirror = (live && live.value) || '';
