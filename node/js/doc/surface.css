@@ -67,7 +67,8 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.2rem 0.6rem;
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     border: 1px solid currentColor;
     background: transparent;
     color: inherit;
@@ -171,7 +172,8 @@
     padding: 0.6rem 0.8rem;
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    --j: 4px;
+    clip-path: var(--jag-1);
     box-shadow: 0 8px 20px var(--shadow-drop);
 }
 
@@ -195,7 +197,8 @@
 .reader-marquee {
     background: var(--paper);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.7rem 0.9rem;
 }
 
@@ -210,7 +213,8 @@
     margin: 0.5rem 0;
     padding: 0.25rem 0.6rem 0.25rem 0.35rem;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     background: var(--surface);
     color: inherit;
     text-decoration: none;
@@ -244,7 +248,8 @@
 .reader-plain {
     background: var(--paper);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.8rem;
     white-space: pre-wrap;
     word-break: break-word;
@@ -257,7 +262,8 @@
 
 .reader-media {
     max-width: 100%;
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
 }
 
 /* Video is stored at 320p (the in-browser pre-encoder's bound), so display it at native scale -

@@ -59,7 +59,8 @@
     padding: 0.3rem 0.6rem;
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    --j: 4px;
+    clip-path: var(--jag-1);
     color: var(--ink);
     font-size: 0.78rem;
     white-space: nowrap;
@@ -155,7 +156,8 @@
     margin-top: 1rem;
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    --j: 5px;
+    clip-path: var(--jag);
     padding: 0.7rem 0.9rem;
     overflow-wrap: anywhere;
 }
@@ -211,7 +213,8 @@
     gap: 0.7rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    --j: 5px;
+    clip-path: var(--jag);
     padding: 0.6rem 0.9rem;
     color: var(--ink);
     text-decoration: none;

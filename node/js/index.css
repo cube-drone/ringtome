@@ -108,7 +108,8 @@
     align-items: baseline;
     gap: 0.3rem;
     padding: 0.1rem 0.55rem;
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     border: 1px dashed var(--border);
     background: var(--surface);
     color: var(--ink-soft);
@@ -124,7 +125,8 @@
 .book-reader-tag-count {
     background: var(--ink-soft);
     color: var(--surface);
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     padding: 0 0.4em;
     font-size: 0.85em;
 }
@@ -182,7 +184,8 @@
     margin-top: 0.3rem;
     padding: 0.3rem 0.6rem;
     border: 1px solid var(--border);
-    border-radius: 0.4rem;
+    --j: 0.2rem;
+    clip-path: var(--jag-1);
     text-decoration: none;
 }
 .minipost-title {
@@ -218,7 +221,8 @@
 /* The author's curation surface: strangers' replies held for the nod. */
 .held-replies {
     border: 1px dashed var(--border-strong);
-    border-radius: 8px;
+    --j: 4px;
+    clip-path: var(--jag-1);
     padding: 0.6rem 0.9rem;
     margin: 0.5rem 0 1rem;
 }

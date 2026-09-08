@@ -8800,3 +8800,19 @@ labels door and its search take `stop=` and count or match only what the dial sh
 reader's own rows always. The plain page is untouched: the browser still applies the dial
 to the page it holds. The facets suite turns the dial with the interest ledger and watches
 the lists empty and refill.
+
+## 2026-09-08: every rounded edge, jaggedized
+
+Curtis: the stylesheets were full of tastefully rounded edges while the main window wore
+a jagged one - make them match. The frame's corner is the house's pixel-rounded corner: a
+clip polygon that cuts the corner back in two six-pixel steps. Every `border-radius` in the
+app (a hundred and seventeen of them) now wears that corner instead: `--jag`, two steps of
+a `--j` sized to half the old radius, on the big radii; `--jag-1`, one step, for everything
+smaller - the first pass gave chips and inputs two steps too, and on a box twenty pixels
+tall that ate the edge and the border all but vanished (Curtis, minutes later); `--jag-top`
+and `--jag-bottom` for the boxes that were rounded on one edge; pills step 0.25em; the
+round dots wear a pixel circle. The transform was scripted over the
+stylesheets and the tokens carry the shapes. Two honest costs, the panel's own: a clip
+cuts a border and a drop shadow at the corners, so a one-pixel border stops a step early
+and the five shadowed floating boxes lost their shadows at the clipped corners - the
+house answer, where it matters, is layering, as the frame does.

@@ -26,7 +26,8 @@
 .annot-time {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--ink);
     font: inherit;
     font-size: 0.78rem;
@@ -59,7 +60,8 @@
     color: var(--pink);
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     padding: 0.08rem 0.5rem;
 }
 
@@ -105,7 +107,8 @@
 .annot-desc {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--ink-soft);
     font: inherit;
     font-size: 0.8rem;

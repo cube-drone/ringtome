@@ -20,7 +20,8 @@
 .editor-body {
     background: var(--paper);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--ink);
     font-family: "JetBrains Mono", monospace;
     font-size: 0.85rem;
@@ -58,7 +59,8 @@
 .editor-live {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     min-height: 50vh;
     overflow: hidden;
 }
@@ -70,7 +72,8 @@
     max-height: 75vh;
     background: var(--paper);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
 }
 
 .editor-live .cm-content {
@@ -117,7 +120,8 @@
     overflow-y: auto;
     background: var(--paper);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.8rem;
     /* scrollToSource centers the cursor's node; smooth keeps the tracking legible. */
     scroll-behavior: smooth;
@@ -129,7 +133,7 @@
 .editor-side-preview .reader-plain {
     background: none;
     border: 0;
-    border-radius: 0;
+    clip-path: none;
     padding: 0;
 }
 
@@ -137,7 +141,8 @@
 .editor-cursor-node {
     outline: 2px solid var(--glow);
     outline-offset: 2px;
-    border-radius: 2px;
+    --j: 2px;
+    clip-path: var(--jag-1);
 }
 
 .chip-button {
@@ -218,7 +223,7 @@
     display: inline-block;
     width: 8px;
     height: 8px;
-    border-radius: 50%;
+    clip-path: var(--dot-clip);
     background: var(--teal);
     animation: waiting-pulse 1.6s ease-in-out infinite;
     margin-right: 0.3rem;

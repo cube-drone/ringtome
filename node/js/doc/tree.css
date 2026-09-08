@@ -27,7 +27,8 @@
     gap: 0.3rem;
     background: var(--surface-2);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.25rem 0.55rem;
     font: inherit;
     font-size: 0.85rem;
@@ -46,7 +47,8 @@
     gap: 0.35rem;
     padding: 0.25rem 0.4rem;
     border: 1px solid transparent;
-    border-radius: 5px;
+    --j: 2.5px;
+    clip-path: var(--jag);
     cursor: pointer;
     min-width: 0;
 }
@@ -135,7 +137,8 @@
 .tree-unfiled.drop-hover {
     outline: 2px dashed var(--teal);
     outline-offset: 2px;
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
 }
 
 /* A stub: this section appears again here (a diamond's second parent or a cycle) - a marker,

@@ -25,6 +25,43 @@
        height = width * 0.9749 to be regular. Persona faces, the app dock and the console
        tiles all clip to this one polygon. */
     --face-clip: polygon(50% 0, 90.1% 19.8%, 100% 64.3%, 72.3% 100%, 27.7% 100%, 0 64.3%, 9.9% 19.8%);
+    /* Every rounded edge, jaggedized (Curtis, 2026-09-08): where a box used to wear a
+       border-radius it wears one of these, the panel's pixel-rounded corner on all four
+       corners. `--j` is the step. Two steps of it per corner (`--jag`) only on the big
+       radii, 10px and up, the step half the old radius; everything smaller - the chips,
+       inputs and buttons - takes ONE step (`--jag-1`), because two steps of three pixels
+       eat twelve pixels of edge on a box twenty tall and the border all but vanished
+       (Curtis, the same day). Pills step 0.25em; the round dots wear a pixel circle
+       (`--dot-clip`). A clip cuts the border and the shadow at the corners too - the house
+       answer is layering, as the frame does; a one-pixel border merely stops a step early. */
+    --j: 3px;
+    --jag: polygon(
+        0 calc(2 * var(--j)), var(--j) calc(2 * var(--j)), var(--j) var(--j), calc(2 * var(--j)) var(--j), calc(2 * var(--j)) 0,
+        calc(100% - 2 * var(--j)) 0, calc(100% - 2 * var(--j)) var(--j), calc(100% - var(--j)) var(--j), calc(100% - var(--j)) calc(2 * var(--j)), 100% calc(2 * var(--j)),
+        100% calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) 100%,
+        calc(2 * var(--j)) 100%, calc(2 * var(--j)) calc(100% - var(--j)), var(--j) calc(100% - var(--j)), var(--j) calc(100% - 2 * var(--j)), 0 calc(100% - 2 * var(--j))
+    );
+    --jag-1: polygon(
+        0 var(--j), var(--j) 0,
+        calc(100% - var(--j)) 0, 100% var(--j),
+        100% calc(100% - var(--j)), calc(100% - var(--j)) 100%,
+        var(--j) 100%, 0 calc(100% - var(--j))
+    );
+    /* The two half-shapes: steps on the top corners only, or the bottom only, for the boxes
+       that were rounded on one edge (a tab, a footer). */
+    --jag-top: polygon(
+        0 calc(2 * var(--j)), var(--j) calc(2 * var(--j)), var(--j) var(--j), calc(2 * var(--j)) var(--j), calc(2 * var(--j)) 0,
+        calc(100% - 2 * var(--j)) 0, calc(100% - 2 * var(--j)) var(--j), calc(100% - var(--j)) var(--j), calc(100% - var(--j)) calc(2 * var(--j)), 100% calc(2 * var(--j)),
+        100% 100%, 0 100%
+    );
+    --jag-bottom: polygon(
+        0 0, 100% 0,
+        100% calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - 2 * var(--j)), calc(100% - var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) calc(100% - var(--j)), calc(100% - 2 * var(--j)) 100%,
+        calc(2 * var(--j)) 100%, calc(2 * var(--j)) calc(100% - var(--j)), var(--j) calc(100% - var(--j)), var(--j) calc(100% - 2 * var(--j)), 0 calc(100% - 2 * var(--j))
+    );
+    --dot-clip: polygon(
+        30% 0, 70% 0, 85% 15%, 100% 30%, 100% 70%, 85% 85%, 70% 100%, 30% 100%, 15% 85%, 0 70%, 0 30%, 15% 15%
+    );
     --bg: #e7dbc3;            /* page: warm sand */
     --surface: #f6efe0;      /* cards, inputs, tiles: cream (a touch lighter than the sand) */
     --surface-2: #efe3cd;    /* chips, secondary fills */

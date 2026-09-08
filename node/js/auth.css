@@ -30,7 +30,8 @@
     align-items: center;
     background: none;
     border: 1px solid var(--border-strong);
-    border-radius: 6px 6px 0 0;
+    --j: 3px;
+    clip-path: var(--jag-top);
     color: var(--muted);
     padding: 0.3rem 0.6rem;
     font-size: 1.2rem; /* icon-only tabs; the name is in the tooltip */
@@ -61,7 +62,8 @@
 .welcome-form input {
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--ink);
     padding: 0.55rem 0.7rem;
     font: inherit;
@@ -89,7 +91,8 @@
 .welcome-go {
     background: var(--teal);
     border: none;
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--bg);
     padding: 0.6rem;
     font: inherit;

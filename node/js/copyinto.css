@@ -5,7 +5,8 @@
     align-items: center;
     background: none;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--muted);
     font-size: 1.1rem;
     padding: 0.25rem 0.5rem;
@@ -23,7 +24,8 @@
 .copy-bucket {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     font: inherit;
     font-size: 0.9rem;
     padding: 0.25rem 0.8rem;
@@ -40,7 +42,8 @@
 .copy-new-input {
     background: var(--surface);
     border: 1px dashed var(--border);
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     font: inherit;
     font-size: 0.9rem;
     padding: 0.25rem 0.8rem;

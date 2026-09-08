@@ -21,7 +21,8 @@
 .facet-more {
     background: none;
     border: 1px dashed var(--border);
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     color: var(--ink-soft);
     font: inherit;
     font-size: 0.75rem;

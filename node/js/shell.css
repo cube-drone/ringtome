@@ -154,7 +154,8 @@ body {
 .bucket-name {
     background: none;
     border: 1px solid color-mix(in srgb, var(--dock-text) 40%, transparent);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.15rem 0.55rem;
     color: var(--dock-text);
     font-family: "JetBrains Mono", monospace;
@@ -184,7 +185,8 @@ body {
     background: var(--surface);
     color: var(--ink);
     border: 2px solid var(--ink);
-    border-radius: 8px;
+    --j: 4px;
+    clip-path: var(--jag-1);
     box-shadow: 0 8px 20px var(--shadow-drop);
 }
 
@@ -195,7 +197,8 @@ body {
     gap: 1rem;
     background: none;
     border: 0;
-    border-radius: 5px;
+    --j: 2.5px;
+    clip-path: var(--jag);
     padding: 0.4rem 0.55rem;
     text-align: left;
     font: inherit;
@@ -219,7 +222,8 @@ body {
 .bucket-menu-delete {
     margin-top: 0.3rem;
     border-top: 1px solid var(--border);
-    border-radius: 0 0 5px 5px;
+    --j: 3px;
+    clip-path: var(--jag-bottom);
     color: var(--coral);
 }
 
@@ -249,7 +253,8 @@ body {
     box-sizing: border-box;
     background: var(--surface);
     border: 0;
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0 0.65rem;
     font: inherit;
     font-size: 0.9rem;
@@ -267,7 +272,8 @@ body {
     flex-shrink: 0;
     background: var(--surface);
     border: 0;
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0;
     font-size: 1.05rem;
     color: var(--faint);
@@ -292,7 +298,8 @@ body {
     gap: 0.5rem;
     background: var(--paper);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.45rem 0.6rem;
     box-shadow: 0 4px 14px var(--shadow-drop);
     white-space: nowrap;
@@ -306,7 +313,8 @@ body {
 .search-opts-kind {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.25rem 0.6rem;
     font: inherit;
     font-size: 0.85rem;
@@ -347,7 +355,7 @@ body {
     padding: 0;
     background: var(--surface);
     border: 0;
-    border-radius: 50%;
+    clip-path: var(--dot-clip);
     color: var(--ink);
     cursor: pointer;
     font: inherit;
@@ -363,7 +371,7 @@ body {
 
 /* Close is a sharp square hole, distinct from the round back hole. */
 .app-header-btn-square {
-    border-radius: 0;
+    clip-path: none;
 }
 
 .loading-shell {

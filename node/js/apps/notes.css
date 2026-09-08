@@ -32,7 +32,8 @@
 .notes-new {
     background: none;
     border: 1px dashed var(--border-strong);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--sea);
     padding: 0.45rem;
     cursor: pointer;
@@ -95,7 +96,8 @@
     padding: 0.5rem 0.2rem;
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--muted);
     cursor: pointer;
     font-size: 1rem;
@@ -243,7 +245,8 @@
        wide as one without. */
     margin: 0 -0.5rem;
     cursor: col-resize;
-    border-radius: 3px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     touch-action: none;
 }
 
@@ -260,7 +263,8 @@
     gap: 0.4rem;
     background: none;
     border: 0;
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     color: var(--ink);
     font: inherit;
     font-size: 0.85rem;
@@ -303,7 +307,8 @@
 .note-row {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    --j: 3px;
+    clip-path: var(--jag-1);
     padding: 0.45rem 0.6rem;
     cursor: pointer;
     font: inherit;
@@ -342,7 +347,8 @@
     width: 32px;
     height: 32px;
     object-fit: cover;
-    border-radius: 4px;
+    --j: 4px;
+    clip-path: var(--jag-1);
     border: 1px solid var(--border);
     flex-shrink: 0;
     background: var(--surface-2);
@@ -406,7 +412,8 @@
 .snippet-hit {
     background: var(--marker);
     color: var(--ink);
-    border-radius: 2px;
+    --j: 2px;
+    clip-path: var(--jag-1);
     padding: 0 1px;
 }
 
@@ -439,7 +446,8 @@
     color: var(--pink);
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 999px;
+    --j: 0.25em;
+    clip-path: var(--jag-1);
     padding: 0.02rem 0.4rem;
 }
 
@@ -508,7 +516,8 @@
     justify-content: center;
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    --j: 4px;
+    clip-path: var(--jag-1);
     color: var(--muted);
     font-size: 1rem; /* the chips are icon-only now; this sizes the glyph */
     line-height: 1;

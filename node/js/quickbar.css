@@ -75,7 +75,8 @@
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
-    border-radius: 9px;
+    --j: 4.5px;
+    clip-path: var(--jag);
     background: var(--coral);
     color: var(--dock-text);
     font-size: 0.7rem;
