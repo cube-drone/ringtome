@@ -8759,3 +8759,7 @@ Curtis asked what a sealed post copies as: for those who may, exactly what they 
 and for nobody else - proven in the suite - and the kindness on top: a copy of a sealed post
 carries a private `seal=yes` wish that a publish naming no wish honours, the editor's box
 pre-ticked, the feed's post button deferring to it; the seal is a default, not a lock.
+The generator also gained `publish-a-little-book` (Curtis): a fresh notebook with three or
+four pages, two nested under a part, the tree named for the notebook as the wiki names it,
+book mode on, a rollout asked for and left to the sweep - so a seeded shelf carries books
+within a minute of the run.

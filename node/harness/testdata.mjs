@@ -328,6 +328,40 @@ const ACTIONS = [
         },
     },
     {
+        // A little book (2026-09-08): a fresh notebook with three or four pages, two of
+        // them nested under a part, its tree named for the notebook the way the wiki does,
+        // switched to book mode and asked to roll out - the same road the notes app takes
+        // (PROJECT_PLAN's Books). The rollout itself is the sweep's, on its own beat, so
+        // the action returns at once rather than holding every persona's turn; a seeded
+        // shelf has its books within a minute of the run.
+        name: 'publish-a-little-book',
+        weight: 3,
+        run: async (ctx, p, rng) => {
+            const name = `${ctx.pick(rng, WORDS)}-${ctx.pick(rng, WORDS)}`;
+            await api(p, 'POST', `/api/identity/${p.root}/buckets`, { name, app: 'default' });
+            p.buckets.push(name);
+            const page = async (title) => {
+                const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                    title,
+                    body: ctx.lorem(rng, 1 + Math.floor(rng() * 2)),
+                    format: 'marquee',
+                });
+                await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/${encodeURIComponent(name)}`);
+                return d.doc_id;
+            };
+            const opening = await page(`on ${ctx.pick(rng, WORDS)}`);
+            const chapters = [];
+            for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++) chapters.push(await page(`chapter ${i + 1}`));
+            const root = (await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, { title: `wiki:${name}` })).taxonomy_id;
+            const part = (await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, { title: 'part one' })).taxonomy_id;
+            await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${root}/members/${opening}`, {});
+            await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${root}/members/${part}`, {});
+            for (const c of chapters) await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${part}/members/${c}`, {});
+            await api(p, 'PUT', `/api/identity/${p.root}/private/kv/books/${encodeURIComponent(name)}`, { value: JSON.stringify({ mode: 'book' }) });
+            await api(p, 'POST', `/api/identity/${p.root}/books/${encodeURIComponent(name)}/rollout`, {});
+        },
+    },
+    {
         name: 'go-public',
         weight: 4,
         run: async (ctx, p) => {
