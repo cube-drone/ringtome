@@ -194,6 +194,27 @@ pub fn rewrite(body: &str, swaps: &[(String, String)]) -> String {
 
 /// The public URL a baked media doc is embedded as: the anonymous identity-rooted path, with
 /// a decorative filename so the renderer's media-kind sniff has an extension to read.
+/// The public media twins a PUBLISHED body embeds - `/id/<author>/docs/<twin>/body[/...]`
+/// targets naming that author - as `(target, twin)`, once each, for the copy door
+/// (PROJECT_PLAN's Copying a post): each becomes the copier's own media document, and the
+/// target is swapped for the copy's.
+pub fn public_media_refs(body: &str, author_hex: &str) -> Vec<(String, [u8; 16])> {
+    let Ok(doc) = marquee_parser::parse(body) else {
+        return Vec::new();
+    };
+    let prefix = format!("/id/{author_hex}/docs/");
+    let mut found: Vec<(String, [u8; 16])> = Vec::new();
+    walk(&doc, &mut |target| {
+        let Some(rest) = target.strip_prefix(&prefix) else { return };
+        let Some((doc_hex, _)) = rest.split_once("/body") else { return };
+        let Some(twin) = hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) else { return };
+        if !found.iter().any(|(t, _)| t == target) {
+            found.push((target.to_string(), twin));
+        }
+    });
+    found
+}
+
 pub fn public_media_target(
     root_hex: &str,
     public_doc: &[u8; 16],
@@ -750,5 +771,21 @@ mod tests {
         assert_eq!(mentions(&inline), vec![other], "the span is the inline card, once");
         assert!(mentions("no cards here").is_empty());
         assert_eq!(card_root(&format!("/id/{worded}?via=abc")), Some(root), "a query is ignored");
+    }
+
+    /// The copy door's embeds (2026-09-08): a published body's twins by their public
+    /// targets, this author's only, once each; the private and external forms are not twins.
+    #[test]
+    fn public_twins_are_found_by_author_once_each() {
+        let twin = [4u8; 16];
+        let body = format!(
+            "![a](/id/{ROOT}/docs/{t}/body/media.avif)\n\n![b](/id/{ROOT}/docs/{t}/body/media.avif)\n\n![c](/id/{}/docs/{t}/body/x.avif)\n\n![d](/api/identity/{ROOT}/docs/{t}/body/p.avif)\n\n![e](https://x.y/z.png)",
+            "ab".repeat(32),
+            t = hex::encode(twin)
+        );
+        let refs = public_media_refs(&body, ROOT);
+        assert_eq!(refs.len(), 1, "one twin, this author's, once");
+        assert_eq!(refs[0].1, twin);
+        assert!(refs[0].0.starts_with(&format!("/id/{ROOT}/docs/")));
     }
 }

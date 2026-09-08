@@ -34,6 +34,7 @@
 @import "./doc/editor.css";   /* the editing surfaces and their mode tabs */
 @import "./person.css";       /* the Person widget family: one persona at four sizes */
 @import "./facets.css";       /* the bucket and tag strip over the feed and a person's shelf */
+@import "./copyinto.css";     /* copy into private notes: the button, the modal, the copy chain */
 @import "./apps/notifications.css"; /* the bell: derived events from people you follow */
 @import "./modal.css";        /* the house modal */
 @import "./doc/upload.css";   /* the upload flow inside it */

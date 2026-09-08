@@ -21,8 +21,8 @@
 //     dial must not cost the other twenty thousand actions.
 //
 // TODO, deliberately left on the surface: richer Marquee (headers, effects - the user span
-// arrived with `mention-someone`) and posts with IMAGES - the media pipeline wants real
-// bytes, which wants a small corpus checked in.
+// arrived with `mention-someone`). Posts with pictures arrived with `post-a-picture`
+// (2026-09-08), on the harness's one picture; a small checked-in corpus would vary them.
 //
 // Reproducible: same seed, same network (modulo wall-clock timestamps). The seed prints at
 // start; pass it back to replay. Credentials land in testdata-state.json beside this script,
@@ -284,6 +284,47 @@ const ACTIONS = [
                 await api(p, 'PUT',
                     `/api/identity/${p.root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`);
             }
+        },
+    },
+    {
+        // A picture in public (2026-09-08): upload the harness's picture, wait for the
+        // ingest to crush it, write a post that embeds it in the picker's own spelling,
+        // and publish riding the bake - the same road the composer takes, so a seeded
+        // feed has cards with pictures, twins on the public shelf, and something for the
+        // copy door to carry. Bounded waits: a slow ingest just costs one action.
+        name: 'post-a-picture',
+        weight: 6,
+        run: async (ctx, p, rng) => {
+            const title = ctx.lorem(rng, 1).slice(0, 32).replace(/\.$/, '');
+            const made = await upload(p, `/api/identity/${p.root}/docs/binary`
+                + `?title=${encodeURIComponent(title)}&parents=`, ctx.picture);
+            if (!made.doc_id) throw new Error(`upload gave no doc_id: ${JSON.stringify(made).slice(0, 120)}`);
+            // File it at once, as the picker does: an unfiled, unreferenced media document
+            // is the reaper's, and on a test node the reaper is quick (the bake found it
+            // missing before the post that embeds it existed - 2026-09-08).
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${made.doc_id}/buckets/feed`);
+            // The body door answers 202 while the ingest is pending - only a 200 is the
+            // picture (the `api` helper takes any 2xx as done, which embedded pictures that
+            // had not landed and failed their bakes - found 2026-09-08).
+            let landed = false;
+            for (let i = 0; i < 60 && !landed; i++) {
+                landed = (await p.fetch(`/api/identity/${p.root}/docs/${made.doc_id}/body`)).status === 200;
+                if (!landed) await new Promise((r) => setTimeout(r, 500));
+            }
+            if (!landed) throw new Error('the picture never finished ingesting');
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: rng() < 0.6 ? title : '',
+                body: `${ctx.lorem(rng, 1)}\n\n![${title}](/api/identity/${p.root}/docs/${made.doc_id}/body/picture.avif)\n\n${ctx.lorem(rng, 1)}`,
+                format: 'marquee',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+            for (let i = 0; i < 40; i++) {
+                const r = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {});
+                if (r && r.post_id) return;
+                if (r && (r.baking || []).some((b) => b.status === 'failed')) throw new Error(`bake failed: ${JSON.stringify(r.baking).slice(0, 300)}`);
+                await new Promise((res) => setTimeout(res, 500));
+            }
+            throw new Error('the publish never came to rest');
         },
     },
     {

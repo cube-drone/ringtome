@@ -1215,7 +1215,7 @@ pub async fn directory(
 /// a private doc_id asked through this door is a 404, never a leak. Bytes are served with
 /// the stored format's own Content-Type, nosniff, and ETag revalidation (the blob hash:
 /// a different avatar is a different document).
-async fn public_doc_bytes(
+pub(crate) async fn public_doc_bytes(
     state: &AppState,
     session: &Option<Session>,
     seg: &str,

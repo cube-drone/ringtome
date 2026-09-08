@@ -540,7 +540,16 @@ export const FeedApp = ({ current, searchQuery }) => {
         // The wishes this post rides out with, caught before the checkboxes reset: the
         // fresh card wears them from the first second (a headless drive on 2026-09-03
         // showed the "trusted only" chip arriving only with the reload).
-        const wishes = { settled: settleNext, trusted_only: trustNext };
+        // A draft's own seal wish (a copy of a sealed post, copyinto.js) holds unless the
+        // toggle says otherwise - the toggle is the composer's, not this draft's.
+        let wished = false;
+        try {
+            const row = await openMirror(root).docs.get(posted);
+            wished = !!(row && row.fields && row.fields.seal === 'yes');
+        } catch {
+            /* no mirror row: no wish */
+        }
+        const wishes = { settled: settleNext, trusted_only: trustNext || wished };
         setPosting(true);
         setError(null);
         // Only the open draft moves the slot along. Re-posting something already in the stack

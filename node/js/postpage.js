@@ -22,6 +22,22 @@ import { FEED_STYLE } from './pure/feed.js';
 import { useRef } from 'preact/hooks';
 import { parseSpeakable } from './speakable.js';
 import { PostEntry, MiniPost, Composer, publishWithBaking, BakeModal } from './postentry.js';
+import { PersonRow } from './person.js';
+
+/// The copy chain (Curtis, 2026-09-08): the other authors this post descends from - the
+/// author's own `provenance` statements, oldest first - as person cards, under the replies
+/// and nowhere else: not a label, not a chip, a credit.
+const CopyChain = ({ author, annotations }) => {
+    const roots = [];
+    for (const a of annotations || []) {
+        if (a.key === 'provenance' && a.annotator === author && !roots.includes(a.value)) roots.push(a.value);
+    }
+    if (roots.length === 0) return null;
+    return html`<section class="copy-chain">
+        <h2 class="copy-chain-head">${t('postpage.other-authors-in-the-copy-chain', 'Other Authors in the Copy Chain')}</h2>
+        ${roots.map((r) => html`<${PersonRow} key=${r} root=${r} />`)}
+    </section>`;
+};
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 import { BookReader } from './doc/bookreader.js';
@@ -170,6 +186,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     onReplied=${(mint) => setSaid((have) => [...have, mint])}
                 />`}
             </section>`}
+            ${item && !isBook && html`<${CopyChain} author=${root} annotations=${post.annotations} />`}
             ${item && html`<${PostDossier} author=${root} doc=${threadDoc} />`}
         </div>
     `;

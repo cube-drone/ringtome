@@ -70,6 +70,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/sync", post(sync_handler))
         .route("/api/identity/{root}/feed", get(feed_handler))
         .route("/api/identity/{root}/feed/labels", get(feed_labels_handler))
+        .route("/api/identity/{root}/docs/copy", post(docs_copy_handler))
         .route(
             "/api/identity/{root}/notifications",
             get(notifications_handler),
@@ -1735,7 +1736,16 @@ async fn publish_handler(
         None => None,
     };
     let settled = req.as_ref().and_then(|b| b.settled).unwrap_or(false);
-    let trusted_only = req.as_ref().and_then(|b| b.trusted_only).unwrap_or(false);
+    // The draft's seal wish (a copy of a sealed post, PROJECT_PLAN's Copying a post) holds
+    // when the request names no wish of its own; a named wish, either way, is the word.
+    let trusted_only = match req.as_ref().and_then(|b| b.trusted_only) {
+        Some(w) => w,
+        None => data
+            .annotations()
+            .field(&doc_id, store::SEAL_WISH)
+            .await?
+            .is_some_and(|v| v.trim() == "yes"),
+    };
     // The preferred date (PUBLISH.md): the draft's `display_date` claim, resolved HERE with
     // the request's timezone offset - re-read at every publish, so a date changed inside the
     // edit window re-sorts the post everywhere.
@@ -2316,10 +2326,21 @@ async fn replicate_annotations(
     for (field, value) in data.annotations().fields(draft_id).await? {
         // `published_as` is the draft's private bookkeeping (which post it minted) - a
         // fact about the draft, not a label on the post.
+        if field == store::PROVENANCE {
+            // The copy chain (PROJECT_PLAN's Copying a post): one statement per author it
+            // descends from, never a JSON blob and never this persona's own root.
+            for root in provenance_roots(&value) {
+                if root != hex::encode(self_root) {
+                    desired.insert((store::PROVENANCE.into(), root));
+                }
+            }
+            continue;
+        }
         if field == store::PUBLISHED_AS
             || field == store::TRUSTED_KEY
             || field == store::PUBLISH_PLAN
             || field == store::DISPLAY_DATE
+            || field == store::SEAL_WISH
             || value.trim().is_empty()
             || !fits(&field, &value)
         {
@@ -2717,6 +2738,193 @@ struct DocCreated {
 }
 
 /// Create a document: mint its id, save the genesis version.
+/// The roots a stored provenance field names, as hex - a JSON array, anything else empty.
+pub(crate) fn provenance_roots(value: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(value)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.len() == 64 && r.chars().all(|c| c.is_ascii_hexdigit()))
+        .collect()
+}
+
+#[derive(Deserialize)]
+struct DocCopy {
+    /// The source's author, hex - this persona for one of its own notes or posts.
+    author: String,
+    doc_id: String,
+    /// Where the copy is filed; `new` says the bucket is to be defined first.
+    bucket: String,
+    #[serde(default)]
+    new: bool,
+    /// The source is one of this persona's PRIVATE notes rather than a public post.
+    #[serde(default)]
+    private: bool,
+}
+
+/// POST `/api/identity/{root}/docs/copy` - copy a post into private notes (Curtis,
+/// 2026-09-08): any post, yours or anyone's, public or one of your own private notes,
+/// becomes a fresh private note in the bucket you name - title, words, format, and the
+/// author's own tags - with a PROVENANCE stack: the source's author (when that is somebody
+/// else) and everyone the source itself descended from, oldest first, so a chain of copies
+/// carries every author along. The words come through the body door, sealed posts
+/// included, so a copy is exactly what you could read. Media embeds keep pointing at the
+/// source's own public files (a residual, PROJECT_PLAN's Copying a post).
+async fn docs_copy_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<DocCopy>,
+) -> Result<Json<DocCreated>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let author_hex = req.author.to_lowercase();
+    let doc_hex = req.doc_id.to_lowercase();
+    let doc_id = hex_fixed::<16>(&doc_hex, "doc id")?;
+    let (title, body, format, tags, inherited, sealed): (String, Vec<u8>, crate::record::documents::Format, Vec<String>, Vec<String>, bool) =
+        if req.private {
+            if author_hex != root {
+                return Err(AppError::BadRequest(crate::msg!("identity.routes.a-private-note-is-your-own", "a private note to copy must be one of your own")));
+            }
+            let docs = data.documents();
+            let view = docs.all().await?;
+            let doc = view
+                .docs
+                .get(&doc_id)
+                .ok_or_else(|| AppError::NotFound(crate::msg!("identity.routes.no-such-note-to-copy", "no such note to copy")))?;
+            let format = doc
+                .display_head()
+                .map(|h| crate::record::documents::Format::from_wire(h.header.format))
+                .unwrap_or(crate::record::documents::Format::Plaintext);
+            let resolved = docs.resolved(doc).await?;
+            let body = resolved
+                .body
+                .ok_or_else(|| AppError::BadRequest(crate::msg!("identity.routes.those-words-havent-arrived", "those words haven't arrived on this computer yet")))?;
+            let tags = data.annotations().tags(&doc_id).await?;
+            let inherited = data
+                .annotations()
+                .field(&doc_id, store::PROVENANCE)
+                .await?
+                .map(|v| provenance_roots(&v))
+                .unwrap_or_default();
+            let sealed = data
+                .annotations()
+                .field(&doc_id, store::SEAL_WISH)
+                .await?
+                .is_some_and(|v| v.trim() == "yes");
+            (resolved.title, body.into_bytes(), format, tags, inherited, sealed)
+        } else {
+            let head = match crate::fragments::serving_header(&state.node_db, &author_hex, &doc_id).await.ok().flatten() {
+                Some(h) => Some((h.title, h.format, h.trusted_only)),
+                None => held_public_header(&state, &author_hex, &doc_hex).await?.map(|h| (h.title, h.format, h.trusted_only)),
+            };
+            let Some((title, format, sealed)) = head else {
+                return Err(AppError::NotFound(crate::msg!("identity.routes.no-such-post-to-copy", "no such post to copy")));
+            };
+            let format = crate::record::documents::Format::from_wire(format);
+            let resp = crate::idface::public_doc_bytes(&state, &Some(session.clone()), &author_hex, &doc_hex, false, None).await?;
+            if resp.status() != StatusCode::OK {
+                return Err(AppError::BadRequest(crate::msg!("identity.routes.those-words-arent-readable-here", "those words aren't readable here yet")));
+            }
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("reading the source body: {e}")))?
+                .to_vec();
+            let known = crate::annotations::for_posts(&state.node_db, &[(author_hex.clone(), doc_hex.clone())])
+                .await
+                .map_err(AppError::Internal)?;
+            let own: Vec<&crate::annotations::KnownAnnotation> = known
+                .get(&(author_hex.clone(), doc_hex.clone()))
+                .map(|v| v.iter().filter(|a| a.annotator == author_hex).collect())
+                .unwrap_or_default();
+            let tags = own.iter().filter(|a| a.key == "tag").map(|a| a.value.clone()).collect();
+            let inherited = own.iter().filter(|a| a.key == store::PROVENANCE).map(|a| a.value.clone()).collect();
+            (title, body, format, tags, inherited, sealed)
+        };
+    if !matches!(format, crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext) {
+        return Err(AppError::BadRequest(crate::msg!("identity.routes.only-words-copy", "only a post of words copies into notes")));
+    }
+    // The chain: the source's author first when it is somebody else, then everyone the
+    // source descended from - each once, never yourself.
+    let mut chain: Vec<String> = Vec::new();
+    if author_hex != root {
+        chain.push(author_hex.clone());
+    }
+    for r in inherited {
+        if r != root && !chain.contains(&r) {
+            chain.push(r);
+        }
+    }
+    let provenance = (!chain.is_empty()).then(|| serde_json::to_string(&chain).unwrap_or_default());
+    if req.new {
+        data.buckets().define(&req.bucket, "default").await?;
+    }
+    // The embedded media (Curtis, 2026-09-08): a published body's twins become the copier's
+    // own media documents - the twin's bytes through the body door, into the ingest queue
+    // like an upload (it crushes, thumbs and encrypts them), filed in the same bucket with
+    // the same provenance - and the copy's words point at them, in the picker's own private
+    // spelling, so the copy is whole on its own and the bake mints fresh twins when it is
+    // posted. A copy of your own private note keeps its embeds: they are already yours.
+    let mut body = body;
+    if !req.private && format == crate::record::documents::Format::Marquee {
+        let text = String::from_utf8_lossy(&body).into_owned();
+        let mut swaps: Vec<(String, String)> = Vec::new();
+        for (target, twin) in crate::record::bake::public_media_refs(&text, &author_hex) {
+            let twin_hex = hex::encode(twin);
+            let resp = crate::idface::public_doc_bytes(&state, &Some(session.clone()), &author_hex, &twin_hex, false, None).await?;
+            if resp.status() != StatusCode::OK {
+                continue; // a twin that will not open stays the source's: the link still works for those who may
+            }
+            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("reading a twin: {e}")))?;
+            let media_doc = crate::record::documents::new_doc_id();
+            state
+                .ingest
+                .enqueue(
+                    &state.node_db,
+                    crate::ingest::Upload {
+                        account: &session.account.id.to_string(),
+                        root: &root,
+                        doc_id: media_doc,
+                        parents: &[],
+                        title: &title,
+                        bytes: &bytes,
+                        audio: None,
+                    },
+                )
+                .await?;
+            data.buckets().place(&media_doc, &req.bucket).await?;
+            if let Some(p) = &provenance {
+                data.annotations().set_field(&media_doc, store::PROVENANCE, p).await?;
+            }
+            let tail = target
+                .split_once("/body")
+                .map(|(_, t)| format!("/body{t}"))
+                .unwrap_or_else(|| "/body".to_string());
+            swaps.push((target.clone(), format!("/api/identity/{root}/docs/{}{tail}", hex::encode(media_doc))));
+        }
+        if !swaps.is_empty() {
+            body = crate::record::bake::rewrite(&text, &swaps).into_bytes();
+        }
+    }
+    let (new_doc, _version) = data.documents().create(&title, &body, format).await?;
+    data.buckets().place(&new_doc, &req.bucket).await?;
+    for tag in tags {
+        if let Err(e) = data.annotations().tag(&new_doc, &tag).await {
+            tracing::debug!(error = ?e, "a copied tag did not take");
+        }
+    }
+    if let Some(p) = &provenance {
+        data.annotations().set_field(&new_doc, store::PROVENANCE, p).await?;
+    }
+    // The kindness (Curtis, 2026-09-08): a copy of a sealed post wishes to stay sealed, so a
+    // publish that names no wish keeps it for trusted readers; the wish is the copier's to
+    // clear.
+    if sealed {
+        data.annotations().set_field(&new_doc, store::SEAL_WISH, "yes").await?;
+    }
+    Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }))
+}
+
 async fn docs_create_handler(
     session: Session,
     State(state): State<AppState>,

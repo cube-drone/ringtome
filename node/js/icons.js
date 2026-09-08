@@ -11,6 +11,7 @@ import {
     NotePencil,
     PushPin,
     Biohazard,
+    Copy,
     CaretLeft,
     X,
     UserCircle,
@@ -83,6 +84,8 @@ export const Icons = {
     pin: PushPin,
     // Content control (2026-09-07): the blur and hide lists, under your settings.
     biohazard: Biohazard,
+    // Copy into private notes (2026-09-08).
+    copy: Copy,
     back: CaretLeft,
     forward: CaretRight,
     plus: Plus,

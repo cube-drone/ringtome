@@ -72,6 +72,7 @@ import { parseBook } from './pure/books.js';
 import { useShared, markShared } from './shares.js';
 import { t } from './i18n.js';
 import { useWarnings } from './warnings.js';
+import { CopyButton } from './copyinto.js';
 import { warningFor } from './pure/warnings.js';
 
 const html = htm.bind(h);
@@ -746,7 +747,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         // wore a root hex as a chip): the statement's wire form is the mentioned root, and
         // the card in the words already shows WHO. Hidden at display only - the statement
         // still replicates and rings the bell it names.
-        .filter((a) => a.key !== 'mention');
+        .filter((a) => a.key !== 'mention')
+        // The copy chain (2026-09-08) is a list on the post's page, under the replies -
+        // never a chip.
+        .filter((a) => a.key !== 'provenance');
 
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
@@ -855,7 +859,10 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                           >${t('postentry.edit', 'edit')}</button>`)}
                     ${editing && !open && item.kind !== 'share' && !item.private_doc &&
                     html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`}
-                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}`}
+                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} editing=${editing} onTakenDown=${() => setGone(true)} />`}
+                    ${/* Copy into private notes, last on every card (Curtis, 2026-09-08: the
+                        same seat on your own posts and other people's). */ ''}
+                    ${!!current && !!current.root && !open && item.kind !== 'share' && html`<${CopyButton} item=${item} current=${current} />`}`}
             />
             ${!open &&
             !!title &&

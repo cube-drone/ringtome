@@ -73,6 +73,15 @@ pub const PUBLISH_PLAN: &str = "publish_plan";
 /// rides the public header as `dated_ms` - never a public annotation (Curtis, 2026-09-02:
 /// "I see the date as a ... tag? That's a strange thing to occur").
 pub const DISPLAY_DATE: &str = "display_date";
+/// The copy chain (2026-09-08): the roots of the other authors a copied note descends
+/// from, a JSON array, oldest first - the source's author and whoever they copied from.
+/// Private on the draft; publish restates it as one `provenance=<root>` statement per
+/// author (PROJECT_PLAN's Copying a post). Never the persona's own root.
+pub const PROVENANCE: &str = "provenance";
+/// The seal wish (2026-09-08): a copy of a SEALED post carries `seal=yes`, and a publish
+/// that names no wish of its own seals the post - so a trusted reader's copy stays for
+/// trusted readers by default. Private on the draft; never restated in public.
+pub const SEAL_WISH: &str = "seal";
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
 pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar"];

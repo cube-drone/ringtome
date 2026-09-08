@@ -24,6 +24,7 @@ import { slugPathFor } from './address.js';
 import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
+import { CopyIntoModal } from '../copyinto.js';
 
 const html = htm.bind(h);
 
@@ -31,6 +32,7 @@ const html = htm.bind(h);
 // synthesized by the node (single head, clean merge, or the conflict presented inline - the
 // editor-is-the-merge-tool doctrine means a reader just... shows it).
 const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
+    const [copying, setCopying] = useState(false); // copy into private notes (2026-09-08)
     // The shared read-only loader (doc/detail.js). Write failures below get their own state; the
     // header shows whichever error is live.
     const { doc, error: loadError } = useDocDetail(root, docId);
@@ -158,6 +160,17 @@ const Reader = ({ root, docId, onDeleted, nav, bucket, features }) => {
                         modifier="chip-delete"
                         title=${t('doc.reader.delete-removes-this-document-from', 'Delete — removes this document from every list (its history is kept)')}
                         onClick=${remove}
+                    />`}
+                    <${Chip}
+                        icon=${Icons.copy}
+                        title=${t('doc.reader.copy-into-private-notes', 'copy this note into another bucket')}
+                        onClick=${() => setCopying(true)}
+                    />
+                    ${copying &&
+                    html`<${CopyIntoModal}
+                        current=${{ root }}
+                        source=${{ author: root, doc_id: docId, private: true }}
+                        onClose=${() => setCopying(false)}
                     />`}
                     ${doc.diverged &&
                     (doc.resolution === t('doc.reader.conflict-2', 'conflict')

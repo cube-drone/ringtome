@@ -3983,6 +3983,44 @@ the address is fetched. A mention on a trusted-only post is restated like
 any other label on a sealed post - the statement is public while the words are not - and the
 notice says "mentioned you in" a post the reader may not be able to open.
 
+### Copying a post, and the copy chain (settled and built 2026-09-08)
+
+Any post can be copied into your private notes - yours, anyone's, public, or one of your
+own notes into another bucket - and a copy remembers where it came from.
+
+1. **One door, every surface.** The copy button (Phosphor's copy) sits on every card beside
+   the share, and as a chip in the editor and the reader. It opens one modal: the bucket
+   list, and "+ new bucket". The node does the copying: title, words, format, and the
+   author's own tags become a fresh private note in that bucket. The words come through the
+   body door, so a copy is exactly what you could read - a sealed post copies for a trusted
+   reader and refuses for anyone else.
+2. **The provenance stack.** A copy of somebody else's post records that person; a copy of a
+   copy records the source's author and everyone the source itself descended from, oldest
+   first, each once, never yourself. On the draft it is a private field, a JSON array of
+   roots; publishing restates it as one `provenance=<root>` statement per author on the
+   labels lane, so a re-publish that keeps the chain says nothing new. Copying your own
+   post adds nobody; copying your own private note carries its chain.
+3. **Where it shows.** Only on the post's page, under the replies: "Other Authors in the
+   Copy Chain", the author's own provenance statements as person cards. Never a chip on a
+   card, never a facet - a credit, not a label.
+
+4. **The pictures come too.** A published body's media twins become the copier's own media
+   documents - the twin's bytes through the body door, into the ingest queue like an
+   upload, filed in the same bucket with the same provenance - and the copy's words point
+   at them in the picker's own private spelling, so the copy is whole on its own and the
+   bake mints fresh twins when it is posted. A twin that will not open for the copier stays
+   the source's link.
+5. **A sealed post copies for those who may, and the copy wishes to stay sealed.** The words
+   come through the body door, so a trusted reader's copy carries them and anyone else's is
+   refused. The copy carries a private `seal=yes` wish: a publish that names no wish of its
+   own seals the post, the editor's box comes pre-ticked, and the feed's post button honours
+   it unless its own toggle says otherwise. The wish is the copier's to clear - what a
+   trusted reader can read they can retype, so the seal is a default, not a lock.
+
+Residuals: a chain is what the source's author said, so a source that dropped its credits
+drops them for everyone downstream; the fresh twins a posted copy mints carry no
+provenance statements of their own - the post does.
+
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 
 There is no roster of an identity's nodes, no membership protocol, and no coordinator (**No Central Authority**, Doctrine). Each node's picture of the

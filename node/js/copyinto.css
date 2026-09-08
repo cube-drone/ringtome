@@ -1,0 +1,59 @@
+/* Copy into private notes (copyinto.js): the card's button beside the share, the modal's
+   bucket list, and the copy chain under a post's replies. */
+.feed-copy {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+}
+.feed-copy:hover {
+    color: var(--ink);
+}
+.copy-buckets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+}
+.copy-bucket {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.25rem 0.8rem;
+    cursor: pointer;
+}
+.copy-bucket:hover {
+    border-color: var(--border-strong);
+}
+.copy-new-bucket {
+    display: inline-flex;
+    gap: 0.3rem;
+    align-items: center;
+}
+.copy-new-input {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.25rem 0.8rem;
+    width: 11rem;
+}
+.copy-done a {
+    margin-left: 0.3rem;
+}
+.copy-chain {
+    margin-top: 1.2rem;
+}
+.copy-chain-head {
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    margin: 0 0 0.4rem;
+}

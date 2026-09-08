@@ -39,6 +39,8 @@ import { useUploadCapture } from './upload.js';
 import { stripSelfOrigin } from '../pure/portable.js';
 import { emojiCompletions, linkCompletions, mediaCompletions, mentionCompletions } from './completions.js';
 import { userCardHtml, userSpanHtml, useUserCards } from './usercard.js';
+import { CopyIntoModal } from '../copyinto.js';
+import { openMirror, useLive } from '../mirror.js';
 import { slugPathFor } from './address.js';
 import { featuresOf, editorModes } from '../pure/apps.js';
 import { Icons } from '../icons.js';
@@ -111,6 +113,13 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
     // is open), unpublish (a takedown; for a schedule, cancelling the plan). The same door
     // the feed uses, with the same two wishes at first publish.
     const [wishes, setWishes] = useState({ settled: false, trusted_only: false });
+    // A draft's own seal wish - a copy of a sealed post (copyinto.js) - ticks the box
+    // before the first publish; unticking it is the word, sent outright below.
+    const wishRow = useLive(() => (root && docId ? openMirror(root).docs.get(docId) : null), [root, docId]);
+    const wishedSeal = !!(wishRow && wishRow.fields && wishRow.fields.seal === 'yes');
+    useEffect(() => {
+        if (wishedSeal) setWishes((w) => ({ ...w, trusted_only: true }));
+    }, [wishedSeal]);
     const [publishing, setPublishing] = useState(false);
     const [baking, setBaking] = useState(null);
     const [publishNote, setPublishNote] = useState(null); // { kind: 'published' | 'scheduled' | 'unpublished' | 'unscheduled', at }
@@ -167,7 +176,7 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                 standing === 'private' && (wishes.settled || wishes.trusted_only)
                     ? {
                           ...(wishes.settled ? { settled: true } : {}),
-                          ...(wishes.trusted_only ? { trusted_only: true } : {}),
+                          trusted_only: wishes.trusted_only,
                       }
                     : undefined;
             const made = await publishWithBaking(root, docId, setBaking, extra);
@@ -302,6 +311,8 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
     );
     // One picker instance per editor: it caches the roster it fetched on the first `@`.
     const mentionSource = useMemo(() => mentionCompletions(root), [root]);
+    // Copy into private notes (2026-09-08): this note, into another bucket.
+    const [copying, setCopying] = useState(false);
 
     // The scroll-sync/caret ref quartet (their story is with the sync closures, below).
     const previewRef = useRef(null); // MarqueeHandle
@@ -504,6 +515,17 @@ export const Editor = ({ root, docId, features, onDeleted, nav, bucket, foot, bo
                           placeholder="untitled"
                       />`}
                 <span class="reader-chips">
+                    <${Chip}
+                        icon=${Icons.copy}
+                        title=${t('doc.editor.copy-into-private-notes', 'copy this note into another bucket')}
+                        onClick=${() => setCopying(true)}
+                    />
+                    ${copying &&
+                    html`<${CopyIntoModal}
+                        current=${{ root }}
+                        source=${{ author: root, doc_id: docId, private: true }}
+                        onClose=${() => setCopying(false)}
+                    />`}
                     ${onDeleted &&
                     standing !== 'public' &&
                     html`<${Chip}

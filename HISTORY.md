@@ -8728,3 +8728,34 @@ viewer may not see out of their results. Along the way, the index had been readi
 body's ciphertext as text and storing junk tokens for it - gone. The suite now finds the
 author's own sealed words, refuses them to an untrusted reader, and finds them for a trusted
 one after the key has travelled. NEXT_STEPS lost the residual.
+
+## 2026-09-08: copy into private notes, and the copy chain
+
+Curtis's brief: a copy button on every post - private, public, other people's - that
+brings up the bucket list plus "+ new bucket" and drops the whole post into a private
+note; a copy from someone else adds them to a provenance stack, resolved with annotations;
+A copied by B and posted, copied by C and posted, credits both A and B; the stack shows only
+on the post's page, under the replies, as person cards titled "Other Authors in the Copy
+Chain". Built as PROJECT_PLAN's "Copying a post": the node's copy door reads the source
+through the body door (sealed posts included, for those who may), mints the note, files
+it (defining the bucket when it is new), copies the author's own tags, and writes the
+provenance field - the source's author when that is somebody else, then everyone the
+source descended from, never yourself; publish expands the field into one statement per
+root and never copies the JSON raw. The card hides the statement as it hides mentions; the
+post page lists it under the replies. The acceptance suite walks A → B → C across three
+nodes, the tag coming along, the chain oldest-first, the own-post case adding nobody, and a
+private copy of a copy keeping its chain. Then three of Curtis's notes the same day: the copy button
+takes the last seat on every card (it had led on your own posts and trailed on others'),
+a copy filed in "feed" opens the feed itself, and the pictures come too - a published
+body's twins become the copier's own media documents through the ingest queue, in the same
+bucket with the same provenance, the copy's words rewritten to point at them; the suite
+gained a pictured post whose copy owns its picture. And the generator gained
+`post-a-picture` (Curtis): upload the harness's picture, wait for the ingest, embed it in
+a post the way the picker does, publish riding the bake - so a seeded feed has pictured
+cards and twins for the copy door to carry. Its first cut embedded pictures that had not
+landed: the body door answers 202 while the ingest is pending, and the harness's helper
+takes any 2xx as done - the wait now insists on a 200, as the suites always have. Then
+Curtis asked what a sealed post copies as: for those who may, exactly what they could read,
+and for nobody else - proven in the suite - and the kindness on top: a copy of a sealed post
+carries a private `seal=yes` wish that a publish naming no wish honours, the editor's box
+pre-ticked, the feed's post button deferring to it; the seal is a default, not a lock.

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 679 phrases across 51 files.
+// 694 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -158,6 +158,14 @@ export default {
     'computers.paste-the-new-computers-code': "paste the new computer's code here",
     'computers.invite-this-computer-to-be': 'invite this computer to be you',
 
+    // --- node/js/copyinto.js ---
+    'copyinto.copy-into-private-notes': 'copy into private notes',
+    'copyinto.copied-into': 'copied into {bucket}',
+    'copyinto.open-the-copy': 'open the copy',
+    'copyinto.plus-new-bucket': '+ new bucket',
+    'copyinto.copy': 'copy',
+    'copyinto.copy-this-into-your-private': 'copy this into your private notes',
+
     // --- node/js/doc/annotations.js ---
     'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
     'doc.annotations.date': 'date',
@@ -239,6 +247,7 @@ export default {
     'doc.diffpage.private-only': 'private only',
 
     // --- node/js/doc/editor.js ---
+    'doc.editor.copy-into-private-notes': 'copy this note into another bucket',
     'doc.editor.part-of-the-book': 'part of the book {bucket}',
     'doc.editor.hidden-from-it': 'hidden from it',
     'doc.editor.new-since-the-last-rollout': 'new since the last rollout',
@@ -300,6 +309,7 @@ export default {
     'doc.reader.a-document---no-reader': '(a {format} document - no reader for it yet)',
     'doc.reader.untitled': 'untitled',
     'doc.reader.delete-removes-this-document-from': 'Delete — removes this document from every list (its history is kept)',
+    'doc.reader.copy-into-private-notes': 'copy this note into another bucket',
     'doc.reader.conflict-2': 'conflict',
     'doc.reader.edited-in-the-same-place': 'edited in the same place on two computers; every version is shown below',
     'doc.reader.conflict': 'conflict',
@@ -542,6 +552,7 @@ export default {
     'postentry.n-replies': '{n} replies',
 
     // --- node/js/postpage.js ---
+    'postpage.other-authors-in-the-copy-chain': 'Other Authors in the Copy Chain',
     'postpage.a-post': 'a post',
     'postpage.that-isnt-an-address': "that isn't an address this app knows how to read",
     'postpage.looking-for-the-post': 'looking for the post…',
@@ -653,6 +664,12 @@ export default {
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',
+    'identity.routes.a-private-note-is-your-own': 'a private note to copy must be one of your own',
+    'identity.routes.no-such-note-to-copy': 'no such note to copy',
+    'identity.routes.those-words-havent-arrived': "those words haven't arrived on this computer yet",
+    'identity.routes.no-such-post-to-copy': 'no such post to copy',
+    'identity.routes.those-words-arent-readable-here': "those words aren't readable here yet",
+    'identity.routes.only-words-copy': 'only a post of words copies into notes',
     'identity.routes.bad-multipart-body-e': 'bad multipart body: {e}',
     'identity.routes.bad-multipart-part-name-e': 'bad multipart part {name:?}: {e}',
     'identity.routes.missing-video-part': 'missing `video` part',
