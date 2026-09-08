@@ -1837,16 +1837,31 @@ article:has(.label-emoji-strip) {
    does not jump when clicked through; nothing under the veil takes a click or a selection. */
 .feed-entry-veil {
     position: relative;
+    overflow: hidden;
+    border-radius: 6px;
 }
 .feed-entry-body-veiled {
-    filter: blur(22px) saturate(0.4);
+    filter: blur(14px) saturate(0.5);
     pointer-events: none;
     user-select: none;
     max-height: 18rem;
     overflow: hidden;
 }
+/* The frosted glass (Curtis, 2026-09-07): a translucent sheet of the surface colour over
+   the blurred words, frosting whatever shows through, so the veil reads as a pane rather
+   than a smudge. The button sits on the pane. */
+.feed-entry-veil::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--surface) 62%, transparent);
+    backdrop-filter: blur(10px) saturate(0.7);
+    -webkit-backdrop-filter: blur(10px) saturate(0.7);
+    pointer-events: none;
+}
 .feed-entry-unveil {
     position: absolute;
+    z-index: 1;
     inset: 0;
     margin: auto;
     width: fit-content;
