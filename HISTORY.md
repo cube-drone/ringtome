@@ -8714,3 +8714,17 @@ does the rest in one place - hidden posts return nothing, blurred ones render th
 under a veil with a "tagged gore - show anyway" button - and a post's own page shows a hidden
 post blurred rather than nothing, since you asked for it by address. NEXT_STEPS lost its
 "blocked/hidden tags" and "content warning (18+)" wishes.
+
+## 2026-09-07: search inside sealed posts
+
+The residual the search left behind, taken the same day. A trusted-only body opens with
+the post key the node holds in its key memo - the author's own at mint, a trusted reader's
+once the key lane brought it - so the index now opens it the way the body door does and
+indexes the words like any other; without the key the post matches on its title and
+nothing is stored, so the bag is not frozen title-only when the key arrives later. Nothing
+fetches a key for the index. The bag in node.db says no more than the key memo beside it
+already lets the node say, and the sealed rule on every listing keeps a post an untrusted
+viewer may not see out of their results. Along the way, the index had been reading a sealed
+body's ciphertext as text and storing junk tokens for it - gone. The suite now finds the
+author's own sealed words, refuses them to an untrusted reader, and finds them for a trusted
+one after the key has travelled. NEXT_STEPS lost the residual.

@@ -25,10 +25,6 @@ This is a loose plan of upcoming feature work and immediate near-term goals we a
 
 ### Public posts and fan-out
 
-* mini-links (the kind you see in replies and your notifications) need to display more content
-* Search inside sealed posts: a trusted-only post's words are sealed at rest, so the text
-  index (search.rs, 2026-09-07) knows only its title - even for the author, even for a
-  trusted reader whose node holds the key. Indexing through the trusted key is the road.
 * Better filters in Lost & Found
 * Edit-orphaned twins: a re-bake mints a fresh media twin and the old one stays public on
   the author's own shelf (fragment holders reconcile theirs). Found 2026-09-05 beside the

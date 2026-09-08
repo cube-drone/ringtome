@@ -10,6 +10,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const { makeUserFetch } = require("./helpers.cjs");
 const { beat, pullAndFold } = require("./beat.cjs");
+const { HOST } = require("./fetch.cjs");
 const { HOST_B } = require("./fetch.cjs");
 
 const base58 = async (host) => {
@@ -78,9 +79,30 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual(ids(await (await ada(`api/id/${adaRoot}/posts?q=pudding&as=${adaRoot}`)).json()), [sealed], "the author finds their own");
         const page = await (await ada(`api/id/${adaRoot}/posts?q=the&as=${adaRoot}`)).json();
         assert.equal(page.more, false, "a search is one deep page, no cursor");
-        // 'the' is in every body, but a sealed post's words are sealed at rest - the index
-        // knows only its title - so two of the three answer.
-        assert.deepEqual(ids(page).sort(), [bread, ride].sort(), "'the' is in every open body; the sealed one indexes by title alone");
+        // The author's node holds the post key, so the sealed body indexes like any other.
+        assert.deepEqual(ids(page).sort(), [bread, ride, sealed].sort(), "'the' is in every body, the sealed one too");
+        assert.deepEqual(ids(await (await ada(`api/id/${adaRoot}/posts?q=recipe&as=${adaRoot}`)).json()), [sealed], "a word inside the sealed body");
+    });
+
+    it("a sealed post's words open to the search once the reader is trusted and the key has travelled - and not before", async () => {
+        assert.deepEqual(ids(await (await bea(`api/id/${adaRoot}/posts?q=recipe&as=${beaRoot}`)).json()), [], "untrusted: nothing, by title or by body");
+        await j(ada, `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/trust`, { value: "high" }, "PUT");
+        await beat(HOST, "mint", adaRoot);
+        await pullAndFold(HOST_B, adaRoot);
+        // Reading the body once brings the key over the trusted lane; the index opens it after.
+        let opened = false;
+        for (let i = 0; i < 40 && !opened; i++) {
+            const r = await bea(`id/${adaRoot}/docs/${sealed}/body`);
+            opened = r.status === 200;
+            if (!opened) await wait(400);
+        }
+        assert.ok(opened, "the trusted reader can read the sealed body");
+        let found = [];
+        for (let i = 0; i < 20 && found.length === 0; i++) {
+            found = ids(await (await bea(`api/id/${adaRoot}/posts?q=recipe&as=${beaRoot}`)).json());
+            if (found.length === 0) await wait(400);
+        }
+        assert.deepEqual(found, [sealed], "the sealed body's word, on the shelf, for the trusted reader");
     });
 
     it("the title stands in for words that have not arrived, and the index beat walks the backlog", async () => {

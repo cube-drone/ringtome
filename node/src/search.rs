@@ -17,6 +17,14 @@
 //! words nobody has read, and the bodies sweep brings the words when it brings them.
 //!
 //! Matching is prefix-by-token, every term required: "sour bread" finds "sourdough bread".
+//!
+//! Sealed posts (2026-09-07, the NEXT_STEPS residual): a trusted-only body opens with the
+//! post key the node holds in its key memo - the author's own at mint, a trusted reader's
+//! once the key lane brought it - and indexes like any other; never fetched here. Without
+//! the key the post matches on its title and nothing is STORED, so the bag is not frozen
+//! title-only when the key arrives later. The bag in node.db says no more than the key
+//! memo beside it already lets the node say, and the sealed rule on every listing keeps
+//! a post an untrusted viewer may not see out of their results.
 
 use anyhow::{Context, Result};
 
@@ -103,9 +111,15 @@ pub struct Candidate {
 
 /// Where a public post's words live, if this node has them: the fragment ledger first (a
 /// peek, a share), then the author's chain. Never fetches.
-async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<([u8; 32], Option<u64>)> {
+struct BodyFacts {
+    file_hash: [u8; 32],
+    format: Option<u64>,
+    trusted_only: bool,
+}
+
+async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<BodyFacts> {
     if let Ok(Some(h)) = crate::fragments::serving_header(&state.node_db, author_hex, doc_id).await {
-        return Some((h.file_hash, h.format));
+        return Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only });
     }
     let db = state.user_dbs.get(author_hex).await.ok().flatten()?;
     let entry = crate::record::documents::public_header_entry(&db, doc_id).await.ok().flatten()?;
@@ -113,7 +127,7 @@ async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Op
         return None;
     };
     let h = ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()?;
-    Some((h.file_hash, h.format))
+    Some(BodyFacts { file_hash: h.file_hash, format: h.format, trusted_only: h.trusted_only })
 }
 
 async fn stored(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<(i64, String)>> {
@@ -140,13 +154,23 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
     }
     let Ok(raw) = hex::decode(&c.doc_hex) else { return Ok(None) };
     let Ok(doc_id) = <[u8; 16]>::try_from(raw.as_slice()) else { return Ok(None) };
-    let Some((hash, format)) = body_facts(state, &c.author_root, &doc_id).await else {
+    let Some(BodyFacts { file_hash: hash, format, trusted_only }) = body_facts(state, &c.author_root, &doc_id).await else {
         return Ok(None);
     };
     let blob = iroh_blobs::Hash::from_bytes(hash);
     if !state.files.has(blob).await {
         return Ok(None);
     }
+    // A sealed body needs the post key the node holds; without it, the title stands and
+    // nothing is stored (the key may arrive later, and the stamp would not move).
+    let key = if trusted_only {
+        match crate::postkeys::lookup(&state.node_db, &c.author_root, &c.doc_hex).await? {
+            Some(k) => Some(k),
+            None => return Ok(None),
+        }
+    } else {
+        None
+    };
     *budget -= 1;
     // Prose only: a book's body is its table, media's is bytes; both index by title.
     let prose = matches!(
@@ -154,14 +178,12 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
         crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext
     );
     let body = if prose {
-        state
-            .files
-            .get_public(blob)
-            .await
-            .ok()
-            .flatten()
-            .map(|b| String::from_utf8_lossy(&b).into_owned())
-            .unwrap_or_default()
+        let raw = state.files.get_public(blob).await.ok().flatten().unwrap_or_default();
+        let plain = match key {
+            Some(k) => crate::record::private::open_post_body(&raw, &k).unwrap_or_default(),
+            None => raw,
+        };
+        String::from_utf8_lossy(&plain).into_owned()
     } else {
         String::new()
     };
