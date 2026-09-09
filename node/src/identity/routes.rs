@@ -769,6 +769,29 @@ async fn rows_at_stop(
         .collect())
 }
 
+/// The kind of each journal row (search.rs KINDS): a share by its via, a book by its
+/// format, a reply by its link, a post otherwise. One links read for the whole set.
+async fn feed_kinds(state: &AppState, rows: &[crate::fanout::FeedRow]) -> Result<Vec<&'static str>, AppError> {
+    let pairs: Vec<(String, String)> = rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
+    let links = crate::replies::links_for(&state.node_db, &pairs)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .iter()
+        .map(|r| {
+            if r.via_root.is_some() {
+                "rebroadcast"
+            } else if r.format.as_deref() == Some("book") {
+                "book"
+            } else if links.contains_key(&(r.author_root.clone(), r.doc_id.clone())) {
+                "reply"
+            } else {
+                "post"
+            }
+        })
+        .collect())
+}
+
 /// The journal rows this reader may see: a trusted-only post stays unless the author
 /// publishes trust for the reader (or is the reader). Shared by the page and the facets.
 async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanout::FeedRow>) -> Vec<crate::fanout::FeedRow> {
@@ -820,10 +843,11 @@ async fn feed_labels_handler(
     let (buckets, tags) = crate::annotations::label_counts(&state.node_db, &pairs)
         .await
         .map_err(AppError::Internal)?;
+    let kinds = crate::search::kind_counts(feed_kinds(&state, &rows).await?.into_iter());
     let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
         v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
     };
-    Ok(Json(serde_json::json!({ "buckets": facet(buckets), "tags": facet(tags) })))
+    Ok(Json(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) })))
 }
 
 /// GET `/api/identity/{root}/feed` - one page of the reader's arrival journal, strictly
@@ -866,13 +890,16 @@ async fn feed_handler(
             .await
             .map_err(AppError::Internal)?;
         let all = rows_at_stop(&state, &_owned, &root, all, q.stop.as_deref()).await?;
+        let kinds = feed_kinds(&state, &all).await?;
         let candidates: Vec<crate::search::Candidate> = all
             .iter()
-            .map(|r| crate::search::Candidate {
+            .zip(kinds.iter())
+            .map(|(r, kind)| crate::search::Candidate {
                 author_root: r.author_root.clone(),
                 doc_hex: r.doc_id.clone(),
                 title: r.title.clone(),
                 updated_ms: r.updated_ms,
+                kind,
             })
             .collect();
         let keep = crate::search::matching(&state, &candidates, &narrow)
@@ -2839,7 +2866,7 @@ async fn read_public_source(
         return Err(AppError::NotFound(crate::msg!("identity.routes.no-such-post-to-copy", "no such post to copy")));
     };
     let format = crate::record::documents::Format::from_wire(format);
-    let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, doc_hex, false, None).await?;
+    let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, doc_hex, false, None, None).await?;
     if resp.status() != StatusCode::OK {
         return Err(AppError::BadRequest(crate::msg!("identity.routes.those-words-arent-readable-here", "those words aren't readable here yet")));
     }
@@ -2904,7 +2931,7 @@ async fn mint_copy(
         let mut swaps: Vec<(String, String)> = Vec::new();
         for (target, twin) in crate::record::bake::public_media_refs(&text, author_hex) {
             let twin_hex = hex::encode(twin);
-            let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, &twin_hex, false, None).await?;
+            let resp = crate::idface::public_doc_bytes(state, &Some(session.clone()), author_hex, &twin_hex, false, None, None).await?;
             if resp.status() != StatusCode::OK {
                 continue;
             }

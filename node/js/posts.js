@@ -20,6 +20,7 @@ import { PostEntry, useOwnPostEditing } from './postentry.js';
 import { publishedState } from './pure/feed.js';
 import { t } from './i18n.js';
 import { useSearch } from './postsearch.js';
+import { shelfItem } from './pure/shelf.js';
 import { LabelFacets, NO_PICKS, useLabels } from './facets.js';
 
 const html = htm.bind(h);
@@ -42,9 +43,6 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     const mine = !!(current && current.root === root);
     const editingFor = useOwnPostEditing(current);
     // Everything by default; the toggles SUBTRACT (Curtis, 2026-09-02).
-    const [withShares, setWithShares] = useState(true);
-    const [withReplies, setWithReplies] = useState(true);
-    const [withBooks, setWithBooks] = useState(true);
     // Your own card shows your scheduled posts at the top, badged (PUBLISH.md ruling 5):
     // read off the mirror, only when the page is yours.
     const ownRows = useLive(() => (mine ? openMirror(root).docs.toArray() : []), [root, mine]);
@@ -116,43 +114,12 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
         mine,
     }));
 
-    // The profile's rows, dressed as the shared entry's item shape - a share keeps its
-    // ORIGINAL author (the card is still that person speaking) and wears this persona as
-    // its via line, exactly as the feed renders a passed-along post.
+    // The profile's rows, dressed as the card's item (pure/shelf.js - one mapper for this
+    // road and the narrowed one below).
+    const dress = { root, authorName, authorAvatar, mine };
     const items = [...scheduledItems, ...list
         .filter((p) => p.kind === 'share' || !pinnedIds.has(p.doc_id))
-        .filter((p) => (withShares || p.kind !== 'share') && (withReplies || !p.reply_to) && (withBooks || p.format !== 'book'))
-        .map((p) =>
-            p.kind === 'share'
-                ? {
-                      kind: 'share',
-                      author: p.author,
-                      doc_id: p.doc_id,
-                      title: p.title,
-                      format: p.format,
-                      published_ms: p.published_ms,
-                      via: p.via,
-                      mine: false,
-                  }
-                : {
-                      author: root,
-                      doc_id: p.doc_id,
-                      title: p.title,
-                      format: p.format,
-                      published_ms: p.published_ms,
-                      dated_ms: p.dated_ms,
-                      minted_ms: p.minted_ms,
-                      replies: p.replies,
-                      reply_to: p.reply_to,
-                      thread_root: p.thread_root,
-                      trusted_only: p.trusted_only,
-                      settled: p.settled,
-                      annotations: p.annotations,
-                      author_name: authorName,
-                      author_avatar: authorAvatar,
-                      mine,
-                  }
-        )];
+        .map((p) => shelfItem(p, dress))];
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
     // query is open. Hooks before the early return below, as always.
@@ -160,9 +127,10 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     const viewer = current ? `?as=${current.root}` : '';
     const labels = useLabels(`/api/id/${root}/labels${viewer}`, (posts || []).length);
     const search = useSearch(`/api/id/${root}/posts${viewer}`, searchQuery, picks);
-    const shownItems = search.active
-        ? (search.results || []).map((p) => ({ ...p, author: root, author_name: authorName, author_avatar: authorAvatar, mine }))
-        : items;
+    // A narrowed shelf comes back in the door's own shape: a post is this persona's, a
+    // share keeps its ORIGINAL author and wears this persona as its via (Curtis,
+    // 2026-09-08: the kind row asked the page's persona for words somebody else wrote).
+    const shownItems = search.active ? (search.results || []).map((p) => shelfItem(p, dress)) : items;
     const shownPinned = search.active ? [] : pinnedItems;
     if (!search.active && !list.length && !scheduledItems.length && !pinnedItems.length) return null; // nothing said in public yet
 
@@ -183,21 +151,6 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
         <section class="public-posts">
             <h2 class="public-posts-head">
                 ${t('posts.recent-posts', 'recent posts')}
-                <button
-                    class=${withShares ? 'shelf-toggle shelf-toggle-on' : 'shelf-toggle'}
-                    title=${t('posts.show-what-they-passed-along', 'show what they passed along')}
-                    onClick=${() => setWithShares((v) => !v)}
-                >${t('posts.plus-rebroadcasts', '+ rebroadcasts')}</button>
-                <button
-                    class=${withReplies ? 'shelf-toggle shelf-toggle-on' : 'shelf-toggle'}
-                    title=${t('posts.show-their-replies-in', 'show their replies in other people\u2019s threads')}
-                    onClick=${() => setWithReplies((v) => !v)}
-                >${t('posts.plus-replies', '+ replies')}</button>
-                <button
-                    class=${withBooks ? 'shelf-toggle shelf-toggle-on' : 'shelf-toggle'}
-                    title=${t('posts.show-the-books-they-published', 'show the books they published')}
-                    onClick=${() => setWithBooks((v) => !v)}
-                >${t('posts.plus-books', '+ books')}</button>
             </h2>
             ${search.active &&
             search.searching &&

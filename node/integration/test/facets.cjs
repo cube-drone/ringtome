@@ -58,6 +58,18 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.deepEqual(f.tags.slice(1).map((x) => x.value), ["bikes", "pudding", "slow"], "then by name");
     });
 
+    it("the kind row counts posts, replies, rebroadcasts and books, and narrows like the other rows", async () => {
+        const f = await (await ada(`api/identity/${adaRoot}/feed/labels`)).json();
+        assert.deepEqual(f.kinds, [{ value: "post", count: 5 }], "five plain posts, nothing else yet");
+        const feed = (qs) => ada(`api/identity/${adaRoot}/feed?${qs}`).then((r) => r.json());
+        assert.equal(ids(await feed("kind=post")).length, 5, "'posts' is every plain post");
+        assert.deepEqual(ids(await feed("kind=reply")), [], "no replies");
+        assert.deepEqual(ids(await feed("kind=book&kind=post")).length, 5, "two kinds widen");
+        assert.deepEqual(ids(await feed("kind=post&tag=bikes")), [a2], "and the rows combine");
+        const shelf = await (await ada(`api/id/${adaRoot}/labels?as=${adaRoot}`)).json();
+        assert.deepEqual(shelf.kinds, [{ value: "post", count: 5 }], "the shelf counts the same");
+    });
+
     it("picking narrows: a bucket, a tag, two buckets widen, two tags narrow, and the words narrow the rest", async () => {
         const feed = (qs) => ada(`api/identity/${adaRoot}/feed?${qs}`).then((r) => r.json());
         assert.deepEqual(ids(await feed("bucket=outings")), [a2]);

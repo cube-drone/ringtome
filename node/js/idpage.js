@@ -199,6 +199,9 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
             ${profile.foreign &&
             html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} peek=${profile.peek} />`}
         <//>
+        ${/* A rule between the person - their card, settings and address - and what they
+            said (Curtis, 2026-09-08). */ ''}
+        <hr class="id-rule" />
         <${PublicPosts}
             root=${root}
             posts=${profile.posts}

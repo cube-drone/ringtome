@@ -8822,4 +8822,40 @@ house answer, where it matters, is layering, as the frame does.
 Curtis: the face on posts was taller than wide. The card restates the small face in `em`
 so a quiet post's author shrinks with its words, and that restatement still carried the
 hexagon's height - 2.3em on a 2em width - while a regular heptagon wants 0.9749 of its
-width. Now 1.95em, as person.css says in rem.
+width. Now 1.95em, as person.css says in rem. And the id page gained a rule between the person -
+their card, settings and address - and their posts, which had run straight on.
+
+## 2026-09-08: the kind row - posts, replies, rebroadcasts, books
+
+Curtis: the person page's "+ rebroadcasts / + replies / + books" toggles are feed-type
+selectors and belong beside "in" and "tagged", on both pages, with "+ posts" for what is
+none of the other kinds - and with the same semantics as the other rows, nothing picked
+showing everything and a pick narrowing to just those, rather than the toggles' all-on-
+unless-you-turn-one-off. So a "show" row leads the strip: the node counts each row's kind
+(a share by its via or its ledger, a book by its format, a reply by its link, a post
+otherwise) and `kind=` joins the narrowing - kinds OR among themselves, then the labels,
+then the words; a share carries no words or labels, so it answers the kind row alone. The
+three toggles and their styles retired. The facets suite counts the kinds on the feed and
+the shelf, narrows to one, widens to two, and combines a kind with a tag.
+
+## 2026-09-08: a share on a person's page opens
+
+Curtis pulled a followed person's rebroadcasts on their page and every card read "these
+words haven't reached this computer": the shared posts' authors were strangers to his node
+and nothing ever asked for their words - the feed's share cards work because the fanout
+carries the fragment in when the rebroadcast dial is set, and a person's shelf has no such
+carrier. The body door now asks, once, for a post the node does not hold when a member is
+reading: from the sharer whose shelf listed it when the card says so (`?via=<sharer>`, the
+share card's own hint), else from the author's own nodes; the fragment then sits on the
+ledger for every read after. Anonymous visitors trigger nothing. The suite `shareshelf.cjs`
+has a follower without the rebroadcast dial open a share off the sharer's shelf, and an
+unhinted post off the author's. Curtis rebooted and the cards still waited: on a seeded
+network the shared post's author is usually already held as a hunch - a speculative
+mirror without that post - and that branch of the door never asked either. The fetch now
+fires whenever the words are missing and a member is asking, whichever way the author is
+held, hosted personas aside. Still no dice - and the node log said why: every body request named
+Curtis's OWN persona as the author. The kind row routes a person's shelf through the
+narrowing path, and that path's item mapping (mine, from the search) stamped the page's
+root onto every result, shares included - so the card asked the page's persona for words
+somebody else wrote. A share keeps its own author now; the mapping is one pure function
+for both paths, with a test.

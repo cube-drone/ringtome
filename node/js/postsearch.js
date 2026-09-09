@@ -17,6 +17,7 @@ export function narrowParams(query, picks, extra = {}) {
     if (q) parts.push(`q=${encodeURIComponent(q)}`);
     for (const b of (picks && picks.buckets) || []) parts.push(`bucket=${encodeURIComponent(b)}`);
     for (const g of (picks && picks.tags) || []) parts.push(`tag=${encodeURIComponent(g)}`);
+    for (const k of (picks && picks.kinds) || []) parts.push(`kind=${encodeURIComponent(k)}`);
     // The feed's selectivity dial rides along (2026-09-08) so the node narrows what the
     // dial shows; it never makes a search on its own.
     const stop = extra.stop && extra.stop !== 'explorer' ? extra.stop : null;

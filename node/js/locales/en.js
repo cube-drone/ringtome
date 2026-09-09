@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 696 phrases across 52 files.
+// 695 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -349,8 +349,13 @@ export default {
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
 
     // --- node/js/facets.js ---
+    'facets.kind-posts': 'posts',
+    'facets.kind-replies': 'replies',
+    'facets.kind-rebroadcasts': 'rebroadcasts',
+    'facets.kind-books': 'books',
     'facets.and-n-more': 'and {n} more…',
     'facets.fewer': 'fewer',
+    'facets.kinds': 'show',
     'facets.buckets': 'in',
     'facets.tags': 'tagged',
 
@@ -583,12 +588,6 @@ export default {
     // --- node/js/posts.js ---
     'posts.pinned': 'pinned',
     'posts.recent-posts': 'recent posts',
-    'posts.show-what-they-passed-along': 'show what they passed along',
-    'posts.plus-rebroadcasts': '+ rebroadcasts',
-    'posts.show-their-replies-in': 'show their replies in other peopleu2019s threads',
-    'posts.plus-replies': '+ replies',
-    'posts.show-the-books-they-published': 'show the books they published',
-    'posts.plus-books': '+ books',
     'posts.searching': 'searching…',
     'posts.nothing-they-said-says-that': 'nothing they said says that.',
     'posts.reading-further-back': 'reading further back…',

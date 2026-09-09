@@ -1215,6 +1215,15 @@ pub async fn directory(
 /// a private doc_id asked through this door is a 404, never a leak. Bytes are served with
 /// the stored format's own Content-Type, nosniff, and ETag revalidation (the blob hash:
 /// a different avatar is a different document).
+/// `?via=<root>` on the body doors (2026-09-08): where to ask for a post this node does
+/// not hold - the sharer whose shelf listed it, as a share card knows. Without a hint the
+/// author's own nodes are asked.
+#[derive(serde::Deserialize, Default)]
+pub struct ViaQuery {
+    pub via: Option<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn public_doc_bytes(
     state: &AppState,
     session: &Option<Session>,
@@ -1222,6 +1231,7 @@ pub(crate) async fn public_doc_bytes(
     doc_hex: &str,
     thumb: bool,
     if_none_match: Option<&str>,
+    via: Option<&str>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(seg) else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-persona-here", "no such persona here")));
@@ -1343,6 +1353,23 @@ pub(crate) async fn public_doc_bytes(
             }
             None => from_fragments().await?,
         };
+    // Nothing here has the words and a member is asking: one fetch - from the sharer
+    // whose shelf listed it (`?via=`), else the author's own nodes - whichever way the
+    // author is held: not at all, as a hunch, as a peek short of this post. A share on a
+    // person's page used to read "these words haven't reached this computer" forever
+    // (Curtis, 2026-09-08): nothing ever asked for them.
+    let facts = match facts {
+        Some(f) => Some(f),
+        None if session.is_some() && !hosted_here(state, &root_hex).await.unwrap_or(false) => {
+            let origin = via
+                .filter(|v| v.len() == 64 && v.chars().all(|c| c.is_ascii_hexdigit()))
+                .map(str::to_lowercase)
+                .unwrap_or_else(|| root_hex.clone());
+            crate::fragments::fetch_post(state, &origin, &root, &doc_id).await;
+            from_fragments().await?
+        }
+        None => None,
+    };
     let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only }) = facts else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
     };
@@ -1472,11 +1499,12 @@ pub async fn public_body_route(
     session: Option<Session>,
     headers: axum::http::HeaderMap,
     Path((seg, doc_hex)): Path<(String, String)>,
+    axum::extract::Query(q): axum::extract::Query<ViaQuery>,
 ) -> Result<Response, AppError> {
     let inm = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm).await
+    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await
 }
 
 /// The decorative-filename twin of the body route: baked embeds mint as
@@ -1487,11 +1515,12 @@ pub async fn public_body_named_route(
     session: Option<Session>,
     headers: axum::http::HeaderMap,
     Path((seg, doc_hex, _filename)): Path<(String, String, String)>,
+    axum::extract::Query(q): axum::extract::Query<ViaQuery>,
 ) -> Result<Response, AppError> {
     let inm = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm).await
+    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await
 }
 
 pub async fn public_thumb_route(
@@ -1503,7 +1532,7 @@ pub async fn public_thumb_route(
     let inm = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &session, &seg, &doc_hex, true, inm).await
+    public_doc_bytes(&state, &session, &seg, &doc_hex, true, inm, None).await
 }
 
 /// GET `/api/id/{root}/profile` - the JSON face. Anonymous callers get the shelf rule (hosted
@@ -1612,10 +1641,30 @@ pub async fn id_labels(
     let (buckets, tags) = crate::annotations::label_counts(&state.node_db, &pairs)
         .await
         .map_err(AppError::Internal)?;
+    // The kind row: the posts by their shape, plus every share the persona passed along.
+    let shares = match state.user_dbs.get(&root_hex).await.ok().flatten() {
+        Some(db) => crate::record::imaol::rebroadcasts(&db).await.unwrap_or_default().into_iter().filter(|s| s.version_seen.is_some()).count(),
+        None => 0,
+    };
+    let kinds = crate::search::kind_counts(
+        posts.iter().map(post_kind).chain(std::iter::repeat_n("rebroadcast", shares)),
+    );
     let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
         v.into_iter().map(|(value, count)| serde_json::json!({ "value": value, "count": count })).collect()
     };
-    Ok(axum::Json(serde_json::json!({ "buckets": facet(buckets), "tags": facet(tags) })))
+    Ok(axum::Json(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) })))
+}
+
+/// A shelf post's kind (search.rs KINDS): a book by its format, a reply by its link, a
+/// post otherwise; shares are not posts and are counted beside them.
+fn post_kind(p: &crate::record::documents::PublicDoc) -> &'static str {
+    if crate::record::documents::Format::from_wire(p.format) == crate::record::documents::Format::Book {
+        "book"
+    } else if p.reply_to.is_some() {
+        "reply"
+    } else {
+        "post"
+    }
 }
 
 /// The whole shelf this node holds for a persona - a peek's fragments or the chain - for
@@ -1678,6 +1727,7 @@ pub async fn id_posts(
                 doc_hex: hex::encode(p.doc_id),
                 title: p.title.clone(),
                 updated_ms: p.head_ms,
+                kind: post_kind(p),
             })
             .collect();
         let keep = crate::search::matching(&state, &candidates, &narrow)
@@ -1744,7 +1794,9 @@ pub async fn id_posts(
         None => Vec::new(),
     };
     shares.retain(|s| s.version_seen.is_some());
-    if searching {
+    // Narrowing: words and labels judge posts only, so a share stands aside unless the
+    // kind row alone asks for shares (and it is the kind row that can drop them).
+    if searching && !(narrow.only_kinds() && narrow.kinds_admit("rebroadcast")) {
         shares.clear();
     }
     if let Some((ms, doc)) = &after {

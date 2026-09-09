@@ -556,16 +556,18 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     useEffect(() => {
         let live = true;
         // A scheduled draft has no public body yet: its words come from the private door.
+        // A share's words may live only on the sharer's node: the hint tells the body
+        // door where to ask (2026-09-08).
         const bodyUrl = item.private_doc
             ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
-            : `/id/${item.author}/docs/${item.doc_id}/body`;
+            : `/id/${item.author}/docs/${item.doc_id}/body${item.kind === 'share' && item.via ? `?via=${item.via}` : ''}`;
         apiText(bodyUrl)
             .then((t) => live && setBody(t))
             .catch(() => live && setBody(null));
         return () => {
             live = false;
         };
-    }, [item.author, item.doc_id, item.private_doc]);
+    }, [item.author, item.doc_id, item.private_doc, item.kind, item.via]);
 
     // (A feed post used to mark itself SEEN here, via an IntersectionObserver that fired on
     // scroll. Removed 2026-08-09 with the whole read-state feature - PROJECT_PLAN, One Cursor.

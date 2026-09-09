@@ -1209,23 +1209,6 @@ article:has(.label-emoji-strip) {
     max-width: var(--post-measure);
 }
 
-.shelf-toggle {
-    background: none;
-    border: 1px dashed var(--border);
-    --j: 0.25em;
-    clip-path: var(--jag-1);
-    color: var(--ink-soft);
-    font-size: 0.72rem;
-    padding: 0.15rem 0.6rem;
-    margin-left: 0.5rem;
-    cursor: pointer;
-    vertical-align: middle;
-}
-.shelf-toggle-on {
-    background: var(--surface-2);
-    border-style: solid;
-    color: var(--ink);
-}
 .public-posts-head {
     font-size: 0.85rem;
     font-weight: 600;
@@ -1965,4 +1948,11 @@ article:has(.label-emoji-strip) {
     font-size: 0.8rem;
     padding: 0.15rem 0.6rem;
     width: 9rem;
+}
+
+/* The rule between a person and their posts on the id page (2026-09-08). */
+.id-rule {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 1.2rem 0 0.8rem;
 }

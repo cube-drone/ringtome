@@ -70,6 +70,23 @@ pub struct Narrow {
     pub terms: Vec<String>,
     pub buckets: Vec<String>,
     pub tags: Vec<String>,
+    /// The kind row (2026-09-08): `post`, `reply`, `rebroadcast`, `book` - nothing picked
+    /// shows everything, picks narrow to just those kinds (OR), like the other rows.
+    pub kinds: Vec<String>,
+}
+
+/// The kinds a row can be, in the row's fixed order; a post is what is none of the others.
+pub const KINDS: [&str; 4] = ["post", "reply", "rebroadcast", "book"];
+
+/// The kind row's counts over a set of kinds, in the fixed order, the absent left out.
+pub fn kind_counts<'a>(kinds: impl Iterator<Item = &'a str>) -> Vec<(String, i64)> {
+    let mut n = [0i64; 4];
+    for k in kinds {
+        if let Some(i) = KINDS.iter().position(|x| *x == k) {
+            n[i] += 1;
+        }
+    }
+    KINDS.iter().zip(n).filter(|(_, c)| *c > 0).map(|(k, c)| (k.to_string(), c)).collect()
 }
 
 impl Narrow {
@@ -83,6 +100,7 @@ impl Narrow {
             match &*k {
                 "bucket" => n.buckets.push(v.to_string()),
                 "tag" => n.tags.push(v.to_string()),
+                "kind" if KINDS.contains(&v) => n.kinds.push(v.to_string()),
                 _ => {}
             }
         }
@@ -90,6 +108,17 @@ impl Narrow {
     }
 
     pub fn is_empty(&self) -> bool {
+        self.terms.is_empty() && self.buckets.is_empty() && self.tags.is_empty() && self.kinds.is_empty()
+    }
+
+    /// The kind half of the judgment.
+    pub fn kinds_admit(&self, kind: &str) -> bool {
+        self.kinds.is_empty() || self.kinds.iter().any(|k| k == kind)
+    }
+
+    /// Words and labels judge posts only; a share has neither, so it answers the kind
+    /// row alone.
+    pub fn only_kinds(&self) -> bool {
         self.terms.is_empty() && self.buckets.is_empty() && self.tags.is_empty()
     }
 
@@ -107,6 +136,8 @@ pub struct Candidate {
     pub doc_hex: String,
     pub title: String,
     pub updated_ms: i64,
+    /// One of `KINDS`.
+    pub kind: &'static str,
 }
 
 /// Where a public post's words live, if this node has them: the fragment ledger first (a
@@ -213,6 +244,9 @@ pub async fn matching(state: &AppState, candidates: &[Candidate], narrow: &Narro
     let mut budget = INDEX_PER_QUERY;
     let mut out = Vec::new();
     for (i, c) in candidates.iter().enumerate() {
+        if !narrow.kinds_admit(c.kind) {
+            continue;
+        }
         if let Some(known) = &labelled {
             let (mut buckets, mut tags) = (Vec::new(), Vec::new());
             for a in known.get(&(c.author_root.clone(), c.doc_hex.clone())).map(|v| v.as_slice()).unwrap_or(&[]) {
@@ -259,7 +293,7 @@ pub async fn index_pass(state: AppState) -> Result<()> {
             if budget == 0 {
                 break;
             }
-            let c = Candidate { author_root: r.author_root, doc_hex: r.doc_id, title: r.title, updated_ms: r.updated_ms };
+            let c = Candidate { author_root: r.author_root, doc_hex: r.doc_id, title: r.title, updated_ms: r.updated_ms, kind: "post" }; // the kind is the judge's business, not the index's
             let _ = bag_for(&state, &c, &mut budget).await?;
         }
     }
@@ -294,8 +328,12 @@ mod tests {
     /// Buckets widen (OR), tags narrow (AND), and the raw query string carries both.
     #[test]
     fn narrowing_parses_repeats_and_judges_labels() {
-        let n = Narrow::parse(Some("bucket=feed&bucket=recipes&tag=bread&tag=slow&q=ignored%20here"), Some("Sour"));
+        let n = Narrow::parse(Some("bucket=feed&bucket=recipes&tag=bread&tag=slow&kind=book&kind=nonsense&q=ignored%20here"), Some("Sour"));
         assert_eq!(n.buckets, vec!["feed", "recipes"]);
+        assert_eq!(n.kinds, vec!["book"], "a kind the row does not know is dropped");
+        assert!(n.kinds_admit("book") && !n.kinds_admit("post"));
+        assert!(Narrow::default().kinds_admit("reply"), "nothing picked admits every kind");
+        assert_eq!(kind_counts(["post", "book", "post", "odd"].into_iter()), vec![("post".to_string(), 2), ("book".to_string(), 1)]);
         assert_eq!(n.tags, vec!["bread", "slow"]);
         assert_eq!(n.terms, vec!["sour"]);
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
