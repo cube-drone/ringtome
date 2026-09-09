@@ -8859,3 +8859,10 @@ narrowing path, and that path's item mapping (mine, from the search) stamped the
 root onto every result, shares included - so the card asked the page's persona for words
 somebody else wrote. A share keeps its own author now; the mapping is one pure function
 for both paths, with a test.
+
+## 2026-09-08: the picks keep for the session
+
+Curtis: the same kinds, buckets and tags picked, across a refresh, for the feed and for
+each person's page - in the browser, never across a server. One hook (`usePicks`) keeps
+each page's picks in sessionStorage, the feed per persona and a person's page per person,
+read on mount and written on every change, absent storage leaving the picks to the page.

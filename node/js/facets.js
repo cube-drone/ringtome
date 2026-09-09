@@ -79,5 +79,40 @@ export const LabelFacets = ({ labels, picks, onPicks }) => {
 };
 
 export const NO_PICKS = { kinds: [], buckets: [], tags: [] };
+
+/// The picks, kept for the browser session (Curtis, 2026-09-08): a refresh of the feed
+/// or of a person's page finds the same kinds, buckets and tags picked. Keyed by the
+/// page - the feed per persona, a person's page per person - in sessionStorage, so it
+/// stays in this tab and never crosses a server. Storage may be absent or full; the picks
+/// then live for the page alone.
+const PICKS_PREFIX = 'picks:';
+const readPicks = (key) => {
+    try {
+        const raw = sessionStorage.getItem(PICKS_PREFIX + key);
+        const p = raw ? JSON.parse(raw) : null;
+        return p && typeof p === 'object' ? { ...NO_PICKS, ...p } : NO_PICKS;
+    } catch {
+        return NO_PICKS;
+    }
+};
+const writePicks = (key, picks) => {
+    try {
+        if (anyPicks(picks)) sessionStorage.setItem(PICKS_PREFIX + key, JSON.stringify(picks));
+        else sessionStorage.removeItem(PICKS_PREFIX + key);
+    } catch {
+        /* no storage: the picks live for the page */
+    }
+};
+export function usePicks(key) {
+    const [picks, setPicksState] = useState(() => (key ? readPicks(key) : NO_PICKS));
+    useEffect(() => {
+        setPicksState(key ? readPicks(key) : NO_PICKS);
+    }, [key]);
+    const setPicks = (next) => {
+        setPicksState(next);
+        if (key) writePicks(key, next);
+    };
+    return [picks, setPicks];
+}
 export const anyPicks = (picks) =>
     !!(picks && ((picks.kinds || []).length || (picks.buckets || []).length || (picks.tags || []).length));

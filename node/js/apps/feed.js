@@ -54,7 +54,7 @@ import { SELECTIVITY_STOPS, DEFAULT_STOP, effectiveInterest, visibleAt } from '.
 import { useDocDetail } from '../doc/detail.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch } from '../postsearch.js';
-import { LabelFacets, NO_PICKS, useLabels } from '../facets.js';
+import { LabelFacets, useLabels, usePicks } from '../facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { t } from '../i18n.js';
 import {
@@ -364,7 +364,7 @@ const FeedStream = ({ root, current, contacts, fresh, scheduled, editingFor, sea
     // the interest dials still shape them, and your own posts still bypass.
     // The facet strip (facets.js): the whole journal's buckets and tags, picks narrowing
     // the stream through the same door as the words.
-    const [picks, setPicks] = useState(NO_PICKS);
+    const [picks, setPicks] = usePicks(root ? `feed:${root}` : null);
     // The dial narrows the lists and the search too (Curtis, 2026-09-08): the node counts
     // and matches only what the feed at this stop shows.
     const stopParam = stopKey && stopKey !== 'explorer' ? `?stop=${encodeURIComponent(stopKey)}` : '';

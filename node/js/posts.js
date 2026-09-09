@@ -21,7 +21,7 @@ import { publishedState } from './pure/feed.js';
 import { t } from './i18n.js';
 import { useSearch } from './postsearch.js';
 import { shelfItem } from './pure/shelf.js';
-import { LabelFacets, NO_PICKS, useLabels } from './facets.js';
+import { LabelFacets, useLabels, usePicks } from './facets.js';
 
 const html = htm.bind(h);
 
@@ -123,7 +123,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
     // query is open. Hooks before the early return below, as always.
-    const [picks, setPicks] = useState(NO_PICKS);
+    const [picks, setPicks] = usePicks(root ? `id:${root}` : null);
     const viewer = current ? `?as=${current.root}` : '';
     const labels = useLabels(`/api/id/${root}/labels${viewer}`, (posts || []).length);
     const search = useSearch(`/api/id/${root}/posts${viewer}`, searchQuery, picks);
