@@ -514,8 +514,11 @@ async fn main() -> anyhow::Result<()> {
     };
     loops::periodic("journal-fill", fill_beat, state.clone(), fanout::fill_pass);
     // The public text index's backlog walk (search.rs): a bounded slice per beat, so the
-    // first search over a deep journal is rarely the one that pays for reading it.
-    loops::periodic("search-index", fill_beat, state.clone(), search::index_pass);
+    // first search over a deep journal is rarely the one that pays for reading it. Its own
+    // slow beat, never the journal fill's (2026-09-08): on the rig the fill beat is a
+    // second, and an index walk every second beside the fill pass loaded the dig's claim
+    // into the red; the test door rings the index directly when a claim wants it.
+    loops::periodic("search-index", std::time::Duration::from_secs(60), state.clone(), search::index_pass);
     // Scheduled publishes (PUBLISH.md slice 2): drafts whose preferred date lay in the
     // future mint when their moment comes. A minute is plenty - the date is a day at an
     // hour, never a deadline - and LOCAL_TEST may shorten it.

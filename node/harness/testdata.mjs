@@ -423,7 +423,8 @@ const ACTIONS = [
         weight: 10,
         run: async (ctx, p, rng) => {
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
-            const theirs = (feed.items || []).filter((i) =>
+            const theirs = (feed.items || []).filter((i) => !i.trusted_only && !i.settled) // a sealed or settled post is not passed along (2026-09-08)
+                .filter((i) =>
                 i.author !== p.root && !p.shares.some((s) => s.author === i.author && s.doc_id === i.doc_id));
             // Half the time, prefer something that reached this persona BY a share. Uniform
             // draws make a network where every post is passed along at most once, so the

@@ -184,6 +184,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     current=${current}
                     parent=${{ author: root, doc_id: threadDoc }}
                     onReplied=${(mint) => setSaid((have) => [...have, mint])}
+                    sealed=${!!item.trusted_only}
                 />`}
             </section>`}
             ${item && !isBook && html`<${CopyChain} author=${root} annotations=${post.annotations} />`}
@@ -360,7 +361,7 @@ const HeldReplyBody = ({ author, doc }) => {
 /// permalink visit would mint an empty document per view, and a mint behind a click is
 /// ref-guarded so a double-click cannot mint two. An abandoned draft lands in the feed
 /// app's own "older drafts" stack, editable like any other.
-const ReplyBox = ({ current, parent, onReplied }) => {
+const ReplyBox = ({ current, parent, onReplied, sealed = false }) => {
     const [draftId, setDraftId] = useState(null);
     const [posting, setPosting] = useState(false);
     const [baking, setBaking] = useState(null);
@@ -395,6 +396,7 @@ const ReplyBox = ({ current, parent, onReplied }) => {
         try {
             const made = await publishWithBaking(root, draftId, setBaking, {
                 reply_to: { author: parent.author, doc_id: parent.doc_id },
+                ...(sealed ? { trusted_only: true } : {}),
             });
             onReplied({ author: root, doc_id: made.post_id });
             // Said: the box returns to rest, ready to mint a fresh page for the next
@@ -409,6 +411,13 @@ const ReplyBox = ({ current, parent, onReplied }) => {
     };
 
     return html`<div class="replybox">
+        ${/* A reply to a sealed post wears the author's seal (PROJECT_PLAN's Replies under
+            the author's seal): only people the author trusts will read it, and the seal
+            is not the commenter's to choose - so no toggle, just the word. */ ''}
+        ${sealed &&
+        html`<p class="replybox-note">
+            ${t('postpage.this-reply-will-wear-the-authors-seal', "this reply will wear the author's seal - only people the author trusts will read it")}
+        </p>`}
         <${BakeModal} items=${baking} />
         ${draftId &&
         html`<p class="replybox-note">

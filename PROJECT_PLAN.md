@@ -3752,7 +3752,9 @@ the sharer publishes trust for) stays a direction, not a build: the feed filter 
 delivers the visible outcome, and the present design's free carriage plus instant recovery
 outweigh the ciphertext bandwidth it would save; if that ever changes, the shape is a hook
 that re-folds withheld pointers when a trust edge from their author lands in the edge fold.
-Bare media posts take no flags (no UI mints one). A COMMENT envelope about a settled post
+A sealed post is not passed along (Curtis, 2026-09-08): a share would move the pointer
+and the carriage but never the key, so it means less than a share usually does - the
+button is gone on sealed posts and the door refuses. Bare media posts take no flags (no UI mints one). A COMMENT envelope about a settled post
 still transcribes to the bell (only a malicious client sends one); a double-tapped sealed
 publish mints one redundant version (the nonce moves the ciphertext hash past the no-op
 bounce); key rotation on revocation is future-posts-only.
@@ -4045,6 +4047,48 @@ day; the first app shipped afterwards either shadows every notebook a person alr
 that name or takes an awkward name to avoid them. Disjoint floors cost one short word and
 end the conversation. One constant names the word; the pure address builder writes the
 floor and the resolver reads it; every hand-written link goes through one `bucketHref`.
+
+### Replies under the author's seal, and sealed titles (settled 2026-09-08)
+
+A sealed conversation stays pinned to the context it began in. Two rulings, one key.
+
+1. **A reply to a sealed post is sealed under the parent's key.** A trusted reader holds the
+   post's key already; their reply's words are encrypted under that same key, so whoever can
+   obtain the parent's key from the author's gate can read the reply, and nobody else can.
+   The author's gate stays the only gate - no re-keying, no second audience - and the
+   audience of the conversation equals the audience of the post by construction. The reply
+   still lives on the commenter's own chain, as ciphertext, so sync and carriage are the
+   sealed post's own. Composed with private audiences (tags on acquaintances, when they
+   come): my brother's reply to a family post is readable by my mother and never by his
+   colleagues, whatever he dials for them.
+2. **The parent's seal says so - no new wire.** A sealed reply whose parent is sealed wears
+   the parent's seal; a sealed reply to an open parent wears its own, as before. Every door
+   resolves the seal's holder from the two headers it already holds: the body door looks
+   for the parent's key and applies the parent author's trust, and readers never ask the
+   commenter's node for a key at all - they ask the parent's author, as for the post.
+3. **No key, no reply.** The mint reads the parent's key from the key memo; a replier who
+   never could read the parent has none, and the door refuses with words. The reply box
+   under a sealed parent says the reply will wear the author's seal, and offers no toggle:
+   the seal is not the commenter's to choose.
+4. **The feed judges a sealed reply by the parent's author.** A follower of the commenter
+   whom the original author does not trust sees nothing - no hollow card - exactly as for
+   the sealed post itself. Threads hide what the reader cannot open the same way.
+5. **The title is sealed too.** "TALKIN BOUT MY BUTT MEDICINE" is personal before a word of
+   the body is read. A sealed post's public header carries no title; the title rides inside
+   the sealed words as the document's own meta, and every surface that would show a sealed
+   post's title - the card, the mini-card, the bell, the shelf, a book's table - reads it
+   from the decrypted words, which only the trusted have. The untrusted see nothing, since
+   the surfaces already hide what they cannot open; the one honest line ("the author shares
+   these words only with people they trust") carries no title.
+6. **The edges, named.** A takedown of the parent leaves its replies sealed under a key
+   nobody hands out any more: they go dark with it, the pinned behaviour taken to its end.
+   The commenter's other computers read their own reply as anyone does, by asking the
+   author's gate, which trusts the persona, not the device. A sealed reply to a sealed reply
+   chains to the root post's key: one key per conversation.
+
+Slices: (1) replies under the seal - the header flag, the mint, the doors, the feed and
+thread filters, the reply box, the suite; (2) sealed titles - the header, the meta, every
+title surface, the suite.
 
 ### The Identity Tree Is Its Own Peer-Discovery Structure
 

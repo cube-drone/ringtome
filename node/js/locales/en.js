@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 695 phrases across 52 files.
+// 699 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -578,6 +578,7 @@ export default {
     'postpage.approve-comment': 'approve comment',
     'postpage.keep-quiet': 'keep quiet',
     'postpage.a-reply-whose-words-havent': "a reply whose words haven't reached this computer yet",
+    'postpage.this-reply-will-wear-the-authors-seal': "this reply will wear the author's seal - only people the author trusts will read it",
     'postpage.replying-is-public-and-shares': 'replying is public - and shares this post with your own followers',
     'postpage.write-a-reply': 'write a reply…',
     'postpage.looking-for-more': 'looking for more of the conversation…',
@@ -653,14 +654,17 @@ export default {
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
     'identity.routes.this-notebook-is-not-switched': 'this notebook is not switched to publish as a book',
     'identity.routes.this-notebook-has-no-published': 'this notebook has no published book',
+    'identity.routes.cant-reply-to-words-you-cant-read': "you can't reply to words the author doesn't share with you",
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
     'identity.routes.settled-no-replies': 'the author turned off comments for this post',
+    'identity.routes.a-sealed-reply-carries-words-only': "a reply under the author's seal carries words only, for now - no pictures",
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.this-computer-doesnt-have-that-post-2': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.rebroadcast-is-for-other-peoples-documents': "a persona rebroadcasts other people's documents; publish your own",
     'identity.routes.this-computer-doesnt-have-that-post': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.settled-no-shares': 'the author turned off rebroadcasts for this post',
+    'identity.routes.sealed-no-shares': 'a post shared only with people the author trusts is not passed along',
     'identity.routes.this-node-doesnt-host-that': "this node doesn't host that persona",
     'identity.routes.bad-what-expected-hex-chars': 'bad {what} (expected {chars} hex chars)',
     'identity.routes.unknown-format-s-plaintext-marquee': 'unknown format {s:?} (plaintext | marquee)',

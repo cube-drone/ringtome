@@ -795,31 +795,57 @@ async fn feed_kinds(state: &AppState, rows: &[crate::fanout::FeedRow]) -> Result
 /// The journal rows this reader may see: a trusted-only post stays unless the author
 /// publishes trust for the reader (or is the reader). Shared by the page and the facets.
 async fn readable_feed_rows(state: &AppState, root: &str, rows: Vec<crate::fanout::FeedRow>) -> Vec<crate::fanout::FeedRow> {
-        let mut trusted_here: std::collections::HashMap<String, bool> = Default::default();
-        let mut keep = Vec::with_capacity(rows.len());
-        for r in rows {
-            if !r.trusted_only || r.author_root == root {
-                keep.push(r);
-                continue;
-            }
-            let ok = match trusted_here.get(&r.author_root) {
-                Some(v) => *v,
-                None => {
-                    let v = match state.user_dbs.get(&r.author_root).await {
-                        Ok(Some(db)) => crate::record::imaol::published_edges(&db)
-                            .await
-                            .map(|e| e.get(root).is_some_and(|row| row.edge.trust.is_some()))
-                            .unwrap_or(false),
-                        _ => false,
-                    };
-                    trusted_here.insert(r.author_root.clone(), v);
-                    v
+    // A sealed reply to a sealed parent wears the PARENT's seal (PROJECT_PLAN's Replies under
+    // the author's seal): the parent's author is the one whose trust opens it. One links
+    // read for the sealed rows names their parents.
+    let sealed_pairs: Vec<(String, String)> = rows
+        .iter()
+        .filter(|r| r.trusted_only)
+        .map(|r| (r.author_root.clone(), r.doc_id.clone()))
+        .collect();
+    let links = if sealed_pairs.is_empty() {
+        Default::default()
+    } else {
+        crate::replies::links_for(&state.node_db, &sealed_pairs).await.unwrap_or_default()
+    };
+    let mut trusted_here: std::collections::HashMap<String, bool> = Default::default();
+    let mut keep = Vec::with_capacity(rows.len());
+    for r in rows {
+        if !r.trusted_only {
+            keep.push(r);
+            continue;
+        }
+        let mut holder = r.author_root.clone();
+        if let Some(l) = links.get(&(r.author_root.clone(), r.doc_id.clone())) {
+            let (pa, pd) = &l.parent;
+            if let Ok(Ok(pd)) = hex::decode(pd).map(|b| <[u8; 16]>::try_from(b.as_slice())) {
+                if crate::idface::sealed_here(state, pa, &pd).await == Some(true) {
+                    holder = pa.clone();
                 }
-            };
-            if ok {
-                keep.push(r);
             }
         }
+        if holder == root {
+            keep.push(r);
+            continue;
+        }
+        let ok = match trusted_here.get(&holder) {
+            Some(v) => *v,
+            None => {
+                let v = match state.user_dbs.get(&holder).await {
+                    Ok(Some(db)) => crate::record::imaol::published_edges(&db)
+                        .await
+                        .map(|e| e.get(root).is_some_and(|row| row.edge.trust.is_some()))
+                        .unwrap_or(false),
+                    _ => false,
+                };
+                trusted_here.insert(holder.clone(), v);
+                v
+            }
+        };
+        if ok {
+            keep.push(r);
+        }
+    }
     keep
 }
 
@@ -1744,6 +1770,31 @@ async fn book_takedown_handler(
 /// else the parent - parent-plus-root, never the ancestor path. A parent this computer
 /// does not hold refuses with words: a reply minted blind could neither copy the root
 /// claim nor honor the pin.
+/// The parent's key when the parent is sealed (PROJECT_PLAN's Replies under the author's
+/// seal): from the memo, else over the key lane; a sealed parent this node cannot open
+/// refuses the reply. `None` for an open parent.
+async fn sealed_parent_key(state: &AppState, parent: &([u8; 32], [u8; 16])) -> Result<Option<[u8; 32]>, AppError> {
+    let (author, doc) = parent;
+    let author_hex = hex::encode(author);
+    if crate::idface::sealed_here(state, &author_hex, doc).await != Some(true) {
+        return Ok(None);
+    }
+    let key = match crate::postkeys::lookup(&state.node_db, &author_hex, &hex::encode(doc))
+        .await
+        .map_err(AppError::Internal)?
+    {
+        Some(k) => Some(k),
+        None => crate::net::fragment::fetch_key(state, author, doc).await,
+    };
+    match key {
+        Some(k) => Ok(Some(k)),
+        None => Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.cant-reply-to-words-you-cant-read",
+            "you can't reply to words the author doesn't share with you"
+        ))),
+    }
+}
+
 async fn resolve_reply_link(
     state: &AppState,
     parent: &ReplyRef,
@@ -1824,6 +1875,33 @@ async fn publish_handler(
             .await?
             .is_some_and(|v| v.trim() == "yes"),
     };
+    // A reply to a sealed parent is sealed under the PARENT's key (PROJECT_PLAN's Replies
+    // under the author's seal): the key comes from the memo - a replier who never could
+    // read the parent has none, and is refused with words - and rides the draft as its
+    // trusted key, so the mint seals the words under it and every door judges the reply by
+    // the parent's author. The seal is not the commenter's to choose. Media in such a
+    // reply is refused for now: a twin's key is looked up by the twin's own id, and a twin
+    // cannot name the parent whose key it would need (a residual).
+    let parent_sealed = match &reply {
+        Some((parent, _)) => sealed_parent_key(&state, parent).await?,
+        None => None,
+    };
+    if let Some(key) = parent_sealed {
+        data.annotations().set_field(&doc_id, store::TRUSTED_KEY, &hex::encode(key)).await?;
+        let docs = data.documents();
+        let view = docs.all().await?;
+        if let Some(d) = view.docs.get(&doc_id) {
+            if let Some(body) = docs.resolved(d).await?.body {
+                if !crate::record::bake::media_refs(&body, &root).is_empty() {
+                    return Err(AppError::BadRequest(crate::msg!(
+                        "identity.routes.a-sealed-reply-carries-words-only",
+                        "a reply under the author's seal carries words only, for now - no pictures"
+                    )));
+                }
+            }
+        }
+    }
+    let trusted_only = trusted_only || parent_sealed.is_some();
     // The preferred date (PUBLISH.md): the draft's `display_date` claim, resolved HERE with
     // the request's timezone offset - re-read at every publish, so a date changed inside the
     // edit window re-sorts the post everywhere.
@@ -2159,10 +2237,21 @@ async fn rebroadcast_handler(
         if let Some(h) =
             held_public_header(&state, &hex::encode(author), &hex::encode(doc_id)).await?
         {
+
             if h.settled {
                 return Err(AppError::BadRequest(crate::msg!(
                     "identity.routes.settled-no-shares",
                     "the author turned off rebroadcasts for this post"
+                )));
+            }
+            // A sealed post is not passed along either (Curtis, 2026-09-08): a share moves the
+            // pointer and the carriage, never the key, so it means less than a share usually
+            // does - "it won't work the way users expect it to". The button is gone; the door
+            // refuses what no button reaches.
+            if h.trusted_only {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "identity.routes.sealed-no-shares",
+                    "a post shared only with people the author trusts is not passed along"
                 )));
             }
         }

@@ -135,7 +135,7 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
 };
 
 (HOST_B && HOST_C && HOST_E ? describe : describe.skip)(
-    "combinations 1: a trusted-only book with a video title page, tags, two hops of shares, an update, and a takedown",
+    "combinations 1: a trusted-only book with a video title page, tags, a refused share, an update, and a takedown",
     function () {
         this.timeout(900000);
 
@@ -236,56 +236,38 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             assert.equal((await bea(`id/${adaRoot}/docs/${twin}/thumb`)).status, 200, "poster too");
         });
 
-        it("[book x trusted x rebroadcast] hop 1: the share journals the sealed book, flag intact; the relay's feed shows nothing and the tree refuses him", async () => {
+        it("[book x trusted x rebroadcast] a sealed book is not passed along (Curtis, 2026-09-08): the share is refused, nothing reaches the relay, and the seal holds two hops out", async () => {
             const shared = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, { author: adaRoot, doc_id: book });
-            assert.equal(shared.status, 200, await shared.text());
-            let jrow = null;
-            for (let i = 0; i < 30 && !jrow; i++) {
-                await shareArrives(HOST_C, beaRoot, adaRoot);
-                jrow = await journalRowOf(HOST_C, calRoot, book);
-            }
-            assert.ok(jrow, "the pointer reached cal's journal");
-            assert.equal(jrow.trusted_only, 1, "wearing the seal");
-            assert.equal(await feedRowOf(cal, calRoot, book), undefined, "the feed shows cal nothing he cannot open");
+            assert.equal(shared.status, 400, await shared.clone().text());
+            assert.match(await shared.text(), /not passed along/);
+            await shareArrives(HOST_C, beaRoot, adaRoot);
+            assert.equal(await journalRowOf(HOST_C, calRoot, book), undefined, "no pointer reaches cal's journal");
+            assert.equal(await feedRowOf(cal, calRoot, book), undefined, "the relay's feed shows nothing");
             assert.notEqual((await cal(`id/${adaRoot}/docs/${book}/body`)).status, 200, "the tree is sealed against him");
             assert.notEqual((await cal(`id/${adaRoot}/docs/${twin}/body`)).status, 200, "and so is the video");
-        });
-
-        it("[book x trusted x rebroadcast x video] hop 2: the relay relays what it cannot read; trust reveals the book two hops out, tree, page and video", async () => {
-            const onward = await j(cal, `api/identity/${calRoot}/rebroadcasts`, { author: adaRoot, doc_id: book });
-            assert.equal(onward.status, 200, await onward.text());
-            let jrow = null;
-            for (let i = 0; i < 30 && !jrow; i++) {
-                await shareArrives(HOST_E, calRoot, adaRoot);
-                jrow = await journalRowOf(HOST_E, eveRoot, book);
-            }
-            assert.ok(jrow, "the pointer crossed a second hop");
-            assert.equal(jrow.trusted_only, 1, "flag intact through the relay");
-            assert.equal(await feedRowOf(eve, eveRoot, book), undefined, "hidden from eve while untrusted");
-            // ada trusts eve; eve meets ada so her node can ask for the key.
+            // Trust, and a follow of the author, is the only road: eve reads the book, tree, page and video.
             await trustAndMeet(ada, adaRoot, eve, eveRoot);
             await eve(`api/id/${adaRoot}/profile?via=${await base58(ada)}`);
+            await dial(eve, eveRoot, adaRoot, "interest", "high");
             await pullAndFold(HOST_E, adaRoot);
             let row = null;
             for (let i = 0; i < 40 && !row; i++) {
                 row = await feedRowOf(eve, eveRoot, book);
                 if (!row) await sleep(400);
             }
-            assert.ok(row, "the row appears the moment trust does");
+            assert.ok(row, "the row appears with the follow and the trust");
             assert.equal(row.format, "book");
             assert.equal(row.trusted_only, true);
             const tree = await opens(eve, `id/${adaRoot}/docs/${book}/body`);
-            assert.ok(tree, "trust opens the table of contents two hops out");
+            assert.ok(tree, "trust opens the table of contents");
             const body = JSON.parse(await tree.text());
             assert.equal(body.title, "on squirrels");
             const page = await opens(eve, `id/${adaRoot}/docs/${body.sections[0].pages[0].post}/body`);
-            assert.ok(page, "a page of a book that arrived by share opens for the trusted");
+            assert.ok(page, "and a page");
             assert.equal(await page.text(), "the first words");
             const video = await opens(eve, `id/${adaRoot}/docs/${twin}/body`);
-            assert.ok(video, "the sealed video opens two hops out");
+            assert.ok(video, "and the sealed video");
             assert.equal(video.headers.get("content-type"), "video/webm");
-            assert.equal(await feedRowOf(cal, calRoot, book), undefined, "the relay in the middle still sees nothing");
-            assert.notEqual((await cal(`id/${adaRoot}/docs/${book}/body`)).status, 200, "and still cannot read what it carried");
         });
 
         it("[book x trusted x update] a second rollout re-says a changed page under the same seal, and the update post is sealed and threaded", async () => {
@@ -312,7 +294,7 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
             assert.ok(row && row.trusted_only === true, "the follower's feed carries the sealed update");
         });
 
-        it("[book x trusted x video x takedown x rebroadcast] the takedown takes the book, the pages, the update and the video, and follows the shares to the far end", async () => {
+        it("[book x trusted x video x takedown] the takedown takes the book, the pages, the update and the video, and reaches every follower to the far end", async () => {
             const took = await ada(`api/identity/${adaRoot}/books/${bucket}`, { method: "DELETE" });
             const text = await took.text();
             assert.equal(took.status, 200, text);
@@ -328,12 +310,12 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
                 await pullAndFold(HOST_B, adaRoot);
                 await beat(HOST_C, "fragment-sweep", adaRoot);
                 await beat(HOST_E, "fragment-sweep", adaRoot);
-                stillThere = !!(await feedRowOf(bea, beaRoot, book)) || !!(await feedRowOf(bea, beaRoot, update)) || !!(await journalRowOf(HOST_E, eveRoot, book));
+                stillThere = !!(await feedRowOf(bea, beaRoot, book)) || !!(await feedRowOf(bea, beaRoot, update)) || !!(await feedRowOf(eve, eveRoot, book));
                 if (stillThere) await sleep(400);
             }
             assert.equal(await feedRowOf(bea, beaRoot, book), undefined, "the follower's feed drops the book");
             assert.equal(await feedRowOf(bea, beaRoot, update), undefined, "and the update");
-            assert.equal(await journalRowOf(HOST_E, eveRoot, book), undefined, "the takedown reached the second hop's journal");
+            assert.equal(await feedRowOf(eve, eveRoot, book), undefined, "the takedown reached the trusted follower two nodes away");
             assert.notEqual((await eve(`id/${adaRoot}/docs/${book}/body`)).status, 200, "and the tree no longer serves there");
             const docs = (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs;
             assert.ok(docs.filter((d) => d.buckets && d.buckets.includes(bucket)).every((d) => !d.fields.published_as), "every note is a draft again");

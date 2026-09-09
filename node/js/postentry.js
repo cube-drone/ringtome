@@ -831,7 +831,9 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         : backdated
                           ? html`<span class="feed-entry-when feed-entry-dated" title=${t('postentry.dated-by-its-author', 'dated by its author - written down {minted}', { minted })}>${when}</span>`
                           : html`<span class="feed-entry-when">${when}</span>`}
-                    ${!item.mine && !!current && !item.settled && html`<${ShareButton} item=${item} current=${current} />`}
+                    ${/* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
+                        never the key, and that is not what the button promises. */ ''}
+                    ${!item.mine && !!current && !item.settled && !item.trusted_only && html`<${ShareButton} item=${item} current=${current} />`}
                     ${/* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
                         feed's own) is edited where it lives: "edit" with the note-pencil goes to
                         that note in Writer, and the publish bar there says the changes again.

@@ -219,7 +219,7 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
             )
         ).rows[0];
 
-    it("hop 1: the pointer journals with its flag; the feed hides what cal cannot open", async function () {
+    it("a sealed post is not passed along (Curtis, 2026-09-08): the trusted reader's share is refused, and nothing journals downstream", async function () {
         if (!HOST_C) this.skip();
         cal = await makeUserFetch({ prefix: "trustcal", host: HOST_C });
         calRoot = (await (await cal("api/identity", { method: "POST" })).json()).root_pubkey;
@@ -234,92 +234,13 @@ describe("trusted-only posts: the body goes to trusted readers", function () {
             method: "POST",
             body: JSON.stringify({ author: adaRoot, doc_id: post }),
         });
-        assert.equal(shared.status, 200, await shared.text());
-        let jrow = null;
-        for (let i = 0; i < 30 && !jrow; i++) {
-            await shareArrives(HOST_C, beaRoot, adaRoot);
-            jrow = await journalRow(HOST_C, calRoot);
-        }
-        assert.ok(jrow, "the pointer reached cal's journal");
-        // And bea's own SHELF now lists the share (Curtis, 2026-09-02: the page defaults
-        // to everything) - kind-tagged, wearing her as the via.
-        {
-            const shelf = await (await bea(`api/id/${beaRoot}/posts`)).json();
-            const share = (shelf.posts || []).find(
-                (i) => i.kind === "share" && i.doc_id === post
-            );
-            assert.ok(share, "the share sits on the shelf");
-            assert.equal(share.via, beaRoot);
-            assert.equal(share.author, adaRoot, "the card still belongs to its author");
-        }
-        assert.equal(jrow.trusted_only, 1, "wearing the flag");
-        assert.equal(await feedRow(cal, calRoot), undefined,
-            "and the feed shows cal nothing he cannot open");
-        const body = await cal(`id/${adaRoot}/docs/${post}/body`);
-        assert.notEqual(body.status, 200, "the words sealed against cal");
-    });
-
-    it("hop 2: the relay relays; trust reveals the row and opens the body, never for the relay", async function () {
-        if (!HOST_E || !calRoot) this.skip();
-        eve = await makeUserFetch({ prefix: "trusteve", host: HOST_E });
-        eveRoot = (await (await eve("api/identity", { method: "POST" })).json()).root_pubkey;
-        await eve(`api/identity/${eveRoot}/serve`, { method: "POST" });
-        const viaCal = await base58(cal);
-        if ((await eve(`api/id/${calRoot}/profile?via=${viaCal}`)).status !== 200) this.skip();
-        await eve(`api/identity/${eveRoot}/private/kv/contact:${calRoot}/interest_rebroadcasts`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
-        });
-        // cal shares onward: the mint needs a held VERSION, and cal's fragment shelf holds
-        // the (ciphertext) fragment - carriage never required reading.
-        const onward = await cal(`api/identity/${calRoot}/rebroadcasts`, {
-            method: "POST",
-            body: JSON.stringify({ author: adaRoot, doc_id: post }),
-        });
-        assert.equal(onward.status, 200, await onward.text());
-        let jrow = null;
-        for (let i = 0; i < 30 && !jrow; i++) {
-            await shareArrives(HOST_E, calRoot, adaRoot);
-            jrow = await journalRow(HOST_E, eveRoot);
-        }
-        assert.ok(jrow, "the pointer crossed a second hop");
-        assert.equal(jrow.trusted_only, 1, "flag intact through the relay");
-        assert.equal(await feedRow(eve, eveRoot), undefined, "hidden from eve while untrusted");
-        assert.notEqual((await eve(`id/${adaRoot}/docs/${post}/body`)).status, 200,
-            "and sealed against her");
-        // ada trusts eve, and meets her - the ceremony the real app cannot skip, since
-        // trust is dialed from a profile page; it is what puts eve's chains where the
-        // key-release check can resolve her serving records.
-        await ada(`api/identity/${adaRoot}/private/kv/contact:${eveRoot}/trust`, {
-            method: "PUT",
-            body: JSON.stringify({ value: "high" }),
-        });
-        await beat(undefined, "mint", adaRoot);
-        const viaEve = await base58(eve);
-        await ada(`api/id/${eveRoot}/profile?via=${viaEve}`);
-        await pullAndFold(undefined, eveRoot);
-        const viaAda = await base58(ada);
-        await eve(`api/id/${adaRoot}/profile?via=${viaAda}`);
-        await pullAndFold(HOST_E, adaRoot);
-        // Trust REVEALS: the same journal row now surfaces in eve's feed, flag and all.
-        let row = null;
-        for (let i = 0; i < 40 && !row; i++) {
-            row = await feedRow(eve, eveRoot);
-            if (!row) await new Promise((res) => setTimeout(res, 400));
-        }
-        assert.ok(row, "the row appears the moment trust does");
-        assert.equal(row.trusted_only, true);
-        assert.equal(row.title, "for my people");
-        let got = null;
-        for (let i = 0; i < 40 && got !== "the quiet words"; i++) {
-            const r = await eve(`id/${adaRoot}/docs/${post}/body`);
-            if (r.status === 200) got = await r.text();
-            else await new Promise((res) => setTimeout(res, 400));
-        }
-        assert.equal(got, "the quiet words", "trust opens the sealed body two hops out");
-        assert.equal(await feedRow(cal, calRoot), undefined, "cal's feed still shows nothing");
-        assert.notEqual((await cal(`id/${adaRoot}/docs/${post}/body`)).status, 200,
-            "the relay in the middle still cannot read what it carried");
+        assert.equal(shared.status, 400, await shared.clone().text());
+        assert.match(await shared.text(), /not passed along/, "the refusal has words");
+        await shareArrives(HOST_C, beaRoot, adaRoot);
+        assert.equal(await journalRow(HOST_C, calRoot), undefined, "no pointer ever reaches cal's journal");
+        assert.equal(await feedRow(cal, calRoot), undefined, "and his feed shows nothing");
+        const shelf = await (await bea(`api/id/${beaRoot}/posts`)).json();
+        assert.ok(!(shelf.posts || []).some((i) => i.kind === "share" && i.doc_id === post), "nothing sits on bea's shelf either");
     });
 
     it("an edit re-publishes sealed, with no flag on the request (2026-09-03)", async () => {

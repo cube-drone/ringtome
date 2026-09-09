@@ -1264,6 +1264,7 @@ pub(crate) async fn public_doc_bytes(
         thumb_hash: Option<[u8; 32]>,
         format: Option<u64>,
         trusted_only: bool,
+        reply_to: Option<([u8; 32], [u8; 16])>,
     }
     let from_fragments = || async {
         Result::<Option<ServeFacts>, AppError>::Ok(
@@ -1275,6 +1276,7 @@ pub(crate) async fn public_doc_bytes(
                     thumb_hash: h.thumb_hash,
                     format: h.format,
                     trusted_only: h.trusted_only,
+                    reply_to: h.reply_to,
                 }),
         )
     };
@@ -1327,18 +1329,18 @@ pub(crate) async fn public_doc_bytes(
                         // filtered out of `public_doc` by format, which left sealed
                         // pictures serving their ciphertext ungated (caught by the twins
                         // acceptance - 200 of sealed bytes for the untrusted).
-                        let gated = match crate::record::documents::public_header_entry(&db, &doc_id)
+                        let (gated, reply_to) = match crate::record::documents::public_header_entry(&db, &doc_id)
                             .await?
                         {
                             Some(entry) => match &entry.entry().payload {
                                 ringtome_proto::Payload::Inline(payload) => {
                                     ringtome_proto::registry::DocHeaderPlain::decode(payload)
-                                        .map(|h| h.trusted_only)
-                                        .unwrap_or(false)
+                                        .map(|h| (h.trusted_only, h.reply_to))
+                                        .unwrap_or((false, None))
                                 }
-                                _ => false,
+                                _ => (false, None),
                             },
-                            None => false,
+                            None => (false, None),
                         };
                         crate::record::documents::public_head(&db, &doc_id).await?.map(|h| {
                             ServeFacts {
@@ -1346,6 +1348,7 @@ pub(crate) async fn public_doc_bytes(
                                 thumb_hash: h.thumb_hash,
                                 format: h.format,
                                 trusted_only: gated,
+                                reply_to,
                             }
                         })
                     }
@@ -1358,9 +1361,21 @@ pub(crate) async fn public_doc_bytes(
     // author is held: not at all, as a hunch, as a peek short of this post. A share on a
     // person's page used to read "these words haven't reached this computer" forever
     // (Curtis, 2026-09-08): nothing ever asked for them.
+    // "Missing" means "not here yet" only when this node holds the author as a hunch, a
+    // peek, or not at all. A whole held mirror without the post means the post is GONE
+    // from it - retracted, or disproven by a repudiation - and re-fetching it from the
+    // network would resurrect what the chain took back (the repudiation suite caught the
+    // first draft doing exactly that).
+    let not_here_yet = match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
+        None => true,
+        Some(_) => {
+            crate::speculative::speculative_only(state, &root_hex).await.unwrap_or(false)
+                || peek_held(state, &root_hex).await
+        }
+    };
     let facts = match facts {
         Some(f) => Some(f),
-        None if session.is_some() && !hosted_here(state, &root_hex).await.unwrap_or(false) => {
+        None if session.is_some() && not_here_yet && !hosted_here(state, &root_hex).await.unwrap_or(false) => {
             let origin = via
                 .filter(|v| v.len() == 64 && v.chars().all(|c| c.is_ascii_hexdigit()))
                 .map(str::to_lowercase)
@@ -1370,7 +1385,7 @@ pub(crate) async fn public_doc_bytes(
         }
         None => None,
     };
-    let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only }) = facts else {
+    let Some(ServeFacts { file_hash, thumb_hash, format, trusted_only, reply_to }) = facts else {
         return Err(AppError::NotFound(crate::msg!("idface.no-such-public-document-here", "no such public document here")));
     };
     // The trusted-readers gate (PROJECT_PLAN's Post visibility slice 2). The BODY is the gated thing; the
@@ -1381,25 +1396,13 @@ pub(crate) async fn public_doc_bytes(
     // The thumb exemption died with the twins slice (PROJECT_PLAN's Post visibility): a sealed document's
     // thumbnail is a small copy of the sealed content. A text post's public face - title,
     // date - never had a thumb to lose, and untrusted feeds hide the card anyway.
+    // The seal's holder (PROJECT_PLAN's Replies under the author's seal): a reply to a sealed
+    // parent wears the parent's seal, so the parent's author's trust is the gate and the
+    // parent's key is the key.
+    let (holder, key_doc) = seal_holder(state, &root, &doc_id, reply_to).await;
+    let holder_hex = hex::encode(holder);
     if trusted_only {
-        let mut allowed = false;
-        if let Some(sess) = session {
-            let mine: Vec<String> =
-                crate::identity::list_for_account(&state.node_db, &sess.account.id)
-                    .await?
-                    .into_iter()
-                    .map(|i| i.root_pubkey)
-                    .collect();
-            if mine.contains(&root_hex) {
-                allowed = true;
-            } else if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
-                if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
-                    allowed = mine
-                        .iter()
-                        .any(|r| edges.get(r).is_some_and(|e| e.edge.trust.is_some()));
-                }
-            }
-        }
+        let allowed = trusted_viewer(state, session, &holder_hex).await?;
         if !allowed {
             return Err(AppError::Forbidden(crate::msg!(
                 "idface.for-trusted-readers-only",
@@ -1457,13 +1460,15 @@ pub(crate) async fn public_doc_bytes(
             .ok()
             .and_then(|b| b.try_into().ok())
             .expect("checked above");
-        let key = match crate::postkeys::lookup(&state.node_db, &root_hex, doc_hex)
+        let key_doc_hex = hex::encode(key_doc);
+        let key = match crate::postkeys::lookup(&state.node_db, &holder_hex, &key_doc_hex)
             .await
             .map_err(AppError::Internal)?
         {
             Some(k) => Some(k),
-            None => crate::net::fragment::fetch_key(state, &root, &doc_bytes).await,
+            None => crate::net::fragment::fetch_key(state, &holder, &key_doc).await,
         };
+        let _ = doc_bytes;
         let Some(key) = key else {
             return Err(AppError::NotFound(crate::msg!(
                 "idface.the-key-hasnt-arrived",
@@ -1558,6 +1563,62 @@ pub struct PostsQuery {
     pub q: Option<String>,
 }
 
+/// Is a post sealed, as this node holds its header - the chain first, the fragment ledger
+/// second? `None` when the header is not here at all.
+pub(crate) async fn sealed_here(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Option<bool> {
+    if let Ok(Some(db)) = state.user_dbs.get(author_hex).await {
+        if let Ok(Some(entry)) = crate::record::documents::public_header_entry(&db, doc_id).await {
+            if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
+                if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
+                    return Some(h.trusted_only);
+                }
+            }
+        }
+    }
+    crate::fragments::held_header(&state.node_db, author_hex, &hex::encode(doc_id))
+        .await
+        .ok()
+        .flatten()
+        .map(|h| h.trusted_only)
+}
+
+/// Whose seal a sealed post wears (PROJECT_PLAN's Replies under the author's seal): a reply
+/// to a sealed parent is sealed under the PARENT's key, so the parent's author is the one
+/// whose trust opens it - and their key is the one to look for. Anything else wears its own
+/// author's seal. `(holder author, key document)`.
+pub(crate) async fn seal_holder(
+    state: &AppState,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+    reply_to: Option<([u8; 32], [u8; 16])>,
+) -> ([u8; 32], [u8; 16]) {
+    if let Some((pa, pd)) = reply_to {
+        if sealed_here(state, &hex::encode(pa), &pd).await == Some(true) {
+            return (pa, pd);
+        }
+    }
+    (*author, *doc_id)
+}
+
+/// Does the session hold a persona the seal's holder trusts - or the holder themselves?
+pub(crate) async fn trusted_viewer(state: &AppState, session: &Option<Session>, holder_hex: &str) -> Result<bool, AppError> {
+    let Some(sess) = session else { return Ok(false) };
+    let mine: Vec<String> = crate::identity::list_for_account(&state.node_db, &sess.account.id)
+        .await?
+        .into_iter()
+        .map(|i| i.root_pubkey)
+        .collect();
+    if mine.iter().any(|r| r == holder_hex) {
+        return Ok(true);
+    }
+    if let Ok(Some(db)) = state.user_dbs.get(holder_hex).await {
+        if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
+            return Ok(mine.iter().any(|r| edges.get(r).is_some_and(|e| e.edge.trust.is_some())));
+        }
+    }
+    Ok(false)
+}
+
 /// The feed's sealed-post rule, on the shelf (Curtis, 2026-09-05: a trusted-only post from
 /// someone who does not trust you "I shouldn't see ... we just hide that"): drop every
 /// trusted-only post unless the viewer is the author or the author publishes trust for
@@ -1585,9 +1646,49 @@ async fn hide_sealed(
             .unwrap_or(false),
         _ => false,
     };
-    if !trusted {
-        posts.retain(|p| !p.trusted_only);
+    // A sealed reply to a sealed parent wears the parent's seal: judged by the parent's
+    // author, whoever's shelf it sits on (PROJECT_PLAN's Replies under the author's seal).
+    let Ok(author) = hex_fixed_root(author_hex) else {
+        if !trusted {
+            posts.retain(|p| !p.trusted_only);
+        }
+        return;
+    };
+    let mut kept = Vec::with_capacity(posts.len());
+    for p in posts.drain(..) {
+        if !p.trusted_only {
+            kept.push(p);
+            continue;
+        }
+        let reply_to = p.reply_to.as_ref().and_then(|(a, d)| {
+            let a = hex::decode(a).ok().and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())?;
+            let d = hex::decode(d).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())?;
+            Some((a, d))
+        });
+        let (holder, _) = seal_holder(state, &author, &p.doc_id, reply_to).await;
+        let holder_hex = hex::encode(holder);
+        let ok = if holder_hex == author_hex {
+            trusted
+        } else if viewer == Some(holder_hex.as_str()) {
+            true
+        } else {
+            match (viewer, state.user_dbs.get(&holder_hex).await) {
+                (Some(v), Ok(Some(db))) => crate::record::imaol::published_edges(&db)
+                    .await
+                    .map(|e| e.get(v).is_some_and(|row| row.edge.trust.is_some()))
+                    .unwrap_or(false),
+                _ => trusted_viewer(state, session, &holder_hex).await.unwrap_or(false),
+            }
+        };
+        if ok {
+            kept.push(p);
+        }
     }
+    *posts = kept;
+}
+
+fn hex_fixed_root(hex_str: &str) -> Result<[u8; 32], ()> {
+    hex::decode(hex_str).ok().and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok()).ok_or(())
 }
 
 /// GET `/api/id/{root}/posts` - further back down someone's public shelf.
@@ -2203,6 +2304,19 @@ pub async fn id_post_replies(
                     }
                 }
             }
+        }
+    }
+    // A sealed post's conversation is under the same seal (PROJECT_PLAN's Replies under the
+    // author's seal): a reader the author does not trust sees no replies at all, rather
+    // than a thread of hollow cards.
+    if let Ok(Ok(doc_id)) = hex::decode(&doc).map(|b| <[u8; 16]>::try_from(b.as_slice())) {
+        if sealed_here(&state, &root_hex, &doc_id).await == Some(true)
+            && !trusted_viewer(&state, &session, &root_hex).await?
+        {
+            return Ok(axum::Json(serde_json::json!({
+                "replies": [], "more": false, "seeking": false, "sealed": true,
+            }))
+            .into_response());
         }
     }
     let (mut replies, more) = crate::replies::replies_of(&state.node_db, &root_hex, &doc, after)
