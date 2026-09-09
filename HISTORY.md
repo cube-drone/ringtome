@@ -8866,3 +8866,41 @@ Curtis: the same kinds, buckets and tags picked, across a refresh, for the feed 
 each person's page - in the browser, never across a server. One hook (`usePicks`) keeps
 each page's picks in sessionStorage, the feed per persona and a person's page per person,
 read on mount and written on every change, absent storage leaving the picks to the page.
+
+## 2026-09-08: no sharing a sealed post
+
+Curtis had pictured a trusted rebroadcaster reading a sealed post out of the ciphertext and
+re-sealing it to their own trusted list; the plan's model is the other one - the key is
+the only gated thing and the author's gate is the only gate, so a share of a sealed post
+moves the pointer and the carriage and never the words, and the feed hides the hollow card
+it would make for anyone the author does not trust. Coherent, and not what the button
+promises: "it won't work the way users will expect it to." So the share button is gone on
+sealed posts, the rebroadcast door refuses one with words (after the settled check, so a
+settled-and-sealed post still says "settled"), the generator never tries, and the suites
+that had walked a sealed post two hops by shares - the trusted-posts pair and the first
+combination - now walk the refusal: nothing journals downstream, the relay sees nothing,
+and trust plus a follow of the author is the only road to the words.
+
+## 2026-09-08: replies under the author's seal (slice 1)
+
+Curtis: with sealed posts unshareable, the leak left was the reply - a trusted friend's
+public post answering words their followers could never read. Ruled and built (PROJECT_PLAN
+"Replies under the author's seal"): a reply to a sealed parent is sealed under the parent's
+key. The mint reads the parent's key from the memo (else over the key lane) and rides it on
+the draft as its trusted key, so the words seal under it; a replier who never could read the
+parent has no key and is refused with words. No new wire: the parent's seal says so, and
+every door resolves the seal's holder from the two headers - the body door looks for the
+parent's key and applies the parent author's trust, the shelf, the feed and the thread judge
+a sealed reply by the parent's author (the thread of a sealed post shows a reader the author
+does not trust nothing at all), and readers ask the parent's author for the key, never the
+commenter. The reply box under a sealed parent says the reply will wear the author's seal
+and offers no toggle. Media in a sealed reply is refused for now - a twin's key is looked
+up by the twin's own id and a twin cannot name the parent - the slice's one residual.
+The gate caught a regression from the day before on the way in: the body door's
+fetch-when-missing fired for a whole held mirror too, and re-fetched a post a repudiation
+had taken back. "Missing" now means "not here yet" only when the author is held as a hunch,
+a peek, or not at all; a held mirror without the post means the post is gone. And the
+history dig's claim, red for the third time in a pack and green every time alone, named
+the load: the text index's backlog walk had been riding the journal fill's beat, a second
+on the rig, so a body-reading pass ran beside every dig. The index walks on its own slow
+beat now; the test door rings it when a claim wants it.
