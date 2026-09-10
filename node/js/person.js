@@ -33,6 +33,7 @@ import {
     contactCollection,
     bandOf,
 } from './pure/contact.js';
+import { contactTags, tagCounts, withTag, withoutTag, serialiseTags, TAG_MAX } from './pure/contacttags.js';
 
 const html = htm.bind(h);
 
@@ -216,6 +217,12 @@ export const PersonRow = ({ root, current, profile, aside }) => {
         >
             <${PersonHex} person=${person} size="small" />
             <${PersonNames} person=${person} />
+            ${/* Your tags for them (2026-09-10), on the row itself: the People list is where
+                you look for "family", so the word rides the person, not only the filter. */ ''}
+            ${contactTags(person.facts).length > 0 &&
+            html`<span class="person-row-tags">
+                ${contactTags(person.facts).map((tag) => html`<span class="label-chip" key=${tag}>${tag}</span>`)}
+            </span>`}
             ${/* The row's right edge: your relationship at a glance - unless the caller has a
                 better claim to the slot (the suggested shelf's "via ..." byline: a stranger
                 has no relationship to glance at, and "nothing recorded yet" would bury the
@@ -452,6 +459,57 @@ const Dial = ({ label, hint, stops, value, onPick }) => html`
 // Ledger - a vouch IS a positive trust edge its author chose to publish). The block is
 // likewise the RECORD of the decision; the Inbound Gate learns to read it when inbound acts
 // arrive.
+/// The chips and the "+ tag" input on a contact's ledger: every tag this persona has put on
+/// anyone is offered as a completion, so a spelling stays one spelling.
+const ContactTagsEditor = ({ myRoot, tags, onChange }) => {
+    const [adding, setAdding] = useState(false);
+    const [draft, setDraft] = useState('');
+    const everyone = useLive(() => (myRoot ? openMirror(myRoot).contacts.toArray() : []), [myRoot]);
+    const known = tagCounts(everyone || []).map((c) => c.value).filter((v) => !tags.includes(v));
+    const listId = `contact-tags-${myRoot ? myRoot.slice(0, 8) : 'x'}`;
+    const add = (raw) => {
+        const next = withTag(tags, raw);
+        if (next !== tags) onChange(next);
+        setDraft('');
+        setAdding(false);
+    };
+    return html`<span class="ledger-tags">
+        ${tags.map(
+            (tag) => html`<span class="label-chip" key=${tag}>
+                ${tag}
+                <button
+                    class="label-x"
+                    title=${t('person.take-this-tag-off', 'take this tag off')}
+                    onClick=${() => onChange(withoutTag(tags, tag))}
+                >×</button>
+            </span>`
+        )}
+        ${adding
+            ? html`<input
+                  class="label-add-input"
+                  list=${listId}
+                  maxlength=${TAG_MAX}
+                  placeholder=${t('person.a-tag', 'a tag')}
+                  value=${draft}
+                  ref=${(el) => el && el.focus()}
+                  onInput=${(e) => setDraft(e.currentTarget.value)}
+                  onKeyDown=${(e) => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault();
+                          add(draft);
+                      }
+                      if (e.key === 'Escape') {
+                          setDraft('');
+                          setAdding(false);
+                      }
+                  }}
+                  onBlur=${() => add(draft)}
+              />
+              <datalist id=${listId}>${known.map((v) => html`<option value=${v} key=${v} />`)}</datalist>`
+            : html`<button class="label-add" onClick=${() => setAdding(true)}>${t('person.plus-tag', '+ tag')}</button>`}
+    </span>`;
+};
+
 export const ContactLedger = ({ myRoot, theirRoot }) => {
     // The mirror is the truth (The Browser Is a View - contact facts stream like docs do,
     // so a dial turned on another computer lands here live); a pending overlay covers the
@@ -558,6 +616,17 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                     onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
                 />
             </label>
+            ${/* Contact tags (PROJECT_PLAN's Contact tags, 2026-09-10): "family",
+                "trade-show" - private labels, one register in the contact's bag, so every
+                computer you sign in on keeps the same lists and nobody else ever sees them.
+                The People page filters by them; the audience arc will seal to them. */ ''}
+            <div class="ledger-dial">
+                <span class="ledger-label">
+                    ${t('person.your-tags-for-them', 'your tags for them')}
+                    <small>${t('person.tags-hint', 'private - tag this person')}</small>
+                </span>
+                <${ContactTagsEditor} myRoot=${myRoot} tags=${contactTags(facts)} onChange=${(next) => put('tags', serialiseTags(next))} />
+            </div>
             <${Dial}
                 label=${t('person.trust', 'trust')}
                 hint=${t('person.trust-hint', "not how much you like them - whether you believe they're real")}

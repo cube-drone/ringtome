@@ -249,7 +249,15 @@
 
 /* The suggested shelf's right-edge byline ("via mara") - the glance slot worn by a fact
    about the introduction rather than a relationship. Same seat, same quiet voice. */
-.person-row .person-row-via {
+.person-row /* Contact tags on the row (2026-09-10): small, between the names and the glance. */
+.person-row-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25em;
+    font-size: 0.8em;
+}
+
+.person-row-via {
     margin-left: auto;
     flex-shrink: 0;
     color: var(--faint);

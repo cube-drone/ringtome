@@ -8976,3 +8976,16 @@ The settled suite's share claim flipped from refused to passed along; the combin
 claim that shared a sealed-and-settled post now reads the seal's refusal. A collision this
 fixes for free: "settled" was also the store's word for a post whose edit window has
 closed, and the reader now meets only that one.
+
+## 2026-09-10: contact tags
+
+The first half of the audience arc, built on its own: private tags on the people you know,
+one `tags` register in the contact's bag on the private chain beside trust and the
+nickname, so every computer keeps the same lists and nothing about a tag reaches a public
+chain. A pure module normalises them (a key, not prose - lowercased, collapsed, capped,
+once per person) and counts them across the roster; the ledger on a person's page grew a
+"your tags for them" row with the post card's own chips and "+ tag", completions drawn from
+every tag the persona has used; the People page wears the feed's facet widget, tags only,
+picks AND, kept for the session. No Rust moved - the private KV door already took any
+register in a contact's bag. The plan gained a Contact tags section; the audience itself
+is its ruling 4, not built.

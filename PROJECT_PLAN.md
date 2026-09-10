@@ -4054,6 +4054,30 @@ that name or takes an awkward name to avoid them. Disjoint floors cost one short
 end the conversation. One constant names the word; the pure address builder writes the
 floor and the resolver reads it; every hand-written link goes through one `bucketHref`.
 
+### Contact tags: private labels on the people you know (settled 2026-09-10)
+
+"What I'm imagining now is the ability to tag your acquaintances - these are private tags."
+The first half of the audience arc, useful on its own: a persona puts words on the people
+they know - "family", "trade-show", "bikes" - and the words never leave their own
+computers.
+
+1. **One register in the contact's bag.** A contact's tags are the `tags` register of the
+   `contact:<root>` collection on the private chain, a JSON list, written through the same
+   door as trust, interest and the nickname and read back with the bag. So every computer
+   the persona signs in on keeps the same lists, and nothing about a tag reaches a public
+   chain, a profile, an edge or a shelf - the suite reads the persona's public face as a
+   stranger and finds no tag on it.
+2. **A tag is a key, not prose.** Lowercased, whitespace collapsed, capped at thirty-two
+   characters and twenty-four per person, never twice on one person. The editor on a
+   person's ledger offers every tag the persona has put on anyone as a completion, so one
+   spelling stays one spelling.
+3. **The People page filters by them.** The same facet widget the feed wears, tags only:
+   every tag on the roster with how many people wear it, picks AND, kept for the browser
+   session like the feed's picks. Nothing picked shows everyone.
+4. **The audience arc builds on them.** A sealed post will name a tag rather than "everyone I
+   trust", and the key door will ask whether the asker wears it - the same question every
+   sealed surface already asks of the seal's holder, with a narrower answer. Not built.
+
 ### Replies under the author's seal, and sealed titles (settled 2026-09-08)
 
 A sealed conversation stays pinned to the context it began in. Two rulings, one key.

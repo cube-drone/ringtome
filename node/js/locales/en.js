@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 698 phrases across 52 files.
+// 703 phrases across 52 files.
 export default {
     // --- node/js/apps/feed.js ---
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
@@ -419,6 +419,9 @@ export default {
     'person.dial-trust': 'trust',
     'person.dial-interest': 'interest',
     'person.dial-rebroadcasts': 'rebroadcasts',
+    'person.take-this-tag-off': 'take this tag off',
+    'person.a-tag': 'a tag',
+    'person.plus-tag': '+ tag',
     'person.your-relationship': 'your relationship',
     'person.blocked---nothing-of-theirs': 'blocked',
     'person.who-can-see-this-relationship': 'who can see this relationship',
@@ -428,6 +431,8 @@ export default {
     'person.your-nickname-for-them': 'your nickname for them',
     'person.only-you-ever-see-this': "only you ever see this - it's how they'll appear in your People",
     'person.a-name-of-your-choosing': 'a name of your choosing',
+    'person.your-tags-for-them': 'your tags for them',
+    'person.tags-hint': 'private - tag this person',
     'person.trust': 'trust',
     'person.trust-hint': "not how much you like them - whether you believe they're real",
     'person.interest': 'interest',

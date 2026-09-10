@@ -775,6 +775,14 @@
 }
 
 
+/* Contact tags on the ledger (2026-09-10): the post card's own chips and "+ tag". */
+.ledger-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35em;
+}
+
 .ledger-nick {
     background: var(--surface);
     border: 1px solid transparent;

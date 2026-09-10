@@ -14,6 +14,8 @@ import { PersonRow } from '../person.js';
 import { api } from '../net.js';
 import { PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts, standingFacts } from '../pure/people.js';
 import { t } from '../i18n.js';
+import { LabelFacets, usePicks } from '../facets.js';
+import { tagCounts, rowsTagged } from '../pure/contacttags.js';
 
 const html = htm.bind(h);
 
@@ -116,7 +118,11 @@ export const PeopleApp = ({ current, searchQuery }) => {
         }
         return { standing, cleared };
     }, [allRows]);
-    const sorted = sortContacts(filterContacts(rows, filter), sortBy);
+    // Contact tags (2026-09-10): the row of every tag on the roster, picks AND, kept for
+    // the session like the feed's facets - the same widget, tags only.
+    const [picks, setPicks] = usePicks(root ? `people:${root}` : null);
+    const tagRow = tagCounts(rows);
+    const sorted = sortContacts(filterContacts(rowsTagged(rows, picks.tags), filter), sortBy);
     const visible = sorted.slice(0, shown);
 
     // People you might know: the trust graph's suggestions, between your own shelf and the
@@ -167,6 +173,7 @@ export const PeopleApp = ({ current, searchQuery }) => {
 
     return html`
         <div class="people-inner">
+            <${LabelFacets} labels=${{ kinds: [], buckets: [], tags: tagRow }} picks=${picks} onPicks=${setPicks} />
             <div class="people-shelf-head">
                 <span class="people-shelf-title">${t('apps.people.everyone-you-know', 'everyone you know')}</span>
                 <span class="people-sorts">

@@ -69,8 +69,8 @@ but only shared with folks who match a predicate (either "friend" or "in a group
 
 Does a mutual follow+trust make a "friend"?
 
-* Define and manage group membership
-* Groups-only posts
+* Groups-only posts - the audience: seal a post to a contact tag rather than to everyone you
+  trust (PROJECT_PLAN's Contact tags, ruling 4). Membership is the contact tags, built 2026-09-10.
 
 ### Public means public (Gateway)
 * the public-HTML browser for this repo
