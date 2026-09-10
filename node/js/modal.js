@@ -5,6 +5,7 @@
 // modal next, this is it).
 import { h } from 'preact';
 import { useEffect } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
 import htm from 'htm';
 
 import { Icons } from './icons.js';
@@ -25,7 +26,11 @@ export const Modal = ({ title, onClose, children }) => {
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
     }, [onClose]);
-    return html`
+    // Rendered at the body, not where it was opened (Curtis, 2026-09-10: the copy modal
+    // sat "trapped inside of the post"): every card wears the jagged clip-path, which
+    // clips a fixed descendant along with everything else, so a modal that stays in the
+    // card's subtree never reaches the page.
+    const node = html`
         <div
             class="modal-scrim"
             onPointerDown=${(e) => {
@@ -43,4 +48,5 @@ export const Modal = ({ title, onClose, children }) => {
             </div>
         </div>
     `;
+    return typeof document !== 'undefined' ? createPortal(node, document.body) : node;
 };
