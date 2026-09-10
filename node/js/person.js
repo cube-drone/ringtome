@@ -590,7 +590,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             <label class="ledger-dial">
                 <span class="ledger-label">
                     ${t('person.who-can-see-this-relationship', 'who can see this relationship')}
-                    <small>${t('person.sharing-how-you-hold-people', 'sharing how you hold people - your trust and interest - helps the network grow, but gives up some of your privacy!')}</small>
+                    <small>${t('person.sharing-how-you-hold-people', 'is this relationship visible to others')}</small>
                 </span>
                 <select
                     class="ledger-select"
@@ -604,7 +604,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             <label class="ledger-dial">
                 <span class="ledger-label">
                     ${t('person.your-nickname-for-them', 'your nickname for them')}
-                    <small>${t('person.only-you-ever-see-this', "only you ever see this - it's how they'll appear in your People")}</small>
+                    <small>${t('person.only-you-ever-see-this', 'only you ever see this name')}</small>
                 </span>
                 <input
                     class="ledger-nick"
@@ -629,7 +629,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             </div>
             <${Dial}
                 label=${t('person.trust', 'trust')}
-                hint=${t('person.trust-hint', "not how much you like them - whether you believe they're real")}
+                hint=${t('person.trust-hint', "whether you believe they're real")}
                 stops=${trustStops()}
                 value=${facts.trust}
                 onPick=${(v) => put('trust', v)}
